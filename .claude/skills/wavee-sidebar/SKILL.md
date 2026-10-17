@@ -1,6 +1,6 @@
 ---
 name: wavee-sidebar
-description: Use when changing anything in Wavee's left sidebar: the Classic and Library layouts (catalogue, overlays, ops), the one PaneView renderer and SidebarRowPlanner, row geometry, the pane modes and window bands, Edit mode and the undo ring, menus, per-account pins and Spotify pin sync, sidebar.json / sidebar.acct-*.json persistence, or the Library head. Read before adding a section kind or item, a menu entry, a persisted field, or touching pane metrics.
+description: Use when changing anything in Wavee's left sidebar: the Classic and Library layouts (catalogue, overlays, ops), the one PaneView renderer and SidebarRowPlanner (Classic's since T5a), row geometry, the pane modes and window bands, Edit mode and the undo ring, menus, per-account pins and Spotify pin sync, sidebar.json / sidebar.acct-*.json persistence, or the Library head. Read before adding a section kind or item, a menu entry, a persisted field, or touching pane metrics.
 ---
 
 # Wavee sidebar
@@ -24,7 +24,7 @@ is app code on top of the engine; it never edits `src/FluentGpu.*`.
    feeds, library counts, recents)                     SidebarRowPlan  (rows + geometry)
                                                                │
                                                                ▼
-                       PaneView  (the ONE renderer: ItemsView over PaneSlot rows)
+                       PaneView  (the ONE renderer: ItemsView over ClassicNavRow slots, via NavRowKit)
                        hosted by ClassicMode or LibraryMode; entry points Sidebar.Pane() and Sidebar.DrawerPane()
 ```
 

@@ -190,8 +190,8 @@ public sealed class ConcertDecodeTests
         Assert.True(d.Knows(ConcertFields.All));
         Assert.Equal(-240, d.OffsetMinutes);
         Assert.Equal(TimeSpan.FromHours(-4), d.DoorsLocal!.Value.Offset);
-        Assert.Equal("spotify:venue:example-venue", R(d.VenuePlaceId));
-        Assert.Equal("1001", R(d.MetroAreaId));
+        Assert.Equal("spotify:venue:example-venue", R(Entities.Current.Concerts.VenuePlace[d.Slot]));
+        Assert.Equal("1001", R(Entities.Current.Concerts.MetroArea[d.Slot]));
         Assert.Equal(52f, d.Lat);
         Assert.Equal(2, d.Lineup.Length);
 

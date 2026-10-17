@@ -228,8 +228,8 @@ public class LikedPageRulesTests
 
         Assert.Equal(new[] { "Pop", "Chill", "Indie", "Jazz", "Metal" }, set.Titles.ToArray());
         Assert.Equal(3, set.EvidencedCount);
-        Assert.True(set.IsEvidenced(2));
-        Assert.False(set.IsEvidenced(3));
+        Assert.True(2 < set.EvidencedCount);
+        Assert.False(3 < set.EvidencedCount);
     }
 
     [Fact]

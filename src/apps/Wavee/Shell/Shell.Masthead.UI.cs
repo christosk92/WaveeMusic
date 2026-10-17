@@ -1,5 +1,5 @@
 // ── Shell/Shell.Masthead.UI.cs ─────────────────────────────────────────────────────────────────────────────────────
-// masthead band, material layer, omnibar + suggestion popup (a cross-owner contract with P's Search.cs)
+// masthead band (core host), material layer (host note), omnibar + suggestion popup (a cross-owner contract with P's Search.cs)
 //
 // Role: UI
 // Owner: I
@@ -11,43 +11,40 @@
 //   · the MASTHEAD BAND ("Browse › Category") — one overlay above the keep-alive boundary, never a page's own copy, so a
 //     page swap cannot double-expose it and crossing out of the family never changes the boundary's height;
 //   · the MATERIAL LAYER — the one layer between live Mica and the chrome column: a flat page tint or Home's three
-//     clipped radial washes, re-rendered at navigation rate only;
+//     clipped radial washes, re-rendered at navigation rate only (T4c: the structure's `Shell.Material`);
 //   · the OMNIBAR — the field-mode field and the icon-mode flyout are two mounts of ONE omnibar over ONE suggestion
 //     store, so a search-mode flip keeps the rows, the pending generation and the cursor. The SUGGESTION SOURCE is owner
 //     P's (`Shell.Omnibar.Source`, Wave 5); with none installed the popup answers from the navigation log.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
 public static partial class Shell
 {
     // ══ 1. THE MASTHEAD BAND (ch 18 W13) ═══════════════════════════════════════════════════════════════════════════
+    //
+    // T4c: the band's PICTURE is the structure's (`Shell.Masthead`, `Themes\Classic\Structure\Views\Masthead\ClassicMasthead.cs`; the
+    // page head is `Page.Head`, `ClassicPageHead.cs`). This host keeps the state machine and hands the theme a `PageChrome`.
 
     /// <summary>The one masthead, mounted by the content host as an overlay on its page-swap boundary.</summary>
     // MOUNT POINT (stage B contract)
     public static Element Masthead() => Embed.Comp(static () => new MastheadBand());
 
-    /// <summary>The band's frame insets — the browse surfaces' own frame, so the band's title sits on the page's column.</summary>
-    const float MastheadFrameX = 36f, MastheadFrameTop = 32f;
-
+    /// <summary>The masthead's core host: which route's publication is live, the chrome it HELD while an unknown family fades (a trail
+    /// never collapses to nothing mid-swap), and the "Show all" verb that resolves the LATEST delegate at click time. It builds no element.</summary>
+    [CoreHost]
     sealed class MastheadBand : Component
     {
-        static readonly MotionTokenDef Hide = MotionTokenDef.Eased(FadeThroughExitMs, Easing.FluentAccelerate, ReducedMotionPolicy.KeepFade);
-        static readonly MotionTokenDef Show = MotionTokenDef.Eased(FadeThroughExitMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
-
         // An unknown family KEEPS the last trail and fades opacity; it never collapses to height 0 mid-swap.
-        IReadOnlyList<Crumb> _heldTrail = [];
-        string? _heldTitle;
-        bool _heldToolsVisible, _heldToolsLoading;
+        PageChrome? _held;
         Route _heldRoute;
+        Action? _runTools;
 
         public override Element Render()
         {
@@ -57,755 +54,75 @@ public static partial class Shell
             bool live = TryMasthead(route, published?.Title, origin, out var title, out var trail);
             if (live)
             {
-                _heldTitle = title;
-                _heldTrail = trail;
-                _heldToolsVisible = published is { ToolsVisible: true };
-                _heldToolsLoading = published is { ToolsLoading: true };
+                _held = ChromeFor(title!, trail, published, HeadFormOf(route));
                 _heldRoute = route;
             }
 
-            if (_heldTitle is null) return new BoxEl { MinWidth = 0f, Opacity = 0f, HitTestVisible = false };
-
             // "Show all" resolves the LATEST delegate at click time: a re-publish that changes only the delegate never
             // re-renders the band.
-            Element tools = _heldToolsVisible
-                ? Button.Create(Loc.Get(Strings.Browse.ShowAll), RunTools, ButtonAppearance.Subtle, ControlSize.Small, isEnabled: !_heldToolsLoading)
-                : new BoxEl();
-
-            return new BoxEl
+            return ViewSlots.View(ViewKeys.ShellMasthead, new MastheadProps
             {
-                Direction = 0, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.End,
-                Padding = new Edges4(MastheadFrameX, MastheadFrameTop, MastheadFrameX, 0f),
-                Opacity = live ? 1f : 0f,
-                HitTestVisible = live,
-                Transition = live ? Show : Hide,
-                Children = [MastheadTitleRow(_heldTrail, _heldTitle), tools],
-            };
+                Held = _held,
+                Live = live,
+                RunTools = _runTools ??= RunTools,
+            });
         }
 
         void RunTools() => Mastheads.Peek(_heldRoute)?.ToolsAction?.Invoke();
     }
 
-    /// <summary>The trail-as-title row: every crumb but the last dimmed and clickable, a <c>›</c> after each, then the
-    /// CURRENT title under a stable key (Browse-home → category does not remount it). No parent ⇒ no prefix child at all
-    /// (a zero-width first sibling still padded the row a rung right).</summary>
-    static Element MastheadTitleRow(IReadOnlyList<Crumb> trail, string title)
+    /// <summary>The chrome a masthead-family route publishes (T4c): its title, its trail as navigable crumbs, the "Show all" tool's
+    /// state and what its head holds (<see cref="HeadFormOf"/>). A crumb with a route navigates to it; the current page (no route) is not
+    /// clickable. Pure but for the verbs it captures.</summary>
+    public static PageChrome ChromeFor(string title, IReadOnlyList<Crumb> trail, MastheadPublication? published,
+        PageHeadForm form = PageHeadForm.Title)
     {
-        int last = trail.Count - 1;
-        var segs = new List<Element>(Math.Max(0, last) * 2);
-        for (int i = 0; i < last; i++)
+        var crumbs = new PageCrumb[trail.Count];
+        for (int i = 0; i < crumbs.Length; i++)
         {
             var crumb = trail[i];
-            segs.Add(new BoxEl
-            {
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = crumb.Route is { } target ? () => GoTo(target) : null,
-                Children =
-                [
-                    Design.Type.SurfaceDisplay(crumb.Label) with
-                    {
-                        Color = Tok.TextTertiary, HoverColor = Tok.TextSecondary, PressedColor = Tok.TextTertiary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,
-                    },
-                ],
-            });
-            segs.Add(Design.Type.SurfaceDisplay("›") with { Color = Tok.TextTertiary, Shrink = 0f });
+            crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null);
         }
-        var current = Design.Type.SurfaceDisplay(title) with
-        {
-            Key = "masthead-current", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Grow = 1f, Basis = 0f, Shrink = 1f,
-        };
-        if (segs.Count == 0)
-            return new BoxEl { Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Children = [current] };
-        var prefix = new BoxEl
-        {
-            Key = "masthead-prefix:" + trail[0].Label,
-            Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, Shrink = 0f,
-            Children = segs.ToArray(),
-        };
-        return new BoxEl
-        {
-            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Gap = Spacing.S,
-            Children = [prefix, current],
-        };
+        return new PageChrome(title, crumbs, published is { ToolsVisible: true }, published is { ToolsLoading: true }, form);
     }
 
     // ══ 2. THE MATERIAL LAYER (ch 00 §material, ch 18 W12) ════════════════════════════════════════════════════════
-
-    /// <summary>The material between the window's base layer (live Mica — the root paints nothing) and the chrome column.
-    /// A component, not inline elements: a GradientSpec is not a Prop (a wash changes only by re-rendering), and the
-    /// implicit brush transition arms only on a re-rendered STATIC fill — so the tint cross-fades page to page.</summary>
-    static Element MaterialLayer() => Embed.Comp(static () => new MaterialLayerView());
-
-    sealed class MaterialLayerView : Component
-    {
-        /// <summary>Gradients carry no brush-fade channel, so a wash cross-fades BY MOUNT (keyed on its artwork). A VALUE
-        /// under reduced motion, never a hook branch.</summary>
-        static EnterExit? WashFade => Design.Reduced ? null : new EnterExit(Opacity: 0f, Active: true);
-
-        public override Element Render()
-        {
-            var state = MaterialState.Value;                  // navigation rate
-            var vp = UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
-            bool light = Tok.Theme == ThemeKind.Light;
-
-            // Always mounted, even at the neutral ground, so the node is live across a change and the brush transition has
-            // a colour to fade FROM. Never Transparent (premultiplied black drags the ramp dark).
-            Element tint = new BoxEl
-            {
-                Key = "shell.material.tint", Grow = 1f, HitTestVisible = false,
-                Fill = state.Tint ?? Design.Wash.NeutralGround,
-                BrushTransitionMs = Design.Motion.Standard,
-            };
-            if (state.Wash is not { } wash)
-                return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = [tint] };
-
-            var legs = new List<Element>(3);
-            AddWash(legs, wash.Hero, Design.Wash.Hero, Design.Wash.HeroAlpha(light), "shell.wash.hero", vp);
-            AddWash(legs, wash.Weekly, Design.Wash.Weekly, Design.Wash.ShelfAlpha(light), "shell.wash.weekly", vp);
-            AddWash(legs, wash.Mix, Design.Wash.Mix, Design.Wash.ShelfAlpha(light), "shell.wash.mix", vp);
-            return new BoxEl
-            {
-                Grow = 1f, ZStack = true, HitTestVisible = false,
-                Children =
-                [
-                    tint,
-                    // THE WASHES STOP AT THE DOCK LINE: the dock paints nothing, so a peak landing under it read as "the
-                    // dock has a gradient". An inset MARGIN keeps every placement ratio viewport-independent.
-                    new BoxEl
-                    {
-                        Grow = 1f, ZStack = true, HitTestVisible = false, ClipToBounds = true,
-                        Margin = new Edges4(0f, 0f, 0f, Design.Wash.HostBottomInset),
-                        Children = legs.ToArray(),
-                    },
-                ],
-            };
-        }
-
-        static void AddWash(List<Element> legs, WashLayer? layer, ShellWashPlacement p, float alpha, string key, IReadSignal<Size2> vp)
-        {
-            if (layer is not { } w) return;
-            float wf = p.W, hf = p.H;
-            legs.Add(new BoxEl
-            {
-                // Keyed on the ARTWORK: a re-grade remounts (the cross-fade); a theme flip keeps the node and re-records.
-                Key = key + ":" + (w.ArtworkKey ?? ""),
-                HitTestVisible = false,
-                Width = Prop.Of(() => vp.Value.Width * wf),
-                Height = Prop.Of(() => vp.Value.Height * hf),
-                JustifySelf = p.AnchorRight ? FlexAlign.End : FlexAlign.Start,
-                AlignSelf = p.AnchorBottom ? FlexAlign.End : FlexAlign.Start,
-                // Straight-alpha stops: the transparent stop carries the wash's own RGB.
-                Gradient = new GradientSpec(GradientShape.Radial, 0f,
-                [
-                    new GradientStop(0f, w.Color with { A = alpha }),
-                    new GradientStop(p.FadeOffset, Design.Wash.Vanish(w.Color)),
-                ])
-                {
-                    RadialCenter = p.Center,
-                    RadialRadius = p.Radius,
-                },
-                Enter = WashFade,
-                Exit = WashFade,
-            });
-        }
-    }
+    //
+    // T4c: the layer is the structure's (`Shell.Material`, `Themes\Classic\Structure\Views\Material\ClassicMaterial.cs`): the frame mounts it with
+    // `MaterialState`. The channel (`ShellMaterial`, `TintOwnership`) is core: `Platform\ShellMaterial.cs`.
 
     // ══ 3. THE OMNIBAR (ch 18 W15) ════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The chrome row's ONE suggestion store: the lifecycle (<see cref="Omnibar.Query"/>), a version bumped on
-    /// every change (the render subscription), and the keyboard cursor over the visible rows.</summary>
-    sealed class OmnibarStore
-    {
-        public readonly Omnibar.Query Query = new();
-        public readonly Signal<int> Version = new(0);
-        public readonly Signal<int> Highlight = new(-1);
+    /// <summary>The chrome row's ONE omnibar: the suggestion store (<see cref="OmnibarModel.Query"/>, its version and the
+    /// keyboard cursor), the fetch edges, the focus tickets and the verbs are <see cref="OmnibarModel"/>'s; the field and the
+    /// popup below are views over it. <see cref="OmnibarModel.SearchFocused"/> / <see cref="OmnibarModel.FlyoutOpen"/> are
+    /// what the chrome allocator reads to hand the caret to the new form across a mode flip.</summary>
+    static readonly OmnibarModel s_omnibar = new(OmnibarPorts.Live());
 
-        public OmnibarStore() => Query.Changed += () => Version.Value = Version.Peek() + 1;
+    /// <summary>Ask the omnibar for keyboard focus (Ctrl+F — <see cref="IFrameVerbs.FocusSearch"/>).</summary>
+    internal static void FocusSearch() => s_omnibar.Focus();
+
+    // ── test-only seam (RootScopeTests) ─────────────────────────────────────────────────────────────────────────────
+    //
+    // Wavee.ShellTests has no InternalsVisibleTo, so this is public (the repo's `*ForTests` convention, see Shell.cs). It
+    // reads and writes the facts only a MOUNTED omnibar form holds, which `RootScope` puts back when its root unmounts.
+    // Never called from production code.
+    /// <summary>The omnibar facts a mounted form holds (see <see cref="OmnibarModel.ResetMountedFacts"/>).</summary>
+    public readonly record struct OmnibarFacts(bool SearchFocused, bool FlyoutOpen, int Highlight);
+
+    /// <summary>The omnibar facts now.</summary>
+    public static OmnibarFacts OmnibarFactsForTests()
+        => new(s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek(), s_omnibar.Highlight.Peek());
+
+    /// <summary>Write the facts a mounted form would (the caret in the field, the flyout open, a row highlighted).</summary>
+    public static void SetOmnibarFactsForTests(OmnibarFacts facts)
+    {
+        s_omnibar.SearchFocused.SetIfChanged(facts.SearchFocused);
+        s_omnibar.FlyoutOpen.SetIfChanged(facts.FlyoutOpen);
+        s_omnibar.Highlight.SetIfChanged(facts.Highlight);
     }
 
-    static readonly OmnibarStore s_omnibar = new();
-
-    /// <summary>The search field has focus / the icon-mode flyout is open — the chrome allocator reads both to hand the
-    /// caret to the new form across a mode flip.</summary>
-    static readonly Signal<bool> s_searchFocused = new(false);
-    static readonly Signal<bool> s_searchFlyoutOpen = new(false);
-
-    /// <summary>The last focus ticket a search form consumed. A form mounting later (a mode flip) acts only on a NEWER
-    /// ticket, so a Ctrl+F from minutes ago never pops the flyout open on mount.</summary>
-    static int s_focusTicketHandled;
-
-    /// <summary>The bar's flexible centre column: the field in Field mode, nothing in Icon mode (the icon sits in the
-    /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.
-    /// <para>This is the ONE mount/unmount decision for the field, and it reads the same <see cref="SearchMode"/> the
-    /// allocator used to decide the FORM (Shell.Chrome.cs's form-vs-width split, #88) — never a width. It is,
-    /// however, only re-evaluated when the engine's <c>TitleBar</c> re-invokes the bar's centre content, which is
-    /// gated on <c>ContentVersion</c>, not on every <see cref="ChromeLayout"/> publish; a mode flip can therefore be
-    /// visible to the already-mounted <see cref="SearchField"/>'s own <c>Render()</c> a frame before it reaches here.
-    /// That is why <see cref="SearchField"/> asks only for a FIELD width (<see cref="Chrome.FieldWidthFor"/>) and
-    /// never for "whichever form is current" — so the still-mounted field can never be laid out at the icon's
-    /// 44.</para></summary>
-    static Element CenterIsland(IReadSignal<float> avail)
-        => ChromeLayout.Value.SearchMode == MergedSearchMode.Field
-            ? Embed.Comp(() => new SearchField(avail)) with { Key = "chrome-search-host" }
-            : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-
-    static Element SearchFlyoutButton() => Embed.Comp(static () => new SearchFlyoutButtonView()) with { Key = "chrome-search-button-host" };
-
-    sealed class SearchField(IReadSignal<float> avail) : Component
-    {
-        public override Element Render()
-        {
-            var hooks = UseContext(InputHooks.Current);
-            var field = UseRef<NodeHandle>(default);
-            var parts = UseMemo(() =>
-            {
-                var p = new TemplateParts();
-                p[AutoSuggestBox.PartRoot] = b => b with
-                {
-                    OnRealized = h => field.Value = h,
-                    OnFocusChanged = static f => s_searchFocused.SetIfChanged(f),
-                };
-                return p;
-            }, DepKey.Empty);
-
-            int ticket = SearchFocusRequest.Value;
-            UseLayoutEffect(() =>
-            {
-                // PartRoot is the chrome, not the editor: focusing it paints a ring that cannot type. FirstFocusableIn lands
-                // on the editable text; the root's focus handler still fires because focus bubbles.
-                if (ticket <= s_focusTicketHandled || field.Value.IsNull) return;
-                s_focusTicketHandled = ticket;
-                var editor = hooks.FirstFocusableIn?.Invoke(field.Value) ?? NodeHandle.Null;
-                if (!editor.IsNull) hooks.FocusNode?.Invoke(editor, true);
-            }, DepKey.From(ticket));
-
-            // This component asks a FIELD WIDTH, never a search WIDTH-OR-FORM (Shell.Chrome.cs's form-vs-width split,
-            // #88). `CenterIsland` above keys ITS mount/unmount decision on `SearchMode`, but the engine's `TitleBar`
-            // only re-invokes that decision when `ContentVersion` changes, while THIS `Render()` re-runs on every
-            // `ChromeLayout` publish regardless — so a mode flip to Icon can be visible here for up to one frame
-            // before the host gets around to unmounting this component. `Chrome.LaidOutSearchWidth` would answer that
-            // frame with the icon's fixed 44 (a real text field, 44 DIP wide, rendering the placeholder as a clipped
-            // "Sear" stub that then latches until a resize, because under the elastic tabs lane the bar's measured
-            // centre width is itself a feedback of whatever this field just asked for). `Chrome.FieldWidthFor` cannot
-            // answer 44: it never reads `SearchMode`, and it clamps whatever `SearchWidth` it is given — including the
-            // icon form's own 44 — back up to `ChromeSearchMinW`. The measured centre width may still TRIM the result
-            // (that part is real: the row genuinely narrowed), but it can never take the field below its floor, so the
-            // worst case across a mode flip is a field briefly wider than its lane, never a clipped stub.
-            float width = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
-            // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
-            // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
-            // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
-            // a "Search" stub overflowing a tiny box that no resize undid. Justify centres it vertically instead.
-            return new BoxEl
-            {
-                Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width,
-                Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup, allowNarrow: false))],
-            };
-        }
-    }
-
-    sealed class SearchFlyoutButtonView : Component
-    {
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            var viewport = UseContext(Viewport.Size);
-            float flyoutWidth = MathF.Max(Layout.ChromeSearchIconW,
-                MathF.Min(Layout.ChromeSearchMaxW, viewport.Width - 2f * Spacing.M));
-
-            void CloseFlyout()
-            {
-                handle.Value?.Close();
-                handle.Value = null;
-                s_searchFlyoutOpen.SetIfChanged(false);
-            }
-
-            void OpenFlyout()
-            {
-                if (handle.Value is { IsOpen: true }) return;
-                var h = overlay.Open(
-                    () => anchor.Value,
-                    () => new BoxEl
-                    {
-                        Direction = 1, Width = flyoutWidth, MinWidth = flyoutWidth,
-                        Children =
-                        [
-                            Embed.Comp(() => new RichOmnibar(null, flyoutWidth, AutoSuggestBoxSuggestionPresentation.Inline,
-                                allowNarrow: true, afterChoose: CloseFlyout)),
-                        ],
-                    },
-                    FlyoutPlacement.BottomEdgeAlignedRight,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                    {
-                        ConstrainToRootBounds = true,
-                    });
-                handle.Value = h;
-                s_searchFlyoutOpen.SetIfChanged(true);
-                h.ClosedAction = () =>
-                {
-                    handle.Value = null;
-                    s_searchFlyoutOpen.SetIfChanged(false);
-                };
-            }
-
-            int ticket = SearchFocusRequest.Value;
-            UseLayoutEffect(() =>
-            {
-                if (ticket <= s_focusTicketHandled) return;
-                s_focusTicketHandled = ticket;
-                OpenFlyout();
-            }, DepKey.From(ticket));
-            UseEffect(() => (Action?)CloseFlyout, DepKey.Empty);
-
-            void Toggle()
-            {
-                if (handle.Value is { IsOpen: true }) CloseFlyout();
-                else OpenFlyout();
-            }
-
-            return ToolTip.Wrap(
-                IconButton.Create(Icons.Search, Toggle, ChromeButtonStyle)
-                    with { Key = "chrome-search-button", Margin = ChromeButtonMargin, OnRealized = h => anchor.Value = h },
-                Loc.Get(Strings.Nav.Search));
-        }
-    }
-
-    /// <summary>The real AutoSuggestBox (focus, editing, accessibility, popup lifetime) with Wavee's artwork-aware rows.
-    /// The text IS <see cref="SearchText"/>, synced to the route on navigation only.</summary>
-    sealed class RichOmnibar(TemplateParts? parts, float maxWidth, AutoSuggestBoxSuggestionPresentation presentation,
-        bool allowNarrow, Action? afterChoose = null) : Component
-    {
-        // The request in flight for the current generation. A superseding keystroke, a clear and an unmount cancel it; the
-        // store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
-        CancellationTokenSource? _inflight;
-
-        void CancelInflight()
-        {
-            _inflight?.Cancel();
-            _inflight = null;
-        }
-
-        public override Element Render()
-        {
-            var post = UsePost();
-            var query = s_omnibar.Query;
-            var highlight = s_omnibar.Highlight;
-            _ = s_omnibar.Version.Value;
-            string typed = SearchText.Value.Trim();
-
-            // THE KEYSTROKE EDGE, undebounced: Pending starts NOW, so "No results found" never flashes between a keystroke
-            // and its request.
-            UseEffect(() =>
-            {
-                int before = query.Generation;
-                if (query.Begin(typed) != before) CancelInflight();
-            }, typed);
-
-            // The fetch edge: the GENERATION settles (a retype to the same text is a new generation and must be answered),
-            // 150 ms after the last change. A re-mount finds a Pending generation whose request died and re-issues it.
-            int settled = UseDebouncedValue(() => { _ = s_omnibar.Version.Value; return query.Generation; },
-                AutoSuggestBox.TextChangedDebounceMs).Value;
-            UseEffect(() =>
-            {
-                if (settled != query.Generation || !query.IsPending) return;
-                Fetch(post, settled, query.Text);
-            }, DepKey.From(settled));
-            // Unmount: the request dies with the component; the store keeps Pending so the next mount re-issues it.
-            UseEffect(() => (Action?)CancelInflight, DepKey.Empty);
-
-            var completion = UseComputed(() =>
-            {
-                if (highlight.Value >= 0) return "";
-                _ = s_omnibar.Version.Value;
-                return Omnibar.Suggestions.GhostFor(SearchText.Value.Trim(), query.Suggestions.Queries) ?? "";
-            });
-
-            bool InvokeSelection(int selection)
-            {
-                var s = query.Suggestions;
-                int queryRows = Omnibar.QueryRowCount(s);
-                if (selection < 0 || selection >= Omnibar.SelectableCount(s)) return false;
-                if (selection < queryRows)
-                {
-                    string chosen = s.Queries[selection];
-                    SearchText.Value = chosen;
-                    GoTo(Parse("search", chosen));
-                }
-                else
-                {
-                    ChooseOmnibarItem(s.Items[selection - queryRows], query.Text);
-                }
-                afterChoose?.Invoke();
-                return true;
-            }
-
-            void Submit(string q)
-            {
-                GoTo(Parse("search", q.Trim()));
-                afterChoose?.Invoke();
-            }
-
-            var presenter = new AutoSuggestBoxPresenter(
-                Build: context => Embed.Comp(() => new SuggestionsPopup(context.Width,
-                    selection => { if (InvokeSelection(selection)) context.Close(); }, context.Close, allowNarrow)),
-                MoveSelection: delta => highlight.Value = Omnibar.MoveHighlight(highlight.Peek(), delta, Omnibar.SelectableCount(query.Suggestions)),
-                SubmitSelection: () => InvokeSelection(highlight.Peek()),
-                ResetSelection: () => highlight.Value = -1);
-
-            // Stock metrics: a 32-DIP field at the control corner radius with the control-default chrome. Wrapped in a
-            // growing COLUMN so the box is STRETCHED to this component's width: a fill-mode box contributes only its query
-            // button to its measured width, so laid out as a row's content it stayed ~37 DIP once one narrow frame
-            // (leaving the search page or full screen re-mounts the title bar's field) set its self-measured width there.
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchPlaceholder),
-                        grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
-                        minHeight: 32f, cornerRadius: 0f, presenter: presenter, parts: parts,
-                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion),
-                ],
-            };
-        }
-
-        void Fetch(Action<Action> post, int generation, string text)
-        {
-            CancelInflight();
-            // No source installed (a Wave-4 build, `--fake`): the navigation log answers, synchronously.
-            if (Omnibar.Source is not { } source)
-            {
-                s_omnibar.Query.Complete(generation, Omnibar.FromHistory(History.Store.Entries, text));
-                return;
-            }
-            var cts = new CancellationTokenSource();
-            _inflight = cts;
-            _ = RunAsync(source, post, generation, text, cts.Token);
-        }
-
-        static async Task RunAsync(Func<string, CancellationToken, Task<Omnibar.Suggestions>> source, Action<Action> post,
-            int generation, string text, CancellationToken ct)
-        {
-            try
-            {
-                var answer = await source(text, ct).ConfigureAwait(false);
-                post(() => s_omnibar.Query.Complete(generation, answer));
-            }
-            catch (OperationCanceledException) { }   // superseded or torn down: the store has already moved on
-            catch (Exception ex) { post(() => s_omnibar.Query.Fail(generation, ex)); }
-        }
-    }
-
-    /// <summary>A rich row's choice: a track or an episode PLAYS (through the context seam); everything else navigates,
-    /// and a genre carries its search-lookup origin so its masthead reads <c>"query" › Genre</c>.</summary>
-    static void ChooseOmnibarItem(Omnibar.Item item, string? query)
-    {
-        if (Omnibar.ChoosePlays(item.Kind))
-        {
-            OnPlayContext?.Invoke(item.Uri);
-            return;
-        }
-        var route = Omnibar.RouteFor(item);
-        if (route.IsNone) return;
-        GoTo(route, item.Kind == Omnibar.ItemKind.Genre ? Omnibar.GenreOrigin(query) : null);
-    }
-
-    /// <summary>The popup body, rendered BY the store's state. Its one sentence, "No results found", is reserved for a
-    /// confirmed empty answer; pending is the always-mounted progress slot over the previous rows (or skeleton rows in the
-    /// height the previous answer took when there are none), failed is a retry offer. Idle (closing) is an empty
-    /// body.</summary>
-    sealed class SuggestionsPopup(IReadSignal<float> width, Action<int> choose, Action? close, bool allowNarrow) : Component
-    {
-        public override Element Render()
-        {
-            string typed = SearchText.Value.Trim();
-            _ = s_omnibar.Version.Value;
-            var query = s_omnibar.Query;
-            var s = query.Suggestions;
-            var state = query.State;
-            int highlighted = s_omnibar.Highlight.Value;
-            // A FLOOR, not just a fallback: the icon-mode anchor can be 44 DIP wide, and a popup may be wider than its anchor.
-            float measured = width.Value > 0f ? width.Value : 720f;
-            float w = allowNarrow ? measured : MathF.Max(measured, 400f);
-
-            // No client-side re-filter: the source's fuzzy matching is authoritative; staleness is handled at publish.
-            var rows = new List<Element>(Omnibar.MaxQueryRows + Omnibar.MaxRichRows + 1);
-            int index = 0;
-            int queryRows = Omnibar.QueryRowCount(s);
-            for (int i = 0; i < queryRows; i++, index++)
-                rows.Add(QueryRow(s.Queries[i], typed, index, highlighted == index));
-            int richRows = Omnibar.RichRowCount(s);
-            for (int i = 0; i < richRows; i++, index++)
-            {
-                if (i == 0 && rows.Count > 0) rows.Add(new BoxEl { Height = 1f, Margin = new Edges4(16f, 4f, 16f, 4f), Fill = Tok.StrokeDividerDefault });
-                rows.Add(RichRow(s.Items[i], index));
-            }
-
-            // What the last SETTLED answer took (rows, or a notice), so a Pending body with nothing to show reserves the
-            // same space: a no-match query is a notice-high answer, not a stale list.
-            if (rows.Count > 0) { s_lastQueryRows = queryRows; s_lastRichRows = richRows; s_lastWasNotice = false; }
-            else if (state is Omnibar.State.Empty or Omnibar.State.Failed) { s_lastQueryRows = s_lastRichRows = 0; s_lastWasNotice = true; }
-
-            Element body;
-            if (rows.Count == 0)
-            {
-                body = state switch
-                {
-                    Omnibar.State.Empty => OmniNotice(w, Loc.Get(Strings.Search.NoResults), null),
-                    Omnibar.State.Failed => OmniNotice(w, Loc.Get(Strings.Search.SuggestFailed),
-                        Button.Subtle(Loc.Get(Strings.Common.Retry), static () => s_omnibar.Query.Retry())),
-                    // Pending: skeleton rows in the reserved height, so the answer fills space instead of growing it.
-                    Omnibar.State.Pending => PendingBody(w),
-                    // Idle (closing): no sentence.
-                    _ => new BoxEl { Width = w, MinWidth = w, MinHeight = AutoSuggestBox.ItemMinHeight },
-                };
-            }
-            else
-            {
-                body = new ScrollEl
-                {
-                    Width = w, MinWidth = w, MaxHeight = Omnibar.PopupBodyMaxHeight, ContentSized = true,
-                    Content = new BoxEl { Direction = 1, Width = w, MinWidth = w, Margin = new Edges4(-1f, 0f, -1f, 0f), Children = rows.ToArray() },
-                };
-            }
-
-            // The progress bar's 3-DIP slot is ALWAYS the first child: it fades, it never mounts or unmounts, so a keystroke
-            // moves nothing; the indeterminate bar inside it runs only while a request is pending. The popup chrome supplies the plate, border, corners, shadow and clip; the root's height eases.
-            return new BoxEl
-            {
-                Direction = 1, Width = w, MinWidth = w, Padding = new Edges4(0f, 2f, 0f, 2f),
-                Layout = Design.Reduced ? null : s_bodyHeightMotion,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "omni-progress", Width = w, Height = ProgressSlotHeight, Shrink = 0f, ClipToBounds = true,
-                        HitTestVisible = false, Opacity = state == Omnibar.State.Pending ? 1f : 0f, Transition = FluentGpu.Animation.MotionTok.ControlFast,
-                        Children = state == Omnibar.State.Pending ? [ProgressBar.Indeterminate(w)] : [],
-                    },
-                    body,
-                ],
-            };
-        }
-
-        const float ProgressSlotHeight = 3f;
-
-        // The previous answer's row counts (UI thread only): what a Pending body reserves while nothing is on screen.
-        static int s_lastQueryRows, s_lastRichRows;
-        static bool s_lastWasNotice;   // the last settled answer was Empty / Failed: one notice slot high
-
-        /// <summary>The popup root's height motion (Reflow on the height axis): rows arriving or leaving ease the card, and
-        /// the top edge never moves. Standard / FluentDecelerate; the call site passes null under reduced motion.</summary>
-        static readonly LayoutTransition s_bodyHeightMotion = new(TransitionChannels.Size,
-            TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentDecelerate),
-            Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
-
-        /// <summary>Skeleton rows for a Pending request with no rows to show: the previous answer's counts (else a typical
-        /// answer), each row the real row's height, inert geometry only (<see cref="Controls.PendingBar"/>). The body is
-        /// exactly <see cref="Omnibar.PendingBodyHeight"/> high and clips its last row, so the answer fills the space; after
-        /// a notice (Empty / Failed) it is one notice slot.</summary>
-        static Element PendingBody(float w)
-        {
-            float height = Omnibar.PendingBodyHeight(s_lastQueryRows, s_lastRichRows, s_lastWasNotice);
-            if (s_lastWasNotice)
-                return new BoxEl
-                {
-                    Direction = 0, Width = w, MinWidth = w, Height = height, AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(24f, 0f, 24f, 0f), ClipToBounds = true,
-                    Children = [Controls.PendingBar(160f, 11f)],
-                };
-            var (q, r) = Omnibar.PendingSkeletonRows(s_lastQueryRows, s_lastRichRows);
-            var kids = new List<Element>(q + r + 1);
-            for (int i = 0; i < q; i++)
-                kids.Add(new BoxEl
-                {
-                    Height = Omnibar.QueryRowHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Padding = new Edges4(16f, 0f, 16f, 0f),
-                    Children = [Controls.PendingBar(120f + (i % 3) * 40f, 11f)],
-                });
-            for (int i = 0; i < r; i++)
-            {
-                if (i == 0 && q > 0) kids.Add(new BoxEl { Height = 1f, Shrink = 0f, Margin = new Edges4(16f, 4f, 16f, 4f), Fill = Tok.StrokeDividerDefault });
-                kids.Add(new BoxEl
-                {
-                    Height = Omnibar.RichRowHeight, Shrink = 0f, Direction = 0, Gap = 12f, AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(16f, 0f, 16f, 0f),
-                    Children =
-                    [
-                        new BoxEl { Width = 44f, Height = 44f, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary },
-                        new BoxEl
-                        {
-                            Direction = 1, Gap = 6f, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                            Children = [Controls.PendingBar(140f + (i % 3) * 30f, 11f), Controls.PendingBar(90f, 9f)],
-                        },
-                    ],
-                });
-            }
-            return new BoxEl
-            {
-                Direction = 1, Width = w, MinWidth = w, Height = height, ClipToBounds = true,
-                Children = kids.ToArray(),
-            };
-        }
-
-        Element QueryRow(string text, string typed, int index, bool selected) => new BoxEl
-        {
-            MinHeight = AutoSuggestBox.ItemMinHeight, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(12f, 0f, 8f, 0f), Margin = new Edges4(4f, 2f, 4f, 2f), Corners = Radii.ControlAll,
-            Role = AutomationRole.MenuItem,
-            Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            OnClick = () => choose(index),
-            Children = OmniQueryContent(text, typed),
-        };
-
-        /// <summary>A rich row is the shared media surface in SLOT mode (<see cref="Controls.SlotSurface"/>): the field keeps
-        /// focus, the arrow-key cursor (<c>Highlight</c>) is the row's "focused" fact, and Enter / a click is the
-        /// <see cref="RowScope.OnInteraction"/> choose. Keyed by index + uri: the component's props freeze at mount.</summary>
-        Element RichRow(Omnibar.Item item, int index)
-            => Embed.Comp(() => new OmniRow { Item = item, Index = index, Choose = choose, Close = close })
-                with { Key = "omni-row:" + index + ":" + item.Uri.Text };
-    }
-
-    /// <summary>One rich flyout row. Synthesizes the <see cref="RowScope"/> a bound slot would hand its surface: the
-    /// highlight IS the focus, tap / Enter / Space choose, the root never takes focus (the field keeps it).</summary>
-    sealed class OmniRow : Component
-    {
-        public required Omnibar.Item Item;
-        public required int Index;
-        public required Action<int> Choose;
-        public Action? Close;
-
-        public override Element Render()
-        {
-            var item = Item;
-            int index = Index;
-            var choose = Choose;
-            var close = Close;
-            var at = UseSignal(index);
-            var highlighted = UseComputed(() => s_omnibar.Highlight.Value == index);
-            var scope = new RowScope(at, static () => false, () => highlighted.Value, static () => true,
-                (trigger, _) => { if (trigger != ItemContainerTrigger.DoubleTap) choose(index); },
-                static _ => { })
-            { IsFocused = highlighted };
-
-            var kind = item.Kind;
-            var rf = item.Ref;                                  // allocates the table row if unseen (UI thread, render)
-            string uri = item.Uri.Text;
-            Action? play = Omnibar.CanPlay(kind)
-                ? Omnibar.ChoosePlays(kind)
-                    ? () =>
-                    {
-                        // A track/episode that is the current item toggles pause (the row verb every list row uses);
-                        // else the host's play. Without a table slot, the uri toggle compares playables with the item.
-                        if (kind == Omnibar.ItemKind.Track && rf.Kind == EntityKind.Track && rf.Slot > 0)
-                            Track.Invoke(new Track(rf.Slot), () => OnPlayContext?.Invoke(item.Uri));
-                        else if (OnPlayContext is { } start && ContextPlayRules.For(item.Uri.Id, Playback.ContextUri.Peek(), Playback.CurrentId.Peek(), Playback.Error.Peek()) == ContextPlayAction.Start)
-                            start(item.Uri);
-                        else
-                            Playback.PlayOrToggleContext(item.Uri.Id);
-                        close?.Invoke();
-                    }
-                    : () => { Playback.PlayOrToggleContext(uri); close?.Invoke(); }
-                : null;
-
-            Func<ContextMenuModel?>? menu = OmnibarRowRules.MenuOf(kind) switch
-            {
-                OmnibarRowRules.MenuKind.Track when !rf.IsNone => () =>
-                {
-                    Track.EnsureActions();
-                    return Track.Menu([new Track(rf.Slot)], new Track.MenuOptions(ShowGoToAlbum: true));
-                },
-                OmnibarRowRules.MenuKind.Container => () => Menus.Container(ContainerTargetOf(item), item.ImageUrl, item.Subtitle),
-                _ => null,
-            };
-
-            DragSource? drag = OmnibarRowRules.Drags(kind) && !rf.IsNone
-                ? Drag.Source(() => kind == Omnibar.ItemKind.Track
-                    ? new DragPayload(DragKind.Track, uri, uri, item.Title, rf, Tracks: [new Track(rf.Slot)], ArtUrl: item.ImageUrl)
-                    : new DragPayload(Drag.KindOf(rf.Kind), uri, uri, item.Title, rf, ArtUrl: item.ImageUrl))
-                : null;
-
-            var data = new Controls.CardData(uri, item.Title,
-                Design.Type.TrackMeta(Search.SubtitleText(OmniKindWord(item), item.Subtitle))
-                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                item.ImageUrl, () => choose(index), play, Circular: Omnibar.IsCircular(kind), Drag: drag)
-            {
-                Trailing = rf.IsNone ? null : Search.TrailingOf(rf, uri, item.Title, compact: true),
-                Menu = menu,
-            };
-
-            return Controls.SlotSurface(scope, data, OmnibarRowRules.RowShape)
-                with { Role = AutomationRole.MenuItem, Margin = new Edges4(4f, 2f, 4f, 2f) };
-        }
-
-        static ActionTarget ContainerTargetOf(Omnibar.Item item) => item.Kind switch
-        {
-            Omnibar.ItemKind.Album => ActionTarget.ForAlbum(item.Uri, item.Title),
-            Omnibar.ItemKind.Artist => ActionTarget.ForArtist(item.Uri, item.Title),
-            Omnibar.ItemKind.Playlist => ActionTarget.ForPlaylist(item.Uri, item.Title),
-            _ => ActionTarget.ForShow(item.Uri, item.Title),
-        };
-    }
-
-    /// <summary>One sentence in the row slot, optionally with a trailing affordance (the failure's Retry).</summary>
-    static Element OmniNotice(float width, string text, Element? trailing) => new BoxEl
-    {
-        Width = width, MinWidth = width, MinHeight = AutoSuggestBox.ItemMinHeight,
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-        Padding = new Edges4(24f, 0f, trailing is null ? 24f : 12f, 0f),
-        Children = trailing is null
-            ? [new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f }]
-            : [new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing],
-    };
-
-    /// <summary>The row's kind word: an album's release kind (Single / EP / Compilation) when the wire said it, else the
-    /// kind's own label.</summary>
-    static string OmniKindWord(Omnibar.Item item)
-        => item.Kind == Omnibar.ItemKind.Album && item.ReleaseKind is { } release
-            ? Detail.Text.KindLabel(release)
-            : OmniTypeLabel(item.Kind);
-
-    static string OmniTypeLabel(Omnibar.ItemKind kind) => Loc.Get(kind switch
-    {
-        Omnibar.ItemKind.Track => Strings.Search.TypeSong,
-        Omnibar.ItemKind.Artist => Strings.Search.TypeArtist,
-        Omnibar.ItemKind.Album => Strings.Search.TypeAlbum,
-        Omnibar.ItemKind.Playlist => Strings.Search.TypePlaylist,
-        Omnibar.ItemKind.Genre => Strings.Search.TypeGenre,
-        Omnibar.ItemKind.Episode => Strings.Search.TypeEpisode,
-        Omnibar.ItemKind.Podcast => Strings.Search.TypePodcast,
-        Omnibar.ItemKind.Audiobook => Strings.Search.TypeAudiobook,
-        _ => Strings.Search.TypeUser,
-    });
-
-    /// <summary>A query row: the search glyph, then the text with the typed run in bold (case-insensitive).</summary>
-    static Element[] OmniQueryContent(string text, string typed)
-    {
-        var kids = new List<Element>(4)
-        {
-            Icon(Icons.Search, 16f, Tok.TextSecondary) with { Margin = new Edges4(0f, 0f, 12f, 0f) },
-        };
-        int at = typed.Length > 0 ? text.IndexOf(typed, StringComparison.OrdinalIgnoreCase) : -1;
-        if (at < 0)
-        {
-            kids.Add(new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-            return kids.ToArray();
-        }
-        if (at > 0) kids.Add(Segment(text[..at], match: false, grow: false));
-        kids.Add(Segment(text.Substring(at, typed.Length), match: true, grow: false));
-        int after = at + typed.Length;
-        kids.Add(after < text.Length ? Segment(text[after..], match: false, grow: true) : new BoxEl { Grow = 1f });
-        return kids.ToArray();
-
-        static Element Segment(string s, bool match, bool grow) => new TextEl(s)
-        {
-            Size = 14f, Weight = (ushort)(match ? 700 : 400), Color = match ? Tok.TextPrimary : Tok.TextSecondary,
-            Grow = grow ? 1f : 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-        };
-    }
+    // T4b (themes plan 6.1): the field, the icon-mode flyout button, the rich omnibar and the popup body are the structure's
+    // (`Shell.Search` and `Shell.SearchSuggestions`: `Themes\Classic\Structure\Views\Search\ClassicSearch.cs`, mounted by the
+    // title bar's template); the answer the popup draws, the rows' facts and the field width rule are `+Shell.TitleBar.cs`.
 }

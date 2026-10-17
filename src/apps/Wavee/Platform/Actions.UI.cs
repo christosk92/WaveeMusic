@@ -25,15 +25,15 @@
 //
 // Every builder here runs at MENU-OPEN time (a human-rate thunk), never per frame, so it allocates freely.
 
-using System;
 using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -177,15 +177,15 @@ public static partial class Actions
 
         // ── the header tile ─────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The identity strip above a context menu: a 38-DIP tile (r6, or a 19 circle for an artist), a title
-        /// and a subtitle. <paramref name="leading"/> replaces the art when the caller has its own (the Liked Songs
+        /// <summary>The identity strip above a context menu: a tile (`Menu.Context` draws it: a rounded square, or a circle for an
+        /// artist), a title and a subtitle. <paramref name="leading"/> replaces the art when the caller has its own (the Liked Songs
         /// treatment); a null url and no leading element draw no tile at all. 0.3 subtitles are plain text by
         /// construction — there is no HTML flattening step because no producer builds markup any more.</summary>
         public static ContextMenuHeader Header(string? artUrl, string title, string? subtitle, bool circular = false,
                                                Element? leading = null)
         {
             Element? tile = leading ?? (artUrl is { Length: > 0 }
-                ? Controls.Artwork(artUrl, 38f, 38f, circular ? 19f : 6f, decodePx: 76)
+                ? ViewSlots.View(ViewKeys.MenuContext, new ContextMenuTileProps(artUrl, circular))
                 : null);
             return new ContextMenuHeader(tile, title, subtitle);
         }
@@ -301,20 +301,15 @@ public static partial class Actions
 
         // ── Organize ▸ / Access ▸ / the pin pair ────────────────────────────────────────────────────────────────────
 
-        /// <summary><b>Organize ▸</b> — every verb that changes where a sidebar row LIVES: the pane's positional moves,
-        /// then "Move out of {parent}", then (behind a separator — the pinned list is a different list) the pin row.
+        /// <summary><b>Organize ▸</b> — every verb that changes where a sidebar row LIVES in its list: the pane's positional moves,
+        /// then "Move out of {parent}". The pin pair is NOT in it: "Pin to sidebar / Unpin" is a top-level row (tuned item S5).
         /// Null when none apply, so the row is absent rather than an empty cascade.</summary>
-        public static MenuFlyoutItem? Organize(IReadOnlyList<MenuFlyoutItem>? moves, MenuFlyoutItem? moveOut, MenuFlyoutItem? pin)
+        public static MenuFlyoutItem? Organize(IReadOnlyList<MenuFlyoutItem>? moves, MenuFlyoutItem? moveOut)
         {
-            var items = new List<MenuFlyoutItem>(6);
+            var items = new List<MenuFlyoutItem>(5);
             if (moves is { Count: > 0 })
                 for (int i = 0; i < moves.Count; i++) items.Add(moves[i]);
             if (moveOut is { } lift) items.Add(lift);
-            if (pin is { } pinRow)
-            {
-                if (items.Count > 0) items.Add(Separator);
-                items.Add(pinRow);
-            }
             return items.Count == 0 ? null : SubMenu(Loc.Get(Strings.Menu.Organize), items, ActionIcons.Folder);
         }
 
@@ -461,8 +456,6 @@ public static partial class Actions
         public float PanelPadding { get; init; }
     }
 
-    const float PickerPanelW = 320f, PickerFieldW = 300f, PickerListMaxH = 360f, PickerIndentStep = 12f;
-
     /// <summary>Open a destination picker. Returns null (and opens nothing) with no overlay host or no rows — an empty
     /// picker is a worse answer than a verb the menu did not offer.</summary>
     public static OverlayHandle? OpenPicker(IOverlayService? overlay, PickerSpec spec)
@@ -476,13 +469,15 @@ public static partial class Actions
             d.PrimaryText = "";                       // "" HIDES the primary; null would show a stray localized "OK"
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = spec.DialogWidth;
+            OverlayFit.Dialog(d, spec.DialogWidth);
             d.Content = Embed.Comp(() => new DestinationPicker(spec, item => { pick(item); handle?.Close(); }));
         });
         return handle;
     }
 
-    /// <summary>The picker's panel: guidance, a live filter over the FROZEN row list, the rows.</summary>
+    /// <summary>The picker's host: a live filter over the FROZEN row list (a pinned row is never filtered away). The panel itself —
+    /// guidance, the filter field, the rows — is `Dialog.FolderPicker`.</summary>
+    [CoreHost]
     sealed class DestinationPicker(PickerSpec spec, Action<PickerItem> commit) : Component
     {
         public override Element Render()
@@ -490,94 +485,30 @@ public static partial class Actions
             var query = UseSignal("");
             string q = query.Value;
 
-            var rows = new List<Element>(spec.Items.Count);
+            var rows = new List<PickerItem>(spec.Items.Count);
             for (int i = 0; i < spec.Items.Count; i++)
             {
                 var item = spec.Items[i];
-                if (!PickRules.Matches(q, item.Label, item.Pinned)) continue;
-                rows.Add(PickerRow(item, () => commit(item)));
+                if (PickRules.Matches(q, item.Label, item.Pinned)) rows.Add(item);
             }
 
-            Element list = rows.Count > 0
-                ? new ScrollEl
-                {
-                    // No colour edge cue: the list sits on ContentDialog's translucent FillLayerAlt overlay, where the
-                    // surface-colour cue samples the plate behind it and paints a darker band instead.
-                    ContentSized = true, MaxHeight = PickerListMaxH, EdgeCues = ScrollEdgeCues.None,
-                    Content = new BoxEl { Direction = 1, Gap = 2f, Children = rows.ToArray() },
-                }
-                : new BoxEl
-                {
-                    Height = 44f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-                    Children = [Design.Type.DenseMeta(spec.EmptyText) with { Color = Tok.TextSecondary }],
-                };
-
-            var kids = new List<Element>(3);
-            if (spec.Body is { Length: > 0 } body)
-                kids.Add(Design.Type.DenseMeta(body) with
-                {
-                    Color = Tok.TextSecondary, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                });
-            kids.Add(Embed.Comp(() => new EditableText
+            return ViewSlots.View(ViewKeys.DialogFolderPicker, new DestinationPickerProps
             {
-                Placeholder = spec.Placeholder, Width = PickerFieldW, Height = 32f, Text = query,
-            }));
-            kids.Add(list);
-
-            return new BoxEl
-            {
-                Direction = 1, Width = PickerPanelW, Gap = Spacing.XS, Padding = Edges4.All(spec.PanelPadding),
-                Children = kids.ToArray(),
-            };
-        }
-
-        static Element PickerRow(in PickerItem item, Action onClick)
-        {
-            bool art = item.ArtUrl is { Length: > 0 } || item.Plated;
-            Element lead = item.Plated
-                ? new BoxEl
-                {
-                    Width = 40f, Height = 40f, Shrink = 0f, Corners = CornerRadius4.All(6f), Fill = Tok.FillSubtleSecondary,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Icon(item.Glyph ?? Icons.Add, 20f, Tok.TextSecondary)],
-                }
-                : item.ArtUrl is { Length: > 0 } url
-                    ? Controls.Artwork(url, 40f, 40f, 6f, decodePx: 80)
-                    : Icon(item.Glyph ?? Icons.Folder, 18f, Tok.TextSecondary);
-
-            Element text = item.Subtitle is { Length: > 0 } sub
-                ? new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f,
-                    Children =
-                    [
-                        new TextEl(item.Label) { Size = 14f, LineHeight = 20f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        new TextEl(sub) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    ],
-                }
-                : new TextEl(item.Label)
-                {
-                    Size = 14f, LineHeight = 20f, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1,
-                    Trim = TextTrim.CharacterEllipsis,
-                };
-
-            return new BoxEl
-            {
-                Key = item.Key,
-                Direction = 0, Height = art ? 44f : 40f, AlignItems = FlexAlign.Center, Gap = 10f,
-                Padding = new Edges4(6f + item.Depth * PickerIndentStep, 0f, 8f, 0f),
-                Corners = CornerRadius4.All(4f),
-                Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetRow,
-                OnClick = onClick,
-                Children = [lead, text],
-            }.Interactive(Interaction.Subtle);
+                Body = spec.Body,
+                Placeholder = spec.Placeholder,
+                EmptyText = spec.EmptyText,
+                PanelPadding = spec.PanelPadding,
+                Query = () => query,
+                Rows = rows,
+                Commit = commit,
+            });
         }
     }
 
     // ══ 13. THE NOW-PLAYING MENU SEAM (G-195) ══════════════════════════════════════════════════════════════════════════
     //
     // The stage's identity strip and the player bar's title cluster share ONE right-click menu — both call
-    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, `Shell/Shell.PlayerBar.UI.cs:322`), asked at OPEN time. This file
+    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, Classic's `ClassicPlayerBar.cs`), asked at OPEN time. This file
     // owns the SEAM, not a composition: what it installs is the REAL track grammar (`Entities/Track.Menu.cs`), so the
     // bar's menu IS the row's menu — the transport strip, Add to playlist ▸ / Move ▸, the navigation rows, Share ▸,
     // View credits, Go to song radio and Video ▸. The thin eight-row duplicate that stood here until owner M's

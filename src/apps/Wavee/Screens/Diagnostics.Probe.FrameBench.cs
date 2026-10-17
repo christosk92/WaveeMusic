@@ -24,7 +24,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using FluentGpu;
 using FluentGpu.Foundation;
 using FluentGpu.Hosting;
 using FluentGpu.Pal;
@@ -63,7 +62,7 @@ public static partial class Diagnostics
             s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;
             if (FrameBenchOptions.RealRefusal(fake, o.Real, Platform.ProfileRoot) is { } refusal) { Say("[frame-bench] refusing: " + refusal); return true; }
-            foreach (string bad in FrameBenchOptions.UnknownNames(Environment.GetCommandLineArgs()))
+            foreach (string bad in FrameBenchOptions.UnknownNames(Platform.Args.Argv))
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 
@@ -482,13 +481,13 @@ public static partial class Diagnostics
             List<KeyValuePair<string, double>>? extra)
         {
             Pump(host, w, o.WarmupSec, d);
-            scroll?.Restart(host);
+            scroll?.Restart();
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
             if (scroll is not null)
             {
-                scroll.Observe(host);
+                scroll.Observe();
                 extra ??= [];
                 extra.Add(new("scrollViewports", scroll.DistanceViewports));
                 extra.Add(new("scrollSteps", scroll.Steps));
@@ -588,7 +587,7 @@ public static partial class Diagnostics
             }
 
             /// <summary>The measured window starts: distance from here.</summary>
-            public void Restart(AppHost host)
+            public void Restart()
             {
                 Distance = 0;
                 Steps = 0;
@@ -596,7 +595,7 @@ public static partial class Diagnostics
             }
 
             /// <summary>Fold the handle's movement since the last look into the distance.</summary>
-            public void Observe(AppHost host)
+            public void Observe()
             {
                 if (_handle is not { } h) return;
                 double off = h.Offset.Peek();
@@ -609,7 +608,7 @@ public static partial class Diagnostics
                 // Re-adopt every step: a page that re-created its scroller, or a route change, hands over to what is on screen now.
                 if (!Adopt(host, 1.5) && _handle is null) return now + 0.25;
                 var h = _handle!;
-                Observe(host);
+                Observe();
                 double vp = h.Viewport > 0 ? h.Viewport : _viewport;
                 if (vp > 0) _viewport = vp;
                 double max = Math.Min(h.MaxOffset, vp * depthViewports);

@@ -9,6 +9,8 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ProfileListRouteTests
 {
     const string Jane = "spotify:user:jane";
@@ -159,13 +161,6 @@ public class ProfileListRouteTests
         Assert.Equal(ProfileRoute.For(EntityUri.Parse(Jane), "Jane Doe"), r);
         Assert.Equal(ProfileListRoute.For(EntityUri.Parse(Jane), ProfileFacet.Following), ProfileListRoute.For(user, ProfileFacet.Following));
         Assert.True(ProfileRoute.For(new User(Table.None)).IsNone);
-    }
-
-    [Fact]
-    public void Profile_routes_are_Detail_surfaces()
-    {
-        Assert.Equal(Design.NavSurface.Detail, Shell.SurfaceOf(Shell.RouteKind.User));
-        Assert.Equal(Design.NavSurface.Detail, Shell.SurfaceOf(Shell.RouteKind.ProfileList));
     }
 
     [Fact]

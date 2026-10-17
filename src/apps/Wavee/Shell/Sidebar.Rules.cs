@@ -34,11 +34,11 @@ public static class SidebarPillRules
         System.Func<int, string?> routeAt, string? route, IReadOnlyList<string> ancestorFolderIds, string? owningSectionId)
     {
         if (string.IsNullOrEmpty(route)) return SidebarPillTarget.None;
-        int row = SidebarRowGeometry.IndexOfRoute(rows.Count, routeAt, route);
+        int row = SidebarPlanQueries.IndexOfRoute(rows.Count, routeAt, route);
         if (row >= 0) return new SidebarPillTarget(row, SidebarPillAnchor.Row);
         for (int a = 0; a < ancestorFolderIds.Count; a++)
         {
-            int folder = SidebarRowGeometry.FolderHeaderIndexOf(rows, entries, ancestorFolderIds[a]);
+            int folder = SidebarPlanQueries.FolderHeaderIndexOf(rows, entries, ancestorFolderIds[a]);
             if (folder >= 0) return new SidebarPillTarget(folder, SidebarPillAnchor.AncestorFolder);
         }
         if (owningSectionId is { Length: > 0 } section)
@@ -126,18 +126,12 @@ public static class SidebarTypeAheadRules
     public static string TextOf(SidebarRowKind kind, string label) => IsFocusStop(kind) ? label : "";
 }
 
-/// <summary>Does a one-line label overflow its column? An ESTIMATE (the engine exposes no "was trimmed" fact): Segoe UI
+/// <summary>Does a one-line label overflow its column? (The column is the structure's: <c>SidebarGeometry.LabelWidth</c>.) An ESTIMATE (the engine exposes no "was trimmed" fact): Segoe UI
 /// Variable at 14 px averages ~7 DIP per character. Used only to decide whether a row carries its label as a tooltip, so
 /// a near miss costs a redundant tooltip, never a missing one for a clearly long title.</summary>
 public static class SidebarLabelFit
 {
     public const float AverageCharWidth = 7f;
-
-    /// <summary>The label column of a row in a pane <paramref name="paneWidth"/> wide at <paramref name="depth"/>, with
-    /// <paramref name="trailing"/> DIP of trailing content.</summary>
-    public static float LabelWidth(float paneWidth, int depth, float trailing)
-        => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth) - SidebarRowGeometry.IconColumn
-           - SidebarRowGeometry.LabelGap - SidebarRowGeometry.TrailingPad - trailing;
 
     public static bool Overflows(string? label, float labelWidth)
         => label is { Length: > 0 } && label.Length * AverageCharWidth > labelWidth;
@@ -167,12 +161,12 @@ public static class SidebarPinRules
         return null;
     }
 
-    /// <summary>Does a row draw the 12-px pin mark? In Your Library the pins have no header, so each depth-0 row of the
-    /// pinned section is marked; the children an expanded pinned folder lists under it (depth ≥ 1) are not pins and are
+    /// <summary>Does a row draw its pin (Classic draws the 24-px Unpin button, S5)? In Your Library the pins have no header, so each
+    /// depth-0 row of the pinned section is marked; the children an expanded pinned folder lists under it (depth ≥ 1) are not pins and are
     /// not marked. Everywhere else the existing rule holds: a pinned entity that is not a track (#85).</summary>
     public static bool ShowsPinMark(SidebarLayoutId layout, SidebarSectionKind section, int rowDepth, bool isPinned, bool isTrack)
         => (layout == SidebarLayoutId.Library && section == SidebarSectionKind.Pinned && rowDepth == 0)
-           || SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack);
+           || SidebarPlanQueries.ShowsPinGlyph(isPinned, isTrack);
 }
 
 /// <summary>Menu-row label hygiene — pure, engine-free, and therefore directly testable. A context-menu row label

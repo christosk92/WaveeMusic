@@ -140,7 +140,7 @@ public readonly partial struct User
     /// <summary>The card header: the eyebrow GROWS so the fact is pushed to the trailing edge without a spacer node.</summary>
     static Element CardHead(string title, string? trailing)
     {
-        var label = Design.Type.Eyebrow(title) with
+        var label = R.Type.Eyebrow(title) with
         {
             Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         };
@@ -338,7 +338,7 @@ public readonly partial struct User
             Key = "liked-facts-panel", Enter = FactFadeUp, Layout = FactShove,
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             // Reduced motion is a VALUE: the stagger goes to zero, the cards still fade.
-            Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs,
+            Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,
             Padding = outerPadding ? new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.L) : Edges4.All(0f),
             Children = cards,
         };
@@ -830,7 +830,7 @@ public readonly partial struct User
             _anchor = UseRef<NodeHandle>(default);
             _handle = UseRef<OverlayHandle?>(null);
             _moreOpen = UseSignal(false);
-            var measuredW = UseMeasuredWidth(Controls.FaceStep);
+            var measuredW = UseMeasuredWidth("facts:artists", Controls.FaceStep);
             // The gate (W3-A3): the Artists counter is subscribed inside the memo; a publication that leaves every
             // ranked artist's version where it was resolves this render clean.
             _ = UseComputed(_stamp).Value;
@@ -959,8 +959,8 @@ public readonly partial struct User
                 Fill = lit ? Tok.AccentSubtle : ColorF.Transparent,
                 HoverFill = !live ? ColorF.Transparent : lit ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
                 PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
-                HoverScale = live ? Design.Motion.ScaleSubtle.Hover : 1f,
-                PressScale = live ? Design.Motion.ScaleSubtle.Press : 1f,
+                HoverScale = live ? R.Motion.ScaleSubtle.Hover : 1f,
+                PressScale = live ? R.Motion.ScaleSubtle.Press : 1f,
                 HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
                 OnClick = onClick,
                 Children =
@@ -983,7 +983,7 @@ public readonly partial struct User
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             FocusVisualMargin = Design.FocusInsetRow,
             HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+            HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
             HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
             OnClick = _toggleMore, OnKeyDown = _moreKey,
             Children =
@@ -1033,7 +1033,7 @@ public readonly partial struct User
                 Direction = 1, Width = 280f, MaxHeight = 360f, Padding = Edges4.All(Spacing.S), Gap = Spacing.S,
                 Children =
                 [
-                    Design.Type.Eyebrow(Loc.Get(Strings.Detail.LikedFacts.AllArtists)) with { Color = Tok.TextTertiary },
+                    R.Type.Eyebrow(Loc.Get(Strings.Detail.LikedFacts.AllArtists)) with { Color = Tok.TextTertiary },
                     ScrollView(list) with { Width = 264f, MaxHeight = 320f, ContentSized = true, AutoEdgeFade = true, Grow = 0f },
                 ],
             };
@@ -1113,7 +1113,7 @@ public readonly partial struct User
 
         static readonly LayoutTransition s_tailBarReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Sx: 0.55f, Opacity: 0f, Active: true));
-        static readonly LayoutTransition s_tailRowReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
+        static LayoutTransition s_tailRowReveal => new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Dy: Spacing.XS, Opacity: 0f, Active: true));
 
         FactBlendProps? _latest;
@@ -1334,7 +1334,7 @@ public readonly partial struct User
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                 FocusVisualMargin = Design.FocusInsetRow,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                 HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
                 OnClick = _toggle,
                 Children =
@@ -1359,7 +1359,7 @@ public readonly partial struct User
                 Fill = lit ? Tok.AccentSubtle : ColorF.Transparent,
                 HoverFill = lit ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
                 PressedFill = Tok.FillSubtleTertiary,
-                HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                 HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
                 OnClick = onClick,
                 Children =
@@ -1671,7 +1671,7 @@ public readonly partial struct User
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                 FocusVisualMargin = Design.FocusInsetRow,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
+                HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
                 HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
                 OnClick = Clear,
                 Children = [Icon(Icons.ChromeClose, 10f, Tok.TextSecondary)],

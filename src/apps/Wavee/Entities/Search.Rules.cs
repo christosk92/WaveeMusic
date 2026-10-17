@@ -278,9 +278,6 @@ public readonly partial struct Search
     /// <summary>The wire page size a facet asks (0.2.9 <c>SearchPageSize</c>).</summary>
     public const int PageSize = 50;
 
-    /// <summary>The eleven placeholder pill widths — the known facet superset, which wraps to two rows at typical widths.</summary>
-    public static readonly float[] ChipSkeletonWidths = [40f, 68f, 76f, 74f, 88f, 68f, 96f, 116f, 76f, 76f, 76f];
-
     /// <summary>The static fallback facet order (<c>FacetsFrom</c>'s second pass).</summary>
     public static readonly SearchFacet[] FallbackFacets =
     [
@@ -408,28 +405,27 @@ public readonly partial struct Search
     /// <summary>The All tab's playlist rail (0.2.9 <c>PlaylistShelfItems</c>): the top hits' playlists first, in hit
     /// order, then the Playlists facet's own slots — deduped, and never the hero's own item.</summary>
     public static int PlaylistShelfItems(ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> playlists, EntityRef skip, Span<int> into)
+        => ShelfItems(EntityKind.Playlist, hits, playlists, skip, into);
+
+    /// <summary>The All tab's artist rail (a structure that draws one: Classic Huge, <c>C-Search-Huge</c>): the top hits' artists first, in hit
+    /// order, then the Artists facet's own slots — deduped, and never the hero's own item. The playlist rail's rule over the other kind.</summary>
+    public static int ArtistShelfItems(ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> artists, EntityRef skip, Span<int> into)
+        => ShelfItems(EntityKind.Artist, hits, artists, skip, into);
+
+    static int ShelfItems(EntityKind kind, ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> own, EntityRef skip, Span<int> into)
     {
         int n = 0;
         for (int i = 0; i < hits.Length && n < into.Length; i++)
-            if (hits[i].Kind == EntityKind.Playlist) Add(hits[i].Slot, skip, into, ref n);
-        for (int i = 0; i < playlists.Length && n < into.Length; i++) Add(playlists[i], skip, into, ref n);
+            if (hits[i].Kind == kind) Add(kind, hits[i].Slot, skip, into, ref n);
+        for (int i = 0; i < own.Length && n < into.Length; i++) Add(kind, own[i], skip, into, ref n);
         return n;
 
-        static void Add(int slot, EntityRef skip, Span<int> into, ref int n)
+        static void Add(EntityKind kind, int slot, EntityRef skip, Span<int> into, ref int n)
         {
-            if (slot <= Table.None || (skip.Kind == EntityKind.Playlist && skip.Slot == slot)) return;
+            if (slot <= Table.None || (skip.Kind == kind && skip.Slot == slot)) return;
             if (into[..n].IndexOf(slot) >= 0) return;
             into[n++] = slot;
         }
-    }
-
-    /// <summary>The owner a top-hit playlist's subtitle names: the text after the first <c>" • "</c> (0.2.9
-    /// <c>PlaylistOwnerOf</c>).</summary>
-    public static string PlaylistOwnerOf(string subtitle)
-    {
-        const string sep = " • ";
-        int i = subtitle.IndexOf(sep, StringComparison.Ordinal);
-        return i < 0 ? subtitle : subtitle[(i + sep.Length)..];
     }
 
     /// <summary>Where a genre result goes (0.2.9 <c>SearchRoutes.OpenGenre</c>): a <c>spotify:genre:</c> or
@@ -451,11 +447,6 @@ public readonly partial struct Search
     public static bool CanPlay(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist
         or EntityKind.Playlist or EntityKind.Show or EntityKind.Episode;
 
-    /// <summary>The hero's "Open page" gate: a destination with a page (a track's open IS its play). A profile has one
-    /// since the profile pages (#161) — "Open page", and still no Play.</summary>
-    public static bool CanOpen(EntityKind kind) => kind is EntityKind.Album or EntityKind.Artist or EntityKind.Playlist
-        or EntityKind.Show or EntityKind.Episode or EntityKind.User;
-
     /// <summary>Does a hit of this kind resolve a menu (and therefore a "…" button and a right-click)?</summary>
     public static bool HasMenu(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist
         or EntityKind.Playlist or EntityKind.Show;
@@ -472,6 +463,9 @@ public readonly partial struct Search
         SearchFacet.Albums or SearchFacet.Playlists or SearchFacet.Genres => ShimmerShape.CardGrid,
         _ => ShimmerShape.Rows,
     };
+
+    /// <summary>The Albums and Playlists facets are the two card-GRID facets: their body owns its own virtual scroll (no page ScrollView).</summary>
+    public static bool IsGridFacet(SearchFacet facet) => facet is SearchFacet.Albums or SearchFacet.Playlists;
 
     /// <summary>The facet body slides only on a REAL switch — never on the first render.</summary>
     public static bool Slides(bool armed, int previousChip, int chip) => armed && previousChip != chip;
@@ -514,8 +508,4 @@ public readonly partial struct Search
 
     /// <summary>Does a facet's list keep paging? The edge says there is more and the ceiling is not reached.</summary>
     public static bool KeepsPaging(EdgeState state, int count) => state == EdgeState.Partial && count < FacetHitCeiling;
-
-    public static int FacetGridColumns(float w) =>Math.Max(1, (int)MathF.Floor((w + FacetGridGap) / (FacetGridMinCol + FacetGridGap)));
-
-    public static float FacetGridCellWidth(float w, int cols) => MathF.Max(90f, (w - (cols - 1) * FacetGridGap) / Math.Max(1, cols));
 }

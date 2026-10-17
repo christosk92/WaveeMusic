@@ -37,6 +37,16 @@ sealed class MemoryAppSettings : IAppSettings
 
     public void Set<T>(SettingKey<T> key, T value) { if (value is not null) _values[key.Name] = value; }
 
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!_values.ContainsKey(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name) => _values.ContainsKey(name);
+    public void Remove(string name) => _values.Remove(name);
+
     public bool WasWritten<T>(SettingKey<T> key) => _values.ContainsKey(key.Name);
 
     public int WrittenCount => _values.Count;
@@ -264,8 +274,7 @@ public class PlatformSettingsTests
     public void Settings_AbsentKey_ReadsItsDeclaredDefault()
         => WithStore(new MemoryAppSettings(), static () =>
         {
-            Assert.Equal(1, Platform.Settings.Get(Platform.Keys.RowDensity));                 // Default, not Compact
-            Assert.True(Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
+            Assert.Equal(Platform.Keys.MarqueeEnabled.Default, Platform.Settings.Get(Platform.Keys.MarqueeEnabled));
         });
 
     /// <summary>Every write bumps the epoch `Platform/Prefs.cs` (owner L, Wave 4) hangs its four preference epochs
@@ -400,13 +409,10 @@ public class PlatformSettingsTests
     [Fact]
     public void PerSubjectKeys_SpellTheirPersistedNames()
     {
-        Assert.Equal("detail.sort.col:spotify:album:x", Platform.Keys.DetailSortCol("spotify:album:x").Name);
-        Assert.Equal("detail.sort.desc:spotify:album:x", Platform.Keys.DetailSortDesc("spotify:album:x").Name);
-        Assert.Equal("library.artists.leftw", Platform.Keys.LibraryLeftW("artists").Name);
-        Assert.Equal(280f, Platform.Keys.LibraryLeftW("artists").Default);      // artists is the one narrow default
-        Assert.Equal(340f, Platform.Keys.LibraryLeftW("albums").Default);
-        Assert.Equal("sidebar.layout.id", Platform.Keys.SidebarLayoutId.Name);
-        Assert.Equal(0, Platform.Keys.SidebarLayoutId.Default);                 // 0 ⇒ Classic
+        Assert.Equal("library.artists.sort", Platform.Keys.LibrarySort("artists").Name);
+        Assert.Equal("library.albums.selected", Platform.Keys.LibrarySelected("albums").Name);
+        Assert.Equal("sidebar.library.filter", Platform.Keys.SidebarLibraryFilter.Name);
+        Assert.Equal(0, Platform.Keys.SidebarLibraryFilter.Default);            // 0 ⇒ no chip
         Assert.Equal("npv.player.ipod.wheel", Platform.Keys.NpvOption("ipod", "wheel").Name);
     }
 

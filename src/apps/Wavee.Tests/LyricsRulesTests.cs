@@ -74,17 +74,32 @@ public class LyricsFxTests
 public class LyricsBlurPolicyTests
 {
     [Fact]
-    public void Auto_resolves_to_the_one_default_on_every_gpu_tier()
-        => Assert.Equal(Lyrics.BlurPolicy.AutoDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto));
+    public void There_is_no_Auto_path_in_the_policy()
+    {
+        // M14 (owner Q37): the Auto choice is gone. Neither constant exists, and Resolve is a plain 0..100 clamp: the
+        // old Auto -1 is mapped to 100 by the pref accessor (PrefsTests), never here.
+        var members = typeof(Lyrics.BlurPolicy).GetMembers().Select(m => m.Name).ToArray();
+        Assert.DoesNotContain("Auto", members);
+        Assert.DoesNotContain("AutoDefault", members);
+        Assert.Equal(0, Lyrics.BlurPolicy.Resolve(-1));
+    }
 
     [Theory]
     [InlineData(0, 0)]
     [InlineData(55, 55)]
     [InlineData(100, 100)]
     [InlineData(140, 100)]      // a value from a newer build's ladder clamps rather than trusting the store
-    [InlineData(-9, 0)]         // …and any other negative is NOT the auto sentinel
-    public void A_stored_value_is_clamped_into_range(int stored, int expected)
+    [InlineData(-9, 0)]         // a negative that reaches the policy clamps (no sentinel is interpreted here)
+    public void A_value_is_clamped_into_range(int stored, int expected)
         => Assert.Equal(expected, Lyrics.BlurPolicy.Resolve(stored));
+
+    [Theory]
+    [InlineData(100, false, 100)]
+    [InlineData(0, false, 0)]
+    [InlineData(100, true, 0)]   // the stage never depth-blurs
+    [InlineData(0, true, 0)]
+    public void The_stage_resolves_to_zero_and_every_other_surface_to_the_setting(int setting, bool onStage, int expected)
+        => Assert.Equal(expected, Lyrics.BlurPolicy.ResolveFor(setting, onStage));
 
     [Fact]
     public void Scale_is_the_zero_to_one_multiplier()
@@ -558,11 +573,11 @@ public class LyricsRowRenderTests
     public void The_active_row_is_also_near_and_the_ring_is_NearDistance_wide()
     {
         int active = Shape(20, 20);
-        Assert.True(Lyrics.RowRender.IsActive(active));
+        Assert.NotEqual(0, active & Lyrics.RowRender.ActiveBit);
         Assert.True(Lyrics.RowRender.IsNear(active));
         Assert.True(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance, 20)));
         Assert.False(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance + 1, 20)));
-        Assert.False(Lyrics.RowRender.IsActive(Shape(21, 20)));
+        Assert.Equal(0, Shape(21, 20) & Lyrics.RowRender.ActiveBit);
     }
 
     [Fact]
@@ -779,14 +794,6 @@ public class LyricsCascadeTests
         var s = Slab(4);
         Assert.False(Lyrics.Cascade.Step(s.Comp, s.Vel, s.Delay, s.Rate, s.Write, 16f));
         for (int i = 0; i < 4; i++) Assert.Equal(Lyrics.Cascade.WriteNone, s.Write[i]);
-    }
-
-    [Fact]
-    public void The_dt_clamp_stops_a_parked_window_teleporting()
-    {
-        Assert.Equal(Lyrics.Cascade.DtMaxMs, Lyrics.Cascade.ClampDt(10_000f, 16f));
-        Assert.Equal(16f, Lyrics.Cascade.ClampDt(0f, 16f));
-        Assert.Equal(33f, Lyrics.Cascade.ClampDt(33f, 16f));
     }
 
     [Fact]

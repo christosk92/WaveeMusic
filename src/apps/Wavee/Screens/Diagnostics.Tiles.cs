@@ -3,7 +3,7 @@
 // The engine's retained-tile census (`FluentGpu.Render.Tiles.TileCensus`) is ALWAYS-ON — read straight off
 // `AppHost.LastTileCensus` (thread-safe) with no probe to arm. `ExposedMissing` (a visible tile that composited
 // nothing), `DegradedSlices` and `CoverageClamps` must be 0; the card's verdict flags a nonzero one the same way the
-// Runtime page flags a broken local-playback search (`Status`, Diagnostics.UI.cs).
+// Runtime page flags a broken local-playback search (a `DiagStatus`, Diagnostics.Pages.cs).
 //
 // GPU PASS TIMING IS A RUNTIME TOGGLE, NOT A SETTING: `AppHost.GpuPassTimingEnabled` is a session measurement knob
 // (CLAUDE.md's "no environment-variable switches" — this is the runtime-settable replacement for one) flipped from
@@ -11,7 +11,7 @@
 // the most recently retired frame's pass-granular breakdown into a preallocated buffer — zero-alloc per poll.
 //
 // The decisions — MiB/percent formatting, the health verdict, which invalidation reasons to show, the per-pass rows
-// and the per-kind aggregate — are `TileDiagRules` (pure, tested); this file owns the engine calls and the card.
+// and the per-kind aggregate — are `TileDiagRules` (pure, tested); this file owns the engine calls and the card's node; the card is the Common view's (`CommonDiagnostics.Widgets.cs`).
 
 using System.Globalization;
 using FluentGpu;
@@ -23,6 +23,7 @@ using FluentGpu.Localization;
 using FluentGpu.Render.Tiles;
 using FluentGpu.Rhi;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -123,93 +124,89 @@ public static class TileDiagRules
 
 public static partial class Diagnostics
 {
+    static readonly TilesHost s_tilesHost = new();
+
     /// <summary>The Diagnostics "Tiles" card: the always-on retained-tile census, its invalidation reasons, and the
-    /// GPU pass timing toggle + breakdown. Every number is read straight off the engine each poll; the card holds no
-    /// state but the toggle and its own refresh tick.</summary>
-    sealed class TileCardView : Component
+    /// GPU pass timing toggle + breakdown. The Common view (`CommonDiagnostics.Widgets.cs`) owns the poll and the toggle's
+    /// signal and re-reads <see cref="TilesHost.Read"/> on every tick; every number is read straight off the engine each poll.</summary>
+    static DiagNode TilesNode() => new DiagTiles(s_tilesHost, CapturePollMs);
+
+    sealed class TilesHost : IDiagTilesHost
     {
         // Preallocated once — CopyGpuPassTimeline is zero-alloc into this buffer every poll while the toggle is on.
         static readonly GpuPassTiming[] s_passBuffer = new GpuPassTiming[64];
 
+        public bool HasHost => Probe.Host is not null;
+
         // Seeded from the host: the timeline may already be on (`--fg gpu-timing`, a probe), and the toggle must say so.
-        readonly Signal<bool> _passTiming = new(Probe.Host?.GpuPassTimingEnabled ?? false);
-        readonly Signal<int> _refresh = new(0);
+        public bool PassTimingInitial => Probe.Host?.GpuPassTimingEnabled ?? false;
 
-        public override Element Render()
+        public void SetPassTiming(bool on)
         {
-            _ = _refresh.Value;
-            bool passTimingOn = _passTiming.Value;
-
-            // One 750 ms poll drives both halves: the always-on census read is cheap (a lock + struct copy), and the
-            // pass-timeline copy below only actually runs while the toggle is on.
-            UseInterval(() => _refresh.Value = _refresh.Peek() + 1, 750f, enabled: true);
-
-            var host = Probe.Host;
-            var census = host?.LastTileCensus ?? default;
-
-            var rows = new List<Element>(8) { Verdict(census) };
-            rows.AddRange(CensusRows(census));
-
-            var reasons = TileDiagRules.ReasonRows(census);
-            rows.Add(Separator(2f));
-            rows.Add(new TextEl(Loc.Get(Strings.Diagnostics.Tiles.ReasonsTitle)) { Size = 12f, Weight = 600, Color = Tok.TextPrimary });
-            rows.Add(reasons.Count == 0 ? Body(Loc.Get(Strings.Diagnostics.Tiles.NoReasons)) : ReasonsBlock(reasons));
-
-            rows.Add(Separator(2f));
-            rows.Add(Labeled(Loc.Get(Strings.Diagnostics.Tiles.GpuPassTiming),
-                ToggleSwitch.Create(_passTiming, OnToggle, isEnabled: host is not null)));
-            rows.Add(Caption(Loc.Get(Strings.Diagnostics.Tiles.GpuPassTimingCaption)));
-
-            if (passTimingOn && host is not null) rows.AddRange(PassTimingRows(host));
-
-            rows.Add(Caption(Loc.Get(Strings.Diagnostics.Tiles.Caption)));
-
-            return Card(Loc.Get(Strings.Diagnostics.Tiles.Title), rows);
-        }
-
-        void OnToggle(bool on)
-        {
-            _passTiming.Value = on;
             var host = Probe.Host;
             if (host is not null) host.GpuPassTimingEnabled = on;
         }
 
+        public DiagCard Read(bool passTimingOn)
+        {
+            var host = Probe.Host;
+            var census = host?.LastTileCensus ?? default;
+
+            var rows = new List<DiagNode>(8) { Verdict(census) };
+            rows.AddRange(CensusRows(census));
+
+            var reasons = TileDiagRules.ReasonRows(census);
+            rows.Add(new DiagSeparator(DiagGap.Hairline));
+            rows.Add(new DiagHeading(Loc.Get(Strings.Diagnostics.Tiles.ReasonsTitle), Primary: true));
+            rows.Add(reasons.Count == 0 ? new DiagBody(Loc.Get(Strings.Diagnostics.Tiles.NoReasons)) : ReasonsBlock(reasons));
+
+            rows.Add(new DiagSeparator(DiagGap.Hairline));
+            rows.Add(new DiagToggle(Loc.Get(Strings.Diagnostics.Tiles.GpuPassTiming), Enabled: host is not null));
+            rows.Add(new DiagNote(Loc.Get(Strings.Diagnostics.Tiles.GpuPassTimingCaption)));
+
+            if (passTimingOn && host is not null) rows.AddRange(PassTimingRows(host));
+
+            rows.Add(new DiagNote(Loc.Get(Strings.Diagnostics.Tiles.Caption)));
+
+            return new DiagCard(Loc.Get(Strings.Diagnostics.Tiles.Title), rows);
+        }
+
         // ── the census block ─────────────────────────────────────────────────────────────────────────────────────
 
-        static Element Verdict(TileCensus c) => TileDiagRules.IsWarning(c)
-            ? Status(Icons.StatusWarning, Tok.SystemFillCaution, Loc.Get(Strings.Diagnostics.Tiles.WarningTitle), Loc.Get(Strings.Diagnostics.Tiles.WarningBody))
-            : Status(Icons.StatusSuccess, Tok.SystemFillSuccess, Loc.Get(Strings.Diagnostics.Tiles.HealthyTitle), Loc.Get(Strings.Diagnostics.Tiles.HealthyBody));
+        static DiagNode Verdict(TileCensus c) => TileDiagRules.IsWarning(c)
+            ? new DiagStatus(Icons.StatusWarning, DiagTone.Caution, Loc.Get(Strings.Diagnostics.Tiles.WarningTitle), Loc.Get(Strings.Diagnostics.Tiles.WarningBody))
+            : new DiagStatus(Icons.StatusSuccess, DiagTone.Success, Loc.Get(Strings.Diagnostics.Tiles.HealthyTitle), Loc.Get(Strings.Diagnostics.Tiles.HealthyBody));
 
-        static IEnumerable<Element> CensusRows(TileCensus c)
+        static IEnumerable<DiagNode> CensusRows(TileCensus c)
         {
             var inv = CultureInfo.InvariantCulture;
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Slices), c.Slices.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.LiveTiles), c.LiveTiles.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.ResidentTiles), c.ResidentTiles.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Resident),
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Slices), c.Slices.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.LiveTiles), c.LiveTiles.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.ResidentTiles), c.ResidentTiles.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Resident),
                 Strings.Diagnostics.Tiles.ResidentValue(TileDiagRules.FormatMiB(c.ResidentBytes),
                     TileDiagRules.BudgetPercentClamped(c.ResidentBytes, c.BudgetBytes).ToString(inv)));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Scheduled), c.Scheduled.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Rastered), c.Rastered.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Evicted), c.Evicted.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.Items), c.Items.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.DegradedSlices), c.DegradedSlices.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.ExposedMissing), c.ExposedMissing.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.StaleTiles), c.StaleTiles.ToString(inv));
-            yield return Row(Loc.Get(Strings.Diagnostics.Tiles.CoverageClamps), c.CoverageClamps.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Scheduled), c.Scheduled.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Rastered), c.Rastered.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Evicted), c.Evicted.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.Items), c.Items.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.DegradedSlices), c.DegradedSlices.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.ExposedMissing), c.ExposedMissing.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.StaleTiles), c.StaleTiles.ToString(inv));
+            yield return Fact(Loc.Get(Strings.Diagnostics.Tiles.CoverageClamps), c.CoverageClamps.ToString(inv));
         }
 
         // ── invalidation reasons ─────────────────────────────────────────────────────────────────────────────────
 
-        static Element ReasonsBlock(IReadOnlyList<TileDiagRules.ReasonRow> reasons)
+        static DiagNode ReasonsBlock(IReadOnlyList<TileDiagRules.ReasonRow> reasons)
         {
-            var kids = new Element[reasons.Count];
+            var kids = new DiagNode[reasons.Count];
             for (int i = 0; i < reasons.Count; i++)
             {
                 var r = reasons[i];
-                kids[i] = Row(ReasonLabel(r.Reason), r.Count.ToString(CultureInfo.InvariantCulture));
+                kids[i] = Fact(ReasonLabel(r.Reason), r.Count.ToString(CultureInfo.InvariantCulture));
             }
-            return new BoxEl { Direction = 1, Gap = 2f, Children = kids };
+            return new DiagGroup(kids);
         }
 
         static string ReasonLabel(TileDiagRules.ReasonKind reason) => Loc.Get(reason switch
@@ -227,44 +224,33 @@ public static partial class Diagnostics
 
         // ── GPU pass timing breakdown (toggle on only) ───────────────────────────────────────────────────────────
 
-        static IEnumerable<Element> PassTimingRows(FluentGpu.Hosting.AppHost host)
+        static IEnumerable<DiagNode> PassTimingRows(FluentGpu.Hosting.AppHost host)
         {
             int n = host.CopyGpuPassTimeline(s_passBuffer, out var summary);
             var passes = s_passBuffer.AsSpan(0, n);
 
-            var results = new List<Element> { Separator(2f) };
+            var results = new List<DiagNode> { new DiagSeparator(DiagGap.Hairline) };
             if (n == 0)
             {
-                results.Add(Body(Loc.Get(Strings.Diagnostics.Tiles.NoPasses)));
+                results.Add(new DiagBody(Loc.Get(Strings.Diagnostics.Tiles.NoPasses)));
                 return results;
             }
 
             var inv = CultureInfo.InvariantCulture;
-            results.Add(new TextEl(Strings.Diagnostics.Tiles.FrameSummary(TileDiagRules.FormatMs(summary.WholeMs),
-                summary.PassCount.ToString(inv), summary.PassesDropped.ToString(inv)))
-            { Size = 12f, Color = Tok.TextSecondary });
+            results.Add(new DiagLine(Strings.Diagnostics.Tiles.FrameSummary(TileDiagRules.FormatMs(summary.WholeMs),
+                summary.PassCount.ToString(inv), summary.PassesDropped.ToString(inv)), Primary: false, Wrap: false));
 
-            results.Add(new TextEl(Loc.Get(Strings.Diagnostics.Tiles.AggregateTitle)) { Size = 12f, Weight = 600, Color = Tok.TextPrimary });
+            results.Add(new DiagHeading(Loc.Get(Strings.Diagnostics.Tiles.AggregateTitle), Primary: true));
             foreach (var agg in TileDiagRules.AggregatePasses(passes))
-                results.Add(Row(PassKindLabel(agg.Kind), agg.TotalMs + " ms  ·  " + Strings.Diagnostics.Tiles.AggregateCount(agg.Count)));
+                results.Add(Fact(PassKindLabel(agg.Kind), agg.TotalMs + " ms  ·  " + Strings.Diagnostics.Tiles.AggregateCount(agg.Count)));
 
-            results.Add(new TextEl(Loc.Get(Strings.Diagnostics.Tiles.PassesTitle)) { Size = 12f, Weight = 600, Color = Tok.TextPrimary });
-            foreach (var p in TileDiagRules.PassRows(passes)) results.Add(PassRow(p));
+            results.Add(new DiagHeading(Loc.Get(Strings.Diagnostics.Tiles.PassesTitle), Primary: true));
+            foreach (var p in TileDiagRules.PassRows(passes))
+                results.Add(new DiagPassRow(PassKindLabel(p.Kind),
+                    p.TargetWidthPx.ToString(inv) + " × " + p.TargetHeightPx.ToString(inv), p.Ms + " ms"));
 
             return results;
         }
-
-        static Element PassRow(TileDiagRules.PassRow p) => new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Children =
-            [
-                new TextEl(PassKindLabel(p.Kind)) { Size = 12f, Color = Tok.TextPrimary, Width = 120f, Shrink = 0f },
-                new TextEl(p.TargetWidthPx.ToString(CultureInfo.InvariantCulture) + " × " + p.TargetHeightPx.ToString(CultureInfo.InvariantCulture))
-                    { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = 100f, Shrink = 0f },
-                new TextEl(p.Ms + " ms") { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code" },
-            ],
-        };
 
         static string PassKindLabel(GpuPassKind kind) => Loc.Get(kind switch
         {
@@ -277,11 +263,5 @@ public static partial class Diagnostics
             GpuPassKind.Offscreen => Strings.Diagnostics.Tiles.PassOffscreen,
             _ => Strings.Diagnostics.Tiles.PassComposite,
         });
-
-        static Element Labeled(string label, Element control) => new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Children = [new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Width = RuntimeLabelWidth, Shrink = 0f }, control],
-        };
     }
 }

@@ -12,6 +12,7 @@
 //
 //   THE OVERFLOW ORDER IS THE MENU ORDER, and everything that leaves the row is in it.
 
+using Wavee.Theming.Contracts;
 using Xunit;
 
 using DeviceKind = Wavee.Spotify.Decode.DeviceKind;
@@ -27,7 +28,7 @@ public class PlayerBarStateFoldTests
         var f = Shell.PlayerBarRules.Fold(hasCurrent: true, Playback.Fault.Network, Playback.Phase.Loading,
             buffering: true, Playback.RecoveryKind.Network, canSkipPrev: true, canSkipNext: true);
         Assert.Equal(Shell.PlayerState.Error, f.State);
-        Assert.Equal(Shell.PrimaryVerb.Retry, f.Primary);
+        Assert.Equal(PrimaryVerb.Retry, f.Primary);
         Assert.True(f.PrimaryEnabled);
     }
 
@@ -37,7 +38,7 @@ public class PlayerBarStateFoldTests
         var idle = Shell.PlayerBarRules.Fold(false, Playback.Fault.None, Playback.Phase.Idle, false,
             Playback.RecoveryKind.None, true, true);
         Assert.Equal(Shell.PlayerState.NoTrack, idle.State);
-        Assert.Equal(Shell.PrimaryVerb.None, idle.Primary);
+        Assert.Equal(PrimaryVerb.None, idle.Primary);
         Assert.False(idle.PrimaryEnabled);
         Assert.False(idle.CanTransport);
         Assert.False(idle.PrevEnabled);
@@ -48,17 +49,17 @@ public class PlayerBarStateFoldTests
         var loading = Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Loading, false,
             Playback.RecoveryKind.None, true, true);
         Assert.Equal(Shell.PlayerState.Loading, loading.State);
-        Assert.Equal(Shell.PrimaryVerb.TogglePlay, loading.Primary);
+        Assert.Equal(PrimaryVerb.TogglePlay, loading.Primary);
         Assert.True(loading.PrimaryEnabled);
     }
 
     [Theory]
-    [InlineData(Shell.PlayerState.NoTrack, Shell.PrimaryVerb.None)]
-    [InlineData(Shell.PlayerState.Loading, Shell.PrimaryVerb.TogglePlay)]
-    [InlineData(Shell.PlayerState.Reconnecting, Shell.PrimaryVerb.TogglePlay)]
-    [InlineData(Shell.PlayerState.Active, Shell.PrimaryVerb.TogglePlay)]
-    [InlineData(Shell.PlayerState.Error, Shell.PrimaryVerb.Retry)]
-    public void The_primary_verb_of_every_state(Shell.PlayerState state, Shell.PrimaryVerb expected)
+    [InlineData(Shell.PlayerState.NoTrack, PrimaryVerb.None)]
+    [InlineData(Shell.PlayerState.Loading, PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Reconnecting, PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Active, PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Error, PrimaryVerb.Retry)]
+    public void The_primary_verb_of_every_state(Shell.PlayerState state, PrimaryVerb expected)
     {
         var f = state switch
         {
@@ -110,7 +111,7 @@ public class PlayerBarStateFoldTests
             Playback.RecoveryKind.Network, true, true);
         Assert.Equal(Shell.PlayerState.Reconnecting, f.State);
         Assert.True(f.CanTransport);
-        Assert.Equal(Shell.PrimaryVerb.TogglePlay, f.Primary);
+        Assert.Equal(PrimaryVerb.TogglePlay, f.Primary);
     }
 
     [Fact]
@@ -134,7 +135,7 @@ public class PlayerBarStateFoldTests
         Assert.False(f.CanTransport);
         Assert.True(f.PrevEnabled);
         Assert.True(f.NextEnabled);
-        Assert.Equal(Shell.PrimaryVerb.Retry, f.Primary);
+        Assert.Equal(PrimaryVerb.Retry, f.Primary);
 
         var restricted = Shell.PlayerBarRules.Fold(true, Playback.Fault.DecodeFailed, Playback.Phase.Paused, false,
             Playback.RecoveryKind.None, canSkipPrev: false, canSkipNext: true);
@@ -162,14 +163,14 @@ public class PlayerBarStateFoldTests
         => Assert.Equal(expected, Shell.PlayerBarRules.RowVerb(deckRow, error));
 
     [Theory]
-    [InlineData(Shell.PlayerState.NoTrack, true, Shell.NowPlayingText.NothingPlaying, Shell.NowPlayingInk.Secondary)]
-    [InlineData(Shell.PlayerState.Reconnecting, true, Shell.NowPlayingText.Reconnecting, Shell.NowPlayingInk.Secondary)]
-    [InlineData(Shell.PlayerState.Error, true, Shell.NowPlayingText.CannotPlay, Shell.NowPlayingInk.Critical)]
-    [InlineData(Shell.PlayerState.Loading, true, Shell.NowPlayingText.Title, Shell.NowPlayingInk.Primary)]
-    [InlineData(Shell.PlayerState.Loading, false, Shell.NowPlayingText.Loading, Shell.NowPlayingInk.Primary)]
-    [InlineData(Shell.PlayerState.Active, false, Shell.NowPlayingText.Loading, Shell.NowPlayingInk.Primary)]
+    [InlineData(Shell.PlayerState.NoTrack, true, Shell.NowPlayingText.NothingPlaying, NowPlayingInk.Secondary)]
+    [InlineData(Shell.PlayerState.Reconnecting, true, Shell.NowPlayingText.Reconnecting, NowPlayingInk.Secondary)]
+    [InlineData(Shell.PlayerState.Error, true, Shell.NowPlayingText.CannotPlay, NowPlayingInk.Critical)]
+    [InlineData(Shell.PlayerState.Loading, true, Shell.NowPlayingText.Title, NowPlayingInk.Primary)]
+    [InlineData(Shell.PlayerState.Loading, false, Shell.NowPlayingText.Loading, NowPlayingInk.Primary)]
+    [InlineData(Shell.PlayerState.Active, false, Shell.NowPlayingText.Loading, NowPlayingInk.Primary)]
     public void The_title_never_renders_an_unresolved_playable(Shell.PlayerState state, bool titleKnown,
-        Shell.NowPlayingText text, Shell.NowPlayingInk ink)
+        Shell.NowPlayingText text, NowPlayingInk ink)
     {
         Assert.Equal(text, Shell.PlayerBarRules.TextOf(state, titleKnown));
         Assert.Equal(ink, Shell.PlayerBarRules.InkOf(state));
@@ -267,21 +268,21 @@ public class PlayerBarStateFoldTests
 
 public class PlayerBarOverflowTests
 {
-    static Shell.OverflowCommand[] Build(Shell.PlayerBarTier tier, bool owns = true, bool active = true, bool video = false)
+    static OverflowCommand[] Build(Shell.PlayerBarTier tier, bool owns = true, bool active = true, bool video = false)
     {
         var layout = Shell.PlayerBarLayout.ForTier(tier);
-        Span<Shell.OverflowCommand> buffer = stackalloc Shell.OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
+        Span<OverflowCommand> buffer = stackalloc OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
         int n = Shell.PlayerBarRules.Overflow(layout, owns, active, video, buffer);
         return buffer[..n].ToArray();
     }
 
     [Fact]
     public void Full_overflows_only_now_playing_because_its_expand_slot_opens_the_stage()
-        => Assert.Equal(new[] { Shell.OverflowCommand.NowPlaying }, Build(Shell.PlayerBarTier.Full, video: true));
+        => Assert.Equal(new[] { OverflowCommand.NowPlaying }, Build(Shell.PlayerBarTier.Full, video: true));
 
     [Fact]
     public void Wide_overflows_now_playing_and_the_stage_door()
-        => Assert.Equal(new[] { Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen },
+        => Assert.Equal(new[] { OverflowCommand.NowPlaying, OverflowCommand.FullScreen },
             Build(Shell.PlayerBarTier.Wide, video: true));
 
     [Fact]
@@ -298,9 +299,9 @@ public class PlayerBarOverflowTests
             {
                 var layout = Shell.PlayerBarLayout.ForTier(tier);
                 var rows = Build(tier, active: active, video: video);
-                int door = Array.IndexOf(rows, Shell.OverflowCommand.FullScreen);
+                int door = Array.IndexOf(rows, OverflowCommand.FullScreen);
                 Assert.Equal(!layout.ShowExpand, door >= 0);
-                if (door >= 0) Assert.Equal(Array.IndexOf(rows, Shell.OverflowCommand.NowPlaying) + 1, door);
+                if (door >= 0) Assert.Equal(Array.IndexOf(rows, OverflowCommand.NowPlaying) + 1, door);
             }
     }
 
@@ -317,11 +318,11 @@ public class PlayerBarOverflowTests
             foreach (bool active in new[] { false, true })
             {
                 var rows = Build(tier, active: active, video: true);
-                int now = Array.IndexOf(rows, Shell.OverflowCommand.NowPlaying);
+                int now = Array.IndexOf(rows, OverflowCommand.NowPlaying);
                 Assert.True(now >= 0, tier + " carries the now-playing row");
-                int queue = Array.IndexOf(rows, Shell.OverflowCommand.Queue);
-                int video = Array.IndexOf(rows, Shell.OverflowCommand.Video);
-                int mute = Array.IndexOf(rows, Shell.OverflowCommand.Mute);
+                int queue = Array.IndexOf(rows, OverflowCommand.Queue);
+                int video = Array.IndexOf(rows, OverflowCommand.Video);
+                int mute = Array.IndexOf(rows, OverflowCommand.Mute);
                 if (queue >= 0) Assert.True(queue < now);
                 if (video >= 0) Assert.True(now < video);
                 if (mute >= 0) Assert.True(now < mute);
@@ -333,31 +334,31 @@ public class PlayerBarOverflowTests
     {
         Assert.Equal(new[]
         {
-            Shell.OverflowCommand.Previous, Shell.OverflowCommand.Next, Shell.OverflowCommand.Shuffle,
-            Shell.OverflowCommand.Repeat, Shell.OverflowCommand.Lyrics, Shell.OverflowCommand.Queue,
-            Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen, Shell.OverflowCommand.Video,
-            Shell.OverflowCommand.Mute,
+            OverflowCommand.Previous, OverflowCommand.Next, OverflowCommand.Shuffle,
+            OverflowCommand.Repeat, OverflowCommand.Lyrics,
+            OverflowCommand.NowPlaying, OverflowCommand.FullScreen, OverflowCommand.Video,
+            OverflowCommand.Mute,
         }, Build(Shell.PlayerBarTier.Compact, video: true));
     }
 
     [Fact]
     public void The_video_row_is_not_reserved_so_no_video_means_no_row()
-        => Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Compact, video: false));
+        => Assert.DoesNotContain(OverflowCommand.Video, Build(Shell.PlayerBarTier.Compact, video: false));
 
     [Fact]
     public void A_non_owning_bar_carries_no_transport_verbs()
     {
         var rows = Build(Shell.PlayerBarTier.Compact, owns: false);
-        Assert.DoesNotContain(Shell.OverflowCommand.Previous, rows);
-        Assert.DoesNotContain(Shell.OverflowCommand.Next, rows);
+        Assert.DoesNotContain(OverflowCommand.Previous, rows);
+        Assert.DoesNotContain(OverflowCommand.Next, rows);
     }
 
     [Fact]
     public void An_idle_bar_below_medium_has_no_volume_or_lyrics_affordance()
     {
         var rows = Build(Shell.PlayerBarTier.Compact, active: false);
-        Assert.DoesNotContain(Shell.OverflowCommand.Mute, rows);
-        Assert.DoesNotContain(Shell.OverflowCommand.Lyrics, rows);
+        Assert.DoesNotContain(OverflowCommand.Mute, rows);
+        Assert.DoesNotContain(OverflowCommand.Lyrics, rows);
     }
 
     [Fact]
@@ -380,11 +381,11 @@ public class PlayerBarOverflowTests
     public void The_video_row_belongs_to_the_tiers_without_the_inline_split()
     {
         // Wide/Full carry the split inline, so the menu never duplicates it; below Wide the menu is the only route.
-        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Wide, video: true));
-        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Full, video: true));
-        Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, video: true));
-        Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Minimal, video: true));
-        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, active: false, video: true));
+        Assert.DoesNotContain(OverflowCommand.Video, Build(Shell.PlayerBarTier.Wide, video: true));
+        Assert.DoesNotContain(OverflowCommand.Video, Build(Shell.PlayerBarTier.Full, video: true));
+        Assert.Contains(OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, video: true));
+        Assert.Contains(OverflowCommand.Video, Build(Shell.PlayerBarTier.Minimal, video: true));
+        Assert.DoesNotContain(OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, active: false, video: true));
     }
 }
 
@@ -413,9 +414,9 @@ public class PlayerBarSlotReservationTests
         var slots = Shell.PlayerBarRules.RightSlots(layout, hasVideo);
         float w = 0f;
         int n = 0;
-        for (int bit = 1; bit <= (int)Shell.RightSlot.More; bit <<= 1)
+        for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
         {
-            var slot = (Shell.RightSlot)bit;
+            var slot = (RightSlot)bit;
             if ((slots & slot) == 0) continue;
             w += Shell.PlayerBarRules.SlotWidth(slot, layout);
             n++;
@@ -450,9 +451,9 @@ public class PlayerBarSlotReservationTests
     public void Wide_carries_nine_slots_and_the_plan_s_width_with_a_video_and_eight_without()
     {
         var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
-        var withoutVideo = Shell.RightSlot.Shuffle | Shell.RightSlot.Repeat | Shell.RightSlot.Volume | Shell.RightSlot.VolumeSlider
-                           | Shell.RightSlot.Lyrics | Shell.RightSlot.Queue | Shell.RightSlot.Devices | Shell.RightSlot.More;
-        Assert.Equal(withoutVideo | Shell.RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
+        var withoutVideo = RightSlot.Shuffle | RightSlot.Repeat | RightSlot.Volume | RightSlot.VolumeSlider
+                           | RightSlot.Lyrics | RightSlot.Queue | RightSlot.Devices | RightSlot.More;
+        Assert.Equal(withoutVideo | RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
         Assert.Equal(withoutVideo, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
         // 7 plain buttons + the 96 rail + the 32+20 split, and 8 gaps between 9 slots (388 with the shipped constants).
         float expected = 7f * L.ButtonBox + Shell.PlayerBarLayout.VolumeSliderW + (L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW)
@@ -470,10 +471,10 @@ public class PlayerBarSlotReservationTests
         // The Expand slot is the Full tier's door to the fullscreen stage; the now-playing rail's toggle moved into the
         // "⋯" menu, which is therefore reserved here too (one slot + one gap wider than before the stage existed).
         var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full);
-        var withoutVideo = Shell.RightSlot.Shuffle | Shell.RightSlot.Repeat | Shell.RightSlot.Volume | Shell.RightSlot.VolumeSlider
-                           | Shell.RightSlot.Lyrics | Shell.RightSlot.Queue | Shell.RightSlot.Devices | Shell.RightSlot.Expand
-                           | Shell.RightSlot.More;
-        Assert.Equal(withoutVideo | Shell.RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
+        var withoutVideo = RightSlot.Shuffle | RightSlot.Repeat | RightSlot.Volume | RightSlot.VolumeSlider
+                           | RightSlot.Lyrics | RightSlot.Queue | RightSlot.Devices | RightSlot.Expand
+                           | RightSlot.More;
+        Assert.Equal(withoutVideo | RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
         Assert.Equal(withoutVideo, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
         Assert.Equal(Shell.PlayerBarRules.RightWidth(L, hasVideo: true), L.RightWMax);
     }
@@ -493,7 +494,7 @@ public class PlayerBarSlotReservationTests
                 // A no-video track in any of the five states: the same slots, the same width as the idle bar.
                 Assert.Equal(idle, Shell.PlayerBarRules.RightWidth(L, hasVideo: false));
                 Assert.Equal(idleSlots, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
-                Assert.False(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: false));
+                Assert.False(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Video, state, hasVideo: false));
             }
         }
     }
@@ -507,10 +508,10 @@ public class PlayerBarSlotReservationTests
             var without = Shell.PlayerBarRules.RightSlots(L, hasVideo: false);
             var with = Shell.PlayerBarRules.RightSlots(L, hasVideo: true);
             float delta = Shell.PlayerBarRules.RightWidth(L, hasVideo: true) - Shell.PlayerBarRules.RightWidth(L, hasVideo: false);
-            Assert.Equal(Shell.RightSlot.None, without & Shell.RightSlot.Video);
-            if (L.ShowQueue)
+            Assert.Equal(RightSlot.None, without & RightSlot.Video);
+            if (L.ShowVideoSplit)
             {
-                Assert.Equal(without | Shell.RightSlot.Video, with);
+                Assert.Equal(without | RightSlot.Video, with);
                 Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW + L.RightGap, delta);
             }
             else
@@ -526,10 +527,10 @@ public class PlayerBarSlotReservationTests
     public void Slot_widths_are_the_button_box_but_for_the_rail_and_the_split()
     {
         var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
-        Assert.Equal(Shell.PlayerBarLayout.VolumeSliderW, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.VolumeSlider, L));
-        Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.Video, L));
-        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.Lyrics, L));
-        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.More, L));
+        Assert.Equal(Shell.PlayerBarLayout.VolumeSliderW, Shell.PlayerBarRules.SlotWidth(RightSlot.VolumeSlider, L));
+        Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW, Shell.PlayerBarRules.SlotWidth(RightSlot.Video, L));
+        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(RightSlot.Lyrics, L));
+        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(RightSlot.More, L));
     }
 
     [Fact]
@@ -540,18 +541,18 @@ public class PlayerBarSlotReservationTests
         {
             var L = Shell.PlayerBarLayout.ForTier(tier);
             var slots = Shell.PlayerBarRules.RightSlots(L, video);
-            Assert.Equal(L.ShowShuffleRepeat, (slots & Shell.RightSlot.Shuffle) != 0);
-            Assert.Equal(L.ShowShuffleRepeat, (slots & Shell.RightSlot.Repeat) != 0);
-            Assert.Equal(L.ShowVolumeButton, (slots & Shell.RightSlot.Volume) != 0);
-            Assert.Equal(L.ShowVolumeSlider, (slots & Shell.RightSlot.VolumeSlider) != 0);
+            Assert.Equal(L.ShowShuffleRepeat, (slots & RightSlot.Shuffle) != 0);
+            Assert.Equal(L.ShowShuffleRepeat, (slots & RightSlot.Repeat) != 0);
+            Assert.Equal(L.ShowVolumeButton, (slots & RightSlot.Volume) != 0);
+            Assert.Equal(L.ShowVolumeSlider, (slots & RightSlot.VolumeSlider) != 0);
             // Lyrics stays a face-only slot: RESERVED wherever the tier shows it, whatever plays.
-            Assert.Equal(L.ShowLyrics, (slots & Shell.RightSlot.Lyrics) != 0);
-            // The video split is the ONE slot with a state input: the queue tier AND a video.
-            Assert.Equal(L.ShowQueue && video, (slots & Shell.RightSlot.Video) != 0);
-            Assert.Equal(L.ShowQueue, (slots & Shell.RightSlot.Queue) != 0);
-            Assert.Equal(L.ShowDevices, (slots & Shell.RightSlot.Devices) != 0);
-            Assert.Equal(L.ShowExpand, (slots & Shell.RightSlot.Expand) != 0);
-            Assert.Equal(Shell.PlayerBarRules.OverflowSlotReserved(L), (slots & Shell.RightSlot.More) != 0);
+            Assert.Equal(L.ShowLyrics, (slots & RightSlot.Lyrics) != 0);
+            // The video split is the ONE slot with a state input: a level that carries it AND a video.
+            Assert.Equal(L.ShowVideoSplit && video, (slots & RightSlot.Video) != 0);
+            Assert.Equal(L.ShowQueue, (slots & RightSlot.Queue) != 0);
+            Assert.Equal(L.ShowDevices, (slots & RightSlot.Devices) != 0);
+            Assert.Equal(L.ShowExpand, (slots & RightSlot.Expand) != 0);
+            Assert.Equal(Shell.PlayerBarRules.OverflowSlotReserved(L), (slots & RightSlot.More) != 0);
         }
     }
 
@@ -560,7 +561,7 @@ public class PlayerBarSlotReservationTests
     {
         // The invariant the reservation rests on: at every tier the menu is non-empty iff the slot is reserved, for
         // EVERY combination of transport ownership, activity and video — so no state can make "⋯" appear or vanish.
-        Span<Shell.OverflowCommand> buffer = stackalloc Shell.OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
+        Span<OverflowCommand> buffer = stackalloc OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
         foreach (var tier in Tiers)
         {
             var L = Shell.PlayerBarLayout.ForTier(tier);
@@ -586,15 +587,15 @@ public class PlayerBarSlotReservationTests
         foreach (var state in States)
         {
             bool active = state == Shell.PlayerState.Active;
-            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Lyrics, state, hasVideo: true));
-            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Lyrics, state, hasVideo: false));
-            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: true));
-            Assert.False(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: false));
-            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Shuffle, state, false));
-            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Volume, state, false));
-            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Queue, state, false));
-            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Devices, state, false));
-            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.More, state, false));
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Lyrics, state, hasVideo: true));
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Lyrics, state, hasVideo: false));
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Video, state, hasVideo: true));
+            Assert.False(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Video, state, hasVideo: false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Shuffle, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Volume, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Queue, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.Devices, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(RightSlot.More, state, false));
         }
     }
 

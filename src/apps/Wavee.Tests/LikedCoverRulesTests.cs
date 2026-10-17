@@ -216,13 +216,6 @@ public class LikedCoverRulesTests
         Assert.Empty(LikedCoverRules.Tiles((IReadOnlyList<LikedTileInput>)null!));
     }
 
-    [Fact]
-    public void ToneAnchorIsTheNewestTileOrNothing()
-    {
-        Assert.Equal("first", LikedCoverRules.ToneAnchorUrl(new[] { "first", "second" }));
-        Assert.Null(LikedCoverRules.ToneAnchorUrl(Array.Empty<string>()));
-    }
-
     /// <summary>0.3: the rule over liked HANDLES — newest-first edge order, the album SLOT as the album key (dedupe by
     /// slot, never by a string), the IMAGE ID as the url identity, an image-less row skipped, and an album-less row
     /// (slot 0) deduped on its image alone.</summary>
@@ -501,7 +494,7 @@ public class LikedCoverRulesTests
 
     // ── The site ladder: what a cover of size s actually paints ─────────────────────────────────────────────────────
 
-    /// <summary>The composition's treatment floor (User.Cover.cs <c>BadgeMinSize</c>), restated because it is INJECTED
+    /// <summary>The composition's treatment floor (ClassicLikedTreatments <c>BadgeMinSize</c>), restated because it is INJECTED
     /// into <c>Site</c> — the composition owns the floor, the rules own the ladder — so this is a fixture, not a second
     /// definition.</summary>
     const float Floor = 140f;
@@ -552,23 +545,4 @@ public class LikedCoverRulesTests
                 }
             }
     }
-
-    // ── Aspect: what a NON-square slot does ─────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(150f, 150f, true)]
-    [InlineData(149.9997f, 150f, true)]
-    [InlineData(150f, 149.6f, true)]
-    [InlineData(56f, 32f, false)]
-    [InlineData(300f, 260f, false)]
-    public void IsSquare_ToleratesSubDipDrift(float w, float h, bool expected)
-        => Assert.Equal(expected, LikedCoverRules.IsSquare(w, h));
-
-    [Theory]
-    [InlineData(56f, 32f, 56f)]
-    [InlineData(300f, 260f, 300f)]
-    [InlineData(32f, 56f, 56f)]
-    [InlineData(150f, 150f, 150f)]
-    public void FitSide_TakesTheLongerEdge(float w, float h, float expected)
-        => Assert.Equal(expected, LikedCoverRules.FitSide(w, h));
 }

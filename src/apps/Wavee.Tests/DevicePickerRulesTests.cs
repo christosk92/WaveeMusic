@@ -146,7 +146,7 @@ public class SkipRuleTests
     [Fact]
     public void Every_surface_reading_the_same_inputs_gets_the_same_facts()
     {
-        // The bar, the stage and the video overlay all read `Shell.TransportFacts()`, which is this one fold.
+        // The bar, the stage and the video overlay all read `PlayerVerbs.TransportFacts()`, which is this one fold.
         Assert.Equal(Facts(error: Playback.Fault.Network, next: false), Facts(error: Playback.Fault.Network, next: false));
         Assert.False(Facts(next: false).NextEnabled);   // a restricted context greys Next on all three, not just the bar
     }

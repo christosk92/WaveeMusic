@@ -38,43 +38,21 @@ public sealed class PrefsTests : IDisposable
     {
         // The epoch caches NOTHING. A value written behind the epoch's back (a settings import, a second window) is
         // still what the next read returns.
-        _store.Set(Platform.Keys.ColorWashesEnabled, false);
-        Assert.False(Prefs.Appearance.ColorWashes());
-        _store.Set(Platform.Keys.ColorWashesEnabled, true);
-        Assert.True(Prefs.Appearance.ColorWashes());
-    }
-
-    [Fact]
-    public void An_absent_store_answers_every_key_with_its_default()
-    {
-        Platform.UseSettings(null);
-        Assert.Equal(Platform.Keys.RowDensity.Default, Prefs.Appearance.RowDensity());
-        Assert.Equal(Platform.Keys.HideTrackArtwork.Default, Prefs.Appearance.TrackArtworkHidden());
+        _store.Set(Platform.Keys.MarqueeEnabled, false);
+        Assert.False(Prefs.Appearance.Marquee());
+        _store.Set(Platform.Keys.MarqueeEnabled, true);
+        Assert.True(Prefs.Appearance.Marquee());
     }
 
     [Fact]
     public void The_epochs_are_independent_fan_out_boundaries()
     {
-        // A row-density change must not re-render every mounted lyrics view.
+        // A marquee change must not re-render every mounted lyrics view.
         int lyrics = Prefs.Lyrics.Epoch.Peek();
-        int hero = Prefs.DetailHero.Epoch.Peek();
-        Prefs.Appearance.Set(Platform.Keys.RowDensity, 2);
+        int rails = DetailRailPrefs.Epoch.Peek();
+        Prefs.Appearance.Set(Platform.Keys.MarqueeEnabled, false);
         Assert.Equal(lyrics, Prefs.Lyrics.Epoch.Peek());
-        Assert.Equal(hero, Prefs.DetailHero.Epoch.Peek());
-    }
-
-    [Fact]
-    public void BumpAll_moves_every_epoch()
-    {
-        int a = Prefs.Appearance.Epoch.Peek(), l = Prefs.Lyrics.Epoch.Peek(), d = Prefs.DetailHero.Epoch.Peek(),
-            n = Prefs.NpvPlayer.Epoch.Peek(), p = Prefs.PlayerBar.Epoch.Peek(), s = Prefs.Stage.Epoch.Peek();
-        Prefs.BumpAll();
-        Assert.Equal(a + 1, Prefs.Appearance.Epoch.Peek());
-        Assert.Equal(l + 1, Prefs.Lyrics.Epoch.Peek());
-        Assert.Equal(d + 1, Prefs.DetailHero.Epoch.Peek());
-        Assert.Equal(n + 1, Prefs.NpvPlayer.Epoch.Peek());
-        Assert.Equal(p + 1, Prefs.PlayerBar.Epoch.Peek());
-        Assert.Equal(s + 1, Prefs.Stage.Epoch.Peek());
+        Assert.Equal(rails, DetailRailPrefs.Epoch.Peek());
     }
 
     // ── the clamps ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -89,13 +67,6 @@ public sealed class PrefsTests : IDisposable
         => Assert.Equal(expected, Prefs.Clamp(value, count));
 
     [Fact]
-    public void A_hand_edited_density_reads_as_compact_rather_than_as_nothing()
-    {
-        _store.Set(Platform.Keys.RowDensity, 99);
-        Assert.Equal(0, Prefs.Appearance.RowDensity());
-    }
-
-    [Fact]
     public void A_downgraded_liked_cover_treatment_reads_as_stock()
     {
         // A build that shipped more treatments wrote a rung this one does not have.
@@ -103,22 +74,6 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(0, Prefs.Appearance.LikedCover(treatmentCount: 9));
         _store.Set(Platform.Keys.LikedCoverStyle, 4);
         Assert.Equal(4, Prefs.Appearance.LikedCover(treatmentCount: 9));
-    }
-
-    /// <summary>A profile that never picked a page motion resolves to <see cref="Design.Nav.DefaultStyle"/> — Classic —
-    /// because the KEY takes its default from that same constant. The Settings row is developer-only, so this is what a
-    /// normal build navigates with; a profile that DID pick one keeps its pick, downgrade-clamped like every other rung.</summary>
-    [Fact]
-    public void A_fresh_profile_navigates_at_the_default_page_motion_and_a_chosen_style_survives()
-    {
-        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
-        Assert.Equal((int)Design.Nav.DefaultStyle, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
-
-        _store.Set(Platform.Keys.PageMotionStyle, (int)Design.PageMotionStyle.Spatial);
-        Assert.Equal((int)Design.PageMotionStyle.Spatial, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
-        // A style a downgrade no longer has still reads as a real style, never as nothing.
-        _store.Set(Platform.Keys.PageMotionStyle, 40);
-        Assert.Equal(0, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
     }
 
     /// <summary>#185: a fresh profile shows the countdown AND the update time (what earlier builds showed); a pick is
@@ -204,25 +159,45 @@ public sealed class PrefsTests : IDisposable
     }
 
     [Fact]
-    public void Blur_minus_one_is_AUTO_and_is_never_confused_with_off()
+    public void The_blur_default_is_100_not_the_removed_Auto()
     {
-        Prefs.Lyrics.SetBlurStrength(-40);
-        Assert.Equal(-1, Prefs.Lyrics.BlurStrength());
-        Prefs.Lyrics.SetBlurStrength(0);
-        Assert.Equal(0, Prefs.Lyrics.BlurStrength());
-        Prefs.Lyrics.SetBlurStrength(250);
-        Assert.Equal(100, Prefs.Lyrics.BlurStrength());
+        Assert.Equal(100, Platform.Keys.LyricsBlurStrength.Default);
+        Assert.Equal(100, Prefs.Lyrics.BlurStrength());   // a fresh store
     }
 
-    // ── the detail layout ────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void A_page_layout_write_bumps_the_detail_epoch()
+    [Theory]
+    [InlineData(-1)]    // the removed Auto choice persisted -1: it reads as 100 so an Auto profile keeps its blur
+    [InlineData(-9)]
+    [InlineData(140)]
+    public void A_stored_out_of_range_blur_reads_as_100(int stored)
     {
-        int before = Prefs.DetailHero.Epoch.Peek();
-        Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Hero);
-        Assert.Equal(before + 1, Prefs.DetailHero.Epoch.Peek());
-        Assert.Equal(Prefs.DetailHero.Hero, Prefs.DetailHero.PageLayout());
+        _store.Set(Platform.Keys.LyricsBlurStrength, stored);
+        Assert.Equal(100, Prefs.Lyrics.BlurStrength());
+        Assert.Equal(100, Prefs.Lyrics.FromStored(stored));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]      // 0 is a real, deliberate "off"
+    [InlineData(1, 1)]
+    [InlineData(55, 55)]
+    [InlineData(100, 100)]
+    public void A_stored_in_range_blur_reads_as_itself(int stored, int expected)
+    {
+        _store.Set(Platform.Keys.LyricsBlurStrength, stored);
+        Assert.Equal(expected, Prefs.Lyrics.BlurStrength());
+    }
+
+    [Theory]
+    [InlineData(-40, 0)]    // no Auto value is ever written: a negative clamps to 0 (off)
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(37, 37)]
+    [InlineData(250, 100)]
+    public void Setting_the_blur_clamps_to_0_to_100(int value, int expected)
+    {
+        Prefs.Lyrics.SetBlurStrength(value);
+        Assert.Equal(expected, _store.Get(Platform.Keys.LyricsBlurStrength));
+        Assert.Equal(expected, Prefs.Lyrics.BlurStrength());
     }
 
     // ── the now-playing player ───────────────────────────────────────────────────────────────────────────────────────

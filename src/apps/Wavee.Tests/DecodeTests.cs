@@ -1461,7 +1461,6 @@ public class DecodeTests
         Assert.Equal(Table.None, track.VideoCounterpart.Slot);
         Assert.Equal(1080, track.VideoWidth);                  // a vertical video opens vertical, not 16:9
         Assert.Equal(1920, track.VideoHeight);
-        Assert.False(track.IsLiveVideo);                       // the default is FINITE; only the video host flips it
     }
 
     // ── the trait kinds the decoder used to drop (G-044) ────────────────────────────────────────────────────────────

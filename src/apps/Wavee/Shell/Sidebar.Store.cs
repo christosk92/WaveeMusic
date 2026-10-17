@@ -14,14 +14,6 @@ using System.Text.Json.Serialization;
 
 namespace Wavee;
 
-/// <summary>Why the last commit did not land (a write fault never latches: the next good commit clears it).</summary>
-public enum SidebarSaveFault : byte
-{
-    None = 0,
-    DocumentTooLarge = 2,   // the serialized file exceeds SidebarFileStore.MaxDocumentBytes (256 KiB)
-    IoFailure = 3,          // directory / fsync / atomic-replace failure
-}
-
 /// <summary>How reading one sidebar file ended. The caller parses; the store only moves bytes.</summary>
 public enum SidebarFileReadOutcome : byte { Missing = 0, Ok = 1, Unreadable = 2 }
 
@@ -41,7 +33,7 @@ public readonly record struct SidebarFileRead(SidebarFileReadOutcome Outcome, by
 public sealed class SidebarFileStore
 {
     /// <summary>The whole-document budget. Checked against the SERIALIZED bytes, before any file is touched: an
-    /// over-budget snapshot is dropped whole and classified <see cref="SidebarSaveFault.DocumentTooLarge"/>.</summary>
+    /// over-budget snapshot is dropped whole and classified <see cref="SidebarPersistenceFault.DocumentTooLarge"/>.</summary>
     public const int MaxDocumentBytes = 256 * 1024;
 
     /// <summary>The coalescing window (named per house style — see <c>Spotify.Connect.cs:199</c>'s
@@ -62,9 +54,6 @@ public sealed class SidebarFileStore
     byte[]? _pendingSnapshot;
     TaskCompletionSource<bool>? _pendingWrite;   // completes when the CURRENTLY-armed cycle's write lands
 
-    volatile SidebarSaveFault _saveFault;
-    volatile string? _saveFaultDetail;
-
     SidebarWriteResult _lastWriteResult = SidebarWriteResult.Healthy;
     Action<SidebarWriteResult>? _writeCompleted;
     SidebarPersistenceFault _lastReportedWriteFault;
@@ -76,17 +65,9 @@ public sealed class SidebarFileStore
     public string TmpPath => _path + ".tmp";
     public string CorruptPath => _path + ".corrupt";
 
-    /// <summary>Why the last write attempt refused the disk, or <c>None</c>. This does NOT latch: the next in-budget
+    /// <summary>The most recent completed write attempt. Readable from any thread. A fault does NOT latch: the next in-budget
     /// commit clears it. The size cap needs the serialized bytes and lands with the debounced write (observable after
     /// <see cref="WaitForWrites"/>).</summary>
-    public SidebarSaveFault SaveFault => _saveFault;
-
-    /// <summary>How many bytes, or the I/O failure, for Settings › Sidebar. Null when <see cref="SaveFault"/> is None.</summary>
-    public string? SaveFaultDetail => _saveFaultDetail;
-
-    public bool SaveFaulted => _saveFault != SidebarSaveFault.None;
-
-    /// <summary>The most recent completed write attempt. Readable from any thread.</summary>
     public SidebarWriteResult LastWriteResult { get { lock (_resultGate) return _lastWriteResult; } }
 
     /// <summary>Completion edge for the UI-thread owner. Invoked on the writing (pool) thread — the caller must marshal
@@ -175,8 +156,6 @@ public sealed class SidebarFileStore
                 if (bytes.Length > MaxDocumentBytes)
                 {
                     string detail = $"Document is {bytes.Length} B, over the {MaxDocumentBytes} B budget.";
-                    _saveFault = SidebarSaveFault.DocumentTooLarge;
-                    _saveFaultDetail = detail;
                     completion = new SidebarWriteResult(
                         false, SidebarPersistenceFault.DocumentTooLarge, bytes.Length, Environment.TickCount64 - start, detail);
                     goto Complete;
@@ -205,15 +184,11 @@ public sealed class SidebarFileStore
                 }
 
                 // A write that landed clears a previous budget fault.
-                _saveFault = SidebarSaveFault.None;
-                _saveFaultDetail = null;
                 completion = new SidebarWriteResult(true, SidebarPersistenceFault.None, bytes.Length, Environment.TickCount64 - start, null);
             }
             catch (Exception ex)
             {
                 const string safe = "The sidebar layout could not be saved.";
-                _saveFault = SidebarSaveFault.IoFailure;
-                _saveFaultDetail = safe;
                 completion = new SidebarWriteResult(false, SidebarPersistenceFault.IoFailure, 0, Environment.TickCount64 - start, safe);
                 Log.Warn("sidebar", "sidebar.layout.write_exception", ex);
                 try { if (File.Exists(TmpPath)) File.Delete(TmpPath); } catch (Exception) { }
@@ -296,7 +271,6 @@ public sealed class SidebarSectionStateDto
     public string[]? ItemOrder { get; set; }
     public string? Sort { get; set; }          // "recents" | "recentlyAdded" | "alphabetical" | "creator" | "customOrder"
     public bool? Descending { get; set; }
-    public string? View { get; set; }          // "list" | "grid"
     public bool? ShowLiked { get; set; }
 }
 
@@ -312,6 +286,8 @@ public sealed class SidebarAccountFileDto
     public SidebarLocalPinDto[]? Local { get; set; }
     /// <summary>Last-known names of synced pins (design Q9: a pending pin paints its last name, never blank).</summary>
     public Dictionary<string, string>? Names { get; set; }
+    /// <summary>Last-known cover image ids of synced pins (S9: an offline pin keeps its last title AND cover).</summary>
+    public Dictionary<string, string>? Covers { get; set; }
     public string[]? ExpandedFolders { get; set; }
     public long NewReleasesSeenMs { get; set; }
     public SidebarFirstSeenDto[]? FirstSeen { get; set; }
@@ -323,6 +299,7 @@ public sealed class SidebarLocalPinDto
     public string? Kind { get; set; }          // SidebarPinWire.KindName
     public string? Uri { get; set; }
     public string? Name { get; set; }
+    public string? Cover { get; set; }
     public long AddedAtMs { get; set; }
 }
 
@@ -415,7 +392,6 @@ public static class SidebarStoreV3
                 ItemOrder = s.ItemOrder is { Count: > 0 } o ? [.. o] : null,
                 Sort = s.Sort is { } sort ? SortName(sort) : null,
                 Descending = s.Descending,
-                View = s.View is { } view ? (view == SidebarLibraryView.Grid ? "grid" : "list") : null,
                 ShowLiked = s.ShowLiked,
             };
         }
@@ -438,7 +414,6 @@ public static class SidebarStoreV3
                 ItemOrder: d.ItemOrder,
                 Sort: TryParseSort(d.Sort, out var sort) ? sort : null,
                 Descending: d.Descending,
-                View: d.View switch { "grid" => SidebarLibraryView.Grid, "list" => SidebarLibraryView.List, _ => null },
                 ShowLiked: d.ShowLiked));
         }
         return new LayoutOverlay(layout, sections.ToArray());
@@ -494,18 +469,20 @@ public static class SidebarAccountStore
         var order = new string[data.Pins.Count];
         var local = new List<SidebarLocalPinDto>();
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        var covers = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < order.Length; i++)
         {
             var p = data.Pins[i];
             order[i] = p.Id;
-            if (PinSyncRules.IsSyncable(p.Id, ""))
+            if (PinSyncRules.IsSyncable(p.Id))
             {
                 if (p.Name.Length > 0) names[p.Id] = p.Name;
+                if (p.Cover.Length > 0) covers[p.Id] = p.Cover;
             }
             else local.Add(new SidebarLocalPinDto
             {
                 Id = p.Id, Kind = SidebarPinWire.KindName(p.Kind), Uri = p.Uri.Length > 0 ? p.Uri : null,
-                Name = p.Name.Length > 0 ? p.Name : null, AddedAtMs = p.AddedAtMs,
+                Name = p.Name.Length > 0 ? p.Name : null, Cover = p.Cover.Length > 0 ? p.Cover : null, AddedAtMs = p.AddedAtMs,
             });
         }
         var dto = new SidebarAccountFileDto
@@ -516,6 +493,7 @@ public static class SidebarAccountStore
             Pins = order.Length > 0 ? order : null,
             Local = local.Count > 0 ? local.ToArray() : null,
             Names = names.Count > 0 ? names : null,
+            Covers = covers.Count > 0 ? covers : null,
             ExpandedFolders = data.ExpandedFolders.Count > 0 ? [.. data.ExpandedFolders] : null,
             NewReleasesSeenMs = data.NewReleasesSeenMs,
             FirstSeen = data.FirstSeen.Count > 0 ? [.. data.FirstSeen] : null,
@@ -546,12 +524,13 @@ public static class SidebarAccountStore
                 if (local.TryGetValue(id, out var rec))
                 {
                     if (!SidebarPinWire.TryParseKind(rec.Kind, out var kind)) continue;
-                    pins.Add(new SidebarPin(id, kind, rec.Uri ?? "", rec.Name ?? "", rec.AddedAtMs));
+                    pins.Add(new SidebarPin(id, kind, rec.Uri ?? "", rec.Name ?? "", rec.AddedAtMs) { Cover = rec.Cover ?? "" });
                     continue;
                 }
-                if (!PinSyncRules.IsSyncable(id, "")) continue;
+                if (!PinSyncRules.IsSyncable(id)) continue;
                 string name = dto.Names is { } n && n.TryGetValue(id, out var cached) ? cached : "";
-                pins.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0L));
+                string cover = dto.Covers is { } c && c.TryGetValue(id, out var cachedCover) ? cachedCover : "";
+                pins.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0L) { Cover = cover });
             }
         data = new SidebarAccountData(key, dto.MigratedToServer, pins, dto.ExpandedFolders ?? [], dto.NewReleasesSeenMs,
             dto.FirstSeen ?? []);

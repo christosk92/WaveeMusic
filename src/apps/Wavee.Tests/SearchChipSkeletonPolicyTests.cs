@@ -4,6 +4,7 @@
 // is `Search.ShowChipSkeleton` in 0.3 (Entities/Search.cs) — same two inputs, same answer; only the call shape changed.
 
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -38,9 +39,9 @@ public class SearchChipSkeletonPolicyTests
     {
         // The placeholder row is the known facet superset (All + the ten fallback facets), so it wraps to the same two
         // rows the real strip usually does.
-        Assert.Equal(SearchTable.FacetCount, Search.ChipSkeletonWidths.Length);
+        Assert.Equal(SearchTable.FacetCount, ClassicSearchRules.ChipSkeletonWidths.Length);
         Assert.Equal(SearchTable.FacetCount - 1, Search.FallbackFacets.Length);
-        foreach (float w in Search.ChipSkeletonWidths) Assert.True(w > 0f);
+        foreach (float w in ClassicSearchRules.ChipSkeletonWidths) Assert.True(w > 0f);
     }
 
     /// <summary>The tabs used to paint a beat before any result: the chips and the ranked hits land in one commit, but

@@ -1,5 +1,6 @@
 // ── Entities/Detail.cs ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE SHARED DETAIL FRAME'S PURE RULES: the width breakpoints and their hysteresis, the vertical/hero arithmetic (the
+// THE SHARED DETAIL FRAME'S PURE RULES: the page modes and the page-width estimate (the mode and table LADDERS are the structure's since TC5:
+// `TierPolicy.Ladders`, Classic `Rules\Tiers.Detail.cs`), the vertical/hero arithmetic (the
 // title type plan, the reserved band, the collapse ladder, the slot map), the rail policy and its persisted keys, the
 // header merge, the notice ladder, the context band's geometry and scroll spy, the cover latch, the skeleton's bar
 // geometry, the per-kind config table, the header text (eyebrow / byline / meta lines) and the per-context sort keys.
@@ -30,8 +31,8 @@
 // list state (Playlist.RowsStateOf). Deleted, not ported: DetailLiveRefresh, DetailOwnerIds, HeroCta,
 // DetailRail.BilledArtists, DetailConfig.CapTitle/Columns, PreReleaseDerivation/AlbumReleaseFactsRules (Album.cs, Wave 5).
 //
-// Engine-free except Loc (FluentGpu.Localization) and ItemsSelectionMode (FluentGpu.Controls): nothing here reads a
-// signal, mounts a node or ticks a clock.
+// Engine-free except Loc (FluentGpu.Localization) and ItemsSelectionMode (FluentGpu.Controls): nothing here mounts a node or
+// ticks a clock, and the one signal read is `VerticalLayout.ActionRowExtra`'s untracked peek of the window tier's record (TC5).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -61,79 +62,51 @@ public enum HeartMode : byte { None, Save, Follow }
 /// rail on either moves both. The ordinal is the frame's rail-cell index — append only.</summary>
 public enum RailScope : byte { Album, Playlist, Liked, Show, Uniform }
 
-/// <summary>Identity of one slot in the vertical (hero-system) list viewport.</summary>
-public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Footer, Empty }
+/// <summary>Identity of one slot in the vertical (hero-system) list viewport. <see cref="VerticalItemRole.Recommendations"/>: the playlist's "Recommended songs"
+/// section after the rows (C-Playlist-Compact, C-Empty-Compact).</summary>
+public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Empty, Recommendations }
 
 public static partial class Detail
 {
     // ══ 1. BREAKPOINTS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The page's width ladders with resize hysteresis: the table TIER ladder (measured on the right column)
-    /// and the page MODE ladder (measured on the page's own content column). Different boxes — keep them apart.</summary>
+    /// <summary>The page's two width ladders' IDENTITIES: the table TIER (measured on the list column, 0 the widest … 6) and the page MODE
+    /// (measured on the page's own content column, 0 the widest two-column arm … <see cref="VerticalMode"/>). Different boxes — keep them
+    /// apart. WHERE they break and how they hold is the structure's (its <c>TierPolicy</c>'s named ladders, <see cref="Wavee.Theming.DetailLadders"/>,
+    /// Classic: <c>Tiers.Detail.cs</c>, TC5): the frame and the table resolve them through <c>UseTier</c>, so a crossing found after mount commits
+    /// on the first non-resized frame and animates (themes plan 3.3). What stays here is the page arithmetic every arm needs.</summary>
     public static class Breakpoints
     {
+        /// <summary>The relief ladder's re-admit band and the shared hysteresis grammar of the width-fitted lanes (the search field, the
+        /// table's relief): yield at once, re-admit once the width clears the threshold by this much.</summary>
         public const float TierHysteresisDip = 24f;
-        public const float ModeHysteresisDip = 24f;
-
-        public static int NominalTierFor(float w) =>
-            w <= 0f ? 0 : w >= 860f ? 0 : w >= 720f ? 1 : w >= 560f ? 2 : w >= 440f ? 3 : w >= 340f ? 4 : w >= 300f ? 5 : 6;
-
-        /// <summary>Pre-measure seed, so a 360-DIP launch never composes the wide table for its first frame.</summary>
-        public static int InitialTierForViewport(float viewportWidth) => NominalTierFor(viewportWidth);
 
         /// <summary>The WINDOW viewport overstates the page by roughly a sidebar. Deliberately the sidebar's SMALLEST
         /// plausible footprint: a too-small allowance can seed a too-wide arm (the hero-remount flicker this exists to
-        /// prevent); a too-large one only seeds a narrower arm, which the next Measure self-corrects.</summary>
+        /// prevent); a too-large one only seeds a narrower arm, which the next Measure self-corrects. The fallback where
+        /// no frame published the content width (<c>TierFacts.ContentWidth</c>).</summary>
         public const float ShellChromeAllowanceDip = Design.Size.NavPaneW;
 
         /// <summary>A pre-measure PAGE width from the WINDOW viewport — what the mode/tier seeds and the vertical hero's
-        /// pre-measure geometry read instead of the raw viewport.</summary>
+        /// pre-measure geometry read where no frame published the content width.</summary>
         public static float EstimatePageWidthFromViewport(float viewportWidth)
             => MathF.Max(0f, viewportWidth - ShellChromeAllowanceDip);
 
-        /// <summary>Narrow immediately; re-admit a column only once the width clears the threshold by
-        /// <see cref="TierHysteresisDip"/>. <paramref name="initialized"/> false ⇒ <paramref name="prev"/> is a seed,
-        /// not a tier the user has seen: take the nominal tier outright.</summary>
-        public static int TierFor(float w, int prev, bool initialized = true)
-        {
-            if (w <= 0f) return prev;
-            if (!initialized) return NominalTierFor(w);
-            int nominal = NominalTierFor(w);
-            if (nominal >= prev) return nominal;
-            int dipped = NominalTierFor(w - TierHysteresisDip);
-            return dipped < prev ? dipped : prev;
-        }
+        /// <summary>The pre-measure PAGE width: the live viewport less what the frame's chrome took from it when the tiers were last resolved
+        /// (<paramref name="facts"/>: the window less the nav pane and an inline panel, synchronous, so the first frame is already in its final
+        /// mode). The facts are a snapshot taken at a crossing, so the chrome's share is read from them and applied to the LIVE width (a resize that
+        /// crossed nothing leaves their widths behind). <see cref="EstimatePageWidthFromViewport"/> where no frame resolved them.</summary>
+        public static float EstimatePageWidth(in Wavee.Theming.TierFacts facts, float viewportWidth)
+            => facts.ContentWidth > 0f && facts.ViewportWidth > 0f && viewportWidth > 0f
+                ? MathF.Max(0f, viewportWidth - MathF.Max(0f, facts.ViewportWidth - facts.ContentWidth))
+                : EstimatePageWidthFromViewport(viewportWidth);
 
         public const int VerticalMode = 3;
-        public const float VerticalEnterW = 540f;
-        public const float VerticalExitW = 580f;
         public const float TwoColumnContentMinW = 300f;
 
         /// <summary>The vertical page may use tier 6 all the way down; two-column frames keep the 300-DIP guard.</summary>
         public static float ContentMinWidthForMode(int mode)
             => mode == VerticalMode ? 0f : TwoColumnContentMinW;
-
-        public static int NominalModeFor(float w) =>
-            w <= 0f ? 0 : w >= 820f ? 0 : w >= 660f ? 1 : w >= 560f ? 2 : VerticalMode;
-
-        /// <summary>Pre-measure page-system seed. Ultra-narrow launches choose Vertical before the first bounds callback.</summary>
-        public static int InitialModeForViewport(float viewportWidth) => NominalModeFor(viewportWidth);
-
-        /// <summary>820/660 crossings use <see cref="ModeHysteresisDip"/>; the 540/580 vertical band is its own. A
-        /// Vertical answer on a widening measurement (nominal or dipped) is coerced to 2.</summary>
-        public static int ModeFor(float w, int currentMode, bool initialized)
-        {
-            if (w <= 0f) return currentMode;
-            if (!initialized) return NominalModeFor(w);
-            if (currentMode == VerticalMode) return w >= VerticalExitW ? NominalModeFor(w) : VerticalMode;
-            if (w < VerticalEnterW) return VerticalMode;
-            int nominal = NominalModeFor(w);
-            if (nominal == VerticalMode) return 2;
-            if (nominal >= currentMode) return nominal;
-            int dipped = NominalModeFor(w - ModeHysteresisDip);
-            if (dipped == VerticalMode) dipped = 2;
-            return dipped < currentMode ? dipped : currentMode;
-        }
     }
 
     // ══ 2. THE VERTICAL / HERO ARITHMETIC ════════════════════════════════════════════════════════════════════════════
@@ -143,10 +116,6 @@ public static partial class Detail
     /// <see cref="RowFlowEnterW"/> the artwork stacks above the identity column; at or above it the two sit side by side.</summary>
     public static class VerticalLayout
     {
-        /// <summary><c>Platform.Keys.DetailPageLayout</c> values: Automatic (rail when wide) · Hero (every width).</summary>
-        public const int PageAuto = 0;
-        public const int PageHero = 1;
-
         public const float HeroPad = 24f;
         public const float NarrowHeroPad = 16f;
         /// <summary>Below this column width a STACKED hero uses the narrow pad/gap.</summary>
@@ -293,10 +262,6 @@ public static partial class Detail
         public const float PulseRowHeight = 28f;
         /// <summary>The chart playlist's "N new entries · date" caption (W28): reserved like the pulse, one line.</summary>
         public const float ChartRowHeight = 16f;
-        /// <summary>The editable title's hover-pill pencil: a 20-DIP box after an 8-DIP gap (#92).</summary>
-        public const float EditableTitlePencilW = 20f, EditableTitlePencilGap = 8f;
-        /// <summary>The editable title run's own width — the wrap width less the pencil slot, floored at 0 (#92).</summary>
-        public static float EditableTitleMeasure(float wrapWidth) => MathF.Max(0f, wrapWidth - EditableTitlePencilW - EditableTitlePencilGap);
         public const float ActionRowHeight = 36f;          // Play button 32 + the row's 4-DIP top margin
         public const float DescriptionLineHeight = 18f;    // the 13px expandable blurb
         public const float IdentityGap = 4f;
@@ -418,7 +383,7 @@ public static partial class Detail
         /// The description is no longer one of them: it left the column for the band beneath it
         /// (<see cref="DescriptionBandHeight"/>).</summary>
         public static (float Height, int Blocks) IdentityChrome(bool eyebrow, bool attribution, bool meta, bool pulse,
-                                                               bool rowFlow, bool chart = false)
+                                                               bool chart = false)
         {
             float h = 0f; int blocks = 1;
             if (eyebrow) { h += EyebrowRowHeight; blocks++; }
@@ -427,9 +392,15 @@ public static partial class Detail
             if (meta) { h += MetaRowHeight; blocks++; }
             if (pulse) { h += PulseRowHeight; blocks++; }
             if (chart) { h += ChartRowHeight; blocks++; }
-            h += ActionRowHeight; blocks++;
+            h += ActionRowHeight + ActionRowExtra; blocks++;
             return (h, blocks);
         }
+
+        /// <summary>How much taller than <see cref="ActionRowHeight"/> the window tier's action row is (the structure's
+        /// <c>DetailTierLayout.HeroActionExtra</c>: Classic Compact's 40 targets add 8). One untracked read of the facts, so the skeleton's reserved
+        /// band and the loaded hero's pre-measure binds still agree row for row; 0 where no structure resolved the tiers.</summary>
+        public static float ActionRowExtra
+            => Wavee.Theming.ThemeHost.Policies.Peek().DetailTiers.For(Wavee.Theming.ThemeHost.Facts.Peek().Tiers).HeroActionExtra;
 
         /// <summary>Row flow's title HEIGHT BUDGET: the cover edge less the other chrome and its gaps. The description
         /// lives in the band under the hero now, never in this column, so it never steers the title's size. Stacked ⇒ 0.</summary>
@@ -437,7 +408,7 @@ public static partial class Detail
             bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
             if (!rowFlow) return 0f;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow: true, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, chart);
             return MathF.Max(0f, ArtworkFor(colW, rowFlow) - chrome - (blocks - 1) * IdentityGap);
         }
 
@@ -515,10 +486,10 @@ public static partial class Detail
         /// <summary>The identity column's height: chrome + this plan's block + one gap per block boundary. The
         /// description no longer contributes here — it is a sibling block under the whole hero row
         /// (<see cref="DescriptionBandHeight"/>), not a row inside this column.</summary>
-        public static float IdentityHeightFor(in TitleTypePlan title, bool rowFlow,
+        public static float IdentityHeightFor(in TitleTypePlan title,
             bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, chart);
             return chrome + title.BlockHeight + (blocks > 1 ? (blocks - 1) * IdentityGap : 0f);
         }
 
@@ -531,7 +502,7 @@ public static partial class Detail
             bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
             if (!rowFlow) return IdentityGap;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, chart);
             int gaps = Math.Max(1, blocks - 1);
             float slack = ArtworkFor(colW, rowFlow) - (chrome + title.BlockHeight + gaps * IdentityGap);
             if (slack <= 0f) return IdentityGap;
@@ -546,7 +517,7 @@ public static partial class Detail
             float w = colW > 0f ? colW : FallbackW;
             float pad = HeroPadFor(w, rowFlow);
             float art = ArtworkFor(w, rowFlow);
-            float identity = IdentityHeightFor(title, rowFlow, eyebrow, attribution, meta, pulse, chart);
+            float identity = IdentityHeightFor(title, eyebrow, attribution, meta, pulse, chart);
             float hero = rowFlow ? MathF.Max(art, identity) : art + HeroGapFor(w, rowFlow) + identity;
             return pad + hero + DescriptionBandHeight(rowFlow, description) + HeroBottomPad
                  + ExpandedToolbarTopPad + ToolbarRowHeight + ExpandedToolbarBottomPad;
@@ -581,27 +552,27 @@ public static partial class Detail
         /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
         public static float TrailingClipInset => CompactIdentityHeight;
 
-        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, then (hero system only) the facts
-        //    FOOTER — a slot, not a block in the identity column, so the page opens on its songs, not on charts.
+        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, and (a playlist that offers them) the recommendations after the
+        //    rows, as the two-column list appends them (C-Playlist-Compact). The facts are the insights sheet's (tuned Classic I1), never a list footer.
         public const int PrefixCount = 2;
 
-        /// <summary>Row slots held open; an empty / loading list keeps ONE (the placeholder).</summary>
-        public static int RowSlots(int visibleTracks) => Math.Max(1, visibleTracks);
+        /// <summary>Row slots held open; an empty / loading list keeps ONE (the placeholder). With the recommendations appended the rows are exactly
+        /// the visible ones: an EMPTY list shows the section alone (its lead says the list is empty), like the two-column list.</summary>
+        public static int RowSlots(int visibleTracks, bool recommendations = false)
+            => recommendations ? Math.Max(0, visibleTracks) : Math.Max(1, visibleTracks);
 
-        /// <summary>The facts footer: immediately after the last row slot.</summary>
-        public static int FooterIndex(int visibleTracks) => PrefixCount + RowSlots(visibleTracks);
+        /// <summary>The viewport's item total: the prefix, the row slots and the recommendations section.</summary>
+        public static int ItemCount(int visibleTracks, bool recommendations = false)
+            => PrefixCount + RowSlots(visibleTracks, recommendations) + (recommendations ? 1 : 0);
 
-        /// <summary>The viewport's item total; the footer is ONE extra item.</summary>
-        public static int ItemCount(int visibleTracks, bool hasFacts)
-            => PrefixCount + RowSlots(visibleTracks) + (hasFacts ? 1 : 0);
-
-        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks, bool hasFacts = false)
+        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks, bool recommendations = false)
         {
             if (itemIndex == 0) return VerticalItemRole.Hero;
             if (itemIndex == 1) return VerticalItemRole.Chrome;
             int display = itemIndex - PrefixCount;
-            if (display >= 0 && display < Math.Max(0, visibleTracks)) return VerticalItemRole.ExpandableTrack;
-            if (hasFacts && itemIndex == FooterIndex(visibleTracks)) return VerticalItemRole.Footer;
+            int rows = Math.Max(0, visibleTracks);
+            if (display >= 0 && display < rows) return VerticalItemRole.ExpandableTrack;
+            if (recommendations && display == rows) return VerticalItemRole.Recommendations;
             return VerticalItemRole.Empty;
         }
 
@@ -621,10 +592,6 @@ public static partial class Detail
         /// chasing a guessed artwork size.</summary>
         public static int ArtworkDecodePx(float artworkSize, bool widthMeasured)
             => widthMeasured ? ArtworkDecodePx(artworkSize) : 256;
-
-        /// <summary>The hero band the page tone measures against, floored before the hero is measured.</summary>
-        public static float BackdropBandFor(float heroHeight)
-            => MathF.Max(CompactIdentityHeight * 2f, heroHeight);
     }
 
     // ══ 3. THE RAIL POLICY ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -673,7 +640,7 @@ public static partial class Detail
         public static float MaxWidthForPage(float pageWidth, int mode)
         {
             if (!ComposesRail(mode) || pageWidth <= 0f) return MaxWidth;
-            float room = MathF.Min(pageWidth, Design.Size.PageMaxW) - GripStripW - Breakpoints.ContentMinWidthForMode(mode);
+            float room = MathF.Min(pageWidth, R.Space.PageMaxW) - GripStripW - Breakpoints.ContentMinWidthForMode(mode);
             room = MathF.Floor(room / MaxQuantum) * MaxQuantum;
             return Math.Clamp(room, MinWidth, MaxWidth);
         }
@@ -697,11 +664,16 @@ public static partial class Detail
         /// <summary>THE resting width: what the live rail shows for a (scope, mode, maximum), derived from the REMEMBERED
         /// width alone. Wide arm — the persisted width, as ever. Narrow arms — the breakpoint rail until the user has
         /// dragged this scope, then their own width. Always clamped through <see cref="ClampLive"/>, and the clamp is
-        /// never written back to the store, so widening the window restores the remembered width.</summary>
-        public static float RestingWidth(float storedWidth, RailScope scope, int mode, float maxWidth)
+        /// never written back to the store, so widening the window restores the remembered width.
+        /// <para><paramref name="wideRest"/> (the window tier's, <c>DetailTierLayout.RailRest</c>: Classic Huge's 320) replaces the authored
+        /// default in the wide arm while the scope has never been dragged; 0 keeps it. A dragged scope always rests at its own width.</para></summary>
+        public static float RestingWidth(float storedWidth, RailScope scope, int mode, float maxWidth, float wideRest = 0f)
         {
             float stored = ClampStored(storedWidth, scope);
-            float want = mode == WideMode || HasDraggedWidth(storedWidth, scope) ? stored : NarrowRestWidthFor(mode);
+            bool dragged = HasDraggedWidth(storedWidth, scope);
+            float want = dragged ? stored
+                : mode == WideMode ? (wideRest > 0f ? wideRest : stored)
+                : NarrowRestWidthFor(mode);
             return ClampLive(want, scope, maxWidth);
         }
 
@@ -713,10 +685,11 @@ public static partial class Detail
         /// <paramref name="maxWidth"/>) this answers what that rest WILL write; once it has, the live (possibly dragged)
         /// width, clamped on read as ever.</summary>
         public static float ComposedWidth(float liveWidth, float storedWidth, RailScope scope,
-                                          int restedMode, float restedMax, int mode, float maxWidth)
-            => restedMode == mode && restedMax == maxWidth
+                                          int restedMode, float restedMax, int mode, float maxWidth,
+                                          float restedWideRest = 0f, float wideRest = 0f)
+            => restedMode == mode && restedMax == maxWidth && restedWideRest == wideRest
                 ? ClampLive(liveWidth, scope, maxWidth)
-                : RestingWidth(storedWidth, scope, mode, maxWidth);
+                : RestingWidth(storedWidth, scope, mode, maxWidth, wideRest);
 
         /// <summary>What a drag RELEASE persists. A drag that merely parked against a page-imposed cap keeps the wider
         /// remembered width (the cap is the page's verdict, not the user's); any other release is the user's own number.</summary>
@@ -726,12 +699,7 @@ public static partial class Detail
         /// <summary>What the right column is left with — the guard every arm must clear
         /// (<see cref="Breakpoints.ContentMinWidthForMode"/>).</summary>
         public static float ContentWidthFor(float pageWidth, float railWidth, float gripWidth)
-            => MathF.Min(pageWidth, Design.Size.PageMaxW) - railWidth - gripWidth;
-
-        /// <summary>The COLLAPSED arm's content width: the 96-DIP identity strip plus its 20-DIP re-open grip. 96 + 20 +
-        /// 300 = 416, well under the narrowest two-column page (540), so collapsing can never squeeze the content out.</summary>
-        public static float CollapsedContentWidthFor(float pageWidth)
-            => ContentWidthFor(pageWidth, CompactStripW, CollapsedGripW);
+            => MathF.Min(pageWidth, R.Space.PageMaxW) - railWidth - gripWidth;
 
         /// <summary>Album-like (album, show — and so an episode) 280; list-like (playlist, Liked) and Uniform 240.</summary>
         public static float DefaultWidthFor(RailScope scope) => scope switch
@@ -747,21 +715,11 @@ public static partial class Detail
         public static float ClampStored(float stored, RailScope scope)
             => Math.Clamp(stored, MinWidthFor(scope), MaxWidth);
 
-        /// <summary>The requested scope, or <see cref="RailScope.Uniform"/> when "Keep left-rail same size" is on. The
+        /// <summary>The requested scope, or <see cref="RailScope.Uniform"/> when the structure's "Keep left-rail same size" is on
+        /// (<see cref="Wavee.Theming.DetailPolicy.RailUniform"/>). THE persisted pair a scope reads and writes is one theme-state pair per scope
+        /// (<see cref="DetailRailPrefs.WidthKey"/>), never another scope's by fallthrough (G-190). The
         /// Episode arm is its config's: <see cref="Config.Episode"/> requests <see cref="RailScope.Show"/>.</summary>
         public static RailScope ScopeFor(RailScope requested, bool uniform) => uniform ? RailScope.Uniform : requested;
-
-        /// <summary>THE persisted pair a scope reads and writes — the ten <c>Platform.Keys.Detail*Rail*</c> keys, one
-        /// pair per scope, never another scope's by fallthrough (G-190). An episode page reads the SHOW pair (its scope is
-        /// <see cref="RailScope.Show"/>): the podcast family persists one rail, not two.</summary>
-        public static (SettingKey<float> Width, SettingKey<bool> Collapsed) KeysFor(RailScope scope) => scope switch
-        {
-            RailScope.Album => (Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailCollapsed),
-            RailScope.Playlist => (Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailCollapsed),
-            RailScope.Liked => (Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailCollapsed),
-            RailScope.Show => (Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailCollapsed),
-            _ => (Platform.Keys.DetailUniformRailWidth, Platform.Keys.DetailUniformRailCollapsed),
-        };
 
         /// <summary>Has any of the four per-scope pairs moved from its authored default? The enable gate for Settings'
         /// "Clear all remembered sizes" (the Uniform pair is excluded on purpose).</summary>
@@ -778,54 +736,26 @@ public static partial class Detail
 
     // ══ 3b. THE INSIGHTS SHEET ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>WHERE the facts bento lives, per arm, and how wide the vertical arm's sheet is.
-    /// <para>The two-column arms are unchanged: the bento is a rail row, on screen with the list beside it. The
-    /// VERTICAL arm has no rail, and the bento used to fall to the bottom of the page as a footer nobody scrolled to —
-    /// so there it becomes a dismissable sheet laid OVER the content, reached only through the toolbar toggle. The two
-    /// hosts are mutually exclusive by construction (<see cref="RailHostsFacts"/> / <see cref="SheetHostsFacts"/> read
-    /// the same mode ladder from opposite ends), and there is no third, inline host any more.</para></summary>
+    /// <summary>WHERE the facts bento lives (tuned Classic I1): on EVERY facts page and in every arm it is a sheet laid over the list,
+    /// closed by default, never opening by itself, toggled from the list bar (the two-column arm's bar, the vertical arm's hero bar
+    /// and its pinned band). The rail no longer carries it, and there is no inline host. How wide the sheet is and where it sits are
+    /// the structure's.</summary>
     public static class InsightsSheet
     {
-        /// <summary>The sheet's preferred width — one step wider than the rail's own comfortable measure.</summary>
-        public const float PreferredWidth = 390f;
-
-        /// <summary>…or this share of the page when the page is narrower, so a strip of the list stays visible behind
-        /// the sheet and it never reads as a full-screen route change.</summary>
-        public const float PageFraction = 0.76f;
-
-        /// <summary>The resolved sheet width for a page this wide. An UNMEASURED page (width ≤ 0) answers the preferred
-        /// width — the pre-measure seed, corrected by the first bounds callback, exactly like the rail's ceiling.
-        /// Quantized to whole DIP so a per-pixel window resize cannot churn the pane's layout.</summary>
-        public static float WidthFor(float pageWidth)
-            // `!(w > 0)` and not `w <= 0`: a NaN width is an unmeasured page too (the pre-measure seed), never a NaN
-            // pane that would take the layout with it.
-            => !(pageWidth > 0f)
-                ? PreferredWidth
-                : MathF.Max(1f, MathF.Min(PreferredWidth, MathF.Floor(pageWidth * PageFraction)));
-
         /// <summary>Only the two list-like surfaces carry facts at all (<c>User.FactsHas</c> answers false for any
-        /// other kind — this is the same gate, one step earlier).</summary>
+        /// other kind — this is the same gate, one step earlier). Followed playlists included (owner NQ6).</summary>
         public static bool KindHasFacts(DetailKind kind) => kind is DetailKind.Liked or DetailKind.Playlist;
 
-        /// <summary>The two-column arms: the bento is a rail row, as it has always been. Nothing about them changes.</summary>
-        public static bool RailHostsFacts(int mode, DetailKind kind, bool factsSlot)
-            => factsSlot && KindHasFacts(kind) && RailPolicy.ComposesRail(mode);
+        /// <summary>The bento is reachable ONLY through the sheet, whatever the arm.</summary>
+        public static bool SheetHostsFacts(DetailKind kind, bool factsSlot) => factsSlot && KindHasFacts(kind);
 
-        /// <summary>The vertical arm: the bento is reachable ONLY through the sheet.</summary>
-        public static bool SheetHostsFacts(int mode, DetailKind kind, bool factsSlot)
-            => factsSlot && KindHasFacts(kind) && mode == Breakpoints.VerticalMode;
-
-        /// <summary>The bento is never appended to the page body again — every mode is answered by exactly one host,
-        /// and a mode that composes neither simply has no facts to show.</summary>
-        public static bool AppendsFactsToPageBody(int mode, DetailKind kind, bool factsSlot) => false;
-
-        /// <summary>Is the toggle composed at all? The vertical arm only, on a facts-bearing page whose facts have
-        /// actually arrived, and only on a TRACK page (an episode list's vertical arm has no bento).
-        /// <para>ONE predicate, THREE readers: the hero's toolbar button, the pinned band's word, and the sheet itself.
-        /// The band does not re-derive it — the frame threads the answer down as the presence of the toggle object
-        /// (<c>VerticalSpec.Insights</c>), so the two entry points cannot disagree about whether they exist.</para></summary>
-        public static bool ShowsToggle(int mode, DetailKind kind, bool factsSlot, DetailContent content)
-            => content == DetailContent.Tracks && SheetHostsFacts(mode, kind, factsSlot);
+        /// <summary>Is the toggle composed at all? A facts-bearing page whose facts have actually arrived, and only a TRACK page (an
+        /// episode list has no bento).
+        /// <para>ONE predicate, every reader: the list bar's button, the pinned band's word, and the sheet itself. The table does not
+        /// re-derive it — the frame threads the answer down as the presence of the toggle object (<c>TableArgs.Insights</c>,
+        /// <c>VerticalSpec.Insights</c>), so the entry points cannot disagree about whether they exist.</para></summary>
+        public static bool ShowsToggle(DetailKind kind, bool factsSlot, DetailContent content)
+            => content == DetailContent.Tracks && SheetHostsFacts(kind, factsSlot);
 
         // ── the two entry points (Detail.Insights.cs §6/§7) ──
 
@@ -834,20 +764,11 @@ public static partial class Detail
         /// list's open is holding its reveal, and can therefore say "no facts" about a page that plainly has them. So
         /// the frame LATCHES the answer for the route: once the facts have been offered they are settled, and a later
         /// null is the list re-folding, not the page losing its bento.
-        /// <para>The latch is one-way and route-scoped (the frame drops it with the route, like the open state —
-        /// <see cref="SurvivesRouteChange"/>), which is exactly the asymmetry the surface wants: a page that has never
+        /// <para>The latch is one-way and route-scoped (the frame drops it with the route, like the open state, which never
+        /// survives navigation), which is exactly the asymmetry the surface wants: a page that has never
         /// offered facts shows nothing and hints at nothing, while a page whose facts arrive LATE grows the toggle when
         /// they land instead of carrying a button that flickers with every re-fold.</para></summary>
         public static bool FactsSettled(bool everSeen, bool slotNow) => everSeen || slotNow;
-
-        /// <summary>Which entry point owns INPUT at this scroll position. The pinned band takes hits only once its
-        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. Exactly one of the
-        /// two answers true for any <paramref name="bandStuck"/> — which is why BOTH are composed: neither alone covers
-        /// the whole scroll range, the pair does, and there is no position at which both are live.</summary>
-        public static bool BandToggleTakesInput(bool bandStuck) => bandStuck;
-
-        /// <inheritdoc cref="BandToggleTakesInput"/>
-        public static bool HeroToggleTakesInput(bool bandStuck) => !bandStuck;
 
         /// <summary>The band action cluster's width claim — Find · Filter · Play, and Insights between the view verbs
         /// and the terminal primary when this arm hosts the sheet. The compact search field derives its own width by
@@ -863,37 +784,6 @@ public static partial class Detail
             Span<float> four = [find, filter, insights, play];
             return BandLayout.ActionsWidth(four);
         }
-
-        /// <summary>The LIVE open state: a sheet whose toggle has gone (the window widened back into a two-column arm,
-        /// or the facts went away) is CLOSED, never merely hidden — so re-entering the vertical arm never restores a
-        /// sheet the user cannot remember leaving open.</summary>
-        public static bool OpenFor(bool wanted, int mode, DetailKind kind, bool factsSlot, DetailContent content)
-            => wanted && ShowsToggle(mode, kind, factsSlot, content);
-
-        /// <summary>A route change closes the sheet outright: it never survives navigation (the frame is keyed by
-        /// subject, but a same-subject route swap reuses the host, so the host closes it itself).</summary>
-        public const bool SurvivesRouteChange = false;
-    }
-
-    // ══ 4. THE HEADER MERGE ══════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The initial-load merge for a ROLLING-IDENTITY container (a daylist): its resident row can be the
-    /// previous edition while the nav preview is fresh, so the preview's title/cover win — for rolling containers only
-    /// (a non-rolling preview is just as likely to be the stale side).</summary>
-    public static class HeaderMerge
-    {
-        /// <summary>Either side carrying a rollover window is enough.</summary>
-        public static bool IsRollingIdentity(long loadedExpiresAtMs, long previewExpiresAtMs)
-            => loadedExpiresAtMs > 0 || previewExpiresAtMs > 0;
-
-        public static string ResolveTitle(bool rollingIdentity, string loadedTitle, string? previewTitle)
-            => rollingIdentity && !string.IsNullOrEmpty(previewTitle) ? previewTitle : loadedTitle;
-
-        /// <summary>The cover <see cref="CoverLatch.PreferVisible"/> treats as incoming. Without it a rolled-over
-        /// container's stale cover reads as DIFFERENT art from the correct preview cover and wins. A blank preview url
-        /// is no cover (0.2.9 tested the Image record for null).</summary>
-        public static string? ResolveIncomingCover(bool rollingIdentity, string? loadedCoverUrl, string? previewCoverUrl)
-            => rollingIdentity && !string.IsNullOrEmpty(previewCoverUrl) ? previewCoverUrl : loadedCoverUrl;
     }
 
     // ══ 5. THE NOTICE LADDER ═════════════════════════════════════════════════════════════════════════════════════════
@@ -979,12 +869,10 @@ public static partial class Detail
         /// <summary>THE line box of every text in a band (<c>Controls.TextActionLineHeight</c>, 20).</summary>
         public const float TextLine = Controls.TextActionLineHeight;
         /// <summary>Every group's slot (title, tabs, actions): the band less its 12-DIP air above and below (32).</summary>
-        public const float ItemHeight = Height - 2f * FluentGpu.Dsl.Spacing.M;
-        /// <summary>The top of a <see cref="TextLine"/> centred in a box of <paramref name="box"/> DIP.</summary>
-        public static float TextTopIn(float box) => (box - TextLine) * 0.5f;
+        public static float ItemHeight => Height - 2f * FluentGpu.Dsl.Spacing.M;
         /// <summary>The active mark's top inside an item slot: under the text line plus <see cref="UnderlineGap"/> (30), so it sits
         /// on the slot's bottom edge (<see cref="ItemHeight"/> - <see cref="UnderlineHeight"/>).</summary>
-        public const float UnderlineY = (ItemHeight - TextLine) * 0.5f + TextLine + UnderlineGap;
+        public static float UnderlineY => (ItemHeight - TextLine) * 0.5f + TextLine + UnderlineGap;
         /// <summary>Average advance at the band's 14/600 rung, deliberately generous so a localized label reserves.</summary>
         public const float AvgCharW = 7.6f;
 
@@ -1064,10 +952,6 @@ public static partial class Detail
             }
             return active;
         }
-
-        /// <summary>The content offset that parks a section's top just under the band.</summary>
-        public static float ScrollTargetFor(float currentOffset, float viewportRelativeTop, float bandBottom)
-            => MathF.Max(0f, currentOffset + viewportRelativeTop - bandBottom);
     }
 
     // ══ 7. THE COVER LATCH ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -1095,11 +979,6 @@ public static partial class Detail
         /// <summary>A resolvable url: non-blank and not an unresolved <c>spotify:image:</c> provider token.</summary>
         public static bool IsUsable(string? url)
             => !string.IsNullOrWhiteSpace(url) && !url.Trim().StartsWith(ImageUriPrefix, StringComparison.OrdinalIgnoreCase);
-
-        /// <summary>The identity url of a cover: its own url, else its mosaic's LEAD tile — the reduction the art surface
-        /// applies before painting a 1-3-tile mosaic as a single cover.</summary>
-        public static string? Reduce(string? coverUrl, string? leadTile)
-            => !string.IsNullOrWhiteSpace(coverUrl) ? coverUrl : leadTile;
 
         /// <summary>Same ARTWORK: the same normalized url, or two 40-char Spotify ids differing only in their size prefix.
         /// Null/blank is never the same art.</summary>
@@ -1192,12 +1071,10 @@ public static partial class Detail
         /// <summary>The accent-rule placeholder: 20 × 2 at radius 1, 2-DIP top margin.</summary>
         public const float RuleWidth = Controls.AccentRuleWidth, RuleHeight = Controls.AccentRuleHeight,
                            RuleGap = Controls.AccentRuleGap, RuleRadius = 1f;
-        /// <summary>The action row: a 120-wide Play button (<see cref="Controls.PrimaryMinWidth"/>), then four 32-DIP
-        /// satellites. Renamed from <c>PlayPillWidth</c> (Workstream B migration group C).</summary>
+        /// <summary>A page's own primary (a podcast's Follow / Resume capsule): 120 wide (<see cref="Controls.PrimaryMinWidth"/>).
+        /// The default Play is the split, <see cref="RailLayout.PlaySplitWidth"/>. Renamed from <c>PlayPillWidth</c>
+        /// (Workstream B migration group C).</summary>
         public const float PlayButtonWidth = 120f;
-        public const int SatelliteCount = 4;
-        /// <summary>The toolbar band's three leading pills (the search pill is the command bar's SearchPreferred 240).</summary>
-        public const float ToolbarPillA = 72f, ToolbarPillB = 88f, ToolbarPillC = 64f;
 
         public static float BarWidth(float measure, float fraction) => MathF.Max(BarFloor, MathF.Round(measure * fraction));
 
@@ -1223,7 +1100,7 @@ public static partial class Detail
         /// <c>Badges</c> may share its line) or the LEAD row (<c>Owner</c>: an OwnerRow owner block, or an episode's show
         /// link) · title · attribution (<c>Artists</c>: billed artists; a podcast's Attribution slot) · <c>Rating</c> ·
         /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
-        /// <c>Fabs</c> FABs: the fixed heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
+        /// <c>Fabs</c> actions: the fixed Shuffle / heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
         /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
         /// the podcast slots is the plan it always was. <c>ArtistFaces</c>: the <c>Artists</c> row is the artist line (an
         /// album-family page, whether the line comes from its Attribution slot or the default), whose reserved height is
@@ -1240,8 +1117,12 @@ public static partial class Detail
         /// <summary>The skeleton's PREDICTION, made before any data: per kind and badge style, plus the rail slots the page
         /// declared (<paramref name="slots"/> — presence is known at mount, the data is not). Default slots ⇒ exactly the
         /// pre-podcast plan. An episode with an Attribution slot is led by it (the <see cref="RailPlan.Owner"/> shape), and
-        /// has no eyebrow and no after-title attribution.</summary>
-        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, bool heart, int descriptionMaxLines,
+        /// has no eyebrow and no after-title attribution. <paramref name="fixedActions"/> is how many buttons the fixed action group (tuned
+        /// Classic D1: Shuffle · heart · Share · ⋯) will lay out — the caller counts them off the page's identity and verbs, which are known
+        /// before the data (a Share needs the page's web link, which a Spotify uri always has and a local one never does), so a page without
+        /// a link or a heart reserves no square for it (tuned Classic X2). Liked Songs has no rail (tuned Classic D16), so no plan here is
+        /// Liked's.</summary>
+        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, int fixedActions, int descriptionMaxLines,
                                            RailSlotSet slots = default)
         {
             bool typeYear = badges == BadgeStyle.TypeYear;
@@ -1255,7 +1136,7 @@ public static partial class Detail
                 ArtistFaces: typeYear && !RailLayout.IsPodcast(kind),
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : Math.Max(0, fixedActions),
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,
@@ -1290,14 +1171,20 @@ public static partial class Detail
         public const float Gap = 14f, PadTop = 24f, PadBottom = 24f;
         /// <summary>The CTA cluster sits 4 DIP lower than the gap alone would put it.</summary>
         public const float CtaTopMargin = 4f;
-        /// <summary>The fixed group: [primary] 12 [heart · Share · ⋯], the group 8 apart, standard 32/r4 icon buttons
-        /// (Workstream B: was 40-DIP round FABs); the two units wrap.</summary>
+        /// <summary>The fixed group (tuned Classic D1): [Play split] 12 [Shuffle] 8 [heart] 8 [Share] 8 [⋯], standard 32/r4 icon
+        /// buttons in ONE wrap, 8 apart both ways; the 12 after the split is the 8 gap plus the split's own trailing margin
+        /// (<see cref="SplitTrail"/>), so a wrapped action starts its line flush.</summary>
         public const float CtaGap = 12f, FabGap = 8f, FabSize = 32f;
+        /// <summary>The Play split (tuned Classic D1, D2): [Play 88 │ ⌄ 32] joined by a 1-DIP divider, one 121-wide accent control.</summary>
+        public const float PlayHalf = 88f, MenuHalf = 32f, SplitDivider = 1f;
+        /// <inheritdoc cref="PlayHalf"/>
+        public const float PlaySplitWidth = PlayHalf + SplitDivider + MenuHalf;
+        /// <summary>The split's trailing margin: the 4 that, with the wrap's 8, set it 12 from the first action.</summary>
+        public const float SplitTrail = CtaGap - FabGap;
         /// <summary>A page's Satellites (W1's "36 FABs", now the standard 32 ladder): [primary][each satellite] in ONE
         /// wrap, 8 apart both ways.</summary>
         public const float SatelliteSize = 32f, SatelliteGap = 8f;
-        /// <summary>The CTA primary's height — Workstream B's 32/r4 <see cref="Controls.PrimaryButton"/>, not the old
-        /// 36-DIP capsule (<see cref="Controls.PillHeight"/>, kept compiling until Wave 5 deletes it).</summary>
+        /// <summary>The CTA primary's height — Workstream B's 32/r4 <see cref="Controls.PrimaryButton"/>.</summary>
         public const float PillHeight = Controls.ButtonHeight;
         public const float EyebrowHeight = VerticalLayout.EyebrowRowHeight;
         /// <summary>The lead row: the owner block's 24 avatar, or an episode's show link (a 24 swatch + 13/600 name).</summary>
@@ -1309,7 +1196,7 @@ public static partial class Detail
         /// <summary>The rating row: ★ 4.8 · 12,431 ratings at 12.5 on a 2-DIP padded hit box.</summary>
         public const float RatingHeight = 20f;
         /// <summary>The ledger: the 4-DIP <c>Controls.LedgerBar</c>, 6, then one 12/16 counts line.</summary>
-        public const float LedgerBarHeight = Controls.LedgerHeight, LedgerGap = 6f, LedgerLineHeight = 16f;
+        public const float LedgerBarHeight = PodcastLedgerRules.Height, LedgerGap = 6f, LedgerLineHeight = 16f;
         public const float LedgerHeight = LedgerBarHeight + LedgerGap + LedgerLineHeight;
         /// <summary>The topic words (<c>Controls.Words.Links</c>): two nominal lines of 18, 4 between.</summary>
         public const int TopicLines = 2;
@@ -1385,31 +1272,25 @@ public static partial class Detail
         }
 
         /// <summary>The CTA cluster: its top margin plus its wrapped lines, laid out as the engine's flex wrap does (greedy,
-        /// the gap on both axes). The fixed arm wraps two units, the primary and the FAB group; the satellites arm wraps the
-        /// primary and every satellite one by one. The primary's nominal width is the skeleton capsule's.</summary>
+        /// the gap on both axes). Both arms wrap the primary and every action one by one: the fixed arm's primary is the
+        /// Play split with its trailing margin, the satellites arm's the page's 120 capsule.</summary>
         public static float CtaHeight(in Skeleton.RailPlan p, float coverEdge)
         {
             int fabs = Math.Max(0, p.Fabs);
-            if (!p.Satellites)
-            {
-                if (fabs == 0) return CtaTopMargin + PillHeight;
-                float group = fabs * FabSize + (fabs - 1) * FabGap;
-                bool oneLine = Skeleton.PlayButtonWidth + CtaGap + group <= coverEdge + WrapSlack;
-                return CtaTopMargin + (oneLine ? MathF.Max(PillHeight, FabSize) : PillHeight + CtaGap + FabSize);
-            }
-            float used = Skeleton.PlayButtonWidth, line = PillHeight, closed = 0f;
+            float gap = p.Satellites ? SatelliteGap : FabGap, size = p.Satellites ? SatelliteSize : FabSize;
+            float used = p.Satellites ? Skeleton.PlayButtonWidth : PlaySplitWidth + SplitTrail, line = PillHeight, closed = 0f;
             for (int i = 0; i < fabs; i++)
             {
-                if (used + SatelliteGap + SatelliteSize <= coverEdge + WrapSlack)
+                if (used + gap + size <= coverEdge + WrapSlack)
                 {
-                    used += SatelliteGap + SatelliteSize;
-                    line = MathF.Max(line, SatelliteSize);
+                    used += gap + size;
+                    line = MathF.Max(line, size);
                 }
                 else
                 {
-                    closed += line + SatelliteGap;
-                    used = SatelliteSize;
-                    line = SatelliteSize;
+                    closed += line + gap;
+                    used = size;
+                    line = size;
                 }
             }
             return CtaTopMargin + closed + line;
@@ -1440,8 +1321,6 @@ public static partial class Detail
         /// text lines whether the names need them or not, so a long billing and a short one are the same height and
         /// nothing under the line moves when the names arrive. All three include the trigger's padding.</summary>
         public const float WideHeight = Controls.FaceOuter + 2f * PadY, NarrowHeight = 2f * TextLine + 2f * PadY, MediumHeight = NarrowHeight;
-        /// <summary>The tallest look: what a skeleton of unknown width would have to reserve to never be outgrown.</summary>
-        public const float TallestHeight = NarrowHeight;
         public const int WideFaces = 3;
 
         public static float MinWidthOf(RailArtistMode mode) => mode == RailArtistMode.Wide ? WideMinW : mode == RailArtistMode.Medium ? MediumMinW : 0f;
@@ -1490,7 +1369,10 @@ public static partial class Detail
         bool ShowVersions = false,      // the expand chevron + versions drawer
         bool PlaysColumnOptIn = false,  // the Plays column is a user opt-in here (NOT album semantics)
         RailScope RailScope = RailScope.Album,
-        bool RailResizable = true)
+        bool RailResizable = true,
+        bool Rail = true,               // false: no rail; the two-column arm is the page head over the list (tuned Classic D16)
+        bool QuietRows = false,         // full-width plates, no zebra, regular-weight titles, the heart on hover only (D16)
+        bool DateGroups = false)        // the rows group by when they were added while the list is sorted by date (D16)
     {
         public static Config Playlist => new(
             Kind: DetailKind.Playlist, TwoColumn: true, RailWidth: Design.Size.RailPlaylist, Badges: BadgeStyle.OwnerRow,
@@ -1517,7 +1399,7 @@ public static partial class Detail
             ShowArtThumb: true, ShowAlbumColumn: true,
             Selection: ItemsSelectionMode.Extended, HasTrailing: false, Heart: HeartMode.None, ShowTrackArtist: true,
             ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
-            RailScope: RailScope.Liked);
+            RailScope: RailScope.Liked, Rail: false, QuietRows: true, DateGroups: true);
 
         /// <summary>A podcast show: the album-style rail with EPISODES in the right column.</summary>
         public static Config Show => new(
@@ -1552,6 +1434,11 @@ public static partial class Detail
 
     /// <summary>The identity strings every arm shows — ONE composition, so a release is never worded two ways across a
     /// layout cross. Built at map time, never per frame.</summary>
+    /// <summary>What a track page's list shows against what it has, published by the table for the rail's count line (tuned Classic D4):
+    /// the shown rows, the membership total, the shown rows' summed length (<paramref name="DurationsKnown"/> false while any is thin)
+    /// and whether a find or a filter narrows it. <c>default</c> = nothing narrows it.</summary>
+    public readonly record struct ListCount(int Shown, int Total, long ShownMs, bool DurationsKnown, bool Filtered);
+
     public static class Text
     {
         /// <summary>The release-kind badge ("ALBUM" / "EP" / "SINGLE" / "COMPILATION").</summary>
@@ -1626,6 +1513,17 @@ public static partial class Detail
                 : Strings.Detail.MetaLine(songs, total);
         }
 
+        /// <summary>The rail's count line while a find or a filter narrows the list (tuned Classic D4, decision D-10): "3 of 48 songs ·
+        /// 11 min" and the quiet "(filtered)" mark, as two runs. Null while nothing narrows it (the page's own meta stands). The length
+        /// is the SHOWN rows' sum, dropped while any of them is still thin.</summary>
+        public static (string Count, string Mark)? FilteredMeta(in ListCount c)
+        {
+            if (!c.Filtered || c.Total <= 0) return null;
+            string count = Strings.Detail.SongCountOf(c.Shown.ToString("N0", System.Globalization.CultureInfo.CurrentCulture), c.Total);
+            if (c.DurationsKnown && c.Shown > 0) count = Strings.Detail.MetaLine(count, Track.Format.TotalTime(c.ShownMs));
+            return (count, Loc.Get(Strings.Detail.FilteredMark));
+        }
+
         /// <summary>"1,204 songs · 71 hr 3 min".</summary>
         public static string? LikedMeta(int count, long totalMs, bool durationsKnown)
         {
@@ -1657,9 +1555,9 @@ public static partial class Detail
 
     // ══ 11. THE SORT KEYS ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The per-context sort pair. Column's default is the −1 "never chosen" sentinel (⇒ the table profile's
-    /// default sort, e.g. Liked's DateAdded desc) — which is why <c>Platform.Keys.DetailSortCol</c> (default 0 = a real
-    /// column) must NOT be used for it.</summary>
+    /// <summary>The per-context sort pair (<c>detail.sort.col:&lt;ctxUri&gt;</c> / <c>detail.sort.desc:&lt;ctxUri&gt;</c>).
+    /// Column's default is the −1 "never chosen" sentinel (⇒ the table profile's default sort, e.g. Liked's DateAdded
+    /// desc): column 0 is a real column.</summary>
     public static class SortKeys
     {
         public static SettingKey<int> Column(EntityUri context) => new("detail.sort.col:" + context.Text, -1);

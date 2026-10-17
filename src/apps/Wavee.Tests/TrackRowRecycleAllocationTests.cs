@@ -23,7 +23,9 @@ using FluentGpu.Rhi.Headless;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Text.Headless;
+using FluentGpu.Theming;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -37,10 +39,21 @@ public class TrackRowRecycleAllocationTests
     /// it (comps 10 vs 151 over the same 10 steps). 7 KB keeps ~30 % headroom and fails the re-render class 3× over.</summary>
     const long BudgetBytesPerRecycledRow = 7 * 1024;
 
+    /// <summary>The rows are the structure's (T8a): the table resolves its row templates from the ambient view registry, so the
+    /// fixture provides Classic's, exactly as <c>ThemeRoot</c> does for the app.</summary>
+    static readonly ViewRegistry s_registry = BuildRegistry();
+
+    static ViewRegistry BuildRegistry()
+    {
+        var views = new ViewRegistryBuilder();
+        new ClassicStructure().Register(views);
+        return views.Build();
+    }
+
     sealed class LikedTable : Component
     {
         public override Element Render()
-            => new BoxEl
+            => Ctx.Provide(ViewRegistry.Context, s_registry, new BoxEl
             {
                 Width = 900f, Height = 600f, Direction = 1,
                 Children =
@@ -52,7 +65,7 @@ public class TrackRowRecycleAllocationTests
                         ShowToolbar = false, Embedded = true, ScrollKey = "recycle-alloc",
                     }),
                 ],
-            };
+            });
     }
 
     static NodeHandle FindList(SceneStore s, NodeHandle n)

@@ -19,8 +19,6 @@
 // Engine-free and pure (no signals, no Element, no I/O) so it can be unit-tested without a host — the "no
 // source-text tests" rule's pattern (ButtonRulesTests/AppUpdateToasts/etc.): extract the DECISION, test it directly.
 
-using Wavee;
-
 namespace Wavee.HomeUi;
 
 /// <summary>The old content's target opacity and transition duration during a facet switch, keyed purely on the
@@ -46,6 +44,6 @@ public static class FacetForm
     /// (The prototype's "~720" is a 1440-board figure with wider spacing.)</summary>
     public const float TitleMinWidth = 600f;
 
-    /// <summary>True → <c>Design.FacetTitleStyle</c>; false → <c>Design.FacetCompactStyle</c>.</summary>
+    /// <summary>True → <c>R.Type.FacetTitleStyle</c>; false → <c>R.Type.FacetCompactStyle</c>.</summary>
     public static bool IsTitle(float rowWidth) => rowWidth >= TitleMinWidth;
 }

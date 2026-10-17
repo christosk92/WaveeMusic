@@ -35,14 +35,12 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -116,7 +114,8 @@ public readonly partial struct Playlist
 
     /// <summary>The overlay the last mounted playlist page saw — where a context-menu verb with no overlay seam of its
     /// own (rename, invite, the picker) opens (<see cref="ActionServices"/> carries none; see the report's gaps).</summary>
-    static IOverlayService? s_overlay;
+    static readonly RootState<IOverlayService?> s_overlayState = new("Playlist.Overlay");   // ROOT-LIFETIME (RootScope.cs)
+    static IOverlayService? s_overlay { get => s_overlayState.Value; set => s_overlayState.Value = value; }
 
     static IOverlayService? ActionOverlay => !Controls.IsNullOverlay(s_overlay) ? s_overlay
                                            : !Controls.IsNullOverlay(Track.DrawerOverlay) ? Track.DrawerOverlay : null;
@@ -209,10 +208,6 @@ public readonly partial struct Playlist
         public static DemandArm DemandArmFor(bool rowValid, bool local)
             => !rowValid ? DemandArm.Bail : local ? DemandArm.Local : DemandArm.Open;
 
-        /// <summary>Does a demand run with this arm REACH the open? <see cref="DemandArm.Local"/> legitimately never
-        /// does: Local Files settles through <c>SettleLocalFiles</c> and has no list to revalidate.</summary>
-        public static bool DemandOpens(DemandArm arm) => arm == DemandArm.Open;
-
         /// <summary>What to ask of the playlist's owner row. Identity unknown ⇒ Ensure (Pathfinder refuses to seal
         /// Identity on a nameless ownerV2, so a page that never Ensures the owner paints a blank name forever).
         /// Identity known below Full ⇒ Invalidate the Thin card/header name so the profile/avatar can land.
@@ -263,8 +258,8 @@ public readonly partial struct Playlist
             => (editable ? 1 : 0) | (recs ? 2 : 0) | (tune ? 4 : 0) | (local ? 8 : 0) | ((int)lensExtent << 4);
 
         /// <summary>The <c>FrameSlots</c> cache key: which optional slots are present.</summary>
-        public static int SlotsMask(bool editableMeta, bool daylist, bool facts)
-            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0);
+        public static int SlotsMask(bool editableMeta, bool daylist, bool facts, bool recs = false)
+            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0) | (recs ? 8 : 0);
     }
 
     sealed class PlaylistPage : Component
@@ -306,6 +301,7 @@ public readonly partial struct Playlist
         readonly Func<float> _lensExtent;
         readonly Action<IReadOnlyList<int>> _removeRows;
         readonly Func<Element?> _recs, _lensHeader;
+        readonly Func<Element> _recsAside;
         readonly Func<float, Element> _cover, _compactCover, _attribution, _description, _facts;
         readonly Func<float, float, Element> _title;
         readonly Func<Element> _pulse;
@@ -327,6 +323,7 @@ public readonly partial struct Playlist
             _lensExtent = () => User.LensExtentFor(_lens, DetailKind.Playlist);
             _removeRows = rows => Spotify.PlaylistEdits.RemoveRows(_playlist, rows);
             _recs = () => RecommendationsSection(_playlist);
+            _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
             _cover = size => CoverSlot(_playlist, size);
             _compactCover = size => CoverArt(_playlist, size);
@@ -415,7 +412,10 @@ public readonly partial struct Playlist
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false } : Detail.Config.Playlist;
+            // Your own playlist has no heart (tuned Classic D1): following it means nothing; a followed one keeps it as Unfollow.
+            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false }
+                : pl.IsOwner ? Detail.Config.Playlist with { Heart = HeartMode.None }
+                : Detail.Config.Playlist;
             bool editable = pl.Editable;
             bool recs = PageRules.ShowsRecommendations(_local, editable, pl.Uri.Provider == EntityProvider.Spotify, stamp.EditsLive, stamp.Recommendations);
             bool tune = !_local && HasTuneChoice(pl) && pl.TuningCurrent;
@@ -442,7 +442,7 @@ public readonly partial struct Playlist
 
             bool editableMeta = pl.EditableMetadata && !_local;
             bool daylist = pl.DaylistExpiresAt > 0;
-            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts);
+            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts, recs);
             if (_slots is null || _slotsMask != slotsMask)
             {
                 _slotsMask = slotsMask;
@@ -455,6 +455,8 @@ public readonly partial struct Playlist
                     Description = editableMeta ? _description : null,
                     Pulse = daylist ? _pulse : null,
                     LikedFacts = facts ? _facts : null,
+                    // The Huge aside's body (C-Playlist-Huge): the recommended songs move there from the list's tail while it is docked.
+                    Aside = recs ? _recsAside : null,
                 };
             }
 
@@ -1002,7 +1004,7 @@ public readonly partial struct Playlist
             if (!p.IsValid || p.Uri.Provider != EntityProvider.Spotify) continue;
             candidates.Add(new DepositCandidate(p.Uri.Text, Entities.Strings.Resolve(p.TitleId), p.Editable, p.Slot));
         }
-        var recents = PlaylistDepositTargets.Parse(Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents));
+        var recents = PlaylistDepositPref.Recents();
         var ordered = PlaylistDepositTargets.Order(candidates, recents, exclude.IsValid ? exclude.Text : null);
         var tiles = new string[1];
         foreach (var c in ordered)
@@ -1020,9 +1022,7 @@ public readonly partial struct Playlist
     /// re-filing into the front playlist costs no settings write (ch 06 §6.3).</summary>
     public static void RememberDeposit(string uri)
     {
-        string current = Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents) ?? "";
-        string next = PlaylistDepositTargets.Serialize(PlaylistDepositTargets.Remember(PlaylistDepositTargets.Parse(current), uri));
-        if (!string.Equals(current, next, StringComparison.Ordinal)) Platform.Settings.Set(Platform.Keys.PlaylistDepositRecents, next);
+        PlaylistDepositPref.Remember(uri);
     }
 
     // ══ 4. THE PLAYLIST VERBS (ActionServices rows the sidebar, cards and queue menus ask for) ═══════════════════════

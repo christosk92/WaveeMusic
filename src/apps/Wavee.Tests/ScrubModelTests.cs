@@ -242,13 +242,13 @@ public class ScrubModelTests
         m.Down(0, 0);
         m.Move(5_000, 100);
 
-        ScrubModel.Effects e = m.Up(7_777, 150);
+        ScrubModel.Effects e = m.Up(7_777);
 
         Assert.Equal(CommitAt(7_777), e);
         Assert.Equal(ScrubModel.State.Idle, m.Current);
         Assert.Equal(7_777L, m.PositionMs);
 
-        Assert.Equal(Nothing, m.Up(9_999, 160));                    // exactly once
+        Assert.Equal(Nothing, m.Up(9_999));                    // exactly once
         Assert.Equal(ScrubModel.State.Idle, m.Current);
         Assert.Equal(7_777L, m.PositionMs);
     }
@@ -259,7 +259,7 @@ public class ScrubModelTests
         var m = new ScrubModel();
         m.Down(2_000, 0);
 
-        Assert.Equal(CommitAt(2_500), m.Up(2_500, 80));             // Down → Up commits; the release position wins over the press
+        Assert.Equal(CommitAt(2_500), m.Up(2_500));             // Down → Up commits; the release position wins over the press
         Assert.Equal(ScrubModel.State.Idle, m.Current);
     }
 
@@ -268,7 +268,7 @@ public class ScrubModelTests
     {
         var m = new ScrubModel();
 
-        Assert.Equal(Nothing, m.Up(1_000, 0));
+        Assert.Equal(Nothing, m.Up(1_000));
         Assert.Equal(ScrubModel.State.Idle, m.Current);
         Assert.Equal(0L, m.PositionMs);
     }
@@ -278,7 +278,7 @@ public class ScrubModelTests
     {
         var m = new ScrubModel();
         m.Down(0, 0);
-        m.Up(100, 10);
+        m.Up(100);
 
         Assert.Equal(Nothing, m.Move(5_000, 500));
         Assert.Equal(ScrubModel.State.Idle, m.Current);
@@ -295,7 +295,7 @@ public class ScrubModelTests
         m.Down(0, 0);
         m.Audible = true;                                           // the reducer's ScrubBegin arm sets this to fx.ScrubBegin
 
-        m.Up(1_000, 50);
+        m.Up(1_000);
 
         Assert.True(m.Audible);                                     // the ScrubEnd arm: audible ⇒ fx.ScrubEnd instead of fx.Seek
         Assert.Equal(ScrubModel.State.Idle, m.Current);
@@ -355,7 +355,7 @@ public class ScrubModelTests
 
         Assert.True(m.Cancel().Cancel);
         Assert.Equal(Nothing, m.Cancel());                          // idempotent — the unmount cleanup may run after an Escape
-        Assert.Equal(Nothing, m.Up(2_000, 200));                    // the pointer-up that follows an Escape commits nothing
+        Assert.Equal(Nothing, m.Up(2_000));                    // the pointer-up that follows an Escape commits nothing
         Assert.Equal(Nothing, m.Move(3_000, 300));
         Assert.Equal(ScrubModel.State.Idle, m.Current);
     }
@@ -368,7 +368,7 @@ public class ScrubModelTests
         var m = new ScrubModel();
         m.Down(0, 0);
         m.Move(60_000, 50);                                         // v = 600
-        m.Up(60_000, 60);
+        m.Up(60_000);
 
         m.Down(100, 1_000);
         Assert.Equal(0.0, m.Velocity);
@@ -396,7 +396,7 @@ public class ScrubModelTests
                     Assert.Equal(BeginAt(ms), e);
                     break;
                 case 1:
-                    e = m.Up(ms, now);
+                    e = m.Up(ms);
                     Assert.Equal(live ? CommitAt(ms) : Nothing, e);
                     live = false;
                     break;
@@ -432,7 +432,7 @@ public class ScrubModelTests
             ScrubModel.Effects e = m.Move(1_000 + i * 7, t0 + i * 5);
             if (e.Move) sum += (long)e.Velocity;
         }
-        sum += m.Up(2_400, t0 + 1_100).PositionMs;
+        sum += m.Up(2_400).PositionMs;
         sum += m.Down(0, t0 + 1_200).PositionMs;
         sum += m.Cancel().PositionMs;
         return sum;

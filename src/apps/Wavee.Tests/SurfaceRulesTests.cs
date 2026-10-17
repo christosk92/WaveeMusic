@@ -13,6 +13,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
+using Wavee.Themes.Classic;
 
 namespace Wavee.Tests;
 
@@ -218,7 +220,7 @@ public class SurfaceRulesTests
 
     [Fact]
     public void A_wide_shelf_tile_extent_is_unchanged()
-        => Assert.Equal(232f + 84f, SurfaceGeometry.StackExtent(Shape.Shelf(1, metaLine: true), 428f, Design.Size.WideTileAspect));
+        => Assert.Equal(232f + 84f, SurfaceGeometry.StackExtent(Shape.Shelf(1, metaLine: true), 428f, R.Space.WideTileAspect));
 
     [Fact]
     public void A_wrapping_stack_title_reserves_its_extra_lines()
@@ -248,8 +250,8 @@ public class SurfaceRulesTests
     public void The_row_geometry_constants_are_the_spacing_tokens()
     {
         // SurfaceGeometry restates the tokens as whole-DIP literals (it is engine-free); these pin the two.
-        Assert.Equal(Spacing.S, SurfaceGeometry.RowPad);
-        Assert.Equal(Spacing.M, SurfaceGeometry.RowGap);
+        Assert.Equal(SurfaceGeometry.RowPad, Spacing.S);
+        Assert.Equal(SurfaceGeometry.RowGap, Spacing.M);
     }
 
     // ── the host's equality gates ────────────────────────────────────────────────────────────────────────────────────

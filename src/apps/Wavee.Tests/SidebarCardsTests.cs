@@ -11,6 +11,7 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -23,8 +24,6 @@ public class SidebarCardsTests
                                      bool canEdit = false, bool identityKnown = true, string? id = null)
         => new(id ?? ("route:" + kind), kind, uri, name, "", StringId.Empty, null, 0, 0, 0, 0, 0, 0, false,
                SidebarPlaylistFlavor.None) { CanEdit = canEdit, IdentityKnown = identityKnown };
-
-    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Tile];
 
     // ── selected ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -77,11 +76,10 @@ public class SidebarCardsTests
     // ── drop ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void An_editable_playlist_is_a_track_deposit_on_every_surface()
+    public void An_editable_playlist_is_a_track_deposit()
     {
         var e = Entry(SidebarEntryKind.Playlist, canEdit: true);
-        foreach (var surface in AllSurfaces)
-            Assert.Equal(SidebarCardDrop.Deposit, SidebarCardRules.Drop(surface, in e));
+        Assert.Equal(SidebarCardDrop.Deposit, SidebarCardRules.Drop(in e));
     }
 
     [Theory]
@@ -95,8 +93,7 @@ public class SidebarCardsTests
     {
         // `canEdit` is stamped for playlists only, but even a stray flag must not make another kind a deposit.
         var e = Entry(kind, canEdit: true);
-        foreach (var surface in AllSurfaces)
-            Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(surface, in e));
+        Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(in e));
     }
 
     // ── drag ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -152,8 +149,8 @@ public class SidebarCardsTests
     [Fact]
     public void The_tile_cover_is_the_cell_less_the_plate_padding_on_both_sides()
     {
-        Assert.Equal(53f, SidebarCardRules.TileCover(69f));
-        Assert.Equal(24f, SidebarCardRules.TileCover(40f));
-        Assert.Equal(0f, SidebarCardRules.TileCover(10f));
+        Assert.Equal(53f, SidebarGeometry.TileCover(69f));
+        Assert.Equal(24f, SidebarGeometry.TileCover(40f));
+        Assert.Equal(0f, SidebarGeometry.TileCover(10f));
     }
 }

@@ -1,13 +1,19 @@
 // ── Wavee.Tests/BrowseLayoutTests.cs — the directory cells' column math, the star grid and the tile model ──────────
 //
-// NEW in 0.3 (0.2.9 had these private in `Features/Browse/BrowseTiles.cs:286-358` with no test). The four column
-// decisions a band makes — Genres' fixed bands (`LinkColumns`), Mood's uncapped floor-fit (`BarColumns`), More's capped
-// floor-fit (`MoreColumns`) and the star grid's own track count (`StarGrid`) — plus `StarGrid`'s empty case, and the
-// pure half of the cell factories (`BrowseTiles.ToModel` / `FeatureRoute` / `PageRoute`).
+// NEW in 0.3 (0.2.9 had these private in `Features/Browse/BrowseTiles.cs:286-358` with no test). The three column
+// decisions a band makes — Genres' fixed count, Mood's floor-fit, More's capped floor-fit — are now one record per content tier
+// (`ClassicBrowseTiers.For`, Classic's `Rules\Tiers.Browse.cs`, TC4; the Genres 720 / 380 bands are gone) — and the star grid's
+// own track count (`ClassicBrowseCells.StarGrid`) with its empty case, plus the pure half of the cell factories
+// (`BrowseTiles.ToModel` / `FeatureRoute` / `PageRoute`, still core).
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -15,35 +21,84 @@ namespace Wavee.Tests;
 [Collection(EntitiesCollection.Name)]
 public class BrowseLayoutTests
 {
-    // ── the column functions ────────────────────────────────────────────────────────────────────────────────────────
+    // ── the tier records (plan 3.6, TC4): the column rules the directory's bands read ───────────────────────────────────────────
 
     [Theory]
-    [InlineData(1200f, 3)]
-    [InlineData(721f, 3)]
-    [InlineData(720f, 2)]     // bands are exclusive at their edge: > 720 is three
-    [InlineData(381f, 2)]
-    [InlineData(380f, 1)]
-    [InlineData(0f, 1)]
-    public void LinkColumns_AreFixedBands_NeverAFloorDivide(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.LinkColumns(width));
+    [InlineData(WidthTier.Compact, 2)]
+    [InlineData(WidthTier.Small, 2)]
+    [InlineData(WidthTier.Standard, 3)]    // the tuned 3 (Standard's regions are always wider than the old 720 band)
+    [InlineData(WidthTier.Huge, 6)]
+    [InlineData(WidthTier.Huge4K, 6)]      // Classic draws no 4K band: Huge's record
+    public void Genres_AreAFixedCountPerTier_NeverAFloorDivide(WidthTier tier, int expected)
+        => Assert.Equal(expected, ClassicBrowseTiers.For(tier).GenreColumns());
 
     [Theory]
-    [InlineData(0f, 1)]
-    [InlineData(131f, 1)]
-    [InlineData(132f, 1)]
-    [InlineData(264f, 2)]
-    [InlineData(1320f, 10)]   // no cap
-    public void BarColumns_FloorFitAt132_Uncapped(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.BarColumns(width));
+    [InlineData(WidthTier.Standard, 0f, 1)]
+    [InlineData(WidthTier.Standard, 131f, 1)]
+    [InlineData(WidthTier.Standard, 264f, 2)]
+    [InlineData(WidthTier.Standard, 1320f, 10)]   // Standard: floor-fit at 132, no cap (as before tiers)
+    [InlineData(WidthTier.Compact, 5000f, 2)]
+    [InlineData(WidthTier.Small, 688f, 5)]        // C-Browse-Small: five at 800
+    [InlineData(WidthTier.Small, 5000f, 5)]
+    [InlineData(WidthTier.Huge, 2208f, 12)]       // C-Browse-Huge: twelve at 2560
+    [InlineData(WidthTier.Huge, 5000f, 12)]
+    public void Moods_FloorFitAt132_CappedPerTier(WidthTier tier, float width, int expected)
+        => Assert.Equal(expected, ClassicBrowseTiers.For(tier).MoodColumns(width));
 
     [Theory]
-    [InlineData(0f, 1)]
-    [InlineData(335f, 1)]
-    [InlineData(336f, 2)]
-    [InlineData(672f, 4)]
-    [InlineData(5000f, 4)]    // capped at four
-    public void MoreColumns_FloorFitAt168_CappedAtFour(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.MoreColumns(width));
+    [InlineData(WidthTier.Standard, 0f, 1)]
+    [InlineData(WidthTier.Standard, 335f, 1)]
+    [InlineData(WidthTier.Standard, 336f, 2)]
+    [InlineData(WidthTier.Standard, 672f, 4)]
+    [InlineData(WidthTier.Standard, 5000f, 4)]    // Standard: capped at four (as before tiers)
+    [InlineData(WidthTier.Compact, 5000f, 2)]
+    [InlineData(WidthTier.Small, 5000f, 3)]
+    [InlineData(WidthTier.Huge, 2208f, 8)]        // C-Browse-Huge: eight at 2560
+    public void More_FloorFitAt168_CappedPerTier(WidthTier tier, float width, int expected)
+        => Assert.Equal(expected, ClassicBrowseTiers.For(tier).MoreColumns(width));
+
+    [Fact]
+    public void Charts_StackAtCompactAndSmall_AndPageTwoUpThenFourUp()
+    {
+        var c = ClassicBrowseTiers.For(WidthTier.Compact).Charts;
+        var s = ClassicBrowseTiers.For(WidthTier.Small).Charts;
+        var d = ClassicBrowseTiers.For(WidthTier.Standard).Charts;
+        var h = ClassicBrowseTiers.For(WidthTier.Huge).Charts;
+        Assert.True(c.Stacked && s.Stacked && !d.Stacked && !h.Stacked);
+        Assert.Equal((136f, 92f), (c.TileH, c.Cover));       // C-Browse-Compact
+        Assert.Equal((140f, 100f), (s.TileH, s.Cover));      // C-Browse-Small
+        Assert.Equal((2, 4), (d.MaxColumns, h.MaxColumns));  // two up (the tuned deck), four up at Huge
+        Assert.Equal((HomeModuleLayout.FoldCardHeight, HomeModuleLayout.FoldCover), (d.TileH, d.Cover));
+    }
+
+    [Fact]
+    public void Charts_TheTwoFormsAreKeyedApart()
+    {
+        // The paged deck and the stack are different trees: the crossing between them cross-fades two distinctly keyed forms (plan 3.3).
+        Assert.NotEqual(ClassicBrowseTiers.ChartsDeckKey, ClassicBrowseTiers.ChartsStackKey);
+        Assert.True(ClassicTierMotion.SwapFade.Active);
+        Assert.Equal(0f, ClassicTierMotion.SwapFade.Opacity);
+    }
+
+    [Fact]
+    public void CompactTargets_AreAtLeast40()
+    {
+        var c = ClassicBrowseTiers.For(WidthTier.Compact);
+        Assert.True(c.TopChipH >= 40f && c.ForYouChipH >= 40f && c.LinkMinH >= 40f && c.ShelfHeaderH >= 40f);
+        Assert.True(c.ForYouStrip);
+    }
+
+    [Fact]
+    public void Standard_IsTheTunedDesign()
+    {
+        var d = ClassicBrowseTiers.For(WidthTier.Standard);
+        Assert.Equal(Spacing.L, d.BandGap);
+        Assert.Equal(0f, d.TopChipH);                  // the stock 32 chip
+        Assert.Equal(-1f, d.TopChipRadius);
+        Assert.False(d.ForYouStrip);
+        Assert.Equal(0, d.Shelf.MaxColumns);           // the shelf fits 148-188 with no cap
+        Assert.Equal(R.Space.ShelfCardMin, d.Shelf.MinCardW);
+    }
 
     [Theory]
     [InlineData(3, 3)]
@@ -53,7 +108,7 @@ public class BrowseLayoutTests
     public void StarGrid_HasOneStarTrackPerColumn_AtLeastOne(int columns, int tracks)
     {
         Element[] cells = [new BoxEl(), new BoxEl(), new BoxEl(), new BoxEl(), new BoxEl()];
-        var grid = Assert.IsType<GridEl>(BrowseLayout.StarGrid(columns, Spacing.S, Spacing.M, cells));
+        var grid = Assert.IsType<GridEl>(ClassicBrowseCells.StarGrid(columns, Spacing.S, Spacing.M, cells));
 
         Assert.Equal(tracks, grid.Columns.Length);
         Assert.All(grid.Columns, t => Assert.Equal(TrackSize.Star(), t));
@@ -66,14 +121,29 @@ public class BrowseLayoutTests
 
     [Fact]
     public void StarGrid_WithNoCells_IsABareBox()
-        => Assert.IsType<BoxEl>(BrowseLayout.StarGrid(3, Spacing.S, Spacing.S, []));
+        => Assert.IsType<BoxEl>(ClassicBrowseCells.StarGrid(3, Spacing.S, Spacing.S, []));
+
+    // ── the link chip (D7) ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void TheFrameIsThePageGutterUnderTheSharedTitleY()
+    public void Top_and_For_you_are_the_one_chip_plate_32_tall_radius_4_on_a_link()
     {
-        var frame = BrowseLayout.Frame(Spacing.XXL);
-        Assert.Equal(new Edges4(Spacing.PageWide, Spacing.XXXL, Spacing.PageWide, Spacing.XXL), frame);
-        Assert.True(BrowseLayout.WordChipH > BrowseLayout.NameChipH);  // the Top pills outrank For-you's
+        // D7: no private pill — Top and For you are the stock chip's unchecked plate (the ToggleButton's own off ramp and geometry) on a link.
+        var off = ToggleButton.DefaultStyle;
+        foreach (var chip in new[]
+                 {
+                     Controls.LinkChip("spotify:page:music", "Music", static () => { }, strong: true),          // Top
+                     Controls.LinkChip("spotify:page:mixes", "Mixes", static () => { }, new BoxEl { Width = 8f }), // For you, with its pip
+                 })
+        {
+            var box = Assert.IsType<BoxEl>(chip);
+            Assert.Equal(32f, box.MinHeight);
+            Assert.Equal(CornerRadius4.All(4f), box.Corners);
+            Assert.Equal(AutomationRole.Hyperlink, box.Role);
+            Assert.Equal(off.OffBackground, box.Fill);
+            Assert.Equal(off.OffHover, box.HoverFill);
+            Assert.Equal(off.Padding, box.Padding);
+        }
     }
 
     // ── the tile model (0.2.9 BrowseTiles.ToModel) ──────────────────────────────────────────────────────────────────

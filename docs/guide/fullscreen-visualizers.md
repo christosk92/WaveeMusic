@@ -19,14 +19,17 @@ the cover.
 | Piece | File | Role |
 |---|---|---|
 | Modes, aspect classes, layout numbers, tone, entry rules | `Shell/Stage.cs` | CORE (engine-free, tested) |
-| The stage tree, idle machine, key map, window fullscreen | `Shell/Stage.UI.cs` | UI |
+| The stage's core surface: idle machine, key map, window fullscreen, the layer builders | `Shell/Stage.UI.cs`, `Shell/Stage.Frame.cs` | UI (core half) |
+| The stage's frame **pictures** (T7a1): root, top bar, transport card, options popover, gallery, caption | `Themes/Classic/Structure/Views/Stage/ClassicStage*.cs` (numbers in `Rules/StageGeometry*.cs`), keys in `Theming/Contracts/ViewKeys.Stage.cs` | theme (Classic) |
+| The caption's clock, edge wake and render-thread wipe; the options opener; the settings verbs | `Shell/Stage.Caption.UI.cs`, `Shell/Stage.Options.UI.cs`, `Shell/Stage.Settings.cs` | UI (core half) |
 | `Stage.Diagnostics` — the log events and the card's snapshot | `Shell/Stage.Host.cs` | SHELL |
 | Kinds, demand tiers, bands normalisation, the eight face folds, `Model.Tick` | `Shell/Visualizer.cs` | CORE |
-| `Slab`, `SeriesSource`, `Palette`, the 30 Hz `Clock`, the faces, the gallery | `Shell/Visualizer.UI.cs` | UI |
+| `Slab`, `SeriesSource`, `Palette`, the 30 Hz `Clock`, the faces | `Shell/Visualizer.UI.cs` | UI |
+| The gallery's words (face names, blurbs, tips, group labels) | `Shell/Visualizer.Gallery.UI.cs` | UI |
 | Kind-237 waveform bands, beat grid | `Entities/Waveform.cs`, `Entities/Edges.cs`, `Spotify/Spotify.Decode.Analysis.cs` | data |
 | Persisted preferences | `Platform/Prefs.Stage.cs` + the keys in `Platform/Platform.Settings.cs` | platform |
 | The engine pulls (`AcquireSpectrum`, `CopySpectrum`, `SetSpectrumOffsetMs`, `SpectrumDiagnostics`) | `Playback/Playback.Audio.cs` | playback |
-| The Diagnostics card | `Screens/Diagnostics.UI.cs` (`RuntimePageView.StageCard`) | UI |
+| The Diagnostics card | `Screens/Diagnostics.Pages.cs` (`Diagnostics.StageCard`, drawn by the Common `Pages.Diagnostics.Playback` view) | UI |
 
 ## How it works, in one paragraph
 
@@ -147,7 +150,7 @@ maximized.
 ## Diagnosing
 
 **The card.** Settings › Privacy & diagnostics › Tools › Playback runtime opens the `playback-diagnostics` page; the
-"Fullscreen & visualizer" card (`RuntimePageView.StageCard`) sits under the updates card and re-renders on every
+"Fullscreen & visualizer" card (`Diagnostics.StageCard`) sits under the updates card and re-renders on every
 `Stage.Diagnostics.Version` bump (Refresh re-reads the FFT figures):
 
 | Row | Reads | Healthy on a real account |

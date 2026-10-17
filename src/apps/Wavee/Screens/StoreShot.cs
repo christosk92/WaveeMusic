@@ -167,7 +167,7 @@ public static partial class Diagnostics
             var p = new Pending(v, Presenting.Peek(), FluentApp.Zoom, 0L);
             s_pending = p;
             Presenting.Value = true;
-            if (v.Zoom > 0) FluentApp.SetZoom(p.PriorZoom * v.Zoom / 100f);
+            if (v.Zoom > 0) ZoomService.Apply(p.PriorZoom * v.Zoom / 100f);
             s_settle?.Dispose();
             // A reveal runs half-way through the settle: after the zoom's reflow, before the frame is taken.
             if (v.Reveal.Length > 0)
@@ -219,24 +219,28 @@ public static partial class Diagnostics
             string folder = Path.Combine(Root, EvidenceReport.BundleFolderName(now, p.Verb.Tag));
             int w = capture.WidthPx, h = capture.HeightPx;
             bool alpha = p.Verb.Alpha;
+            ColorF ground = FluentGpu.Dsl.Tok.T.WindowBackground;   // the opaque form's backdrop, read on the UI thread
             Restore(p);
-            _ = Task.Run(() => Write(folder, bgra, w, h, alpha, json));
+            _ = Task.Run(() => Write(folder, bgra, w, h, alpha, ground, json));
         }
 
         static void Restore(Pending p)
         {
-            if (p.Verb.Zoom > 0) FluentApp.SetZoom(p.PriorZoom);
+            if (p.Verb.Zoom > 0) ZoomService.Apply(p.PriorZoom);
             Presenting.Value = p.WasPresenting;
             s_pending = null;
         }
 
-        /// <summary>WORKER. shot.png + shot.json, then the reply.</summary>
-        static void Write(string folder, byte[] bgra, int w, int h, bool alpha, string json)
+        /// <summary>WORKER. shot.png + shot.json, then the reply. The opaque form is flattened over the theme's solid base
+        /// (<paramref name="ground"/>): the back buffer is premultiplied, so dropping its alpha would dim every see-through fill.</summary>
+        static void Write(string folder, byte[] bgra, int w, int h, bool alpha, ColorF ground, string json)
         {
             try
             {
                 Directory.CreateDirectory(folder);
-                PngWriter.WriteBgra(Path.Combine(folder, "shot.png"), bgra, w, h, keepAlpha: alpha);
+                string shot = Path.Combine(folder, "shot.png");
+                if (alpha) PngWriter.WriteBgra(shot, bgra, w, h, keepAlpha: true);
+                else PngWriter.WriteBgra(shot, bgra, w, h, backdrop: ground);
                 File.WriteAllText(Path.Combine(folder, "shot.json"), json, Utf8);
                 Log.Info("evidence", "[shot] " + folder + " " + w.ToString(CultureInfo.InvariantCulture) + "x" + h.ToString(CultureInfo.InvariantCulture));
                 Evidence.Reply("shot", "ok", folder);

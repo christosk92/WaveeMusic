@@ -210,16 +210,45 @@ public class ArtistReadinessTests
         var t = Entities.Current.Artists;
         int slot = a.Slot;
 
-        Assert.False(ArtistReadiness.ChartFailed(a));                  // nothing asked at all: the first paint
+        Assert.False(ArtistReadiness.ChartFailed(a, targetsAsked: true));                  // nothing asked at all: the first paint
 
         t.Inflight[slot] |= (uint)ArtistFields.Identity;                // a card is warming the name/portrait…
-        Assert.False(ArtistReadiness.ChartFailed(a));                   // …which says NOTHING about the chart
-        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a)));
+        Assert.False(ArtistReadiness.ChartFailed(a, targetsAsked: true));                   // …which says NOTHING about the chart
+        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, targetsAsked: true)));
         Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
             chartSettled: false));
 
         t.Asked[slot] |= (uint)ArtistFields.Chart;                      // the page's own Demand finally runs…
         t.Inflight[slot] &= ~(uint)ArtistFields.Identity;
-        Assert.True(ArtistReadiness.ChartFailed(a));                    // …and an asked, unanswered, un-edged chart is failed
+        Assert.True(ArtistReadiness.ChartFailed(a, targetsAsked: true));                    // …and an asked, unanswered, un-edged chart is failed
+    }
+
+    /// <summary>THE PAGE HOST'S DEMAND GATE (tuned Classic D19). The chart answered and its list is complete, but nobody has asked
+    /// the charted rows yet: the page host asks them in an effect AFTER the render that saw the list land. Reading those
+    /// un-asked rows as "nothing coming" settled the gate as failed in that render, revealed the page with Top tracks still
+    /// a shimmer, and Top tracks arrived as a second wave. The rows count only once the host has asked them.</summary>
+    [Fact]
+    public void The_charted_rows_count_toward_failure_only_once_the_host_has_asked_them()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var artist = new StagedId(s.Text(Uri));
+        int mark = s.PopularMark;
+        s.PopularTracks.Add() = new StagedId(s.Text("spotify:track:wave-1"));
+        s.EndPopular(artist, mark, extension: true);
+        s.Artists.RowFor(artist, Authority.Full, (uint)ArtistFields.Chart);
+        TestScope.CommitAndPublish(s);
+
+        var a = ArtistOf();
+        Assert.False(ArtistReadiness.Chart(a));                               // the row's list fields are not here yet
+        Assert.False(ArtistReadiness.ChartFailed(a, targetsAsked: false));    // …and not asked yet: pending, the page keeps its shimmer
+        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, targetsAsked: false)));
+        Assert.True(ArtistReadiness.ChartFailed(a, targetsAsked: true));      // the same marks once asked and settled: nothing is coming
+
+        var tracks = Entities.Current.Tracks;
+        int row = Entities.Current.Edges.ArtistPopular.Targets(a.Slot)[0];
+        tracks.Asked[row] |= ArtistReadiness.ChartRowGroup;                   // the host's ask goes out…
+        tracks.Inflight[row] = 1u;
+        Assert.False(ArtistReadiness.ChartFailed(a, targetsAsked: true));     // …and the chart is pending until it answers
     }
 }

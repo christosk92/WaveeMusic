@@ -6,18 +6,6 @@ namespace Wavee.Tests;
 public class PodcastReaderRulesTests
 {
     [Fact]
-    public void TranscriptFollowsSpokenLineAndIgnoresHeadings()
-    {
-        Spotify.Podcasts.TranscriptLine[] lines =
-        [new(100, "Opening", true), new(200, "Hello", false), new(300, "Next section", true), new(400, "World", false)];
-        Assert.Equal(-1, PodcastReaderRules.CurrentLine(lines, -1));
-        Assert.Equal(-1, PodcastReaderRules.CurrentLine(lines, 100));
-        Assert.Equal(1, PodcastReaderRules.CurrentLine(lines, 399));
-        Assert.Equal(3, PodcastReaderRules.CurrentLine(lines, 400));
-        Assert.Equal(1, PodcastReaderRules.CurrentLine(lines, 220)); // backward seek
-    }
-
-    [Fact]
     public void ChapterWithoutEndStopsAtNextChapterStart()
     {
         Spotify.Podcasts.Chapter[] chapters = [new("a", "First", 0, 0), new("b", "Second", 1000, 0)];

@@ -1,6 +1,6 @@
 // ── Platform/Controls.cs ───────────────────────────────────────────────────────────────────────────────────────────
-// Surfaces, SearchHighlight, Equalizer, SaveButton/PreSaveButton/FollowButton, SelectionBar, RowSwipe,
-// ExplicitBadge, MoreButton, ExpandChevron, the three dialog helpers, the vacancy grammar, Notify.Say. The envelope
+// Surfaces, SearchHighlight, Equalizer, SaveButton/PreSaveButton/FollowToggle, SelectionBar, RowSwipe,
+// ExplicitBadge, MoreButton, the three dialog helpers, the vacancy grammar, Notify.Say. The envelope
 // for the whole file family is ch 00's 4,500-6,000; chapters 02's and 01's shares sit INSIDE it — do not double
 // count
 //
@@ -34,7 +34,6 @@
 // A null seam renders NOTHING rather than a dead affordance — the capability gate, verbatim from 0.2.9: an affordance
 // is gated on the declared capability, never hardcoded.
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -42,7 +41,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -442,9 +440,9 @@ public static partial class Controls
     /// its content.</summary>
     public static BoxEl AccentHeader(string title, ColorF accent, string? eyebrow = null)
     {
-        var head = Design.Type.RailHeader(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        var head = R.Type.RailHeader(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         Element[] lines = eyebrow is { Length: > 0 }
-            ? [Design.Type.Eyebrow(eyebrow) with { Color = accent, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            ? [R.Type.Eyebrow(eyebrow) with { Color = accent, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                head, AccentRule(accent)]
             : [head, AccentRule(accent)];
         return new BoxEl { Direction = 1, Gap = 2f, MinWidth = 0f, Children = lines };
@@ -470,46 +468,13 @@ public static partial class Controls
                 // Grow: a SPACER — not the heading — pushes the tools to the trailing edge, which is what keeps the
                 // subtitle sitting right next to the title.
                 subtitle is { Length: > 0 } s
-                    ? Design.Type.ModuleHeader(title, s)
-                    : Design.Type.ModuleHeader(title) with
+                    ? R.Type.ModuleHeader(title, s)
+                    : R.Type.ModuleHeader(title) with
                         { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 new BoxEl { Grow = 1f, MinWidth = 0f },
                 tools ?? new BoxEl(),
             ],
         };
-
-    /// <summary>A "section band": a quiet rounded WASH behind a page section, carrying the accent as a soft tint that
-    /// kisses the top edge and fades into the material by ~45% down.
-    /// <para>NOT a card. It used to be one — a card fill plus a hairline — which put a bordered container around a page
-    /// SECTION whose content was already a row of bordered cards: a box of boxes, and one more stroke than Fluent's
-    /// grouped-content look actually draws. The shell's published material already carries the page's tint, so the
-    /// band's only remaining job is to say "these belong together", and an unbordered wash says it without adding an
-    /// edge.</para></summary>
-    public static BoxEl SectionBand(Element content, ColorF accent)
-        => new()
-        {
-            Direction = 1, Gap = Spacing.M,
-            Padding = Edges4.All(Spacing.L),
-            Corners = CornerRadius4.All(Radii.Card),
-            Gradient = BandGradient(accent),
-            Children = [content],
-        };
-
-    /// <summary>The material layer for an integrated-cover hero: the same gradient <see cref="SectionBand"/> paints,
-    /// exposed on its own so a hero can apply it without the band's padding.</summary>
-    public static GradientSpec HomeHeroBackdrop(ColorF accent) => BandGradient(accent);
-
-    // Kiss the card fill toward the accent at the very top (heavier in dark, where a faint tint would vanish), but HOLD
-    // the card's own alpha so the surface's translucency stays uniform — only the HUE shifts at the top.
-    static GradientSpec BandGradient(ColorF accent)
-    {
-        ColorF card = Tok.FillCardDefault;
-        ColorF top = ColorF.Lerp(card, accent, Tok.Theme == ThemeKind.Dark ? 0.10f : 0.06f) with { A = card.A };
-        return GradientDown(
-            new GradientStop(0f, top),
-            new GradientStop(0.45f, card),
-            new GradientStop(1f, card));
-    }
 
     /// <summary>Semantic copy protection over full-bleed artist photography. Both axes use exactly FOUR stops — the
     /// recorder's limit, so this is a hard ceiling and not a preference — and both release to alpha 0 at the hero seam.
@@ -518,27 +483,36 @@ public static partial class Controls
     /// on a real surface and the photography lives in the right half. A softened pass made the plate a whisper in light
     /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
-    /// image into a painted plate.</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
+    /// image into a painted plate.</para>
+    /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
+    /// ends, and the 0.35 shoulder keeps its distance after it (tuned Classic D18): the copy stays on the plate at every width.
+    /// NaN (or a hold left of the default) keeps the default stops.</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN)
     {
         ColorF layer = Tok.FillLayerDefault;
-        float pull = Tok.Theme == ThemeKind.Light ? 0.16f : 0.24f;
+        var wash = R.Wash;
+        float pull = wash.HeroVeilPull;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {
-            float top = Tok.Theme == ThemeKind.Light ? 0.42f : 0.78f;
+            float top = wash.HeroVeilPeak;
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(0.45f, veil with { A = 0.35f }),
                 new GradientStop(0.82f, veil with { A = top }),
                 new GradientStop(1f, veil with { A = 0f }));
         }
+        float h = float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
         return GradientRight(
             new GradientStop(0f, veil with { A = 0.96f }),
-            new GradientStop(0.30f, veil with { A = 0.92f }),
-            new GradientStop(0.62f, veil with { A = 0.35f }),
+            new GradientStop(h, veil with { A = 0.92f }),
+            new GradientStop(h + HeroVeilShoulder, veil with { A = 0.35f }),
             new GradientStop(1f, veil with { A = 0f }));
     }
+
+    /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
+    /// shoulder keeps before the veil's clear edge.</summary>
+    const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
 
     // ══ 2. SEARCH HIGHLIGHT ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -888,7 +862,7 @@ public static partial class Controls
             {
                 Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = Radii.ControlAll,
-                HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+                HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
                 Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : Tok.TextSecondary)],
@@ -935,72 +909,13 @@ public static partial class Controls
         }
     }
 
-    /// <summary>A Follow / Following PILL — for artists and playlists (the "save" verb for a profile). Accent border +
-    /// ink when followed: "you follow this" is a STATE, and the border carries it (accent role 2).
-    /// <para>Geometry is the media capsule's (36 tall, fully rounded, the Standard hover/press rung) because a Follow
-    /// pill stood beside a Play capsule on every artist hero — they had to be the same object at two jobs.</para>
-    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="FollowToggle"/> below, the 32/r4 toggle
-    /// from `docs/plans/wavee/home-redesign-implementation.md` Workstream B. Migration groups B–D move their call
-    /// sites first; this class stays compiling until every caller has moved.</para></summary>
-    public sealed class FollowButton : Component
-    {
-        public required string Uri { get; init; }
-        public string? Name { get; init; }
-        /// <summary>An on-media ink for a pill floated over photography; null takes the theme ink.</summary>
-        public ColorF? Foreground { get; init; }
-
-        public override Element Render()
-        {
-            var lib = Library;
-            if (lib is null) return new BoxEl();                 // capability gate
-            bool following = lib.IsSaved(Uri);                   // subscribe
-            ColorF idleInk = Foreground ?? Tok.TextPrimary;
-            return new BoxEl
-            {
-                Direction = 0, Height = PillHeight, Gap = Spacing.XS,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f), Corners = Radii.FullAll,
-                BorderWidth = 1f,
-                BorderColor = following ? Tok.AccentDefault
-                    : Foreground is { } fg ? fg with { A = 0.42f } : Tok.StrokeControlDefault,
-                HoverFill = Foreground is { } hover ? hover with { A = 0.12f } : Tok.FillSubtleSecondary,
-                PressedFill = Foreground is { } press ? press with { A = 0.18f } : Tok.FillSubtleTertiary,
-                HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                OnClick = () => lib.ToggleSaved(Uri, Name),
-                Children =
-                [
-                    Icon(following ? Icons.HeartFill : Icons.Heart, 14f,
-                         following ? Tok.AccentTextPrimary : idleInk),
-                    Body(Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow)) with
-                        { Weight = 600, Color = following ? Tok.AccentTextPrimary : idleInk },
-                ],
-            };
-        }
-
-        /// <summary>The skeleton SHAPE the deriver walks: the real pill, so it shimmers as a bordered pill rather than
-        /// as a full-width default bar stretched across the actions row.</summary>
-        public static Element SkeletonShape() => new BoxEl
-        {
-            Direction = 0, Height = PillHeight, Gap = Spacing.XS,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f), Corners = Radii.FullAll,
-            BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-            Children =
-            [
-                Icon(Icons.Heart, 14f, Tok.TextPrimary),
-                Body(Loc.Get(Strings.Artist.Follow)) with { Weight = 600, Color = Tok.TextPrimary },
-            ],
-        };
-    }
-
     /// <summary>Which pair of words a <see cref="FollowToggle"/> speaks — the "save" verb differs between an ordinary
     /// entity (artist, playlist) and a release that has not dropped yet.</summary>
     public enum FollowVerb : byte { Follow, PreSave }
 
     /// <summary>THE Follow / Pre-save toggle (Workstream B) — a stock <c>ToggleButton</c> tinted by the PAGE accent,
-    /// replacing both <see cref="FollowButton"/> and the old <see cref="PreSaveButton"/> pill. 32/r4, heart glyph that
-    /// swaps <see cref="Icons.Heart"/>/<see cref="Icons.HeartFill"/> and pops on a USER click only (never on a
+    /// replacing the old Follow pill and the old <see cref="PreSaveButton"/> pill. 32/r4, a glyph that swaps on the
+    /// checked edge (<see cref="Glyph"/>: the person for Follow, the heart for Pre-save) and pops on a USER click only (never on a
     /// data-driven load — <see cref="ToggleButton.Controlled"/>'s own <c>userFlip</c> bookkeeping), a checked-label
     /// swap ("Follow" → "Following"/"Pre-save" → "Pre-saved") and a root reflow to match. See the plan's state table
     /// (`docs/plans/wavee/home-redesign-implementation.md` Workstream B) for the tint ramp; <see cref="ButtonRules.FollowStyle"/>
@@ -1014,6 +929,8 @@ public static partial class Controls
         /// mounts). Null reads the PAGE accent off <see cref="Design.AccentCtx"/>, falling back to the semantic token
         /// — the plan's "A = page accent, else Tok.AccentDefault".</summary>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>The toggle's control size: the stock 32 (<see cref="ControlSize.Medium"/>), or the 40-tall Compact target (<see cref="ControlSize.Large"/>, TC6).</summary>
+        public ControlSize Size { get; init; } = ControlSize.Medium;
 
         public override Element Render()
         {
@@ -1024,11 +941,19 @@ public static partial class Controls
 
             bool on = lib.IsSaved(Uri);                          // subscribe → re-skin on any saved-set change
             ColorF a = Accent?.Invoke() ?? (ctx is { } page ? page.Value.Fill : Tok.AccentDefault);
-            bool light = Tok.Theme == ThemeKind.Light;
+            bool light = R.IsLight;
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
-                glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
-                style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
+                glyph: Glyph(Verb, false), checkedGlyph: Glyph(Verb, true), checkedLabel: Label(Verb, true),
+                style: Sized(ButtonRules.FollowStyle(a, light), Size), parts: RootNoShrink);
+        }
+
+        /// <summary>The style at a control size: the size's height and padding over the stock ramp (Medium is the ramp as it is).</summary>
+        static ToggleButton.Style Sized(ToggleButton.Style style, ControlSize size)
+        {
+            if (size == ControlSize.Medium) return style;
+            var m = ControlMetrics.For(size);
+            return style with { MinHeight = m.MinHeight, Padding = m.Padding };
         }
 
         static string Label(FollowVerb verb, bool on) => Loc.Get(verb switch
@@ -1037,11 +962,20 @@ public static partial class Controls
             _ => on ? Strings.Artist.Following : Strings.Artist.Follow,
         });
 
+        /// <summary>The toggle's glyph. Following someone is not liking something (tuned Classic D21, owner Q38): Follow wears
+        /// a person, "add" at rest and the plain person once followed, so it never reads as the Like heart beside it.
+        /// Pre-save is a save, so it keeps the heart.</summary>
+        public static string Glyph(FollowVerb verb, bool on) => verb switch
+        {
+            FollowVerb.PreSave => on ? Icons.HeartFill : Icons.Heart,
+            _ => on ? Icons.Contact : SegoeGlyphs.AddFriend,
+        };
+
         /// <summary>The skeleton SHAPE the deriver walks: the real toggle at rest (unchecked, the semantic accent),
         /// off the live theme, so it shimmers as itself rather than a stretched default bar.</summary>
         public static Element SkeletonShape(FollowVerb verb = FollowVerb.Follow) => ToggleButton.Controlled(
-            Label(verb, false), false, static _ => { }, glyph: Icons.Heart,
-            style: ButtonRules.FollowStyle(Tok.AccentDefault, Tok.Theme == ThemeKind.Light), parts: RootNoShrink);
+            Label(verb, false), false, static _ => { }, glyph: Glyph(verb, false),
+            style: ButtonRules.FollowStyle(Tok.AccentDefault, R.IsLight), parts: RootNoShrink);
     }
 
     /// <summary>The same follow toggle as a plateless TEXT ACTION, for the sticky context band — which has no plates in
@@ -1095,17 +1029,6 @@ public static partial class Controls
             Opacity = restOpacity, HoverOpacity = 1f, BlocksDragArm = true,
         };
 
-    /// <summary>The expand CHEVRON: a 32-square icon button whose glyph ROTATES rather than swapping, so the two states
-    /// are one object at two angles. The disclosure curve is the engine's own, and expand/collapse are DIFFERENT curves
-    /// — WinUI's disclosure pair, not one curve run backwards.</summary>
-    public static BoxEl ExpandChevron(bool expanded, Action? onClick)
-        => IconAction(Icons.ChevronDown, onClick, requestsContext: false) with
-        {
-            Transform = Prop.Of(() => Affine2D.Rotation(expanded ? MathF.PI : 0f)),
-            TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-            BlocksDragArm = true,
-        };
-
     // ══ 6. THE SWIPE BELT (touch only) ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Is a touch swipe belt worth putting in the tree at all?
@@ -1147,8 +1070,8 @@ public static partial class Controls
     /// <para><paramref name="standalone"/> is the overlay projection for a surface that has no persistent command bar of
     /// its own: the same content inside a floating acrylic card docked to the bottom of the list.</para></summary>
     public static Element SelectionBar(int count, Func<int, Element> commands, bool standalone = false,
-                                       float bottomPadding = Spacing.XL, int minCount = 1)
-        => Embed.Comp(new SelectionBarProps(count, commands, standalone, bottomPadding, minCount),
+                                       float? bottomPadding = null, int minCount = 1)
+        => Embed.Comp(new SelectionBarProps(count, commands, standalone, bottomPadding ?? Spacing.XL, minCount),
                       static () => new SelectionBarHost());
 
     sealed record SelectionBarProps(int Count, Func<int, Element> Commands, bool Standalone, float BottomPadding,
@@ -1169,9 +1092,10 @@ public static partial class Controls
             // reads as a fit.
             float effective = lane > 0.5f ? lane : 720f;
 
+            var fit = OverlayFit.Layout.Selection;
             Element content = new BoxEl
             {
-                Direction = 1, Grow = 1f, MinWidth = 0f,
+                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = fit.MinHeight,
                 OnBoundsChanged = r =>
                 {
                     if (r.W > 0f && MathF.Abs(r.W - _laneW.Peek()) > 0.5f) _laneW.Value = r.W;
@@ -1184,13 +1108,13 @@ public static partial class Controls
             {
                 Direction = 1, Grow = 1f, HitTestPassThrough = true,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                Padding = new Edges4(Spacing.L, 0f, Spacing.L, p.BottomPadding),
+                Padding = new Edges4(fit.SideInset ?? Spacing.L, 0f, fit.SideInset ?? Spacing.L, p.BottomPadding),
                 Children =
                 [
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f,
-                        Padding = new Edges4(8f, 6f, 8f, 6f),
+                        Padding = fit.Padding,
                         Corners = CornerRadius4.All(Radii.Card),
                         Acrylic = Tok.AcrylicFlyout,
                         BorderWidth = 1f, BorderColor = Tok.StrokeFlyoutDefault,
@@ -1240,15 +1164,30 @@ public static partial class Controls
     /// <summary>THE vacancy — every "there is nothing to show" surface in the app, at one of eight shapes. The app has
     /// no second way to say it.
     /// <para>The copy is VERBATIM and lives in the loc table; a caller overrides <paramref name="title"/> /
-    /// <paramref name="subtitle"/> only where the surface genuinely knows something the grammar does not.</para></summary>
+    /// <paramref name="subtitle"/> only where the surface genuinely knows something the grammar does not.</para>
+    /// <para>THE OFFLINE VOICE (tuned Classic X1): an Error vacancy is a failure while ONLINE. While the session is offline
+    /// (<see cref="Shell.FrameRules.VoiceFor"/>) the same mount speaks the Offline voice instead, live: a page-scale vacancy becomes the
+    /// theme's offline vacancy (<c>Overlay.OfflineVacancy</c>: "&lt;page&gt; needs a connection", Retry, Go to Your Library), a
+    /// rail-scale one the compact Offline shape with the same reconnecting Retry. A page that has its content saved never gets here:
+    /// it keeps its rows under the offline strip.</para></summary>
     public static Element Vacancy(VacancyVoice voice, VacancyScale scale = VacancyScale.Page,
                                   string? title = null, string? subtitle = null,
                                   string? actionLabel = null, Action? onAction = null)
     {
+        Element picture = VacancyPicture(voice, scale, title, subtitle, actionLabel, onAction);
+        if (voice != VacancyVoice.Error) return picture;
+        Element offline = scale == VacancyScale.Page
+            ? FluentGpu.Theming.Slots.View(Theming.Contracts.ViewKeys.OverlayOfflineVacancy, Shell.OfflineVacancyFor(onAction))
+            : VacancyPicture(VacancyVoice.Offline, scale, null, null, null, Shell.ReconnectThen(onAction));
+        return Flow.Show(static () => Shell.FrameRules.VoiceFor(VacancyVoice.Error, Shell.Auth.Value) == VacancyVoice.Offline, offline, picture);
+    }
+
+    static Element VacancyPicture(VacancyVoice voice, VacancyScale scale, string? title, string? subtitle, string? actionLabel, Action? onAction)
+    {
         (string t, string s) = voice switch
         {
             VacancyVoice.Error => (Loc.Get(Strings.Common.ErrorTitle), Loc.Get(Strings.Common.ErrorSubtitle)),
-            VacancyVoice.Offline => (Loc.Get(Strings.Common.Offline), Loc.Get(Strings.Common.OfflineBanner)),
+            VacancyVoice.Offline => (Loc.Get(Strings.Common.OfflineTitle), Loc.Get(Strings.Common.OfflineBanner)),
             VacancyVoice.NoMatch => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
             _ => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
         };
@@ -1258,44 +1197,27 @@ public static partial class Controls
             && voice is VacancyVoice.Error or VacancyVoice.Offline)
             actionLabel = Loc.Get(Strings.Common.Retry);
 
-        TextEl headline = scale == VacancyScale.Page
-            ? Design.Type.PageHero(title ?? t)
+        // The structure's fit for the band (TC9): at Compact the page-scale headline is the 20/28 rung and the padding and the action's height follow the board.
+        var fit = OverlayFit.Layout.Vacancy;
+        TextEl headline = scale == VacancyScale.Page && !fit.QuietTitle
+            ? R.Type.PageHero(title ?? t)
             : Ui.Subtitle(title ?? t);
 
         var kids = new List<Element>(4) { headline with { Wrap = TextWrap.Wrap } };
         string? caption = subtitle ?? s;
-        if (caption is { Length: > 0 }) kids.Add(Design.Type.TrackMeta(caption) with { Wrap = TextWrap.Wrap });
+        if (caption is { Length: > 0 }) kids.Add(R.Type.TrackMeta(caption) with { Wrap = TextWrap.Wrap });
         if (actionLabel is { Length: > 0 } && onAction is not null)
         {
             kids.Add(new BoxEl { Height = Spacing.L });
-            kids.Add(Button.Standard(actionLabel, onAction));   // Standard, NEVER Accent — see the grammar note above
+            var action = Button.Standard(actionLabel, onAction);   // Standard, NEVER Accent — see the grammar note above
+            kids.Add(fit.ActionHeight > 0f ? action with { MinHeight = fit.ActionHeight, Height = fit.ActionHeight } : action);
         }
         // Wrap, but no text alignment: a text node has no alignment knob, so centring is the CONTAINER's job and each
         // run is its own centred box.
         return new BoxEl
         {
             Direction = 1, Grow = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Gap = Spacing.XS, Padding = Edges4.All(Spacing.XXL), Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The OFFLINE STRIP — the fourth voice's other shape. A notice over KEPT content, not a replacement of the
-    /// page: an offline surface that still has cached rows shows them, with this above.</summary>
-    public static Element OfflineStrip(string? message = null, Action? onRetry = null)
-    {
-        var kids = new List<Element>(4)
-        {
-            Icon(Icons.InfoBarBackgroundCircle, 16f, Tok.SystemFillCaution),
-            Design.Type.TrackMeta(message ?? Loc.Get(Strings.Common.Offline)),
-            new BoxEl { Grow = 1 },
-        };
-        if (onRetry is not null) kids.Add(Button.Standard(Loc.Get(Strings.Common.Retry), onRetry));
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S),
-            Fill = Tok.SystemFillCautionBackground, Corners = CornerRadius4.All(Radii.Control),
-            Children = kids.ToArray(),
+            Gap = Spacing.XS, Padding = Edges4.All(fit.Padding ?? Spacing.XXL), Children = kids.ToArray(),
         };
     }
 
@@ -1329,7 +1251,7 @@ public static partial class Controls
             d.PrimaryText = verb;
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.PrimaryClick = onConfirm;
         });
     }
@@ -1347,7 +1269,7 @@ public static partial class Controls
             d.Title = title;
             d.PrimaryText = commitLabel;
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.Content = TextBox.Create(text, v => text.Value = v);
             d.PrimaryClick = () => onCommit(text.Peek());
         });
@@ -1365,7 +1287,7 @@ public static partial class Controls
             d.PrimaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.Content = body;
         });
     }

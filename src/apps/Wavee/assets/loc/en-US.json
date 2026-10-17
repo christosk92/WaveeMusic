@@ -53,6 +53,8 @@
   },
   "detail": {
     "play": "Play",
+    "moreWaysToPlay": "More ways to play",
+    "startRadio": "Start radio",
     "shuffle": "Shuffle",
     "tuning": {
       "tune": "Tune",
@@ -62,9 +64,7 @@
       "current": "Current",
       "reset": "Reset tuning",
       "applied": "Playlist tuned",
-      "applyFailed": "Couldn’t tune this playlist. Try again.",
-      "tipTitle": "Tune this playlist",
-      "tipBody": "Adjust the mix's direction right from here — Wavee rebuilds the track list."
+      "applyFailed": "Couldn’t tune this playlist. Try again."
     },
     "playNext": "Play next",
     "playAfter": "Play after",
@@ -108,6 +108,7 @@
     "today": "Today",
     "yesterday": "Yesterday",
     "durationHrMin": "{hours} hr {minutes} min",
+    "durationHr": "{hours} hr",
     "durationMin": "{minutes} min",
     "metaLine": "{count} · {duration}",
     "tempoColumn": "BPM · Key column",
@@ -130,6 +131,7 @@
     },
     "sort": {
       "customOrder": "Custom order",
+      "albumOrder": "Album order",
       "title": "Title",
       "artist": "Artist",
       "album": "Album",
@@ -137,7 +139,8 @@
       "duration": "Duration",
       "ascending": "Ascending",
       "descending": "Descending",
-      "menu": "Sort"
+      "menu": "Sort",
+      "named": "Sort: {order}"
     },
     "filter": {
       "title": "Filter tracks",
@@ -190,7 +193,17 @@
       "tempoFast": "120–139 BPM",
       "tempoVeryFast": "140+ BPM",
       "onlyLiked": "Only songs I liked",
-      "hideUnplayable": "Hide songs I can’t play"
+      "hideUnplayable": "Hide songs I can’t play",
+      "unavailable": {
+        "$comment": "The bar over a list that holds songs the user cannot play (boards C-Unavailable / C-Unavailable-Compact). `summary` is the short form; `explained` names the reasons, joined from `region` / `upcoming`, or `allRegion` / `allUpcoming` when every such song shares one reason. `hide` turns on the filter card's `hideUnplayable` switch.",
+        "summary": "{count, plural, one {# song here can’t be played.} other {# songs here can’t be played.}}",
+        "explained": "{count, plural, one {# song here can’t be played} other {# songs here can’t be played}}: {reasons}.",
+        "region": "{count, plural, one {one isn’t available in your country} other {# aren’t available in your country}}",
+        "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
+        "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
+        "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
+        "hide": "{count, plural, one {Hide it} other {Hide them}}"
+      }
     },
     "density": {
       "rowSize": "Row size",
@@ -203,7 +216,10 @@
       "$comment": "The three things that can stand in for rows. `noTracks` is a VERDICT (the membership landed and it is empty); `loadFailed` is the absence of a verdict (the fetch failed and nothing is resident) and is deliberately a different sentence — saying \"Nothing here yet\" about a playlist we simply could not read is a lie the user cannot act on.",
       "noTracks": "Nothing here yet",
       "noMatch": "No songs match your filter",
-      "loadFailed": "Couldn't load these songs"
+      "loadFailed": "Couldn't load these songs",
+      "$commentLead": "An EMPTY playlist's lead over its Recommended songs (Compact): findSongs is the line under noTracks, searchSongs the placeholder of the field that looks for songs to add.",
+      "findSongs": "Find songs to add, or start from the suggestions below.",
+      "searchSongs": "Search for songs or episodes"
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",
@@ -294,6 +310,8 @@
       "video": "Music video",
       "localFile": "Local file",
       "unavailable": "Audio unavailable",
+      "unavailableShort": "Unavailable",
+      "unavailableReason": "This song isn’t available to play",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"
@@ -392,7 +410,6 @@
     "factSong": "Song",
     "factLength": "Length",
     "factLabel": "Label",
-    "factOfCount": "{n} of {total}",
     "otherVersions": "Other versions",
     "recommended": "Recommended songs",
     "noSuggestions": "No suggestions right now",
@@ -403,6 +420,11 @@
     "collabView": "View collaborators",
     "queueUnavailable": "Can’t add to queue right now",
     "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
+    "filteredMark": "(filtered)",
+    "dateGroup": {
+      "thisWeek": "This week",
+      "earlier": "Earlier"
+    },
     "episodeCountOf": "{shown} of {count, plural, one {# episode} other {# episodes}}",
     "rail": {
       "artistsMenu": "Artists"
@@ -1052,20 +1074,14 @@
     "sortBy": "Sort by",
     "viewAs": "View as",
     "size": "Size",
-    "sort": {
-      "recents": "Recents",
-      "recentlyAdded": "Recently added",
-      "alphabetical": "Alphabetical",
-      "creator": "Artist",
-      "releaseDate": "Release date"
-    },
     "rail": {
       "recents": "recents",
       "alphabetical": "alphabetical",
       "creator": "artist",
       "recentlyAdded": "recently added",
       "releaseDate": "release date",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "more"
     },
     "scope": {
       "inLibrary": "in your library",
@@ -1100,6 +1116,8 @@
       "layoutSub": "Classic or Library. Applies immediately.",
       "density": "Density",
       "densitySub": "Two-line or one-line rows for playlists and albums",
+      "showCovers": "Show covers",
+      "showCoversSub": "Artwork beside playlists and albums. Off shows compact text rows.",
       "reset": "Reset this layout",
       "resetSub": "Back to the default sections and order",
       "fileFault": "Your sidebar layout couldn't be read, so the default is shown.",
@@ -1302,20 +1320,51 @@
       "title": "Now playing",
       "subtitle": "The player styles behind the pinned cover"
     },
+    "themePicker": {
+      "$comment": "Settings > Appearance > Theme: the strip of installed-theme cards (themes plan 8.1).",
+      "subtitle": "A theme changes how every page, the player and navigation look",
+      "sub": "Each theme keeps its own options",
+      "none": "No themes are installed",
+      "developer": "Developer",
+      "switchFailed": "This theme could not be applied, so Wavee kept the current one"
+    },
+    "themeOptions": {
+      "$comment": "Settings > Appearance > the active theme's options: one expander, rows grouped (themes plan 8.1). The title is built from the theme's own name.",
+      "title": "{theme} options",
+      "none": "This theme has no options",
+      "displayTitle": "Display",
+      "animationEffects": "Animation effects",
+      "animationEffectsSub": "Follows the Windows animation setting",
+      "reset": "Reset options",
+      "resetSub": "Put every option of this theme back to its default. Your other settings are not changed.",
+      "resetConfirmTitle": "Reset options?",
+      "resetConfirmBody": "Every option of this theme goes back to its default. This can't be undone.",
+      "resetAction": "Reset",
+      "surfaces": "Tinted surfaces",
+      "surfacesSub": "How much the artwork tints the shell, the page ground, the hero washes and the photo veils",
+      "surfacesOff": "Off",
+      "surfacesSubtle": "Subtle",
+      "surfacesRich": "Rich",
+      "accentFromArtwork": "Accent from artwork",
+      "accentFromArtworkSub": "Play, Follow, hearts and links take their colour from the cover. Off uses your Windows accent",
+      "nowPlayingColors": "Now playing colours",
+      "nowPlayingColorsSub": "Full screen, lyrics and the queue take their colour from the playing cover. Off keeps them neutral",
+      "group": {
+        "sidebar": "Sidebar",
+        "trackLists": "Track lists",
+        "trackPages": "Track pages",
+        "surfaces": "Surfaces"
+      }
+    },
+    "home": {
+      "title": "Home",
+      "subtitle": "How Home shows your daylist"
+    },
     "appearance": {
       "title": "Theme",
       "subtitle": "Theme, zoom and shell effects",
       "marquee": "Marquee text",
       "marqueeSub": "Scroll overflowing titles instead of truncating them",
-      "colorWashes": "Color washes",
-      "colorWashesSub": "Tint the shell and page surfaces from artwork",
-      "pageMotion": "Page motion",
-      "pageMotionSub": "How pages animate when you navigate",
-      "pageMotionFluent": "Fluent",
-      "pageMotionSpatial": "Spatial",
-      "pageMotionWinUi": "WinUI",
-      "pageMotionClassic": "Classic",
-      "pageMotionNone": "None",
       "zoom": "Zoom",
       "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
       "zoomAuto": "Auto ({percent}%)",
@@ -1324,6 +1373,7 @@
       "zoomReset": "Reset zoom",
       "theme": "Theme",
       "themeSub": "System follows the Windows setting live",
+      "appMode": "App mode",
       "rowDensity": "Row density",
       "rowDensitySub": "Choose how much music fits on screen; the miniature rows preview the real spacing.",
       "trackListStyle": "Track list style",
@@ -1348,7 +1398,6 @@
       "railResetConfirmBody": "This resets the left rail's remembered width and collapsed state for albums, playlists, Liked Songs and podcasts back to their defaults. This can't be undone.",
       "lyricsBlur": "Lyrics blur",
       "lyricsBlurSub": "Depth-of-field and glow blur on the lyrics. 0 turns them off — lighter on the GPU.",
-      "lyricsBlurAuto": "Auto",
       "npvPresentation": "Hero",
       "npvPresentationSub": "Show the cover or a player above the track details",
       "npvStyle": "Player style",
@@ -1557,7 +1606,7 @@
       "noticesMissing": "Third-party notices are generated at packaging time."
     },
     "diagnostics": {
-      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Diagnostics.UI.cs, Diagnostics.Capture.UI.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
+      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Screens/Diagnostics.Pages.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
       "openLogFolder": "Open log folder",
       "refresh": "Refresh"
     },
@@ -1735,7 +1784,9 @@
     "closeTab": "Close tab",
     "closeOtherTabs": "Close other tabs",
     "closeTabsRight": "Close tabs to the right",
-    "closeAllUnpinned": "Close all unpinned tabs"
+    "closeAllUnpinned": "Close all unpinned tabs",
+    "switchTabs": "{count} open tabs",
+    "accountAndMore": "Account and more"
   },
   "friends": {
     "title": "Friend activity",
@@ -2237,7 +2288,8 @@
       "pageSuffix": "· {page}",
       "search": "Search in Your Library",
       "searchPlaceholder": "Search in Your Library",
-      "options": "More options"
+      "options": "More options",
+      "refreshFailed": "Couldn’t refresh your library. Showing what was loaded."
     },
     "view": {
       "list": "List",
@@ -2297,9 +2349,6 @@
       "shortcutsUnpinned": "Shortcuts unpinned",
       "resetEverything": "Sidebar reset",
       "settingsHidden": "Settings hidden. It stays in the profile menu"
-    },
-    "palette": {
-      "useLayout": "Use {layout} layout"
     },
     "active": "Active",
     "pinned": "Pinned",
@@ -2361,10 +2410,12 @@
       "unpinnedNamed": "Unpinned {name}",
       "pinTo": "Pin to sidebar",
       "unpin": "Unpin from sidebar",
+      "unpinShort": "Unpin",
       "undo": "Undo",
       "emptyHint": "Or use the pin action on any library item.",
       "folderMissing": "Not in your library on this device yet",
       "unavailable": "Unavailable",
+      "offline": "Not available offline",
       "dropHere": "Drop here to pin",
       "signedOut": "Sign in to pin to the sidebar",
       "folder": "Folder",
@@ -2491,7 +2542,11 @@
     "close": "Close",
     "retry": "Retry",
     "dismiss": "Dismiss",
-    "offline": "You're offline — showing saved content.",
+    "offline": "You're offline · showing saved content.",
+    "offlineTitle": "You're offline",
+    "offlineNeeds": "{page} needs a connection. Your downloads and the pages you opened recently still work.",
+    "offlineNeedsAny": "This page needs a connection. Your downloads and the pages you opened recently still work.",
+    "goToLibrary": "Go to Your Library",
     "emptyTitle": "Nothing here yet",
     "emptySubtitle": "When there's something to show, it'll appear here.",
     "errorTitle": "Something went wrong.",
@@ -2648,10 +2703,17 @@
     "unavailable": "This category isn't available right now",
     "homeSubtitle": "Genres, moods and charts — everything Spotify is featuring right now."
   },
+  "theme": {
+    "$comment": "Installed themes: their names and one-line descriptions, referenced by each theme's manifest (Theming/Composition/ThemeManifest.cs).",
+    "classic": {
+      "name": "Wavee Classic",
+      "description": "Today’s Wavee: sidebar, tabs, washes"
+    }
+  },
   "setup": {
-    "layout": {
-      "title": "Choose your sidebar",
-      "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
+    "theme": {
+      "title": "Choose your theme",
+      "body": "A theme changes how every page, the player and navigation look. You can switch any time in Settings."
     },
     "next": "Next",
     "stepOf": "Step {n} of {total}",
@@ -2826,7 +2888,10 @@
     "homePodcasts": "Home: Podcasts",
     "homeAudiobooks": "Home: Audiobooks",
     "homeFollowingOn": "Home: Following on",
-    "homeFollowingOff": "Home: Following off"
+    "homeFollowingOff": "Home: Following off",
+    "themeOptionOn": "{option}: on",
+    "themeOptionOff": "{option}: off",
+    "themeOptionChoice": "{option}: {choice}"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -3495,7 +3560,7 @@
     }
   },
   "logs": {
-    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.UI.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
+    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.Host.cs + Themes/Common/CommonLogs.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
     "title": "Logs",
     "thisSession": "This session · pid {pid} · running {uptime}",
     "openFolder": "Open folder",
@@ -3573,6 +3638,10 @@
       "payloadsNote": "Payloads are only captured when a fan-out actually runs; cached answers have none."
     },
     "noLyrics": "No lyrics available",
+    "offline": {
+      "title": "Lyrics need a connection",
+      "body": "These lyrics aren’t saved on this PC yet. They’ll appear when you’re back online."
+    },
     "debug": {
       "pill": "lyrics debug",
       "title": "Lyrics search",

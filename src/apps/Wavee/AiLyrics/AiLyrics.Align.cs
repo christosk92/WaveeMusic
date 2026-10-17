@@ -167,7 +167,7 @@ public static partial class AiLyrics
         /// Backpointers are 2 bits per state per frame (stay, from s-1, from s-2, from a skip edge).</summary>
         public sealed class OnlineViterbi
         {
-            readonly int _s, _l, _blank;
+            readonly int _s, _l;
             readonly int[] _lab;
             readonly bool[] _skip2;
             readonly int[] _optSrc, _optDst;
@@ -184,13 +184,12 @@ public static partial class AiLyrics
 
             public int Frames => _t;
             public int Committed => _committed;
-            public int TokenCount => _l;
 
             /// <param name="windows">Per token: the time range (s) its line is expected in, or null for no prior.</param>
             public OnlineViterbi(Graph g, int blank, IReadOnlyList<(double Lo, double Hi)>? windows = null,
                 double priorPerS = 0.5, double skipCost = 2.0)
             {
-                _l = g.Length; _s = 2 * _l + 1; _blank = blank;
+                _l = g.Length; _s = 2 * _l + 1;
                 _lab = new int[_s];
                 for (int s = 0; s < _s; s++) _lab[s] = s % 2 == 1 ? g.Tokens[s / 2] : blank;
                 _skip2 = new bool[_s];

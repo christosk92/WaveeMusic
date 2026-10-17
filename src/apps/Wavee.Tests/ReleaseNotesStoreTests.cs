@@ -152,15 +152,14 @@ public sealed class ReleaseNotesStoreTests : IDisposable
         await offline.RefreshIndexAsync(CancellationToken.None);
 
         // A laptop that woke up offline keeps its rail: the cached index is what the peek answers with.
-        Assert.Equal("Crest", (await offline.PeekIndexAsync(CancellationToken.None))!.Find("0.3.0")!.Name);
-        Assert.Equal("Crest", offline.PeekIndex()!.Find("0.3.0.7")!.Name);   // the updater's synchronous seam, same answer
+        Assert.Equal("Crest", offline.PeekIndex()!.Find("0.3.0")!.Name);
+        Assert.Equal("Crest", offline.PeekIndex()!.Find("0.3.0.7")!.Name);   // the build version finds the same release
     }
 
     [Fact]
-    public async Task PeekIndex_CostsNoNetwork()
+    public void PeekIndex_CostsNoNetwork()
     {
         var store = Build(out var http);
-        Assert.Null(await store.PeekIndexAsync(CancellationToken.None));
         Assert.Null(store.PeekIndex());
         Assert.Empty(http.Requests);
     }

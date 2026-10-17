@@ -1,9 +1,7 @@
-// ── Wavee.Tests/HomeTests.cs — the three readiness gates and the section paging arithmetic ───────────────────────
+// ── Wavee.Tests/HomeTests.cs — the section readiness gate and the section paging arithmetic ─────────────────────
 //
-// Wave 1's gate for Entities/Home.cs (plan §5). The three questions ch 10 §7 separates — is the PAGE ready, has the
-// CHROME concluded, is this SECTION whole — are three different predicates with three different failure modes, and
-// 0.2.9 got each of them wrong in a different way. All three are pure, so all three are pinned here without a scope
-// (D17). The paging arithmetic is `SectionPaging` (the cursor the query layer's section walk stops on), whose two
+// Wave 1's gate for Entities/Home.cs (plan §5): is this SECTION whole. It is pure, so it is pinned here without a
+// scope (D17). The paging arithmetic is `SectionPaging` (the cursor the query layer's section walk stops on), whose two
 // defects are measured rather than hypothetical.
 //
 // The LIFETIME facts at the bottom were added on 2026-09-12 with the packed identity
@@ -23,58 +21,6 @@ namespace Wavee.Tests;
 public class HomeTests
 {
     static StringId Uri(string s) => Entities.Strings.Intern(s);
-
-    // ── the whole-page gate ─────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Warm_rows_do_not_make_the_page_ready()
-    {
-        // The store warms rows from sqlite at boot. Painting them and replacing them 1.5 s later is exactly the
-        // regression this gate exists to prevent, so section count alone is never the answer.
-        Assert.Equal(HomeState.Placeholder, Home.Classify(sectionCount: 12, concluded: false));
-        Assert.Equal(HomeState.Placeholder, Home.Classify(sectionCount: 0, concluded: false));
-    }
-
-    [Fact]
-    public void A_concluded_attempt_with_nothing_is_a_real_empty_and_not_a_skeleton_forever()
-    {
-        Assert.Equal(HomeState.Empty, Home.Classify(sectionCount: 0, concluded: true));
-        Assert.Equal(HomeState.Ready, Home.Classify(sectionCount: 1, concluded: true));
-    }
-
-    [Fact]
-    public void A_finished_fetch_during_a_reconnect_is_not_a_conclusion()
-    {
-        Assert.False(Home.Concluded(fetchInflight: true, sessionConnecting: false));
-        Assert.False(Home.Concluded(fetchInflight: false, sessionConnecting: true));
-        Assert.True(Home.Concluded(fetchInflight: false, sessionConnecting: false));
-    }
-
-    // ── the chrome hold ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Idle_is_concluded_which_is_what_keeps_the_offline_launch_at_a_zero_hold()
-    {
-        // "Concluded" means NOTHING IS COMING. Idle = never fetched (offline, --fake). Treating it as pending is the
-        // difference between a 0 ms hold and a 1,500 ms one on every offline launch.
-        Assert.True(Home.ChromeConcluded(HomeLoad.Idle, hasNotifications: true, HomeLoad.Idle, HomeLoad.Idle));
-    }
-
-    [Fact]
-    public void No_notification_bridge_at_all_is_concluded()
-        => Assert.True(Home.ChromeConcluded(HomeLoad.Ready, hasNotifications: false, HomeLoad.Pending, HomeLoad.Pending));
-
-    [Fact]
-    public void Pending_is_the_one_state_worth_a_bounded_wait()
-    {
-        Assert.False(Home.ChromeConcluded(HomeLoad.Pending, hasNotifications: false, HomeLoad.Idle, HomeLoad.Idle));
-        Assert.False(Home.ChromeConcluded(HomeLoad.Ready, hasNotifications: true, HomeLoad.Pending, HomeLoad.Idle));
-        Assert.False(Home.ChromeConcluded(HomeLoad.Ready, hasNotifications: true, HomeLoad.Idle, HomeLoad.Pending));
-    }
-
-    [Fact]
-    public void A_failed_feed_has_concluded_too()
-        => Assert.True(Home.ChromeConcluded(HomeLoad.Failed, hasNotifications: true, HomeLoad.Failed, HomeLoad.Ready));
 
     // ── section paging: RAW vs DEDUPED ──────────────────────────────────────────────────────────────────────────────
 

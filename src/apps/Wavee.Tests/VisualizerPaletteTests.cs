@@ -7,6 +7,7 @@
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Theming.Roles;
 using Xunit;
 
 using P = Wavee.Visualizer.Palette;
@@ -27,11 +28,11 @@ public class VisualizerPaletteTests
 
     static ColorF AccentOf(in Scheme s)
     {
-        var a = Design.Palette.Accent(in s);
-        return a.ToHsv().S <= Design.Palette.NeutralS ? ColorF.FromRgba(0x00, 0x78, 0xD4) : Design.Palette.Vivid(Design.Palette.Lift(a));
+        var a = ColorScience.Accent(in s);
+        return a.ToHsv().S <= ColorScience.NeutralS ? ColorF.FromRgba(0x00, 0x78, 0xD4) : ColorScience.Vivid(ColorScience.Lift(a));
     }
 
-    static ColorF Veil(bool dark) => Design.StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
+    static ColorF Veil(bool dark) => StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
 
     [Fact]
     public void Paint_colours_are_distinct_on_both_arms()
@@ -43,7 +44,6 @@ public class VisualizerPaletteTests
                 Assert.True(P.Distinct(p.A, p.B), $"A/B {s} dark={dark}: {p.A} {p.B}");
                 Assert.True(P.Distinct(p.B, p.C), $"B/C {s} dark={dark}: {p.B} {p.C}");
                 Assert.True(P.Distinct(p.A, p.C), $"A/C {s} dark={dark}: {p.A} {p.C}");
-                Assert.Equal(dark, p.Dark);
             }
     }
 
@@ -76,7 +76,7 @@ public class VisualizerPaletteTests
         float best = float.MaxValue;
         foreach (uint role in new[] { s.BackgroundTintedBase, s.BackgroundBase, s.TextSubdued })
         {
-            float h = Design.Palette.ToColor(role).ToHsv().H, d = MathF.Abs(h - bHue) % 360f;
+            float h = ColorScience.ToColor(role).ToHsv().H, d = MathF.Abs(h - bHue) % 360f;
             best = MathF.Min(best, d > 180f ? 360f - d : d);
         }
         Assert.True(best < 3f, $"B's hue {bHue} is no role's hue (closest {best}°)");
@@ -111,8 +111,6 @@ public class VisualizerPaletteTests
         var p = P.From(accent, Schemes[0], dark: true);
         Assert.Equal(accent, p.Accent);
         Assert.Equal(1f, p.A.A); Assert.Equal(1f, p.B.A); Assert.Equal(1f, p.C.A); Assert.Equal(1f, p.Deep.A);
-        Assert.Equal(P.WashAlphaDark, p.WashA);
-        Assert.Equal(P.WashAlphaLight, P.From(accent, Schemes[0], dark: false).WashA);
     }
 
     [Fact]

@@ -227,7 +227,7 @@ public class PlaylistReorderRulesTests
     {
         // The drop hands a DISPLAY slot; the anchor lives in MEMBERSHIP. In natural order the map is the identity…
         int[] natural = [0, 1, 2, 3];
-        Assert.False(Rules.AnchorRowIsKeyed(natural, Rows("a", "", "c", "d"), Moved(3), 2));
+        Assert.False(Rules.AnchorRowIsKeyedAt(Rows("a", "", "c", "d"), Moved(3), Rules.OriginalInsertionIndex(natural, 4, 2)));
         // …and the two edges resolve to first/end without consulting a row at all.
         Assert.Equal(0, Rules.OriginalInsertionIndex(natural, 4, 0));
         Assert.Equal(4, Rules.OriginalInsertionIndex(natural, 4, 4));
@@ -253,9 +253,10 @@ public class PlaylistReorderRulesTests
         Assert.Equal(5, Rules.OriginalInsertionIndex(TenNatural, 10, 5));
         // The anchor of that pre-move index is row 4, the unlifted row currently above slot 5 …
         var ids = Rows("0", "1", "2", "3", "", "5", "6", "7", "8", "9");
-        Assert.False(Rules.AnchorRowIsKeyed(TenNatural, ids, lifted, 5));
+        Assert.False(Rules.AnchorRowIsKeyedAt(ids, lifted, Rules.OriginalInsertionIndex(TenNatural, ids.Length, 5)));
         // … and it is keyed whenever row 4 is, whatever the lifted rows carry.
-        Assert.True(Rules.AnchorRowIsKeyed(TenNatural, Rows("0", "", "", "3", "4", "5", "6", "7", "8", "9"), lifted, 5));
+        Assert.True(Rules.AnchorRowIsKeyedAt(Rows("0", "", "", "3", "4", "5", "6", "7", "8", "9"), lifted,
+            Rules.OriginalInsertionIndex(TenNatural, 10, 5)));
         // The pre-corrected index (5 - 2 = 3) would name a DIFFERENT anchor (row 0, walking back over the lifted rows):
         // the two readings are not interchangeable, which is exactly why nothing may pre-correct.
         Assert.True(Rules.AnchorRowIsKeyedAt(ids, lifted, 3));

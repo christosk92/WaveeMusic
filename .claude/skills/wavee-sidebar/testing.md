@@ -43,10 +43,11 @@ Pure classes are tested directly. Each row names the class under test and its fi
 | Ops and caps | `SidebarLayoutRules.Apply` | `SidebarLayoutRulesTests.cs` |
 | Visibility of sections and items | `SidebarVisibilityRules` | `SidebarVisibilityRulesTests.cs` |
 | Edit rules (Outline, move, hide) | `SidebarEditRules` | `SidebarEditRulesTests.cs` |
-| Menu rows and verbs | `SidebarMenuModel` | `SidebarMenuModelTests.cs` |
+| Menu rows and verbs; which rows a target gets, what a picked row does, rename | `SidebarMenuModel`, `NavMenuModel` | `NavMenuModelTests.cs` (the old `SidebarMenuModelTests`, moved) |
+| Edit mode: Outline, ops, the empty-section note, undo / redo, the key table | `NavEditModel` | `NavEditModelTests.cs` |
 | Undo ring (50, batch, memory only) | `SidebarUndoRing` | `SidebarUndoRingTests.cs` |
 | Planner and row plan | `SidebarRowPlanner`, `PlanFixture` | `SidebarPlannerTests.cs` |
-| Row geometry | `SidebarRowGeometry`, `SidebarRowExtents` | `SidebarRowGeometryTests.cs` |
+| Row geometry | `SidebarGeometry` (Classic), `SidebarRowExtents`, what the kit answers core | `SidebarRowGeometryTests.cs` (incl. `SidebarGeometryKitTests`) |
 | Pane modes and bands | `SidebarPaneModeRules` | `SidebarPaneModeRulesTests.cs` |
 | Resize and settle | `SidebarResizeRules` | `SidebarResizeRulesTests.cs` |
 | Library head and empty states | `SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules` | `SidebarLibraryHeadRulesTests.cs` |
@@ -56,7 +57,9 @@ Pure classes are tested directly. Each row names the class under test and its fi
 | Subtitles | `SidebarSubtitleRules` | `SidebarSubtitleRulesTests.cs` |
 | Feeds: demand, recents, new releases | `SidebarFeedDemands`, `SidebarRecentsRules`, `SidebarNewReleasesRules` | `SidebarFeedsTests.cs` |
 | Projection and binder inputs | `SidebarProjectionInput` | `SidebarProjectionTests.cs` |
-| Drop and rootlist slot | `RootlistSlotResolver`, `RootlistSlotMapper` | `SidebarDropTests.cs` |
+| Your Library session: drill, folder rule, chips, search Esc and blur, empty-state facts | `NavLibrary` | `NavLibraryTests.cs` |
+| The nav model: readiness (Failed included), destinations, projection parity on six fixture libraries, the verbs | `NavModel`, `NavReadinessRules`, `NavDestinationRules` | `NavModelTests.cs` |
+| Drop and rootlist slot | `RootlistSlotResolver`, `RootlistSlotMapper`, `NavDropRules` (Shell/NavDropRules.cs) | `NavDropRulesTests.cs` |
 | Cards | `SidebarCardRules` | `SidebarCardsTests.cs` |
 | Pins: rules and refusal | `SidebarPinRules`, `SidebarPinId`, `SidebarPinStore` | `SidebarPinTests.cs` |
 | Pin sync with Spotify | `LibraryPinSync` | `SidebarPinSyncTests.cs` |
@@ -98,6 +101,6 @@ sidebar needs an engine change, hand it off to the engine repo. Only then run st
 
 ## Known limits of the tests
 
-The renderer (`PaneView`, `PaneSlot`, the Library head) is engine-bound and has no unit tests. Its behaviour is checked
+The renderer (`PaneView`, `ClassicNavRow`, the Library head) is engine-bound and has no unit tests of its own; `Wavee.ShellTests/NavPaneMountedTests.cs` mounts the pane through its key. Its behaviour is checked
 by the build and by hand in the running app (`dotnet run --project src/apps/Wavee -- --fake` for an offline demo). Keep
 new decisions out of the renderer, so they can be tested.

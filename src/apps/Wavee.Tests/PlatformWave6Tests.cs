@@ -37,17 +37,17 @@ public class SettingsIsolationTests
     public void The_defaults_only_store_answers_defaults_and_drops_writes()
     {
         var store = DefaultsOnlySettings.Instance;
-        store.Set(Platform.Keys.SidebarLayoutId, 1);
-        Assert.Equal(Platform.Keys.SidebarLayoutId.Default, store.Get(Platform.Keys.SidebarLayoutId));
+        store.Set(Platform.Keys.SidebarLibraryFilter, 1);
+        Assert.Equal(Platform.Keys.SidebarLibraryFilter.Default, store.Get(Platform.Keys.SidebarLibraryFilter));
     }
 
     [Fact]
     public void The_fake_store_keeps_a_demo_write_in_memory_over_the_defaults()
     {
         var fake = new Diagnostics.Headless.OverlaySettings(DefaultsOnlySettings.Instance);
-        Assert.Equal(0, fake.Get(Platform.Keys.SidebarLayoutId));               // a real profile's Library never leaks in
-        fake.Set(Platform.Keys.SidebarLayoutId, 1);
-        Assert.Equal(1, fake.Get(Platform.Keys.SidebarLayoutId));
+        Assert.Equal(0, fake.Get(Platform.Keys.SidebarLibraryFilter));          // a real profile's chip never leaks in
+        fake.Set(Platform.Keys.SidebarLibraryFilter, 1);
+        Assert.Equal(1, fake.Get(Platform.Keys.SidebarLibraryFilter));
         Assert.Equal(Platform.Keys.ThemeMode.Default, fake.Get(Platform.Keys.ThemeMode));
     }
 
@@ -74,7 +74,7 @@ public class SettingsIsolationTests
             Assert.Equal("nl-NL", b.Get(Platform.Keys.UiCulture));
             Assert.Equal(1234567890123L, b.Get(Platform.Keys.UpdateLastCheckedMs));
             Assert.Equal(2.35, b.Get(Platform.Keys.VideoCustomAspectRatio));
-            Assert.Equal(Platform.Keys.SidebarLayoutId.Default, b.Get(Platform.Keys.SidebarLayoutId));
+            Assert.Equal(Platform.Keys.SidebarLibraryFilter.Default, b.Get(Platform.Keys.SidebarLibraryFilter));
         }
         finally { try { Directory.Delete(Path.GetDirectoryName(path)!, recursive: true); } catch (IOException) { } }
     }
@@ -158,6 +158,9 @@ public class DeveloperModeTests
         public bool? SignalSeenAtWrite { get; private set; }
 
         public T Get<T>(SettingKey<T> key) => _inner.Get(key);
+        public bool TryGet<T>(SettingKey<T> key, out T value) => _inner.TryGet(key, out value);
+        public bool Has(string name) => _inner.Has(name);
+        public void Remove(string name) => _inner.Remove(name);
 
         public void Set<T>(SettingKey<T> key, T value)
         {
@@ -228,8 +231,6 @@ public class NetworkPolicyTests
         Assert.Equal(2, Platform.Network.EffectiveQuality(2, 0, in Unrestricted));
         var unknown = NetworkCost.Unknown;
         Assert.Equal(3, Platform.Network.EffectiveQuality(3, 0, in unknown));
-        Assert.False(Platform.Network.ShouldDeferPrefetch(in unknown));
-        Assert.True(Platform.Network.ShouldDeferPrefetch(in Metered));
     }
 
     [Fact]
@@ -446,14 +447,6 @@ public class RunMarkerTests
         s.Set(Platform.Keys.RunMarker, RunMarker.Running);
         RunMarker.End(s);
         Assert.Equal(RunMarker.Clean, s.Get(Platform.Keys.RunMarker));
-    }
-
-    [Fact]
-    public void MarkCrashed_writes_crashed()
-    {
-        var s = new MemoryAppSettings();
-        RunMarker.MarkCrashed(s);
-        Assert.Equal(RunMarker.Crashed, s.Get(Platform.Keys.RunMarker));
     }
 }
 

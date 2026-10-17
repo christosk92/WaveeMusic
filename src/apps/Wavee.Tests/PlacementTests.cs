@@ -437,16 +437,6 @@ public class PlacementCoreTests
         Assert.Equal(SurfacePlacement.Detached, b);
     }
 
-    // ── the async-resolve fence ─────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void A_resolve_publishes_when_the_captured_generation_is_still_current()
-        => Assert.True(PlacementCore.IsCurrentGeneration(capturedGen: 3, currentGen: 3));
-
-    [Fact]
-    public void A_superseded_resolve_is_dropped()
-        => Assert.False(PlacementCore.IsCurrentGeneration(capturedGen: 3, currentGen: 4));
-
     // ── named regressions ───────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Bug 3: closing the pop-out left the toggle lit with no surface behind it.</summary>
@@ -456,16 +446,6 @@ public class PlacementCoreTests
         var s = PlacementCore.HostClosed(At(SurfacePlacement.Detached), SurfacePlacement.Detached);
         Assert.True(PlacementCore.IsActive(s));
         Assert.Equal(SurfacePlacement.Floating, PlacementCore.Resolve(s));
-    }
-
-    /// <summary>Bug 4: a late resolve for the PREVIOUS track republished itself over the current one.</summary>
-    [Fact]
-    public void Regression_stale_video_a_superseded_resolve_never_publishes()
-    {
-        long gen = 7;
-        long captured = gen;
-        gen++;
-        Assert.False(PlacementCore.IsCurrentGeneration(captured, gen));
     }
 
     /// <summary>Bug 5: placement lived in three owners at once. One enum makes "mounted in two places" unrepresentable.</summary>
@@ -777,20 +757,20 @@ public class PlacementTransportTests
     [Fact]
     public void Fullscreen_takes_the_transport_from_the_global_bar()
     {
-        Assert.Equal(TransportOwner.Fullscreen, PlacementCore.TransportOwnerOf(At(SurfacePlacement.Fullscreen)));
+        Assert.Equal(TransportOwner.Fullscreen, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(At(SurfacePlacement.Fullscreen))));
         Assert.False(PlacementCore.OwnsTransport(TransportOwner.GlobalBar, SurfacePlacement.Fullscreen));
     }
 
     [Fact]
     public void In_window_video_cards_own_their_own_chrome()
     {
-        Assert.Equal(TransportOwner.Docked, PlacementCore.TransportOwnerOf(At(SurfacePlacement.Docked)));
-        Assert.Equal(TransportOwner.Docked, PlacementCore.TransportOwnerOf(At(SurfacePlacement.Floating)));
+        Assert.Equal(TransportOwner.Docked, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(At(SurfacePlacement.Docked))));
+        Assert.Equal(TransportOwner.Docked, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(At(SurfacePlacement.Floating))));
     }
 
     [Fact]
     public void With_no_surface_the_transport_is_the_bars()
-        => Assert.Equal(TransportOwner.GlobalBar, PlacementCore.TransportOwnerOf(PlacementState.Music));
+        => Assert.Equal(TransportOwner.GlobalBar, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(PlacementState.Music)));
 
     [Fact]
     public void A_docked_card_does_not_disarm_the_global_bar()
@@ -802,8 +782,8 @@ public class PlacementTransportTests
     [Fact]
     public void The_pop_out_carries_its_own_windows_transport_without_disarming_the_main_bar()
     {
-        Assert.Equal(TransportOwner.PopOut, PlacementCore.TransportOwnerOf(At(SurfacePlacement.Detached)));
-        Assert.NotEqual(TransportOwner.Fullscreen, PlacementCore.TransportOwnerOf(At(SurfacePlacement.Detached)));
+        Assert.Equal(TransportOwner.PopOut, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(At(SurfacePlacement.Detached))));
+        Assert.NotEqual(TransportOwner.Fullscreen, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(At(SurfacePlacement.Detached))));
     }
 
     [Fact]
@@ -811,7 +791,7 @@ public class PlacementTransportTests
     {
         var stranded = At(SurfacePlacement.Fullscreen, PlacementSet.None);
         Assert.Equal(SurfacePlacement.None, PlacementCore.Resolve(stranded));
-        Assert.Equal(TransportOwner.GlobalBar, PlacementCore.TransportOwnerOf(stranded));
+        Assert.Equal(TransportOwner.GlobalBar, PlacementCore.TransportOwnerFor(PlacementCore.Resolve(stranded)));
     }
 
     [Fact]

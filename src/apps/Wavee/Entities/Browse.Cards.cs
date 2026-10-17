@@ -3,17 +3,15 @@
 // drag/menu). Split out of the superseded Wave-5 Home UI (Home.Cards.UI.cs, Home.UI.cs) when the Home page itself was
 // rebuilt (docs/plans/wavee/home-rebuild-implementation.md §7): these members render entity CARDS wherever Browse or
 // Search hosts a shelf/grid, and outlive the Home page redesign. Moved UNCHANGED — same names, same namespace — so
-// Browse.Page.cs / Browse.UI.cs / Search.UI.cs need no call-site edits. The CORE half of HomeCardNav (RouteFor,
+// the Browse and Search pictures needed no call-site edits (T10a2 moved those into Classic's `Views\Pages`, which call them directly). The CORE half of HomeCardNav (RouteFor,
 // SectionRoute, OneCardOpensCard) stays in Entities/Home.Rules.cs.
 
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -78,7 +76,7 @@ public static partial class HomeCards
         // An inline meta makes the card render its own caption paragraph (second + " · meta") from STRINGS — the
         // element subtitle is then absent, and no separate meta line exists.
         Element? second = !item.MetaInline && item.Second.Length > 0
-            ? Design.Type.TrackMeta(item.Second) with
+            ? R.Type.TrackMeta(item.Second) with
                 { MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
             : null;
         string? art = coverAspect != 1f ? item.WideArt ?? item.Art : item.Art;
@@ -111,7 +109,7 @@ public static partial class HomeCards
         Action onClick = open is null ? () => HomeCardNav.Open(in card, HomeCardNav.HomeOrigin) : () => open(card);
         return new Controls.CardData(card.Uri, card.Title,
             sub.Length > 0
-                ? Design.Type.TrackMeta(sub) with
+                ? R.Type.TrackMeta(sub) with
                     { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
                 : null,
             card.ImageUrl, onClick, () => HomeCardNav.Play(in card),

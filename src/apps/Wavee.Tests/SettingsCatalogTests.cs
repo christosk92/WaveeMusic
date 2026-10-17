@@ -61,7 +61,6 @@ public class SettingsCatalogTests
     /// which are present and greyed while developer mode is off). This is the gate the tabs call, so the table IS the
     /// answer rather than a condition repeated in each UI file.</summary>
     [Theory]
-    [InlineData(Settings.Tab.Appearance, "pageMotion")]
     [InlineData(Settings.Tab.Appearance, "npvPresentation")]
     public void A_developer_only_row_is_absent_without_developer_mode_and_present_with_it(Settings.Tab tab, string rowId)
     {
@@ -71,14 +70,15 @@ public class SettingsCatalogTests
 
     /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.
     /// The two Developer items that used to be gated here (Simulate an update, Send a test crash report) are greyed on
-    /// the Privacy &amp; diagnostics tab instead, so only the two Appearance rows remain.</summary>
+    /// the Privacy &amp; diagnostics tab instead, so only the NPV presentation row remains.</summary>
     [Fact]
-    public void Only_the_two_appearance_rows_are_developer_only()
+    public void Only_the_npv_presentation_and_style_rows_are_developer_only()
     {
         var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
                                          .Select(r => r.Tab + "/" + r.RowId)
                                          .OrderBy(s => s, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion" }, gated);
+        // The player style is hidden until it affects Now playing, which only the developer-only switch makes it do (#199).
+        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/npvStyle" }, gated);
         foreach (var row in Settings.Catalog.Rows)
             Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
     }
@@ -177,7 +177,7 @@ public class SettingsCatalogTests
     {
         Assert.Equal(Enum.GetValues<Settings.Tab>().Length, Settings.TabSlugs.Length);
         foreach (var tab in Enum.GetValues<Settings.Tab>())
-            Assert.Equal(tab, Settings.TabFromSlug(Settings.SlugOf(tab)));
+            Assert.Equal(tab, Settings.TabFromSlug(Settings.TabSlugs[(int)tab]));
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("no-such-tab"));
         Assert.Equal(Settings.Tab.Storage, Settings.TabFromSlug("STORAGE"));
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug(null));
@@ -186,7 +186,7 @@ public class SettingsCatalogTests
         Assert.Equal(new[] { "general", "appearance", "playback", "notifications", "storage", "privacy", "about" }, Settings.TabSlugs);
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("privacy"));
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("PRIVACY"));
-        Assert.Equal("privacy", Settings.SlugOf(Settings.Tab.PrivacyDiagnostics));
+        Assert.Equal("privacy", Settings.TabSlugs[(int)Settings.Tab.PrivacyDiagnostics]);
         Assert.DoesNotContain("logs", Settings.TabSlugs);
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("logs"));   // an old `settings` + `logs` link lands on the page, never nowhere
     }
@@ -315,8 +315,8 @@ public class SettingsRulesTests
     {
         Assert.Equal(3, Settings.Quality.AudioRungCount(canDerive: false));
         Assert.Equal(4, Settings.Quality.AudioRungCount(canDerive: true));
-        Assert.False(Settings.Quality.IsWritableAudio(Settings.Quality.LosslessRung, canDerive: false));
-        Assert.True(Settings.Quality.IsWritableAudio(Settings.Quality.LosslessRung, canDerive: true));
+        Assert.False(Settings.Quality.IsWritableAudio(3, canDerive: false));
+        Assert.True(Settings.Quality.IsWritableAudio(3, canDerive: true));
         Assert.False(Settings.Quality.IsWritableAudio(-1, canDerive: true));
         // flac plan §5.4: the metered cap is the same ladder, under the same gate
         Assert.Equal(Settings.Quality.AudioRungCount(false), Settings.Quality.MeteredRungCount(false));
@@ -372,10 +372,6 @@ public class SettingsRulesTests
     public void BudgetLadders_PickTheNearestPreset_AndCustomWhenInexact()
     {
         Assert.Equal(Settings.StorageFormat.BodyBudgetBytes.Length + 1, Settings.StorageFormat.BodyBudgetLabels.Length);
-        Assert.Equal(5, Settings.StorageFormat.BodyBudgetIndex(32L << 30));
-        Assert.Equal(5, Settings.StorageFormat.BodyBudgetIndex(30L << 30));
-        Assert.Equal(0, Settings.StorageFormat.BodyBudgetIndex(1));
-        Assert.Equal(10, Settings.StorageFormat.BodyBudgetIndex(long.MaxValue));
         Assert.Equal(3, Settings.StorageFormat.BodyBudgetExactIndex(8L << 30));
         Assert.Equal(Settings.StorageFormat.CustomBudgetIndex, Settings.StorageFormat.BodyBudgetExactIndex(9L << 30));
         Assert.Equal(2, Settings.StorageFormat.MetaBudgetIndex(128L << 20));

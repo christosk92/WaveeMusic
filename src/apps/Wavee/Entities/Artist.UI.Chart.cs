@@ -2,7 +2,8 @@
 // The artist page's "Top tracks" CHART (0.2.9 Features/Detail/ArtistPopular.cs): ONE PagedShelf collection — a five-row
 // virtual strip with page-mandatory snapping, at most two columns, a ‹ ●● › pip pager in the header — whose realized
 // cells are chart ROW components keyed by track. The named partial ch 08 §9 and plan §2 ask for, inside Artist.UI.cs's
-// 1,500-line budget.
+// 1,500-line budget. The PICTURE is the structure's (`StyleKeys.ArtistChart`: T8c the rows, the cells, the header, the skeleton, the failed
+// panel and the pager; T10b2 the frame, the shelf's holder and the selection bar); this file keeps the host, its gate, its asks and its verbs.
 //
 // Role: UI
 // Owner: N (stream N-A)
@@ -16,9 +17,10 @@
 // time the extended list, the kind-185 counts or the media facts landed. Here the shelf's items are (index, slot) value
 // pairs and every row reads `Edges.ArtistPopular` + its Track row LIVE through a memo over (slot, version, row state):
 // a table publish that changes a title, a count or a like re-skins exactly that row and remounts nothing (ReuseGuard).
-// The only remount keys left are the ones that change a row's CHILD COUNT or the shelf's mount configuration:
+// The only remount keys left are the ones that change a row's CHILD COUNT or the shelf's style:
 //  · the cell key   "row:" + uri + "|art"/"|noart" + "|classic"/"|modern"  ("chart#" + i for an empty uri) — ch 08 audit #5;
-//  · the shelf key  columns (1/2) × art × classic — `maxColumns` and `cardHeight` are PagedShelf ctor configuration.
+//  · the shelf key  art × classic. The column cap, the rows per column and the row height are LIVE props of the mounted PagedShelf, so a
+//    tier crossing (Huge 4K's four columns of four against Huge's three of five) re-fits the SAME shelf: its page and selection survive.
 //
 // ── ZERO ALLOCATION ON A SCROLL FRAME ────────────────────────────────────────────────────────────────────────────────
 //
@@ -27,13 +29,13 @@
 // branch, the selection pill is an always-mounted BOUND opacity (selecting is compositor-only) and the per-row playback
 // state sits behind a memo so a skip between two other tracks renders no row (ch 08 §9 traps a-e).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -59,26 +61,18 @@ public readonly partial struct Artist
     /// equality is the shelf's gate — an equal (index, slot) list after a publish rebuilds no card.</summary>
     readonly record struct ChartItem(int Index, int Slot);
 
-    // Geometry (ArtistPopular.cs:88-108): Modern 56 rows on a 12 gap, Classic 48 rows on 8; the 264 card minimum is a
-    // BREAKPOINT (two columns ⇔ a 540 chart column), and the maximum is uncapped on purpose.
-    const float ChartRowH = 56f, ChartClassicRowH = 48f, ChartCellGap = 12f, ChartHeaderGap = 10f;
-    const float ChartColBreakW = 540f;
-    const float ChartMinCardW = (ChartColBreakW - ChartCellGap) / 2f;
-    const float ChartEdgeFade = 16f;
+    // The geometry of the shelf (the row height, the gaps, the 264 card minimum that is a BREAKPOINT for two columns, the edge fade) and the
+    // check lane's motion are the structure's: `ArtistChartStyle.Metrics` (Classic: `Rules\ClassicArtistChartLayout.cs`, ArtistPopular.cs:88-108).
 
-    /// <summary>The cells slide over when the check lane arrives (the track table's own tween).</summary>
-    static readonly LayoutTransition s_checkShift = new(
-        TransitionChannels.Position, TransitionDynamics.Tween(333f, Easing.FluentDecelerate));
-
-    static readonly Func<float, float> s_chartModernH = static _ => ChartRowH;
-    static readonly Func<float, float> s_chartClassicH = static _ => ChartClassicRowH;
-
-    // columns 1/2 × art × classic
+    // The chart shelf's key per STYLE (artwork column, Classic or modern rows): no column or row count is in it — both are live props of the
+    // mounted shelf, so a tier crossing re-fits the SAME chart (its page and the row selection's slots survive) instead of remounting it.
     static readonly string[] s_chartShelfKeys =
     [
-        "chart-shelf:1:noart:modern", "chart-shelf:1:noart:classic", "chart-shelf:1:art:modern", "chart-shelf:1:art:classic",
-        "chart-shelf:2:noart:modern", "chart-shelf:2:noart:classic", "chart-shelf:2:art:modern", "chart-shelf:2:art:classic",
+        "chart-shelf:noart:modern", "chart-shelf:noart:classic", "chart-shelf:art:modern", "chart-shelf:art:classic",
     ];
+
+    /// <summary>The most chart columns the chart lays out (a structure that offers more is held to it).</summary>
+    const int ChartKeyColumns = 4;
 
     // ══ 2. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -98,8 +92,19 @@ public readonly partial struct Artist
         ArtistPopularLayout.Tier? _tier;
         bool _tierClassic;
         bool _ready, _failed;
+        /// <summary>The tier's widest chart and its rows per column, written by render (the derived shimmer reads them outside it).</summary>
+        int _maxColumns = ArtistSections.ChartMaxColumns, _rows = ArtistSections.ChartMaxRows;
         Element? _shelf;
         IOverlayService? _overlay;
+
+        /// <summary>The structure's chart templates (T8c), resolved once per host from the ambient registry; the rows and the pager (components
+        /// of their own) draw from it through their owner.</summary>
+        ArtistChartStyle? _style;
+        internal ArtistChartStyle? Style => _style;
+        /// <summary>The shelf's row-height function, rebuilt only when the structure's row height moves (the shelf reads it as ctor configuration,
+        /// so a stable instance keeps the shelf's props equal across renders).</summary>
+        Func<float, float>? _cardHeightFn;
+        float _cardHeightFor = float.NaN;
 
         // ── the failure gate's "after we asked" half (Search.Page.cs's `_askedAll`) ──
         // `ArtistReadiness.ChartFailed` reads "not asked" as "un-asked by a failure", which is only true once this
@@ -135,24 +140,18 @@ public readonly partial struct Artist
             _cardAt = Card;
             _keyOf = (_, i) => (uint)i < (uint)_keys.Length ? _keys[i] : "chart#" + i;
             _pager = ctx => Embed.Comp(
-                new ChartPagerProps(ctx.Page, ctx.PageCount, ctx.CanPrev, ctx.CanNext, ctx.Prev, ctx.Next, ctx.GoTo, _items.Length),
+                new ChartPagerProps(_style!, ctx.Page, ctx.PageCount, ctx.CanPrev, ctx.CanNext, ctx.Prev, ctx.Next, ctx.GoTo, _items.Length),
                 static () => new ChartPager());
             _pendingFn = () => !_ready && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _shelf ?? new BoxEl();
-            _shimmerFn = () => ChartSkeleton(Owner.PopularSlots.Length, Classic, ShowArtwork);
-            _failedPanelFn = () => new BoxEl
-            {
-                Direction = 1, Gap = ChartHeaderGap,
-                Children =
-                [
-                    Controls.AccentHeader(Loc.Get(Strings.Artist.TopTracks), AccentSignal?.Peek() ?? Tok.AccentDefault),
-                    Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: _retry),
-                ],
-            };
+            _shimmerFn = () => _style is null ? new BoxEl()
+                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork, _maxColumns, _rows));
+            _retry = Retry;
+            _failedPanelFn = () => _style is null ? new BoxEl()
+                : _style.Failed(Loc.Get(Strings.Artist.TopTracks), AccentSignal?.Peek() ?? Tok.AccentDefault, _retry);
             _trackAt = TrackAt;
             _pillFill = Prop.Of(() => AccentSignal?.Value ?? Tok.AccentDefault);
-            _retry = Retry;
             _demand = Demand;
             _demandTargets = DemandTargets;
             _recheckNow = Recheck;
@@ -164,6 +163,8 @@ public readonly partial struct Artist
         {
             var p = UseProps<ChartProps>();
             _overlay = UseContext(Overlay.Service);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));   // the tiers this chart is drawn in
             uint scopeEpoch = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
             _ = scope.Edges.ArtistPopular.Changed.Value;
@@ -173,8 +174,8 @@ public readonly partial struct Artist
             Owner = p.A;
             AccentSignal = p.Accent;
             ColorF accent = p.Accent.Value;
-            Classic = Prefs.Appearance.TrackRowStyle() == 1;
-            ShowArtwork = !Prefs.Appearance.TrackArtworkHidden();
+            Classic = ShellPolicy.Tracked.Lists.ClassicRows;
+            ShowArtwork = ShellPolicy.Tracked.Lists.TrackArtwork;
 
             // The chart's own asks (the same ones the page makes, so they dedupe to nothing) and the latch behind the
             // failure gate; the deadline re-arms with the artist and the scope, and `Recheck` keeps it alive while a
@@ -183,27 +184,44 @@ public readonly partial struct Artist
             UseEffect(_demandTargets);
             _deadline = UseTimeout(_recheckNow, RecheckMs, DepKey.From(Owner.Slot, (int)scopeEpoch));
 
+            var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
+            if (style is null) return new BoxEl();
+            var metrics = style.Metrics(Classic);
+            if (_cardHeightFn is null || _cardHeightFor != metrics.RowHeight)
+            {
+                float rowHeight = metrics.RowHeight;
+                _cardHeightFn = _ => rowHeight;
+                _cardHeightFor = rowHeight;
+            }
+
             _ready = ArtistReadiness.Chart(Owner);
             _failed = !_ready && ChartFailedNow(scope);
             NoteGate(scope);
             RefreshItems();
             Selection.ItemCount = _items.Length;
 
-            int cols = ArtistSections.ChartColumns(_items.Length);
-            int shelfKey = (cols - 1) * 4 + (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);
+            // The tier's widest chart and its rows per column (TC6: two columns at Standard, more at Huge, one at Compact; Huge 4K's four rows), read
+            // tracked: a window crossing re-renders the chart and re-fits the mounted shelf to both (live props, never a key). The skeleton reads the
+            // same pair (the fields), so it keeps the chart's columns per tier.
+            var chartTiers = ShellPolicy.Tracked.ArtistTiers;
+            var tierFacts = facts.Value.Tiers;
+            _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
+            _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
+            int cols = ArtistSections.ChartColumns(_items.Length, _maxColumns, _rows);
+            int shelfKey = (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);   // no column or row count: the fit is live (the crossing re-fits the same shelf)
             Element shelf = PagedShelf.Create(
                 _items,
                 cardAt: _cardAt,
-                cardHeight: Classic ? s_chartClassicH : s_chartModernH,
-                header: Controls.AccentHeader(Loc.Get(Strings.Artist.TopTracks), accent),
+                cardHeight: _cardHeightFn!,
+                header: style.Header(Loc.Get(Strings.Artist.TopTracks), accent),
                 pager: ShelfPager.None,
                 customPager: _pager,
-                minCardW: ChartMinCardW,
+                minCardW: metrics.MinCardWidth,
                 maxCardW: 9999f,
-                gap: Classic ? Spacing.S : ChartCellGap,
-                headerGap: Classic ? Spacing.S : ChartHeaderGap,
-                rows: ArtistSections.ChartMaxRows,
-                edgeFade: ChartEdgeFade,
+                gap: metrics.CellGap,
+                headerGap: metrics.HeaderGap,
+                rows: _rows,
+                edgeFade: metrics.EdgeFade,
                 keyOf: _keyOf,
                 maxColumns: cols,
                 snap: ShelfSnap.Page,
@@ -213,26 +231,17 @@ public readonly partial struct Artist
                 onInvoke: _invoke,
                 selectionMode: ItemsSelectionMode.Extended,
                 selection: Selection);
-            // A key on a component's ROOT is inert (ReconcileSingleChild pairs by type alone), so the keyed shelf is a
-            // CHILD of a pass-through column (ch 08 §9 trap 2).
-            _shelf = new BoxEl { Direction = 1, MinWidth = 0f, Children = [shelf with { Key = s_chartShelfKeys[shelfKey] }] };
+            // The shelf's style key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert). The
+            // rows per column are a live prop like the column cap (PagedShelf re-fits a multi-row strip to another row count in place and keeps
+            // the page holding its first row), so nothing here keys on the tier.
+            _shelf = style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] });
 
-            return new BoxEl
+            // The selection bar is its own component, so a select/clear re-renders the bar and the bound row chrome, never this host or the shelf.
+            return style.Frame(new ArtistChartFrameArgs
             {
-                Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    // The standard selection bar floats over the chart's own rows the moment the selection earns it
-                    // (SelectionBarRules.Visible); it is its own component, so a select/clear re-renders the bar and the
-                    // bound row chrome — never this host or the shelf.
-                    ZStack(
-                        new SkelRegionEl(
-                            Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                            OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                            Group: null, SmoothResize: false),
-                        Embed.Comp(() => new ChartBar(this)) with { Key = "chart-bar" }),
-                ],
-            };
+                Pending = _pendingFn, Failed = _failedFn, Content = _contentFn, Shimmer = _shimmerFn, OnFailed = _failedPanelFn,
+                Bar = Embed.Comp(() => new ChartBar(this)) with { Key = "chart-bar" },
+            });
         }
 
         // ── readiness: the failure gate, its latch, and the recheck ─────────────────────────────────────────────────
@@ -436,24 +445,16 @@ public readonly partial struct Artist
             Element content = Embed.Comp(new ChartRowProps(this, index, tier), static () => new ChartRow())
                 with { Key = _keyOf(item, index) };
             int at = index;
-            var row = new BoxEl
+            var row = _style!.Cell(new ArtistChartCellArgs
             {
-                ZStack = true,
+                Content = content,
                 // A vertical lift wins the drag; a horizontal sweep yields to the shelf's pan (the engine's arena).
                 Draggable = Drag.Source(() => DragPayloadFor(at)),
-                Children =
-                [
-                    content,
-                    new BoxEl
-                    {
-                        Key = "row-pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
-                        Corners = classic ? CornerRadius4.All(Radii.None) : CornerRadius4.All(1.5f),
-                        AlignSelf = FlexAlign.Center, Fill = _pillFill, HitTestVisible = false,
-                        // The accent pill is the single-selection cue; with the check lane up the checkbox says it instead.
-                        Opacity = Prop.Of(() => { _ = Selection.Version.Value; return Selection.IsSelected(at) && !ChecksVisible() ? 1f : 0f; }),
-                    },
-                ],
-            };
+                PillFill = _pillFill,
+                // The accent pill is the single-selection cue; with the check lane up the checkbox says it instead.
+                PillOpacity = Prop.Of(() => { _ = Selection.Version.Value; return Selection.IsSelected(at) && !ChecksVisible() ? 1f : 0f; }),
+                Classic = classic,
+            });
             var overlay = _overlay;
             return Controls.IsNullOverlay(overlay) ? row : row.WithContextMenu(overlay, () => MenuFor(at));
         }
@@ -533,7 +534,7 @@ public readonly partial struct Artist
         }
     }
 
-    /// <summary>The chart's floating selection bar — a component of its own so selecting re-renders only it.</summary>
+    /// <summary>The chart's floating selection bar: a component of its own so selecting re-renders only it (the structure draws it).</summary>
     sealed class ChartBar : Component
     {
         readonly ChartHost _host;
@@ -555,7 +556,7 @@ public readonly partial struct Artist
         {
             _ = _host.Selection.Version.Value;
             int n = _host.Selection.SelectedCount;
-            return Controls.SelectionBar(SelectionBarRules.Visible(n, false) ? n : 0, _lane, standalone: true, bottomPadding: Spacing.S);
+            return _host.Style!.Bar(SelectionBarRules.Visible(n, false) ? n : 0, _lane);
         }
     }
 
@@ -621,19 +622,24 @@ public readonly partial struct Artist
             var owner = p.Owner;
             bool classic = owner.Classic;
             bool pop = Track.LikeEdge(ref _likeSlot, ref _likeSaved, t, pr.State.Saved);
-            Element? feat = FeatLine(t, owner.Owner.Slot, pr.FeatCount, pr.FeatSlot);
             uint plays = t.PlayCount;
             // A pathfinder-thin track hit may carry no cover of its own (S3's LIVE-answer counterpart: an older
             // cached row, or a kind the pathfinder fix does not reach) — its album's is the same fallback the
             // pathfinder decoder now hands down at commit, applied here too for rows staged before that fix ran.
             StringId art = t.ImageId.IsEmpty ? t.Album.ImageId : t.ImageId;
-            var cells = new ChartCells(
+            var cells = new ArtistChartCells(
                 t.Title, Controls.ArtUrl(art), Track.Format.DurationCell(t.DurationMs),
                 plays > 0 ? Strings.Detail.Row.PlaysFull(Track.Format.PlaysLabel(plays)) : "",
                 plays > 0 ? Strings.Detail.Row.PlaysFull(plays.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)) : "",
                 t.IsExplicit, t.HasVideo);
-            return ChartRowView(in cells, p.Index, pr.State, p.Tier, feat, _play, t.IsValid ? _like : null, pop,
-                hovered, slot, owner.ChecksVisible, owner.ShowArtwork, classic);
+            return owner.Style!.Row(new ArtistChartRowArgs
+            {
+                Cells = cells, Index = p.Index, State = pr.State, Tier = p.Tier,
+                Track = t, PageArtist = owner.Owner.Slot, FeatSlot = pr.FeatSlot, FeatCount = pr.FeatCount,
+                OnPlay = _play, OnLike = t.IsValid ? _like : null, Pop = pop,
+                Hovered = hovered, Slot = slot, ChecksVisible = owner.ChecksVisible,
+                ShowArtwork = owner.ShowArtwork, Classic = classic,
+            });
         }
 
         void Play()
@@ -672,205 +678,9 @@ public readonly partial struct Artist
         return pageIn && count > 0 ? (first, count) : (0, 0);
     }
 
-    /// <summary>"feat. X +N": the first featured name is a link; "+N" opens the credit flyout of the rest. The featured
-    /// list is built only on the +N branch (§9 trap b).</summary>
-    static Element? FeatLine(Track t, int pageArtist, int featCount, int firstSlot)
-    {
-        if (featCount == 0 || firstSlot <= 0) return null;
-        var first = new Artist(firstSlot);
-        var kids = new Element[featCount > 1 ? 3 : 2];
-        kids[0] = Ui.Caption(Loc.Get(Strings.Artist.Feat)) with { Color = Tok.TextTertiary, Shrink = 0f };
-        kids[1] = new SpanTextEl([new TextSpan(first.Name, OnClick: () => Track.GoToArtist(first))])
-        {
-            Size = Ui.Caption("").Size, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-        };
-        if (featCount > 1)
-        {
-            var credits = t.ArtistSlots;
-            Span<int> featured = featCount <= 32 ? stackalloc int[featCount] : new int[featCount];
-            int k = 0;
-            for (int i = 0; i < credits.Length && k < featured.Length; i++)
-                if (credits[i] != pageArtist) featured[k++] = credits[i];
-            kids[2] = Track.ArtistMoreButton(featured[..k], 1) with { Key = "featmore:" + firstSlot };
-        }
-        return new BoxEl { Direction = 0, Gap = 4f, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, Children = kids };
-    }
-
-    /// <summary>The strings a row paints — the live row's resolved values, or the skeleton's representative shape.</summary>
-    readonly record struct ChartCells(string Title, string? ArtUrl, string Duration, string PlaysCompact, string PlaysExact,
-                                      bool Explicit, bool Video);
-
-    /// <summary>The prototype row (ArtistPopular.cs:365-522), shared by live rows and the skeleton so the two cannot
-    /// drift. Modern: 56 tall, r6, a 1-DIP transparent border that paints on hover, NO resting fill — now-playing is
-    /// content (the equalizer + the accent title). Classic: 48 tall, square, a hairline per row, and the now-playing
-    /// accent spreads to the explicit mark, the dots, the video glyph, the plays and the duration (W10, parity 83).</summary>
-    static Element ChartRowView(in ChartCells c, int index, in Track.RowState st, ArtistPopularLayout.Tier tier,
-                                Element? feat, Action? onPlay, Action? onLike, bool pop, Signal<bool>? hovered,
-                                RowScope? slot, Func<bool>? checksVisible, bool showArtwork, bool classic)
-    {
-        bool classicNow = classic && st.IsNow;
-        ColorF? nowInk = classicNow ? Tok.AccentTextPrimary : null;
-        bool hasPlays = c.PlaysCompact.Length > 0;
-        // The third line needs ALL THREE: a stacking tier, a feat credit and a play count (ch 08 audit #17).
-        bool stacked = tier.StackSub && feat is not null && hasPlays;
-        bool playsInSub = hasPlays && !stacked;
-
-        int parts = (c.Explicit ? 1 : 0) + (c.Video ? 1 : 0) + (feat is not null ? 1 : 0) + (playsInSub ? 1 : 0);
-        var sub = parts == 0 ? Array.Empty<Element>() : new Element[parts * 2 - 1];
-        int n = 0;
-        if (c.Explicit) sub[n++] = classic ? Track.ClassicExplicitBadge(nowInk) : Controls.ExplicitBadge(14f);
-        if (c.Video)
-        {
-            if (n > 0) sub[n++] = ChartDot(nowInk);
-            sub[n++] = Icon(Icons.Movie, 13f, nowInk ?? Tok.TextTertiary);
-        }
-        if (feat is not null)
-        {
-            if (n > 0) sub[n++] = ChartDot(nowInk);
-            sub[n++] = feat;
-        }
-        if (playsInSub)
-        {
-            if (n > 0) sub[n++] = ChartDot(nowInk);
-            // ONE format: compact in the row, the exact count in the tooltip — never squeezing the feat credit (§9 #10).
-            sub[n++] = ToolTip.Wrap(Ui.Caption(c.PlaysCompact) with
-            {
-                Color = nowInk ?? Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
-            }, c.PlaysExact);
-        }
-
-        var title = new TextEl(c.Title)
-        {
-            Size = 14f, Weight = 600, Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        };
-        Element subLine = sub.Length > 0
-            ? new BoxEl { Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = sub }
-            : new BoxEl();
-        Element[] mid = stacked
-            ? [title, subLine, Ui.Caption(c.PlaysExact) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f }]
-            : [title, subLine];
-
-        var trail = new Element[tier.ShowDuration ? 2 : 1];
-        trail[0] = Track.Heart(st.Saved, onLike, pop, classic);
-        if (tier.ShowDuration)
-            trail[1] = Design.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
-
-        var rowChildren = new Element[showArtwork ? 4 : 3];
-        int child = 0;
-        rowChildren[child++] = new BoxEl
-        {
-            Width = 24f, Height = 24f, Shrink = 0f,
-            Children = [Track.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, classic: classic)],
-        };
-        // TRACK ARTWORK HIDDEN: the cell is not built at all (rowChildren is 3 long), the mid column takes the width.
-        if (showArtwork)
-            rowChildren[child++] = new BoxEl
-            {
-                Width = tier.Art, Height = tier.Art, Shrink = 0f,
-                Children = [Controls.Artwork(c.ArtUrl, tier.Art, tier.Art, Radii.Control, decodePx: 64)],
-            };
-        rowChildren[child++] = new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-            Gap = classic ? Spacing.XS : 1f, Justify = FlexJustify.Center,
-            Children = mid,
-        };
-        rowChildren[child] = new BoxEl { Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail };
-
-        float rowHeight = classic ? ChartClassicRowH : ChartRowH;
-        var inset = classic ? new Edges4(Spacing.XS, 0f, Spacing.XS, 0f) : new Edges4(Spacing.S, 0f, Spacing.S, 0f);
-        // Slot-hosted rows carry the multi-select check lane in front of the cells; it slides in with the selection.
-        BoxEl body = slot is { } scope && checksVisible is not null
-            ? new BoxEl
-            {
-                Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = rowHeight, AlignItems = FlexAlign.Center, Padding = inset,
-                Children =
-                [
-                    SelectorVisualsBound.BoundCheckLane(checksVisible, scope.IsSelected, scope.OnInteraction, leftMargin: 0f),
-                    new BoxEl
-                    {
-                        Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                        Animate = s_checkShift, Children = rowChildren,
-                    },
-                ],
-            }
-            : new BoxEl
-            {
-                Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = rowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = inset, Children = rowChildren,
-            };
-
-        return new BoxEl
-        {
-            ZStack = true, MinHeight = rowHeight, MinWidth = 0f, ClipToBounds = classic,
-            Corners = classic ? CornerRadius4.All(Radii.None) : CornerRadius4.All(6f),
-            Fill = ColorF.Transparent,
-            HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-            PressScale = Design.Motion.ScaleSubtle.Press,
-            BorderWidth = classic ? 0f : 1f, BorderColor = ColorF.Transparent,
-            HoverBorderColor = classic ? ColorF.Transparent : Tok.StrokeCardDefault,
-            Role = AutomationRole.Button,
-            // Slot-hosted (the live chart): the shelf's slot root owns click, focus and keys, so this content is click-less.
-            // The skeleton (no slot) is inert.
-            OnClick = null,
-            // Real hover edges: the PointerBit every HoverOpacity descendant inherits AND the equalizer's pause gate.
-            OnHoverMove = hovered is null ? null : _ => { if (!hovered.Peek()) hovered.Value = true; },
-            OnPointerExit = hovered is null ? null : () => { if (hovered.Peek()) hovered.Value = false; },
-            Children = classic
-                ? [body, new BoxEl
-                  {
-                      Key = "classic-hairline", AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch,
-                      Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false,
-                  }]
-                : [body],
-        };
-    }
-
-    static Element ChartDot(ColorF? ink) => Ui.Caption("·") with { Color = ink ?? Tok.TextTertiary, Shrink = 0f };
-
-    /// <summary>The chart's derived-skeleton source: the SAME row builder over a representative shape, at the seed's
-    /// column count (≤ 10 charted ⇒ 2 × 5; an empty edge assumes the overview's ten, W5).</summary>
-    internal static Element ChartSkeleton(int knownCount, bool classic, bool showArtwork)
-    {
-        int total = knownCount > 0 ? Math.Min(knownCount, ArtistPopularTracks.OverviewSeedCap) : ArtistPopularTracks.OverviewSeedCap;
-        int cols = ArtistSections.ChartColumns(total);
-        int perCol = Math.Min(ArtistSections.ChartMaxRows, Math.Max(1, (total + cols - 1) / cols));
-        var tier = classic ? ArtistPopularLayout.Tier.Classic(true) : new ArtistPopularLayout.Tier(44f, true, false);
-        var cells = new ChartCells("Top track title", null, "3:30", "1.2M", "1,234,567", false, false);
-        var state = default(Track.RowState);
-        var columns = new Element[cols];
-        for (int c = 0; c < cols; c++)
-        {
-            int rows = Math.Min(perCol, Math.Max(0, total - c * perCol));
-            var kids = new Element[rows];
-            for (int r = 0; r < rows; r++)
-                kids[r] = ChartRowView(in cells, c * perCol + r, in state, tier, null, null, null, false, null, null, null,
-                                       showArtwork, classic);
-            columns[c] = new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = classic ? Spacing.S : ChartCellGap, Children = kids,
-            };
-        }
-        return new BoxEl
-        {
-            Direction = 1, Gap = classic ? Spacing.S : ChartHeaderGap,
-            Children =
-            [
-                // The header at its NATURAL width, so the derived bar is title-wide in both trees.
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center,
-                    Children = [Controls.AccentHeader(Loc.Get(Strings.Artist.TopTracks), Tok.AccentDefault)],
-                },
-                new BoxEl { Direction = 0, Gap = classic ? Spacing.S : ChartCellGap, Children = columns },
-            ],
-        };
-    }
-
     // ══ 4. THE PAGER ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record ChartPagerProps(int Page, int PageCount, bool CanPrev, bool CanNext, Action Prev, Action Next,
+    sealed record ChartPagerProps(ArtistChartStyle Style, int Page, int PageCount, bool CanPrev, bool CanNext, Action Prev, Action Next,
                                   Action<int> GoTo, int Total);
 
     /// <summary>‹ ●● › at two or more pages; the bare track count at one (W11). The pips are a CONTROLLED pager
@@ -885,30 +695,12 @@ public readonly partial struct Artist
             var p = UseProps<ChartPagerProps>();
             int page = p.Page;
             UseEffect(() => { if (_selected.Peek() != page) _selected.Value = page; }, DepKey.From(page));
-            if (p.PageCount <= 1)
-                return Ui.Caption(p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture))
-                    with { Weight = 600, Color = Tok.TextTertiary };
-            return new BoxEl
+            return p.Style.Pager(new ArtistChartPagerArgs
             {
-                Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
-                Children =
-                [
-                    ChartChevron(Icons.ChevronLeft, p.CanPrev, p.Prev),
-                    PipsPager.Create(p.PageCount, _selected, onChange: p.GoTo, onReselect: p.GoTo),
-                    ChartChevron(Icons.ChevronRight, p.CanNext, p.Next),
-                ],
-            };
+                Page = page, PageCount = p.PageCount, CanPrev = p.CanPrev, CanNext = p.CanNext, Prev = p.Prev, Next = p.Next,
+                GoTo = p.GoTo, Total = p.Total, Selected = _selected,
+            });
         }
     }
 
-    /// <summary>The chart's own 28-DIP transparent chevron (not the stock 32 filled circle); a disabled one has no hover
-    /// fill and a tertiary glyph.</summary>
-    static Element ChartChevron(string glyph, bool enabled, Action onClick) => new BoxEl
-    {
-        Width = 28f, Height = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(14f), HoverFill = enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-        HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), OnClick = enabled ? onClick : null,
-        Role = AutomationRole.Button, Cursor = enabled ? CursorId.Hand : null,
-        Children = [Icon(glyph, 12f, enabled ? Tok.TextSecondary : Tok.TextTertiary)],
-    };
 }

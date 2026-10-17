@@ -38,52 +38,42 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailPlan_Playlist_OwnerRowTitleMetaCtaAndBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
+        var plan = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 6);
         Assert.False(plan.Eyebrow);
         Assert.True(plan.Owner);
         Assert.False(plan.Artists);
         Assert.True(plan.Meta);
         Assert.Equal(Skeleton.RailTitleLines, plan.TitleLines);
-        Assert.Equal(3, plan.Fabs);                       // heart · Share · ⋯
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (tuned Classic D1)
         Assert.Equal(Skeleton.RailDescriptionLines, plan.DescriptionLines);
     }
 
     [Fact]
-    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurbNoMore()
+    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
+        var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6);
         Assert.True(plan.Eyebrow);
         Assert.False(plan.Owner);
         Assert.True(plan.Artists);
         Assert.False(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // heart · Share — an album's rail has no ⋯ (ch 05 parity 15)
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (D1: the album's rail has its ⋯ now)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
     [Fact]
     public void RailPlan_Show_StatesItsPublisherLineAndBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Show, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 3);
+        var plan = Skeleton.RailPlanFor(DetailKind.Show, BadgeStyle.TypeYear, fixedActions: 3, descriptionMaxLines: 3);
         Assert.True(plan.Meta);
         Assert.Equal(3, plan.DescriptionLines);
     }
 
     [Fact]
-    public void RailPlan_Liked_NoHeartNoBlurb()
-    {
-        var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
-        Assert.False(plan.Owner);
-        Assert.True(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // Share · ⋯
-        Assert.Equal(0, plan.DescriptionLines);
-    }
-
-    [Fact]
     public void RailPlan_BlurbClampsToTheRailsOwnLines()
     {
-        Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 2).DescriptionLines);
-        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 0).DescriptionLines);
-        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: -1).DescriptionLines);
+        Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 2).DescriptionLines);
+        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 0).DescriptionLines);
+        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: -1).DescriptionLines);
     }
 
     // ── the podcast seams (podcast rework §5.4): the rail's row model ────────────────────────────────────────────────
@@ -95,53 +85,57 @@ public class DetailSkeletonGeometryTests
     [InlineData(DetailKind.Album, BadgeStyle.TypeYear, true, 3)]
     [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, true, 6)]
     [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, false, 2)]
-    [InlineData(DetailKind.Liked, BadgeStyle.None, false, 6)]
     [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 3)]
     [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 6)]
     public void RailPlan_WithoutPodcastSlots_IsThePrePodcastPlan(DetailKind kind, BadgeStyle badges, bool heart, int descMax)
     {
         bool typeYear = badges == BadgeStyle.TypeYear;
+        int fabs = (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2;   // Shuffle on a track page · heart · Share · ⋯
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+            Fabs: fabs,
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
 
         // An album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose
         // reserved row is the look's height; a podcast's attribution row is the publisher line and stays a text row.
         var faces = before with { ArtistFaces = before.Artists && kind != DetailKind.Show };
 
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax));
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax, default));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax, new RailSlotSet(Attribution: true)));
         Assert.Equal(RailBadgeRow.None, before.Badges);
         Assert.False(before.Rating || before.Ledger || before.Satellites || before.Topics);
     }
 
     /// <summary>The nominal height of the pre-podcast skeleton columns, by hand: 24 above, the rows, 14 between, 24 below —
-    /// the CTA line wrapping exactly as the engine's flex wrap wraps [PlayButton 120][the icon-action group].
+    /// the CTA wrapping exactly as the engine's flex wrap wraps [Play split 121 + its 4][each 32 action, 8 apart] (tuned Classic D1).
     /// <para>Workstream B geometry: <c>RailLayout.PillHeight</c> (the primary's height) and <c>FabSize</c>/<c>SatelliteSize</c>
     /// are all 32 now (were 36/40/36); <c>Skeleton.PlayButtonWidth</c> is 120 (was <c>PlayPillWidth</c> 104).</para></summary>
     [Fact]
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
-        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 (PlayButton
-        // 120 + 12 + [heart · Share] 72 = 204 ≤ 256: one line, max(PillHeight 32, FabSize 32) = 32). Five rows, four gaps.
-        var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 + 8 + 32 (the
+        // split 121 + 4, then Shuffle, heart, Share at 8 + 32 each = 245 ≤ 256; the ⋯ (285) wraps, as the board's flex row
+        // does). Five rows, four gaps.
+        var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6);
         // The artists row is the artist line's height for the look the rail's width gives it (Wide at 256: the 32 pile
         // frame + its 4 + 4 plate = 40, not 16); the same plan declared with the album's own Attribution slot is the same height.
-        Assert.Equal(24f + 256f + 16f + 72f + 40f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
-        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6,
+        Assert.Equal(24f + 256f + 16f + 72f + 40f + 76f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6,
             new RailSlotSet(Attribution: true));
         Assert.Equal(RailLayout.HeightOf(album, 256f, 36f), RailLayout.HeightOf(albumWithSlot, 256f, 36f));
         // A narrower rail (cover 200 is Medium) reserves the two-text-line look (48), whatever the names will be.
-        // (200 also wraps the CTA: 80 instead of 36)
-        Assert.Equal(24f + 200f + 16f + 72f + 48f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
+        // (200 wraps the CTA after Shuffle: still two lines, 76)
+        Assert.Equal(24f + 200f + 16f + 72f + 48f + 76f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
 
-        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (120 + 12 + 112 > 216):
-        // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
-        var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped after the heart (125 + 40 + 40 =
+        // 205 ≤ 216, Share would reach 245): 4 + 32 + 8 + 32 · blurb 3 × 18. Six rows, five gaps.
+        var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 6);
+        Assert.Equal(24f + 216f + 24f + 72f + 16f + 76f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+
+        // A wide rail (cover 300) holds the whole row on one line: 125 + 4 × 40 = 285.
+        Assert.Equal(4f + 32f, RailLayout.CtaHeight(album, 300f));
     }
 
     const int PodcastDescMax = 3;
@@ -172,7 +166,7 @@ public class DetailSkeletonGeometryTests
     static Skeleton.RailPlan Reserved(DetailKind kind, RailSlotSet slots)
     {
         var cfg = Config.For(kind, AlbumKind.Album);
-        return Skeleton.RailPlanFor(kind, cfg.Badges, cfg.Heart != HeartMode.None, PodcastDescMax, slots);
+        return Skeleton.RailPlanFor(kind, cfg.Badges, (cfg.Heart != HeartMode.None ? 1 : 0) + 2, PodcastDescMax, slots);
     }
 
     /// <summary>With each slot a podcast page declares, the skeleton RESERVES exactly the rows the loaded rail LAYS OUT:
@@ -348,7 +342,7 @@ public class DetailSkeletonGeometryTests
     public void HeroBand_IsExactlyTheCompositionItDeclares(float w, bool rowFlow)
     {
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true);
+        float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float hero = rowFlow ? MathF.Max(art, identity) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;
         float expected = VerticalLayout.HeroPadFor(w, rowFlow) + hero
@@ -372,7 +366,7 @@ public class DetailSkeletonGeometryTests
         // A fresh PESSIMISTIC plan per flag combination (the budget's chrome sum moves with the flags, even though the
         // null-title SIZE does not at these widths — the fluid cap binds, not the height budget).
         var barePlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
-        float bare = VerticalLayout.IdentityHeightFor(barePlan, rowFlow, false, false, false);
+        float bare = VerticalLayout.IdentityHeightFor(barePlan, false, false, false);
         Assert.Equal(
             barePlan.BlockHeight
             + VerticalLayout.AccentRuleRowHeight
@@ -382,24 +376,24 @@ public class DetailSkeletonGeometryTests
 
         var eyebrowPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, false, false);
         Assert.Equal(bare + VerticalLayout.EyebrowRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(eyebrowPlan, rowFlow, true, false, false));
+            VerticalLayout.IdentityHeightFor(eyebrowPlan, true, false, false));
 
         var attributionPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, true, false);
         Assert.Equal(bare + VerticalLayout.AttributionRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(attributionPlan, rowFlow, false, true, false));
+            VerticalLayout.IdentityHeightFor(attributionPlan, false, true, false));
 
         var metaPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, true);
         Assert.Equal(bare + VerticalLayout.MetaRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(metaPlan, rowFlow, false, false, true));
+            VerticalLayout.IdentityHeightFor(metaPlan, false, false, true));
 
         var pulsePlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false, pulse: true);
         Assert.Equal(bare + VerticalLayout.PulseRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(pulsePlan, rowFlow, false, false, false, pulse: true));
+            VerticalLayout.IdentityHeightFor(pulsePlan, false, false, false, pulse: true));
 
         // W28: the chart caption is a block like every other — its row plus one gap.
         var chartPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false, chart: true);
         Assert.Equal(bare + VerticalLayout.ChartRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(chartPlan, rowFlow, false, false, false, chart: true));
+            VerticalLayout.IdentityHeightFor(chartPlan, false, false, false, chart: true));
     }
 
     /// <summary>W28 end to end: a chart playlist's reserved band IS the composition with the caption in it — the band
@@ -418,7 +412,7 @@ public class DetailSkeletonGeometryTests
 
         // The reserved band is exactly the composition WITH the caption (the pessimistic null-title plan, chart flag on).
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true, chart: true);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: true);
+        float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float hero = rowFlow ? MathF.Max(art, identity) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;
         float expected = VerticalLayout.HeroPadFor(w, rowFlow) + hero
@@ -430,8 +424,8 @@ public class DetailSkeletonGeometryTests
 
         // For the SAME title plan, the caption costs exactly its row plus one gap.
         Assert.Equal(VerticalLayout.ChartRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: true)
-            - VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: false));
+            VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: true)
+            - VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: false));
 
         float plainBand = VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true, pulse: false, chart: false);
         float chartBand = VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true, pulse: false, chart: true);
@@ -443,8 +437,8 @@ public class DetailSkeletonGeometryTests
                               - VerticalLayout.ChartRowHeight - VerticalLayout.IdentityGap),
                 VerticalLayout.TitleHeightBudgetFor(w, rowFlow, true, true, true, chart: true));
 
-        var (plainChrome, plainBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow);
-        var (chartChrome, chartBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow, chart: true);
+        var (plainChrome, plainBlocks) = VerticalLayout.IdentityChrome(true, true, true, false);
+        var (chartChrome, chartBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, chart: true);
         Assert.Equal(plainChrome + VerticalLayout.ChartRowHeight, chartChrome);
         Assert.Equal(plainBlocks + 1, chartBlocks);
     }
@@ -452,13 +446,10 @@ public class DetailSkeletonGeometryTests
     /// <summary>The ALL-flags case, so a new hero row cannot join the column without its own flag: the chrome is the sum
     /// of every row, over eight blocks (the title + seven). The description is no longer among them — it moved out of
     /// the column entirely.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void IdentityChrome_EnumeratesEveryHeroBlock(bool rowFlow)
+    [Fact]
+    public void IdentityChrome_EnumeratesEveryHeroBlock()
     {
-        var (h, blocks) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true, pulse: true,
-                                                         rowFlow, chart: true);
+        var (h, blocks) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true, pulse: true, chart: true);
         Assert.Equal(VerticalLayout.EyebrowRowHeight + VerticalLayout.AccentRuleRowHeight + VerticalLayout.AttributionRowHeight
                      + VerticalLayout.MetaRowHeight + VerticalLayout.PulseRowHeight + VerticalLayout.ChartRowHeight
                      + VerticalLayout.ActionRowHeight, h);
@@ -511,7 +502,7 @@ public class DetailSkeletonGeometryTests
         const bool rowFlow = true;
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, false, false, false);
+        float identity = VerticalLayout.IdentityHeightFor(plan, false, false, false);
         Assert.True(identity < art, $"fixture assumption broken: identity {identity} is not shorter than art {art}");
 
         // The column reports NO MinHeight — never forced taller than its own content, in either flow.
@@ -547,7 +538,7 @@ public class DetailSkeletonGeometryTests
             {
                 float art = VerticalLayout.ArtworkFor(w, rowFlow);
                 var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
-                float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true);
+                float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true);
                 float hero = rowFlow
                     ? MathF.Max(art, identity)
                     : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;

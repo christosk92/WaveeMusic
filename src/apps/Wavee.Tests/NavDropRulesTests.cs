@@ -1,0 +1,2173 @@
+// ── Wavee.Tests/NavDropRulesTests.cs — the rootlist drop / tree-nav / selection authority, ported from 0.2.9 ───────
+//
+// (Renamed from SidebarDropTests.cs by themes plan row C12: the drop rules these facts drive now live in Shell/NavDropRules.cs;
+// the row-level table, the row facts and the model's Drop verb are the classes at the END of this file.)
+//
+// Ports the 0.2.9 sidebar organisation suite onto Sidebar.cs's own DROP, TREE NAV, FOLDER FLYOUT AND
+// MULTI-SELECTION block (L2655+): the pure geometry behind a rootlist drag (`RootlistSlotResolver`), the
+// line/plate cue invariant (`SidebarDropCue`), the ONE legality authority every surface shares
+// (`RootlistOps.CheckMove`/`CheckMoves`, `RootlistDropDecision`), the Undo anchor (`RootlistUndoAnchors`), the
+// non-mouse organisation verbs (`RootlistTreeNav`, `RootlistSelection`, `RootlistBatchOrder`,
+// `SidebarTreeNavLayout`), the folder flyout's drill-in stack (`SidebarFolderTree`, `SidebarFolderFlyoutNav`), the
+// tree's multi-selection (`SidebarTreeSelection`) and the mid-drag freeze (`SidebarStageHold<T>`).
+// Pure, engine-free: no `TestScope.Fresh()`, no `[Collection(EntitiesCollection.Name)]`, no engine loop — matching
+// what every type tested here already promises ("Engine-free... so a test can drive the real ... directly").
+//
+// An earlier pass of this port DROPPED every fact above that touched a type Sidebar.cs declared WITHOUT `public`
+// (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`,
+// `SidebarStageHold<T>`, `RootlistDropDecision`, `RootlistSlotMapper`,
+// the former core row-geometry class) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
+// carries no `InternalsVisibleTo` anywhere, so none of them were reachable from `Wavee.Tests`, contradicting
+// Sidebar.cs's own file header ("source-visible to `Wavee.Tests`"). That was confirmed to be an artifact of how the
+// file was assembled, not a design decision, and has since been fixed upstream — every type above is now `public`,
+// and every fact that was dropped purely for that reason has been restored below.
+//
+// STILL NOT ported, and why (this remains correct, not an oversight): `RootlistTreeBuilderTests` (filed under
+// 0.2.9's RootlistTreeTests.cs) tested a different subsystem entirely — the recursive PlaylistFolder/PlaylistLeaf
+// marker-stream builder — which 0.3 does not carry in Sidebar.cs at all (the projection here consumes an
+// already-flattened SidebarLibraryEntry list). And 0.3's `RootlistOps` deliberately no longer builds or applies a
+// move ("No op is ever built or posted here" — its own doc, right above `CheckMove`), so the 0.2.9
+// `TryBuildMove`/`TryBuildMoves`/`PlaylistDiffApplier` write seam, and every 0.2.9 fact that asserted the resulting
+// rootlist ORDER after a drop (most of `RootlistDropScenarioTests.cs`, half of `RootlistSlotToOpTests.cs`), has no
+// reachable 0.3 equivalent — inventing one would test something Sidebar.cs does not do. `SidebarDragClampTests.cs`'s
+// `LibraryV3View`/`SidebarRailDropRules` facts also stay out: both types are gone (the list shaper is
+// `SidebarLibraryShaper`, Sidebar.Library.cs), and the drag gate lives in `Platform/Drag.cs`, not Sidebar.cs.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using FluentGpu.Foundation;
+using FluentGpu.Localization;
+using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming.Contracts;
+using Xunit;
+
+namespace Wavee.Tests;
+
+// ── the shared tree fixture (ported from SidebarTreeFixture.cs) ────────────────────────────────────────────────────
+//
+// The depth-first FLATTENED shape `SidebarProjectionInput.PlaylistTree` publishes, and the marker stream every rule
+// in `RootlistTreeNav`/`RootlistOps`/`RootlistUndoAnchors` decides against. 0.2.9 built the marker stream via
+// `Wavee.Backend.Playlists.RootlistTreeBuilder.EntriesFromUris`; that builder is not compiled into 0.3 (parked
+// under src/apps/_old), so `MarkersOf` below constructs the `RootlistEntry` rows directly — still balanced
+// start/end-group markers in the exact "spotify:start-group:id:name" shape `RootlistOps`'s own (private) `GroupId`
+// parses, so the fixture cannot encode a marker shape `RootlistOps` would not itself produce.
+//
+//   a                       depth 0
+//   [Chill]      folder g   depth 0
+//       b                   depth 1
+//       c                   depth 1
+//       [Deep]   folder k   depth 1
+//           f               depth 2
+//   d                       depth 0
+//   [Trailing]   folder h   depth 0
+//       e                   depth 1
+//
+// Deliberately awkward in the two places 0.2.9's defects lived: a folder NESTED inside a folder (so "my siblings"
+// cannot be "the rows at my depth"), and a TRAILING folder at the end of the top level (so "after everything" must
+// land after its end marker rather than inside it).
+static class SidebarTreeFixture
+{
+    public const string PlaylistUriPrefix = "spotify:playlist:";
+
+    /// <summary>A playlist row. The id is the projection's own (<c>pl:</c> + uri), which is what every verb addresses.</summary>
+    public static SidebarLibraryEntry Playlist(string slug, int depth, string parentId = "", string parentName = "")
+        => new(Id: SidebarPinId.PlaylistPrefix + PlaylistUriPrefix + slug, Kind: SidebarEntryKind.Playlist,
+               Uri: PlaylistUriPrefix + slug, Name: slug, Creator: "", Cover: default, MosaicTiles: null,
+               ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0,
+               Depth: depth, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { ParentFolderId = parentId, ParentFolderName = parentName };
+
+    /// <summary>A folder row. <c>FolderId</c> is its OWN group id; <c>ParentFolderId</c> is the folder containing it.</summary>
+    public static SidebarLibraryEntry Folder(string groupId, string name, int depth,
+                                             string parentId = "", string parentName = "")
+        => new(Id: SidebarPinId.FolderPrefix + groupId, Kind: SidebarEntryKind.Folder, Uri: "", Name: name,
+               Creator: "", Cover: default, MosaicTiles: null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0,
+               LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: depth, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { FolderId = groupId, FolderName = name, ParentFolderId = parentId, ParentFolderName = parentName };
+
+    public static IReadOnlyList<SidebarLibraryEntry> Tree() =>
+    [
+        Playlist("a", 0),
+        Folder("g", "Chill", 0),
+        Playlist("b", 1, "g", "Chill"),
+        Playlist("c", 1, "g", "Chill"),
+        Folder("k", "Deep", 1, "g", "Chill"),
+        Playlist("f", 2, "k", "Deep"),
+        Playlist("d", 0),
+        Folder("h", "Trailing", 0),
+        Playlist("e", 1, "h", "Trailing"),
+    ];
+
+    public static IReadOnlyList<RootlistEntry> Markers() => MarkersOf(Tree());
+
+    /// <summary>The marker stream a flattened fixture tree stands for, built directly: each row first closes every
+    /// open folder whose depth is not shallower than its own, then opens or emits itself; whatever is still open at
+    /// the end closes in reverse (innermost first) — the same nesting <c>RootlistOps</c>'s range walk expects.</summary>
+    public static IReadOnlyList<RootlistEntry> MarkersOf(IReadOnlyList<SidebarLibraryEntry> tree)
+    {
+        var list = new List<RootlistEntry>(tree.Count * 2);
+        var open = new List<SidebarLibraryEntry>();
+        foreach (var e in tree)
+        {
+            while (open.Count > 0 && open[^1].Depth >= e.Depth)
+            {
+                var top = open[^1];
+                list.Add(new RootlistEntry(list.Count, 2, "spotify:end-group:" + top.FolderId, null, top.Depth));
+                open.RemoveAt(open.Count - 1);
+            }
+            if (e.IsFolder)
+            {
+                list.Add(new RootlistEntry(list.Count, 1, "spotify:start-group:" + e.FolderId + ":" + e.Name,
+                                           e.Name, e.Depth));
+                open.Add(e);
+            }
+            else
+            {
+                list.Add(new RootlistEntry(list.Count, 0, e.Uri, null, e.Depth));
+            }
+        }
+        for (int i = open.Count - 1; i >= 0; i--)
+            list.Add(new RootlistEntry(list.Count, 2, "spotify:end-group:" + open[i].FolderId, null, open[i].Depth));
+        return list;
+    }
+
+    /// <summary>The seam ref one fixture row moves AS — a folder by group id, a playlist by uri.</summary>
+    public static RootlistItemRef Ref(IReadOnlyList<SidebarLibraryEntry> tree, string entryId)
+    {
+        foreach (var e in tree)
+            if (e.Id == entryId) return RootlistTreeNav.RefOf(in e);
+        return new RootlistItemRef("", false);
+    }
+
+    /// <summary>The entry id of a playlist row, as the verbs address it.</summary>
+    public static string Pl(string slug) => SidebarPinId.PlaylistPrefix + PlaylistUriPrefix + slug;
+
+    /// <summary>The entry id of a folder row.</summary>
+    public static string Fo(string groupId) => SidebarPinId.FolderPrefix + groupId;
+}
+
+/// <summary>The tree ladder the resolver's depth pick reads: the pane hands it the structure's (<c>NavRowKit.TreeLadder</c>), so the
+/// suite drives it with Classic's, the one the rows and the caret are drawn on. Kept in one place so every region that needs the
+/// ladder cites the same numbers.</summary>
+static class DropLadder
+{
+    public static NavTreeLadder Tree => ClassicNavRows.Kit.TreeLadder;
+
+    /// <summary>The tree's closing drop gutter.</summary>
+    public const float TreeEndHeight = SidebarGeometry.TreeEndHeight;
+
+    /// <summary>Where a row at <paramref name="depth"/> starts drawing: the origin plus one step per level.</summary>
+    public static float TreeContentX(int depth) => Tree.OriginX + depth * Tree.IndentStep;
+}
+
+// ── RootlistOps: the ONE legality authority every surface shares ───────────────────────────────────────────────────
+//
+// Ported from RootlistRefusalTests.cs's marker-stream section (including "TheTableIsTotal", restored now that
+// RootlistDropDecision is public) and RootlistSlotToOpTests.cs's CheckMove-only facts. Still DROPPED from both:
+// every fact that observed the resulting rootlist ORDER after a move (RootlistOps.TryBuildMove +
+// PlaylistDiffApplier.Apply) — 0.3's RootlistOps deliberately never builds or applies an op ("No op is ever built or
+// posted here"), so there is no writer to observe through Sidebar.cs — including "AFolderMovesItsWholeSubtree_
+// MarkersAndAll" (asserts a TryBuildMove op's FromIndex/Length — no such method exists in 0.3).
+public class RootlistOpsTests
+{
+    static string A => SidebarTreeFixture.Pl("a");
+    static string B => SidebarTreeFixture.Pl("b");
+    static string C => SidebarTreeFixture.Pl("c");
+    static string D => SidebarTreeFixture.Pl("d");
+    static string G => SidebarTreeFixture.Fo("g");
+    static string K => SidebarTreeFixture.Fo("k");
+
+    static RootlistMoveCheck Check(string sourceId, string targetId, RootlistDropPlacement placement)
+    {
+        var tree = SidebarTreeFixture.Tree();
+        return RootlistOps.CheckMove(SidebarTreeFixture.Markers(),
+            SidebarTreeFixture.Ref(tree, sourceId), SidebarTreeFixture.Ref(tree, targetId), placement);
+    }
+
+    [Fact]
+    public void NoOp_RefusesBothEdgesOfTheSpanTheItemAlreadyOccupies()
+    {
+        // "Before the row right after me" and "after the row right before me" are the same place I am already in.
+        Assert.Equal(RootlistMoveCheck.NoOp, Check(B, C, RootlistDropPlacement.Before));
+        Assert.Equal(RootlistMoveCheck.NoOp, Check(C, B, RootlistDropPlacement.After));
+        // Onto itself, either way round, is SameItem rather than NoOp — a different sentence for a different cause.
+        Assert.Equal(RootlistMoveCheck.SameItem, Check(B, B, RootlistDropPlacement.Before));
+        Assert.Equal(RootlistMoveCheck.SameItem, Check(B, B, RootlistDropPlacement.After));
+        // The folder's LAST child, appended back into that same folder.
+        Assert.Equal(RootlistMoveCheck.NoOp, Check(K, G, RootlistDropPlacement.Inside));
+    }
+
+    [Fact]
+    public void RealMoves_AreNotRefused()
+    {
+        Assert.Equal(RootlistMoveCheck.Ok, Check(A, C, RootlistDropPlacement.After));
+        Assert.Equal(RootlistMoveCheck.Ok, Check(B, G, RootlistDropPlacement.After));
+        Assert.Equal(RootlistMoveCheck.Ok, Check(A, G, RootlistDropPlacement.Inside));
+        Assert.Equal(RootlistMoveCheck.Ok, Check(D, A, RootlistDropPlacement.Before));
+        // Filing a NON-last child into its own folder is a real move (it becomes the last one) — not the no-op a
+        // flattened-list check (mapping Inside to the folder's END index) would mistake it for.
+        Assert.Equal(RootlistMoveCheck.Ok, Check(B, G, RootlistDropPlacement.Inside));
+    }
+
+    [Fact]
+    public void Cycle_RefusesAFolderFiledIntoItsOwnSubtree()
+    {
+        Assert.Equal(RootlistMoveCheck.Cycle, Check(G, B, RootlistDropPlacement.Before));
+        Assert.Equal(RootlistMoveCheck.Cycle, Check(G, B, RootlistDropPlacement.After));
+        Assert.Equal(RootlistMoveCheck.Cycle, Check(G, K, RootlistDropPlacement.Inside));
+        // Into the dragged folder ITSELF is the identity answer, distinct from filing into one of its descendants.
+        Assert.Equal(RootlistMoveCheck.SameItem, Check(G, G, RootlistDropPlacement.Inside));
+    }
+
+    [Fact]
+    public void AnUnknownRowIsRefusedRatherThanArmed()
+    {
+        // The OPPOSITE of a flattened-list guess: a destination this stream cannot find has no index, so Missing is
+        // the honest answer rather than "the tree may not be showing it, so allow it".
+        Assert.Equal(RootlistMoveCheck.Missing, Check("pl:missing", A, RootlistDropPlacement.After));
+        Assert.Equal(RootlistMoveCheck.Missing, Check(A, "pl:missing", RootlistDropPlacement.After));
+    }
+
+    [Fact]
+    public void InsideALeaf_IsNotAPlacementTheStreamCanExpress()
+    {
+        Assert.Equal(RootlistMoveCheck.Invalid, Check(A, D, RootlistDropPlacement.Inside));
+    }
+
+    [Fact]
+    public void CheckMoves_OfAnEmptyBatch_IsANoOp()
+    {
+        Assert.Equal(RootlistMoveCheck.NoOp, RootlistOps.CheckMoves(SidebarTreeFixture.Markers(), []));
+    }
+
+    [Fact]
+    public void TheTableIsTotal_AndMapsEveryCheckToExactlyOneRefusal()
+    {
+        // Every value of the ONE table, so a new RootlistMoveCheck cannot land silently in the default arm without
+        // this failing first. Restored now that RootlistDropDecision is public.
+        Assert.Equal(SidebarDropRefusal.None, RootlistDropDecision.RefusalFor(RootlistMoveCheck.Ok));
+        Assert.Equal(SidebarDropRefusal.NoOp, RootlistDropDecision.RefusalFor(RootlistMoveCheck.NoOp));
+        Assert.Equal(SidebarDropRefusal.IntoDescendant, RootlistDropDecision.RefusalFor(RootlistMoveCheck.Cycle));
+        Assert.Equal(SidebarDropRefusal.Self, RootlistDropDecision.RefusalFor(RootlistMoveCheck.SameItem));
+        Assert.Equal(SidebarDropRefusal.Unavailable, RootlistDropDecision.RefusalFor(RootlistMoveCheck.Missing));
+        Assert.Equal(SidebarDropRefusal.Unavailable, RootlistDropDecision.RefusalFor(RootlistMoveCheck.Invalid));
+    }
+}
+
+// ── RootlistSlotResolver: the pure geometry + legality behind every sidebar rootlist drop ──────────────────────────
+//
+// Ported from RootlistSlotResolverTests.cs (geometry/depth/undo-anchor sections) and RootlistRefusalTests.cs's
+// resolver-level refusal facts (Self/IntoItself/SortedList/NotLoaded/Unavailable — these read only the resolver's
+// own SidebarRowFacts flags, no marker stream involved, so nothing here needed dropping).
+public class RootlistSlotResolverTests
+{
+    // ── fixtures ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The three canonical row heights the density ladder produces (32 compact / 44 cozy+subtitle / 48
+    /// comfortable+subtitle). The edge band must behave identically at all three.</summary>
+    public static TheoryData<float> Heights => new() { 32f, 44f, 48f };
+
+    static SidebarRowFacts Leaf(int depth = 0, int nextDepth = -1, bool centerAccepts = false) => new(
+        IsFolder: false, FolderExpanded: false, FolderHasChildren: false,
+        Depth: depth, NextVisibleDepth: nextDepth < 0 ? depth : nextDepth,
+        CenterAccepts: centerAccepts,
+        SourceIsSelf: false, SortedNonCustom: false, RootlistLoaded: true);
+
+    static SidebarRowFacts FolderRow(bool expanded, bool hasChildren, int depth = 0, int nextDepth = -1) => new(
+        IsFolder: true, FolderExpanded: expanded, FolderHasChildren: hasChildren,
+        Depth: depth, NextVisibleDepth: nextDepth < 0 ? depth : nextDepth,
+        CenterAccepts: true,
+        SourceIsSelf: false, SortedNonCustom: false, RootlistLoaded: true);
+
+    static SidebarRowFacts Row(bool folder = false, bool self = false, bool sorted = false, bool loaded = true) => new(
+        IsFolder: folder, FolderExpanded: false, FolderHasChildren: false,
+        Depth: 0, NextVisibleDepth: 0, CenterAccepts: folder,
+        SourceIsSelf: self, SortedNonCustom: sorted, RootlistLoaded: loaded);
+
+    /// <summary>Resolve with the pointer parked over the row's LABEL (x far past the indent ladder) — the default
+    /// position, and therefore the one that must mean "stay at this row's depth".</summary>
+    static SidebarDropSlot At(float t, in SidebarRowFacts f, float h = 44f, float x = 200f)
+        => RootlistSlotResolver.Resolve(3, t, x, h, in f, SidebarDropSlot.None, DropLadder.Tree);
+
+    // ── the edge band ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [MemberData(nameof(Heights))]
+    public void EdgeBand_IsThirtyPercentClampedBetweenTenAndSixteen(float h)
+    {
+        float edge = RootlistSlotResolver.EdgeFor(h);
+        Assert.Equal(Math.Clamp(h * 0.30f, 10f, 16f), edge, 3);
+        // It must always leave a centre: two bands can never consume the whole row.
+        Assert.True(edge * 2f < h);
+    }
+
+    [Fact]
+    public void EdgeBand_DependsOnTheRowAlone_NeverOnThePayload()
+    {
+        // The band is a function of the row height and nothing else — there is no payload parameter to pass.
+        Assert.Equal(13.2f, RootlistSlotResolver.EdgeFor(44f), 3);
+        // A pathologically short row still leaves a centre: never more than half of it.
+        Assert.Equal(2f, RootlistSlotResolver.EdgeFor(4f), 3);
+        Assert.Equal(RootlistSlotResolver.MinEdge, RootlistSlotResolver.EdgeFor(0f), 3);
+    }
+
+    // ── zones ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [MemberData(nameof(Heights))]
+    public void PlainRow_IsTwoZones_WithNoDeadCentre(float h)
+    {
+        var f = Leaf();
+        Assert.Equal(SidebarDropKind.Before, At(0.49f, in f, h).Kind);
+        Assert.Equal(SidebarDropKind.After, At(0.51f, in f, h).Kind);
+        // A row that cannot take a deposit must not reserve half its height for one.
+        Assert.NotEqual(SidebarDropKind.Into, At(0.5f, in f, h).Kind);
+    }
+
+    [Theory]
+    [MemberData(nameof(Heights))]
+    public void EditablePlaylistWithTrackPayload_IsThreeZones_CentreDeposits(float h)
+    {
+        var f = Leaf(centerAccepts: true);
+        float edge = RootlistSlotResolver.EdgeFor(h) / h;
+        Assert.Equal(SidebarDropKind.Before, At(edge * 0.5f, in f, h).Kind);
+        Assert.Equal(SidebarDropKind.Into, At(0.5f, in f, h).Kind);
+        Assert.Equal(SidebarDropKind.After, At(1f - edge * 0.5f, in f, h).Kind);
+    }
+
+    [Theory]
+    [MemberData(nameof(Heights))]
+    public void CollapsedFolder_TopIsBefore_CentreIsInto_BottomIsAfter(float h)
+    {
+        var f = FolderRow(expanded: false, hasChildren: true);
+        Assert.Equal(SidebarDropKind.Before, At(0.01f, in f, h).Kind);
+        Assert.Equal(SidebarDropKind.Into, At(0.5f, in f, h).Kind);
+        Assert.Equal(SidebarDropKind.After, At(0.99f, in f, h).Kind);
+    }
+
+    [Theory]
+    [MemberData(nameof(Heights))]
+    public void ExpandedFolderWithChildren_BottomBand_IsTheFirstChildSlot(float h)
+    {
+        // The precise "make it the folder's first item" gesture: the line indents one step and the drop lands
+        // ahead of the current first child.
+        var f = FolderRow(expanded: true, hasChildren: true, depth: 1, nextDepth: 2);
+        var slot = At(0.99f, in f, h);
+        Assert.Equal(SidebarDropKind.Before, slot.Kind);
+        Assert.Equal(2, slot.Depth);
+    }
+
+    [Fact]
+    public void ExpandedFolderWithNoChildren_BottomBand_IsAfterTheFolder()
+    {
+        var f = FolderRow(expanded: true, hasChildren: false, depth: 1, nextDepth: 0);
+        var slot = At(0.99f, in f, x: 200f);
+        Assert.Equal(SidebarDropKind.After, slot.Kind);
+        Assert.Equal(1, slot.Depth);   // the pointer is over the label ⇒ stay at this row's depth
+    }
+
+    [Fact]
+    public void DroppingOnAFolder_AlwaysMeansIntoIt()
+    {
+        // Explorer / Finder / VS Code / Spotify all agree.
+        foreach (var expanded in new[] { true, false })
+        foreach (var children in new[] { true, false })
+            Assert.Equal(SidebarDropKind.Into, At(0.5f, FolderRow(expanded, children)).Kind);
+    }
+
+    // ── depth ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DepthRange_IsAmbiguousOnlyAfterAFoldersLastVisibleChild()
+    {
+        var depths = new[] { 0, 1, 1, 2, 0, 0, 0 };
+        var folders = new[] { true, false, true, false, true, true, false };
+        for (int i = 0; i < depths.Length; i++)
+        {
+            int next = i + 1 < depths.Length ? depths[i + 1] : 0;
+            var f = folders[i]
+                ? FolderRow(expanded: true, hasChildren: next > depths[i], depth: depths[i], nextDepth: next)
+                : Leaf(depths[i], next);
+            var (min, max) = RootlistSlotResolver.DepthRange(in f);
+            Assert.Equal(depths[i], max);
+            Assert.Equal(Math.Min(next, depths[i]), min);
+            // Ambiguous ⇔ the next visible row is SHALLOWER than this one — this row closes one or more folders.
+            Assert.Equal(next < depths[i], min < max);
+        }
+    }
+
+    [Fact]
+    public void DepthRange_ClampsAFolderHeaderToItsOwnDepth()
+    {
+        var f = FolderRow(expanded: true, hasChildren: true, depth: 0, nextDepth: 1);
+        Assert.Equal((0, 0), RootlistSlotResolver.DepthRange(in f));
+    }
+
+    [Fact]
+    public void DepthPick_DefaultsToTheRowsOwnDepth()
+    {
+        var f = Leaf(depth: 2, nextDepth: 0);
+        Assert.Equal(2, At(0.9f, in f, x: 200f).Depth);
+    }
+
+    [Theory]
+    [InlineData(0f, 0)]      // TreeContentX(0) — where a depth-0 row starts drawing
+    [InlineData(31f, 1)]     // TreeContentX(1)
+    [InlineData(62f, 2)]     // TreeContentX(2): the row's own depth
+    [InlineData(999f, 2)]    // past the ladder: clamped to Max
+    [InlineData(-50f, 0)]    // before the row: clamped to Min
+    public void DepthPick_ReadsTheTreeContentLadderFromPointerX(float x, int expected)
+    {
+        var f = Leaf(depth: 2, nextDepth: 0);
+        var slot = At(0.9f, in f, x: x);
+        Assert.Equal(SidebarDropKind.After, slot.Kind);
+        Assert.Equal(expected, slot.Depth);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void DepthPick_TheOutdentBandIsReachable(int depth)
+    {
+        // Parked on the row's own content origin the pick is that depth; half a step plus 5 DIP to the LEFT of it —
+        // a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 10.5. depth 2: 62 → 41.5.
+        var f = Leaf(depth: depth, nextDepth: 0);
+        float here = DropLadder.TreeContentX(depth);
+        float outdent = here - DropLadder.Tree.IndentStep / 2f - 5f;
+        Assert.Equal(depth, At(0.9f, in f, x: here).Depth);
+        Assert.Equal(depth - 1, At(0.9f, in f, x: outdent).Depth);
+    }
+
+    [Fact]
+    public void DepthPick_HoldsThePreviousDepthInsideTheHysteresisBand()
+    {
+        var f = Leaf(depth: 2, nextDepth: 0);
+        var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·IndentStep = 46.5. Inside 4 DIP of it the previous holds…
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous, DropLadder.Tree).Depth);
+        // …and past it the pick commits.
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous, DropLadder.Tree).Depth);
+        // With no previous slot there is nothing to hold: the raw pick wins.
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None, DropLadder.Tree).Depth);
+    }
+
+    [Fact]
+    public void DepthPick_IsInertWhenTheSlotIsUnambiguous()
+    {
+        var f = Leaf(depth: 1, nextDepth: 1);
+        foreach (float x in new[] { -10f, 0f, 25f, 37f, 300f })
+            Assert.Equal(1, At(0.9f, in f, x: x).Depth);
+    }
+
+    [Fact]
+    public void DepthPick_IsNotReadForBeforeOrInto()
+    {
+        var leaf = Leaf(depth: 2, nextDepth: 0);
+        Assert.Equal(2, At(0.1f, in leaf, x: 0f).Depth);                 // Before stays at the row's depth
+        var folder = FolderRow(expanded: false, hasChildren: true, depth: 2, nextDepth: 0);
+        Assert.Equal(2, At(0.5f, in folder, x: 0f).Depth);               // Into is the row itself
+    }
+
+    // ── the tree's end marker ───────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TreeEndRow_IsOneWholeRowSlotAtDepthZero()
+    {
+        var f = Leaf() with { IsListEnd = true };
+        foreach (float t in new[] { 0f, 0.25f, 0.5f, 0.75f, 1f })
+        {
+            var slot = RootlistSlotResolver.Resolve(9, t, 200f, DropLadder.TreeEndHeight, in f,
+                                                    SidebarDropSlot.None, DropLadder.Tree);
+            Assert.Equal(SidebarDropKind.EndOfList, slot.Kind);
+            Assert.Equal(0, slot.Depth);
+        }
+    }
+
+    // ── degenerate geometry ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(-1, 0.5f, 44f)]      // no plan row
+    [InlineData(3, 0.5f, 0f)]        // no measured extent
+    [InlineData(3, float.NaN, 44f)]  // no viewport ⇒ no resolvable t
+    public void DegenerateGeometry_RefusesWithAReason_NeverGuesses(int planIndex, float t, float h)
+    {
+        var slot = RootlistSlotResolver.Resolve(planIndex, t, 100f, h, Leaf(), SidebarDropSlot.None, DropLadder.Tree);
+        Assert.Equal(SidebarDropKind.None, slot.Kind);
+        Assert.Equal(SidebarDropRefusal.Unavailable, slot.Refusal);
+    }
+
+    // ── refusal, decided from the resolver's OWN row facts (no marker stream needed) ──────────────────────────────────
+
+    [Fact]
+    public void Self_RefusesTheRowTheDragCameFrom()
+    {
+        var slot = At(0.1f, Row(self: true));
+        Assert.Equal(SidebarDropRefusal.Self, slot.Refusal);
+        Assert.Equal(SidebarDropKind.None, slot.Kind);
+    }
+
+    [Fact]
+    public void IntoItself_IsItsOwnSentence_ForAFoldersCentre()
+    {
+        // "Can't move a folder into itself" names what the user tried; the generic "can't move here" would leave
+        // them guessing which rule they hit.
+        Assert.Equal(SidebarDropRefusal.IntoItself, At(0.5f, Row(folder: true, self: true)).Refusal);
+        // The same folder's EDGES are the ordinary self refusal — the user is aiming at an ordering, not the folder.
+        Assert.Equal(SidebarDropRefusal.Self, At(0.02f, Row(folder: true, self: true)).Refusal);
+    }
+
+    [Fact]
+    public void SortedList_RefusesOrderingsOnly_IntoStaysLegal()
+    {
+        // A non-custom sort cannot SHOW a positional insert, so an ordering is refused — but a deposit into a
+        // folder or a playlist needs no position at all.
+        Assert.Equal(SidebarDropRefusal.SortedList, At(0.1f, Row(sorted: true)).Refusal);
+        Assert.Equal(SidebarDropRefusal.SortedList, At(0.9f, Row(sorted: true)).Refusal);
+        var into = At(0.5f, Row(folder: true, sorted: true));
+        Assert.Equal(SidebarDropRefusal.None, into.Refusal);
+        Assert.Equal(SidebarDropKind.Into, into.Kind);
+
+        var end = RootlistSlotResolver.Resolve(2, 0.5f, 200f, 24f,
+            Row(sorted: true) with { IsListEnd = true }, SidebarDropSlot.None, DropLadder.Tree);
+        Assert.Equal(SidebarDropRefusal.SortedList, end.Refusal);
+    }
+
+    [Fact]
+    public void NotLoaded_RefusesEverything_BeforeAnyOtherRule()
+    {
+        // Checked FIRST, so it is the reason the user sees even when another rule would also apply.
+        Assert.Equal(SidebarDropRefusal.NotLoaded, At(0.5f, Row(folder: true, self: true, loaded: false)).Refusal);
+        Assert.Equal(SidebarDropRefusal.NotLoaded, At(0.1f, Row(loaded: false)).Refusal);
+    }
+
+    [Fact]
+    public void Unavailable_IsTheDegenerateGeometryRefusal()
+    {
+        Assert.Equal(SidebarDropRefusal.Unavailable,
+            RootlistSlotResolver.Resolve(-1, 0.5f, 200f, 44f, Row(), SidebarDropSlot.None, DropLadder.Tree).Refusal);
+    }
+
+    // ── the undo anchor ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    static SidebarLibraryEntry Pl(string slug, int depth = 0, string parent = "")
+        => new("pl:spotify:playlist:" + slug, SidebarEntryKind.Playlist, "spotify:playlist:" + slug, slug, "",
+               default, null, 0, 0, 1, 0, 0, depth, false, SidebarPlaylistFlavor.None) { ParentFolderId = parent };
+
+    static SidebarLibraryEntry Fold(string id, int depth = 0, string parent = "")
+        => new("folder:" + id, SidebarEntryKind.Folder, "", id, "", default, null, 0, 0, 1, 0, 0, depth, false,
+               SidebarPlaylistFlavor.None) { FolderId = id, ParentFolderId = parent };
+
+    static List<SidebarLibraryEntry> UndoTree() =>
+    [
+        Pl("a"),
+        Fold("g"),
+        Pl("b", 1, "g"),
+        Pl("c", 1, "g"),
+        Pl("d"),
+    ];
+
+    [Fact]
+    public void UndoAnchor_IsThePreviousSiblingWhereverOneExists()
+    {
+        Assert.True(RootlistUndoAnchors.TryResolve(UndoTree(), "pl:spotify:playlist:c", out var anchor, out var placement));
+        Assert.Equal(new RootlistItemRef("spotify:playlist:b", false), anchor);
+        Assert.Equal(RootlistDropPlacement.After, placement);
+
+        // A folder's previous sibling is the folder itself, addressed by group id — never one of its children.
+        Assert.True(RootlistUndoAnchors.TryResolve(UndoTree(), "pl:spotify:playlist:d", out var afterFolder, out _));
+        Assert.Equal(new RootlistItemRef("g", true), afterFolder);
+    }
+
+    [Fact]
+    public void UndoAnchor_FallsToTheNextSiblingForTheFirstChild()
+    {
+        Assert.True(RootlistUndoAnchors.TryResolve(UndoTree(), "pl:spotify:playlist:b", out var anchor, out var placement));
+        Assert.Equal(new RootlistItemRef("spotify:playlist:c", false), anchor);
+        Assert.Equal(RootlistDropPlacement.Before, placement);
+
+        // Top level, first: the next TOP-LEVEL sibling, which is the folder (its whole subtree is skipped).
+        Assert.True(RootlistUndoAnchors.TryResolve(UndoTree(), "pl:spotify:playlist:a", out var first, out var before));
+        Assert.Equal(new RootlistItemRef("g", true), first);
+        Assert.Equal(RootlistDropPlacement.Before, before);
+    }
+
+    [Fact]
+    public void UndoAnchor_IsTheParentFolderForAnOnlyChild_AndAbsentWhenThereIsNothingToAnchorAgainst()
+    {
+        List<SidebarLibraryEntry> only = [Fold("g"), Pl("b", 1, "g")];
+        Assert.True(RootlistUndoAnchors.TryResolve(only, "pl:spotify:playlist:b", out var anchor, out var placement));
+        Assert.Equal(new RootlistItemRef("g", true), anchor);
+        Assert.Equal(RootlistDropPlacement.Inside, placement);
+
+        // The only top-level item: there is no move to undo, and inventing one would land it somewhere else.
+        List<SidebarLibraryEntry> lone = [Pl("a")];
+        Assert.False(RootlistUndoAnchors.TryResolve(lone, "pl:spotify:playlist:a", out _, out _));
+        Assert.False(RootlistUndoAnchors.TryResolve(UndoTree(), "pl:spotify:playlist:missing", out _, out _));
+        Assert.False(RootlistUndoAnchors.TryResolve(null, "pl:spotify:playlist:a", out _, out _));
+    }
+
+    // ── the BATCH anchor (Undo for a multi-select) ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void BatchAnchors_SkipTheOtherSelectedRows_SoEveryAnchorSurvivesTheMove()
+    {
+        // b and c are adjacent selected siblings inside g. c may NOT anchor on b — b is in flight too. Both fall
+        // back to the previous unselected sibling, which for the first child of a folder is the folder itself.
+        Assert.True(RootlistUndoAnchors.TryResolveMany(UndoTree(),
+            ["pl:spotify:playlist:b", "pl:spotify:playlist:c"], out var undo));
+        Assert.Equal(2, undo.Count);
+        foreach (var m in undo)
+        {
+            Assert.Equal(new RootlistItemRef("g", true), m.Target);
+            Assert.Equal(RootlistDropPlacement.Inside, m.Placement);
+        }
+        // Inside appends, so the run replays FORWARD and b lands ahead of c again.
+        Assert.Equal(new RootlistItemRef("spotify:playlist:b", false), undo[0].Source);
+        Assert.Equal(new RootlistItemRef("spotify:playlist:c", false), undo[1].Source);
+    }
+
+    [Fact]
+    public void BatchAnchors_ShareAnAfterAnchor_AndThereforeReplayInReverse()
+    {
+        // a · [g(b,c)] · d — select the folder g and d. g anchors After a; d anchors After g, which is selected, so
+        // it falls through to a as well. Two moves onto ONE After anchor reverse (the same rule RootlistBatchOrder
+        // owns), or issuing them forward would swap them.
+        Assert.True(RootlistUndoAnchors.TryResolveMany(UndoTree(), ["folder:g", "pl:spotify:playlist:d"], out var undo));
+        Assert.Equal(2, undo.Count);
+        foreach (var m in undo)
+        {
+            Assert.Equal(new RootlistItemRef("spotify:playlist:a", false), m.Target);
+            Assert.Equal(RootlistDropPlacement.After, m.Placement);
+        }
+        Assert.Equal(new RootlistItemRef("spotify:playlist:d", false), undo[0].Source);   // reversed
+        Assert.Equal(new RootlistItemRef("g", true), undo[1].Source);
+    }
+
+    [Fact]
+    public void BatchAnchors_DropTheDescendantsOfASelectedFolder_AndRefuseWhenAnyItemHasNoAnchor()
+    {
+        // b rides inside g. Undoing it separately would address an index g's own op has already moved.
+        Assert.True(RootlistUndoAnchors.TryResolveMany(UndoTree(), ["folder:g", "pl:spotify:playlist:b"], out var undo));
+        Assert.Single(undo);
+        Assert.Equal(new RootlistItemRef("g", true), undo[0].Source);
+
+        // The whole tree selected: the first top-level item has nothing left to anchor against, so the batch has
+        // NO undo at all rather than a partial one that would scatter the rest.
+        List<SidebarLibraryEntry> lone = [Pl("a")];
+        Assert.False(RootlistUndoAnchors.TryResolveMany(lone, ["pl:spotify:playlist:a"], out _));
+        Assert.False(RootlistUndoAnchors.TryResolveMany(UndoTree(), [], out _));
+        Assert.False(RootlistUndoAnchors.TryResolveMany(null, ["pl:spotify:playlist:a"], out _));
+    }
+
+    [Fact]
+    public void TheSingleAnchor_IsTheBatchOfOne()
+    {
+        foreach (string id in new[] { "pl:spotify:playlist:a", "pl:spotify:playlist:b", "pl:spotify:playlist:c",
+                                      "pl:spotify:playlist:d", "folder:g" })
+        {
+            bool one = RootlistUndoAnchors.TryResolve(UndoTree(), id, out var anchor, out var placement);
+            bool many = RootlistUndoAnchors.TryResolveMany(UndoTree(), [id], out var undo);
+            Assert.Equal(one, many);
+            if (!one) continue;
+            Assert.Single(undo);
+            Assert.Equal(anchor, undo[0].Target);
+            Assert.Equal(placement, undo[0].Placement);
+        }
+    }
+}
+
+// ── SidebarDropCue: line ⟺ ordering, plate ⟺ Into, never both, never neither-while-armed ────────────────────────────
+//
+// Full port of SidebarDropCueTests.cs. The ladder is the structure's (`DropLadder`).
+public class SidebarDropCueTests
+{
+    static SidebarDropSlot Slot(SidebarDropKind kind, int depth = 0)
+        => new(4, kind, depth, SidebarDropRefusal.None);
+
+    [Theory]
+    [InlineData(SidebarDropKind.Before)]
+    [InlineData(SidebarDropKind.After)]
+    [InlineData(SidebarDropKind.EndOfList)]
+    public void OrderingKinds_DrawTheLineAndNeverThePlate(SidebarDropKind kind)
+    {
+        Assert.True(SidebarDropCue.DrawsLine(kind));
+        Assert.False(SidebarDropCue.DrawsPlate(kind));
+        var slot = Slot(kind);
+        Assert.True(slot.DrawsLine);
+        Assert.False(slot.DrawsPlate);
+        Assert.True(slot.IsArmed);
+    }
+
+    [Fact]
+    public void Into_DrawsThePlateAndNeverTheLine()
+    {
+        Assert.True(SidebarDropCue.DrawsPlate(SidebarDropKind.Into));
+        Assert.False(SidebarDropCue.DrawsLine(SidebarDropKind.Into));
+        var slot = Slot(SidebarDropKind.Into);
+        Assert.True(slot.DrawsPlate);
+        Assert.False(slot.DrawsLine);
+        Assert.True(slot.IsArmed);
+    }
+
+    [Fact]
+    public void NoKindEverDrawsBoth_AndNoneDrawsNeither()
+    {
+        foreach (SidebarDropKind kind in Enum.GetValues<SidebarDropKind>())
+        {
+            bool line = SidebarDropCue.DrawsLine(kind);
+            bool plate = SidebarDropCue.DrawsPlate(kind);
+            Assert.False(line && plate);
+            // ...and exactly one cue for every ARMED kind: an armed slot that drew nothing would be a target the
+            // user cannot see, the other half of the same defect.
+            Assert.Equal(kind != SidebarDropKind.None, line || plate);
+        }
+    }
+
+    [Theory]
+    [InlineData(SidebarDropRefusal.Self)]
+    [InlineData(SidebarDropRefusal.IntoItself)]
+    [InlineData(SidebarDropRefusal.IntoDescendant)]
+    [InlineData(SidebarDropRefusal.NoOp)]
+    [InlineData(SidebarDropRefusal.SortedList)]
+    [InlineData(SidebarDropRefusal.NotLoaded)]
+    [InlineData(SidebarDropRefusal.Unavailable)]
+    public void ARefusedSlotDrawsNeither(SidebarDropRefusal refusal)
+    {
+        var slot = new SidebarDropSlot(4, SidebarDropKind.None, 2, refusal);
+        Assert.False(slot.DrawsLine);
+        Assert.False(slot.DrawsPlate);
+        Assert.False(slot.IsArmed);
+    }
+
+    [Fact]
+    public void RefusalsFromTheResolverAlwaysCarryKindNone()
+    {
+        var facts = new SidebarRowFacts(
+            IsFolder: true, FolderExpanded: false, FolderHasChildren: true, Depth: 1, NextVisibleDepth: 0,
+            CenterAccepts: true, SourceIsSelf: true, SortedNonCustom: true, RootlistLoaded: true);
+        foreach (float t in new[] { 0f, 0.2f, 0.5f, 0.8f, 1f })
+        {
+            var slot = RootlistSlotResolver.Resolve(4, t, 100f, 44f, in facts, SidebarDropSlot.None, DropLadder.Tree);
+            Assert.NotEqual(SidebarDropRefusal.None, slot.Refusal);
+            Assert.False(slot.DrawsLine || slot.DrawsPlate);
+        }
+    }
+}
+
+// ── SidebarDropRefusalText: every refusal always SAYS something ────────────────────────────────────────────────────
+//
+// New coverage (not a 0.2.9 file — 0.3 factored the caption table out on its own): pins the total-mapping invariant
+// the task calls out by name, since the table itself (unlike RootlistDropDecision) is public.
+public class SidebarDropRefusalTextTests
+{
+    [Theory]
+    [InlineData(SidebarDropRefusal.Self)]
+    [InlineData(SidebarDropRefusal.IntoItself)]
+    [InlineData(SidebarDropRefusal.IntoDescendant)]
+    [InlineData(SidebarDropRefusal.NoOp)]
+    [InlineData(SidebarDropRefusal.SortedList)]
+    [InlineData(SidebarDropRefusal.NotLoaded)]
+    [InlineData(SidebarDropRefusal.Unavailable)]
+    [InlineData(SidebarDropRefusal.WritesUnavailable)]
+    public void EveryRefusal_HasItsOwnLocKey(SidebarDropRefusal refusal)
+        => Assert.NotEqual("", SidebarDropRefusalText.LocKey(refusal));
+
+    [Fact]
+    public void NoneRefusal_HasNoSentence_BecauseNothingWasRefused()
+        => Assert.Equal("", SidebarDropRefusalText.LocKey(SidebarDropRefusal.None));
+
+    [Fact]
+    public void DistinctRefusalsCanShareACaption_ButEveryOneResolves()
+    {
+        // Self/Unavailable share "cantMoveHere"; IntoItself/IntoDescendant share "cantMoveIntoItself" — sharing a
+        // caption is fine, an unmapped refusal reaching the UI as "" is not.
+        Assert.Equal(SidebarDropRefusalText.LocKey(SidebarDropRefusal.Self),
+                     SidebarDropRefusalText.LocKey(SidebarDropRefusal.Unavailable));
+        Assert.Equal(SidebarDropRefusalText.LocKey(SidebarDropRefusal.IntoItself),
+                     SidebarDropRefusalText.LocKey(SidebarDropRefusal.IntoDescendant));
+    }
+}
+
+// ── RootlistFolderPickerTests: the "Move to folder…" destination list ──────────────────────────────────────────────
+//
+// Per the task's own instruction, ported ONLY for the facts about RootlistTreeNav's destination list and legality
+// (the dialog shell is stage-2 UI). One fact adapted rather than dropped: "TheFolderARowIsAlreadyTheLastChildOf_
+// IsExcluded" called RootlistDropDecision.RefusalFor(RootlistDropDecision.Check(...)) directly — both internal and
+// unreachable — so it now asserts the RootlistMoveCheck.NoOp verdict from RootlistOps.CheckMove, the SAME authority
+// RootlistDropDecision.Check reduces to (its own doc: "the batch it asks about is RootlistBatchOrder.For's").
+public class RootlistFolderPickerTests
+{
+    static List<RootlistFolderChoice> Destinations(string sourceId)
+    {
+        var into = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(), sourceId, into);
+        return into;
+    }
+
+    static List<RootlistFolderChoice> Destinations(params string[] sourceIds)
+    {
+        var into = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(), sourceIds, into);
+        return into;
+    }
+
+    static string[] Names(IReadOnlyList<RootlistFolderChoice> rows)
+    {
+        var names = new string[rows.Count];
+        for (int i = 0; i < rows.Count; i++) names[i] = rows[i].IsTopLevel ? "<top>" : rows[i].Name;
+        return names;
+    }
+
+    [Fact]
+    public void TopLevelIsPinnedFirst_ThenTheFoldersInTreeOrder()
+    {
+        Assert.Equal(new[] { "<top>", "Chill", "Deep", "Trailing" }, Names(Destinations(SidebarTreeFixture.Pl("a"))));
+        Assert.True(Destinations(SidebarTreeFixture.Pl("a"))[0].IsTopLevel);
+    }
+
+    [Fact]
+    public void FoldersCarryTheirTreeDepth_SoTheListReadsAsNested()
+    {
+        var rows = Destinations(SidebarTreeFixture.Pl("a"));
+        Assert.Equal(0, rows[1].Depth);       // Chill, top level
+        Assert.Equal(1, rows[2].Depth);       // Deep, inside Chill — indented one step by the picker
+        Assert.Equal(0, rows[3].Depth);       // Trailing, back at the top
+        Assert.Equal("g", rows[1].FolderId);
+        Assert.Equal("", rows[0].FolderId);   // the top-level row addresses no folder at all
+    }
+
+    [Fact]
+    public void ADraggedFoldersOwnSubtreeIsExcluded()
+    {
+        // Chill into Chill is "a folder into itself"; Chill into Deep is "into its own descendant". Both are
+        // refused by the drop cue, so neither may be offered here — the picker and the drag answer to one table.
+        Assert.Equal(new[] { "<top>", "Trailing" }, Names(Destinations(SidebarTreeFixture.Fo("g"))));
+    }
+
+    [Fact]
+    public void TheFolderARowIsAlreadyTheLastChildOf_IsExcluded()
+    {
+        // e is Trailing's only (therefore last) child: "Inside Trailing" appends where it already is — the
+        // adjacent no-op RootlistOps.CheckMove calls NoOp.
+        var tree = SidebarTreeFixture.Tree();
+        Assert.Equal(RootlistMoveCheck.NoOp, RootlistOps.CheckMove(
+            SidebarTreeFixture.Markers(), SidebarTreeFixture.Ref(tree, SidebarTreeFixture.Pl("e")),
+            SidebarTreeFixture.Ref(tree, SidebarTreeFixture.Fo("h")), RootlistDropPlacement.Inside));
+        // …but TOP LEVEL is offered: e sits BEFORE h's end marker in the real stream, so landing after that marker
+        // lifts it out of the folder — a genuine move the user has every right to be offered.
+        Assert.Equal(new[] { "<top>", "Chill", "Deep" }, Names(Destinations(SidebarTreeFixture.Pl("e"))));
+    }
+
+    [Fact]
+    public void TheLastTopLevelEntry_GetsNoTopLevelRow()
+    {
+        // Trailing already IS the end of the top level — "after itself" is where it is. Absent, never a dead row.
+        var rows = Destinations(SidebarTreeFixture.Fo("h"));
+        Assert.DoesNotContain(rows, r => r.IsTopLevel);
+        Assert.Equal(new[] { "Chill", "Deep" }, Names(rows));
+        Assert.False(RootlistTreeNav.TryTopLevelAnchor(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(),
+                                                       SidebarTreeFixture.Fo("h"), out _));
+    }
+
+    [Fact]
+    public void TheTopLevelAnchorIsTheLastTopLevelEntry_SoATrailingFolderIsPassed()
+    {
+        // The anchor is the trailing FOLDER, landed After — whose exclusive range end is outside it.
+        Assert.True(RootlistTreeNav.TryTopLevelAnchor(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(),
+                                                      SidebarTreeFixture.Pl("b"), out var anchor));
+        Assert.Equal(new RootlistItemRef("h", IsFolder: true), anchor);
+    }
+
+    [Fact]
+    public void AnUnknownSourceOrAnEmptyTree_OffersNothingRatherThanEverything()
+    {
+        var into = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(null, SidebarTreeFixture.Markers(), SidebarTreeFixture.Pl("a"), into);
+        Assert.Empty(into);
+        RootlistTreeNav.PickerDestinations(Array.Empty<SidebarLibraryEntry>(), SidebarTreeFixture.Markers(),
+                                           SidebarTreeFixture.Pl("a"), into);
+        Assert.Empty(into);
+        // …and with no MARKER STREAM there is nothing to decide against, so nothing is offered.
+        RootlistTreeNav.PickerDestinations(SidebarTreeFixture.Tree(), null, SidebarTreeFixture.Pl("a"), into);
+        Assert.Empty(into);
+    }
+
+    // ── the BATCH: "Move {n} to folder…" ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ASelectionOffersOnlyTheDestinationsEveryMemberMayEnter()
+    {
+        // a + Chill(g). "Deep" is gone: it lives INSIDE Chill, so filing Chill into it is a cycle, and a
+        // destination that refuses ONE member refuses the whole batch. "Chill" itself SURVIVES — the builder drops
+        // the Chill→Chill self-pair as a legal GATHER, so picking it files "a" inside Chill and leaves Chill put.
+        Assert.Equal(new[] { "<top>", "Chill", "Trailing" },
+                     Names(Destinations(SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Fo("g"))));
+
+        // Two ordinary playlists keep the whole list.
+        Assert.Equal(new[] { "<top>", "Chill", "Deep", "Trailing" },
+                     Names(Destinations(SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Pl("d"))));
+    }
+
+    [Fact]
+    public void ARowRidingInsideASelectedFolderIsNormalisedAway_NotAskedAbout()
+    {
+        // b is inside Chill. Selecting both is "move Chill", and the destination list must be Chill's — not the
+        // intersection with a child that is going along for the ride anyway.
+        Assert.Equal(Names(Destinations(SidebarTreeFixture.Fo("g"))),
+                     Names(Destinations(SidebarTreeFixture.Fo("g"), SidebarTreeFixture.Pl("b"))));
+    }
+
+    [Fact]
+    public void TheSingleRowListIsTheBatchOfOne()
+    {
+        foreach (string id in new[] { SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Pl("e"),
+                                      SidebarTreeFixture.Fo("g"), SidebarTreeFixture.Fo("h") })
+            Assert.Equal(Names(Destinations(id)), Names(Destinations(new[] { id })));
+    }
+
+    [Fact]
+    public void AnEmptyOrEntirelyUnknownSelection_OffersNothing()
+    {
+        Assert.Empty(Destinations());
+        Assert.Empty(Destinations("pl:spotify:playlist:ghost"));
+        Assert.False(RootlistTreeNav.HasDestinations(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(),
+                                                     Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void HasDestinations_AgreesWithTheListItSummarises()
+    {
+        foreach (string id in new[]
+                 {
+                     SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Pl("e"), SidebarTreeFixture.Pl("f"),
+                     SidebarTreeFixture.Fo("g"), SidebarTreeFixture.Fo("h"), "pl:spotify:playlist:ghost",
+                 })
+            Assert.Equal(Destinations(id).Count > 0,
+                         RootlistTreeNav.HasDestinations(SidebarTreeFixture.Tree(), SidebarTreeFixture.Markers(), id));
+    }
+}
+
+// ── SidebarNavExtrasTests: the tree row's Move up / Move down / Move to folder menu extras ─────────────────────────
+//
+// Full port of SidebarNavExtrasTests.cs — SidebarTreeNavLayout is public.
+public class SidebarNavExtrasTests
+{
+    static SidebarTreeNavLayout Layout(string id)
+    {
+        var tree = SidebarTreeFixture.Tree();
+        return SidebarTreeNavLayout.Decide(RootlistTreeNav.Siblings(tree, id),
+                                           RootlistTreeNav.HasDestinations(tree, SidebarTreeFixture.Markers(), id));
+    }
+
+    [Fact]
+    public void AMiddleTreeRow_OffersAllThreeVerbs()
+    {
+        // c sits between b and [Deep] inside Chill: both orderings are real, and there are folders to file it into.
+        var mid = Layout(SidebarTreeFixture.Pl("c"));
+        Assert.True(mid.MoveUp);
+        Assert.True(mid.MoveDown);
+        Assert.True(mid.MoveToFolder);
+        Assert.False(mid.IsEmpty);
+    }
+
+    [Fact]
+    public void TheEndsOfTheSiblingRunDropTheVerbTheyCannotHonour()
+    {
+        var first = Layout(SidebarTreeFixture.Pl("a"));       // first at top level
+        Assert.False(first.MoveUp);
+        Assert.True(first.MoveDown);
+
+        var last = Layout(SidebarTreeFixture.Fo("h"));        // last at top level
+        Assert.True(last.MoveUp);
+        Assert.False(last.MoveDown);
+
+        var only = Layout(SidebarTreeFixture.Pl("f"));        // Deep's only child
+        Assert.False(only.MoveUp);
+        Assert.False(only.MoveDown);
+        Assert.True(only.MoveToFolder);                       // it can still leave the folder it is alone in
+    }
+
+    [Fact]
+    public void AFolderRowGetsTheSameVerbsAsAPlaylistRow()
+    {
+        // ONE renderer, so Classic / Library V3 / Curated share this; a folder is an ordinary sibling in its run.
+        var folder = Layout(SidebarTreeFixture.Fo("k"));      // Deep, last among Chill's three children
+        Assert.True(folder.MoveUp);
+        Assert.False(folder.MoveDown);
+        Assert.True(folder.MoveToFolder);
+    }
+
+    [Fact]
+    public void ARowWithNoRunAndNowhereToGo_YieldsNoExtrasAtAll()
+        => Assert.True(SidebarTreeNavLayout.Decide(RootlistSiblingRun.None, hasDestinations: false).IsEmpty);
+}
+
+// ── RootlistSelection + RootlistBatchOrder: normalize the selection, then order the batch against ONE anchor ──────
+//
+// New region distilling the underlying facts from RootlistDropScenarioTests.cs's ABatchArmsTheSameCue /
+// ABatchDrop_IssuesExactlyOneMoveList. That scenario file stays DROPPED as a whole: RootlistDropDecision.Refine and
+// RootlistSlotMapper.TryMap are public now, but its end-to-end assertions observe the resulting rootlist ORDER
+// after a drop via the removed TryBuildMove/PlaylistDiffApplier apply step, which has no 0.3 equivalent — that half
+// cannot be restored without inventing a writer Sidebar.cs does not have. What survives here is the
+// selection-normalize and batch-ordering rule itself, plus a direct cross-check of "the picker never offers what
+// the writer would refuse" using RootlistTreeNav.PickerDestinations + RootlistOps.CheckMoves.
+public class RootlistSelectionAndBatchOrderTests
+{
+    [Fact]
+    public void Normalize_DropsDescendantsOfASelectedFolder_AndOrdersByTree()
+    {
+        var tree = SidebarTreeFixture.Tree();
+        // g (Chill) selected alongside its own child c: c rides inside g's subtree and must not appear twice.
+        var selected = RootlistSelection.Normalize(tree, new HashSet<string>(StringComparer.Ordinal)
+            { SidebarTreeFixture.Fo("g"), SidebarTreeFixture.Pl("c"), SidebarTreeFixture.Pl("a") });
+        Assert.Equal(new[] { SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Fo("g") }, Ids(selected));
+    }
+
+    [Fact]
+    public void Refs_IsTheSeamShapeAnOrderedSelectionRidesAs()
+    {
+        var tree = SidebarTreeFixture.Tree();
+        var selected = RootlistSelection.Normalize(tree,
+            new[] { SidebarTreeFixture.Pl("a"), SidebarTreeFixture.Fo("g") });
+        var refs = RootlistSelection.Refs(selected);
+        Assert.Equal(new[]
+        {
+            new RootlistItemRef("spotify:playlist:a", false),
+            new RootlistItemRef("g", true),
+        }, refs);
+    }
+
+    [Fact]
+    public void BatchOrder_IteratesForwardForBeforeAndInside_ReverseForAfterAndEndOfList()
+    {
+        var b = new RootlistItemRef("spotify:playlist:b", false);
+        var d = new RootlistItemRef("spotify:playlist:d", false);
+        var target = new RootlistItemRef("spotify:playlist:x", false);
+
+        var before = RootlistBatchOrder.For([b, d], target, RootlistDropPlacement.Before);
+        Assert.Equal(new[] { b, d }, before.Select(m => m.Source));
+
+        var inside = RootlistBatchOrder.For([b, d], target, RootlistDropPlacement.Inside);
+        Assert.Equal(new[] { b, d }, inside.Select(m => m.Source));
+
+        var after = RootlistBatchOrder.For([b, d], target, RootlistDropPlacement.After);
+        Assert.Equal(new[] { d, b }, after.Select(m => m.Source));   // reversed: each lands just after the anchor
+
+        // The tree's END slot reverses for the same reason even when expressed as Before (the anchor's own After).
+        var endOfList = RootlistBatchOrder.For([b, d], target, RootlistDropPlacement.Before, endOfList: true);
+        Assert.Equal(new[] { d, b }, endOfList.Select(m => m.Source));
+    }
+
+    [Fact]
+    public void EveryMoveInABatch_TargetsTheSameAnchorAndPlacement()
+    {
+        var b = new RootlistItemRef("spotify:playlist:b", false);
+        var d = new RootlistItemRef("spotify:playlist:d", false);
+        var target = new RootlistItemRef("g", true);
+
+        var moves = RootlistBatchOrder.For([b, d], target, RootlistDropPlacement.Inside);
+        Assert.All(moves, m =>
+        {
+            Assert.Equal(target, m.Target);
+            Assert.Equal(RootlistDropPlacement.Inside, m.Placement);
+        });
+    }
+
+    [Fact]
+    public void ThePickersLegalityAgreesWithTheWritersLegality_ForEveryOfferedFolder()
+    {
+        // RootlistDropDecision.Check (internal, unreachable from this assembly) is what PickerDestinations filters
+        // through; RootlistOps.CheckMoves is the authority it reduces to. Cross-checking through the public surface
+        // pins the SAME invariant the internal type exists to guarantee: the picker can never offer a destination a
+        // drag would refuse.
+        var tree = SidebarTreeFixture.Tree();
+        var markers = SidebarTreeFixture.Markers();
+        var into = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(tree, markers, SidebarTreeFixture.Pl("b"), into);
+
+        var sources = RootlistSelection.Refs(
+            RootlistSelection.Normalize(tree, new[] { SidebarTreeFixture.Pl("b") }));
+        foreach (var choice in into)
+        {
+            if (choice.IsTopLevel) continue;
+            var target = new RootlistItemRef(choice.FolderId, IsFolder: true);
+            var moves = RootlistBatchOrder.For(sources, target, RootlistDropPlacement.Inside);
+            Assert.Equal(RootlistMoveCheck.Ok, RootlistOps.CheckMoves(markers, moves));
+        }
+    }
+
+    static string[] Ids(IReadOnlyList<SidebarLibraryEntry> rows)
+    {
+        var ids = new string[rows.Count];
+        for (int i = 0; i < rows.Count; i++) ids[i] = rows[i].Id;
+        return ids;
+    }
+}
+
+// ── SidebarTreeSelection: the playlist tree's multi-selection, restored ────────────────────────────────────────────
+//
+// Full port of SidebarTreeSelectionTests.cs, restored now that SidebarTreeSelection is public. Pins WinUI's
+// SelectionModel Extended arm ported by KEY (never by index — the sidebar's tree re-flows constantly): Shift
+// replaces the selection with the anchor range, Ctrl toggles, a plain interaction clears-and-selects unless the
+// item is already selected, and every single-item operation moves the anchor.
+public class SidebarTreeSelectionTests
+{
+    static readonly string[] Order = ["a", "b", "c", "d", "e"];
+
+    static SidebarTreeSelection New() => new();
+
+    static string[] Sel(SidebarTreeSelection s) => s.Ordered(Order).ToArray();
+
+    // ── the Extended trio ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void APlainInteraction_ReplacesTheSelection_AndIsANoOpOnARowAlreadyAlone()
+    {
+        var s = New();
+        Assert.True(s.Interact("b", ctrl: false, shift: false, Order));
+        Assert.Equal(["b"], Sel(s));
+        Assert.Equal("b", s.Anchor);
+
+        // Already the whole selection: nothing CHANGES, which is what lets a plain press on a selected row start a
+        // drag instead of collapsing the selection under the pointer.
+        Assert.False(s.Interact("b", ctrl: false, shift: false, Order));
+        Assert.Equal(["b"], Sel(s));
+
+        Assert.True(s.Interact("d", ctrl: false, shift: false, Order));
+        Assert.Equal(["d"], Sel(s));
+        Assert.Equal("d", s.Anchor);
+    }
+
+    [Fact]
+    public void CtrlToggles_AndMovesTheAnchorEitherWay()
+    {
+        var s = New();
+        s.Interact("b", false, false, Order);
+        Assert.True(s.Interact("d", ctrl: true, shift: false, Order));
+        Assert.Equal(["b", "d"], Sel(s));
+        Assert.Equal("d", s.Anchor);
+
+        Assert.True(s.Interact("b", ctrl: true, shift: false, Order));   // toggles OFF
+        Assert.Equal(["d"], Sel(s));
+        Assert.Equal("b", s.Anchor);                                     // Deselect moves it too (SelectionModel does)
+    }
+
+    [Fact]
+    public void ShiftSelectsTheAnchorRange_InEitherDirection_AndLeavesTheAnchorPut()
+    {
+        var s = New();
+        s.Interact("b", false, false, Order);
+        Assert.True(s.Interact("d", ctrl: false, shift: true, Order));
+        Assert.Equal(["b", "c", "d"], Sel(s));
+        Assert.Equal("b", s.Anchor);
+
+        // A SECOND Shift re-ranges from the SAME anchor rather than walking, and it REPLACES (never accumulates).
+        Assert.True(s.Interact("a", ctrl: false, shift: true, Order));
+        Assert.Equal(["a", "b"], Sel(s));
+        Assert.Equal("b", s.Anchor);
+    }
+
+    [Fact]
+    public void ShiftWithNoResolvableAnchor_SelectsJustThatRow()
+    {
+        var s = New();
+        // No anchor at all.
+        Assert.True(s.Interact("c", ctrl: false, shift: true, Order));
+        Assert.Equal(["c"], Sel(s));
+
+        // …and an anchor that has left the tree: refusing here would read as a dead modifier.
+        var t = New();
+        t.Interact("e", false, false, Order);
+        Assert.True(t.Interact("b", ctrl: false, shift: true, ["a", "b", "c"]));
+        Assert.Equal(["b"], t.Ordered(["a", "b", "c"]).ToArray());
+    }
+
+    [Fact]
+    public void ARangeThatChangesNothing_ReportsNoChange()
+    {
+        var s = New();
+        s.Interact("b", false, false, Order);
+        Assert.True(s.Interact("d", false, true, Order));
+        Assert.False(s.Interact("d", false, true, Order));   // same range, same set
+    }
+
+    // ── the check lane ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TheLaneIsVisibleAtTwoSelected_OrWheneverCheckModeIsOn()
+    {
+        var s = New();
+        Assert.False(s.CheckLaneVisible);
+
+        s.Toggle("a");
+        Assert.False(s.CheckLaneVisible);        // one row is still "the row I clicked"
+        s.Toggle("b");
+        Assert.True(s.CheckLaneVisible);         // two is a set and needs a visible handle
+
+        var t = New();
+        Assert.True(t.SetCheckMode(true));
+        Assert.True(t.CheckLaneVisible);         // explicit mode survives an EMPTY selection…
+        Assert.Equal(0, t.Count);
+        t.Toggle("a");
+        Assert.True(t.CheckLaneVisible);         // …which is what lets the first click pick the first row
+    }
+
+    [Fact]
+    public void ClearLeavesCheckMode_AndEmptiesTheAnchor()
+    {
+        var s = New();
+        s.SetCheckMode(true);
+        s.Interact("b", false, false, Order);
+        Assert.True(s.Clear());
+        Assert.Equal(0, s.Count);
+        Assert.Null(s.Anchor);
+        Assert.False(s.CheckLaneVisible);
+        Assert.False(s.Clear());                 // idempotent — a second Escape bumps nothing
+    }
+
+    // ── prune ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void PruneDropsRowsTheTreeNoLongerShows_AndTheAnchorWithThem()
+    {
+        var s = New();
+        s.Interact("b", false, false, Order);
+        s.Interact("d", true, false, Order);     // {b, d}, anchor d
+
+        // "c" collapsed away under a folder, and so did "d".
+        Assert.True(s.Prune(["a", "b", "e"]));
+        Assert.Equal(["b"], s.Ordered(["a", "b", "e"]).ToArray());
+        Assert.Null(s.Anchor);
+
+        Assert.False(s.Prune(["a", "b", "e"]));  // nothing left to drop
+    }
+
+    [Fact]
+    public void PruneAgainstAnEmptyOrderKeepsTheSelection()
+    {
+        // A transient frame (a pending projection, a section that planned nothing) is not evidence that a row is
+        // gone — emptying the selection there would make a library refresh silently cancel a multi-select.
+        var s = New();
+        s.Interact("b", false, false, Order);
+        Assert.False(s.Prune([]));
+        Assert.Equal(1, s.Count);
+        Assert.False(s.Prune(null));
+        Assert.Equal(1, s.Count);
+    }
+
+    // ── ordering ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OrderedIsTreeOrder_NotClickOrder()
+    {
+        var s = New();
+        s.Toggle("d");
+        s.Toggle("a");
+        s.Toggle("c");
+        Assert.Equal(["a", "c", "d"], Sel(s));
+        // …and an id the visible order does not hold simply drops out, for the same reason Prune drops it.
+        Assert.Equal(["a", "c"], s.Ordered(["a", "b", "c"]).ToArray());
+        Assert.Empty(s.Ordered([]));
+    }
+
+    [Fact]
+    public void IdsIsTheSetTheNormalizerTakes()
+    {
+        var s = New();
+        s.Toggle("a");
+        s.Toggle("c");
+        Assert.True(s.Ids.Contains("a"));
+        Assert.False(s.Ids.Contains("b"));
+        Assert.Equal(2, s.Ids.Count);
+        Assert.True(s.Contains("c"));
+        Assert.False(s.Contains(""));
+        Assert.False(s.Contains(null));
+    }
+
+    [Fact]
+    public void AnEmptyIdIsNeverASelection()
+    {
+        var s = New();
+        Assert.False(s.Interact("", false, false, Order));
+        Assert.False(s.Toggle(""));
+        Assert.Equal(0, s.Count);
+    }
+}
+
+// ── SidebarFolderTree + SidebarFolderFlyoutNav: the collapsed rail's folder flyout, restored ───────────────────────
+//
+// Full port of SidebarFolderFlyoutNavTests.cs, restored now that both types are public. Containment is
+// ParentFolderId, and only that (a row's FolderId means something different for a leaf vs. a folder); ChildCount is
+// the count of exactly the rows Children lists; the drill-in stack refuses a cycle and mints PageKey = depth + ":" +
+// folderId so two levels sharing a depth do not reconcile as one page and swallow the slide.
+public class SidebarFolderFlyoutNavTests
+{
+    // ── direct children ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Children_AreDirectOnly_AndKeepRootlistOrder()
+    {
+        var tree = SidebarTreeFixture.Tree();
+        var into = new List<SidebarLibraryEntry>();
+
+        Assert.Equal(3, SidebarFolderTree.Children(tree, "g", into));
+        Assert.Equal(new[] { SidebarTreeFixture.Pl("b"), SidebarTreeFixture.Pl("c"), SidebarTreeFixture.Fo("k") },
+            Ids(into));
+    }
+
+    /// <summary>A folder's own <c>FolderId</c> is ITSELF, so a lookup written against that field makes every folder
+    /// its own child. Containment is <c>ParentFolderId</c> for both kinds — this is the guard on that.</summary>
+    [Fact]
+    public void Children_NeverContainTheFolderItself()
+    {
+        var into = new List<SidebarLibraryEntry>();
+        SidebarFolderTree.Children(SidebarTreeFixture.Tree(), "g", into);
+
+        Assert.DoesNotContain(into, e => e.Id == SidebarTreeFixture.Fo("g"));
+    }
+
+    [Fact]
+    public void Children_OfANestedFolder_AreReachable()
+    {
+        var into = new List<SidebarLibraryEntry>();
+
+        Assert.Equal(1, SidebarFolderTree.Children(SidebarTreeFixture.Tree(), "k", into));
+        Assert.Equal(SidebarTreeFixture.Pl("f"), into[0].Id);
+    }
+
+    [Fact]
+    public void Children_OfAnEmptyOrUnknownFolder_AreNone()
+    {
+        var tree = SidebarTreeFixture.Tree();
+        var into = new List<SidebarLibraryEntry> { SidebarTreeFixture.Playlist("stale", 0) };
+
+        // Empty is NOT "the whole tree": the buffer is cleared, and an unknown id yields nothing rather than
+        // everything.
+        Assert.Equal(0, SidebarFolderTree.Children(tree, "no-such-folder", into));
+        Assert.Empty(into);
+        Assert.Equal(0, SidebarFolderTree.Children(tree, "", into));
+        Assert.Equal(0, SidebarFolderTree.Children(null, "g", into));
+    }
+
+    [Fact]
+    public void TryFolder_ResolvesByGroupId_NotByEntryId()
+    {
+        var tree = SidebarTreeFixture.Tree();
+
+        Assert.True(SidebarFolderTree.TryFolder(tree, "k", out var deep));
+        Assert.Equal("Deep", deep.Name);
+        Assert.Equal("g", deep.ParentFolderId);
+        // The ENTRY id ("folder:k") is not the group id — passing it must miss rather than half-match.
+        Assert.False(SidebarFolderTree.TryFolder(tree, SidebarTreeFixture.Fo("k"), out _));
+    }
+
+    // ── the drill-in stack ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Root_HasNoBack()
+    {
+        var nav = new SidebarFolderFlyoutNav("g", "Chill");
+
+        Assert.Equal(1, nav.Depth);
+        Assert.False(nav.CanGoBack);
+        Assert.Equal("g", nav.Current.FolderId);
+        Assert.Equal("Chill", nav.Current.Name);
+        // Parent clamps to the root, so a caller can name "back to X" without indexing the stack.
+        Assert.Equal("g", nav.Parent.FolderId);
+        Assert.False(nav.Pop());
+        Assert.Equal(1, nav.Depth);
+    }
+
+    [Fact]
+    public void Push_DrillsIn_AndBackReturnsToTheParentLevel()
+    {
+        var nav = new SidebarFolderFlyoutNav("g", "Chill");
+
+        Assert.True(nav.Push("k", "Deep"));
+        Assert.Equal(2, nav.Depth);
+        Assert.True(nav.CanGoBack);
+        Assert.Equal("Deep", nav.Current.Name);
+        Assert.Equal("Chill", nav.Parent.Name);
+
+        Assert.True(nav.Pop());
+        Assert.Equal(1, nav.Depth);
+        Assert.False(nav.CanGoBack);
+        Assert.Equal("g", nav.Current.FolderId);
+    }
+
+    [Fact]
+    public void Push_RefusesAnEmptyId_AndAFolderAlreadyOnTheStack()
+    {
+        var nav = new SidebarFolderFlyoutNav("g", "Chill");
+        nav.Push("k", "Deep");
+
+        Assert.False(nav.Push("", "nothing"));
+        // A rootlist cycle cannot exist, but a stale projection mid-move can briefly describe one; an unbounded
+        // push would grow the stack until Back became useless.
+        Assert.False(nav.Push("g", "Chill"));
+        Assert.False(nav.Push("k", "Deep again"));
+        Assert.Equal(2, nav.Depth);
+    }
+
+    [Fact]
+    public void Push_CarriesTheNameItWasGiven_NotALiveLookup()
+    {
+        // The level name is captured at push time on purpose: the folder can be renamed or deleted while the
+        // flyout is open, and the back header must still name the level the user actually came through.
+        var nav = new SidebarFolderFlyoutNav("g", "Chill");
+        nav.Push("k", "Deep");
+
+        Assert.Equal("Deep", nav.Current.Name);
+        Assert.Equal("Chill", nav.Parent.Name);
+    }
+
+    [Fact]
+    public void PageKey_ChangesOnEveryMove_SoTheSlideCannotBeSkipped()
+    {
+        var nav = new SidebarFolderFlyoutNav("g", "Chill");
+        string root = nav.PageKey;
+
+        nav.Push("k", "Deep");
+        string deep = nav.PageKey;
+        Assert.NotEqual(root, deep);
+
+        nav.Pop();
+        Assert.Equal(root, nav.PageKey);
+
+        // A DIFFERENT folder at the same depth is a different page — two levels that happened to share a depth must
+        // not reconcile as one and swallow the transition.
+        nav.Push("h", "Trailing");
+        Assert.NotEqual(deep, nav.PageKey);
+    }
+
+    [Fact]
+    public void DeepChain_PopsOneLevelAtATime()
+    {
+        var nav = new SidebarFolderFlyoutNav("a", "A");
+        Assert.True(nav.Push("b", "B"));
+        Assert.True(nav.Push("c", "C"));
+        Assert.Equal(3, nav.Depth);
+
+        Assert.True(nav.Pop());
+        Assert.Equal("b", nav.Current.FolderId);
+        Assert.True(nav.Pop());
+        Assert.Equal("a", nav.Current.FolderId);
+        Assert.False(nav.Pop());
+    }
+
+    // ── ONE containment definition ───────────────────────────────────────────────────────────────────────────────────
+    //
+    // The flyout LISTED rows from the ParentFolderId scan and printed "N items" from the projection's own
+    // ChildCount — two definitions of "what is in this folder". Both come from one place. Pinned here against a
+    // fixture tree with ChildCount hand-stamped to the real per-folder count (SidebarTreeFixture's shared Tree()
+    // hardcodes ChildCount: 0 for every row — a fixture invariant other regions rely on — so this uses a local
+    // variant instead of changing the shared one).
+    static List<SidebarLibraryEntry> Projected() =>
+    [
+        SidebarTreeFixture.Playlist("a", 0),
+        SidebarTreeFixture.Folder("g", "Chill", 0) with { ChildCount = 3 },
+        SidebarTreeFixture.Playlist("b", 1, "g", "Chill"),
+        SidebarTreeFixture.Playlist("c", 1, "g", "Chill"),
+        SidebarTreeFixture.Folder("k", "Deep", 1, "g", "Chill") with { ChildCount = 1 },
+        SidebarTreeFixture.Playlist("f", 2, "k", "Deep"),
+        SidebarTreeFixture.Playlist("d", 0),
+        SidebarTreeFixture.Folder("empty", "Empty", 0) with { ChildCount = 0 },
+    ];
+
+    [Fact]
+    public void ChildCount_IsTheCountOfExactlyTheRowsTheFlyoutLists()
+    {
+        var tree = Projected();
+        var rows = new List<SidebarLibraryEntry>();
+        foreach (var f in tree)
+        {
+            if (f.Kind != SidebarEntryKind.Folder) continue;
+            int listed = SidebarFolderTree.Children(tree, f.FolderId, rows);
+            // the number the flyout renders ≡ the rows it renders ≡ the projection's own Items count
+            Assert.Equal(listed, SidebarFolderTree.ChildCount(tree, f.FolderId));
+            Assert.Equal(listed, f.ChildCount);
+        }
+    }
+
+    [Fact]
+    public void ZeroItems_IsImpossibleWhileTheFolderHasAny()
+    {
+        var tree = Projected();
+        var rows = new List<SidebarLibraryEntry>();
+        foreach (string folder in new[] { "g", "k" })
+        {
+            Assert.NotEqual(0, SidebarFolderTree.Children(tree, folder, rows));
+            Assert.NotEqual(0, SidebarFolderTree.ChildCount(tree, folder));
+        }
+        // …and an EMPTY folder still reads zero on both channels — the count is not "unknown", it is none.
+        Assert.Equal(0, SidebarFolderTree.Children(tree, "empty", rows));
+        Assert.Equal(0, SidebarFolderTree.ChildCount(tree, "empty"));
+    }
+
+    static string[] Ids(IReadOnlyList<SidebarLibraryEntry> rows)
+    {
+        var ids = new string[rows.Count];
+        for (int i = 0; i < rows.Count; i++) ids[i] = rows[i].Id;
+        return ids;
+    }
+}
+
+// ── SidebarStageHold: the mid-drag parking bay, restored ────────────────────────────────────────────────────────────
+//
+// Full port of SidebarDropFreezeTests.cs, restored now that SidebarStageHold<TStage> is public. Drives the real
+// state machine directly: a stage published mid-session is HELD, not published; a burst during one gesture
+// converges to the newest stage; the flush runs exactly once; and a stage that arrives after the session ended is
+// never held — it publishes normally, because nothing will ever flush it.
+public class SidebarDropFreezeTests
+{
+    static SidebarStageHold<string> Bay() => new();
+
+    [Fact]
+    public void AStagePublishedMidSession_IsHeld_NotPublished()
+    {
+        var bay = Bay();
+        Assert.True(bay.TryHold(sessionLive: true, "stage-1"));
+        Assert.True(bay.HasHeld);
+    }
+
+    [Fact]
+    public void ABurstDuringOneSession_ConvergesToTheNewestStage()
+    {
+        var bay = Bay();
+        // A dealer push, our own ack and a background revalidate can all land inside one gesture. Only the last one
+        // describes the library the user will be looking at when the drag ends.
+        Assert.True(bay.TryHold(sessionLive: true, "stage-1"));
+        Assert.True(bay.TryHold(sessionLive: true, "stage-2"));
+        Assert.True(bay.TryHold(sessionLive: true, "stage-3"));
+
+        Assert.True(bay.TryFlush(out string? flushed));
+        Assert.Equal("stage-3", flushed);
+    }
+
+    [Fact]
+    public void TheFlush_HappensExactlyOnce()
+    {
+        var bay = Bay();
+        bay.TryHold(sessionLive: true, "stage-1");
+
+        Assert.True(bay.TryFlush(out string? first));
+        Assert.Equal("stage-1", first);
+        // The watcher's layout effect is edge-keyed, but the pane also discards on every publish — flushing the
+        // same stage twice would re-publish a plan the list has already diffed against.
+        Assert.False(bay.TryFlush(out string? second));
+        Assert.Null(second);
+        Assert.False(bay.HasHeld);
+    }
+
+    [Fact]
+    public void AStageThatArrivesAfterTheSessionEnded_PublishesNormally()
+    {
+        var bay = Bay();
+        // THE RACE THAT MATTERS. Nothing will flush this one — no session end is coming — so the hold must decline
+        // it and let the caller publish on the spot.
+        Assert.False(bay.TryHold(sessionLive: false, "stage-late"));
+        Assert.False(bay.HasHeld);
+        Assert.False(bay.TryFlush(out _));
+    }
+
+    [Fact]
+    public void AFlushWithNothingParked_IsANoOp()
+    {
+        // Every session end calls the flush, and the overwhelming majority of drags never held anything (a track
+        // drag is not frozen at all).
+        Assert.False(Bay().TryFlush(out string? stage));
+        Assert.Null(stage);
+    }
+
+    [Fact]
+    public void Discard_DropsTheParkedStage_SoAnUnmountMidSessionLeaksNothing()
+    {
+        var bay = Bay();
+        bay.TryHold(sessionLive: true, "stage-1");
+        bay.Discard();
+
+        Assert.False(bay.HasHeld);
+        Assert.False(bay.TryFlush(out _));
+    }
+
+    [Fact]
+    public void ASessionThatEndsAndBeginsAgain_HoldsAndFlushesIndependently()
+    {
+        var bay = Bay();
+        bay.TryHold(sessionLive: true, "first-session");
+        Assert.True(bay.TryFlush(out string? first));
+        Assert.Equal("first-session", first);
+
+        bay.TryHold(sessionLive: true, "second-session");
+        Assert.True(bay.TryFlush(out string? second));
+        Assert.Equal("second-session", second);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── C12 · NavDropRules, NavRowFacts, NavModel.Drop (themes plan §5.1 row C12) ──────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The row-level drop table the Classic pane used to hold in closures (Compatible / Transparent / WhyRefused / CommitArm), the
+// rail-folder gate, the tree row facts, the pure row facts (age badge, short uri, label fallbacks), and the model's Drop verb
+// over the library seam. The pointer → slot geometry stays covered by `RootlistSlotResolverTests` above.
+
+public class NavDropRulesTests
+{
+    const string PlaylistUri = "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO";
+    const string OtherUri = "spotify:playlist:1TSZDcvlPtAnekTaItI3qO";
+
+    static DragPayload Filing(string uri = PlaylistUri)
+        => new(DragKind.Playlist, "pl:" + uri, uri, "P", RootlistItem: true);
+
+    static DragPayload FolderFiling(string id = "abc123")
+        => new(DragKind.Folder, id, "", "F", RootlistItem: true);
+
+    static DragPayload TrackSet()
+        => new(DragKind.Album, "album:spotify:album:a", "spotify:album:a", "A",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static DragPayload OneTrack()
+        => new(DragKind.Track, "track:spotify:track:t", "spotify:track:t", "T",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static DragPayload Artist() => new(DragKind.Artist, "artist:spotify:artist:r", "spotify:artist:r", "R");
+
+    static NavDropRow RootRow(string uri = OtherUri) => new(Filing(uri), PinSlot: -1, PlaylistUri: null, IsPlaylistRow: true, HasRailCue: false);
+
+    // ── the payload-only refusal ───────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_filing_waits_for_the_rootlist_before_anything_else()
+    {
+        var row = RootRow();
+        Assert.Equal(SidebarDropRefusal.NotLoaded, NavDropRules.PayloadRefusal(in row, Filing(), rootlistLoaded: false));
+        Assert.False(NavDropRules.Compatible(in row, Filing(), rootlistLoaded: false));
+        Assert.Equal(NavDropRules.Sentence(SidebarDropRefusal.NotLoaded), NavDropRules.WhyRefused(in row, Filing(), rootlistLoaded: false));
+        Assert.True(NavDropRules.Compatible(in row, Filing(), rootlistLoaded: true));
+        Assert.Null(NavDropRules.WhyRefused(in row, Filing(), rootlistLoaded: true));
+    }
+
+    [Fact]
+    public void Dropping_an_item_on_itself_is_self_and_a_folder_on_itself_is_into_itself()
+    {
+        var row = RootRow(PlaylistUri);
+        Assert.Equal(SidebarDropRefusal.Self, NavDropRules.PayloadRefusal(in row, Filing(PlaylistUri), true));
+        Assert.False(NavDropRules.Compatible(in row, Filing(PlaylistUri), true));
+
+        var folderRow = new NavDropRow(FolderFiling("abc123"), -1, null, false, false);
+        Assert.Equal(SidebarDropRefusal.IntoItself, NavDropRules.PayloadRefusal(in folderRow, FolderFiling("abc123"), true));
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.PayloadRefusal(in folderRow, FolderFiling("zzz999"), true));
+    }
+
+    [Fact]
+    public void A_row_that_is_not_a_rootlist_row_has_no_payload_refusal()
+    {
+        var row = new NavDropRow(null, 3, null, false, false);
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.PayloadRefusal(in row, Filing(), false));
+        Assert.False(NavDropRules.Filing(in row, Filing()));
+    }
+
+    // ── compatible / transparent / refused ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_track_set_deposits_into_an_editable_playlist_and_is_refused_by_a_read_only_one()
+    {
+        var editable = new NavDropRow(null, -1, PlaylistUri, true, false);
+        Assert.True(NavDropRules.Compatible(in editable, TrackSet(), true));
+        Assert.False(NavDropRules.Transparent(in editable, TrackSet()));
+        Assert.Null(NavDropRules.WhyRefused(in editable, TrackSet(), true));
+        Assert.Equal(NavDropArm.Deposit, NavDropRules.CommitArm(in editable, TrackSet(), ownReorder: false, rootPlanIndex: -1));
+
+        var readOnly = new NavDropRow(null, -1, null, true, false);
+        Assert.False(NavDropRules.Compatible(in readOnly, TrackSet(), true));
+        Assert.False(NavDropRules.Transparent(in readOnly, TrackSet()));          // you aimed at a playlist: it says why
+        Assert.Equal(Loc.Get("drag.cantEditPlaylist"), NavDropRules.WhyRefused(in readOnly, TrackSet(), true));
+        Assert.Equal(NavDropArm.None, NavDropRules.CommitArm(in readOnly, TrackSet(), false, -1));
+    }
+
+    [Fact]
+    public void An_artist_has_no_single_track_set_so_a_playlist_refuses_it_by_name()
+    {
+        var editable = new NavDropRow(null, -1, PlaylistUri, true, false);
+        Assert.False(NavDropRules.Compatible(in editable, Artist(), true));
+        Assert.Equal(Loc.Get("drag.cantAddArtist"), NavDropRules.WhyRefused(in editable, Artist(), true));
+    }
+
+    [Fact]
+    public void A_non_playlist_row_a_track_drag_crosses_is_transparent()
+    {
+        var album = new NavDropRow(null, -1, null, false, false);
+        Assert.True(NavDropRules.Transparent(in album, TrackSet()));
+        Assert.False(NavDropRules.Compatible(in album, TrackSet(), true));
+        Assert.Null(NavDropRules.WhyRefused(in album, TrackSet(), true));
+    }
+
+    [Fact]
+    public void The_pinned_band_refuses_what_can_never_be_a_pin_with_the_reason()
+    {
+        var band = new NavDropRow(null, 2, null, false, false);
+        Assert.False(NavDropRules.Compatible(in band, OneTrack(), true));
+        Assert.False(NavDropRules.Transparent(in band, OneTrack()));
+        Assert.Equal("sidebar.pin.cantPin.track", NavDropRules.PinRefusalKey(in band, OneTrack()));
+        Assert.Equal(Loc.Get("sidebar.pin.cantPin.track"), NavDropRules.WhyRefused(in band, OneTrack(), true));
+
+        Assert.True(NavDropRules.Compatible(in band, Artist(), true));
+        Assert.Null(NavDropRules.PinRefusalKey(in band, Artist()));
+        Assert.Null(NavDropRules.PinRefusalKey(new NavDropRow(null, -1, null, false, false), OneTrack()));   // not a pin region
+    }
+
+    [Fact]
+    public void A_pinned_playlist_row_keeps_its_own_track_answer()
+    {
+        var pinnedPlaylist = new NavDropRow(null, 1, PlaylistUri, true, false);
+        Assert.Null(NavDropRules.PinRefusalKey(in pinnedPlaylist, TrackSet()));
+        Assert.True(NavDropRules.Compatible(in pinnedPlaylist, TrackSet(), true));
+    }
+
+    [Fact]
+    public void A_rail_tile_is_transparent_to_a_rootlist_item_that_carries_no_tracks()
+    {
+        var rail = new NavDropRow(null, -1, null, false, HasRailCue: true);
+        Assert.True(NavDropRules.Transparent(in rail, Filing()));
+        Assert.False(NavDropRules.Transparent(new NavDropRow(null, -1, null, false, false), Filing()));
+    }
+
+    // ── which arm commits ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_commit_arm_is_decided_in_one_order_own_reorder_rootlist_deposit_pin()
+    {
+        var band = new NavDropRow(null, 1, null, false, false);
+        Assert.Equal(NavDropArm.OwnReorder, NavDropRules.CommitArm(in band, Artist(), ownReorder: true, rootPlanIndex: -1));
+        Assert.Equal(NavDropArm.Pin, NavDropRules.CommitArm(in band, Artist(), ownReorder: false, rootPlanIndex: -1));
+
+        var root = RootRow();
+        Assert.Equal(NavDropArm.Rootlist, NavDropRules.CommitArm(in root, Filing(), false, rootPlanIndex: 4));
+        Assert.Equal(NavDropArm.None, NavDropRules.CommitArm(in root, Filing(), false, rootPlanIndex: -1));
+
+        // A pinned rootlist row: the rootlist arm outranks the pin arm, the own reorder outranks both.
+        var pinnedRoot = new NavDropRow(Filing(OtherUri), 0, null, true, false);
+        Assert.Equal(NavDropArm.Rootlist, NavDropRules.CommitArm(in pinnedRoot, Filing(), false, 2));
+        Assert.Equal(NavDropArm.OwnReorder, NavDropRules.CommitArm(in pinnedRoot, Filing(), true, 2));
+    }
+
+    [Fact]
+    public void A_cue_a_neighbour_published_is_a_refusal_never_a_fallback_placement()
+    {
+        var mine = new SidebarDropSlot(3, SidebarDropKind.Before, 0, SidebarDropRefusal.None);
+        var neighbours = new SidebarDropSlot(4, SidebarDropKind.Before, 0, SidebarDropRefusal.None);
+        var refused = new SidebarDropSlot(3, SidebarDropKind.None, 0, SidebarDropRefusal.SortedList);
+
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.RootlistCueRefusal(in mine, 3));
+        Assert.Equal(SidebarDropRefusal.Unavailable, NavDropRules.RootlistCueRefusal(in neighbours, 3));
+        Assert.Equal(SidebarDropRefusal.Unavailable, NavDropRules.RootlistCueRefusal(SidebarDropSlot.None, 3));
+        Assert.Equal(SidebarDropRefusal.SortedList, NavDropRules.RootlistCueRefusal(in refused, 3));
+    }
+
+    [Fact]
+    public void The_hover_facts_fold_the_payload_into_the_rows_structural_ones()
+    {
+        var row = new NavDropRow(Filing(OtherUri), -1, PlaylistUri, true, false);
+        var structural = NavDropRules.TreeEndFacts(sortedNonCustom: false) with { RootlistLoaded = false };
+
+        var folded = NavDropRules.FoldFacts(in row, in structural, TrackSet(), rootlistLoaded: true);
+        Assert.True(folded.CenterAccepts);            // an editable playlist's centre takes a track set
+        Assert.False(folded.SourceIsSelf);
+        Assert.True(folded.RootlistLoaded);
+
+        var self = NavDropRules.FoldFacts(in row, in structural, Filing(OtherUri), rootlistLoaded: true);
+        Assert.True(self.SourceIsSelf);
+        Assert.False(NavDropRules.FoldFacts(in row, in structural, Artist(), true).CenterAccepts);
+    }
+
+    // ── the rail folder row ────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_rail_folder_gate_walks_transparent_not_loaded_into_itself_then_asks_the_marker_stream()
+    {
+        var folder = FolderFiling("abc123");
+        Assert.Equal(NavRailFolderGate.Transparent, NavDropRules.RailFolderGate(TrackSet(), folder, true));
+        Assert.Equal(NavRailFolderGate.NotLoaded, NavDropRules.RailFolderGate(Filing(), folder, false));
+        Assert.Equal(NavRailFolderGate.IntoItself, NavDropRules.RailFolderGate(FolderFiling("abc123"), folder, true));
+        Assert.Equal(NavRailFolderGate.Open, NavDropRules.RailFolderGate(Filing(), folder, true));
+    }
+
+    // ── the payload → refs conversions ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_rootlist_payload_becomes_seam_refs_and_entry_ids()
+    {
+        var refs = NavDropRules.RefsOf(Filing());
+        Assert.Single(refs);
+        Assert.Equal(PlaylistUri, refs[0].Key);
+        Assert.False(refs[0].IsFolder);
+
+        var folderRefs = NavDropRules.RefsOf(FolderFiling("abc123"));
+        Assert.Equal("abc123", folderRefs[0].Key);
+        Assert.True(folderRefs[0].IsFolder);
+
+        // With no tree the ids are the ref keys; an empty key is dropped.
+        Assert.Equal(new[] { PlaylistUri }, NavDropRules.SourceIds(null, Filing()));
+    }
+
+    [Fact]
+    public void The_refusal_sentence_is_one_per_refusal_and_none_for_none()
+    {
+        Assert.Null(NavDropRules.Sentence(SidebarDropRefusal.None));
+        Assert.False(string.IsNullOrEmpty(NavDropRules.Sentence(SidebarDropRefusal.Self)));
+        Assert.Equal(Loc.Get(SidebarDropRefusalText.LocKey(SidebarDropRefusal.SortedList)), NavDropRules.Sentence(SidebarDropRefusal.SortedList));
+    }
+
+    // ── tree row facts ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(SidebarSectionKind.Playlists, false, true)]
+    [InlineData(SidebarSectionKind.Playlists, true, true)]
+    [InlineData(SidebarSectionKind.Library, false, true)]
+    [InlineData(SidebarSectionKind.Library, true, false)]    // a sorted Library is a view of the rootlist, not the rootlist
+    [InlineData(SidebarSectionKind.Pinned, false, false)]
+    public void Only_the_playlists_section_and_a_custom_ordered_library_are_the_rootlist(SidebarSectionKind kind, bool sortedNonCustom, bool expected)
+        => Assert.Equal(expected, NavDropRules.IsRootlistSection(kind, sortedNonCustom));
+
+    [Fact]
+    public void The_list_end_slot_is_one_whole_row_at_depth_zero()
+    {
+        var end = NavDropRules.TreeEndFacts(sortedNonCustom: true);
+        Assert.True(end.IsListEnd);
+        Assert.True(end.SortedNonCustom);
+        Assert.True(end.RootlistLoaded);
+        Assert.Equal(0, end.Depth);
+        Assert.False(NavDropRules.TreeEndFacts(false).SortedNonCustom);
+    }
+}
+
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
+public class NavRowFactsTests
+{
+    const long Day = 86_400_000L;
+    const long Now = 1_800_000_000_000L;
+
+    [Fact]
+    public void The_age_badge_is_digits_and_a_unit_and_null_for_no_stamp_or_a_future_one()
+    {
+        Assert.Null(NavRowFacts.AgeBadge(0, Now));
+        Assert.Null(NavRowFacts.AgeBadge(-5, Now));
+        Assert.Null(NavRowFacts.AgeBadge(Now + Day, Now));
+        Assert.Equal("1d", NavRowFacts.AgeBadge(Now - 1000, Now));
+        Assert.Equal("1d", NavRowFacts.AgeBadge(Now - Day, Now));
+        Assert.Equal("6d", NavRowFacts.AgeBadge(Now - 6 * Day, Now));
+        Assert.Equal("1w", NavRowFacts.AgeBadge(Now - 7 * Day, Now));
+        Assert.Equal("8w", NavRowFacts.AgeBadge(Now - 59 * Day, Now));
+        Assert.Equal("2mo", NavRowFacts.AgeBadge(Now - 60 * Day, Now));
+        Assert.Equal("12mo", NavRowFacts.AgeBadge(Now - 365 * Day, Now));
+    }
+
+    [Fact]
+    public void The_short_uri_is_the_last_segment_and_never_blank()
+    {
+        Assert.Equal("—", NavRowFacts.ShortUri(null));
+        Assert.Equal("—", NavRowFacts.ShortUri(""));
+        Assert.Equal("abc", NavRowFacts.ShortUri("spotify:playlist:abc"));
+        Assert.Equal("plain", NavRowFacts.ShortUri("plain"));
+        Assert.Equal("trail:", NavRowFacts.ShortUri("trail:"));
+    }
+
+    static SidebarLibraryEntry Entry(string id, SidebarEntryKind kind, string name, bool pinned = false, bool known = false, bool missing = false)
+        => new SidebarLibraryEntry(id, kind, "spotify:" + kind.ToString().ToLowerInvariant() + ":xyz", name, "", StringId.Empty, null,
+                                   ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
+                                   Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { IsPinned = pinned, IdentityKnown = known, Missing = missing };
+
+    [Fact]
+    public void A_named_row_shows_its_name_and_is_no_placeholder()
+    {
+        var label = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Mix", pinned: true, known: true), online: true);
+        Assert.Equal("Mix", label.Label);
+        Assert.Equal(SidebarPinState.Resolved, label.PinState);
+        Assert.False(label.PlaceholderTitle);
+
+        var plain = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Mix"), online: false);
+        Assert.Equal(SidebarPinState.Resolved, plain.PinState);        // a non-pin row has no pin state
+    }
+
+    [Fact]
+    public void An_unnamed_pin_shows_the_kinds_noun_in_a_placeholder_state_that_follows_online()
+    {
+        var pin = Entry("pl:x", SidebarEntryKind.Playlist, "", pinned: true);
+        var online = NavRowFacts.LabelOf(pin, online: true);
+        Assert.Equal(Loc.Get("nav.playlist"), online.Label);
+        Assert.True(online.PlaceholderTitle);
+        Assert.Equal(SidebarPinState.Pending, online.PinState);
+        Assert.Equal(SidebarPinState.Offline, NavRowFacts.LabelOf(pin, online: false).PinState);
+    }
+
+    [Fact]
+    public void An_offline_entity_pin_keeps_its_cached_name_and_is_offline_until_its_identity_lands()
+    {
+        // S9: offline, a cached name is what the pin shows, not proof it resolves: it stays Offline (quieted, "Not available
+        // offline") with its last title; online the same cached name draws the row as before; a landed identity is Resolved.
+        var cached = Entry("pl:x", SidebarEntryKind.Playlist, "Late night", pinned: true);
+        var offline = NavRowFacts.LabelOf(cached, online: false);
+        Assert.Equal("Late night", offline.Label);
+        Assert.Equal(SidebarPinState.Offline, offline.PinState);
+        Assert.False(offline.PlaceholderTitle);
+        Assert.Equal(SidebarPinState.Resolved, NavRowFacts.LabelOf(cached, online: true).PinState);
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Late night", pinned: true, known: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Offline,
+            NavRowFacts.LabelOf(Entry("album:y", SidebarEntryKind.Album, "Blue", pinned: true), online: false).PinState);
+    }
+
+    [Fact]
+    public void A_route_or_folder_pin_is_never_offline_when_it_has_a_name()
+    {
+        // The app's own structure needs no connection to name itself.
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("search", SidebarEntryKind.AppRoute, "Search", pinned: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("folder:f", SidebarEntryKind.Folder, "Mixes", pinned: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Unavailable,
+            NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Old", pinned: true, missing: true), online: false).PinState);
+    }
+
+    [Fact]
+    public void An_authoritative_miss_keeps_the_last_known_name_and_marks_the_pin_unavailable()
+    {
+        var gone = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Old name", pinned: true, missing: true), online: true);
+        Assert.Equal("Old name", gone.Label);
+        Assert.Equal(SidebarPinState.Unavailable, gone.PinState);
+        Assert.False(gone.PlaceholderTitle);
+    }
+
+    [Fact]
+    public void A_route_entry_shows_its_destinations_title()
+    {
+        var route = NavRowFacts.LabelOf(Entry("search", SidebarEntryKind.AppRoute, ""), online: true);
+        Assert.Equal(Shell.Dest(Shell.Parse("search")).Title, route.Label);
+        Assert.False(route.PlaceholderTitle);
+    }
+
+    [Fact]
+    public void An_unnamed_non_pin_row_keeps_the_identity_gate_on_its_uri_fallback()
+    {
+        var row = Entry("pl:x", SidebarEntryKind.Playlist, "", known: false);
+        string expected = SidebarProjection.ShouldShowUriFallbackTitle(false, false) ? NavRowFacts.ShortUri(row.Uri) : "";
+        Assert.Equal(expected, NavRowFacts.LabelOf(row, online: true).Label);
+    }
+}
+
+[Collection(EntitiesCollection.Name)]
+public sealed class NavModelDropTests : IDisposable
+{
+    const string PlaylistA = "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO";
+    const string PlaylistB = "spotify:playlist:1TSZDcvlPtAnekTaItI3qO";
+
+    readonly string _dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wavee-navdrop-tests", Guid.NewGuid().ToString("n"));
+    readonly Action<SidebarPin, bool>? _bridge;
+    readonly SidebarLibraryWrites? _writes;
+    readonly NavModel _model = new(new SidebarProjectionBinder(logs: null, peek: null));
+
+    public NavModelDropTests()
+    {
+        TestScope.Fresh();
+        Sidebar.UseProfileDir(System.IO.Path.Combine(_dir, "WaveeMusic"));
+        Sidebar.Boot();
+        _bridge = Sidebar.Pins.OnLocalPinChanged;
+        Sidebar.Pins.OnLocalPinChanged = null;
+        Sidebar.Pins.LoadFrom(null);
+        _writes = Sidebar.LibraryWrites;
+        Sidebar.LibraryWrites = null;
+    }
+
+    public void Dispose()
+    {
+        Sidebar.LibraryWrites = _writes;
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Classic));
+        Sidebar.EnsureAccount(CatalogScope.Fake());
+        Sidebar.Pins.OnLocalPinChanged = _bridge;
+        Sidebar.Shutdown();
+        try { System.IO.Directory.Delete(_dir, recursive: true); } catch (Exception) { }
+    }
+
+    static void SignIn() => Sidebar.EnsureAccount(new CatalogScope("spotify", "navdrop", "en-US", "US", 0, true));
+
+    static string IdOf(string uri) => SidebarPinId.PlaylistPrefix + uri;
+
+    static DragPayload PlaylistPayload(string uri, bool rootlistItem = false)
+        => new(DragKind.Playlist, IdOf(uri), uri, "Name of " + uri[^4..], RootlistItem: rootlistItem);
+
+    static DragPayload TrackSet()
+        => new(DragKind.Album, "album:spotify:album:a", "spotify:album:a", "A",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static string[] Ids(SidebarPinStore pins)
+    {
+        var ids = new string[pins.Count];
+        for (int i = 0; i < ids.Length; i++) ids[i] = pins[i].Id;
+        return ids;
+    }
+
+    // ── the pin arms ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_signed_out_pin_drop_pins_nothing()
+    {
+        Assert.True(_model.Account.SignedOut);
+        Assert.Equal(NavDropResult.None, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(0)));
+        Assert.Empty(_model.Pins);
+    }
+
+    [Fact]
+    public void A_pin_drop_pins_at_the_slot_and_an_already_pinned_payload_moves_instead()
+    {
+        SignIn();
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(0)));
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistB), NavDropTarget.PinIndex(1)));
+        Assert.Equal(new[] { IdOf(PlaylistA), IdOf(PlaylistB) }, Ids(_model.Pins));
+
+        // Dropping A at slot 2 (after B): remove-then-insert shifts, so it lands at index 1.
+        Assert.Equal(NavDropResult.PinMoved, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(2)));
+        Assert.Equal(new[] { IdOf(PlaylistB), IdOf(PlaylistA) }, Ids(_model.Pins));
+
+        // Dropping B at slot 0 (where it already is) stays put and never duplicates.
+        Assert.Equal(NavDropResult.PinMoved, _model.Drop(PlaylistPayload(PlaylistB), NavDropTarget.PinIndex(0)));
+        Assert.Equal(new[] { IdOf(PlaylistB), IdOf(PlaylistA) }, Ids(_model.Pins));
+    }
+
+    [Fact]
+    public void A_payload_that_cannot_be_a_pin_is_ignored()
+    {
+        SignIn();
+        var track = new DragPayload(DragKind.Track, "track:spotify:track:t", "spotify:track:t", "T");
+        Assert.Equal(NavDropResult.None, _model.Drop(track, NavDropTarget.PinIndex(0)));
+        Assert.Empty(_model.Pins);
+    }
+
+    [Fact]
+    public void Only_the_pinned_section_takes_a_foreign_entity()
+    {
+        SignIn();
+        Assert.Equal(NavDropResult.None, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.Section("no-such-section", 0)));
+        Assert.Empty(_model.Pins);
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.Section(SidebarCatalogue.IdOf(SidebarSectionKind.Pinned), 0)));
+        Assert.Single(_model.Pins);
+    }
+
+    // ── the deposit ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_deposit_goes_to_the_seam_once_with_the_playlist_and_its_name()
+    {
+        var calls = new List<(string Uri, string Name, DragPayload Source)>();
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { DepositTracks = (uri, name, source) => calls.Add((uri, name, source)) };
+        var tracks = TrackSet();
+
+        Assert.Equal(NavDropResult.Deposited, _model.Drop(tracks, NavDropTarget.Playlist(PlaylistA, "Morning Mix")));
+
+        var call = Assert.Single(calls);
+        Assert.Equal(PlaylistA, call.Uri);
+        Assert.Equal("Morning Mix", call.Name);
+        Assert.Same(tracks, call.Source);
+    }
+
+    [Fact]
+    public void A_deposit_without_a_seam_or_without_tracks_does_nothing_and_never_throws()
+    {
+        Assert.Equal(NavDropResult.None, _model.Drop(TrackSet(), NavDropTarget.Playlist(PlaylistA, "X")));      // no seam: a refusal, not a crash
+        Assert.False(_model.DepositTracks(PlaylistA, "X", TrackSet()));
+
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { DepositTracks = (_, _, _) => calls++ };
+        var artist = new DragPayload(DragKind.Artist, "artist:spotify:artist:r", "spotify:artist:r", "R");
+        Assert.Equal(NavDropResult.None, _model.Drop(artist, NavDropTarget.Playlist(PlaylistA, "X")));          // an artist carries no tracks
+        Assert.Equal(NavDropResult.None, _model.Drop(TrackSet(), NavDropTarget.Playlist("", "X")));            // no editable playlist under the pointer
+        Assert.Equal(0, calls);
+    }
+
+    // ── the rootlist move ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_rootlist_move_sends_the_refs_the_placement_and_the_destination_to_the_seam()
+    {
+        IReadOnlyList<RootlistItemRef>? items = null;
+        RootlistItemRef? target = null;
+        RootlistDropPlacement? placement = null;
+        string? destination = null;
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites
+        {
+            MoveRootlist = (i, t, p, d, _) => { items = i; target = t; placement = p; destination = d; calls++; },
+        };
+
+        var dest = new RootlistItemRef("abc123", IsFolder: true);
+        Assert.True(_model.MoveRootlist(PlaylistPayload(PlaylistA, rootlistItem: true), dest, RootlistDropPlacement.Inside, "Mixes"));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(PlaylistA, Assert.Single(items!).Key);
+        Assert.Equal(dest, target!.Value);
+        Assert.Equal(RootlistDropPlacement.Inside, placement);
+        Assert.Equal("Mixes", destination);
+    }
+
+    [Fact]
+    public void A_rootlist_move_without_a_seam_refuses_instead_of_failing_silently()
+    {
+        Assert.False(_model.MoveRootlist(PlaylistPayload(PlaylistA, rootlistItem: true), new RootlistItemRef("abc123", true),
+                                         RootlistDropPlacement.Inside, "Mixes"));
+    }
+
+    [Fact]
+    public void A_rail_folder_row_takes_nothing_while_the_rootlist_has_not_arrived()
+    {
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { MoveRootlist = (_, _, _, _, _) => calls++ };
+        var folderRow = new DragPayload(DragKind.Folder, "abc123", "", "Mixes", RootlistItem: true);
+        var dest = NavDropTarget.Folder("abc123", "Mixes", folderRow);
+        var item = PlaylistPayload(PlaylistA, rootlistItem: true);
+
+        Assert.False(_model.RailFolderAccepts(item, in dest));
+        Assert.Equal(Loc.Get("drag.stillLoading"), _model.RailFolderWhy(item, in dest));
+        Assert.Equal(NavDropResult.None, _model.Drop(item, in dest));
+        Assert.Equal(0, calls);
+
+        // A track drag is merely crossing the folder: no sentence.
+        Assert.Null(_model.RailFolderWhy(TrackSet(), in dest));
+        Assert.False(_model.RailFolderAccepts(TrackSet(), in dest));
+    }
+
+    [Fact]
+    public void A_folder_target_without_its_row_never_accepts()
+    {
+        var dest = new NavDropTarget(NavDropTargetKind.Folder, "abc123", "Mixes");
+        Assert.False(_model.RailFolderAccepts(PlaylistPayload(PlaylistA, true), in dest));
+        Assert.Null(_model.RailFolderWhy(PlaylistPayload(PlaylistA, true), in dest));
+    }
+
+    // ── the facts ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_age_badge_reads_the_models_clock()
+    {
+        long now = 1_800_000_000_000L;
+        _model.Clock = () => now;
+        Assert.Equal("3d", _model.AgeBadge(now - 3 * 86_400_000L));
+        Assert.Null(_model.AgeBadge(0));
+        now += 14 * 86_400_000L;
+        Assert.Equal("2w", _model.AgeBadge(now - 14 * 86_400_000L));
+    }
+
+    [Fact]
+    public void The_model_labels_a_pin_against_its_online_fact()
+    {
+        var pin = new SidebarLibraryEntry(IdOf(PlaylistA), SidebarEntryKind.Playlist, PlaylistA, "", "", StringId.Empty, null,
+            ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false,
+            Flavor: SidebarPlaylistFlavor.None) { IsPinned = true };
+        var label = _model.LabelOf(in pin);
+        Assert.True(label.PlaceholderTitle);
+        Assert.Equal(NavRowFacts.LabelOf(pin, _model.IsOnline), label);
+    }
+}

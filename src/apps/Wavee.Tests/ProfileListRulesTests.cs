@@ -120,8 +120,7 @@ public class ProfileListRulesTests
     static string[] Names(ProfileListModel m, ProfileChip chip = ProfileChip.All, string? query = null)
     {
         m.Filter(chip, query);
-        var visible = m.Visible.ToArray();
-        return visible.Select(i => m.EntryAt(i).Name).ToArray();
+        return Enumerable.Range(0, m.VisibleCount).Select(k => m.VisibleAt(k).Name).ToArray();
     }
 
     static readonly ProfileEntry[] Mixed =
@@ -144,7 +143,7 @@ public class ProfileListRulesTests
         var entries = new[] { Artist("Same", 7), Artist("Same", 3), Person("Same", 1) };
         var m = Model(entries);
         m.Filter(ProfileChip.All, null);
-        Assert.Equal([3, 7, 1], m.Visible.ToArray().Select(i => m.EntryAt(i).Slot).ToArray());
+        Assert.Equal([3, 7, 1], Enumerable.Range(0, m.VisibleCount).Select(k => m.VisibleAt(k).Slot).ToArray());
     }
 
     [Fact]
@@ -187,7 +186,7 @@ public class ProfileListRulesTests
         // #, #, A, A, P, P, Z — non-decreasing, the grouping's one input.
         Assert.Equal([0, 0, 1, 1, 16, 16, 26], m.VisibleLetters.ToArray());
         Assert.Equal([true, false, true, false, false, true, false], m.VisibleArtists.ToArray());
-        Assert.Equal(m.Visible.ToArray().Length, m.VisibleCount);
+        Assert.Equal(Mixed.Length, m.VisibleCount);
     }
 
     [Fact]
@@ -376,14 +375,14 @@ public class ProfileListRulesTests
     [Fact]
     public void GridFit_columns_never_fall_below_one_once_measured()
     {
-        Assert.Equal(0, ProfileGridFit.Columns(0f, 12f));
-        Assert.Equal(1, ProfileGridFit.Columns(100f, 12f));
-        Assert.Equal(1, ProfileGridFit.Columns(176f, 12f));
-        Assert.Equal(2, ProfileGridFit.Columns(520f, 12f));
-        Assert.Equal(6, ProfileGridFit.Columns(1200f, 12f));
+        Assert.Equal(0, ProfileGridFit.Columns(0f, 12f, 176f));
+        Assert.Equal(1, ProfileGridFit.Columns(100f, 12f, 176f));
+        Assert.Equal(1, ProfileGridFit.Columns(176f, 12f, 176f));
+        Assert.Equal(2, ProfileGridFit.Columns(520f, 12f, 176f));
+        Assert.Equal(6, ProfileGridFit.Columns(1200f, 12f, 176f));
         // Exactly N cards and N-1 gaps fit N columns.
-        Assert.Equal(3, ProfileGridFit.Columns(3 * 176f + 2 * 12f, 12f));
-        Assert.Equal(2, ProfileGridFit.Columns(3 * 176f + 2 * 12f - 1f, 12f));
+        Assert.Equal(3, ProfileGridFit.Columns(3 * 176f + 2 * 12f, 12f, 176f));
+        Assert.Equal(2, ProfileGridFit.Columns(3 * 176f + 2 * 12f - 1f, 12f, 176f));
     }
 
     [Fact]
@@ -397,19 +396,20 @@ public class ProfileListRulesTests
     }
 
     [Fact]
-    public void ShowsStrip_only_from_640_and_the_plan_takes_it_off_the_list_width()
+    public void The_strip_shows_on_the_wide_arm_and_the_plan_takes_it_off_the_list_width()
     {
-        Assert.False(ProfileGridFit.ShowsStrip(639f));
-        Assert.True(ProfileGridFit.ShowsStrip(640f));
+        // The arm is the structure's list ladder (Classic: from 640, re-admitted at 664 — ClassicPeopleTiersTests).
+        Assert.Equal(0, Wavee.Themes.Classic.ClassicProfileTiers.List.Resolve(639f, -1));
+        Assert.Equal(1, Wavee.Themes.Classic.ClassicProfileTiers.List.Resolve(640f, -1));
 
-        // Unmeasured: no columns, wide tools (the arrangement most windows have).
-        Assert.Equal(new ProfileGridPlan(false, false, 0, 0f), ProfileGridFit.For(0f, 12f));
+        // Unmeasured on the wide arm: no columns.
+        Assert.Equal(new ProfileGridPlan(true, false, 0, 0f), ProfileGridFit.For(0f, 12f, wide: true, 176f));
         // Narrow: no strip, stacked tools, two columns of 254.
-        Assert.Equal(new ProfileGridPlan(false, true, 2, 254f), ProfileGridFit.For(520f, 12f));
+        Assert.Equal(new ProfileGridPlan(false, true, 2, 254f), ProfileGridFit.For(520f, 12f, wide: false, 176f));
         // 640 exactly: the strip shows and the tools sit side by side. List = 640 − 18 − 8 = 614 → 3 columns of 196.
-        Assert.Equal(new ProfileGridPlan(true, false, 3, 196f), ProfileGridFit.For(640f, 12f));
+        Assert.Equal(new ProfileGridPlan(true, false, 3, 196f), ProfileGridFit.For(640f, 12f, wide: true, 176f));
         // 1000: list = 974 → 5 columns of 185.
-        Assert.Equal(new ProfileGridPlan(true, false, 5, 185f), ProfileGridFit.For(1000f, 12f));
+        Assert.Equal(new ProfileGridPlan(true, false, 5, 185f), ProfileGridFit.For(1000f, 12f, wide: true, 176f));
     }
 
     [Fact]
@@ -427,11 +427,11 @@ public class ProfileListRulesTests
     [Fact]
     public void The_grid_constants_agree_with_their_tokens()
     {
-        Assert.Equal(Spacing.S, ProfileGridFit.StripGap);
+        Assert.Equal(ProfileGridFit.StripGap, Spacing.S);
         Assert.Equal(12f, Spacing.Card);   // the plan above is asserted at this gap
-        Assert.Equal(32f + Spacing.S, ProfileGridFit.ActionLine);
+        Assert.Equal(ProfileGridFit.ActionLine, 32f + Spacing.S);
         Assert.Equal(LibraryLetters.HeaderExtent, ProfileLetterRows.HeaderExtent);
-        Assert.Equal(176f, ProfileGridFit.MinCell);
-        Assert.Equal(18f, ProfileGridFit.StripWidth);   // User.JumpStrip's own width
+        Assert.Equal(176f, Wavee.Themes.Classic.ClassicProfileTiers.ListMinCell);
+        Assert.Equal(18f, ProfileGridFit.StripWidth);   // ClassicLetterKit.JumpStrip's own width
     }
 }

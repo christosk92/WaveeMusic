@@ -82,37 +82,42 @@ public class EpisodeCaptionTests
     }
 
     // ── Duration / Remaining ──────────────────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(27 * 60_000L, "27 min")]
-    [InlineData(61 * 60_000L, "1 h 1 min")]
-    [InlineData(130 * 60_000L, "2 h 10 min")]
-    [InlineData(60 * 60_000L, "1 h")]
-    public void Duration_FormatsAsTheSheetDoes(long durationMs, string expected)
-        => Assert.Equal(expected, EpisodeCaption.Duration(durationMs));
+    // Localised through the app's own duration words (`detail.durationMin/Hr/HrMin`) and `podcast.left` (tuned Classic H2):
+    // the expectations are built from the same typed `Strings.*` calls (the repo's loc-test pattern), so the rung is what is asserted, and
+    // the minute arithmetic is `RoundedMinutes`'.
 
     [Fact]
-    public void Duration_RoundsToTheNearestMinute_NeverTruncates()
+    public void Duration_FormatsAsTheSheetDoes()
     {
-        // 06 §3.3 P2: "8 334 ms of 44 min ≈ 0.3%" — the episode's own duration is ~44 min but not exactly; a
-        // duration a hair under 27.5 minutes must still read "27 min", not "26 min" (floor) nor "28 min" (ceiling).
-        Assert.Equal("27 min", EpisodeCaption.Duration(27 * 60_000L + 20_000L));
+        Assert.Equal(Strings.Detail.DurationMin(27L), EpisodeCaption.Duration(27 * 60_000L));
+        Assert.Equal(Strings.Detail.DurationHrMin(1L, 1L), EpisodeCaption.Duration(61 * 60_000L));
+        Assert.Equal(Strings.Detail.DurationHrMin(2L, 10L), EpisodeCaption.Duration(130 * 60_000L));
+        Assert.Equal(Strings.Detail.DurationHr(1L), EpisodeCaption.Duration(60 * 60_000L));   // a whole hour: no "0 min"
+        Assert.Equal("", EpisodeCaption.Duration(0));
     }
 
+    [Theory]
+    [InlineData(27 * 60_000L + 20_000L, 27L)]   // 06 §3.3 P2: a hair under 27.5 minutes reads 27, not 26 (floor) nor 28 (ceiling)
+    [InlineData(27 * 60_000L + 30_000L, 28L)]   // half away from zero
+    [InlineData(10_000L, 1L)]                   // never below one minute
+    [InlineData(0L, 1L)]
+    public void RoundedMinutes_RoundsToTheNearestMinute_NeverTruncates(long ms, long expected)
+        => Assert.Equal(expected, EpisodeCaption.RoundedMinutes(ms));
+
     [Fact]
-    public void Remaining_IsDurationMinusPosition_WithTheLeftSuffix()
+    public void Remaining_IsDurationMinusPosition_InThePodcastLeftPhrase()
     {
         // The capture's own in-progress episode: 44 min duration, 8 334 ms played → "44 min left" (06 §3.3 P2).
         long duration = 44 * 60_000L;
         long position = 8_334L;
-        Assert.Equal("44 min left", EpisodeCaption.Remaining(duration, position));
+        Assert.Equal(Strings.Podcast.Left(Strings.Detail.DurationMin(44L)), EpisodeCaption.Remaining(duration, position));
     }
 
     [Fact]
     public void Remaining_NeverGoesNegative_WhenPositionPassesDuration()
         // Floored like `Duration`'s own minimum: a spent/overrun position reads "1 min left", never "0 min left"
         // (which would look broken) or a negative number.
-        => Assert.Equal("1 min left", EpisodeCaption.Remaining(10_000L, 20_000L));
+        => Assert.Equal(Strings.Podcast.Left(Strings.Detail.DurationMin(1L)), EpisodeCaption.Remaining(10_000L, 20_000L));
 
     // ── Progress fraction — clamped 0..1 ─────────────────────────────────────────────────────────────────────────
 

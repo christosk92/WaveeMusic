@@ -2,8 +2,8 @@
 //
 // Ported from _old/Wavee.Tests/DetailRailPolicyTests.cs onto `Detail.RailPolicy` (Entities/Detail.cs); every 0.2.9
 // assertion is kept, only the call shape changed. Added in 0.3 (G-190): the rail/page CONVERGENCE facts — the persisted
-// key defaults, the policy's authored defaults and the design tokens are one number per scope — and `KeysFor`, which
-// maps each scope to its own key pair (the "ten orphaned keys" had no reader before it).
+// state-key defaults, the policy's authored defaults and the design tokens are one number per scope — and the ten theme-state keys, one pair per scope
+// (M8: they replaced the ten `detail.rail.*` settings keys; `DetailRailPrefs` reads and writes them).
 //
 // The shell used to decide the grip with a kind test and fall every other kind through to the ALBUM pair — so Liked had
 // a seam where the grip should be, and a one-word widening of that predicate would have made it share the album's 280.
@@ -14,6 +14,7 @@
 // `MaxWidthForPage` (quantized, content-floor-preserving), `RestingWidth` (the breakpoint rail until the scope has been
 // dragged, then the persisted width — clamped, never written back) and `CommitWidth`.
 
+using Wavee.Theming;
 using Xunit;
 using Breakpoints = Wavee.Detail.Breakpoints;
 using RailPolicy = Wavee.Detail.RailPolicy;
@@ -126,55 +127,58 @@ public class DetailRailPolicyTests
 
     // ── rail/page convergence (G-190) ────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One number per scope, spelled three ways: the persisted key's default, the policy's authored default and
+    /// <summary>One number per scope, spelled three ways: the state key's default, the policy's authored default and
     /// the design token. A rail that opens at one width and resets to another is exactly this drifting.</summary>
     [Fact]
-    public void PersistedDefaults_PolicyDefaults_AndDesignTokens_Converge()
+    public void StateDefaults_PolicyDefaults_AndDesignTokens_Converge()
     {
-        Assert.Equal(Platform.Keys.DetailAlbumRailWidth.Default, RailPolicy.DefaultWidthFor(RailScope.Album));
-        Assert.Equal(Platform.Keys.DetailPlaylistRailWidth.Default, RailPolicy.DefaultWidthFor(RailScope.Playlist));
-        Assert.Equal(Platform.Keys.DetailLikedRailWidth.Default, RailPolicy.DefaultWidthFor(RailScope.Liked));
-        Assert.Equal(Platform.Keys.DetailShowRailWidth.Default, RailPolicy.DefaultWidthFor(RailScope.Show));
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Album).Default, RailPolicy.DefaultWidthFor(RailScope.Album));
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Playlist).Default, RailPolicy.DefaultWidthFor(RailScope.Playlist));
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Liked).Default, RailPolicy.DefaultWidthFor(RailScope.Liked));
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Show).Default, RailPolicy.DefaultWidthFor(RailScope.Show));
 
-        Assert.Equal(Design.Size.RailAlbum, Platform.Keys.DetailAlbumRailWidth.Default);
-        Assert.Equal(Design.Size.RailPlaylist, Platform.Keys.DetailPlaylistRailWidth.Default);
-        Assert.Equal(Design.Size.RailPlaylist, Platform.Keys.DetailLikedRailWidth.Default);
-        Assert.Equal(Design.Size.RailAlbum, Platform.Keys.DetailShowRailWidth.Default);
+        Assert.Equal(Design.Size.RailAlbum, DetailRailPrefs.WidthKey(RailScope.Album).Default);
+        Assert.Equal(Design.Size.RailPlaylist, DetailRailPrefs.WidthKey(RailScope.Playlist).Default);
+        Assert.Equal(Design.Size.RailPlaylist, DetailRailPrefs.WidthKey(RailScope.Liked).Default);
+        Assert.Equal(Design.Size.RailAlbum, DetailRailPrefs.WidthKey(RailScope.Show).Default);
     }
 
     [Fact]
     public void UniformRail_DefaultsToTheListWidth()
     {
-        Assert.Equal(240f, Platform.Keys.DetailUniformRailWidth.Default);
-        Assert.Equal(Platform.Keys.DetailUniformRailWidth.Default, RailPolicy.DefaultWidthFor(RailScope.Uniform));
-        Assert.False(Platform.Keys.DetailUniformRailCollapsed.Default);
+        Assert.Equal(240f, DetailRailPrefs.WidthKey(RailScope.Uniform).Default);
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Uniform).Default, RailPolicy.DefaultWidthFor(RailScope.Uniform));
+        Assert.False(DetailRailPrefs.CollapsedKey(RailScope.Uniform).Default);
     }
 
-    /// <summary>Each scope reads and writes its OWN pair — never another scope's by fallthrough.</summary>
+    /// <summary>The five pairs are ten DISTINCT state keys (each scope reads and writes its OWN pair, never another scope's by fallthrough), every width opens at
+    /// its scope's authored default inside the grip's range, and every collapsed flag opens false.</summary>
     [Fact]
-    public void KeysFor_MapsEachScopeToItsOwnKeyPair()
+    public void StateKeys_TenDistinctKeys_EachOpeningAtItsScopesDefault()
     {
-        Assert.Equal((Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailCollapsed), RailPolicy.KeysFor(RailScope.Album));
-        Assert.Equal((Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailCollapsed), RailPolicy.KeysFor(RailScope.Playlist));
-        Assert.Equal((Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailCollapsed), RailPolicy.KeysFor(RailScope.Liked));
-        Assert.Equal((Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailCollapsed), RailPolicy.KeysFor(RailScope.Show));
-        Assert.Equal((Platform.Keys.DetailUniformRailWidth, Platform.Keys.DetailUniformRailCollapsed), RailPolicy.KeysFor(RailScope.Uniform));
-    }
-
-    /// <summary>The five pairs are ten DISTINCT keys, and every pair opens at its scope's authored default, uncollapsed.</summary>
-    [Fact]
-    public void KeysFor_TenDistinctKeys_EachOpeningAtItsScopesDefault()
-    {
-        var names = new HashSet<string>(StringComparer.Ordinal);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
         for (var scope = RailScope.Album; scope <= RailScope.Uniform; scope++)
         {
-            var (width, collapsed) = RailPolicy.KeysFor(scope);
-            Assert.True(names.Add(width.Name), $"width key {width.Name} is shared by another scope");
-            Assert.True(names.Add(collapsed.Name), $"collapsed key {collapsed.Name} is shared by another scope");
+            var width = DetailRailPrefs.WidthKey(scope);
+            var collapsed = DetailRailPrefs.CollapsedKey(scope);
+            Assert.True(ids.Add(width.Id), $"width key {width.Id} is shared by another scope");
+            Assert.True(ids.Add(collapsed.Id), $"collapsed key {collapsed.Id} is shared by another scope");
             Assert.Equal(RailPolicy.DefaultWidthFor(scope), width.Default);
+            Assert.Equal(RailPolicy.MinWidthFor(scope), width.Min);
+            Assert.Equal(RailPolicy.MaxWidth, width.Max);
             Assert.False(collapsed.Default);
         }
-        Assert.Equal(10, names.Count);
+        Assert.Equal(10, ids.Count);
+    }
+
+    /// <summary>The key ids are the contract the migration step writes (`ThemeBootstrap`): `rail.[scope].width` / `.collapsed`.</summary>
+    [Fact]
+    public void StateKeys_HaveTheIdsTheMigrationWrites()
+    {
+        Assert.Equal("rail.album.width", DetailRailPrefs.WidthKey(RailScope.Album).Id);
+        Assert.Equal("rail.show.collapsed", DetailRailPrefs.CollapsedKey(RailScope.Show).Id);
+        Assert.Equal("rail.uniform.width", DetailRailPrefs.WidthKey(RailScope.Uniform).Id);
+        Assert.Equal("theme.classic.state.rail.liked.collapsed", ThemeState.SettingName("classic", DetailRailPrefs.CollapsedKey(RailScope.Liked).Id));
     }
 
     // ── the page-aware maximum, and resizing in the NARROW arms ──────────────────────────────────────────────────────
@@ -188,7 +192,7 @@ public class DetailRailPolicyTests
     {
         for (float w = 300f; w <= 2400f; w += 1f)
             for (int mode = 0; mode < Breakpoints.VerticalMode; mode++)
-                if (Breakpoints.ModeFor(w, mode, initialized: true) == mode)
+                if (Wavee.Themes.Classic.ClassicDetailTiers.ModeFor(w, mode, initialized: true) == mode)
                     yield return (w, mode);
     }
 
@@ -350,12 +354,12 @@ public class DetailRailPolicyTests
     {
         foreach (var (w, mode) in ReachableTwoColumnStates())
         {
-            float content = RailPolicy.CollapsedContentWidthFor(w);
+            float content = RailPolicy.ContentWidthFor(w, RailPolicy.CompactStripW, RailPolicy.CollapsedGripW);
             Assert.True(content >= Breakpoints.ContentMinWidthForMode(mode),
                 $"mode {mode} at {w}: collapsing leaves the content column {content}");
         }
         // The narrowest two-column page there is: 540 − 96 − 20 = 424.
-        Assert.Equal(424f, RailPolicy.CollapsedContentWidthFor(540f));
+        Assert.Equal(424f, RailPolicy.ContentWidthFor(540f, RailPolicy.CompactStripW, RailPolicy.CollapsedGripW));
     }
 
     /// <summary>The two breakpoint rails and the seam are ONE number each, shared by the policy and the frame.</summary>
@@ -433,9 +437,6 @@ public class DetailRailPolicyTests
         Assert.Equal(RailArtistLine.WideHeight, RailArtistLine.HeightOf(RailArtistMode.Wide));
         Assert.Equal(RailArtistLine.MediumHeight, RailArtistLine.HeightOf(RailArtistMode.Medium));
         Assert.Equal(RailArtistLine.NarrowHeight, RailArtistLine.HeightOf(RailArtistMode.Narrow));
-        // The tallest RENDERED look (two wrapped lines) is covered by every wrapping mode and by the global reserve.
-        Assert.True(RailArtistLine.TallestHeight >= twoLines);
-        Assert.True(RailArtistLine.TallestHeight >= RailArtistLine.WideHeight);
         // A medium lead face (24) fits its box.
         Assert.True(RailArtistLine.MediumHeight >= Detail.Skeleton.OwnerAvatar + 2f * RailArtistLine.PadY);
     }

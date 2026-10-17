@@ -2388,7 +2388,7 @@ public static partial class Spotify
     static long FetchServerTimeMs(CancellationToken ct)
     {
         Span<char> path = stackalloc char[64];
-        var request = Build(Current, RequestKind.ServerTime, new RequestArgs(), path);
+        var request = Build(RequestKind.ServerTime, new RequestArgs(), path);
         byte[] body = Get(SpclientBaseUrl() + new string(request.Path), ct, authed: true);
         var reader = new Utf8JsonReader(body, new JsonReaderOptions { MaxDepth = 4 });
         while (reader.Read())

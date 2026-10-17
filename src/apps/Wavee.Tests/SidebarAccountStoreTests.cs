@@ -94,6 +94,24 @@ public class SidebarAccountStoreTests
     }
 
     [Fact]
+    public void RoundTrip_KeepsTheCachedCoversOfSyncedAndLocalPins()
+    {
+        var pins = new List<SidebarPin>
+        {
+            new("pl:" + PlaylistA, SidebarEntryKind.Playlist, PlaylistA, "A", 0) { Cover = "https://i.scdn.co/image/a" },
+            new("search", SidebarEntryKind.AppRoute, "", "Search", 5),
+            new("album:" + AlbumB, SidebarEntryKind.Album, AlbumB, "B", 0),
+        };
+        var data = new SidebarAccountData("spotify:a", true, pins, [], 0, []);
+
+        Assert.True(SidebarAccountStore.TryParse(SidebarAccountStore.Serialize(data), "spotify:a", out var back));
+
+        Assert.Equal(pins, back.Pins);
+        Assert.Equal("https://i.scdn.co/image/a", back.Pins[0].Cover);
+        Assert.Equal("", back.Pins[2].Cover);
+    }
+
+    [Fact]
     public void Parse_DropsLikedAndHome()
     {
         // Q1a: a file that lists Home or Liked as pins still loads, with those two dropped.
@@ -233,7 +251,6 @@ public class SidebarPinIdentityTests
             Assert.Equal(SidebarEntryKind.AppRoute, SidebarPinId.KindOf(route));
         }
         Assert.Null(SidebarPinId.FromRoute("settings"));
-        Assert.False(SidebarPinId.IsPinnableRoute("settings"));
         Assert.Null(SidebarPinId.FromRoute("playback-diagnostics"));
         Assert.Null(SidebarPinId.FromRoute(""));
         Assert.Null(SidebarPinId.FromRoute(null));
@@ -250,7 +267,6 @@ public class SidebarPinIdentityTests
     {
         Assert.Contains("recents", SidebarPinId.PinnableRoutes);
         Assert.Equal("recents", SidebarPinId.FromRoute("recents"));
-        Assert.True(SidebarPinId.IsPinnableRoute("recents"));
         Assert.Equal(SidebarEntryKind.AppRoute, SidebarPinId.KindOf("recents"));
         Assert.Equal("recents", SidebarPinId.RouteOf("recents"));
         Assert.Equal("", SidebarPinId.UriOf("recents"));            // a route pin carries no entity uri
@@ -498,6 +514,23 @@ public class SidebarPinStoreTests
         Assert.False(s.Touch("a", "New Name"));       // unchanged -> no-op
         Assert.False(s.Touch("a", ""));               // an empty name is never a refresh
         Assert.False(s.Touch("missing", "x"));
+    }
+
+    [Fact]
+    public void Touch_caches_the_last_cover_and_an_empty_value_never_erases_one()
+    {
+        // S9: an offline pin keeps its last title AND cover, so the display cache holds both.
+        var s = StoreOf("a");
+        int version = s.Version.Peek();
+
+        Assert.True(s.Touch("a", null, "spotify:image:c1"));
+        Assert.Equal("spotify:image:c1", s[0].Cover);
+        Assert.Equal("n", s[0].Name);                               // a cover-only refresh leaves the name
+        Assert.True(s.Touch("a", "Renamed", null));
+        Assert.Equal("spotify:image:c1", s[0].Cover);               // a name-only refresh leaves the cover
+        Assert.False(s.Touch("a", "Renamed", "spotify:image:c1"));  // unchanged -> no-op
+        Assert.False(s.Touch("a", "", ""));
+        Assert.Equal(version, s.Version.Peek());
     }
 
     [Fact]

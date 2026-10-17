@@ -50,7 +50,7 @@ public class DetailHeroWhitespaceTests
 
         // The identity column: IdentityHeightFor no longer has a description term at all, so there is nothing to
         // compare — the column's height is the same whether the page has a description or not.
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, eyebrow: true, attribution: true, meta: true);
+        float identity = VerticalLayout.IdentityHeightFor(plan, eyebrow: true, attribution: true, meta: true);
         Assert.True(identity > 0f);
 
         // No forced MinHeight steps in to backfill the space a missing description leaves.
@@ -62,7 +62,7 @@ public class DetailHeroWhitespaceTests
         // "a description that might show up".
         var pessimisticPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null,
             eyebrow: true, attribution: true, meta: true);
-        float identityP = VerticalLayout.IdentityHeightFor(pessimisticPlan, rowFlow,
+        float identityP = VerticalLayout.IdentityHeightFor(pessimisticPlan,
             eyebrow: true, attribution: true, meta: true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float toolbar = VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad;
@@ -91,17 +91,17 @@ public class DetailHeroWhitespaceTests
         var planNoMeta = VerticalLayout.TitleTypeFor(w, rowFlow, "Random Access Memories",
             eyebrow: true, attribution: true, meta: false);
 
-        float withMeta = VerticalLayout.IdentityHeightFor(planWithMeta, rowFlow,
+        float withMeta = VerticalLayout.IdentityHeightFor(planWithMeta,
             eyebrow: true, attribution: true, meta: true);
-        float withoutMeta = VerticalLayout.IdentityHeightFor(planNoMeta, rowFlow,
+        float withoutMeta = VerticalLayout.IdentityHeightFor(planNoMeta,
             eyebrow: true, attribution: true, meta: false);
 
         // The title plan may itself change (row flow's height budget opens up without the meta row), so isolate
         // the metadata row's own cost through IdentityChrome, which holds the title constant.
         var (chromeWith, blocksWith) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true,
-            pulse: false, rowFlow: rowFlow, chart: false);
+            pulse: false, chart: false);
         var (chromeWithout, blocksWithout) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: false,
-            pulse: false, rowFlow: rowFlow, chart: false);
+            pulse: false, chart: false);
         Assert.Equal(VerticalLayout.MetaRowHeight, chromeWith - chromeWithout);
         Assert.Equal(1, blocksWith - blocksWithout);
 
@@ -129,7 +129,7 @@ public class DetailHeroWhitespaceTests
                 eyebrow: true, attribution: true, meta: true, pulse: false, chart: false);
             float art = VerticalLayout.ArtworkFor(bw, rowFlow);
             float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
-            float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow,
+            float identity = VerticalLayout.IdentityHeightFor(plan,
                 eyebrow: true, attribution: true, meta: true);
             float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
 

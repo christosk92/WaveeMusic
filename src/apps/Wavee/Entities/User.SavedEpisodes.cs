@@ -1,9 +1,9 @@
-using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -15,7 +15,9 @@ public readonly partial struct User
     /// menu and row template as any other episode-carrying table, no bespoke list here any more. The states this
     /// component still owns are the ones ABOVE the table: has the listen-later playlist even been discovered yet
     /// (<see cref="Spotify.Podcasts.SavedReadState"/> Pending/Empty/Failed) — Ready hands off to the table, which then
-    /// owns its OWN membership loading via the edge's state.</summary>
+    /// owns its OWN membership loading via the edge's state.
+    /// <para>T10c1: the states' picture (the cold seed rows, the fade-only reveal) is the structure's `Library.SavedEpisodes` view (Classic: `ClassicLibrarySavedEpisodes`).</para></summary>
+    [CoreHost]
     sealed class SavedEpisodesReader : Component
     {
         static readonly Track.TableProfile s_profile = Track.TableProfile.From(
@@ -58,15 +60,15 @@ public readonly partial struct User
                 if (slot > Table.None) Entities.EnsureEdge(FetchEdge.PlaylistTracks, slot, 0);
             }, DepKey.From(slot, (int)epoch));
 
-            return new SkelRegionEl(
-                Pending: () => state == Spotify.Podcasts.SavedReadState.Pending,
-                Failed: () => state == Spotify.Podcasts.SavedReadState.Failed,
-                Content: () => state == Spotify.Podcasts.SavedReadState.Ready && slot > Table.None
+            return Slots.View(ViewKeys.LibrarySavedEpisodes, new LibrarySavedEpisodesProps
+            {
+                Pending = state == Spotify.Podcasts.SavedReadState.Pending,
+                Failed = state == Spotify.Podcasts.SavedReadState.Failed,
+                Content = () => state == Spotify.Podcasts.SavedReadState.Ready && slot > Table.None
                     ? TableOf(slot)
                     : PodcastReaderUI.Quiet(Loc.Get(Strings.Podcast.Reader.SavedEmpty)),
-                ShimmerSource: () => new BoxEl { Direction = 1, Children = SeedRows() },
-                OnFailed: () => PodcastReaderUI.Failed(read.Refresh),
-                Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null);
+                OnFailed = () => PodcastReaderUI.Failed(read.Refresh),
+            });
         }
 
         Element TableOf(int slot) => Track.Table(new Track.TableArgs
@@ -77,18 +79,5 @@ public readonly partial struct User
             Embedded = true,
             ScrollKey = "saved-episodes:" + slot,
         });
-
-        static Element[] SeedRows()
-        {
-            var rows = new Element[6];
-            for (int i = 0; i < rows.Length; i++) rows[i] = Episode.SeedReaderRow(false);
-            return rows;
-        }
     }
-}
-
-public static class SavedEpisodeLayout
-{
-    public static bool Compact(float width, bool previous)
-        => width < (previous ? 664f : 616f);
 }

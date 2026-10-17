@@ -168,21 +168,15 @@ public static partial class Lyrics
     /// <summary>The blur STRENGTH dial — one 0..100 % number that scales BOTH the depth-of-field ladder
     /// (<see cref="Fx"/>) and the active-line / held-note glow halo σ.
     ///
-    /// <para>The setting stores −1 (AUTO) by default: a fresh install lets the device decide rather than shipping one
-    /// fixed number the user never chose. <see cref="Resolve"/> is the
-    /// ONLY place −1 is interpreted — everywhere else deals in the resolved 0..100 int, so a caller that forgets the
-    /// auto case cannot silently treat −1 as "1 % blur".</para></summary>
+    /// <para>The setting is just the 0..100 intensity (0 = off, default 100); there is no Auto choice. The accessor
+    /// (<c>Prefs.Lyrics.BlurStrength</c>) is the one place a stored −1 from the removed Auto is read as 100, so everything
+    /// here deals in a plain 0..100 int.</para></summary>
     public static class BlurPolicy
     {
-        public const int Auto = -1;
-        /// <summary>What Auto paints at, on every GPU tier (the weak-tier 40 was withdrawn on 2026-10-05: the GPU tier is not a
-        /// quality input; a saturated GPU is the engine's measured governor's business).</summary>
-        public const int AutoDefault = 100;
-
-        /// <summary>The stored setting (−1 = auto, else 0..100) resolved into the strength this frame actually paints at.
-        /// Clamps a stored value from an older/newer build's ladder into range rather than trusting the registry.</summary>
-        public static int Resolve(int setting)
-            => setting == Auto ? AutoDefault : Math.Clamp(setting, 0, 100);
+        /// <summary>The setting resolved into the strength this frame actually paints at. Clamps a value from an
+        /// older/newer build's ladder into range rather than trusting the registry (a negative here would be 0; the
+        /// accessor has already mapped the old Auto −1 to 100).</summary>
+        public static int Resolve(int setting) => Math.Clamp(setting, 0, 100);
 
         /// <summary>The STAGE never depth-blurs: the fullscreen surface's depth cue is the scrim and the accent pill, and
         /// every non-active line being its own blur layer was the stage's largest per-frame cost (§1.1). 0 ⇒ Enabled(0) is
@@ -190,7 +184,7 @@ public static partial class Lyrics
         /// keeps it on the user's setting (<c>ViewCore._haloScale</c>).</summary>
         public static int ResolveFor(int setting, bool onStage) => onStage ? 0 : Resolve(setting);
 
-        /// <summary>The resolved strength (0..100, NOT −1 — call <see cref="Resolve"/> first) as the 0..1 multiplier
+        /// <summary>The resolved strength (0..100 — call <see cref="Resolve"/> first) as the 0..1 multiplier
         /// the view scales its DoF ladder and halo σ by.</summary>
         public static float Scale(int strength) => Math.Clamp(strength, 0, 100) / 100f;
 
@@ -863,10 +857,6 @@ public static partial class Lyrics
         public static float GlowSigma(float rowDofSigma, float glowAlpha, bool large, float blurScale)
             => rowDofSigma > 0.01f ? 0f : (large ? 4.5f : 3f) * blurScale * glowAlpha;
 
-        /// <summary>At most TWO glow layers are ever animating: a third in-flight out-fade is finished instantly. A
-        /// general fade pool would put a blurred layer on every recently-sung row.</summary>
-        public const int MaxGlowFades = 2;
-
         /// <summary>The write gates. A tick that moves nothing writes nothing, the draw list stays byte-identical, and
         /// the host's skip-submit elides the frame entirely — which is what makes a 30 Hz surface free.</summary>
         public const float SplitEps = 0.0008f, SoftnessEps = 0.002f, DotAlphaEps = 0.004f;
@@ -987,7 +977,7 @@ public static partial class Lyrics
         }
 
         /// <summary>Step every in-flight line by <paramref name="dtMs"/> (already clamped to
-        /// <see cref="DtMaxMs"/> by <see cref="ClampDt"/>). A settled line — zero compensation and no delay left —
+        /// <see cref="DtMaxMs"/> by the ticker). A settled line — zero compensation and no delay left —
         /// costs one comparison and no write, which is what lets the out-of-band retirement above make the per-frame
         /// cost a function of the band rather than of the document length.
         /// <returns>Whether anything is still moving.</returns></summary>
@@ -1024,11 +1014,6 @@ public static partial class Lyrics
             }
             return moving;
         }
-
-        /// <summary>The ticker-gap clamp. The wall stamp is refreshed on EVERY call — even when nothing is pending —
-        /// so a long gap can never be spent as one giant integration step.</summary>
-        public static float ClampDt(float rawDtMs, float fallbackMs)
-            => rawDtMs <= 0f ? fallbackMs : Math.Clamp(rawDtMs, 0f, DtMaxMs);
 
         /// <summary>Should this line's translate actually reach the scene? The landing write is exempt from the gate
         /// because it must be exact.</summary>
@@ -1445,10 +1430,19 @@ public static partial class Lyrics
         public float Estimate => LineHeight + 2f * RowPad;
 
         /// <summary>The type and its rhythm (size, line, pads) scaled by <paramref name="k"/> and rounded to whole DIPs —
-        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged.
-        /// Exactly this row at <paramref name="k"/> = 1.</summary>
+        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged on a big stage;
+        /// on a small one (k below 1: a Small or Compact window's stage, TC3) it steps down with the type to the rail's gutter at the
+        /// Compact stage's rail-sized type (C-Lyrics-Compact draws the rail's 26/33 lines on a 400-wide stage). Exactly this row at
+        /// <paramref name="k"/> = 1.</summary>
         public RowMetrics Scaled(float k) => k == 1f ? this
-            : this with { FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k) };
+            : this with
+            {
+                FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k),
+                SidePad = k >= 1f ? SidePad : MathF.Round(MathF.Max(NarrowGutter, SidePad - (SidePad - NarrowGutter) * (1f - k) / (1f - NarrowScale))),
+            };
+
+        /// <summary>The rail's side gutter, and the stage type scale at which a small stage reaches it (the rail's 26 over the stage's 36).</summary>
+        public const float NarrowGutter = 22f, NarrowScale = 26f / 36f;
     }
 
     /// <summary>The fixed metrics of the two surfaces (the 340-DIP rail and the immersive stage) — one table, so the

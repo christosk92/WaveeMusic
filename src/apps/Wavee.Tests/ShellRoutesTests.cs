@@ -26,6 +26,8 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellRouteTableTests
 {
     [Fact]
@@ -179,6 +181,8 @@ public class ShellRouteTableTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellNavDestTests
 {
     [Fact]
@@ -221,6 +225,8 @@ public class ShellNavDestTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellRouteCodecTests
 {
     [Theory]
@@ -377,6 +383,8 @@ public class ShellRouteCodecTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class DeepLinkTests
 {
     [Fact]

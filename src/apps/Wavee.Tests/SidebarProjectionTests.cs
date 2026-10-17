@@ -52,6 +52,7 @@ using System.Collections.Generic;
 using FluentGpu.Foundation;
 using Google.Protobuf;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -266,8 +267,6 @@ public class SidebarSortFacts
         Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.None));
         Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.Albums));
         Assert.Equal(SidebarLibrarySort.Recents, SidebarSort.Effective(SidebarLibrarySort.Recents, SidebarLibraryFilter.Albums));
-        Assert.False(SidebarSort.SupportsDirection(SidebarLibrarySort.CustomOrder));
-        Assert.True(SidebarSort.SupportsDirection(SidebarLibrarySort.Recents));
     }
 
     [Fact]
@@ -753,7 +752,7 @@ public class SidebarProjectionEdgeFacts
         var p = StagePlaylist(s, "spotify:playlist:mix", "Roadtrip", null, 0, PlaylistCaps.None);   // no image
         var t1 = StageTrack(s, "spotify:track:t1", "spotify:album:a1", "spotify:image:cover1");
         var t2 = StageTrack(s, "spotify:track:t2", "spotify:album:a2", "spotify:image:cover2");
-        // Two tracks off the SAME album: one tile, not two (the detail page's own dedupe, Playlist.UI.cs:104).
+        // Two tracks off the SAME album: one tile, not two (the detail page's own dedupe, Playlist.UI.cs).
         var t2b = StageTrack(s, "spotify:track:t2b", "spotify:album:a2", "spotify:image:cover2b");
         var t3 = StageTrack(s, "spotify:track:t3", "spotify:album:a3", "spotify:image:cover3");
         var t4 = StageTrack(s, "spotify:track:t4", "spotify:album:a4", "spotify:image:cover4");
@@ -2026,9 +2025,9 @@ public class SidebarPaneTextSubtitleFacts
         Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
     }
 
-    // ── FOLDER — Trap 5: SidebarPane's FolderRow (Sidebar.UI.Slot.cs) now renders its subtitle through THIS SAME
+    // ── FOLDER — Trap 5: the pane's FolderRow (ClassicNavRow.cs) now renders its subtitle through THIS SAME
     //    pure decision (`Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in entry) : null`), so driving the
-    //    folder branch here — not by reading Sidebar.UI.Slot.cs's source — pins the real, live rendering decision.
+    //    folder branch here — not by reading ClassicNavRow.cs's source — pins the real, live rendering decision.
 
     static SidebarLibraryEntry Folder(int childCount, bool countKnown) =>
         new("folder:abc", SidebarEntryKind.Folder, "", "My Folder", "",
@@ -2477,6 +2476,22 @@ public class SidebarBinderPipelineUnlistedPinFacts
         Assert.Equal("Top Songs - South Korea", row.Name);
         Assert.True(row.Cover.IsEmpty);
         Assert.Equal(0, row.TrackCount);
+    }
+
+    [Fact]
+    public void NoHydrationYet_PaintsTheCachedCover_AndHydrationReplacesIt()
+    {
+        // S9: an offline pin keeps its last cover (the caller interns the pin's cached image id); a hydrated identity wins.
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000) { Cover = "https://i.scdn.co/image/cached" };
+        var cached = Entities.Strings.Intern(pin.Cover);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, cachedCover: cached);
+        Assert.Equal(cached, row.Cover);
+
+        var live = Entities.Strings.Intern("https://i.scdn.co/image/live");
+        var hydrated = row with { Cover = live, IdentityKnown = true };
+        Assert.Equal(live, SidebarBinderPipeline.ResolveUnlistedPin(pin, 0, hydrated, cachedCover: cached).Cover);
     }
 
     /// <summary>THE USER'S ACTUAL STATE (trap 5 follow-up): a pin the ylpin bridge minted with an empty cached

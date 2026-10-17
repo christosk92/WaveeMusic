@@ -75,7 +75,7 @@ public class EntitiesFakeAlbumTests
         {
             var show = ShowOf(s);
             Assert.True(show.Knows(ShowFields.All));
-            foreach (int slot in show.EpisodeSlots)
+            foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(show.Slot))
                 Assert.True(new Episode(slot).Knows(EpisodeFields.All));
         }
     }
@@ -173,10 +173,10 @@ public class EntitiesFakeAlbumTests
         var e = Entities.Current.Edges;
         Assert.Equal(2, al2.ArtistSlots.Length);
         Assert.Equal(2, al2.VersionSlots.Length);
-        Assert.Equal(6, al2.MoreBySlots.Length);                           // "Show all 6"
+        Assert.Equal(6, Entities.Current.Edges.AlbumMoreBy.Targets(al2.Slot).Length);                           // "Show all 6"
         Assert.Equal(7, e.AlbumRecommendations.Count(al2.Slot));
-        Assert.Equal(7, al2.FeaturedOnSlots.Length);
-        Assert.Equal(6, al2.SimilarSlots.Length);
+        Assert.Equal(7, Entities.Current.Edges.AlbumFeaturedOn.Targets(al2.Slot).Length);
+        Assert.Equal(6, Entities.Current.Edges.AlbumSimilar.Targets(al2.Slot).Length);
         Assert.Equal(6, al2.MerchSlots.Length);
 
         int noPrice = 0, noShop = 0;
@@ -198,7 +198,7 @@ public class EntitiesFakeAlbumTests
         // The other albums answer each trailing relation EMPTY: absent, not a skeleton.
         var al7 = AlbumOf(7);
         Assert.Equal(EdgeState.Complete, e.AlbumMerch.State(al7.Slot));
-        Assert.Equal(0, al7.MoreBySlots.Length + al7.SimilarSlots.Length + al7.MerchSlots.Length);
+        Assert.Equal(0, Entities.Current.Edges.AlbumMoreBy.Targets(al7.Slot).Length + Entities.Current.Edges.AlbumSimilar.Targets(al7.Slot).Length + al7.MerchSlots.Length);
     }
 
     [Fact]
@@ -342,7 +342,7 @@ public class EntitiesFakeAlbumTests
         for (int s = 0; s < 8; s++)
         {
             var show = ShowOf(s);
-            var slots = show.EpisodeSlots;
+            var slots = Entities.Current.Edges.ShowEpisodes.Targets(show.Slot);
             Assert.Equal(s == 0 ? 14 : 8 + s % 5, slots.Length);           // sh0 is the podcast rework's 14-episode serial
             for (int i = 0; i < slots.Length; i++)
             {
@@ -365,7 +365,7 @@ public class EntitiesFakeAlbumTests
         Span<float> pcts = stackalloc float[16];
         for (int s = 3; s < 8; s++)
         {
-            var slots = ShowOf(s).EpisodeSlots;
+            var slots = Entities.Current.Edges.ShowEpisodes.Targets(ShowOf(s).Slot);
             for (int i = 0; i < slots.Length; i++) pcts[i] = Episode.Rules.PctOf(new Episode(slots[i]));
             Assert.Equal(1, Episode.Rules.ResumePick(pcts[..slots.Length]));
             Assert.Equal(1f / 3f, pcts[1], 3);
@@ -379,7 +379,7 @@ public class EntitiesFakeAlbumTests
     {
         Seed();
         int noDescription = 0, noArt = 0;
-        foreach (int slot in ShowOf(3).EpisodeSlots)
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(ShowOf(3).Slot))
         {
             var ep = new Episode(slot);
             if (ep.DescriptionId.IsEmpty) noDescription++;
@@ -396,13 +396,13 @@ public class EntitiesFakeAlbumTests
         var e = Entities.Current.Edges.ShowEpisodes;
         var sh7 = ShowOf(7);
         Assert.Equal(EdgeState.Partial, e.State(sh7.Slot));
-        Assert.True(sh7.TotalEpisodes > sh7.EpisodeSlots.Length);
+        Assert.True(sh7.TotalEpisodes > Entities.Current.Edges.ShowEpisodes.Targets(sh7.Slot).Length);
         Assert.True(Episode.Rules.CanLoadMore(sh7.EpisodesAsked, 0, sh7.TotalEpisodes));
 
         var sh8 = ShowOf(8);
         Assert.Equal(EdgeState.Complete, e.State(sh8.Slot));
         Assert.Equal(0, sh8.TotalEpisodes);
-        Assert.True(Episode.Rules.IsEmptyShow(sh8.TotalEpisodes, sh8.EpisodeSlots.Length, Episode.Rules.Status.All));
+        Assert.True(Episode.Rules.IsEmptyShow(sh8.TotalEpisodes, Entities.Current.Edges.ShowEpisodes.Targets(sh8.Slot).Length, Episode.Rules.Status.All));
         Assert.False(Wavee.User.Me.Has(LibraryEdgeKind.SavedShows, sh8.Slot));
         Assert.Equal(8, Wavee.User.Me.Count(LibraryEdgeKind.SavedShows));    // the base seed's count still stands
         Assert.Equal(18, Wavee.User.Me.Count(LibraryEdgeKind.SavedAlbums));   // 13 base + the 5 library-rework albums (Entities.Fake.Library.cs)
@@ -417,7 +417,7 @@ public class EntitiesFakeAlbumTests
         string title = AlbumOf(2).Title;
         int merchCount = AlbumOf(2).MerchSlots.Length;
         int end = AlbumOf(13).PreReleaseEnd;
-        int published = new Episode(ShowOf(3).EpisodeSlots[2]).PublishedAt;
+        int published = new Episode(Entities.Current.Edges.ShowEpisodes.Targets(ShowOf(3).Slot)[2]).PublishedAt;
         uint plays = Rows(AlbumOf(2))[0].PlayCount;
 
         Seed();
@@ -430,6 +430,6 @@ public class EntitiesFakeAlbumTests
         Assert.Equal(title, AlbumOf(2).Title);
         Assert.Equal(plays, Rows(AlbumOf(2))[0].PlayCount);
         Assert.Equal(Day, (long)AlbumOf(13).PreReleaseEnd - end);
-        Assert.Equal(Day, (long)new Episode(ShowOf(3).EpisodeSlots[2]).PublishedAt - published);
+        Assert.Equal(Day, (long)new Episode(Entities.Current.Edges.ShowEpisodes.Targets(ShowOf(3).Slot)[2]).PublishedAt - published);
     }
 }

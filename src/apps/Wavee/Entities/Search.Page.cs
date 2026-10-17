@@ -1,8 +1,8 @@
 // ── Entities/Search.Page.cs ────────────────────────────────────────────────────────────────────────────────────────
-// the search results page: the route, the page component (query echo, facet row, the keyed sliding facet body), the
-// ONE demand, the readiness of each facet, and the facet dispatch
+// the search results page's CORE HOST: the route, the page component (the query, the facet strip, the slide, the readiness
+// of each facet), the ONE demand, and the facet dispatch into the body MODEL the theme draws (T10a2: `Pages.Search`)
 //
-// Role: UI
+// Role: UI (core host)
 // Owner: P (stream P3)
 // Wave: 5
 // Budget: 550 lines
@@ -32,18 +32,25 @@
 //
 // ── THE SLIDE (§0.5) ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// The facet body is keyed "facet-body:<facet>" and carries `MotionRecipes.PageSlideForward` / `PageSlideBack` only on a
-// REAL chip change (`Search.Slides`): mounting never slides. The body region is `smoothResize: false` — a shimmer and a
-// complete result set differ by thousands of DIP (§9 must-not-simplify 2).
+// The host decides WHETHER the body slides and which way (`Search.Slides`, `SearchSlide`): only on a REAL chip change,
+// mounting never slides. The picture (the facet body keyed "facet-body:<facet>" carrying `MotionRecipes.PageSlideForward` /
+// `PageSlideBack`, the region's `smoothResize: false` — a shimmer and a complete result set differ by thousands of DIP,
+// §9 must-not-simplify 2) is Classic's (`Views\Pages\ClassicSearchPage.cs`).
+//
+// ── WHAT THE VIEW GETS ───────────────────────────────────────────────────────────────────────────────────────────────
+//
+// The page's own state as `SearchPageProps`, and the BODY as a `SearchBodyModel` the host builds each time the skeleton
+// region asks for its content (`Body`): the hits as `HitItem`s over the live handles, the fallback interleave, the rail,
+// the genre tiles and the related queries. The view draws them; nothing here builds an element.
 
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -69,15 +76,12 @@ public readonly partial struct Search
         (EntityKind.User, (uint)UserFields.Identity),
     ];
 
-    static readonly Func<bool> s_true = static () => true;
-    static readonly Func<bool> s_false = static () => false;
-    static readonly Func<Element> s_genreSeed = static () => GenreSeed();
-
     /// <summary>The deadline after which an unanswered facet re-reads its marks.</summary>
     const float RecheckMs = 10_000f;
 
     enum Readiness : byte { Pending, Ready, Concluded, Failed }
 
+    [CoreHost]
     sealed class PageHost : Component
     {
         readonly Signal<int> _chip = new(0);
@@ -100,8 +104,8 @@ public readonly partial struct Search
 
         readonly Func<float, int> _colsFor;
         readonly Func<bool> _pending, _failed;
-        readonly Func<Element> _content, _shimmer, _onFailed;
-        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists;
+        readonly Func<SearchBodyModel> _body;
+        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists, _selectArtists;
 
         public PageHost()
         {
@@ -114,16 +118,15 @@ public readonly partial struct Search
             _colsFor = ColsNow;
             _pending = () => BodyReadiness() == Readiness.Pending;
             _failed = () => BodyReadiness() == Readiness.Failed;
-            _content = Body;
-            _shimmer = () => Shimmer(_facet);
+            _body = Body;
             _demand = Demand;
             _demandTracked = DemandTracked;
             _retry = Retry;
-            _onFailed = () => Failed(_retry);
             _retryAll = RetryAll;
             _recheckNow = Recheck;
             _clampChip = () => { if (_chip.Peek() >= _facetCount) _chip.Value = 0; };
             _selectPlaylists = () => SelectFacet(SearchFacet.Playlists);
+            _selectArtists = () => SelectFacet(SearchFacet.Artists);
         }
 
         public override Element Render()
@@ -133,8 +136,8 @@ public readonly partial struct Search
             var scope = Entities.Current;
             Subscribe(scope);
             _ = _recheck.Value;
-            bool hideArt = Prefs.Appearance.TrackArtworkHidden();
             var overlay = UseContext(Overlay.Service);
+            string scrollScope = UseContext(Shell.PageScrollScope);
 
             if (!ReferenceEquals(_scope, scope) || !string.Equals(_query, p.Query, StringComparison.Ordinal))
             {
@@ -148,7 +151,7 @@ public readonly partial struct Search
                 _hadChips = false;
                 _bodyAnswered = false;
             }
-            _ctx = new HitContext(_query, _origin, overlay, hideArt);
+            _ctx = new HitContext(_query, _origin, overlay);
 
             // The facet list: the All row's chip strip once it has ever landed; before that, the lone All tab (behind the
             // eleven-pill skeleton while the first answer is pending).
@@ -171,64 +174,44 @@ public readonly partial struct Search
             _prevChip = chip;
             _slideArmed = true;
 
-            if (!_all.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Empty);
+            string scrollKey = scrollScope + "search:" + ((int)_facet).ToString(CultureInfo.InvariantCulture);
+            if (!_all.IsValid)
+                return Slots.View(ViewKeys.SearchPage, PropsOf(vacant: true, echo: "", chipsSkeletal: true, tabs: Array.Empty<SearchTab>(),
+                                                              selected: 0, SearchSlide.None, scrollKey));
 
             var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
             // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
-            // answered once for this query (Search.ChipRowSkeletal). Both rows are keyed so the swap is a mount, not an
-            // in-place patch — an unkeyed swap never fires Enter — and the real row rides the body's own 8-DIP rise.
+            // answered once for this query (Search.ChipRowSkeletal). The view keys both rows so the swap is a mount, not an
+            // in-place patch.
             _bodyAnswered |= BodyReadiness() != Readiness.Pending;
-            Element chipRow = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered)
-                ? FacetRowSkeleton() with { Key = "facets-skel" }
-                : FacetRow(_all, _facets.AsSpan(0, _facetCount), Math.Min(chip, _facetCount - 1), _selectors) with
-                {
-                    Key = "facets",
-                    Enter = new EnterExit(Dy: 8f, Opacity: 0f, Active: true),
-                    Transition = MotionTokenDef.Eased(Design.Motion.Standard, Easing.SmoothOut),
-                };
+            bool skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
+            SearchTab[] tabs = skeletal ? Array.Empty<SearchTab>() : TabsOf(_all, _facets.AsSpan(0, _facetCount));
 
-            var region = new SkelRegionEl(
-                Pending: _pending, Failed: _failed, Content: _content, ShimmerSource: _shimmer, OnFailed: _onFailed,
-                Reveal: _facet == SearchFacet.Tracks ? SkelReveal.None : SkelReveal.StaggerRows,
-                Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
-            LayoutTransition? motion = slide ? (forward ? MotionRecipes.PageSlideForward : MotionRecipes.PageSlideBack) : null;
-            string facetId = ((int)_facet).ToString(CultureInfo.InvariantCulture);
+            return Slots.View(ViewKeys.SearchPage, PropsOf(vacant: false, _echo, skeletal, tabs, Math.Min(chip, _facetCount - 1),
+                                                          slide ? (forward ? SearchSlide.Forward : SearchSlide.Back) : SearchSlide.None, scrollKey));
+        }
 
-            Element body = IsGridFacet(_facet)
-                ? new BoxEl
-                {
-                    Key = "facet-body:" + facetId, Animate = motion,
-                    Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, 0f),
-                    Children = [region],
-                }
-                : ScrollView(new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Design.Dock.Reserve + Spacing.XXL),
-                    Children =
-                    [
-                        new BoxEl { Key = "facet-body:" + facetId, Animate = motion, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [region] },
-                    ],
-                }) with
-                {
-                    Grow = 1f, MinWidth = 0f, MinHeight = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "search:" + facetId,
-                };
-
-            return new BoxEl
+        SearchPageProps PropsOf(bool vacant, string echo, bool chipsSkeletal, IReadOnlyList<SearchTab> tabs, int selected, SearchSlide slide, string scrollKey)
+            => new()
             {
-                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.S,
-                        Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.S),
-                        Children = [QueryEcho(_echo), chipRow],
-                    },
-                    body,
-                ],
+                Vacant = vacant, Echo = echo, ChipsSkeletal = chipsSkeletal, Tabs = tabs, Selected = selected, Selectors = _selectors,
+                Facet = _facet, Slide = slide, ScrollKey = scrollKey,
+                Pending = _pending, Failed = _failed, Body = _body,
+                Retry = _retry, RetryAll = _retryAll, SelectPlaylists = _selectPlaylists, ColsFor = _colsFor, SelectArtists = _selectArtists,
             };
+
+        /// <summary>The facet strip over the All row's chip strip: server rank first, All always first, counts omitted for
+        /// All and for 0 (W3).</summary>
+        static SearchTab[] TabsOf(Search all, ReadOnlySpan<SearchFacet> facets)
+        {
+            var tabs = new SearchTab[facets.Length];
+            for (int i = 0; i < facets.Length; i++)
+            {
+                var f = facets[i];
+                int count = f == SearchFacet.All ? 0 : FacetCount(all.RawTotalOf(f), LocalCountOf(all, f));
+                tabs[i] = new SearchTab(f, count);
+            }
+            return tabs;
         }
 
         /// <summary>Every table the page paints from: a hydrating hit row, a landed page, a genre tile.</summary>
@@ -249,8 +232,6 @@ public readonly partial struct Search
             _ = scope.Users.Changed.Value;
             _ = scope.Browses.Changed.Value;
         }
-
-        static bool IsGridFacet(SearchFacet f) => f is SearchFacet.Albums or SearchFacet.Playlists;
 
         // ── readiness ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -277,62 +258,98 @@ public readonly partial struct Search
 
         // ── the facet dispatch (§1.1 ResultsFor) ────────────────────────────────────────────────────────────────────
 
-        Element Body()
+        SearchBodyModel Body()
         {
             var r = BodyReadiness();
-            if (r == Readiness.Pending) return Shimmer(_facet);
             var ctx = _ctx;
             var row = _row;
-            if (r == Readiness.Concluded && _facet != SearchFacet.All) return Empty(_facet, _query);
-            return _facet switch
+            SearchBodyModel Of(SearchBodyKind kind) => new() { Kind = kind, Facet = _facet, Hits = ctx };
+            if (r == Readiness.Pending) return Of(SearchBodyKind.Pending);
+            if (r == Readiness.Concluded && _facet != SearchFacet.All) return Of(SearchBodyKind.Empty);
+            switch (_facet)
             {
-                SearchFacet.All => AllBody(in ctx),
-                SearchFacet.Genres => GenreGrid(_all, header: false, _origin),
-                SearchFacet.Tracks => row.ResultCount == 0 ? Empty(_facet, _query) : SongsGrid(row, in ctx),
-                SearchFacet.Albums or SearchFacet.Playlists => row.ResultCount == 0 ? Empty(_facet, _query) : FacetGrid(row, ctx),
-                SearchFacet.Artists => ArtistsList(row, in ctx),
-                SearchFacet.Podcasts or SearchFacet.Episodes or SearchFacet.Profiles => HitsList(row, _facet, in ctx),
+                case SearchFacet.All:
+                    return AllBody(in ctx);
+                case SearchFacet.Genres:
+                    return Of(SearchBodyKind.Genres) with { Genres = GenreTiles(_all, _origin) };
+                case SearchFacet.Tracks:
+                    return row.ResultCount == 0 ? Of(SearchBodyKind.Empty) : Of(SearchBodyKind.Songs) with { Rows = HitsOf(row) };
+                case SearchFacet.Albums or SearchFacet.Playlists:
+                    return row.ResultCount == 0 ? Of(SearchBodyKind.Empty) : Of(SearchBodyKind.FacetGrid) with { Row = row };
+                case SearchFacet.Artists or SearchFacet.Podcasts or SearchFacet.Episodes or SearchFacet.Profiles:
+                    return Of(SearchBodyKind.Rows) with { Rows = HitsOf(row) };
                 // Audiobook and author hits have no table in 0.3 (reported): the facet is its own empty sentence.
-                _ => Empty(_facet, _query),
-            };
+                default:
+                    return Of(SearchBodyKind.Empty);
+            }
+        }
+
+        /// <summary>A row's hits in server order, holes dropped, each with its chrome flags.</summary>
+        static List<HitItem> HitsOf(Search row)
+        {
+            int n = row.ResultCount;
+            var items = new List<HitItem>(n);
+            for (int i = 0; i < n; i++)
+            {
+                var hit = row.ResultRef(i);
+                if (!hit.IsNone) items.Add(new HitItem(hit, VersionOf(hit), row.FlagsOf(hit)));
+            }
+            return items;
         }
 
         /// <summary>The All tab (W1): the Top Result and Best matches off the ranked list — or, for an answer that carried
         /// none, the fallback interleave — then the playlist rail, the genre links and the related queries.</summary>
-        Element AllBody(in HitContext ctx)
+        SearchBodyModel AllBody(in HitContext ctx)
         {
             var all = _all;
             int n = all.ResultCount;
-            var kids = new List<Element>(6);
             EntityRef hero = default;
+            HitItem? top = null;
+            List<HitItem>? best = null;
+            IReadOnlyList<FallbackHit>? fallback = null;
             bool collected = (all.RowFlags & SearchRowFlags.Collected) != 0;
             if (n > 0 && !collected)
             {
                 hero = all.ResultRef(0);
-                kids.Add(TopResult(hero, all.FlagsOf(hero), in ctx));
+                top = new HitItem(hero, VersionOf(hero), all.FlagsOf(hero));
                 if (n > 1)
                 {
-                    var items = new List<HitItem>(n - 1);
+                    best = new List<HitItem>(n - 1);
                     for (int i = 1; i < n; i++)
                     {
                         var h = all.ResultRef(i);
-                        if (!h.IsNone) items.Add(new HitItem(h, VersionOf(h), all.FlagsOf(h)));
+                        if (!h.IsNone) best.Add(new HitItem(h, VersionOf(h), all.FlagsOf(h)));
                     }
-                    kids.Add(BestMatches(items, _colsFor, ctx));
                 }
             }
-            else if (n > 0) kids.Add(FallbackList(all, in ctx));
-            else kids.Add(Empty(SearchFacet.All, ctx.Query));
+            else if (n > 0) fallback = FallbackList(all);
 
-            var rail = RailItems(all, hero);
-            if (rail.Count > 0) kids.Add(PlaylistRail(rail, _selectPlaylists, ctx));
-            kids.Add(GenreSection());
-            kids.Add(RelatedSection());
-            return new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+            var genreState = SectionOf(ReadinessOf(_all, SearchFields.Genres, _askedAll));
+            var relatedState = SectionOf(ReadinessOf(_all, SearchFields.Related, _askedAll));
+            return new SearchBodyModel
+            {
+                Kind = SearchBodyKind.All, Facet = SearchFacet.All, Hits = ctx,
+                Hero = top, Best = best, Fallback = fallback,
+                Rail = RailItems(all, hero),
+                ArtistRail = ArtistRailItems(all, hero),
+                GenreState = genreState,
+                Genres = genreState == SearchSection.Ready ? GenreTiles(_all, _origin) : Array.Empty<BrowseTileModel>(),
+                RelatedState = relatedState,
+                Related = relatedState == SearchSection.Ready ? RelatedOf(_all, _query) : Array.Empty<string>(),
+            };
         }
 
+        /// <summary>A readiness as the All tab's section state: a section not asked yet, or still out, is Pending.</summary>
+        static SearchSection SectionOf(Readiness r) => r switch
+        {
+            Readiness.Ready => SearchSection.Ready,
+            Readiness.Failed => SearchSection.Failed,
+            Readiness.Concluded => SearchSection.Concluded,
+            _ => SearchSection.Pending,
+        };
+
         /// <summary>0.2.9's no-top-hits list: the pure interleave (<see cref="FallbackRows"/>) over the collected hits.</summary>
-        static Element FallbackList(Search all, in HitContext ctx)
+        static List<FallbackHit> FallbackList(Search all)
         {
             int n = all.ResultCount;
             var tracks = new List<EntityRef>(n);
@@ -352,8 +369,7 @@ public readonly partial struct Search
             }
             Span<FallbackRow> plan = stackalloc FallbackRow[FallbackMaxRows];
             int m = FallbackRows(tracks.Count, artists.Count, albums.Count, playlists.Count, plan);
-            if (m == 0) return Empty(SearchFacet.All, ctx.Query);
-            var rows = new Element[m];
+            var rows = new List<FallbackHit>(m);
             for (int i = 0; i < m; i++)
             {
                 var list = plan[i].Facet switch
@@ -364,9 +380,9 @@ public readonly partial struct Search
                     _ => playlists,
                 };
                 var hit = list[plan[i].Index];
-                rows[i] = HitRow(hit, all.FlagsOf(hit), plan[i].Large, in ctx);
+                rows.Add(new FallbackHit(new HitItem(hit, VersionOf(hit), all.FlagsOf(hit)), plan[i].Large));
             }
-            return HitColumn(rows);
+            return rows;
         }
 
         /// <summary>The rail: the ranked hits' playlists, then the Playlists facet's own list when it has landed.</summary>
@@ -386,30 +402,53 @@ public readonly partial struct Search
             return items;
         }
 
-        static uint VersionOf(EntityRef hit) => hit.Table is { } t && (uint)hit.Slot < (uint)t.Count ? t.Version[hit.Slot] : 0u;
-
-        Element GenreSection()
+        /// <summary>The artist rail: the ranked hits' artists, then the Artists facet's own list when it has landed (the playlist rail's rule).</summary>
+        List<HitItem> ArtistRailItems(Search all, EntityRef hero)
         {
-            switch (ReadinessOf(_all, SearchFields.Genres, _askedAll))
-            {
-                case Readiness.Ready: return GenreGrid(_all, header: true, _origin);
-                case Readiness.Failed: return SectionFailed(_retryAll);
-                case Readiness.Concluded: return new BoxEl();
-                default:
-                    return new SkelRegionEl(
-                        Pending: s_true, Failed: s_false, Content: s_genreSeed, ShimmerSource: null, OnFailed: null,
-                        Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
-            }
+            int n = all.ResultCount;
+            var hits = new EntityRef[n];
+            for (int i = 0; i < n; i++) hits[i] = all.ResultRef(i);
+            var facetRow = Entities.Search(_query.AsSpan(), SearchFacet.Artists);
+            ReadOnlySpan<int> own = facetRow.Knows(SearchFields.Results) ? facetRow.ResultSlots : default;
+            var slots = new int[n + own.Length];
+            int m = ArtistShelfItems(hits, own, hero, slots);
+            var artists = Entities.Current.Artists;
+            var items = new List<HitItem>(m);
+            for (int i = 0; i < m; i++)
+                items.Add(new HitItem(new EntityRef(EntityKind.Artist, slots[i]), artists.Version[slots[i]], SearchHitFlags.None));
+            return items;
         }
 
-        /// <summary>Related queries: nothing while pending (0.2.9), the compact error with Retry on failure — matching the
-        /// genre section rather than vanishing silently (§9 gap 2).</summary>
-        Element RelatedSection() => ReadinessOf(_all, SearchFields.Related, _askedAll) switch
+        static uint VersionOf(EntityRef hit) => hit.Table is { } t && (uint)hit.Slot < (uint)t.Count ? t.Version[hit.Slot] : 0u;
+
+        /// <summary>The genre tiles as browse-category tile models: each opens its browse page (or a re-committed search on its name)
+        /// carrying the search LOOKUP origin (<see cref="OpenGenre"/>). An empty list draws nothing (parity 38).</summary>
+        static BrowseTileModel[] GenreTiles(Search all, Shell.NavOrigin? origin)
         {
-            Readiness.Ready => RelatedQueries(_all, _query),
-            Readiness.Failed => SectionFailed(_retryAll),
-            _ => new BoxEl(),
-        };
+            var slots = all.GenreSlots;
+            var models = new BrowseTileModel[slots.Length];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var node = new Browse(slots[i]);
+                string uri = node.Id.Text;
+                string name = Entities.Strings.Resolve(node.TitleId);
+                models[i] = new BrowseTileModel(name, uri, null, null, () => OpenGenre(uri, name, origin));
+            }
+            return models;
+        }
+
+        /// <summary>The related queries (server order) with the typed query dropped (parity 27-28).</summary>
+        static List<string> RelatedOf(Search all, string typed)
+        {
+            var related = all.Related;
+            var queries = new List<string>(related.Length);
+            for (int i = 0; i < related.Length; i++)
+            {
+                string q = Entities.Strings.Resolve(related[i].Query);
+                if (KeepsRelated(q, typed)) queries.Add(q);
+            }
+            return queries;
+        }
 
         // ── columns, facet selection ────────────────────────────────────────────────────────────────────────────────
 

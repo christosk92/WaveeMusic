@@ -1,28 +1,28 @@
 // ── Entities/Profile.Page.cs ───────────────────────────────────────────────────────────────────────────────────────────
-// The PROFILE page (spotify:user:…): install + mount point and the page component — demand on mount and on every
-// revisit (through the data layer's ProfileAsk plan), the render-cost stamp (marks + Fetch.Settled folded too: a 404 seal /
-// failure moves no Version), the four load faces (ProfileLoadRule.Header), the derived shimmer, the person's tone (accent,
-// blend wash, shell tint), the context band (Detail.Band + Detail.Pivot + the scroll spy) and one SkelRegion per section.
-// The hero, the section bodies and the cards are Profile.UI.cs (U2); the pure decisions are Profile.Rules.cs.
+// The PROFILE page (spotify:user:…): install + mount point and the CORE HOST — demand on mount and on every revisit
+// (through the data layer's ProfileAsk plan), the render-cost stamp (marks + Fetch.Settled folded too: a 404 seal /
+// failure moves no Version), the load faces (ProfileLoadRule.Header), the section plan and each section's body verdict and
+// cards, the person's tone (accent, shell tint), the scroll spy and the verbs. The hero, the band, the sections and the
+// cards are Classic's (T10c2: `Themes\Classic\Structure\Views\Pages\ClassicProfile*.cs`); the pure decisions are
+// Profile.Rules.cs; what a card opens or plays is `ProfileVerbs` (Profile.Verbs.cs).
 //
-// Role: UI   Owner: U1   Template: Entities/Artist.Page.cs (the band / spy / sentinel / clip are copied from it)
-// Spec: docs/plans/wavee/profile-pages-implementation.md Appendix U §3 + "Reconciliation, round 2"
+// Role: CORE (host)   Owner: U1   Template: Entities/Artist.Page.cs (the band / spy / sentinel / clip are copied from it)
+// Spec: docs/plans/wavee/profile-pages-implementation.md Appendix U §3 + "Reconciliation, round 2"; themes plan 6.1 (T10c2)
 //
 // THE FOUR FACES (ProfileLoadRule.Header): Loading → the derived shimmer; Ready → the page; Unavailable → the page's
 // "isn't available" vacancy as CONTENT (no Retry, the 404 seal); Failed → the error vacancy with Retry = RetryHeader.
+// The host builds a `ProfilePageProps` on every render and mounts `ViewKeys.ProfilePage`.
 
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
-using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -46,18 +46,9 @@ public static partial class Profile
 
     sealed record PageProps(EntityUri Subject, string RouteKey);
 
+    [CoreHost]
     sealed partial class PageHost : Component, IPropsHost
     {
-        static readonly string[] s_secKeys = Keys("sec:"), s_anchorKeys = Keys("anchor:");
-        static readonly Func<Element> s_emptyShape = static () => new BoxEl();
-
-        static string[] Keys(string prefix)
-        {
-            var k = new string[ProfileSections.Count];
-            for (int i = 0; i < k.Length; i++) k[i] = prefix + ProfileSections.Key((ProfileSection)i);
-            return k;
-        }
-
         // ── identity ──
         PageProps? _latest;
         readonly Signal<PageProps?> _props = new(null);
@@ -70,12 +61,19 @@ public static partial class Profile
         /// <summary>This page's identity as the shell material's owner; survives keep-alive park/reactivate.</summary>
         readonly object _tintOwner = new();
 
-        // ── geometry (latched fields — Artist.Page's discipline) ──
-        readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
+        // ── geometry (latched fields — `Artist.PageHost`'s discipline) ──
+        // The page's measured width (0 until the first measure: the hero ladder's seed answers until then) and the hero's sub-tier on the structure's
+        // ladder, the artist hero's (themes plan 3.6, TC6): a crossing found after mount commits on the first frame that is not resized.
+        readonly Signal<float> _heroWidth = new(0f);
         readonly Signal<int> _layoutEpoch = new(0);
-        ArtistHeroTier _tier = ArtistHeroTier.Wide;
-        ProfileHeroMetrics _metrics = ProfileHeroLayout.For(ArtistHeroLayout.WideWidth, ArtistHeroTier.Wide);
-        float _width = ArtistHeroLayout.WideWidth;
+        IReadSignal<int>? _heroTier;
+        IReadSignal<Size2>? _viewportSize;
+        /// <summary>The facts this page is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
+        readonly Func<float> _heroSeed;
+        ProfileHeroMetrics _metrics;
+        float _width;
         bool _measured;
 
         // ── scroll, band, spy ──
@@ -96,34 +94,28 @@ public static partial class Profile
 
         // ── colour ──
         // Seeded from the last remembered page accent, so the first frame never paints the default over a held colour.
-        readonly Signal<ColorF> _accent = new(AccentHold.Last ?? Tok.AccentDefault);
-        readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(
-            AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, ""));
-        readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
-        readonly Func<ColorF> _accentFn;
+        readonly Signal<ColorF> _accent = new(HeldAccent());
+        readonly Signal<Design.PageAccent> _pageAccent = new(InitialPageAccent());
+        int _accentEpoch = -1;   // the Tok.Epoch the accent was last published at (themes plan X44)
+        readonly Func<ColorF> _accentFn, _accentPeekFn;
 
         // ── readiness ──
         ProfileLoad _header = ProfileLoad.Loading;
         bool _bodyReady, _revealed;
-        Element? _body;
 
-        // ── sections (latched per compose; the region delegates read these) ──
-        readonly ProfileSectionBody[] _secBody = new ProfileSectionBody[ProfileSections.Count];
-        readonly Element?[] _secEl = new Element?[ProfileSections.Count];
-        readonly Func<bool>[] _secPending, _secFailed;
-        readonly Func<Element>[] _secContent, _secShimmer, _secFailedPanel;
+        // ── sections ──
         readonly Action[] _secRetry;
         readonly Action?[] _seeAll;
 
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
-        readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _demandTop, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
+        readonly Func<Signal<bool>> _compactEdgeFn;
+        readonly Action _demand, _demandTop, _publishAccent, _republishAccent, _resolveSpy, _bumpPivot, _retry;
         readonly Action _scrollToTop, _watchScroll;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Func<long> _stampFn;
-        readonly HeroActs _acts;
+        readonly ProfileHeroActs _acts;
 
         public PageHost()
         {
@@ -131,8 +123,6 @@ public static partial class Profile
             Controls.Library ??= User.LibrarySeam;
 
             int n = ProfileSections.Count;
-            _secPending = new Func<bool>[n]; _secFailed = new Func<bool>[n];
-            _secContent = new Func<Element>[n]; _secShimmer = new Func<Element>[n]; _secFailedPanel = new Func<Element>[n];
             _secRetry = new Action[n]; _seeAll = new Action?[n];
             for (int i = 0; i < n; i++)
             {
@@ -140,30 +130,23 @@ public static partial class Profile
                 var s = (ProfileSection)i;
                 _anchorRealized[k] = h => _anchors[k] = h;
                 _sectionClicks[k] = () => GoToSection(k);
-                _secPending[k] = () => _secBody[k] == ProfileSectionBody.Seed;
-                _secFailed[k] = () => _secBody[k] == ProfileSectionBody.Error;
-                _secContent[k] = () => _secEl[k] ?? new BoxEl();
-                _secShimmer[k] = () => SeedShelf(s, _accent.Peek(), MagazineInnerWidth());
                 _secRetry[k] = () => RetrySection(s);
-                _secFailedPanel[k] = () => SectionError(s, _accent.Peek(), _secRetry[k]);
                 if (s == ProfileSection.Following) _seeAll[k] = () => OpenList(ProfileFacet.Following);
                 else if (s == ProfileSection.Followers) _seeAll[k] = () => OpenList(ProfileFacet.Followers);
             }
             _accentFn = () => _accent.Value;
+            _accentPeekFn = () => _accent.Peek();
+            _compactEdgeFn = () => _compact;
             _pendingFn = () => !_bodyReady && _header is not (ProfileLoad.Failed or ProfileLoad.Unavailable);
             _failedFn = () => !_bodyReady && _header == ProfileLoad.Failed;
-            _contentFn = () => _body ?? new BoxEl();
-            _shimmerFn = PageShimmer;
             _retry = Retry;
-            // Retry = RetryHeader (Refresh, un-asks first); never Ensure — a sealed Asked row is a no-op for Ensure.
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _user.IsValid ? _retry : null);
             _demand = Demand;
             _demandTop = DemandTop;
             _publishAccent = PublishAccent;
-            _publishTheme = () => _theme.Value = Tok.Theme;
+            _republishAccent = RepublishAccent;
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
-            _scrollToTop = () => _scroll.ScrollTo(0.0, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
+            _scrollToTop = () => _scroll.ScrollTo(0.0, GlideOrJump());
             _captureViewport = h => _viewport = h;
             _measure = r =>
             {
@@ -186,7 +169,8 @@ public static partial class Profile
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
-            _acts = new HeroActs(
+            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
+            _acts = new ProfileHeroActs(
                 Share: () => Episode.CopyLink(_user.IsValid ? Actions.WebLinkOf(_user.Uri) : ""),
                 Menu: () => MenuFor(_user, _name),
                 OpenStat: k =>
@@ -203,7 +187,7 @@ public static partial class Profile
             {
                 // The first paint carries a cached grading's accent instead of one frame of the default.
                 _accentSeeded = true;
-                _theme.Value = Tok.Theme;
+                _accentEpoch = ThemeEpoch();
                 if (_latest.Subject.IsValid) PublishAccent(Entities.User(_latest.Subject), _latest.RouteKey);
             }
             _props.Value = _latest;
@@ -221,7 +205,6 @@ public static partial class Profile
                 _subject = p.Subject;
                 _user = p.Subject.IsValid ? Entities.User(p.Subject) : default;   // allocates the row: bind now, the demand fills
                 Array.Clear(_anchors);                                            // the body is epoch-keyed: re-register
-                Array.Clear(_secEl);
                 _revealed = false;
             }
 
@@ -235,16 +218,20 @@ public static partial class Profile
             // Own top artists ride Home.Feeds; a vanity uri learns it is yours only once Social lands, so this re-keys on it.
             UseEffect(_demandTop, DepKey.From(u.Slot, (int)scopeEpoch, _own ? 1 : 0, 0));
             UseEffect(_publishAccent);
-            UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
+            UseEffect(_republishAccent, DepKey.From(ThemeEpoch()));    // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
-            bool washes = Prefs.Appearance.ColorWashes();
-
+            // THE HERO'S SUB-TIER AND METRICS (TC6): the artist hero's ladder over the page's own width, seeded before the first measure from the content
+            // region the frame resolved the window tiers on; the metrics are the structure's record for that sub-tier in the window tier on screen.
+            _viewportSize = UseContextSignal(Viewport.Size);
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
+            _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
+            var tierFacts = _facts.Value.Tiers;
             _ = _layoutEpoch.Value;
-            _width = MathF.Max(1f, _heroWidth.Value);
-            _metrics = ProfileHeroLayout.For(_width, _tier);
-            _tier = _metrics.Tier;
+            float measuredW = _heroWidth.Value;
+            _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
+            _metrics = ShellPolicy.Tracked.ArtistTiers.ProfileHero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
 
             _header = valid ? ProfileLoadRule.Header(u) : ProfileLoad.Unavailable;
             _bodyReady = ProfileReveal.BodyReady(_header, _measured, _revealed);
@@ -254,53 +241,64 @@ public static partial class Profile
             string? avatar = valid ? u.Image : null;
             var tone = ProfileTone.Of(avatar, valid ? u.Color : 0u, avatar is { Length: > 0 } a && Palette.CanGrade(a));
             // A 0×0 leaf owns the watch + the publish. Unavailable/Failed opt out (definite → neutral chrome).
-            Element tint = Palette.ShellTint(tone.PaletteUrl, ready: Detail.CoverLatch.IsUsable(tone.PaletteUrl), disabled: !washes,
+            Element tint = Palette.ShellTint(tone.PaletteUrl, ready: Detail.CoverLatch.IsUsable(tone.PaletteUrl),
                 apply: _header is not (ProfileLoad.Unavailable or ProfileLoad.Failed),
                 owner: _tintOwner, slot: shellSlot, key: "profile-tint:" + routeKey, payloadAccent: tone.PayloadArgb);
 
-            _body = _header == ProfileLoad.Unavailable ? Unavailable()
-                  : _bodyReady ? Compose(u, avatar, tone, washes)
-                  : null;
+            bool unavailable = _header == ProfileLoad.Unavailable;
+            bool composed = !unavailable && _bodyReady;
+            ProfileSectionSlot[] sections = composed ? PlanSections(u) : [];
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));
             UseSignalEffect(_watchScroll);
 
-            // ONE page region; the shimmer is DERIVED from PageShimmer (never mounted). Soft: the complete tree rises as one.
-            Element region = new SkelRegionEl(
-                Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
-                Group: null, SmoothResize: false);
+            // The accent and the band's engaged edge are read here, as the page always read them (only for a body that is composed): this render wakes on
+            // the grading and on the sentinel's flip. The derived skeleton peeks at the accent instead (`AccentPeek`).
+            ColorF accent = composed ? _accent.Value : _accent.Peek();
+            bool compact = composed && _compact.Value;
 
-            Element scroll = ScrollView(new BoxEl
+            return global::FluentGpu.Theming.Slots.View(ViewKeys.ProfilePage, new ProfilePageProps
             {
-                Direction = 1,
-                // Keyed CHILD (rule 14): a scope switch remounts the sections, whose anchors re-register after the reset.
-                Children = [new BoxEl { Key = "profile-body:" + scopeEpoch.ToString(CultureInfo.InvariantCulture), Direction = 1, Children = [region] }],
-            }) with
-            {
-                Key = "profile-scroll:" + routeKey, Grow = 1f, ScrollKey = UseContext(Shell.PageScrollScope) + routeKey,
-                OnRealized = _captureViewport, EdgeCues = ScrollEdgeCues.None, Handle = _scroll,
-            };
-
-            // The page PROVIDES its accent (Design.AccentCtx): the heart and every other ambient consumer read it.
-            return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent,
-                Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>?)_scrollY, new BoxEl
-                {
-                    Key = "profile-page:" + routeKey, Grow = 1f, Direction = 1, OnBoundsChanged = _measure,
-                    Children = [tint, scroll],
-                }));
+                RouteKey = routeKey,
+                ScopeKey = scopeEpoch.ToString(CultureInfo.InvariantCulture),
+                ScrollKey = UseContext(Shell.PageScrollScope) + routeKey,
+                Uri = valid ? u.Uri.Text : "",
+                Name = _name,
+                Own = _own,
+                Pending = _pendingFn,
+                Failed = _failedFn,
+                Retry = valid ? _retry : null,
+                Unavailable = unavailable,
+                BodyReady = composed,
+                Width = _width,
+                Metrics = _metrics,
+                Measure = _measure,
+                Accent = accent,
+                AccentFn = _accentFn,
+                AccentPeek = _accentPeekFn,
+                PageAccent = _pageAccent,
+                PaletteUrl = tone.PaletteUrl,
+                PayloadAccent = tone.PayloadArgb,
+                Tint = tint,
+                Hero = composed ? ProfileHeroText.For(u, _own, avatar) : ProfileHeroText.PlaceholderFor(_own),
+                HeroActs = _acts,
+                Compact = compact,
+                CompactEdge = _compactEdgeFn,
+                Active = _active,
+                Scroll = _scroll,
+                CaptureViewport = _captureViewport,
+                ScrollY = _scrollY,
+                ScrollToTop = _scrollToTop,
+                Sections = sections,
+            });
         }
 
-        // ── the loaded page ──────────────────────────────────────────────────────────────────────────────────────────
+        // ── the section plan ─────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>[wash clipped at the band] under [hero · sentinel · magazine clipped at the band] — Artist.Page's
-        /// Compose, verbatim in shape. Plan, anchors and pivot are built in ONE pass so they cannot disagree.</summary>
-        Element Compose(User u, string? avatar, ProfileToneSource tone, bool washes)
+        /// <summary>The page's sections in their one fixed order, each with its body verdict, its cards and its verbs. Plan, anchors and pivot are built in ONE
+        /// pass so they cannot disagree.</summary>
+        ProfileSectionSlot[] PlanSections(User u)
         {
             var scope = Entities.Current;
-            var m = _metrics;
-            float width = _width;
-            ColorF accent = _accent.Value;
-            string uri = u.Uri.Text;
             bool own = _own;
 
             int topCount = own ? scope.Edges.UserTopArtists.Count(scope.MeSlot) : 0;
@@ -314,99 +312,29 @@ public static partial class Profile
                 u.ProfileCount(ProfileShelf.Followers));
             int n = ProfileSections.Plan(in facts, _plan);
 
-            var sections = new Element[n];
-            var pivotItems = new (string Label, Action OnClick)[n];
+            var slots = new ProfileSectionSlot[n];
             int hash = 17;
             for (int i = 0; i < n; i++)
             {
                 var s = _plan[i];
                 int k = (int)s;
-                Latch(s, u, in facts, accent);
-                // Each section is ITS OWN region: a late list shimmers in place, never holding the hero (Group null).
-                Element region = new SkelRegionEl(
-                    Pending: _secPending[k], Failed: _secFailed[k], Content: _secContent[k], ShimmerSource: _secShimmer[k],
-                    OnFailed: _secFailedPanel[k], Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                    Group: null, SmoothResize: false);
-                // EVERY section keyed: sections appear mid-stream as data lands.
-                sections[i] = new BoxEl
+                var (state, count) = s switch
                 {
-                    Key = s_anchorKeys[k], Direction = 1, MinWidth = 0f, OnRealized = _anchorRealized[k],
-                    Children = [new BoxEl { Key = s_secKeys[k], Direction = 1, MinWidth = 0f, Children = [region] }],
+                    ProfileSection.TopArtists => (facts.TopArtists, facts.TopArtistCount),
+                    ProfileSection.Playlists => (facts.Playlists, facts.PlaylistCount),
+                    ProfileSection.RecentArtists => (facts.RecentArtists, facts.RecentArtistCount),
+                    ProfileSection.Following => (facts.Following, facts.FollowingCount),
+                    _ => (facts.Followers, facts.FollowerCount),
                 };
-                pivotItems[i] = (PivotLabel(s), _sectionClicks[k]);
+                var body = ProfileSections.BodyOf(state, count);
+                bool cards = body == ProfileSectionBody.Cards;
+                slots[i] = new ProfileSectionSlot(s, body, cards ? CardsOf(s, u) : [], cards ? SeeAllFor(s, u, count) : null,
+                    _secRetry[k], _sectionClicks[k], _anchorRealized[k]);
                 hash = unchecked(hash * 31 + k + 1);
             }
             _pivotCount = n;
             _pivotHash = hash;
-
-            float collapse = ProfileHeroLayout.CollapseDistance(in m);
-            bool compact = _compact.Value;
-            Element band = BandBar(uri, own, width, m.Gutter, collapse, compact, pivotItems);
-            Element hero = HeroBanner(HeroText.For(u, own, avatar), uri, width, in m, compact, _acts, band);
-            Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
-                .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
-            Element wash = Palette.ArtistBlendWash(tone.PaletteUrl, ProfileHeroLayout.WashHeight(in m),
-                ProfileHeroLayout.WashBoundary(in m), disabled: !washes, key: "profile-wash:" + uri,
-                payloadAccent: tone.PayloadArgb);
-            // THE MAGAZINE'S CLIP IS THE CONTRACT: the band paints nothing, so no CONTENT may render into its 56 DIP — the
-            // magazine is cut at the line, its cut feathered exactly while the clip is engaged. The WASH is deliberately
-            // NOT cut (unlike Artist.Page, whose full-bleed photo covers the band's 56 at rest): a profile hero has no
-            // photo, so a cut wash left a bare strip of shell colour above the name. Uncut, the colour fills the hero to
-            // its top and simply scrolls away under the transparent band.
-            Element magazine = new BoxEl
-            {
-                Key = "profile-under-band", Direction = 1,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
-                Children =
-                [
-                    new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
-                    new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
-                ],
-            }.StickyClip(Detail.BandLayout.ClipInset);
-
-            return new BoxEl
-            {
-                ZStack = true,
-                Children =
-                [
-                    new BoxEl { Key = "profile-wash", Direction = 1, HitTestVisible = false, Children = [wash] },
-                    new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
-                ],
-            };
-        }
-
-        /// <summary>The centred magazine column: Grow toward the row's free width, capped at 1600, the hero's gutter on
-        /// both sides, a 32 section gap, the player dock's reserve under the last section.</summary>
-        static Element Magazine(Element[] sections, float gutter) => new BoxEl
-        {
-            Direction = 1, Gap = Design.Size.SectionGap,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
-            Children = sections,
-        };
-
-        float MagazineInnerWidth() => MathF.Max(1f, MathF.Min(_width, Design.Size.PageMaxW) - 2f * _metrics.Gutter);
-
-        /// <summary>One section's body verdict + element, latched for its region's delegates.</summary>
-        void Latch(ProfileSection s, User u, in ProfileFacts f, ColorF accent)
-        {
-            int k = (int)s;
-            var (state, count) = s switch
-            {
-                ProfileSection.TopArtists => (f.TopArtists, f.TopArtistCount),
-                ProfileSection.Playlists => (f.Playlists, f.PlaylistCount),
-                ProfileSection.RecentArtists => (f.RecentArtists, f.RecentArtistCount),
-                ProfileSection.Following => (f.Following, f.FollowingCount),
-                _ => (f.Followers, f.FollowerCount),
-            };
-            var body = ProfileSections.BodyOf(state, count);
-            _secBody[k] = body;
-            _secEl[k] = body switch
-            {
-                ProfileSectionBody.Cards => Shelf(s, CardsOf(s, u), accent, SeeAllFor(s, u, count)),
-                ProfileSectionBody.Empty => Artist.SectionBlock(SectionTitle(s), EmptyShelf(s, f.Own), accent),
-                _ => null,
-            };
+            return slots;
         }
 
         /// <summary>"See all" only for the two people sections, and only when the list holds more than the shelf shows.</summary>
@@ -466,58 +394,6 @@ public static partial class Profile
             if (_user.IsValid) Shell.GoTo(ProfileListRoute.For(_user.Uri, facet));
         }
 
-        // ── the context band (Artist.Page §2.2, the profile arm: title · pivot · Follow as a word) ──────────────────────
-
-        Element BandBar(string uri, bool own, float width, float gutter, float collapse, bool canHit,
-                        (string Label, Action OnClick)[] pivotItems)
-        {
-            float actionH = Detail.BandLayout.Height - 2f * Spacing.M;
-            string name = _name;
-            // No "Overview" pivot tab: the title itself is the way back to the top of the page.
-            Element title = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
-                Cursor = CursorId.Hand, OnClick = _scrollToTop,
-                Children = [Detail.BandTitle(name)],
-            };
-            // The pivot is the ONLY elastic lane; the title and the actions never drop.
-            Element pivot = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-                Children = [Detail.Pivot(pivotItems, _active, _accentFn)],
-            };
-            Element actions = own
-                ? new BoxEl { Width = 0f, Height = 0f }
-                : new BoxEl
-                {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Embed.Comp(() => new Controls.FollowTextAction
-                            { Uri = uri, Name = name, Height = actionH, PadX = Detail.BandLayout.ActionPadX })
-                            with { Key = "profile-band-follow:" + uri, SkeletonProxy = s_emptyShape },
-                    ],
-                };
-            // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
-            float revealStart = ArtistHeroLayout.CompactRevealStart(collapse);
-            return new BoxEl
-            {
-                Width = width, Height = Detail.BandLayout.Height, ZStack = true,
-                HitTestVisible = canHit, HitTestPassThrough = true,
-                Children =
-                [
-                    new BoxEl { Direction = 0, Width = width, Height = Detail.BandLayout.Height, Justify = FlexJustify.Center, Children = [row] },
-                    // The ONE hairline, overlaid INSIDE the 56 so the collapse arithmetic stays exact.
-                    new BoxEl
-                    {
-                        Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
-                        HitTestVisible = false, Children = [Detail.BandHairline()],
-                    },
-                ],
-            }.Reveal(revealStart, collapse - revealStart, Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
-        }
-
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
         /// through the engine's one bring-into-view seam against the page's OWN viewport.</summary>
         void GoToSection(int section)
@@ -525,8 +401,7 @@ public static partial class Profile
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
-            scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
-                margin: Detail.BandLayout.Height);
+            scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(), margin: Detail.BandLayout.Height);
         }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through;
@@ -660,7 +535,16 @@ public static partial class Profile
         {
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Users.Changed.Value;
-            _ = _theme.Value;
+            PublishAccent(_user, _latest?.RouteKey ?? "");
+        }
+
+        /// <summary>Themes plan X44: the accent follows <c>Tok.Epoch</c> (the light/dark kind AND the definition) instead of a
+        /// <c>Signal&lt;ThemeKind&gt;</c> the page republished on every flip. The first publish (<see cref="ApplyProps"/>) already ran
+        /// at the current epoch, so the effect's mount run does nothing.</summary>
+        void RepublishAccent()
+        {
+            if (_accentEpoch == ThemeEpoch()) return;
+            _accentEpoch = ThemeEpoch();
             PublishAccent(_user, _latest?.RouteKey ?? "");
         }
 
@@ -677,35 +561,41 @@ public static partial class Profile
             if (tone.PaletteUrl is { Length: > 0 } url) _ = Palette.Watch(url).Value;
             var accent = Detail.AccentFor(tone.PaletteUrl, tone.PayloadArgb);
             _accent.SetIfChanged(accent);
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, routeKey));
-        }
-
-        // ── the derived shimmer ────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>A ShimmerSource, never mounted: the SAME hero composition over a placeholder (no band, the action row a
-        /// Skeletonized(false) spacer), the divider, and two seed shelves at the magazine's real width — own: Top artists +
-        /// Public playlists; other: Public playlists + Recently played artists.</summary>
-        Element PageShimmer()
-        {
-            var m = _metrics;
-            float inner = MagazineInnerWidth();
-            var first = _own ? ProfileSection.TopArtists : ProfileSection.Playlists;
-            var second = _own ? ProfileSection.Playlists : ProfileSection.RecentArtists;
-            ColorF accent = _accent.Peek();
-            return new BoxEl
-            {
-                Direction = 1,
-                Children =
-                [
-                    HeroBanner(HeroText.PlaceholderFor(_own), "", _width, in m, false, null, null),
-                    new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
-                    new BoxEl
-                    {
-                        Direction = 0, Justify = FlexJustify.Center,
-                        Children = [Magazine([SeedShelf(first, accent, inner), SeedShelf(second, accent, inner)], m.Gutter)],
-                    },
-                ],
-            };
+            _pageAccent.SetIfChanged(PageAccentOf(accent, routeKey));
         }
     }
+
+    // ── what a host type may not read itself (WVTH008: no token / design reads inside a `[CoreHost]`) ───────────────────────
+
+    /// <summary>The last remembered page accent, else the theme's default (so the first frame never paints the default over a held colour).</summary>
+    static ColorF HeldAccent() => Detail.HeldAccent ?? Tok.AccentDefault;
+
+    static Design.PageAccent InitialPageAccent()
+        => new(Detail.HeldAccent ?? Tok.AccentTextPrimary, Detail.HeldAccent ?? Tok.AccentDefault, "");
+
+    static Design.PageAccent PageAccentOf(ColorF accent, string routeKey) => new(accent, accent, routeKey);
+
+    /// <summary>The theme epoch (the light/dark kind AND the definition) the accent was last published at.</summary>
+    static int ThemeEpoch() => Tok.Epoch;
+
+    /// <summary>The scroll move a pivot click and the band title use: a glide, or an immediate jump under reduced motion.</summary>
+    static ScrollMove GlideOrJump() => Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide;
+
+    /// <summary>The ⋯ menu: Share ▸ (Copy link / Copy Spotify URI / Open in Spotify Web) — the show page's ⋯ grammar
+    /// (<c>Episode.ShareMenu</c>, whose Copy link reads the uri; the registered CopyLink verb reads a TRACK set). A
+    /// profile has no Pin row: no sidebar pin resolves a user route yet, and the verb would only ever be absent. Null when
+    /// nothing applies, so the ⋯ opens nothing rather than an empty flyout.</summary>
+    internal static ContextMenuModel? MenuFor(User u, string name)
+    {
+        if (!u.IsValid || !u.Uri.IsValid) return null;
+        var ctx = new ActionContext(new ActionTarget(TargetKind.None, [], u.Uri, name, PlaylistHost.None), Actions.Services);
+        if (Episode.ShareMenu(u.Uri, in ctx) is not { } share) return null;
+        return new ContextMenuModel([share], Actions.Menu.Header(u.Image, name, Loc.Get(Strings.Search.TypeUser), circular: true));
+    }
+
+    /// <summary>A follower-count message (<paramref name="key"/> = a <c>…FollowersKey</c> const): <c>count</c> picks the
+    /// plural arm, <c>n</c> is the grouped numeral — the formatter's own <c>#</c> prints invariant digits with no grouping
+    /// ("85324 followers").</summary>
+    internal static string FollowerCount(string key, int count)
+        => Loc.Format(key, ("count", count), ("n", ProfileStats.Numeral(count, CultureInfo.CurrentCulture)));
 }

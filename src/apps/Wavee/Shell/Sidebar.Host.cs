@@ -26,9 +26,9 @@
 
 using System.Globalization;
 using FluentGpu.Controls;
-using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -75,11 +75,18 @@ public static partial class Sidebar
         SidebarMigrationHost.RunIfNeeded(Platform.Settings, s_profileDir, Entities.Current.Key);
 
         var s = Platform.Settings;
-        Layout.Value = s.Get(Platform.Keys.SidebarLayoutId) == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
-        Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
-        Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
-        UserCollapsed.Value = s.Get(Platform.Keys.SidebarPaneUserCollapsed);
-        Seam.Value = UserCollapsed.Peek() ? SidebarRowGeometry.RailWidth : Width.Peek();
+        // The layout and the density are the active structure's choice (M7a: `structure.sidebar` / `structure.libraryDensity` in Classic, copied from the
+        // legacy keys at boot by ThemeBootstrap), published as the pane policy. Read AFTER the migration above, which hands its result to the option.
+        var design = ShellPolicy.Now.NavPane;
+        Layout.Value = design.Layout;
+        Density.Value = design.Density;
+        ShowCovers.Value = design.ShowCovers;
+        // The pane's width and collapse and the Library's list/grid view are the active theme's STATE (M7b: `theme.<id>.state.paneWidth` /
+        // `.paneCollapsed` / `.libraryView`, copied from the legacy keys and the device file at boot by ThemeBootstrap).
+        Width.Value = RestingWidth(ShellPolicy.Now.NavPane);
+        UserCollapsed.Value = ThemeState.Get(PaneCollapsedKey);
+        LibraryView.Value = ViewOf(ThemeState.Get(LibraryViewKey));
+        Seam.Value = UserCollapsed.Peek() ? ShellPolicy.Now.NavPane.RailWidth : Width.Peek();
         PresentedWidth.Value = Seam.Peek();
 
         s_deviceFile = new SidebarFileStore(SidebarStoreV3.PathUnder(s_profileDir)) { WriteCompleted = OnWriteCompleted };
@@ -90,6 +97,7 @@ public static partial class Sidebar
         s_accountFile = null;
         EnsureAccount(Entities.Current.Key);
         Pins.OnChanged = CommitAccount;                                   // every pin mutation is a commit point
+        _ = Model;                                                        // the nav model exists from here: no network, no binder start (the pane's pump starts it)
         Log.Info("sidebar", "boot layout=" + Layout.Peek() + " fault=" + LayoutFileFault);
     }
 
@@ -154,11 +162,17 @@ public static partial class Sidebar
 
     // ── the layout ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The active layout (<c>sidebar.layout.id</c>). A switch remounts the mode (fresh hooks, fresh scroll).</summary>
+    /// <summary>The active layout: the layout document, the undo ring and the menus follow this signal. The CHOICE is the structure's (Classic's
+    /// `structure.sidebar` option, published as <see cref="NavPanePolicy.Layout"/>): <see cref="FollowDesign"/> brings the signal after the option, and
+    /// <see cref="SwitchLayout"/> asks the option for a change. A switch remounts the mode (fresh hooks, fresh scroll).</summary>
     public static readonly Signal<SidebarLayoutId> Layout = new(SidebarLayoutId.Classic);
 
-    /// <summary>Entity-row density (<c>sidebar.pane.density</c>), global.</summary>
+    /// <summary>Entity-row density, global (the structure's `structure.libraryDensity` option, followed like <see cref="Layout"/>).</summary>
     public static readonly Signal<SidebarDensity> Density = new(SidebarDensity.Default);
+
+    /// <summary>The Classic layout's entity rows show covers (the structure's `structure.showCovers` option, S0, followed like <see cref="Layout"/>):
+    /// off resolves them as text rows. An option of the structure only: no verb of the sidebar changes it, so it is never in the undo ring.</summary>
+    public static readonly Signal<bool> ShowCovers = new(true);
 
     /// <summary>Your Library's active chip (<c>sidebar.library.filter</c>).</summary>
     public static readonly Signal<SidebarLibraryFilter> LibraryFilter = new(SidebarLibraryFilter.None);
@@ -172,15 +186,17 @@ public static partial class Sidebar
     static int s_docVersion = -1;
     static SidebarLayoutId s_docLayout;
     static SidebarDensity s_docDensity;
+    static bool s_docCovers = true;
+    static SidebarLibraryView s_docView;
 
     /// <summary>Both overlays (the undo ring and the Outline read them).</summary>
     public static SidebarLayoutState State => s_state;
 
-    /// <summary>Bumped on every overlay, density or layout change — the plan's and the binder's edge.</summary>
+    /// <summary>Bumped on every overlay, density, covers or layout change — the plan's and the binder's edge.</summary>
     public static IReadSignal<int> LayoutVersion => s_layoutVersion;
 
     /// <summary>The active layout's resolved document. PEEKS: a render that must re-plan reads <see cref="LayoutVersion"/>.
-    /// Cached on (version, layout, density), so the same instance comes back until something changed — the pane's
+    /// Cached on (version, layout, density, view, covers), so the same instance comes back until something changed — the pane's
     /// publish reference test depends on it.</summary>
     public static SidebarLayoutDoc Doc
     {
@@ -189,12 +205,16 @@ public static partial class Sidebar
             int v = s_layoutVersion.Peek();
             var layout = Layout.Peek();
             var density = Density.Peek();
-            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity)
+            var view = LibraryView.Peek();
+            bool covers = ShowCovers.Peek();
+            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity || view != s_docView || covers != s_docCovers)
             {
-                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density);
+                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density, view, covers);
                 s_docVersion = v;
                 s_docLayout = layout;
                 s_docDensity = density;
+                s_docView = view;
+                s_docCovers = covers;
             }
             return s_doc;
         }
@@ -240,11 +260,13 @@ public static partial class Sidebar
         SetItemShown s => Loc.Format(s.Shown ? "sidebar.undo.label.show" : "sidebar.undo.label.hide", ("name", ItemName(s.ItemId))),
         MoveItem m => Loc.Format("sidebar.undo.label.move", ("name", ItemName(m.ItemId))),
         SetLibrarySort s => Loc.Format("sidebar.undo.label.sort", ("name", Loc.Get("sidebar.sort." + SidebarStoreV3.SortName(s.Sort)))),
-        SetLibraryView v => Loc.Format("sidebar.undo.label.view", ("name", Loc.Get(v.View == SidebarLibraryView.Grid ? "sidebar.view.grid" : "sidebar.view.list"))),
         SetShowLiked => Loc.Get("sidebar.undo.label.liked"),
         ResetLayout r => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(r.Layout))),
         _ => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(op.Layout))),
     };
+
+    static string ViewLabel(SidebarLibraryView view)
+        => Loc.Format("sidebar.undo.label.view", ("name", Loc.Get(view == SidebarLibraryView.Grid ? "sidebar.view.grid" : "sidebar.view.list")));
 
     static string SectionName(string id) => Loc.Get("sidebar.section.title." + id);
     static string ItemName(string id) => Loc.Get("sidebar.item." + id);
@@ -256,7 +278,8 @@ public static partial class Sidebar
         return false;
     }
 
-    /// <summary>Switch the layout (Settings, the pane menu, the palette). Each layout keeps its own overlay.</summary>
+    /// <summary>Switch the layout (the pane menu, a card in Settings). Each layout keeps its own overlay. The structure's option is asked to
+    /// store the choice (a structure without the option ignores it: the switch then lasts for the session).</summary>
     public static void SwitchLayout(SidebarLayoutId next)
     {
         if (Layout.Peek() == next || Editing.Peek()) return;
@@ -265,11 +288,11 @@ public static partial class Sidebar
         Layout.Value = next;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         ClearRing();                                                  // the ring is per layout switch (design C.5)
-        Platform.Settings.Set(Platform.Keys.SidebarLayoutId, (int)next);
+        ThemeHost.Request(NavPaneOptionIds.Layout, next);
         Log.Info("sidebar", "layout.changed to=" + next);
     }
 
-    /// <summary>Density (Settings, the pane menu): recorded in the ring, never toasted.</summary>
+    /// <summary>Density (the pane menu, Settings): recorded in the ring, never toasted.</summary>
     public static void SetDensity(SidebarDensity density)
     {
         var before = Density.Peek();
@@ -284,7 +307,28 @@ public static partial class Sidebar
         if (Density.Peek() == density) return;
         Density.Value = density;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
-        Platform.Settings.Set(Platform.Keys.SidebarPaneDensity, (int)density);
+        ThemeHost.Request(NavPaneOptionIds.Density, density);
+    }
+
+    /// <summary>The structure's choice moved without a verb of the sidebar (a card or combo of the Settings options, the palette's option commands, a
+    /// theme switch): bring the sidebar after it. The frame's effect calls this with the tracked pane policy. A layout change while the sidebar is being
+    /// edited ends the edit first (a verb of the sidebar refuses instead: <see cref="SwitchLayout"/>); the density change is recorded in the ring like the
+    /// menu's.</summary>
+    public static void FollowDesign(NavPanePolicy nav)
+    {
+        ArgumentNullException.ThrowIfNull(nav);
+        if (nav.Layout != Layout.Peek())
+        {
+            if (Editing.Peek()) ExitEdit();
+            SwitchLayout(nav.Layout);
+        }
+        if (nav.Density != Density.Peek()) SetDensity(nav.Density);
+        if (nav.ShowCovers != ShowCovers.Peek())
+        {
+            // The text rows have another pitch: the version bump re-plans the pane and reseeds its extents.
+            ShowCovers.Value = nav.ShowCovers;
+            s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        }
     }
 
     public static void SetLibraryFilter(SidebarLibraryFilter filter)
@@ -300,9 +344,11 @@ public static partial class Sidebar
         var classicBefore = State.Of(SidebarLayoutId.Classic);
         var libraryBefore = State.Of(SidebarLayoutId.Library);
         var densityBefore = Density.Peek();
+        var viewBefore = LibraryView.Peek();
         ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Classic)));
         ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library)));
         SetDensityUnrecorded(SidebarDensity.Default);
+        SetLibraryViewUnrecorded(SidebarLibraryView.List);
         SetExpandedWidth(SidebarPaneBounds.DefaultWidth);
         string label = Loc.Get("sidebar.undo.label.resetEverything");
         Record(SidebarUndoEntry.Batch(Layout.Peek(), label,
@@ -310,6 +356,7 @@ public static partial class Sidebar
             new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Classic, label, Before: classicBefore, After: State.Of(SidebarLayoutId.Classic)),
             new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Library, label, Before: libraryBefore, After: State.Of(SidebarLayoutId.Library)),
             new SidebarUndoEntry(0, SidebarUndoKind.Density, Layout.Peek(), label, DensityBefore: densityBefore, DensityAfter: SidebarDensity.Default),
+            new SidebarUndoEntry(0, SidebarUndoKind.View, SidebarLayoutId.Library, label, ViewBefore: viewBefore, ViewAfter: SidebarLibraryView.List),
         ]), Loc.Get("sidebar.toast.resetEverything"));
     }
 
@@ -420,6 +467,9 @@ public static partial class Sidebar
             case SidebarUndoKind.Density:
                 SetDensityUnrecorded(undo ? e.DensityBefore : e.DensityAfter);
                 break;
+            case SidebarUndoKind.View:
+                SetLibraryViewUnrecorded(undo ? e.ViewBefore : e.ViewAfter);
+                break;
             case SidebarUndoKind.Pin when e.Pin is { } pin:
                 switch (e.PinChange)
                 {
@@ -468,23 +518,20 @@ public static partial class Sidebar
         if (!Editing.Peek()) return;
         EditExitRestoresFocus = restoreFocus;
         Editing.Value = false;
-        if (restoreFocus && s_enabledEmptySection is { } name)
+        string? name = Model.Edit.TakeEnabledEmptySection();   // the note is the edit model's; it is cleared on every exit
+        if (restoreFocus && name is not null)
             Notify.Say(Loc.Format("sidebar.edit.emptyOnDone", ("name", name)));
-        s_enabledEmptySection = null;
     }
 
     /// <summary>How the LAST exit from Edit ended: the pane restores focus on the editing true → false edge only when this
     /// is true (Done / Esc), never for an account switch.</summary>
     internal static bool EditExitRestoresFocus { get; private set; }
 
-    /// <summary>The name of a section the user showed in Edit while it had nothing to show (one toast on Done).</summary>
-    internal static string? s_enabledEmptySection;
-
     static void CommitLayout() => s_deviceFile?.Commit(SidebarStoreV3.Serialize(s_state));
 
     // ── pane state (the ONE pane, both layouts) ─────────────────────────────────────────────────────────────────────────
     // Two stored facts, each with one owner: Width (the EXPANDED width, one value for both layouts) and UserCollapsed
-    // (persisted as `sidebar.pane.userCollapsed`). Band, Mode and OverlayOpen are the window's and the shell's; Seam and
+    // (both the active theme's state, `paneWidth` / `paneCollapsed`). Band, Mode and OverlayOpen are the window's and the shell's; Seam and
     // PresentedWidth are derived/transient. The pure rules live in SidebarResizeRules and SidebarPaneModeRules; every
     // writer below goes through Apply.
 
@@ -494,6 +541,44 @@ public static partial class Sidebar
     /// <summary>The user's collapse (the 48 rail). Written ONLY by a toggle / seam / double-click in the Wide band while
     /// not editing (<see cref="SidebarPaneModeRules.WritesUserCollapsed"/>).</summary>
     public static readonly Signal<bool> UserCollapsed = new(false);
+
+    /// <summary>The theme-state keys the pane keeps (M7b): the expanded width (the nav policy's clamp is applied on top), the user's collapse and
+    /// Your Library's list/grid view (an int: <see cref="SidebarLibraryView"/>). Per theme (owner Q6); the host writes them, a structure never does.</summary>
+    public static readonly StateKey<float> PaneWidthKey = new("paneWidth", SidebarPaneBounds.DefaultWidth, SidebarPaneBounds.NavPaneMinW, SidebarPaneBounds.NavPaneMaxW);
+
+    /// <inheritdoc cref="PaneWidthKey"/>
+    public static readonly StateKey<bool> PaneCollapsedKey = new("paneCollapsed", false, false, false);
+
+    /// <summary>The user resized the pane (contract 1.21): set by the first resize that moved the width, after which no window tier re-rests it.</summary>
+    public static readonly StateKey<bool> PaneWidthSetKey = new("paneWidthSet", false, false, false);
+
+    /// <summary>The window tier the pane last rested for (<see cref="FollowTier"/>); Standard until the frame resolves one.</summary>
+    static Theming.Contracts.WidthTier s_tier = Theming.Contracts.WidthTier.Standard;
+
+    /// <summary>Is the stored width the user's (<see cref="SidebarPaneBounds.IsUserWidth"/>)?</summary>
+    public static bool WidthUserSet()
+        => SidebarPaneBounds.IsUserWidth(ThemeState.Get(PaneWidthSetKey), ThemeState.IsStored(PaneWidthKey), ThemeState.Get(PaneWidthKey));
+
+    /// <summary>The expanded width the pane rests at for the current tier: the user's once they resized it, else the structure's tier width (Classic Huge 320).</summary>
+    static float RestingWidth(Theming.NavPanePolicy nav) => nav.RestingWidthFor(s_tier, ThemeState.Get(PaneWidthKey), WidthUserSet());
+
+    /// <summary>The window tier moved (the frame's effect, and its seed before the first layout): a pane the user never resized rests at the tier's width
+    /// (contract 1.21: Classic's 320 from Huge on, the stored width below it). Never persisted; the presentation effect eases the column to it.</summary>
+    public static void FollowTier(Theming.Contracts.WidthTier tier, Theming.NavPanePolicy nav)
+    {
+        s_tier = tier;
+        float width = RestingWidth(nav);
+        if (Width.Peek() == width) return;
+        Width.Value = width;
+        if (!UserCollapsed.Peek()) Seam.SetIfChanged(width);
+    }
+
+    /// <inheritdoc cref="PaneWidthKey"/>
+    public static readonly StateKey<int> LibraryViewKey = new("libraryView", (int)SidebarLibraryView.List, (int)SidebarLibraryView.List, (int)SidebarLibraryView.Grid);
+
+    /// <summary>Your Library's list/grid view: the theme's state mirrored live (the toolbar toggles, the undo ring and the narrow-pane fallback write it
+    /// through <see cref="SetLibraryView"/>; the planner reads it as <c>Doc.Library.View</c>).</summary>
+    public static readonly Signal<SidebarLibraryView> LibraryView = new(SidebarLibraryView.List);
 
     /// <summary>The window band — written ONLY by the shell's band effect.</summary>
     public static readonly Signal<SidebarWindowBand> Band = new(SidebarWindowBand.Wide);
@@ -534,11 +619,9 @@ public static partial class Sidebar
         Apply(SidebarResizeRules.Toggle(ResizeState()));
     }
 
-    public static void SetUserCollapsed(bool collapsed) { if (UserCollapsed.Peek() != collapsed) TogglePane(); }
-
     /// <summary>Show the FULL pane from wherever it is — the rail's search tile (design P.2a: "its search tile expands the
     /// pane with the search box open"). Narrow / Tiny: open the overlay pane (a forced rail has <c>UserCollapsed</c> false,
-    /// so <see cref="SetUserCollapsed"/> would do nothing there). Wide: clear the user's collapse. Never closes anything;
+    /// so clearing the collapse would do nothing there). Wide: clear the user's collapse. Never closes anything;
     /// a no-op while editing (Edit already presents the pane).</summary>
     public static void OpenPane()
     {
@@ -560,25 +643,79 @@ public static partial class Sidebar
     /// <summary>Set the expanded width outright (Home/End, Settings): clamped, expanded, persisted.</summary>
     public static void SetExpandedWidth(float width)
     {
-        float w = Math.Clamp(float.IsFinite(width) ? width : Width.Peek(), SidebarResizeRules.ExpandedMinW, SidebarResizeRules.ExpandedMaxW);
+        float w = SidebarPaneBounds.Clamp(float.IsFinite(width) ? width : Width.Peek());
         Apply(new SidebarResizeRules.Settle(false, w, w));
     }
 
     static void Apply(in SidebarResizeRules.Settle s)
     {
+        // A settle that MOVED the width makes it the user's (contract 1.21); one that did not (a collapse toggle) leaves a tier's resting width unpersisted, so
+        // the Huge 320 never overwrites the Standard width the store holds.
+        bool moved = s.ExpandedWidth != Width.Peek();
         Width.SetIfChanged(s.ExpandedWidth);
         if (SidebarPaneModeRules.WritesUserCollapsed(Band.Peek(), Editing.Peek())) UserCollapsed.SetIfChanged(s.UserCollapsed);
         Seam.SetIfChanged(s.TargetWidth);
-        Platform.Settings.Set(Platform.Keys.SidebarPaneWidth, s.ExpandedWidth);
-        Platform.Settings.Set(Platform.Keys.SidebarPaneUserCollapsed, UserCollapsed.Peek());
+        if (moved || WidthUserSet()) ThemeState.Set(PaneWidthKey, s.ExpandedWidth);
+        if (moved) ThemeState.Set(PaneWidthSetKey, true);
+        ThemeState.Set(PaneCollapsedKey, UserCollapsed.Peek());
+    }
+
+    /// <summary>The active theme changed (or its state moved): re-read the pane's width and collapse and the Library's view from the new scope, so
+    /// each theme keeps its own (owner Q6). The frame's effect calls this with <see cref="ThemeState.Scope"/>; a no-op while nothing differs.</summary>
+    public static void FollowThemeState()
+    {
+        float width = RestingWidth(ShellPolicy.Now.NavPane);
+        bool collapsed = ThemeState.Get(PaneCollapsedKey);
+        bool paneMoved = Width.Peek() != width || UserCollapsed.Peek() != collapsed;
+        Width.SetIfChanged(width);
+        UserCollapsed.SetIfChanged(collapsed);
+        if (paneMoved) Seam.SetIfChanged(collapsed ? ShellPolicy.Now.NavPane.RailWidth : width);
+        SetLibraryViewUnrecorded(ViewOf(ThemeState.Get(LibraryViewKey)));
     }
 
     /// <summary>The toolbar's sort button and the sort menu: a sort (and its direction) through the one op.</summary>
     public static void SetLibrarySort(SidebarLibrarySort sort, bool descending)
         => Dispatch(new SetLibrarySort(sort, descending));
 
-    /// <summary>List ↔ Grid from the toolbar toggles.</summary>
-    public static void SetLibraryView(SidebarLibraryView view) => Dispatch(new SetLibraryView(view));
+    /// <summary>List ↔ Grid from the toolbar toggles: the theme's state (<see cref="LibraryViewKey"/>), recorded in the ring, never toasted.</summary>
+    public static void SetLibraryView(SidebarLibraryView view)
+    {
+        var before = LibraryView.Peek();
+        if (before == view) return;
+        SetLibraryViewUnrecorded(view);
+        Record(new SidebarUndoEntry(0, SidebarUndoKind.View, SidebarLayoutId.Library, ViewLabel(view), ViewBefore: before, ViewAfter: view), null);
+    }
+
+    static void SetLibraryViewUnrecorded(SidebarLibraryView view)
+    {
+        if (LibraryView.Peek() == view) return;
+        LibraryView.Value = view;
+        s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        ThemeState.Set(LibraryViewKey, (int)view);
+    }
+
+    /// <summary>The stored view int as the enum (anything but Grid's int reads as List).</summary>
+    public static SidebarLibraryView ViewOf(int stored) => stored == (int)SidebarLibraryView.Grid ? SidebarLibraryView.Grid : SidebarLibraryView.List;
+
+    /// <summary>"Reset layout" (the pane menu, Settings): the layout's overlay AND, for Library, its list/grid view (the theme's state, outside the
+    /// overlay) go back to their defaults as ONE ring entry. Anything else is the plain op.</summary>
+    public static void ResetLayoutRecorded(SidebarLayoutId layout, string? toastText)
+    {
+        var viewBefore = LibraryView.Peek();
+        if (layout != SidebarLayoutId.Library || viewBefore == SidebarLibraryView.List)
+        {
+            Dispatch(new ResetLayout(layout), toastText);
+            return;
+        }
+        var overlayBefore = s_state.Of(layout);
+        var applied = ApplyUnrecorded(new ResetLayout(layout));
+        SetLibraryViewUnrecorded(SidebarLibraryView.List);
+        string label = LabelOf(new ResetLayout(layout));
+        var parts = new List<SidebarUndoEntry>(2);
+        if (applied.Changed) parts.Add(new SidebarUndoEntry(0, SidebarUndoKind.Layout, layout, label, Before: overlayBefore, After: s_state.Of(layout)));
+        parts.Add(new SidebarUndoEntry(0, SidebarUndoKind.View, layout, label, ViewBefore: viewBefore, ViewAfter: SidebarLibraryView.List));
+        Record(SidebarUndoEntry.Batch(layout, label, parts), toastText);
+    }
 
     // ── folder expansion (an unbounded id set ⇒ the account file, not settings) ─────────────────────────────────────────
 
@@ -638,13 +775,13 @@ public static partial class Sidebar
 
     public static void MovePin(int fromIndex, int toIndex) => Pins.Move(fromIndex, toIndex);
 
-    /// <summary>Refresh a pin's cached display name from live library data. No-op when unchanged; coalesced into the
-    /// next commit — never commits alone. Called by <c>ResolvePins</c> on both the index-hit row and a freshly
+    /// <summary>Refresh a pin's cached display name and cover from live library data. No-op when unchanged; coalesced into
+    /// the next commit — never commits alone. Called by <c>ResolvePins</c> on both the index-hit row and a freshly
     /// hydrated unlisted pin, never by rows directly — going through this (rather than <c>Pins.Touch</c> straight)
     /// is what makes a touched name actually persist.</summary>
-    public static void TouchPin(string? pinId, string? name)
+    public static void TouchPin(string? pinId, string? name, FluentGpu.Foundation.StringId cover = default)
     {
-        if (Pins.Touch(pinId, name)) s_pinNamesDirty = true;
+        if (Pins.Touch(pinId, name, cover.IsEmpty ? null : Entities.Strings.Resolve(cover))) s_pinNamesDirty = true;
     }
 
     /// <summary>Pin with undo (appended, or at a drop's <paramref name="slot"/>). Q4: pinning while Pinned is hidden shows
@@ -713,15 +850,15 @@ public static partial class Sidebar
             PinChange: SidebarPinChange.Moved, Pin: pin, PinFrom: from, PinTo: target), null);
     }
 
-    // ── the entry projection cell (owned here; not this section — see SidebarEntries) ───────────────────────────────────
+    // ── the nav model (the projection binder lives inside it) ───────────────────────────────────────────────────────────
 
-    /// <summary>The unified projection Your Library reads — one projection, shared by the docked pane and the drawer.
-    /// Rebuilt by <see cref="Binder"/> through <c>SidebarProjection.Build</c> + <c>Entries.Publish</c>.</summary>
-    public static readonly SidebarEntries Entries = new();
+    static NavModel? s_model;
 
-    /// <summary>The ONE driver of <see cref="Entries"/>, set right after both exist. Null in a headless/unit context,
-    /// where <see cref="Entries"/> simply stays empty.</summary>
-    public static SidebarProjectionBinder? Binder { get; internal set; }
+    /// <summary>THE navigation model: the layout-neutral read surface and the verbs every sidebar view uses, and the owner of
+    /// the projection binder (the ONE driver of the unified library projection, shared by the docked pane and the drawer).
+    /// Constructed by <see cref="Boot"/> — lazily here, never in a static initializer, because it reads this service's other
+    /// statics. Nothing starts the binder until the pane's pump (<see cref="NavModel.Pump"/>) does.</summary>
+    public static NavModel Model => s_model ??= new NavModel();
 
     // ── persistence health ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -919,17 +1056,21 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
         Bump();
     }
 
-    /// <summary>Refresh a pin's cached display name (a renamed playlist) from live library data. Returns true when it
-    /// actually changed. Deliberately does NOT bump the version or raise <see cref="OnChanged"/>: a cache refresh must
-    /// never commit on its own and must never invalidate a render mid-projection.</summary>
-    public bool Touch(string? pinId, string? name)
+    /// <summary>Refresh a pin's cached display name (a renamed playlist) and cover (S9: what an offline pin keeps) from
+    /// live library data. An empty value never overwrites a cached one. Returns true when either actually changed.
+    /// Deliberately does NOT bump the version or raise <see cref="OnChanged"/>: a cache refresh must never commit on its
+    /// own and must never invalidate a render mid-projection.</summary>
+    public bool Touch(string? pinId, string? name, string? cover = null)
     {
-        if (string.IsNullOrEmpty(name)) return false;
+        bool hasName = !string.IsNullOrEmpty(name), hasCover = !string.IsNullOrEmpty(cover);
+        if (!hasName && !hasCover) return false;
         int at = IndexOf(pinId);
         if (at < 0) return false;
         var cur = _items[at];
-        if (string.Equals(cur.Name, name, StringComparison.Ordinal)) return false;
-        _items[at] = cur with { Name = name };
+        bool nameMoved = hasName && !string.Equals(cur.Name, name, StringComparison.Ordinal);
+        bool coverMoved = hasCover && !string.Equals(cur.Cover, cover, StringComparison.Ordinal);
+        if (!nameMoved && !coverMoved) return false;
+        _items[at] = cur with { Name = nameMoved ? name! : cur.Name, Cover = coverMoved ? cover! : cur.Cover };
         return true;
     }
 
@@ -1293,7 +1434,6 @@ public sealed class SidebarProjectionBinder
 
     readonly BuildSlot _slotA = new(), _slotB = new();
     BuildSlot _publishedStage;
-    BuildSlot _lastBuild;
 
     BuildSlot BuildTarget => ReferenceEquals(_publishedStage, _slotA) ? _slotB : _slotA;
 
@@ -1335,6 +1475,7 @@ public sealed class SidebarProjectionBinder
     // The planner inputs that are NOT the published entries, published as one edge (see InputVersion).
     readonly SidebarEntriesShadow _pinShadow = new(), _playedShadow = new(), _newReleasesShadow = new();
     readonly Signal<int> _inputVersion = new(0);
+    readonly Signal<NavReadinessFacts> _readiness = new(NavReadinessFacts.Pending);
     long _inputMeta = long.MinValue;
 
     SidebarFirstSeen? _firstSeen;
@@ -1358,7 +1499,6 @@ public sealed class SidebarProjectionBinder
     public SidebarProjectionBinder(ISidebarRecencyLogs? logs = null, ISidebarEntityPeek? peek = null)
     {
         _publishedStage = _slotA;
-        _lastBuild = _slotA;
         _isFolderExpanded = Sidebar.IsFolderExpanded;
         _logs = logs ?? ShellRecencyLogs.Instance;
         _peek = peek ?? SidebarResidentPeek.Instance;
@@ -1403,6 +1543,12 @@ public sealed class SidebarProjectionBinder
     /// did (G-172/G-173). Shadow-gated exactly like the entries cell: a rebuild that reproduced identical feeds does
     /// not bump it.</summary>
     public IReadSignal<int> InputVersion => _inputVersion;
+
+    /// <summary>How far the two sources (the rootlist, the saved albums / artists / shows) have answered, INCLUDING a failed
+    /// ask (<see cref="NavReadiness.Failed"/>), which the planner reads as <c>TreeState</c> / <c>LibraryState</c> Error (S10).
+    /// Pending until the first rebuild; written by the rebuild only. The failure is part of the trigger fold, so a
+    /// failed ask rebuilds once and lands here.</summary>
+    public IReadSignal<NavReadinessFacts> Readiness => _readiness;
 
     // ─────────────────────────────────── the rebuild gate ───────────────────────────────────
 
@@ -1449,7 +1595,6 @@ public sealed class SidebarProjectionBinder
         var demand = SidebarFeedDemands.Of(doc);
 
         var build = BuildTarget;
-        _lastBuild = build;
 
         // 1, 2 — THE projection (every kind, folders and children) + the tree slice + the join index.
         var full = SidebarProjection.Build(build.All, in u, SidebarEntryKindMask.All, firstSeen, recency,
@@ -1457,9 +1602,16 @@ public sealed class SidebarProjectionBinder
         SidebarProjection.Build(build.Tree, in u, SidebarEntryKindMask.PlaylistTree, firstSeen, recency,
                                 includeFolderChildren: true, lastPlayed: lastPlayed);
         build.Index.Rebuild(build.All);
-        _treeState = StateOf(u.RootlistState);
-        _libraryState = Worst(StateOf(u.State(LibraryEdgeKind.SavedAlbums)),
-                        Worst(StateOf(u.State(LibraryEdgeKind.FollowedArtists)), StateOf(u.State(LibraryEdgeKind.SavedShows))));
+        // THE SOURCE READINESS, derived once: the model publishes it as it is (a failed ask reads Failed), and the planner
+        // reads its projection (Failed is Error: no skeleton in Your Library, whose head draws the failure — S10).
+        var readiness = new NavReadinessFacts(
+            NavReadinessRules.Of(u.RootlistReadiness),
+            NavReadinessRules.Worst(NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.SavedAlbums)),
+                NavReadinessRules.Worst(NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.FollowedArtists)),
+                                        NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.SavedShows)))));
+        _treeState = NavReadinessRules.ToPlanner(readiness.Tree);
+        _libraryState = NavReadinessRules.ToPlanner(readiness.Library);
+        _readiness.SetIfChanged(readiness);
         int albums = 0, artists = 0, podcasts = 0, audiobooks = 0;
         var all = build.All;
         for (int i = 0; i < all.Count; i++)
@@ -1516,8 +1668,12 @@ public sealed class SidebarProjectionBinder
             SidebarNewReleasesRules.Fill(Notify.Items.Peek().Items, build.Index, _newReleases, RecencyCap);
         }
 
-        bool anyPending = AnyContributingKindPending(filter, u);
-        var (state, error) = PublishState(shape.Count, anyPending);
+        // A FAILED kind is not a pending one (S10): it stops the skeleton and the cell publishes Failed, which the Library
+        // head draws (a banner over what loaded, or the Error vacancy with Retry when nothing did).
+        bool anyPending = AnyContributingKind(filter, u, EdgeState.Unknown);
+        bool anyFailed = AnyContributingKind(filter, u, EdgeState.Failed);
+        var state = SidebarLibraryEmptyRules.LoadOf(shape.Count, anyPending, anyFailed);
+        Exception? error = null;
         _publishedStage = build;
         bool entriesChanged = Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _publishedStage.All);
         bool inputChanged = PublishInput(countsMoved || !string.Equals(search, _input.Search ?? "", StringComparison.Ordinal));
@@ -1600,7 +1756,7 @@ public sealed class SidebarProjectionBinder
             if (index.TryGet(pin.Id, out var entry))
             {
                 _pinRows.Add(entry with { IsPinned = true, SourceOrder = i });
-                Sidebar.TouchPin(pin.Id, entry.Name);
+                Sidebar.TouchPin(pin.Id, entry.Name, entry.Cover);
                 // Bug H: a pin is shown regardless of folder collapse, but the index it was found in came from the
                 // FULL projection (`build.All`), which never ensures identity (see `SidebarProjection.Build`'s
                 // `ensureIdentity` doc) — only the fold-state-gated buffer build does, and a collapsed-away pin
@@ -1612,8 +1768,10 @@ public sealed class SidebarProjectionBinder
 
             var hydrated = ResolveLivePin(pin, out var row);
             if (!row.IsNone) _pinRefs.Add(row);
-            if (hydrated is { } h) Sidebar.TouchPin(pin.Id, h.Name);
-            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState));
+            if (hydrated is { } h) Sidebar.TouchPin(pin.Id, h.Name, h.Cover);
+            // S9: an unresolved pin paints its cached cover (interned once per pin: the cache is bounded by the pin count).
+            var cachedCover = pin.Cover.Length > 0 ? Entities.Strings.Intern(pin.Cover) : FluentGpu.Foundation.StringId.Empty;
+            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState, cachedCover));
         }
 
         // E3: ONE span-form ask per group for the whole pin band, after the loop — never one
@@ -1759,21 +1917,18 @@ public sealed class SidebarProjectionBinder
         }
     }
 
-    // The skeleton gate is per CONTRIBUTING kind (a pending Shows load must not skeleton the Playlists filter).
-    static bool AnyContributingKindPending(SidebarLibraryFilter filter, in User u)
+    // The skeleton and failure gates are per CONTRIBUTING kind (a pending Shows load must not skeleton the Playlists filter).
+    // They read the SURFACE readiness (`EdgeTableBase.Readiness`), which answers Failed for an unanswered list whose last
+    // ask failed, so a failed kind is Failed and never Unknown (pending).
+    static bool AnyContributingKind(SidebarLibraryFilter filter, in User u, EdgeState readiness)
     {
         var kinds = SidebarEntryKinds.From(filter);
-        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0 && u.RootlistState == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Album) != 0 && u.State(LibraryEdgeKind.SavedAlbums) == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Artist) != 0 && u.State(LibraryEdgeKind.FollowedArtists) == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Show) != 0 && u.State(LibraryEdgeKind.SavedShows) == EdgeState.Unknown) return true;
+        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0 && u.RootlistReadiness == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Album) != 0 && u.Readiness(LibraryEdgeKind.SavedAlbums) == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Artist) != 0 && u.Readiness(LibraryEdgeKind.FollowedArtists) == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Show) != 0 && u.Readiness(LibraryEdgeKind.SavedShows) == readiness) return true;
         return false;
     }
-
-    // GAP: `EdgeState` has no Failed member (Unknown/Partial/Complete only — ch 15 §7), so a fetch failure has no
-    // per-relation surface yet; this never reports Failed, unlike 0.2.9's Loadable-backed version.
-    static (FluentGpu.Signals.LoadState State, Exception? Error) PublishState(int count, bool anyPending)
-        => count == 0 && anyPending ? (FluentGpu.Signals.LoadState.Pending, null) : (FluentGpu.Signals.LoadState.Ready, null);
 
 
     static SidebarFirstSeen LoadFirstSeen(SidebarFirstSeenDto[]? stored)
@@ -1802,9 +1957,6 @@ public sealed class SidebarProjectionBinder
         seen.ResetNewCount();
         Sidebar.PublishFirstSeen(dtos);
     }
-
-    static SidebarSourceState StateOf(EdgeState s) => s == EdgeState.Unknown ? SidebarSourceState.Pending : SidebarSourceState.Ready;
-    static SidebarSourceState Worst(SidebarSourceState a, SidebarSourceState b) => a > b ? a : b;
 
     // ─────────────────────────────────── triggers ───────────────────────────────────
 
@@ -1873,6 +2025,11 @@ public sealed class SidebarProjectionBinder
             h = h * 31 + (int)u.State(LibraryEdgeKind.SavedAlbums);
             h = h * 31 + (int)u.State(LibraryEdgeKind.FollowedArtists);
             h = h * 31 + (int)u.State(LibraryEdgeKind.SavedShows);
+            // A failed ask moves Readiness (Unknown → Failed) and nothing else: without these the model would never hear it.
+            h = h * 31 + (int)u.RootlistReadiness;
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.SavedAlbums);
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.FollowedArtists);
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.SavedShows);
             return h;
         }
     }
@@ -1966,49 +2123,6 @@ public static partial class Sidebar
     /// <summary>The library mutation seam the sidebar's drops, menus and "+" buttons call. Null until installed.</summary>
     public static SidebarLibraryWrites? LibraryWrites { get; set; }
 
-}
-
-/// <summary>What a drop on a "+" create affordance means (G-170).</summary>
-public enum SidebarCreateDrop : byte
-{
-    /// <summary>None of this target's business — the drag is crossing on its way somewhere else. No cue at all.</summary>
-    Transparent = 0,
-    /// <summary>A new folder holding the dropped rootlist items.</summary>
-    NewFolder = 1,
-    /// <summary>A new playlist seeded from the dropped tracks.</summary>
-    NewPlaylist = 2,
-    /// <summary>The drop means something, but the library write it needs has no seam: refuse, with the sentence.</summary>
-    Refused = 3,
-}
-
-/// <summary>THE "+" DROP RULE (G-170): one decision per create destination, so the cue, the refusal caption and the
-/// commit all ask the same question — and a missing seam member REFUSES (a caption while hovering, a toast on a drop)
-/// instead of arming a cue for a drop that does nothing. Allocation-free: it runs per frame while a drag is live.</summary>
-public static class SidebarCreateDropRules
-{
-    /// <summary>A rootlist filing gesture: a playlist or folder dragged AS a rootlist item.</summary>
-    public static bool IsFiling(DragPayload payload) => payload.RootlistItem && payload.Kind is DragKind.Playlist or DragKind.Folder;
-
-    /// <summary>The PlaylistTree header "+": rootlist items ⇒ a new top-level folder holding them; a track set that is
-    /// not itself a rootlist item ⇒ a new playlist from it; anything else crosses.</summary>
-    public static SidebarCreateDrop Header(DragPayload payload, SidebarLibraryWrites? writes)
-    {
-        if (IsFiling(payload)) return writes?.NewFolderWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewFolder;
-        if (payload.CanCopyTracks && !payload.RootlistItem)
-            return writes?.CreatePlaylistWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewPlaylist;
-        return SidebarCreateDrop.Transparent;
-    }
-
-    /// <summary>A folder row's "+": rootlist items ⇒ a new sub-folder inside it; a track set crosses (it is on its way
-    /// to a playlist row).</summary>
-    public static SidebarCreateDrop Folder(DragPayload payload, SidebarLibraryWrites? writes)
-        => !IsFiling(payload) ? SidebarCreateDrop.Transparent
-            : writes?.NewFolderWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewFolder;
-
-    /// <summary>A click verb that writes the library (a "+" click, "New playlist in this folder", "Rename folder"):
-    /// the refusal to say when its seam member is absent, else <see cref="SidebarDropRefusal.None"/>.</summary>
-    public static SidebarDropRefusal Verb(bool seamPresent)
-        => seamPresent ? SidebarDropRefusal.None : SidebarDropRefusal.WritesUnavailable;
 }
 
 /// <summary>Delegates only (the ActionServices shape): each one is ONE mutation that awaits the server, then announces,

@@ -112,6 +112,15 @@ public sealed class DefaultsOnlySettings : IAppSettings
     DefaultsOnlySettings() { }
     public T Get<T>(SettingKey<T> key) => key.Default;
     public void Set<T>(SettingKey<T> key, T value) { }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        value = key.Default;
+        return false;
+    }
+
+    public bool Has(string name) => false;
+    public void Remove(string name) { }
 }
 
 // ── 3. developer mode (ch 27 §9.3 item 3) ────────────────────────────────────────────────────────────────────────────
@@ -186,9 +195,6 @@ public static partial class Platform
         /// <summary>The protected-video Auto height cap: int.MaxValue unless metered AND a positive cap is stored.</summary>
         public static int EffectiveVideoMaxHeight(int storedCap, in NetworkCost cost)
             => !cost.IsMetered || storedCap <= 0 ? int.MaxValue : storedCap;
-
-        /// <summary>Prefetch and CDN warm-up wait on a metered link; an unknown cost does not defer.</summary>
-        public static bool ShouldDeferPrefetch(in NetworkCost cost) => cost.IsMetered;
 
         /// <summary>The live snapshot (any thread).</summary>
         public static NetworkCost Current => Unpack(Volatile.Read(ref s_packed));
@@ -706,8 +712,6 @@ public static class RunMarker
         string cur = s.Get(Platform.Keys.RunMarker);
         if (cur is Running or Frame) s.Set(Platform.Keys.RunMarker, Clean);
     }
-
-    public static void MarkCrashed(IAppSettings s) => s.Set(Platform.Keys.RunMarker, Crashed);
 }
 
 // CrashSource / CrashPromptMode / CrashPromptDecision / CrashPromptPolicy retired

@@ -1,5 +1,5 @@
 // ── Platform/Prefs.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// the four cross-surface preference epochs: AppearancePrefs, LyricsPrefs, DetailHeroPrefs, NpvPlayerPrefs
+// the cross-surface preference epochs: AppearancePrefs, LyricsPrefs, NpvPlayerPrefs
 //
 // Role: CORE
 // Owner: L
@@ -25,7 +25,7 @@
 //
 // `Platform.SettingsChanged` already bumps on EVERY write, and a surface could subscribe to that instead. It would also
 // re-render every mounted lyrics view when the user changed the audio output device. The epochs are the fan-out
-// boundary: one per group of surfaces that genuinely move together, so a row-density change re-reads the track lists
+// boundary: one per group of surfaces that genuinely move together, so a marquee change re-reads the track lists
 // and nothing else. A NEW epoch is a design decision, not a convenience — it asserts that a new independent set of
 // surfaces exists.
 //
@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, colour washes, row density, hide-track-artwork, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -61,44 +61,11 @@ public static partial class Prefs
         /// store has it — a bump before the write makes every reader re-read the old value.</summary>
         public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
 
-        /// <summary>Reactive read of the app-wide track-cell ARTWORK policy (Settings ▸ Lists ▸ "Always hide track
-        /// artwork"). Every track surface, the drag insertion preview and the row-density miniature read it.</summary>
-        public static bool TrackArtworkHidden()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.HideTrackArtwork);
-        }
-
         /// <summary>Reactive read of the marquee policy: may an overflowing title scroll under the pointer at all?</summary>
         public static bool Marquee()
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
-        }
-
-        /// <summary>Reactive read of the colour-wash master switch. FALSE means every tone plane, hero wash, artist
-        /// blend and shell tint binder takes its <c>disabled</c> arm and paints NOTHING — on the already-open page, with
-        /// no restart and no navigation.</summary>
-        public static bool ColorWashes()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
-        }
-
-        /// <summary>Reactive read of the row-density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable), clamped.
-        /// The LADDERS themselves are owner M's (`Entities/Track.cs`'s table rules); this is only the persisted
-        /// choice.</summary>
-        public static int RowDensity()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 4);
-        }
-
-        /// <summary>Reactive read of the track-list SKIN (0 Modern · 1 Classic), clamped.</summary>
-        public static int TrackRowStyle()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.TrackRowStyle), 2);
         }
 
         /// <summary>Reactive read of the Liked Songs cover TREATMENT, as the raw persisted int, clamped against the
@@ -110,16 +77,6 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Clamp(Platform.Settings.Get(Platform.Keys.LikedCoverStyle), treatmentCount);
-        }
-
-        /// <summary>Reactive read of the page-swap motion STYLE (Settings ▸ Appearance ▸ Page motion), as the raw
-        /// persisted int, clamped against <paramref name="styleCount"/>.
-        /// <para>The clamp is the point: a hand-edited value or a downgrade from a build that shipped more styles must
-        /// read as a real style, never as nothing at all — same contract as <see cref="LikedCover"/>.</para></summary>
-        public static int PageMotionStyle(int styleCount)
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.PageMotionStyle), styleCount);
         }
 
         /// <summary>Reactive read of what the daylist clock shows (Settings ▸ Appearance ▸ Lists ▸ Daylist clock, #185),
@@ -211,15 +168,20 @@ public static partial class Prefs
             return ClampMode(s_secondaryLine);
         }
 
-        /// <summary>Reactive read of the lyrics blur strength. <b>−1 means AUTO</b> and is a real, persisted value — the
-        /// surface resolves it against its own backdrop, and 0 (the user turning the blur off entirely) must never be
-        /// confused with it.</summary>
+        /// <summary>Reactive read of the lyrics blur strength, 0..100 (0 = off). The ONE interpreter of the stored value
+        /// (see <see cref="FromStored"/>): the removed Auto choice persisted −1, which still reads as 100 so a profile that
+        /// had Auto keeps its blur, and 0 (the user turning the blur off) is never confused with it.</summary>
         public static int BlurStrength()
         {
             _ = Epoch.Value;
-            int v = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength);
-            return v < 0 ? -1 : System.Math.Min(v, 100);
+            return FromStored(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
         }
+
+        /// <summary>The range rule for a stored blur strength: any negative (the removed Auto choice wrote −1) reads as 100,
+        /// anything above 100 clamps to 100. Permanent, not a legacy path: dropping the negative arm would turn the blur off
+        /// for a profile that skipped the build that stopped writing −1. Non-reactive, for seeds that already hold the raw
+        /// value.</summary>
+        public static int FromStored(int stored) => stored < 0 ? 100 : System.Math.Min(stored, 100);
 
         /// <summary>The ONE writer both globe toggles go through: store the clamped mode for this session, then bump so
         /// every mounted lyrics surface re-reads it on the same frame.</summary>
@@ -229,10 +191,10 @@ public static partial class Prefs
             Bump();
         }
 
-        /// <summary>Persist the blur strength (−1 = Auto, else 0-100) and bump.</summary>
+        /// <summary>Persist the blur strength clamped to 0-100 (0 = off) and bump. There is no Auto value to write.</summary>
         public static void SetBlurStrength(int value)
         {
-            Platform.Settings.Set(Platform.Keys.LyricsBlurStrength, value < 0 ? -1 : System.Math.Min(value, 100));
+            Platform.Settings.Set(Platform.Keys.LyricsBlurStrength, System.Math.Clamp(value, 0, 100));
             Bump();
         }
     }
@@ -249,7 +211,6 @@ public static partial class Prefs
         public static bool Enabled() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsEnabled); }
         public static bool WordSync() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsWordSync); }
         public static bool PlainText() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsPlainText); }
-        public static bool OnBatterySaver() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsOnBatterySaver); }
 
         /// <summary>The installed aligner languages, in order, never empty ("en" when nothing valid is stored).</summary>
         public static IReadOnlyList<string> Languages()
@@ -271,43 +232,7 @@ public static partial class Prefs
         }
     }
 
-    // ══ 3. THE DETAIL PAGE'S LAYOUT ══════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The cross-surface DETAIL-LAYOUT epoch: bumped when Settings ▸ Lists ▸ "Track page layout" (or the rail
-    /// uniformity switch, or a rail-width reset) changes, so any mounted — including KeepAlive-parked — detail frame
-    /// re-resolves rail-vs-hero LIVE rather than on its next remount.</summary>
-    public static class DetailHero
-    {
-        /// <inheritdoc cref="DetailHero"/>
-        public static readonly Signal<int> Epoch = new(0);
-        /// <inheritdoc cref="Appearance.Bump"/>
-        public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
-
-        /// <summary>The two page layouts.</summary>
-        public const int Automatic = 0, Hero = 1;
-
-        /// <summary>Reactive read of the page-layout choice, clamped.</summary>
-        public static int PageLayout()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
-        }
-
-        /// <summary>Reactive read of "keep the left rail the same size across kinds". Only meaningful in
-        /// <see cref="Automatic"/>; the Hero layout has no rail to size.</summary>
-        public static bool RailUniform()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.DetailRailUniform);
-        }
-
-        /// <summary>The ONE writer for every row on this epoch.</summary>
-        public static void Set<T>(SettingKey<T> key, T value)
-        {
-            Platform.Settings.Set(key, value);
-            Bump();
-        }
-    }
+    // ══ 3. (the detail page's layout and rails are the structure's: `DetailPolicy`, `DetailRailPrefs`) ══════════════
 
     // ══ 4-5. the now-playing player and the player bar live in the named partial `Prefs.Player.cs` ═════════════════
 
@@ -316,16 +241,4 @@ public static partial class Prefs
     /// <summary>THE clamp every persisted enum-ish int goes through: in range, or 0. One function, so a hand-edited
     /// registry value, a downgrade, and a future build's value all resolve the same way everywhere.</summary>
     public static int Clamp(int value, int count) => (uint)value < (uint)count ? value : 0;
-
-    /// <summary>Bump EVERY epoch. For the two moments where the store changed underneath the app rather than through a
-    /// writer: a settings import, and a scope switch that re-pointed the store at a different account.</summary>
-    public static void BumpAll()
-    {
-        Appearance.Bump();
-        Lyrics.Bump();
-        DetailHero.Bump();
-        NpvPlayer.Bump();
-        PlayerBar.Bump();
-        Stage.Bump();
-    }
 }

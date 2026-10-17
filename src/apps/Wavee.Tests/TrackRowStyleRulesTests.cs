@@ -10,6 +10,7 @@
 // Pure: no scope, no engine.
 
 using FluentGpu.Foundation;
+using Wavee.Themes.Classic;
 using Xunit;
 using RowMetrics = Wavee.Track.RowMetrics;
 using TableRules = Wavee.Track.TableRules;
@@ -68,7 +69,7 @@ public sealed class TrackRowStyleRulesTests
     [InlineData(3, 48f)]
     public void Classic_UsesTightIndependentDensityLadder(int density, float expected)
     {
-        Assert.Equal(expected, TableRules.RowHeightFor(density, classic: true));
+        Assert.Equal(expected, ClassicDensity.Rows((RowDensity)density).ClassicRow);
         Assert.Equal(32f, TableRules.HeaderHeightFor(classic: true));
     }
 
@@ -82,7 +83,7 @@ public sealed class TrackRowStyleRulesTests
     [InlineData(2, 56f)]
     [InlineData(3, 64f)]
     public void Modern_RowHeightLadder(int density, float expected)
-        => Assert.Equal(expected, TableRules.RowHeightFor(density, classic: false));
+        => Assert.Equal(expected, ClassicDensity.Rows((RowDensity)density).ModernRow);
 
     /// <summary>The bug was a CONSTANT art size under a GROWING row. The art never outgrows the row (≥ 8 DIP of combined
     /// breathing room) and never shrinks as density rises — checked against the Modern row for BOTH skins, because
@@ -95,8 +96,9 @@ public sealed class TrackRowStyleRulesTests
         float prevArt = 0f;
         for (int density = 0; density <= 3; density++)
         {
-            float row = TableRules.RowHeightFor(density, classic: false);
-            float art = TableRules.ArtSizeFor(density, classic);
+            var rows = ClassicDensity.Rows((RowDensity)density);
+            float row = rows.ModernRow;
+            float art = classic ? rows.ClassicArt : rows.ModernArt;
 
             Assert.True(art is Design.Size.Thumb32 or Design.Size.Thumb40 or Design.Size.Thumb48,
                 $"density {density} classic={classic}: {art} is not on the 32/40/48 thumbnail ladder");
@@ -108,64 +110,39 @@ public sealed class TrackRowStyleRulesTests
         }
     }
 
-    /// <summary>The Settings density miniature draws its art tile as <c>RowMetrics.ArtSizeFor(density) * PreviewScale</c>,
-    /// and that is a bare forward to <c>ArtSizeFor(density, classic: false)</c> — so pinning this formula pins what the
-    /// preview paints.</summary>
+    /// <summary>The Settings density miniature draws its art tile as the Modern art edge at <c>ClassicDensity.PreviewScale</c> — so
+    /// pinning this formula pins what the preview paints.</summary>
     [Theory]
     [InlineData(0, 8f)]
     [InlineData(1, 8f)]
     [InlineData(2, 10f)]
     [InlineData(3, 12f)]
     public void Preview_MirrorsTrackRow(int density, float expectedEdge)
-        => Assert.Equal(expectedEdge, TableRules.ArtSizeFor(density, classic: false) * TableRules.PreviewScale);
+        => Assert.Equal(expectedEdge, ClassicDensity.Rows((RowDensity)density).ModernArt * ClassicDensity.PreviewScale);
 
-    /// <summary>Classic folds VIDEO into the Title line and keeps one trailing command lane — but it keeps the disclosure
-    /// chevron, exactly like Modern: what the drawer opens is a property of the TRACK.</summary>
+    /// <summary>Both row styles keep ONE trailing command lane (the hover "…") and the versions chevron's lane; a video is
+    /// never a lane any more (tuned Classic L3: the film glyph after the title), so nothing the rows carry can change the
+    /// trailing lanes or move the duration clock.</summary>
     [Fact]
-    public void Classic_FoldsMediaChromeIntoTitleButKeepsTheDisclosureChevron()
+    public void TrailingLanes_AreTheCommandLaneAndTheChevron_NeverAFilmLane()
     {
-        var classic = TableRules.TrailingColumns(classic: true, hasVideo: true, showVersions: true, tier: 0);
-        var modern = TableRules.TrailingColumns(classic: false, hasVideo: true, showVersions: true, tier: 0);
-
-        Assert.Equal(new Track.TrailingColumns(Video: false, Actions: true, Expand: true), classic);
-        Assert.Equal(new Track.TrailingColumns(Video: true, Actions: false, Expand: true), modern);
-        // Classic gets no film LANE (asserted above), so the inline glyph is its only indicator and is NOT dropped
-        // by width any more: a sidebar plus a now-playing rail reach tier 4, and a Classic playlist there used to
-        // show no video indicator at all while the artist chart beside it still did.
-        Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 3));
-        Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 4));
-        Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 6));
-        Assert.False(TableRules.ShowClassicInlineVideo(true, hasVideo: false, tier: 0));
-        Assert.False(TableRules.ShowClassicInlineVideo(false, hasVideo: true, tier: 0));
+        Assert.Equal(new Track.TrailingColumns(Actions: true, Expand: true), TableRules.TrailingColumns(showVersions: true, tier: 0));
+        Assert.Equal(new Track.TrailingColumns(Actions: true, Expand: false), TableRules.TrailingColumns(showVersions: false, tier: 1));
+        Assert.Equal(new Track.TrailingColumns(Actions: false, Expand: false), TableRules.TrailingColumns(showVersions: true, tier: 6));
     }
 
-    /// <summary>The trailing lane is ONE width. Modern still TRADES the "…" lane for the film lane on a release that
-    /// carries a video — the cell changes, so the row shows a film glyph at rest and the "…" on hover — but while the two
-    /// lanes were 28 and 40 that trade also MOVED every column to its left: the duration clock and its header sat 12 DIP
-    /// apart on two albums selected one after the other in the library pane. Pinned on the width TRACKS, because that
-    /// array is what the column header, the rows and the shimmer all lay themselves out from.</summary>
-    [Fact]
-    public void TrailingLane_IsOneWidthWhetherOrNotTheReleaseCarriesAVideo()
-    {
-        var film = TableRules.TrailingColumns(classic: false, hasVideo: true, showVersions: false, tier: 1);
-        var dots = TableRules.TrailingColumns(classic: false, hasVideo: false, showVersions: false, tier: 1);
-
-        Assert.Equal(new Track.TrailingColumns(Video: true, Actions: false, Expand: false), film);
-        Assert.Equal(new Track.TrailingColumns(Video: false, Actions: true, Expand: false), dots);
-        Assert.Equal(Track.Lane.Actions, Track.Lane.Video);
-
-        // The embedded album arm, both ways round (Track.Table.Chrome.EmbeddedColumns' lanes).
-        var withFilm = new Track.ColumnSet(
-            Album: false, By: false, Date: false, Video: film.Video, Plays: false, Heart: true, Thumb: false,
-            Actions: film.Actions, Tier: 1);
-        var withDots = withFilm with { Video = dots.Video, Actions = dots.Actions };
-        var a = Track.TracksFor(in withFilm, Design.Size.Thumb32);
-        var b = Track.TracksFor(in withDots, Design.Size.Thumb32);
-
-        Assert.Equal(b.Length, a.Length);
-        for (int i = 0; i < a.Length; i++)
-            Assert.Equal(b[i], a[i]);
-    }
+    /// <summary>The versions chevron shows only on a track that HAS another rendition (tuned Classic L1): its music video
+    /// (the flag or the resolved counterpart) or a known alternate. Every other row, and every non-track row, keeps the
+    /// lane empty.</summary>
+    [Theory]
+    [InlineData(true, false, false, 0, false)]   // a plain song: no chevron
+    [InlineData(true, true, false, 0, true)]     // a music video exists
+    [InlineData(true, false, true, 0, true)]     // the counterpart already resolved
+    [InlineData(true, false, false, 2, true)]    // known alternate audio
+    [InlineData(false, true, true, 1, false)]    // an episode never shows one
+    public void VersionsChevron_OnlyOnASongWithVersions(bool isTrack, bool hasVideo, bool counterpart, int alternates,
+                                                        bool expected)
+        => Assert.Equal(expected, TableRules.HasVersionsOf(isTrack, hasVideo, counterpart, alternates));
 
     // ── the TRAILING ♥ lane (the library reader's row) ──────────────────────────────────────────────────────────────
     //
@@ -177,7 +154,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void TracksFor_HeartTrailing_PutsTheHeartLaneImmediatelyBeforeTheDuration()
     {
-        var reader = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false,
+        var reader = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: false, Heart: false,
                                          Thumb: false, Actions: false, HeartTrailing: true);
         var tracks = Track.TracksFor(in reader, Design.Size.Thumb32);
 
@@ -194,13 +171,13 @@ public sealed class TrackRowStyleRulesTests
     }
 
     /// <summary>It still sits between the last fact and the clock when the whole trailing cluster is up: Tempo/Plays end
-    /// left of it, and Video / "…" / the chevron stay AFTER the duration. Spelled as the WHOLE sequence, because several
+    /// left of it, and the "…" and the chevron stay AFTER the duration. Spelled as the WHOLE sequence, because several
     /// lanes share a width (art 32 = the trailing heart, Plays 52 = the duration) and an index search for one of them
     /// would find the other.</summary>
     [Fact]
     public void TracksFor_HeartTrailing_SitsBetweenTheLastFactAndTheClock()
     {
-        var set = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: true, Heart: false,
+        var set = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: true, Heart: false,
                                       Thumb: true, Actions: true, Tier: 0, Tempo: true, Expand: true, HeartTrailing: true);
         var tracks = Track.TracksFor(in set, Design.Size.Thumb32);
 
@@ -221,7 +198,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void HeartTrailing_WithTheLeadingHeart_NormalizesToTheLeadingLane()
     {
-        var both = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: true,
+        var both = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: false, Heart: true,
                                        Thumb: false, Actions: false, HeartTrailing: true);
         var leadingOnly = both with { HeartTrailing = false };
         var trailingOnly = both with { Heart = false };
@@ -243,7 +220,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void TracksFor_HeartTrailing_IsPartOfTheCacheKey()
     {
-        var hearted = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false,
+        var hearted = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: false, Heart: false,
                                           Thumb: false, Actions: false, HeartTrailing: true);
         var bare = hearted with { HeartTrailing = false };
 
@@ -260,23 +237,19 @@ public sealed class TrackRowStyleRulesTests
     [InlineData(true, 6, false)]
     [InlineData(false, 0, false)]
     public void ExpandLane_FollowsTheTrailingWidthGateInBothSkins(bool showVersions, int tier, bool expected)
-    {
-        Assert.Equal(expected, TableRules.TrailingColumns(
-            classic: true, hasVideo: true, showVersions: showVersions, tier: tier).Expand);
-        Assert.Equal(expected, TableRules.TrailingColumns(
-            classic: false, hasVideo: true, showVersions: showVersions, tier: tier).Expand);
-    }
+        => Assert.Equal(expected, TableRules.TrailingColumns(showVersions: showVersions, tier: tier).Expand);
 
-    /// <summary>"Track details" is a FALLBACK for a missing affordance, not a duplicate of a visible one.</summary>
+    /// <summary>"Track details" is a FALLBACK for a missing affordance, not a duplicate of a visible one: no chevron lane,
+    /// or a row whose lane stays empty because it has no versions.</summary>
     [Theory]
-    [InlineData(true, false, true, true)]    // wants a drawer, no lane, a music track -> the verb
+    [InlineData(true, false, true, true)]    // wants a drawer, no chevron on this row, a music track -> the verb
     [InlineData(true, true, true, false)]    // the chevron is on screen -> no duplicate
     [InlineData(true, false, false, false)]  // an episode carries no drawer
     [InlineData(false, false, true, false)]  // the surface does not offer versions at all
-    public void VersionsMenu_IsTheFallbackForAMissingChevronLane(
-        bool versions, bool expandLane, bool single, bool expected)
+    public void VersionsMenu_IsTheFallbackForAMissingChevron(
+        bool versions, bool chevronShown, bool single, bool expected)
     {
-        Assert.Equal(expected, TableRules.ShowVersionsMenuItem(versions, expandLane, single));
+        Assert.Equal(expected, TableRules.ShowVersionsMenuItem(versions, chevronShown, single));
     }
 
     [Fact]
@@ -385,7 +358,7 @@ public sealed class TrackRowStyleRulesTests
     {
         var all = new Track.Lanes(
             Heart: true, Thumb: true, Artist: true, Album: true, By: true, Date: true, Plays: true, Tempo: true,
-            Video: true, Actions: true, Expand: true);
+            Actions: true, Expand: true);
         var l = TableRules.Relieve(in all, step);
         var kept = new List<string>(8);
         if (l.Heart) kept.Add("heart");
@@ -398,7 +371,6 @@ public sealed class TrackRowStyleRulesTests
         if (l.Tempo) kept.Add("tempo");
         Assert.Equal(expected, string.Join(",", kept));
         // The row's transport, its title, its length and its verbs are never on the table.
-        Assert.True(l.Video);
         Assert.True(l.Actions);
         Assert.True(l.Expand);
     }
@@ -443,7 +415,7 @@ public sealed class TrackRowStyleRulesTests
     {
         var modern = new Track.Lanes(
             Heart: true, Thumb: true, Artist: false, Album: false, By: false, Date: true, Plays: true, Tempo: true,
-            Video: false, Actions: true, Expand: false);
+            Actions: true, Expand: false);
         Assert.Equal(648f, TableRules.MinWidthFor(in modern, 12f, 16f));
         Assert.Equal(0, TableRules.NominalReliefFor(in modern, 648f, 12f, 16f));
         Assert.Equal(1, TableRules.NominalReliefFor(in modern, 647f, 12f, 16f));
@@ -471,7 +443,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void LanesOf_MeasuresTempoThroughTheTierGate()
     {
-        var wide = new Track.ColumnSet(Album: false, By: false, Date: true, Video: false, Plays: true, Heart: true,
+        var wide = new Track.ColumnSet(Album: false, By: false, Date: true, Plays: true, Heart: true,
                                        Thumb: true, Tier: 3, Tempo: true);
         var narrow = wide with { Tier = 4 };
 
@@ -484,7 +456,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void ApplyRelief_RemovesLanesInTheLadderOrderAndStepZeroIsIdentity()
     {
-        var set = new Track.ColumnSet(Album: true, By: true, Date: true, Video: false, Plays: true, Heart: true,
+        var set = new Track.ColumnSet(Album: true, By: true, Date: true, Plays: true, Heart: true,
                                       Thumb: true, Tier: 0, Tempo: true);
 
         Assert.Equal(set, TableRules.ApplyRelief(in set, 0));
@@ -504,7 +476,7 @@ public sealed class TrackRowStyleRulesTests
     [Fact]
     public void ApplyRelief_ClearsTheTempoWishOnlyWhereTheLaneWasShown()
     {
-        var shown = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: true, Heart: true,
+        var shown = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: true, Heart: true,
                                         Thumb: false, Tier: 2, Tempo: true);
         var hiddenByTier = shown with { Tier = 4 };
 
@@ -601,10 +573,10 @@ public sealed class TrackRowStyleRulesTests
     /// · duration · "…".</summary>
     static readonly Track.Lanes ClassicLikedTierTwo = new(
         Heart: true, Thumb: false, Artist: true, Album: false, By: false, Date: true, Plays: true, Tempo: true,
-        Video: false, Actions: true, Expand: false);
+        Actions: true, Expand: false);
 
     /// <summary>Every optional Classic lane at once — the widest table the app builds.</summary>
     static readonly Track.Lanes ClassicFull = new(
         Heart: true, Thumb: false, Artist: true, Album: true, By: true, Date: true, Plays: true, Tempo: true,
-        Video: false, Actions: true, Expand: false);
+        Actions: true, Expand: false);
 }

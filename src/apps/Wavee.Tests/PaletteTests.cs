@@ -154,27 +154,6 @@ public class PaletteTests
     // ── the probe that must not create work ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Has_fresh_dark_never_enqueues_because_its_caller_is_not_rendering()
-    {
-        // The kind-179 trait projector asks it before a request is PLANNED. Enqueuing from a planning question would
-        // turn every warm page into a getDynamicColorsByUris batch.
-        Entities.Now = 1_000_000;
-        string id = Id("999999999999999999999999");
-        int before = Palette.Pending;
-
-        Assert.False(Palette.HasFreshDark(Url(id).AsSpan()));
-        Assert.Equal(before, Palette.Pending);
-
-        Palette.SetDark(Url(id).AsSpan(), new Scheme(0xFF0A0B0C, 0xFF1A1B1C, 0xFFFFFFFF, 0xFFB3B3B3, 0xFFFFFFFF));
-        Assert.True(Palette.HasFreshDark(Url(id).AsSpan()));
-        Assert.Equal(before, Palette.Pending);
-
-        // A negative is not a 179 answer: a cover the colour server declined can still get one.
-        Palette.SetNegative(id.AsSpan());
-        Assert.False(Palette.HasFreshDark(Url(id).AsSpan()));
-    }
-
-    [Fact]
     public void An_ungradeable_url_is_never_queued()
     {
         int before = Palette.Pending;

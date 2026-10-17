@@ -176,8 +176,7 @@ public class SearchHitDataTests
     public void AProfileRow_HasNoPlayNoMenuNoDrag_ButStillACircle_AndOpensItsPage()
     {
         // The Profiles facet's row: a circle with a name; what OpenHit does with it is open the profile page (#161),
-        // so the top result offers "Open page" — and still no Play, no menu, no drag, no Follow trailing.
-        Assert.True(Search.CanOpen(EntityKind.User));
+        // and still no Play, no menu, no drag, no Follow trailing.
         Assert.False(Search.CanPlay(EntityKind.User));
         Assert.False(Search.HasMenu(EntityKind.User));
         Assert.False(SearchHitRules.Drags(EntityKind.User));

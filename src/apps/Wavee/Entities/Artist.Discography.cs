@@ -2,7 +2,10 @@
 // the disco: facet page, the virtual grid, the album drawer, the drawer adapter, the era bands — a deep-linkable route
 // in the route table (§4.11), and the three inline facet sections of the artist page
 //
-// Role: CORE (§1-§5: DiscoFacet, DiscographyEraBands, DiscoRoute, DiscoCardText, the demand + drawer adapter) + UI (§6-§9)
+// Role: CORE (§1-§5: DiscoFacet, DiscographyEraBands, DiscoRoute, DiscoCardText, the demand + drawer adapter) + UI HOSTS (§6-§9). The PICTURE is
+// the structure's since T10b2: the facet section, the cards, the drawer's frame, panel, slots and rows are `StyleKeys.Discography` templates the hosts
+// call while they render (Classic: `Themes\Classic\Structure\Lists\ClassicDiscography.cs`), and the standalone page is `ViewKeys.Discography`
+// (`Themes\Classic\Structure\Views\Pages\ClassicDiscographyPage.cs`). The hosts keep every hook, memo, effect, demand, verdict and verb.
 // Owner: N (stream N-B)
 // Wave: 5
 // Budget: 1300 lines
@@ -32,7 +35,6 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -43,8 +45,10 @@ using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using DrawerVerdict = Wavee.Album.DrawerVerdict;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -282,15 +286,6 @@ public static class DiscoRoute
     public static string Key(DiscoFacet facet, ReadOnlySpan<char> artistUri)
         => string.Concat(Prefix, ((int)facet).ToString(CultureInfo.InvariantCulture), ":", artistUri);
 
-    /// <summary>Parse a whole key. False for anything that is not <c>disco:&lt;0-2&gt;:&lt;non-empty uri&gt;</c>.</summary>
-    public static bool TryParseKey(ReadOnlySpan<char> key, out DiscoFacet facet, out ReadOnlySpan<char> artistUri)
-    {
-        facet = DiscoFacet.Albums;
-        artistUri = default;
-        if (!key.StartsWith(Prefix, StringComparison.Ordinal)) return false;
-        return TryParseArg(key[Prefix.Length..], out facet, out artistUri);
-    }
-
     /// <summary>Parse the suffix a route's <c>Arg</c> carries: <c>&lt;digit&gt;:&lt;uri&gt;</c>.</summary>
     public static bool TryParseArg(ReadOnlySpan<char> suffix, out DiscoFacet facet, out ReadOnlySpan<char> artistUri)
     {
@@ -318,7 +313,7 @@ public static class DiscoRoute
     }
 }
 
-// ══ 4. THE CARD TEXT (ch 08 §8: DiscoGrid.AlbumMeta / ReleaseDateLabel / ReleaseYearLabel, ArtistPage.KindLabel) ═════
+// ══ 4. THE CARD TEXT (ch 08 §8: DiscoGrid.AlbumMeta / ReleaseDateLabel, ArtistPage.KindLabel) ════════════════════
 
 /// <summary>A discography card's subtitle ("Jun 12, 2026 · 17 tracks") — the ONE rule shared by the grid card and the
 /// drawer head, so the two can never read different metadata for one album. Ch 08 §8 names <c>Album.cs</c> as its
@@ -361,13 +356,6 @@ public static class DiscoCardText
             1 => date.ToString("MMM yyyy", culture),
             _ => date.ToString("MMM d, yyyy", culture),
         };
-    }
-
-    /// <summary>The year alone — the appears-on card's subtitle (the kind label stands in when it is 0).</summary>
-    public static string ReleaseYearLabel(ushort year, string? iso)
-    {
-        if (year > 0) return year.ToString(CultureInfo.InvariantCulture);
-        return iso is { Length: >= 4 } ? iso[..4] : "";
     }
 
     /// <summary>ArtistPage.KindLabel: the localized badge word. ONE table — Detail.Text owns it for the album eyebrow, and
@@ -450,14 +438,6 @@ public readonly partial struct Artist
         _ => FetchEdge.ArtistAlbums,
     };
 
-    /// <summary>Is the facet's section present? Somebody answered, and the server says it has releases.</summary>
-    public static bool HasFacet(Artist a, DiscoFacet facet)
-    {
-        if (!a.IsValid) return false;
-        var edge = FacetEdge(facet);
-        return edge.State(a.Slot) != EdgeState.Unknown && edge.Total(a.Slot) > 0;
-    }
-
     /// <summary>Whether the facet keeps a stable section shell while its edge is being answered. Unknown, Partial and
     /// Failed remain present so a later edge answer cannot insert a whole section into the middle of the page; a
     /// complete empty answer removes it permanently.</summary>
@@ -487,9 +467,9 @@ public readonly partial struct Artist
     /// window) — that part was always correct and is unrelated to this demotion.</summary>
     public static void DemandDiscography(Artist a)
     {
-        DemandFacet(a, DiscoFacet.Albums, DiscographyRules.FirstPagePriority(DiscoFacet.Albums));
-        DemandFacet(a, DiscoFacet.Singles, DiscographyRules.FirstPagePriority(DiscoFacet.Singles));
-        DemandFacet(a, DiscoFacet.Compilations, DiscographyRules.FirstPagePriority(DiscoFacet.Compilations));
+        DemandFacet(a, DiscoFacet.Albums, DiscographyRules.FirstPagePriority);
+        DemandFacet(a, DiscoFacet.Singles, DiscographyRules.FirstPagePriority);
+        DemandFacet(a, DiscoFacet.Compilations, DiscographyRules.FirstPagePriority);
     }
 
     /// <summary>One facet's page ONE: while nobody has answered (and the last ask did not fail — a failed facet waits
@@ -535,39 +515,35 @@ public readonly partial struct Artist
     /// "pending for THIS uri" (the placeholder, sized from the card's advertised count); Failed is loaded-and-empty with
     /// nothing pending — the 2-row Retry note. The card carries no thin tracks in 0.3, so that input is 0.</summary>
     public static DrawerVerdict DrawerVerdictFor(string selectedUri, EdgeState tracksReadiness, int tracksCount,
-                                                 int cardTrackCount, int gridColumns)
+                                                 int cardTrackCount, int gridColumns, Album.DrawerShape shape = default)
     {
         bool failed = tracksReadiness == EdgeState.Failed;
         bool loaded = failed || tracksReadiness == EdgeState.Complete
                    || (tracksReadiness == EdgeState.Partial && tracksCount > 0);
         return DrawerVerdict.For(selectedUri, loaded ? selectedUri : null, failed ? 0 : Math.Max(0, tracksCount),
                                       thinTracks: 0, thinTrackCount: Math.Max(0, cardTrackCount), pending: !loaded,
-                                      gridCols: gridColumns);
+                                      gridCols: gridColumns, shape: shape);
     }
 
     /// <summary>The verdict for an album handle, off the live tables.</summary>
-    public static DrawerVerdict DrawerVerdictFor(Album album, string selectedUri, int gridColumns)
+    public static DrawerVerdict DrawerVerdictFor(Album album, string selectedUri, int gridColumns, Album.DrawerShape shape = default)
     {
         if (!album.IsValid || selectedUri.Length == 0) return default;
         var tracks = Entities.Current.Edges.AlbumTracks;
         return DrawerVerdictFor(selectedUri, tracks.Readiness(album.Slot), tracks.Count(album.Slot), album.TrackCount,
-                                gridColumns);
+                                gridColumns, shape);
     }
 
-    // ══ 6. THE FACET SECTION (UI, ch 08 W14/W17) ═════════════════════════════════════════════════════════════════════
+    // ══ 6. THE FACET SECTION (UI host, ch 08 W14/W17) ════════════════════════════════════════════════════════════════
 
     static readonly string[] s_facetKeys = ["disco-facet:0", "disco-facet:1", "disco-facet:2"];
     static readonly string[] s_gridKeys = ["disco-grid:0", "disco-grid:1", "disco-grid:2"];
     static readonly Func<ColorF> s_themeAccent = static () => Tok.AccentDefault;
 
-    /// <summary>The facet header row's own height; with the band above it, the grid's sticky clip inset.</summary>
-    public const float FacetHeaderRowH = 40f;
-
     // MOUNT POINT (WP-5.N contract §4)
-    /// <summary>The whole inline facet section of the artist page: the accent-spined header (an <c>Expander</c> whose
-    /// header pins at <paramref name="pinTop"/>), the grid clipped under it with a 24-DIP feather, and the drawer. Reads
-    /// the page scroll from <c>LazyScroll.Slot</c>. The PAGE wraps it in its own "sec:…" anchor box. An empty box when
-    /// the facet has nothing.</summary>
+    /// <summary>The whole inline facet section of the artist page: the structure's picture (<c>DiscographyStyle.Facet</c>: the accent-spined header, an
+    /// expander whose header pins at <paramref name="pinTop"/>, and the grid clipped under it with a feather) over the core's grid and drawer. Reads the
+    /// page scroll from <c>LazyScroll.Slot</c>. The PAGE wraps it in its own "sec:…" anchor box. An empty box when the facet has nothing.</summary>
     public static Element FacetSection(Artist a, DiscoFacet facet, Func<ColorF> accent, float pinTop, float expandedTopInset)
         => Embed.Comp(new FacetProps(a, facet, pinTop, expandedTopInset, accent), static () => new FacetHost())
            with { Key = s_facetKeys[(int)facet] };
@@ -589,8 +565,8 @@ public readonly partial struct Artist
         readonly Action _demand;
         readonly Func<ulong> _yearFold;                          // the era memo's value gate (UseComputed in Render)
         FacetProps? _p;
-        TemplateParts? _parts;
-        float _partsPin = float.NaN;
+        /// <summary>The structure's discography templates, resolved once per host from the ambient registry.</summary>
+        DiscographyStyle? _style;
 
         // The era memo: years re-read into a pooled buffer, re-planned only when the year FOLD moved (zero allocation
         // otherwise). The fold is the render's gate too — see YearFold.
@@ -642,6 +618,7 @@ public readonly partial struct Artist
 
         public override Element Render()
         {
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             var p = UsePropsOrDefault<FacetProps>();
             if (p is null) return new BoxEl();
             _p = p;
@@ -654,56 +631,24 @@ public readonly partial struct Artist
             var a = p.A;
             UseEffect(_demand);                                  // re-runs as pages land (it reads the edge's Changed)
             if (!FacetPresent(a, p.Facet)) return new BoxEl();
+            var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.Discography);
+            if (style is null) return new BoxEl();
 
             // A failed facet must leave the shimmer.  The edge can retain a positive server total from the failed
-            // page, so HasFacet alone is insufficient here: without this branch the grid has an extent but no targets
+            // page, so its total alone is insufficient here: without this branch the grid has an extent but no targets
             // and renders placeholder cards indefinitely, which looks like a navigation/rendering failure.
             if (edge.IsFailed(a.Slot))
-                return Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact,
-                    onAction: () => Entities.RefreshEdge(FacetFetchEdge(p.Facet), a.Slot));
+                return style.FacetFailed(() => Entities.RefreshEdge(FacetFetchEdge(p.Facet), a.Slot));
 
             int total = edge.Total(a.Slot);
             var eras = Eras(edge, a.Slot, yearFold);
-            float inset = p.PinTop + FacetHeaderRowH;
-
-            Element header = new BoxEl
+            return style.Facet(new DiscoFacetArgs
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 3f, MinHeight = 22f, AlignSelf = FlexAlign.Stretch,
-                        Corners = CornerRadius4.All(Radii.Pill), Fill = _accent(), HitTestVisible = false,
-                    },
-                    Embed.Comp(new FacetLabelProps(FacetTitle(p.Facet), total, eras), () => new FacetHeaderLabel(_visible))
-                        with { Key = "facet-label" },
-                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f },
-                ],
-            };
-            Element grid = new BoxEl
-            {
-                Direction = 1,
-                // Feathered exactly while the grid's own clip is engaged, on the render turn that poses it (WhileStuck —
-                // RCA 2026-09-25 F(ii): a re-render off an engaged signal lagged the cut by two presents).
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
-                // Bug D: no facet-identity demotion — the grid's own next-page paging stays scroll-paced (DemandNextPage
-                // via _ensureRange/OnVisible below); only page ONE's priority changed, and it defaults to Visible.
-                Children = [Grid(a, p.Facet, _accent, _onVisible, p.ExpandedTopInset)],
-            }.StickyClip(inset);
-
-            return new BoxEl
-            {
-                Direction = 1,
-                Children =
-                [
-                    // AnimateContentResize off: a drawer opening inside the grid must not replay the disclosure tween —
-                    // one click, one motion (ch 08 W17, parity 55).
-                    Embed.Comp(new Expander.ExpanderSlots(header, grid, Parts(p.PinTop)),
-                        static () => new Expander { InitiallyExpanded = true, Options = new ExpanderOptions { AnimateContentResize = false } }),
-                    new BoxEl { Height = Spacing.XXL, HitTestVisible = false },
-                ],
-            };
+                Title = FacetTitle(p.Facet), Total = total, Eras = eras, Visible = _visible,
+                Accent = _accent(),
+                Grid = Grid(a, p.Facet, _accent, _onVisible, p.ExpandedTopInset),
+                PinTop = p.PinTop,
+            });
         }
 
         DiscographyEraBand[]? Eras(EdgeTable<NoEdge> edge, int parent, ulong yearFold)
@@ -721,86 +666,12 @@ public readonly partial struct Artist
             _eras = DiscographyEraBands.PlanYears(_years.AsSpan(0, targets.Length));
             return _eras;
         }
-
-        TemplateParts Parts(float pinTop)
-        {
-            if (_parts is not null && _partsPin.Equals(pinTop)) return _parts;
-            _partsPin = pinTop;
-            return _parts = new TemplateParts
-            {
-                [Expander.PartHeader] = element => element with
-                {
-                    MinHeight = FacetHeaderRowH,
-                    Padding = new Edges4(0f, Spacing.XS, Spacing.S, Spacing.XS),
-                    Fill = ColorF.Transparent,
-                    HoverFill = ColorF.Transparent,
-                    PressedFill = ColorF.Transparent,
-                    BorderWidth = 0f,
-                    Corners = CornerRadius4.All(0f),
-                    BrushTransitionMs = 0f,
-                    ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(pinTop))],
-                },
-                [Expander.PartChevron] = element => element with
-                {
-                    Width = 28f, Height = 28f,
-                    Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
-                },
-                [Expander.PartContent] = element => element with
-                {
-                    Padding = Edges4.All(0f), MinHeight = 0f, Margin = Edges4.All(0f),
-                    Fill = ColorF.Transparent, BorderWidth = 0f,
-                    Corners = CornerRadius4.All(0f),
-                },
-            };
-        }
     }
 
-    sealed record FacetLabelProps(string Title, int Total, DiscographyEraBand[]? Eras);
+    // ══ 7. THE GRID (UI host, ch 08 W14/W15; 0.2.9 DiscoGrid) ══════════════════════════════════════════════════════
 
-    /// <summary>The only reactive leaf in the pinned facet heading: a visible-window change replaces one text run; it
-    /// never re-renders the Expander, reflows the grid or writes the page scroll (0.2.9 DiscographyFacetHeaderLabel).</summary>
-    sealed class FacetHeaderLabel(IReadSignal<LazyGridVisibleRange> visible) : Component
-    {
-        public override Element Render()
-        {
-            var props = UsePropsOrDefault<FacetLabelProps>() ?? new FacetLabelProps("", 0, null);
-            var range = visible.Value;
-            string meta = props.Total > 0 ? Strings.Artist.ReleaseCount(props.Total) : "";
-            if (props.Eras is { Length: > 0 } eras)
-            {
-                int index = range.LastIndexExclusive > range.FirstIndex ? range.FirstIndex : 0;
-                if (DiscographyEraBands.AtIndex(eras, index) is { } era && era.Label.Length > 0)
-                    meta = era.Label + " · " + Strings.Artist.ReleaseCount(era.Count);
-            }
-            return meta.Length > 0
-                ? Design.Type.RailHeader(props.Title, meta)
-                : (Element)(Design.Type.RailHeader(props.Title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-        }
-    }
-
-    // ══ 7. THE GRID (UI, ch 08 W14/W15; 0.2.9 DiscoGrid) ═════════════════════════════════════════════════════════════
-
-    const float DiscoMinCol = 180f;
-    const float DiscoGap = Spacing.L;
-    /// <summary>The grid surface's height is the cell width + 50 (the square cover is the cell less its 2 × 8 padding, over the
-    /// 8 gap, the title + caption lines and the 12 bottom pad) — one uniform card height, so the drawer's hug spacing is
-    /// exact; the seed face pinned to it is exactly as tall. RowGap is the vertical gutter, folded into the LazyGrid row
-    /// extra.</summary>
-    const float DiscoCardChrome = 50f, DiscoRowGap = 20f;
     /// <summary><c>HeaderH + 2 × RowPitch</c> = 104: enough of the drawer to prove it opened (ch 08 §9 trap).</summary>
     const float DiscoRevealPeek = DrawerVerdict.HeaderH + 2f * DrawerVerdict.RowPitch;
-    const float CaretW = 16f, CaretH = 8f, CaretOverlap = 1f;
-    static readonly PathData s_caret = BuildCaret();
-
-    static PathData BuildCaret()
-    {
-        var b = new PathBuilder();
-        b.MoveTo(0f, CaretH);
-        b.LineTo(CaretW * 0.5f, 0f);
-        b.LineTo(CaretW, CaretH);
-        b.Close();
-        return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
-    }
 
     /// <summary>The facet's virtualized grid + inline drawer, shared by the facet section and the disco page.
     /// <paramref name="priority"/> is the paging priority for pages beyond the first (see
@@ -835,8 +706,11 @@ public readonly partial struct Artist
         readonly Action _demandTracks;
         readonly Action _retry;
         DrawerVerdict _verdict;                                  // the CACHED verdict DrawerHeight reads (ch 08 §9 trap)
+        global::Wavee.Theming.TierFacts _tiers;                  // the tiers the grid was last drawn in (DrawerFor runs outside the render)
         string _expandedUri = "";
         int _expandedUriSlot;
+        /// <summary>The structure's discography templates, resolved once per host; the cells and the drawer draw from it through their props.</summary>
+        DiscographyStyle? _style;
 
         public DiscoGridHost()
         {
@@ -855,6 +729,9 @@ public readonly partial struct Artist
         {
             var p = UseProps<GridProps>();
             _p = p;
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            // The facts this grid is drawn in (its root's, never the process's last window): the metrics below read them tracked.
+            var facts = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal));
             _ = Entities.ScopeEpoch.Value;
             var edge = FacetEdge(p.Facet);
             _ = edge.Changed.Value;
@@ -867,18 +744,25 @@ public readonly partial struct Artist
             // draining after a frame — never re-renders the grid or rebuilds its realized cells. The cell that paints
             // that row follows it on its own (DiscoCell). The grid pulls the memo first in its pass (LazyGrid.ReadCount).
             var count = UseComputed(_count);
+            var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.Discography);
+            if (style is null) return new BoxEl();
+            // The structure's grid configuration (TC6: its metrics follow the window tier, read tracked) rides the grid as LIVE props (LazyGridFit), so a
+            // tier whose grid differs re-fits the SAME grid: its realized cells, the open drawer and the page's scroll survive the crossing.
+            _tiers = facts.Value.Tiers;
+            var m = style.Metrics(_tiers);
 
-            return Embed.Comp(() => new LazyGrid(
+            // A key on this component's ROOT would be inert: the keyed grid is the root column's one child.
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Embed.Comp(new LazyGridFit(m.MinColumn, m.Gap, m.CardChrome + m.RowGap), () => new LazyGrid(
                 count: count, cell: _cell, ensureRange: _ensureRange,
                 // Two rows keep a fast wheel/touchpad move covered without realizing four extra rows of album cards
                 // during navigation. The grid's range callback still asks the next visible rows before they enter.
-                minColWidth: DiscoMinCol, gap: DiscoGap, rowExtra: DiscoCardChrome + DiscoRowGap, overscanRows: 2,
+                minColWidth: m.MinColumn, gap: m.Gap, rowExtra: m.CardChrome + m.RowGap, overscanRows: 2,
                 expanded: _expandedIndex, drawer: _drawer, drawerHeight: _drawerHeight,
                 onVisibleRangeChanged: _visible,
                 expandedTopInset: _p.ExpandedTopInset, expandedRevealPeek: DiscoRevealPeek,
                 // AlignTop, not Minimal: the clicked row always parks under the sticky band, so the drawer opens in the
                 // SAME place on every click (ch 08 §9 must-not-simplify 4).
-                reveal: ExpandedReveal.AlignTop));
+                reveal: ExpandedReveal.AlignTop)) with { Key = "disco-lazy" }] };
         }
 
         /// <summary>The expanded album's tracklist: asked while nobody answered (and not failed — Retry re-asks), and
@@ -948,68 +832,44 @@ public readonly partial struct Artist
             // and this runs inside LazyGrid's render, which must not subscribe to the slot signal as well.
             int expanded = _expandedSlot.Peek();
             bool isExpanded = expanded > Table.None && (uint)index < (uint)targets.Length && targets[index] == expanded;
-            return Embed.Comp(new DiscoCellProps(p.A, p.Facet, index, cardW, isExpanded, p.Accent, _toggle), s_cellFactory);
+            return Embed.Comp(new DiscoCellProps(p.A, p.Facet, index, cardW, isExpanded, p.Accent, _toggle, _style), s_cellFactory);
         }
 
         /// <summary>The drawer: the verdict RECOMPUTED here (DrawerHeight read the cached one earlier in the same LazyGrid
-        /// pass), the per-album panel keyed on the album, the caret apexed on the clicked card's column.</summary>
+        /// pass), the per-album panel keyed on the album, inside the structure's frame (the caret apexed on the clicked card's column).</summary>
         Element DrawerFor(int index, GridDrawerInfo info)
         {
             var p = _p;
             var targets = FacetEdge(p.Facet).Targets(p.A.Slot);
             int album = (uint)index < (uint)targets.Length ? targets[index] : Table.None;
-            if (album <= Table.None) return new BoxEl();
+            if (album <= Table.None || _style is not { } style) return new BoxEl();
             var tracks = Entities.Current.Edges.AlbumTracks;
             _ = tracks.Changed.Value;                             // LazyGrid re-renders as the tracklist lands
             if (_expandedUriSlot != album) { _expandedUriSlot = album; _expandedUri = new Album(album).Uri.Text; }
             var al = new Album(album);
-            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns);
+            // The structure's drawer geometry for the tier on screen (its columns, pitch and head), read here, inside the grid's render: a tier crossing
+            // re-renders the grid, so an open drawer re-flows to the new tier's columns instead of keeping the old ones.
+            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns, style.Metrics(_tiers).Drawer);
 
-            var panel = Embed.Comp(new DrawerProps(al, _verdict, p.Accent, _retry), static () => new DrawerPanel())
+            var panel = Embed.Comp(new DrawerProps(al, _verdict, p.Accent, _retry, style), static () => new DrawerPanel())
                 with { Key = "drawer:" + _expandedUri };
-
-            float panelWidth = info.Columns * info.CellWidth + MathF.Max(0f, info.Columns - 1) * info.Gap;
-            float apexX = Math.Clamp(info.Left + info.CellWidth / 2f, Radii.Card, MathF.Max(Radii.Card, panelWidth - Radii.Card));
-            float caretX = apexX - CaretW / 2f;
-            float caretY = DrawerVerdict.TopGap - CaretH + CaretOverlap;   // sinks 1 DIP to hide the panel's top stroke
-            return new BoxEl
+            return style.DrawerFrame(new DiscoDrawerFrameArgs
             {
-                Key = "disco-drawer", Direction = 1, Height = _verdict.SlotHeight, ClipToBounds = true, Animate = Design.Reveal.Drawer,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        ZStack = true,
-                        Children =
-                        [
-                            new BoxEl { Direction = 1, Children = [new BoxEl { Height = DrawerVerdict.TopGap, HitTestVisible = false }, panel] },
-                            new PathEl
-                            {
-                                OffsetX = caretX, OffsetY = caretY, Width = CaretW, Height = CaretH,
-                                Geometry = s_caret, Fill = Tok.FillCardSecondary, Rule = FillRule.NonZero,
-                            },
-                            new PolylineStrokeEl
-                            {
-                                OffsetX = caretX, OffsetY = caretY, Width = CaretW, Height = CaretH,
-                                P0 = new Point2(0f, CaretH), P1 = new Point2(CaretW * 0.5f, 0f), P2 = new Point2(CaretW, CaretH),
-                                PointCount = 3, Color = Tok.StrokeCardDefault, Thickness = 1f, RoundCaps = false,
-                            },
-                        ],
-                    },
-                ],
-            };
+                Panel = panel, SlotHeight = _verdict.SlotHeight,
+                Columns = info.Columns, CellWidth = info.CellWidth, Gap = info.Gap, Left = info.Left,
+            });
         }
     }
 
-    // ══ 7b. THE CELL (UI, W2-A5): one realized grid cell, following its own row ══════════════════════════════════════
+    // ══ 7b. THE CELL (UI host, W2-A5): one realized grid cell, following its own row ═════════════════════════════════
 
     /// <summary>What the grid re-pushes to one cell. Equality is DATA — the artist, the facet, the position, the width
     /// and the expanded flag; the two delegates are behaviour, always present, and never compared, so a fresh accent
     /// thunk or toggle handler schedules nothing (component-props contract: what a card renders is a function of its
-    /// item, and the cell invokes the NEWEST delegates it was handed). Public only so the equality rule can be pinned
-    /// by a fact (this assembly has no <c>InternalsVisibleTo</c>).</summary>
+    /// item, and the cell invokes the NEWEST delegates it was handed). The structure's style rides along, never compared (one per registry). Public
+    /// only so the equality rule can be pinned by a fact (this assembly has no <c>InternalsVisibleTo</c>).</summary>
     public sealed record DiscoCellProps(Artist A, DiscoFacet Facet, int Index, float CardW, bool Expanded,
-                                        Func<ColorF> Accent, Action<int> OnToggle)
+                                        Func<ColorF> Accent, Action<int> OnToggle, DiscographyStyle? Style = null)
     {
         public bool Equals(DiscoCellProps? o) => o is not null && o.A == A && o.Facet == Facet && o.Index == Index
                                               && o.CardW.Equals(CardW) && o.Expanded == Expanded;
@@ -1024,8 +884,8 @@ public readonly partial struct Artist
     /// scope, the facet edge and the album table that stays EQUAL until the row at this position moves — so a
     /// publication for any other album re-evaluates the memo and re-renders nothing) and, while expanded, the accent it
     /// paints (a palette landing repaints the one opened card). The handlers, the drag source and the menu factory are
-    /// built ONCE per mount as fields and read the cell's current row; the <see cref="Controls.CardData"/> and the meta
-    /// are rebuilt only when the stamp names a different row or version (or the card width moves), never per render.
+    /// built ONCE per mount as fields and read the cell's current row; the <see cref="Controls.CardData"/> the structure builds
+    /// (<c>DiscographyStyle.Card</c>) is rebuilt only when the stamp names a different row or version (or the card width moves), never per render.
     /// The card's shell controls — its pinned height, the opened skin, the menu — travel IN the data: the shared surface
     /// (<c>Controls.Surface</c>, <c>Shape.Grid</c>) is a component whose chrome mounts lazily, so nothing here post-processes
     /// a BoxEl any more. A cell with no row yet is that same surface's SEED face at the card's pinned height.</summary>
@@ -1084,37 +944,35 @@ public readonly partial struct Artist
             var p = UseProps<DiscoCellProps>();
             _p = p;
             var stamp = UseComputed(_stamp).Value;
+            // The facts this cell is drawn in, peeked (the grid remounts its cells on a crossing that moves its metrics).
+            var tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Peek().Tiers;
+            if (p.Style is not { } style) return new BoxEl();
+            // The PINNED height (the cell width plus the structure's card chrome) is part of the data (it is the shell's), so a responsive width
+            // change rebuilds it too.
+            float height = p.CardW + style.Metrics(tiers).CardChrome;
             if (!stamp.Ready)
             {
                 _slot = Table.None;
                 _data = null;
                 _dataSelected = null;
                 // The pinned height keeps the seed the SAME height as a real card (the grid's folded row gap must not
-                // stretch it). Keyed like the card below, so the row landing is a props re-push into the same host.
-                float seedHeight = p.CardW + DiscoCardChrome;
-                if (_seed is null || !_seed.Height.Equals(seedHeight)) _seed = Controls.CardData.Seed with { Height = seedHeight };
-                return Controls.Surface(_seed, Shape.Grid) with { Key = "album" };
+                // stretch it). Keyed like the card, so the row landing is a props re-push into the same host.
+                if (_seed is null || !_seed.Height.Equals(height)) _seed = style.Seed(height);
+                return style.Cell(_seed);
             }
-            // The PINNED height is part of the data (it is the shell's), so a responsive width change rebuilds it too.
-            float height = p.CardW + DiscoCardChrome;
             if (_data is null || _slot != stamp.Slot || _version != stamp.Version || !_data.Height.Equals(height))
-                Rebuild(in stamp, height);
+                Rebuild(in stamp, height, style);
 
-            // The opened card wears the accent border + the brighter fill; with the caret it answers "where did it
-            // open" (ch 08 §9 must-not-simplify 4). The grid resolves the flag off the album SLOT (identity, never an
-            // index); the host reads the accent inside ITS render, so a palette landing repaints the one expanded card
+            // The opened card wears the accent skin; the grid resolves the flag off the album SLOT (identity, never an
+            // index); the surface reads the accent inside ITS render, so a palette landing repaints the one expanded card
             // and no other.
             Controls.CardData data = _data!;
-            if (p.Expanded) data = _dataSelected ??= data with { Selected = true, SelectedAccent = _accent, Subtitle = SubtitleOf(_meta, Icons.ChevronUp) };
-            // A constant key, shared with the seed: the grid's own per-position wrapper already carries the identity, so
-            // no per-render key string is built, and a seed hydrating is a props re-push, never a remount.
-            return Controls.Surface(data, Shape.Grid) with { Key = "album" };
+            if (p.Expanded) data = _dataSelected ??= style.Opened(data, _meta, _accent);
+            return style.Cell(data);
         }
 
-        /// <summary>The card's data off its row — once per (slot, version, height), never per render. The pinned
-        /// height is what keeps the card OUT of the grid's folded row gap (its shell would otherwise grow into it), and
-        /// the menu rides along so the host attaches it to the shell.</summary>
-        void Rebuild(in DiscoCellStamp stamp, float height)
+        /// <summary>The card's data off its row — once per (slot, version, height), never per render (the structure builds it).</summary>
+        void Rebuild(in DiscoCellStamp stamp, float height, DiscographyStyle style)
         {
             var al = new Album(stamp.Slot);
             _slot = stamp.Slot;
@@ -1123,23 +981,13 @@ public readonly partial struct Artist
             _title = al.Title;
             _meta = DiscoCardText.AlbumMeta(al);
             _cover = Controls.ArtUrl(al.ImageId);
-            _data = new Controls.CardData(_uri, _title, SubtitleOf(_meta, Icons.ChevronDown),
-                _cover, _click, OnPlay: _play, Drag: _drag) { Height = height, Menu = _menu };
+            _data = style.Card(new DiscoCardArgs
+            {
+                Uri = _uri, Title = _title, Meta = _meta, Cover = _cover,
+                Click = _click, Play = _play, Drag = _drag, Menu = _menu, Height = height,
+            });
             _dataSelected = null;
         }
-
-        /// <summary>The meta line with a small tertiary disclosure chevron after it: pointing down while the card can open
-        /// its drawer, up while it is the open one (<see cref="Controls.CardData.Selected"/> carries the accent skin; the
-        /// glyph is the quiet "this expands" cue the plain card never had).</summary>
-        static Element SubtitleOf(string meta, string glyph) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, MinWidth = 0f,
-            Children =
-            [
-                Design.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-                Icon(glyph, 9f, Tok.TextTertiary),
-            ],
-        };
 
         /// <summary>The album card menu: the shared container menu (strip + rows decided by <c>ContainerMenuRules</c>),
         /// built at OPEN from the cell's current row.</summary>
@@ -1150,22 +998,15 @@ public readonly partial struct Artist
         }
     }
 
-    // ══ 8. THE DRAWER PANEL (UI, ch 08 W15/W16; 0.2.9 AlbumDrawerPanel) ══════════════════════════════════════════════
+    // ══ 8. THE DRAWER PANEL (UI host, ch 08 W15/W16; 0.2.9 AlbumDrawerPanel) ══════════════════════════════════════
 
-    /// <summary>The per-album drawer, re-pushed from the grid: the album, THE verdict, the accent and the retry.
-    /// Equality is DATA (album + verdict); the two delegates are behaviour.</summary>
-    sealed record DrawerProps(Album Album, DrawerVerdict Verdict, Func<ColorF> Accent, Action Retry)
+    /// <summary>The per-album drawer, re-pushed from the grid: the album, THE verdict, the accent, the retry and the structure's style.
+    /// Equality is DATA (album + verdict); the delegates are behaviour and the style is one per registry.</summary>
+    sealed record DrawerProps(Album Album, DrawerVerdict Verdict, Func<ColorF> Accent, Action Retry, DiscographyStyle Style)
     {
         public bool Equals(DrawerProps? o) => o is not null && o.Album == Album && o.Verdict.Equals(Verdict);
         public override int GetHashCode() => HashCode.Combine(Album.Slot, Verdict);
     }
-
-    /// <summary># 26 · ♥ 28 · title ★ · time 44 · … 32 at the 32-DIP <c>DrawerVerdict.RowPitch</c> (content 28).</summary>
-    static readonly Track.ColumnSet s_drawerCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
-                                                        Heart: true, Thumb: false);
-    static readonly TrackSize[] s_drawerColumns =
-        [TrackSize.Px(26f), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(), TrackSize.Px(44f), TrackSize.Px(32f)];
-    const float DrawerRowContentH = 28f;
 
     /// <summary>The drawer rows' menu: the album IS the context, so "Go to album" would open the page the drawer is a
     /// preview of — omitted. Built with named arguments (the option structs skip their defaults under <c>default</c>).</summary>
@@ -1193,6 +1034,7 @@ public readonly partial struct Artist
         // mount, so a changed geometry is a keyed remount (the selection model is ours and survives it).
         Element? _list;
         int _geomCols = -1, _geomRows = -1, _geomCells = -1;
+        float _geomPitch = -1f;
 
         public DrawerPanel()
         {
@@ -1232,89 +1074,43 @@ public readonly partial struct Artist
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
             _ = Entities.Current.Albums.Changed.Value;
+            _ = p.Accent();                                      // the page accent, read in this render as the head always did
             var v = p.Verdict;
 
-            Element body = v.ReadyEmpty ? EmptyNote(p.Retry)
-                         : v.Loading ? BuildColumns(v.Shown, v.Columns, s_shimmer)
-                         : RowsList(v);
-            return new BoxEl
+            // Only the rows arm mounts the list (the shimmer and the empty note have none).
+            Element? list = null;
+            int rows = 0;
+            if (!v.ReadyEmpty && !v.Loading) list = RowsList(v, out rows);
+            return p.Style.DrawerPanel(new DiscoDrawerPanelArgs
             {
-                Direction = 1, ClipToBounds = true,
-                Padding = new Edges4(12f, 6f, 12f, 6f),
-                Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
-                BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                Children =
-                [
-                    Head(p),
-                    // The standard selection bar floats over the drawer's own rows, 8 up from the bottom, once the
-                    // selection earns it (SelectionBarRules.Visible: two or more rows). It is a component of its own, so a
-                    // select/clear re-renders only the bar and the bound row chrome - never this panel or the list.
-                    ZStack(body, Embed.Comp(() => new DrawerBar(this)) with { Key = "drawer-bar" }),
-                ],
-            };
-        }
-
-        Element Head(DrawerProps p)
-        {
-            var al = p.Album;
-            ColorF accent = p.Accent();
-            var titleType = Design.Type.DenseTitle("");
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = 36f,
-                Children =
-                [
-                    Controls.Named(Controls.PlayFab(_playAlbum, Icons.Play, 32f), Loc.Get(Strings.Detail.Play)),
-                    Controls.Artwork(Controls.ArtUrl(al.ImageId), 28f, 28f, Radii.Control, decodePx: 56),
-                    new BoxEl
-                    {
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, OnClick = GoAlbum, Cursor = CursorId.Hand,
-                        Children =
-                        [
-                            new SpanTextEl(
-                            [
-                                new TextSpan(al.Title),
-                                new TextSpan(" · " + DiscoCardText.AlbumMeta(al), Weight: 400, Color: Tok.TextSecondary, Size: Ui.Caption("").Size),
-                            ])
-                            {
-                                Size = titleType.Size, LineHeight = titleType.LineHeight, Weight = titleType.ResolvedWeight,
-                                Color = Tok.TextPrimary,
-                                Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
-                            },
-                        ],
-                    },
-                    Controls.Named(new BoxEl
-                    {
-                        Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Corners = CornerRadius4.All(14f), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-                        OnClick = GoAlbum, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
-                        HoverFill = Tok.FillSubtleSecondary,
-                        Children = [Icon(Icons.OpenInNewWindow, 11.76f, Tok.TextSecondary)],
-                    }, Loc.Get(Strings.Detail.GoToAlbum)),
-                ],
-            };
+                Album = p.Album, Verdict = v, PlayAlbum = _playAlbum, GoAlbum = GoAlbum, Retry = p.Retry, List = list, Rows = rows,
+                // The selection bar is a component of its own, so a select/clear re-renders only the bar and the bound row chrome.
+                Bar = Embed.Comp(() => new DrawerBar(this)) with { Key = "drawer-bar" },
+            });
         }
 
         /// <summary>The track rows (and the "Show all" cell) as ONE bound list: a vertical stack for one column, or a
-        /// column-major fill-row grid (the FIRST ceil(cells / 2) cells down the left, as the verdict's row count assumes)
-        /// for two. The list is exactly <c>rows x RowPitch</c> tall, so nothing scrolls and the reserved slot height holds.</summary>
-        Element RowsList(DrawerVerdict v)
+        /// column-major fill-row grid (the FIRST ceil(cells / columns) cells down the left, as the verdict's row count assumes)
+        /// for more. <paramref name="rows"/> is the list's row count (the structure sizes its box to exactly <c>rows x Pitch</c>,
+        /// so nothing scrolls and the reserved slot height holds). Null with no cell to list.</summary>
+        Element? RowsList(DrawerVerdict v, out int rows)
         {
+            rows = 0;
             int cells = v.Shown + (v.ShowAllRow ? 1 : 0);
-            if (cells <= 0) return new BoxEl();
+            if (cells <= 0) return null;
             int cols = v.Columns <= 1 ? 1 : v.Columns;
-            int rows = Math.Max(1, v.Rows);
-            if (_list is null || _geomCols != cols || _geomRows != rows || _geomCells != cells)
+            rows = Math.Max(1, v.Rows);
+            if (_list is null || _geomCols != cols || _geomRows != rows || _geomCells != cells || _geomPitch != v.Pitch)
             {
-                _geomCols = cols; _geomRows = rows; _geomCells = cells;
-                // gap 0: the columns butt together and the slot carries the gutter, so row stride == RowPitch exactly.
+                _geomCols = cols; _geomRows = rows; _geomCells = cells; _geomPitch = v.Pitch;
+                // gap 0: the columns butt together and the slot carries the gutter, so row stride == the verdict's pitch exactly.
                 RepeatLayout layout = cols == 1
-                    ? RepeatLayout.Stack(DrawerVerdict.RowPitch)
+                    ? RepeatLayout.Stack(v.Pitch)
                     : RepeatLayout.Custom(new FillRowVirtualLayout(1f, 99999f, 0f, rows, perPageOverride: cols), horizontal: true);
                 _list = ItemsView.CreateBound(cells, _slotTemplate, layout, _listOptions)
-                    with { Key = "rows:" + cols + "x" + rows + ":" + cells };
+                    with { Key = "rows:" + cols + "x" + rows + ":" + cells + "@" + (int)v.Pitch };
             }
-            return new BoxEl { Direction = 1, MinWidth = 0f, Height = rows * DrawerVerdict.RowPitch, Children = [_list] };
+            return _list;
         }
 
         internal Track TrackAt(int index)
@@ -1389,68 +1185,9 @@ public readonly partial struct Artist
         }
 
         internal Func<int, Element> Lane => _lane;
-
-        /// <summary>READY BUT EMPTY — offline, a failed read, a trackless album: a fixed 2-row note with a Retry that
-        /// re-asks the tracklist while the drawer stays open (W16).</summary>
-        static Element EmptyNote(Action retry) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.M),
-            Children =
-            [
-                Design.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
-                    with { Grow = 1f, Basis = 0f, MinWidth = 0f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                Button.Standard(Loc.Get(Strings.Common.Retry), retry),
-            ],
-        };
-
-        static readonly Func<int, Element> s_shimmer = ShimmerRow;
-
-        /// <summary>The placeholder row at the SAME pitch and column split as the real rows — nothing reflows on land.</summary>
-        static Element ShimmerRow(int i) => new BoxEl
-        {
-            Key = "shimmer:" + i.ToString(CultureInfo.InvariantCulture),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = DrawerVerdict.RowPitch,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Children =
-            [
-                new BoxEl { Width = 16f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Grow = 1f, Basis = 0f, Height = 11f, MaxWidth = 240f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Width = 30f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Width = 32f },
-            ],
-        };
-
-        static Element BuildColumns(int cellCount, int columns, Func<int, Element> cell)
-        {
-            if (cellCount <= 0) return new BoxEl();
-            var kids = new Element[cellCount];
-            for (int i = 0; i < cellCount; i++) kids[i] = cell(i);
-            return Split(kids, columns);
-        }
-
-        /// <summary>One stack, or two parallel column-major stacks (the FIRST ⌈n/2⌉ cells go left) — the ONE splitter the
-        /// rows and the shimmer share, so neither can disagree with the verdict's ⌈cells / columns⌉ rows.</summary>
-        static Element Split(Element[] cells, int columns)
-        {
-            if (cells.Length == 0) return new BoxEl();
-            if (columns <= 1) return new BoxEl { Direction = 1, Children = cells };
-            int perColumn = (cells.Length + columns - 1) / columns;
-            var cols = new Element[columns];
-            for (int c = 0; c < columns; c++)
-            {
-                int start = c * perColumn, end = Math.Min(cells.Length, start + perColumn);
-                cols[c] = new BoxEl
-                {
-                    Key = "col:" + c.ToString(CultureInfo.InvariantCulture), Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = end > start ? cells[start..end] : [],
-                };
-            }
-            return new BoxEl { Direction = 0, Gap = Spacing.XL, Children = cols };
-        }
     }
 
-    /// <summary>The drawer's floating selection bar - its own component, so selecting re-renders only it.</summary>
+    /// <summary>The drawer's floating selection bar - its own component, so selecting re-renders only it (the structure draws it).</summary>
     sealed class DrawerBar : Component
     {
         readonly DrawerPanel _panel;
@@ -1460,13 +1197,12 @@ public readonly partial struct Artist
         {
             _ = _panel.Sel.Version.Value;
             int n = _panel.SelectedShownCount();
-            return Controls.SelectionBar(SelectionBarRules.Visible(n, false) ? n : 0, _panel.Lane, standalone: true, bottomPadding: Spacing.S);
+            return _panel.Current.Style.DrawerBar(SelectionBarRules.Visible(n, false) ? n : 0, _panel.Lane);
         }
     }
 
-    /// <summary>One bound slot of the drawer's list: a track row (check lane, the album's track cells, accent pill) or
-    /// the "Show all" cell. The slot ROOT owns the gesture (press / Enter / Space through the row scope's interaction
-    /// funnel) and focus; the cells inside are click-less content.</summary>
+    /// <summary>One bound slot of the drawer's list: a track row or the "Show all" cell, drawn by the structure. The slot ROOT owns the gesture
+    /// (press / Enter / Space through the row scope's interaction funnel) and focus; the cells inside are click-less content.</summary>
     sealed class DrawerSlot : Component
     {
         readonly DrawerPanel _o;
@@ -1480,8 +1216,6 @@ public readonly partial struct Artist
         Action<PointerEventArgs>? _showAllRelease;
         Action<KeyEventArgs>? _showAllKey;
         static readonly Func<DrawerRowHost> s_rowFactory = static () => new DrawerRowHost();
-        static readonly LayoutTransition s_checkShift = new(
-            TransitionChannels.Position, TransitionDynamics.Tween(333f, Easing.FluentDecelerate));
 
         public DrawerSlot(DrawerPanel owner, RowScope scope)
         {
@@ -1518,73 +1252,39 @@ public readonly partial struct Artist
             var overlay = UseContext(Overlay.Service);
             var p = _o.Current;
             var v = p.Verdict;
+            var style = p.Style;
             if (index >= v.Shown)
-                return v.ShowAllRow && index == v.Shown ? ShowAll(v.Total) : new BoxEl();
+                return v.ShowAllRow && index == v.Shown ? ShowAll(style, v.Total, v.Pitch) : new BoxEl();
 
-            // 2-column gutter: the layout butts the columns together, the slot insets its inner edge.
-            Edges4 margin = v.Columns <= 1 ? default
-                : index / Math.Max(1, v.Rows) == 0 ? new Edges4(0f, 0f, Spacing.M, 0f) : new Edges4(Spacing.M, 0f, 0f, 0f);
-            var skin = new BoxEl
+            var skin = style.DrawerSlot(new DiscoDrawerSlotArgs
             {
-                // Height, not MinHeight: the slot IS the 32-DIP pitch, so a column totals EXACTLY rows x RowPitch.
-                ZStack = true, Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll, Margin = margin,
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                Focusable = false,                                // the ItemsView roving effect owns the one tab stop
-                FocusVisualMargin = Design.FocusInsetRow,
-                Draggable = _drag,
-                OnPointerReleased = _release,
-                OnKeyDown = _key,
-                OnFocusChanged = _scope.OnFocusChanged,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Animate = s_checkShift,
-                        Children =
-                        [
-                            SelectorVisualsBound.BoundCheckLane(_o.ChecksVisible, _scope.IsSelected, _scope.OnInteraction, leftMargin: 4f),
-                            new BoxEl
-                            {
-                                Grow = 1f, Basis = 0f, MinWidth = 0f,
-                                Children = [Embed.Comp(new DrawerRowProps(p.Album, index), s_rowFactory) with { Key = "content" }],
-                            },
-                        ],
-                    },
-                    new BoxEl
-                    {
-                        Key = "pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
-                        Corners = CornerRadius4.All(1.5f), AlignSelf = FlexAlign.Center, Fill = _pillFill, HitTestVisible = false,
-                        Opacity = _pillOpacity,
-                    },
-                ],
-            };
+                Content = Embed.Comp(new DrawerRowProps(p.Album, index, style, v.Pitch), s_rowFactory) with { Key = "content" },
+                Index = index, Verdict = v, Scope = _scope,
+                Release = _release, Key = _key, Drag = _drag,
+                ChecksVisible = _o.ChecksVisible, PillFill = _pillFill, PillOpacity = _pillOpacity,
+            });
             // Right-click / long-press / the row's "...": the selection-aware track menu (Explorer semantics).
             return Controls.IsNullOverlay(overlay) ? skin : skin.WithContextMenu(overlay, _menu);
         }
 
         /// <summary>The "Show all N tracks" cell: not selectable (the list's IsItemSelectable), opens the album on a
         /// click, Enter or Space.</summary>
-        Element ShowAll(int total) => new BoxEl
+        Element ShowAll(DiscographyStyle style, int total, float pitch) => style.ShowAll(new DiscoShowAllArgs
         {
-            Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-            Corners = Radii.ControlAll, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-            Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
-            OnPointerReleased = _showAllRelease ??= _ => _o.GoAlbum(),
-            OnKeyDown = _showAllKey ??= args =>
+            Total = total, Pitch = pitch,
+            Release = _showAllRelease ??= _ => _o.GoAlbum(),
+            Key = _showAllKey ??= args =>
             {
                 if (args.KeyCode == Keys.Enter || (args.KeyCode == Keys.Space && !args.IsRepeat)) { _o.GoAlbum(); args.Handled = true; }
             },
-            OnFocusChanged = _scope.OnFocusChanged,
-            Children = [Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total)) with { Weight = 600, Color = Tok.AccentTextPrimary }],
-        };
+            FocusChanged = _scope.OnFocusChanged,
+        });
     }
 
-    sealed record DrawerRowProps(Album Album, int Index);
+    sealed record DrawerRowProps(Album Album, int Index, DiscographyStyle Style, float Pitch);
 
     /// <summary>One drawer track cell — a component, so a play/pause/skip anywhere re-skins only THIS row. The track is
-    /// read LIVE off the album's edge at its fixed index every render.</summary>
+    /// read LIVE off the album's edge at its fixed index every render; the structure draws it (the SAME eager-row grid `Track.EagerRow` draws).</summary>
     sealed class DrawerRowHost : Component
     {
         DrawerRowProps? _p;
@@ -1617,24 +1317,16 @@ public readonly partial struct Artist
             _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
             var t = TrackOf(p);
             if (t.Slot <= Table.None) return new BoxEl();
-            var st = Track.StateOf(t);
-            Element title = Design.Type.DenseTitle(t.Title)
-                with
-                {
-                    Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                };
-            return Track.Grid(t, p.Index, in st, in s_drawerCols, s_drawerColumns, DrawerRowContentH, title,
-                              new Track.GridOptions(OnPlay: _play, OnLike: _like, ActionsCell: Controls.MoreButton(null)));
+            return p.Style.DrawerTrack(new DiscoDrawerTrackArgs { Track = t, Index = p.Index, Pitch = p.Pitch, State = Track.StateOf(t), Play = _play, Like = _like });
         }
     }
 
-    // ══ 9. THE DISCOGRAPHY PAGE (UI, ch 08 W22; 0.2.9 DiscographyPage) ═══════════════════════════════════════════════
+    // ══ 9. THE DISCOGRAPHY PAGE (core host, ch 08 W22; 0.2.9 DiscographyPage) ═════════════════════════════════════
 
     // MOUNT POINT (WP-5.N contract §4) — RouteKind.Discography
-    /// <summary><c>disco:&lt;kind&gt;:&lt;artist&gt;</c>: a breadcrumb ("Artist › Albums"), the 28/36 page title, the facet
-    /// SelectorBar and the SAME grid + drawer. Deliberately NO cover palette (system accent) and NO shell tint — the two
-    /// visible 0.2.9 differences ch 08 W22 records (parity 88-89); the route row does not claim material.</summary>
+    /// <summary><c>disco:&lt;kind&gt;:&lt;artist&gt;</c>: the structure's page (`Pages.Discography`: a breadcrumb "Artist › Albums", the page title, the
+    /// facet selector) over the SAME grid + drawer. Deliberately NO cover palette (system accent) and NO shell tint — the two visible 0.2.9 differences
+    /// ch 08 W22 records (parity 88-89); the route row does not claim material.</summary>
     public static Element DiscographyPage(in Shell.Route route)
     {
         string key = Shell.NameOf(route);
@@ -1643,8 +1335,11 @@ public readonly partial struct Artist
 
     sealed record DiscoPageProps(Shell.Route Route, string Key);
 
-    static readonly string[] s_facetLabelKeys = [Strings.Artist.Albums, Strings.Artist.SinglesEps, Strings.Artist.Compilations];
+    static readonly Action<int> s_noNavigation = static _ => { };
 
+    /// <summary>The discography page's core host: the route parse, the artist handle and its demand, the scroll handle and the 24-DIP scroll floor it
+    /// provides to the grid, and the crumb and selector navigation. It builds no element: the structure's view draws the page.</summary>
+    [CoreHost]
     sealed class DiscoPageHost : Component
     {
         readonly Signal<float> _scroll = new(0f);
@@ -1699,46 +1394,29 @@ public readonly partial struct Artist
             _facet = facet;
             UseEffect(_demand, DepKey.From(_artist.Slot, (int)facet));
             UseSignalEffect(_watchScroll);
-            if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
+            if (!parsed)
+                return Slots.View(ViewKeys.Discography, new DiscographyPageProps
+                {
+                    Parsed = false, Name = "", Title = "", Facet = facet, OnCrumb = s_noNavigation, OnFacet = s_noNavigation,
+                    ScrollKey = scrollScope + p.Key, Scroll = _handle,
+                });
 
             var a = _artist;
             string name = a.IsValid && a.Knows(ArtistFields.Name) ? a.Name : Loc.Get(Strings.Artist.FallbackName);
-            string title = FacetTitle(facet);
-            var labels = new string[s_facetLabelKeys.Length];
-            for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(s_facetLabelKeys[i]);
             var goArtist = a.Uri;
-
-            Element head = new BoxEl
+            var page = Slots.View(ViewKeys.Discography, new DiscographyPageProps
             {
-                Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    BreadcrumbBar.Create([name, title], i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); }),
-                    Design.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
-                    // route re-seeds it (0.2.9 DiscographyPage.cs:120-125).
-                    SelectorBar.Create(labels, new Signal<int>((int)facet),
-                        onChange: i => { if ((DiscoFacet)i != facet && a.IsValid) Shell.GoTo(DiscoRoute.For(a, (DiscoFacet)i)); }),
-                ],
-            };
-
-            var content = new BoxEl
-            {
-                Direction = 1, Gap = Design.Size.SectionGap,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.PageWide),
-                Children =
-                [
-                    head,
-                    // System accent (no palette) and a 28 top inset: there is no sticky facet band on this page. This
-                    // facet IS the whole page, so its continuation pages stay Visible priority.
-                    a.IsValid ? Grid(a, facet, s_themeAccent, null, 28f, FetchPriority.Visible) : new BoxEl(),
-                ],
-            };
-            var scroll = ScrollView(content) with
-            {
-                Grow = 1f, ScrollKey = scrollScope + p.Key, Handle = _handle,
-            };
-            return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>)_scroll, scroll);
+                Parsed = true, Name = name, Title = FacetTitle(facet), Facet = facet,
+                OnCrumb = i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); },
+                // The ROUTE, not the control, is the truth; a change navigates and the next route re-seeds the selector (0.2.9
+                // DiscographyPage.cs:120-125).
+                OnFacet = i => { if ((DiscoFacet)i != facet && a.IsValid) Shell.GoTo(DiscoRoute.For(a, (DiscoFacet)i)); },
+                // System accent (no palette): there is no sticky facet band on this page. This facet IS the whole page, so its
+                // continuation pages stay Visible priority.
+                Grid = a.IsValid ? inset => Grid(a, facet, s_themeAccent, null, inset, FetchPriority.Visible) : null,
+                ScrollKey = scrollScope + p.Key, Scroll = _handle,
+            });
+            return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>)_scroll, page);
         }
     }
 }

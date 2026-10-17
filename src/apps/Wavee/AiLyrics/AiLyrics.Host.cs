@@ -129,7 +129,6 @@ public static partial class AiLyrics
     public static bool SettingsCardVisible { get; set; }
 
     static Action<Action> s_post = static a => a();
-    static IReadOnlyList<ComputeAdapterInfo> s_npus = Array.Empty<ComputeAdapterInfo>();
     static CancellationTokenSource? s_downloadCts;
     static CancellationTokenSource? s_loadCts;
     static bool s_pauseRequested;
@@ -182,7 +181,6 @@ public static partial class AiLyrics
     static void Seed(IReadOnlyList<ComputeAdapterInfo> npus, Availability availability, IReadOnlyList<string> languages,
         List<PackFile> missing, long used)
     {
-        s_npus = npus;
         var npu = Rules.SupportedNpu(npus);
         bool enabled = Platform.Settings.Get(Platform.Keys.AiLyricsEnabled);
         var phase = Rules.InitialPhase(availability, enabled, missing.Count == 0);

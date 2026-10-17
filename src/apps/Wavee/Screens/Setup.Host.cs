@@ -12,8 +12,8 @@
 // `Setup.Runtime.Host` null the wizard's Local playback page renders its model-null arm and stays skippable. What IS
 // here is the SHELL half of `Setup.Bootstrap` (gap batch B5): the read-only disk witnesses of "this app has run
 // before" and the one call the composition root makes. The bootstrap decisions are `Setup.Bootstrap` / `Setup.Gating`
-// in `Setup.cs` (CORE) — as is the wizard's pure rules region (WP-6.R: `Layout`, `Commands`, `WizardRules`,
-// `SignInPresentation`, `Recolor`, `Cover`), moved there verbatim (batch R2).
+// in `Setup.cs` (CORE) — as is the wizard's pure rules region (WP-6.R: `Commands`, `WizardRules`,
+// `SignInPresentation`, `Cover`), moved there verbatim (batch R2).
 
 namespace Wavee;
 

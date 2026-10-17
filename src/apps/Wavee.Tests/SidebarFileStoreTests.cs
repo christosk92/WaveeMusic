@@ -53,7 +53,7 @@ public class SidebarFileStoreTests : IDisposable
         var read = store.Read();
         Assert.Equal(SidebarFileReadOutcome.Missing, read.Outcome);
         Assert.Null(read.Bytes);
-        Assert.False(store.SaveFaulted);
+        Assert.Equal(SidebarPersistenceFault.None, store.LastWriteResult.Fault);
         Assert.False(File.Exists(_path));   // a read must not create anything
     }
 
@@ -232,16 +232,16 @@ public class SidebarFileStoreTests : IDisposable
         store.Commit(huge);
         Assert.True(store.WaitForWrites(20_000));
 
-        Assert.Equal(SidebarSaveFault.DocumentTooLarge, store.SaveFault);
-        Assert.Contains("budget", store.SaveFaultDetail!);
-        Assert.Contains(SidebarFileStore.MaxDocumentBytes.ToString(), store.SaveFaultDetail!);
+        Assert.Equal(SidebarPersistenceFault.DocumentTooLarge, store.LastWriteResult.Fault);
+        Assert.Contains("budget", store.LastWriteResult.SafeDetail!);
+        Assert.Contains(SidebarFileStore.MaxDocumentBytes.ToString(), store.LastWriteResult.SafeDetail!);
         Assert.Equal(before, File.ReadAllBytes(_path));
         Assert.False(File.Exists(store.TmpPath));
 
         // Shrinking the document IS the recovery: the next in-budget commit clears the fault.
         CommitAndWait(store, Doc("small_again"));
-        Assert.Equal(SidebarSaveFault.None, store.SaveFault);
-        Assert.Null(store.SaveFaultDetail);
+        Assert.Equal(SidebarPersistenceFault.None, store.LastWriteResult.Fault);
+        Assert.Null(store.LastWriteResult.SafeDetail);
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public class SidebarFileStoreTests : IDisposable
         Array.Fill(atCap, (byte)'x');
         CommitAndWait(store, atCap);
 
-        Assert.Equal(SidebarSaveFault.None, store.SaveFault);
+        Assert.Equal(SidebarPersistenceFault.None, store.LastWriteResult.Fault);
         Assert.Equal(atCap, store.Read().Bytes);
     }
 
@@ -307,7 +307,6 @@ public class SidebarFileStoreTests : IDisposable
         var failed = Assert.Single(observed);
         Assert.False(failed.Success);
         Assert.Equal(SidebarPersistenceFault.IoFailure, failed.Fault);
-        Assert.Equal(SidebarSaveFault.IoFailure, store.SaveFault);
         Assert.DoesNotContain(target, failed.SafeDetail!);
 
         File.Delete(blocker);
@@ -317,6 +316,6 @@ public class SidebarFileStoreTests : IDisposable
 
         Assert.Equal(2, observed.Count);
         Assert.True(observed[^1].Success);
-        Assert.Equal(SidebarSaveFault.None, store.SaveFault);   // reactive, not latched: the good retry clears it
+        Assert.Equal(SidebarPersistenceFault.None, store.LastWriteResult.Fault);   // reactive, not latched: the good retry clears it
     }
 }

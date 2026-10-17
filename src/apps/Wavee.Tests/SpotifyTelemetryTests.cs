@@ -177,6 +177,15 @@ public class SpotifyTelemetrySequenceTests
         public int SetCalls;
         public T Get<T>(SettingKey<T> key) => key.Default;
         public void Set<T>(SettingKey<T> key, T value) => Interlocked.Increment(ref SetCalls);
+
+        public bool TryGet<T>(SettingKey<T> key, out T value)
+        {
+            value = key.Default;
+            return false;
+        }
+
+        public bool Has(string name) => false;
+        public void Remove(string name) { }
     }
 
     [Fact]

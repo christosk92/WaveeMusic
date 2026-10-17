@@ -177,6 +177,16 @@ sealed class HeadlessRecordingSettings : IAppSettings
     public int Writes;
     public T Get<T>(SettingKey<T> key) => Values.TryGetValue(key.Name, out var v) && v is T t ? t : key.Default;
     public void Set<T>(SettingKey<T> key, T value) { Writes++; if (value is not null) Values[key.Name] = value; }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!Values.ContainsKey(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name) => Values.ContainsKey(name);
+    public void Remove(string name) { Writes++; Values.Remove(name); }
 }
 
 // ── the grammar ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1065,7 +1075,6 @@ public class HeadlessStoreTests
         Assert.Equal(3, overlay.Get(Platform.Keys.PlaybackQuality));
         Assert.Equal(0, inner.Writes);
         Assert.Equal(Platform.Keys.PlaybackQuality.Default, inner.Get(Platform.Keys.PlaybackQuality));
-        Assert.Equal(1, overlay.WriteCount);
     }
 
     [Fact]

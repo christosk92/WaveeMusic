@@ -1,0 +1,287 @@
+// ── Theming/ThemeBootstrap.cs — the migration of legacy presentation settings into theme options (themes plan 7.1) ─────
+//
+// Each retired presentation switch gets ONE named step (added by its migration PR). A step reads the legacy key(s) and
+// writes the theme option key(s) that replace them. The mechanism guarantees what no numbering scheme can:
+//
+//   · NAMED, never numbered. A step is identified by its name and records `theme.bootstrap.done.<Name> = true` once it ran.
+//     Lanes merge their steps in any order and a patch release ships any subset, so a step can never be "skipped because a
+//     later number already ran".
+//   · COPY, never delete. A step writes a new key only when the new key is ABSENT and the legacy key is PRESENT; the legacy
+//     key stays as inert data. A downgrade finds its keys; a build of another branch sharing the store loses nothing.
+//   · ORDER-INDEPENDENT. A step declares the keys it reads and the keys it writes; `Disjointness` rejects a step set in
+//     which two steps write the same key or one reads what another writes. That is what makes every merge order produce the
+//     same end state (the tests run every permutation).
+//   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
+//     copy it); a renamed option starts at its default; a removed choice becomes the default.
+//
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style, M7b sidebar pane and Library view). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
+
+namespace Wavee.Theming;
+
+/// <summary>One migration step. <paramref name="ReadsLegacyKeys"/> and <paramref name="WritesKeys"/> are setting NAMES.</summary>
+public sealed record ThemeBootstrapStep(string Name, string[] ReadsLegacyKeys, string[] WritesKeys, Action<IAppSettings> Run);
+
+/// <summary>Runs the migration steps.</summary>
+public static class ThemeBootstrap
+{
+    /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
+    public const string DonePrefix = "theme.bootstrap.done.";
+
+    // -- the retired switches (WVTH010 lists these names; only this file may spell them) and the options that replaced them
+
+    /// <summary>M6: the colour-washes switch (default on). Its option is Classic's Surfaces select (`theme.classic.structure.surfaces`,
+    /// the enum's int: Off 0, Subtle 1).</summary>
+    private static readonly SettingKey<bool> LegacyColorWashes = new("appearance.colorWashes.enabled", true);
+    private static readonly SettingKey<int> SurfacesKey = new("theme.classic.structure.surfaces", 1);
+
+    /// <summary>M7a: the sidebar layout (0 Classic · 1 Library) and the entity-row density (0 Default · 1 Compact). Their options are Classic's Sidebar and
+    /// LibraryDensity selects (`theme.classic.structure.sidebar` / `.libraryDensity`, the enums' ints). A value outside 0..1 (2 exists only in profiles that ran
+    /// the discarded PR 205 branch) is not copied: the option default applies.</summary>
+    private static readonly SettingKey<int> LegacySidebarLayout = new("sidebar.layout.id", 0);
+    private static readonly SettingKey<int> SidebarKey = new("theme.classic.structure.sidebar", 0);
+    private static readonly SettingKey<int> LegacySidebarDensity = new("sidebar.pane.density", 0);
+    private static readonly SettingKey<int> LibraryDensityKey = new("theme.classic.structure.libraryDensity", 0);
+    private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
+    private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
+    private static readonly SettingKey<int> LegacyRowStyle = new("detail.rowstyle", 0);
+    private static readonly SettingKey<int> RowStyleOptionKey = new("theme.classic.structure.rowStyle", 0);
+    private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
+    private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
+
+    /// <summary>M8: the detail page layout (0 Automatic · 1 Hero) and "keep the left rail the same size", now Classic's `structure.pageLayout` / `structure.railUniform`; and the ten
+    /// remembered rail sizes (a width and a collapsed flag for the album, playlist, Liked and show rails and for the shared uniform rail), now Classic's theme STATE
+    /// (`theme.classic.state.rail.&lt;scope&gt;.width` / `.collapsed`, `DetailRailPrefs`). A width outside the grip's range is copied as it is: the state key clamps on every read, as the old reader did.</summary>
+    private static readonly SettingKey<int> LegacyPageLayout = new("detail.page.layout", 0);
+    private static readonly SettingKey<int> PageLayoutKey = new("theme.classic.structure.pageLayout", 0);
+    private static readonly SettingKey<bool> LegacyRailUniform = new("detail.rail.uniform", false);
+    private static readonly SettingKey<bool> RailUniformKey = new("theme.classic.structure.railUniform", false);
+
+    /// <summary>The scopes of the remembered rail sizes, in the legacy key's spelling (`detail.rail.&lt;scope&gt;.width`) and the state key's (`rail.&lt;scope&gt;.width`).</summary>
+    private static readonly string[] RailScopes = ["album", "playlist", "liked", "show", "uniform"];
+
+    private static string[] RailLegacyKeys() => RailScopes.SelectMany(static x => new[] { "detail.rail." + x + ".width", "detail.rail." + x + ".collapsed" }).ToArray();
+
+    private static string[] RailStateKeys() => RailScopes.SelectMany(static x => new[]
+        { "theme.classic.state.rail." + x + ".width", "theme.classic.state.rail." + x + ".collapsed" }).ToArray();
+
+    private static void CopyRailSizes(IAppSettings s)
+    {
+        foreach (string scope in RailScopes)
+        {
+            Copy(s, new SettingKey<float>("detail.rail." + scope + ".width", 0f), new SettingKey<float>("theme.classic.state.rail." + scope + ".width", 0f),
+                static v => (!float.IsNaN(v), v));
+            Copy(s, new SettingKey<bool>("detail.rail." + scope + ".collapsed", false), new SettingKey<bool>("theme.classic.state.rail." + scope + ".collapsed", false));
+        }
+    }
+
+    /// <summary>M12: the right panel's width and its docked video's height, now Classic's theme STATE (`theme.classic.state.panelWidth` / `.dockedVideoHeight`, `Shell.PanelSizeKeys`).
+    /// A stored 0 height ("follow the 16:9 floor") is copied as it is. M13: each library kind's navigator and middle column widths, now Classic's state
+    /// (`theme.classic.state.library.&lt;kind&gt;.leftw` / `.midw`, `LibraryViewPrefs`). A width outside the grip's range is copied as it is: the state key clamps on every read.</summary>
+    private static readonly string[] LibraryKinds = ["albums", "artists", "podcasts", "audiobooks"];
+
+    private static string[] LibraryLegacyKeys() => LibraryKinds.SelectMany(static k => new[] { "library." + k + ".leftw", "library." + k + ".midw" }).ToArray();
+
+    private static string[] LibraryStateKeys() => LibraryKinds.SelectMany(static k => new[]
+        { "theme.classic.state.library." + k + ".leftw", "theme.classic.state.library." + k + ".midw" }).ToArray();
+
+    private static void CopyLibraryWidths(IAppSettings s)
+    {
+        foreach (string kind in LibraryKinds)
+            foreach (string column in new[] { "leftw", "midw" })
+                Copy(s, new SettingKey<float>("library." + kind + "." + column, 0f), new SettingKey<float>("theme.classic.state.library." + kind + "." + column, 0f),
+                    static v => (!float.IsNaN(v), v));
+    }
+
+    /// <summary>M7b: the sidebar pane's expanded width and the user's collapse, and Your Library's list/grid view, now Classic's theme STATE
+    /// (`theme.classic.state.paneWidth` / `.paneCollapsed` / `.libraryView`, `Sidebar.PaneWidthKey` and friends). The width and the collapse were settings; the
+    /// view lived in the device file (`sidebar.json`: `layouts.library.sections[id=library].view`, "list" or "grid"), which the step reads with a plain JSON read and never
+    /// touches. A width outside the pane's range is copied as it is (the state key clamps on every read, as the old reader did).</summary>
+    private static readonly SettingKey<float> LegacyPaneWidth = new("sidebar.pane.width", 320f);
+    private static readonly SettingKey<float> PaneWidthKey = new("theme.classic.state.paneWidth", 320f);
+    private static readonly SettingKey<bool> LegacyPaneCollapsed = new("sidebar.pane.userCollapsed", false);
+    private static readonly SettingKey<bool> PaneCollapsedKey = new("theme.classic.state.paneCollapsed", false);
+    private static readonly SettingKey<int> LibraryViewKey = new("theme.classic.state.libraryView", 0);
+
+    /// <summary>The folder of the sidebar's device file (`sidebar.json`) for the "SidebarLibraryView" step. Null (the default) reads no file: a unit test or a demo
+    /// (`--fake`) never reads a real profile. `Platform.Boot` sets it to the profile's sidebar folder before running the steps.</summary>
+    public static string? SidebarFolder { get; set; }
+
+    /// <summary>The device file's Library view as the state's int (List 0, Grid 1), or null when the file, the section or the member is absent or not
+    /// one of the two words (the default applies). The file is the sidebar's device file under <paramref name="profileDir"/>.</summary>
+    public static int? ReadLegacyLibraryView(string profileDir)
+    {
+        string path = Path.Combine(profileDir, "sidebar.json");
+        if (!File.Exists(path)) return null;
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(path));
+        if (!doc.RootElement.TryGetProperty("layouts", out var layouts) || !layouts.TryGetProperty("library", out var library)
+            || !library.TryGetProperty("sections", out var sections) || sections.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+        foreach (var section in sections.EnumerateArray())
+        {
+            if (!section.TryGetProperty("id", out var id) || id.ValueKind != System.Text.Json.JsonValueKind.String || id.GetString() != "library") continue;
+            if (!section.TryGetProperty("view", out var view) || view.ValueKind != System.Text.Json.JsonValueKind.String) return null;
+            return view.GetString() switch { "list" => 0, "grid" => 1, _ => null };
+        }
+        return null;
+    }
+
+    /// <summary>Copies the device file's Library view into the state key when that key is absent. A file that cannot be read throws (the step then
+    /// runs again next launch); a null <paramref name="profileDir"/> reads nothing.</summary>
+    public static void CopyLibraryView(IAppSettings s, string? profileDir)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        if (profileDir is null || s.Has(LibraryViewKey.Name)) return;
+        if (ReadLegacyLibraryView(profileDir) is { } view) s.Set(LibraryViewKey, view);
+    }
+
+    /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
+    public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
+    [
+        // M6 washes: false -> Off (0), true -> Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
+        // option's default (Subtle).
+        new ThemeBootstrapStep("ColorWashes",
+            ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
+            Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+        // M3: the row density rung (0 Compact, 1 Default, 2 Cozy, 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
+        // downgraded value outside 0..3 is not copied (the option default applies; the old reader answered Compact).
+        new ThemeBootstrapStep("TrackRowDensity",
+            ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],
+            Run: static s => Copy(s, LegacyRowDensity, DensityOptionKey, static v => (v is >= 0 and <= 3, v))),
+        // M4: "always hide track artwork" is Classic's `structure.hideTrackArt`.
+        new ThemeBootstrapStep("HideTrackArtwork",
+            ReadsLegacyKeys: ["appearance.trackArtwork.hidden"], WritesKeys: ["theme.classic.structure.hideTrackArt"],
+            Run: static s => Copy(s, LegacyHideTrackArtwork, HideArtOptionKey)),
+        // M7a sidebar: a stored layout and density carry over as they are, so a Library user stays on Library and a Compact user on Compact.
+        new ThemeBootstrapStep("SidebarLayout",
+            ReadsLegacyKeys: ["sidebar.layout.id"], WritesKeys: ["theme.classic.structure.sidebar"],
+            Run: static s => Copy(s, LegacySidebarLayout, SidebarKey, static v => (v is 0 or 1, v))),
+        new ThemeBootstrapStep("SidebarDensity",
+            ReadsLegacyKeys: ["sidebar.pane.density"], WritesKeys: ["theme.classic.structure.libraryDensity"],
+            Run: static s => Copy(s, LegacySidebarDensity, LibraryDensityKey, static v => (v is 0 or 1, v))),
+        // M8 detail pages: a Hero user stays on Hero, a user who kept the rails one size keeps that, and every remembered rail width and collapse carries over (to the Classic
+        // theme's state, the only theme that has ever run them). A page layout outside 0..1 is not copied (the option default applies).
+        new ThemeBootstrapStep("DetailPageLayout",
+            ReadsLegacyKeys: ["detail.page.layout"], WritesKeys: ["theme.classic.structure.pageLayout"],
+            Run: static s => Copy(s, LegacyPageLayout, PageLayoutKey, static v => (v is 0 or 1, v))),
+        new ThemeBootstrapStep("DetailRailUniform",
+            ReadsLegacyKeys: ["detail.rail.uniform"], WritesKeys: ["theme.classic.structure.railUniform"],
+            Run: static s => Copy(s, LegacyRailUniform, RailUniformKey)),
+        new ThemeBootstrapStep("DetailRailSizes",
+            ReadsLegacyKeys: RailLegacyKeys(), WritesKeys: RailStateKeys(),
+            Run: static s => CopyRailSizes(s)),
+        // M12 panel: the width and the docked video height the user dragged to carry over to Classic's state.
+        new ThemeBootstrapStep("PanelWidth",
+            ReadsLegacyKeys: ["shell.rail.width"], WritesKeys: ["theme.classic.state.panelWidth"],
+            Run: static s => Copy(s, new SettingKey<float>("shell.rail.width", 340f), new SettingKey<float>("theme.classic.state.panelWidth", 340f),
+                static v => (!float.IsNaN(v), v))),
+        new ThemeBootstrapStep("PanelDockedVideoHeight",
+            ReadsLegacyKeys: ["shell.rail.docked-video.height"], WritesKeys: ["theme.classic.state.dockedVideoHeight"],
+            Run: static s => Copy(s, new SettingKey<float>("shell.rail.docked-video.height", 0f), new SettingKey<float>("theme.classic.state.dockedVideoHeight", 0f),
+                static v => (!float.IsNaN(v), v))),
+        // M13 library: every kind's two column widths carry over to Classic's state.
+        new ThemeBootstrapStep("LibraryColumnWidths",
+            ReadsLegacyKeys: LibraryLegacyKeys(), WritesKeys: LibraryStateKeys(),
+            Run: static s => CopyLibraryWidths(s)),
+        // M2: the track-list skin (0 Modern, 1 Classic) is Classic's `structure.rowStyle`, the same numbers. A value outside 0..1 is not copied (the option default,
+        // Modern, applies; the old reader clamped to Classic). A user who never touched it has no stored value and stays Modern.
+        new ThemeBootstrapStep("TrackRowStyle",
+            ReadsLegacyKeys: ["detail.rowstyle"], WritesKeys: ["theme.classic.structure.rowStyle"],
+            Run: static s => Copy(s, LegacyRowStyle, RowStyleOptionKey, static v => (v is 0 or 1, v))),
+        // M7b sidebar pane: the width and the collapse a user left carry over to the Classic theme's state, and so does the Library's list/grid choice.
+        new ThemeBootstrapStep("SidebarPaneWidth",
+            ReadsLegacyKeys: ["sidebar.pane.width"], WritesKeys: ["theme.classic.state.paneWidth"],
+            Run: static s => Copy(s, LegacyPaneWidth, PaneWidthKey, static v => (!float.IsNaN(v), v))),
+        new ThemeBootstrapStep("SidebarPaneCollapsed",
+            ReadsLegacyKeys: ["sidebar.pane.userCollapsed"], WritesKeys: ["theme.classic.state.paneCollapsed"],
+            Run: static s => Copy(s, LegacyPaneCollapsed, PaneCollapsedKey)),
+        new ThemeBootstrapStep("SidebarLibraryView",
+            ReadsLegacyKeys: [], WritesKeys: ["theme.classic.state.libraryView"],
+            Run: static s => CopyLibraryView(s, SidebarFolder)),
+    ];
+
+    /// <summary>The setting name of a step's done marker.</summary>
+    public static string DoneKey(string stepName) => DonePrefix + stepName;
+
+    /// <summary>Runs the shipped steps against <paramref name="settings"/>.</summary>
+    public static void Run(IAppSettings settings) => Run(settings, Steps);
+
+    /// <summary>Runs <paramref name="steps"/> against <paramref name="settings"/>, in the order given. A step that already
+    /// recorded its marker is skipped; a step that throws is logged and retried on the next launch (no marker), and does
+    /// not stop the others. Returns how many steps ran.</summary>
+    public static int Run(IAppSettings settings, IReadOnlyList<ThemeBootstrapStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(steps);
+        int ran = 0;
+        foreach (var step in steps)
+        {
+            var done = new SettingKey<bool>(DoneKey(step.Name), false);
+            if (settings.Get(done)) continue;
+            try
+            {
+                step.Run(settings);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("theme", "bootstrap step '" + step.Name + "' failed; it runs again next launch", ex);
+                continue;
+            }
+            settings.Set(done, true);
+            ran++;
+        }
+        return ran;
+    }
+
+    /// <summary>Copies a legacy value to its replacement: only when <paramref name="target"/> is absent and
+    /// <paramref name="legacy"/> is present. <paramref name="map"/> converts the value; returning false leaves the target absent
+    /// (the option default applies). Returns true when a value was written. The legacy key is never touched.</summary>
+    public static bool Copy<TLegacy, TTarget>(IAppSettings settings, SettingKey<TLegacy> legacy, SettingKey<TTarget> target,
+        Func<TLegacy, (bool Valid, TTarget Value)> map)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(map);
+        if (settings.Has(target.Name)) return false;
+        if (!settings.TryGet(legacy, out TLegacy old)) return false;
+        var (valid, value) = map(old);
+        if (!valid) return false;
+        settings.Set(target, value);
+        return true;
+    }
+
+    /// <summary>The same-type copy: the legacy value goes to the target unchanged.</summary>
+    public static bool Copy<T>(IAppSettings settings, SettingKey<T> legacy, SettingKey<T> target)
+        => Copy(settings, legacy, target, static value => (true, value));
+
+    /// <summary>Why <paramref name="steps"/> are not order-independent, or null when they are: step names are unique and
+    /// non-empty, no two steps write the same key, no step reads a key another step writes, and no step writes a done marker.</summary>
+    public static string? Disjointness(IReadOnlyList<ThemeBootstrapStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var writers = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var step in steps)
+        {
+            if (string.IsNullOrWhiteSpace(step.Name)) return "a step has no name";
+            if (!names.Add(step.Name)) return "two steps are named '" + step.Name + "'";
+            foreach (string key in step.WritesKeys)
+            {
+                if (key.StartsWith(DonePrefix, StringComparison.Ordinal))
+                    return "step '" + step.Name + "' writes the done marker '" + key + "'";
+                if (writers.TryGetValue(key, out string? other))
+                    return "steps '" + other + "' and '" + step.Name + "' both write '" + key + "'";
+                writers[key] = step.Name;
+            }
+        }
+        foreach (var step in steps)
+        {
+            foreach (string key in step.ReadsLegacyKeys)
+            {
+                if (writers.TryGetValue(key, out string? writer) && !string.Equals(writer, step.Name, StringComparison.Ordinal))
+                    return "step '" + step.Name + "' reads '" + key + "', which step '" + writer + "' writes";
+                if (writers.TryGetValue(key, out writer))
+                    return "step '" + step.Name + "' both reads and writes '" + key + "'";
+            }
+        }
+        return null;
+    }
+}

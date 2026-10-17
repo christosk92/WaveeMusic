@@ -12,7 +12,7 @@
 //
 // ENGINE-FREE apart from two plain WindowsApi VALUE types the decisions are phrased in (`NetworkCost`,
 // `ToastDeliverySetting`) — no component, no signal, no token. Glyphs are stored as NAMES (the engine's glyphs.json
-// keys) and resolved to `Icons.*` by the UI file, so `SettingsCatalogTests` asserts the no-repeat invariant on plain data.
+// keys) and resolved to `Icons.*` by the structure's Settings view (`ClassicSettings.Glyph`), so `SettingsCatalogTests` asserts the no-repeat invariant on plain data.
 //
 // The About receipts' formatters (`Receipts`) are ch 27 §8's `GpuSummary`/`ClassifySharedIgpu`/`FormatBytes`/
 // `FormatUptime`, which plan §2 files under `Screens/Diagnostics.cs` (owner S). They sit here because the About tab is
@@ -35,8 +35,6 @@ public static partial class Settings
     /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9. The log viewer
     /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
     public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about"];
-
-    public static string SlugOf(Tab tab) => (uint)tab < (uint)TabSlugs.Length ? TabSlugs[(int)tab] : TabSlugs[0];
 
     /// <summary>A deep link's tab name → the tab, General when unknown (a bad arg lands on the page, never nowhere).</summary>
     public static Tab TabFromSlug(string? slug)
@@ -74,12 +72,15 @@ public static partial class Settings
             new(Tab.General, "Notification area", "ThisPc"),
             new(Tab.General, "Graphics", "Devices"),
 
+            // T1b: the tab is Theme (the picker) · the theme's options · Display (app mode, zoom, marquee), then what is not a
+            // theme option and has no other home yet (lyrics, full screen, now playing, the daylist clock).
             new(Tab.Appearance, "Theme", "Brush"),
-            new(Tab.Appearance, "Lists", "List"),
-            new(Tab.Appearance, "Sidebar", "DockLeft"),
+            new(Tab.Appearance, "Theme options", "Design"),
+            new(Tab.Appearance, "Display", "Devices"),
             new(Tab.Appearance, "Lyrics", "Microphone"),
             new(Tab.Appearance, "Fullscreen", "TvMonitor"),
             new(Tab.Appearance, "Now playing", "Album"),
+            new(Tab.Appearance, "Home", "Home"),
 
             new(Tab.Playback, "Audio", "MusicNote"),
             new(Tab.Playback, "Sound", "Speakers"),
@@ -112,24 +113,15 @@ public static partial class Settings
             // "Device" (singular), not "Devices": the section owns the plural.
             new(Tab.General, "Graphics", "preferredGpu", "Device"),
 
-            new(Tab.Appearance, "Theme", "theme", "Sun"),
-            new(Tab.Appearance, "Theme", "zoom", "Zoom"),
-            new(Tab.Appearance, "Theme", "marquee", "Font"),
-            new(Tab.Appearance, "Theme", "colorWashes", "Design"),
-            // "Movie", not "Design": `colorWashes` above already took Design, and a glyph may not repeat inside a
-            // section (SettingsCatalogTests.NoGlyph_RepeatsWithinASection) — two identical icons in one list are two
-            // rows the eye cannot tell apart at a glance, which is the whole point of the rule.
-            new(Tab.Appearance, "Theme", "pageMotion", "Movie", DeveloperOnly: true),
-            new(Tab.Appearance, "Lists", "rowDensity", "RowSize"),
-            new(Tab.Appearance, "Lists", "hideTrackArtwork", "Picture"),
-            new(Tab.Appearance, "Lists", "trackListStyle", "ViewList"),
-            new(Tab.Appearance, "Lists", "pageLayout", "DockLeft"),
-            new(Tab.Appearance, "Lists", "railUniform", "Pin"),
-            new(Tab.Appearance, "Lists", "railReset", "Delete"),
-            // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
-            new(Tab.Appearance, "Lists", "daylistClock", "Clock"),
-            new(Tab.Appearance, "Sidebar", "sidebarDesign", "SplitView"),
-            new(Tab.Appearance, "Sidebar", "sidebarCustomize", "Edit"),
+            new(Tab.Appearance, "Theme", "themePicker", "Picture"),
+            // The rows a structure still binds to legacy keys (`IStructureLayer.LegacyRows`); each leaves this section when its
+            // M-PR turns the switch into a theme option. A glyph may not repeat inside a section
+            // (SettingsCatalogTests.NoGlyph_RepeatsWithinASection).
+            new(Tab.Appearance, "Theme options", "sidebarCustomize", "Edit"),
+            // The core presentation prefs every theme honours.
+            new(Tab.Appearance, "Display", "appMode", "Sun"),
+            new(Tab.Appearance, "Display", "zoom", "Zoom"),
+            new(Tab.Appearance, "Display", "marquee", "Font"),
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
             // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
@@ -151,7 +143,10 @@ public static partial class Settings
             new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
             new(Tab.Appearance, "Fullscreen", "stageMoments", "Brush"),
             new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
-            new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
+            // Developer-only like the switch above it: the player styles only drive Now playing where the Cover/Player switch exists (#199).
+            new(Tab.Appearance, "Now playing", "npvStyle", "Settings", DeveloperOnly: true),
+            // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
+            new(Tab.Appearance, "Home", "daylistClock", "Clock"),
 
             new(Tab.Playback, "Audio", "audioQuality", "Headphones"),
             new(Tab.Playback, "Audio", "meteredQuality", "RadioTower"),
@@ -159,7 +154,7 @@ public static partial class Settings
             new(Tab.Playback, "Audio", "autoplay", "Play"),
             // G-132: the normalization switch 0.2.9 persisted but never showed.
             new(Tab.Playback, "Audio", "normalization", "Equalizer"),
-            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `Settings.UI.cs`'s `Glyph` and distinct from every
+            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `ClassicSettings.Glyph` and distinct from every
             // other row in the section (the Sound section owns "Speakers" as ITS header glyph, which is a different section).
             new(Tab.Playback, "Audio", "normalizationMode", "Speakers"),
             new(Tab.Playback, "Audio", "normalizationAlbum", "Album"),
@@ -232,7 +227,7 @@ public static partial class Settings
         }
 
         /// <summary>Is a row composed at all? The ONE gate the tabs call, so "which rows are developer-only" is a fact of
-        /// this table rather than a condition scattered through the UI files. An unknown row id throws, exactly as
+        /// this table rather than a condition scattered through the view's tabs. An unknown row id throws, exactly as
         /// <see cref="RowGlyph"/> does — a typo must fail loudly, never silently hide a row.</summary>
         public static bool RowVisible(Tab tab, string rowId, bool developerMode)
         {
@@ -312,9 +307,6 @@ public static partial class Settings
 
     public static class Quality
     {
-        /// <summary>The persisted rung of <c>playback.quality</c> that means Lossless.</summary>
-        public const int LosslessRung = 3;
-
         /// <summary>How many audio rungs the combo offers. 0.2.9 offered three (Lossless was "an advert", ch 27 W7);
         /// decision D7 offers the fourth ONLY when a key deriver is installed — a lossless stream cannot play without one.</summary>
         public static int AudioRungCount(bool canDerive) => canDerive ? 4 : 3;
@@ -431,19 +423,6 @@ public static partial class Settings
             >= 1024L => (bytes / 1024.0).ToString("0", CultureInfo.InvariantCulture) + " KB",
             _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
         };
-
-        /// <summary>The nearest preset to a stored byte budget (ties keep the earlier rung).</summary>
-        public static int BodyBudgetIndex(long bytes)
-        {
-            int best = 5;
-            long bestDiff = long.MaxValue;
-            for (int i = 0; i < BodyBudgetBytes.Length; i++)
-            {
-                long diff = Math.Abs(BodyBudgetBytes[i] - bytes);
-                if (diff < bestDiff) { bestDiff = diff; best = i; }
-            }
-            return best;
-        }
 
         /// <summary>An exact preset match, else <see cref="CustomBudgetIndex"/> (typing a value snaps the combo to Custom).</summary>
         public static int BodyBudgetExactIndex(long bytes)

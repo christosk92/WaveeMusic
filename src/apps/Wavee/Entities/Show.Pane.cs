@@ -6,6 +6,8 @@
 //
 // Role: UI
 // Wave: A1 (S-reader)
+// T10c1: the column's picture (the header and its skeleton, the command row, the swap transition and the arm keys) is the structure's `Library.ShowPane` view
+//       (Classic: `Themes\Classic\Structure\Views\Pages\ClassicLibraryShowPane.cs`); this host keeps the selection, the memo pair, the demand and the reader's key.
 // Spec: plan §3.5 — the CONTRACT A2 (library) builds against: `Show.Pane : Component` + `Show.PaneProps(int Slot)`,
 //       mounted from User.Page.Library.cs WITHOUT a Key (re-skins in place, Album's own idiom).
 //
@@ -42,14 +44,14 @@
 // The write happens in `ApplyProps` (this pane is an `IPropsHost`), i.e. at the reconciler's props seam, OUTSIDE render
 // and inside its `Runtime.Batch` — never during `Render`, which would loop (engine rule 6).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -59,19 +61,9 @@ public readonly partial struct Show
     /// — NO <c>Key</c>, so a selection change re-skins this component in place instead of remounting it.</summary>
     public sealed record PaneProps(int Slot);
 
+    [CoreHost]
     public sealed class Pane : Component, IPropsHost
     {
-        /// <summary>The selection swap — byte-identical to <see cref="Album.Pane"/>'s <c>s_paneSwap</c> (see the file
-        /// header): the leaving pane fades out under the entering one, which rises 6 DIP in.</summary>
-        static readonly LayoutTransition s_paneSwap = new(
-            TransitionChannels.Opacity, TransitionDynamics.Tween(180f, Easing.SmoothOut),
-            Enter: new EnterExit(Dy: 6f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(120f, Easing.SmoothOut));
-
-        /// <summary>The two arms' keys are the ARM's, not the show's — the pane re-skins in place (see the file
-        /// header). Only the reader is keyed per show, because a different show is a different list.</summary>
-        const string BodyKey = "showpane:body", SkelKey = "showpane:skel";
-
         int _slot = -1, _pendingSlot = -1;
         /// <summary>THE SELECTION, as a tracked signal (file header §2): the ONE thing a slot change writes, and the
         /// dependency both memos below read first, so a swap really does invalidate them. Never written during render.</summary>
@@ -143,15 +135,22 @@ public readonly partial struct Show
             var show = new Show(_slot);
             UseEffect(_demandShow, DepKey.From(_slot, (int)epoch));
 
-            // Gated ONLY on the title (report 2d): never on the episode edge — the navigator that mounted this pane
-            // already resolved the row it shows, so there is nothing header-shaped left to wait for.
+            // Gated ONLY on the title (report 2d): never on the episode edge — the navigator that mounted this pane already resolved the row it shows, so there is nothing
+            // header-shaped left to wait for. The view keys its two arms by the ARM ("showpane:body" / "showpane:skel"), never by the show: the pane re-skins in place.
             bool headerReady = show.IsValid && show.Knows(ShowFields.Title);
-            BoxEl child = !headerReady ? Album.PaneHeaderSkeleton() : Body(show, m);
-            return new BoxEl
+            if (!headerReady)
+                return Slots.View(ViewKeys.LibraryShowPane, new LibraryShowPaneProps { HeaderReady = false, Open = _open, HeartShown = _heartShown, More = _more });
+            var f = m.Facts?.Value ?? default;
+            var id = IdentityOf(show, in f);
+            // The pane hosts the SAME reader the route page mounts (Show.Page.cs) — one list stack, not a pane-only twin. The scroll key scopes its position per library slot.
+            return Slots.View(ViewKeys.LibraryShowPane, new LibraryShowPaneProps
             {
-                ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                Children = [child with { Key = headerReady ? BodyKey : SkelKey, Animate = s_paneSwap }],
-            };
+                HeaderReady = true, CoverUrl = id.CoverUrl, Eyebrow = id.Eyebrow, Title = id.Title,
+                Publisher = Entities.Strings.Resolve(show.PublisherId), Meta = id.Meta ?? "", Uri = _uri,
+                Open = _open, HeartShown = _heartShown, More = _more,
+                Primary = (accent, size) => Embed.Comp(new SlotProps(m, accent, Size: size), static () => new PrimarySlot()) with { Key = "showpane:primary" },
+                Reader = Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey },
+            });
         }
 
         void DemandShow()
@@ -162,34 +161,6 @@ public readonly partial struct Show
             var edge = Entities.Current.Edges.ShowEpisodes;
             if (edge.State(_slot) == EdgeState.Unknown && !edge.IsFailed(_slot))
                 Entities.EnsureEdge(FetchEdge.ShowEpisodes, _slot);
-        }
-
-        BoxEl Body(Show show, ReaderModel m)
-        {
-            var f = m.Facts?.Value ?? default;
-            var id = IdentityOf(show, in f);
-            Element header = Album.PaneHeader(id.CoverUrl, id.Eyebrow, id.Title, _open,
-                Design.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
-                    with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                id.Meta ?? "");
-            Element commands = new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.M),
-                Children =
-                [
-                    Embed.Comp(new SlotProps(m, () => Tok.AccentDefault), static () => new PrimarySlot()) with { Key = "showpane:primary" },
-                    new BoxEl { Visible = _heartShown, Children = [Detail.RailSatelliteSave(_uri, id.Title)] },
-                    Detail.RailSatelliteMore(_more),
-                ],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children = [header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                    // The pane hosts the SAME reader the route page mounts (Show.Page.cs) — one list stack, not a
-                    // pane-only twin. The scroll key scopes its position per library slot.
-                    Children = [Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey }] }],
-            };
         }
 
         /// <summary>The snapshot memo's body: it reads <see cref="_model"/> FIRST (so a selection change invalidates it

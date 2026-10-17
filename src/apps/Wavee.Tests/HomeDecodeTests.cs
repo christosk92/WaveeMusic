@@ -272,7 +272,6 @@ public class HomeDecodeTests
 
         var card = CardTitled(JumpBackInUri, "daylist");
         Assert.Equal("daylist", card.Format);
-        Assert.True(card.NeedsHydration);                               // its name is still the generic pre-title
         Assert.Equal(daylist.DaylistExpiresAt * 1000L, card.ExpiresAtMs);
         // HomeComposer.ModuleFor (the Wave-5 Home UI's card→module classifier) was deleted with that page
         // (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home page classifies sections, not cards
@@ -339,7 +338,6 @@ public class HomeDecodeTests
         Assert.True(facet.Knows(HomeFields.Sections));
         Assert.Equal(EdgeState.Complete, facet.SectionState);
         Assert.Equal(0, facet.SectionCount);
-        Assert.Equal(HomeState.Empty, facet.State(concluded: true));
     }
 
     [Fact]

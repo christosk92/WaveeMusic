@@ -199,12 +199,11 @@ public sealed class SidebarLayoutRulesTests
     }
 
     [Fact]
-    public void LibrarySort_View_Liked_Persist_AndCountAsModified()
+    public void LibrarySort_Liked_Persist_AndCountAsModified()
     {
         var sort = Apply(new SetLibrarySort(SidebarLibrarySort.Alphabetical, false));
-        var view = Apply(new SetLibraryView(SidebarLibraryView.Grid));
         var liked = Apply(new SetShowLiked(false));
-        foreach (var r in new[] { sort, view, liked })
+        foreach (var r in new[] { sort, liked })
         {
             Assert.True(r.Changed);
             Assert.True(SidebarLayoutRules.IsModified(r.State.Library));
@@ -213,9 +212,19 @@ public sealed class SidebarLayoutRulesTests
         var options = SidebarLayoutRules.Resolve(sort.State, SidebarLayoutId.Library, SidebarDensity.Default).Library;
         Assert.Equal(SidebarLibrarySort.Alphabetical, options.Sort);
         Assert.False(options.Descending);
-        Assert.Equal(SidebarLibraryView.Grid, SidebarLayoutRules.Resolve(view.State, SidebarLayoutId.Library,
-            SidebarDensity.Default).Library.View);
         Assert.False(SidebarLayoutRules.Resolve(liked.State, SidebarLayoutId.Library, SidebarDensity.Default).Library.ShowLiked);
+    }
+
+    [Fact]
+    public void LibraryView_IsTheThemesState_NotTheOverlays_AndCountsAsModifiedOnlyInLibrary()
+    {
+        // M7b: the view is a Resolve input (the theme's state), never an overlay member.
+        Assert.Equal(SidebarLibraryView.List, SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Library, SidebarDensity.Default).Library.View);
+        Assert.Equal(SidebarLibraryView.Grid, SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Library, SidebarDensity.Default,
+            SidebarLibraryView.Grid).Library.View);
+        Assert.False(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Library));
+        Assert.True(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Library, SidebarLibraryView.Grid));
+        Assert.False(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Classic, SidebarLibraryView.Grid));
     }
 
     [Fact]
@@ -402,5 +411,23 @@ public sealed class SidebarLayoutRulesTests
         string recent = SidebarCatalogue.IdOf(SidebarSectionKind.Recent);
         var shown = Then(S(), new SetSectionShown(SidebarLayoutId.Classic, recent, true));
         Assert.False(Doc(Then(shown, new SetSectionLimit(SidebarLayoutId.Classic, recent, SidebarCatalogue.DefaultLimit(SidebarSectionKind.Recent) == 20 ? 10 : 20))).SameExceptCollapsed(Doc(shown)));
+    }
+
+    [Fact]
+    public void Covers_off_resolves_the_classic_layouts_entity_sections_as_text_rows_and_leaves_glyphs_and_library_alone()
+    {
+        // S0: covers off is the Classic layout's text rows; glyph sections keep row A and the Library layout always shows covers.
+        foreach (var density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+        {
+            var text = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, density, covers: false);
+            Assert.Equal(SidebarRowShape.EntityText, text.Find(SidebarSectionKind.Playlists)!.Shape);
+            Assert.Equal(SidebarRowShape.EntityText, text.Find(SidebarSectionKind.Pinned)!.Shape);
+            Assert.Equal(SidebarRowShape.Glyph, text.Find(SidebarSectionKind.Collections)!.Shape);
+            Assert.Equal(SidebarRowShape.Glyph, text.Find(SidebarSectionKind.Home)!.Shape);
+            var library = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Library, density, covers: false);
+            Assert.Equal(SidebarSection.ShapeFor(SidebarSectionKind.Library, density), library.Find(SidebarSectionKind.Library)!.Shape);
+        }
+        Assert.Equal(SidebarRowShape.EntityTwoLine,
+            SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default).Find(SidebarSectionKind.Playlists)!.Shape);
     }
 }

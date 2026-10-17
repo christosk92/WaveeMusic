@@ -159,7 +159,7 @@ public class PathfinderDecodeTests
     [Fact]
     public void A_home_export_stages_the_feed_subject_its_greeting_and_its_chip_strip()
     {
-        // The subject row is what `Home.Classify` reads and what the greeting and the facet strip paint from
+        // The subject row is what `Home.LiveAttemptConcluded` reads and what the greeting and the facet strip paint from
         // (ch 10 §7). Before it was staged, a decoded feed filled thirty-one bands and left the row above them blank.
         TestScope.Fresh();
         Load("home.json");
@@ -189,7 +189,7 @@ public class PathfinderDecodeTests
 
         var spotlight = Entities.Section("spotify:section:0JQ5DAKjx0PtyWwzEGt6uI".AsSpan());
         Assert.Equal(1, spotlight.Cards);
-        Assert.Equal(EdgeState.Complete, spotlight.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(spotlight.Slot));
         Assert.Single(spotlight.CardSlots.ToArray());
         // CROSS-KIND: the payload carries the table the slot indexes, because a band mixes kinds.
         Assert.Equal(EntityKind.Album, spotlight.CardKinds[0].Kind);
@@ -442,7 +442,7 @@ public class PathfinderDecodeTests
         Assert.Equal(3, band.Raw);
         Assert.Equal(band.Raw, band.Cards + band.Unsupported + band.Duplicates);
         Assert.Equal(2, band.CardSlots.Length);
-        Assert.Equal(EdgeState.Complete, band.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));
 
         // A 200 whose homeSections carried nothing is "this did not work" — a miss the planner re-asks — never an empty band.
         Assert.Equal(Spotify.Decode.BrowseRoot.Missing, Spotify.Decode.ScanHomeSection("""{"data":{"homeSections":{"sections":[]}}}"""u8).Root);

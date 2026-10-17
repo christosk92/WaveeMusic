@@ -199,7 +199,7 @@ public static class SidebarMenuModel
     /// pinned" (disabled with "Unpin {names} first" while route/module pins lock it) and "Unpin all shortcuts" (Q17, while
     /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.</summary>
     public static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density, bool editing,
-                                                     IReadOnlyList<string> lockingPinNames)
+                                                     IReadOnlyList<string> lockingPinNames, SidebarLibraryView view = SidebarLibraryView.List)
     {
         var hidden = new List<SidebarMenuRow>();
         var overlay = state.Of(layout);
@@ -226,7 +226,7 @@ public static class SidebarMenuModel
                     Enabled: !editing, Checked: layout == SidebarLayoutId.Library, Radio: true, ReasonKey: editing ? FinishEditing : null),
                 SidebarMenuRow.Divider,
                 new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
-                    Enabled: SidebarLayoutRules.IsModified(overlay)),
+                    Enabled: SidebarLayoutRules.IsModified(overlay, view)),
             ]),
             new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.showSection",
                 Enabled: hidden.Count > 0, ReasonKey: hidden.Count == 0 ? "sidebar.menu.nothingHidden" : null, Children: hidden),
@@ -292,10 +292,10 @@ public static class SidebarMenuModel
     }
 
     /// <summary>Your Library's ⋯ (P5's toolbar): Sort ▸ · View ▸ · Filters ▸ · Show Liked Songs.</summary>
-    public static IReadOnlyList<SidebarMenuRow> LibraryOptions(SidebarLayoutState state, SidebarLibraryFilter filter)
+    public static IReadOnlyList<SidebarMenuRow> LibraryOptions(SidebarLayoutState state, SidebarLibraryFilter filter,
+                                                               SidebarLibraryView view = SidebarLibraryView.List)
     {
         var lib = state.Library.Find("library") ?? SidebarCatalogue.DefaultState(SidebarSectionKind.Library);
-        var view = lib.View ?? SidebarLibraryView.List;
         var kinds = new List<SidebarMenuRow>(4);
         var items = SidebarCatalogue.ItemsOf(SidebarLayoutId.Library, SidebarSectionKind.Library);
         for (int i = 0; i < items.Count; i++)
@@ -393,10 +393,11 @@ public static class SidebarMenuModel
 }
 
 /// <summary>One undo kind. <see cref="Batch"/> groups several leaf entries under one action.</summary>
-public enum SidebarUndoKind : byte { Layout = 0, Density = 1, Pin = 2, Batch = 3 }
+public enum SidebarUndoKind : byte { Layout = 0, Density = 1, Pin = 2, Batch = 3, View = 4 }
 public enum SidebarPinChange : byte { Pinned = 0, Unpinned = 1, Moved = 2 }
 
-/// <summary>One undoable edit (design C.5): a layout overlay pre/post image, a density pair, a pin change with what
+/// <summary>One undoable edit (design C.5): a layout overlay pre/post image, a density pair, a Library view pair (M7b: the view is the theme's
+/// state, not part of the overlay), a pin change with what
 /// its inverse needs — or a <see cref="SidebarUndoKind.Batch"/> of those (<see cref="Parts"/>) when ONE user action made
 /// several changes (pin while Pinned is hidden, Reset everything, Unpin all shortcuts): one action, one entry, one toast,
 /// one Undo. <see cref="Label"/> is the localized "Unpin Running" the toast says.</summary>
@@ -413,7 +414,9 @@ public sealed record SidebarUndoEntry(
     SidebarPin? Pin = null,
     int PinFrom = -1,
     int PinTo = -1,
-    IReadOnlyList<SidebarUndoEntry>? Parts = null)
+    IReadOnlyList<SidebarUndoEntry>? Parts = null,
+    SidebarLibraryView ViewBefore = SidebarLibraryView.List,
+    SidebarLibraryView ViewAfter = SidebarLibraryView.List)
 {
     /// <summary>One action's several changes as ONE entry. The parts are in the order they were APPLIED.</summary>
     public static SidebarUndoEntry Batch(SidebarLayoutId layout, string label, IReadOnlyList<SidebarUndoEntry> parts)
@@ -481,7 +484,7 @@ public sealed class SidebarUndoRing
 
     /// <summary>Q6: Ctrl+Z / Ctrl+Y act while editing, or — outside Edit — only while a sidebar toast is open; never while a
     /// text editor has focus (its own undo stack wins). Called only from the sidebar's own key handlers (focused routing:
-    /// <c>PaneView.OnPaneKey</c>, <c>EditPane.OnPaneKey</c>, §P4.6), so design V.11's "focus in the pane, the head or the
+    /// <c>PaneView.OnPaneKey</c>, <c>ClassicEditPane.OnPaneKey</c>, §P4.6), so design V.11's "focus in the pane, the head or the
     /// edit bar" is structural, not a parameter: there is no frame-global chord.</summary>
     public static bool KeyAllowed(bool editing, bool sidebarToastOpen, bool textEditorFocused)
         => !textEditorFocused && (editing || sidebarToastOpen);

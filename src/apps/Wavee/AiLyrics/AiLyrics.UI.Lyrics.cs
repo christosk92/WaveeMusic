@@ -1,17 +1,16 @@
 // ── AiLyrics/AiLyrics.UI.Lyrics.cs ───────────────────────────────────────────────────────────────────────────────────
-// HeaderButton (the lyrics rail's sparkle), Footer (the end-of-lyrics AI disclosure) — plan §4.4, §4.5
+// HeaderFacts / HeaderClick (the lyrics rail's sparkle), Footer (the end-of-lyrics AI disclosure) — plan §4.4, §4.5
 //
 // Role: UI (executes Rules.Header / Rules.ShowsFooter / Rules.FooterKey; decides nothing itself)
 //
-//   HeaderButton   mounted by Rail.LyricsHeader after the globe toggle. Its own component, so only IT subscribes the AI
-//                  status, the track status and the playing entity: a progressive publish re-renders one 32-DIP glyph,
-//                  never the rail header. Hidden (Visible = false, zero extent) while the feature is off or cannot run.
-//                  While the current track is being timed the glyph breathes 1.0 → 0.55 → 1.0 on a looping opacity
-//                  keyframe track (an idle-cadence engine loop sampled on frame time — no spinner, no re-render).
-//                  Click: on a song with people-made word timing, switches it to AI timing and back
-//                  (Rules.HeaderState.TogglesPreference, AiLyrics.SetPreferAi); else Settings › Appearance when Settings
-//                  can fix what the tooltip says (Rules.OpensSettings);
-//                  otherwise the tooltip is announced, so a click is never silent for a screen reader.
+//   HeaderFacts    the lyrics header's sparkle VERDICT (`LyricsSparkleFacts`), read by the `Panel.LyricsHeader` view inside the
+//                  sparkle's own component (Classic's `ClassicLyricsSparkle`), so only IT subscribes the AI status, the track status
+//                  and the playing entity: a progressive publish re-renders one 32-DIP glyph, never the rail header. The picture (the
+//                  glyph, hidden while the feature is off or cannot run, and its breath while the track is being timed) is the view's.
+//   HeaderClick    what a sparkle click does with the verdict it was drawn from: on a song with people-made word timing, switch
+//                  it to AI timing and back (Rules.HeaderState.TogglesPreference, AiLyrics.SetPreferAi); else Settings › Appearance
+//                  when Settings can fix what the tooltip says (Rules.OpensSettings); otherwise announce the tooltip, so a click is
+//                  never silent for a screen reader.
 //   Footer         mounted by Lyrics.ViewCore BELOW the lyrics viewport in its root column — never a virtual-list item
 //                  (the follow geometry assumes ItemCount == Lines.Count). One muted line, sparkle + text (never the
 //                  icon alone). While a live job runs (Rules.FooterShowsProgress) the line reads "Timing words · x of y
@@ -30,14 +29,34 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
 public static partial class AiLyrics
 {
-    // MOUNT POINT (Rail.LyricsHeader)
-    /// <summary>The lyrics rail header's sparkle button, or a hidden zero-extent box while the feature is off.</summary>
-    public static Element HeaderButton() => Embed.Comp(static () => new AiHeaderButton()) with { Key = "ai-lyrics-header" };
+    // THE SPARKLE (the `Panel.LyricsHeader` view draws it)
+    static readonly Action s_openSettings = static () => Settings.Open(Settings.Tab.Appearance);
+
+    /// <summary>The lyrics header sparkle's verdict for this render: the status, the track's status and the playing entity through
+    /// <see cref="Rules.Header"/>, with the track's preference. Subscribes all three (and the preference epoch).</summary>
+    internal static LyricsSparkleFacts HeaderFacts()
+    {
+        var track = Track.Value;
+        bool prefersAi = PrefersAi(track.TrackId);                                 // subscribes to PreferEpoch
+        var state = Rules.Header(Current.Value, track, Playback.CurrentId.Value.Kind, prefersAi);
+        return new LyricsSparkleFacts(state.Visible, state.Active, track.Phase == TrackPhase.Working,
+            state.Visible ? Loc.Get(state.TipKey) : "", track.TrackId, prefersAi, state.TogglesPreference, state.OpensSettings);
+    }
+
+    /// <summary>A sparkle click, acting on the verdict the glyph was drawn from: switch the song between AI timing and the provider's word
+    /// timing, open Settings when Settings can fix what the tooltip says, else read the tooltip aloud.</summary>
+    internal static void HeaderClick(LyricsSparkleFacts facts)
+    {
+        if (facts.TogglesPreference) SetPreferAi(facts.TrackId, !facts.PrefersAi);
+        else if (facts.OpensSettings) s_openSettings();
+        else FluentGpu.Input.Announcer.Say(facts.Tip);
+    }
 
     // MOUNT POINT (Lyrics.ViewCore root column)
     /// <summary>The end-of-lyrics disclosure strip. <paramref name="ink"/> and <paramref name="sidePad"/> are the mounting
@@ -53,79 +72,6 @@ public static partial class AiLyrics
         var current = Playback.Current.Value;
         _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
         return current.Kind == EntityKind.Track && !current.IsNone ? Lyrics.Store.IdOf(new global::Wavee.Track(current.Slot)) : "";
-    }
-
-    /// <summary>The sparkle. The root BoxEl is the component's host node: the pulse loop runs on ITS opacity channel, so
-    /// the rail's shared <see cref="Rail.HeaderButton"/> stays untouched. The root's static Opacity is never declared, so
-    /// a re-render never stomps the channel the loop (or the settle spring) owns.</summary>
-    sealed class AiHeaderButton : Component
-    {
-        const float PulseMs = 1800f;
-        /// <summary>1.0 → 0.55 → 1.0, eased both ways: a quiet breath, not a blink.</summary>
-        static readonly Keyframe[] s_pulse =
-            [new Keyframe(0f, 1f), new Keyframe(0.5f, 0.55f, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)];
-        /// <summary>Back to full opacity from wherever the loop was, critically damped (never overshoots 1).</summary>
-        static readonly SpringParams s_settle = SpringParams.FromResponse(0.35f, 1f);
-        static readonly Action s_openSettings = static () => Settings.Open(Settings.Tab.Appearance);
-
-        readonly Action _click;
-        readonly Action _drivePulse;
-        string _tip = "";
-        HeaderState _state;
-        string _trackId = "";
-        bool _prefersAi;
-        bool _pulse;    // this render's verdict (the layout effect reads it)
-        bool _pulsed;   // a loop was seeded and has not been settled yet
-
-        public AiHeaderButton()
-        {
-            // One stable handler that acts on this render's verdict: switch the song between AI timing and the
-            // provider's word timing, open Settings when Settings can fix what the tooltip says, else read it aloud.
-            _click = () =>
-            {
-                if (_state.TogglesPreference) SetPreferAi(_trackId, !_prefersAi);
-                else if (_state.OpensSettings) s_openSettings();
-                else FluentGpu.Input.Announcer.Say(_tip);
-            };
-            _drivePulse = DrivePulse;
-        }
-
-        public override Element Render()
-        {
-            var track = Track.Value;
-            _trackId = track.TrackId;
-            _prefersAi = PrefersAi(track.TrackId);                                 // subscribes to PreferEpoch
-            var state = _state = Rules.Header(Current.Value, track, Playback.CurrentId.Value.Kind, _prefersAi);
-            // Reduced motion is a VALUE folded into the verdict: the glyph simply stays at rest.
-            _pulse = state.Visible && track.Phase == TrackPhase.Working && !Design.Reduced;
-            // Keyed on the verdict only: a progressive publish (LinesReady moves) re-renders the tooltip, never re-seeds
-            // the loop mid-breath.
-            UseLayoutEffect(_drivePulse, DepKey.From(_pulse));
-
-            if (!state.Visible) return new BoxEl { Visible = false };
-            _tip = Loc.Get(state.TipKey);
-            return new BoxEl
-            {
-                Shrink = 0f,
-                Children = [Rail.HeaderButton(Icons.RefineSparkle, _tip, _click, active: state.Active)],
-            };
-        }
-
-        void DrivePulse()
-        {
-            var ctx = Context;
-            if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
-            if (_pulse)
-            {
-                anim.Keyframes(ctx.HostNode, AnimChannel.Opacity, s_pulse, PulseMs, loop: true);
-                _pulsed = true;
-            }
-            else if (_pulsed)
-            {
-                anim.Spring(ctx.HostNode, AnimChannel.Opacity, 1f, s_settle);
-                _pulsed = false;
-            }
-        }
     }
 
     /// <summary>The disclosure strip. An always-present zero-extent root (a component root's Key is inert — the keyed
@@ -206,7 +152,7 @@ public static partial class AiLyrics
                 [
                     new TextEl(Icons.RefineSparkle)
                     {
-                        Size = GlyphSize, FontFamily = Theme.IconFont, Color = color, Shrink = 0f,
+                        Size = GlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = color, Shrink = 0f,
                     },
                     new TextEl(progress ? Strings.Lyrics.Ai.Footer.Progress(track.LinesReady, track.LineCount) : Loc.Get(Rules.FooterKey(track)))
                     {

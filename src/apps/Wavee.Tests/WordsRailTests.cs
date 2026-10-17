@@ -190,7 +190,7 @@ public class LedgerBarTests
     [Fact]
     public void The_three_parts_split_the_whole()
     {
-        var (played, progress, toGo) = Controls.LedgerPartsOf(0.5f, 0.25f);
+        var (played, progress, toGo) = PodcastLedgerRules.PartsOf(0.5f, 0.25f);
         Assert.Equal(0.5f, played, 4);
         Assert.Equal(0.25f, progress, 4);
         Assert.Equal(0.25f, toGo, 4);
@@ -199,10 +199,10 @@ public class LedgerBarTests
     [Fact]
     public void Progress_never_overlaps_what_is_played()
     {
-        var (played, progress, toGo) = Controls.LedgerPartsOf(0.9f, 0.5f);
+        var (played, progress, toGo) = PodcastLedgerRules.PartsOf(0.9f, 0.5f);
         Assert.Equal(0.9f, played, 4);
         Assert.Equal(0.1f, progress, 4);
-        Assert.Equal(Controls.LedgerFloor, toGo, 4);
+        Assert.Equal(PodcastLedgerRules.Floor, toGo, 4);
     }
 
     [Theory]
@@ -210,9 +210,9 @@ public class LedgerBarTests
     [InlineData(float.NaN, -1f)]
     public void An_empty_or_garbage_ledger_is_all_to_go_with_floored_stubs(float played, float progress)
     {
-        var (p, g, t) = Controls.LedgerPartsOf(played, progress);
-        Assert.Equal(Controls.LedgerFloor, p, 4);
-        Assert.Equal(Controls.LedgerFloor, g, 4);
+        var (p, g, t) = PodcastLedgerRules.PartsOf(played, progress);
+        Assert.Equal(PodcastLedgerRules.Floor, p, 4);
+        Assert.Equal(PodcastLedgerRules.Floor, g, 4);
         Assert.Equal(1.0f, t, 4);
     }
 
@@ -221,7 +221,7 @@ public class LedgerBarTests
     {
         Span<float> x = stackalloc float[3];
         Span<float> w = stackalloc float[3];
-        Controls.LedgerGeometry(204f, 0.5f, 0.25f, 0.25f, x, w);
+        PodcastLedgerRules.Geometry(204f, 0.5f, 0.25f, 0.25f, x, w);
         Assert.Equal(100.0f, w[0], 3);
         Assert.Equal(50.0f, w[1], 3);
         Assert.Equal(50.0f, w[2], 3);
@@ -236,10 +236,34 @@ public class LedgerBarTests
     {
         Span<float> x = stackalloc float[3];
         Span<float> w = stackalloc float[3];
-        Controls.LedgerGeometry(104f, Controls.LedgerFloor, Controls.LedgerFloor, 1f, x, w);
-        Assert.Equal(Controls.LedgerMinPart, w[0], 3);
-        Assert.Equal(Controls.LedgerMinPart, w[1], 3);
-        Assert.Equal(104f - 2f * Controls.LedgerGap - 2f * Controls.LedgerMinPart, w[2], 3);
+        PodcastLedgerRules.Geometry(104f, PodcastLedgerRules.Floor, PodcastLedgerRules.Floor, 1f, x, w);
+        Assert.Equal(PodcastLedgerRules.MinPart, w[0], 3);
+        Assert.Equal(PodcastLedgerRules.MinPart, w[1], 3);
+        Assert.Equal(104f - 2f * PodcastLedgerRules.Gap - 2f * PodcastLedgerRules.MinPart, w[2], 3);
         Assert.Equal(104.0f, x[2] + w[2], 3);
+    }
+
+    // ── fit: the leading words that fit whole, the rest behind "more" (the library's sort rail) ──────────────────────────────────
+
+    [Fact]
+    public void A_fit_rail_shows_every_word_when_they_fit_whole()
+        => Assert.Equal(3, Controls.Words.FitCount([52f, 78f, 36f], 14f, 52f + 78f + 36f + 28f, 40f));
+
+    [Fact]
+    public void A_fit_rail_folds_the_words_that_would_clip_and_keeps_room_for_more()
+    {
+        // The 340 navigator's head (316 less the view toggle): recents, alphabetical, artist fit; "recently added" and "release date" fold.
+        float[] widths = [52f, 78f, 36f, 95f, 80f];
+        Assert.Equal(3, Controls.Words.FitCount(widths, 14f, 260f, 40f));
+        Assert.Equal(2, Controls.Words.FitCount(widths, 14f, 240f, 40f));   // 8 short of artist, the gap and "more" (248)
+        // The 560 navigator fits all five.
+        Assert.Equal(5, Controls.Words.FitCount(widths, 14f, 440f, 40f));
+    }
+
+    [Fact]
+    public void A_fit_rail_that_has_no_room_folds_everything_and_an_unmeasured_one_shows_all()
+    {
+        Assert.Equal(0, Controls.Words.FitCount([52f, 78f], 14f, 60f, 40f));
+        Assert.Equal(2, Controls.Words.FitCount([52f, 78f], 14f, 0f, 40f));
     }
 }

@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -111,7 +112,7 @@ public sealed class SidebarDisclosuresTests
             in input, options);
 
         Assert.Equal(expanded.Rows.Count, collapsed.Rows.Count);
-        Assert.True(SidebarRowGeometry.TrySectionBodyRange(expanded.Rows, "pinned", out _, out _));
-        Assert.False(SidebarRowGeometry.TrySectionBodyRange(collapsed.Rows, "pinned", out _, out _));
+        Assert.True(SidebarPlanQueries.TrySectionBodyRange(expanded.Rows, "pinned", out _, out _));
+        Assert.False(SidebarPlanQueries.TrySectionBodyRange(collapsed.Rows, "pinned", out _, out _));
     }
 }

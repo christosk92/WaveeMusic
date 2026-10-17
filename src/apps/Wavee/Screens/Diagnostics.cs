@@ -11,8 +11,9 @@
 //       G-183, G-197
 //
 // ENGINE-FREE (one Signal for the Connect traces' version). Every decision the Logs page, the two diagnostics pages,
-// the lyrics inspector and the frame watch render is a function here with a fact in Wavee.Tests; `Diagnostics.UI.cs` only
-// lays them out and `Diagnostics.Host.cs` only touches the disk, the process and the engine.
+// the lyrics inspector and the frame watch render is a function here with a fact in Wavee.Tests; `Diagnostics.Pages.cs` only
+// builds the pages' documents (the Common `Pages.Diagnostics.*` views draw them), `Diagnostics.UI.cs` only lays out the lyrics inspector
+// and `Diagnostics.Host.cs` only touches the disk, the process and the engine.
 //
 // NOT HERE, ON PURPOSE: ch 27 §8's `GpuSummary` / `ClassifySharedIgpu` / `FormatBytes` / `FormatUptime` landed first as
 // `Settings.Receipts` (owner R, `Screens/Settings.cs`) — one copy, read by both owners. `LogCapturePolicy` and the pure
@@ -125,15 +126,6 @@ public static partial class Diagnostics
             return result;
         }
 
-        /// <summary>The category combo's index for a name: 0 = "All categories", also for a name no longer present.</summary>
-        public static int CategoryIndex(string[] categories, string? category)
-        {
-            if (string.IsNullOrEmpty(category)) return 0;
-            for (int i = 0; i < categories.Length; i++)
-                if (string.Equals(categories[i], category, StringComparison.OrdinalIgnoreCase)) return i + 1;
-            return 0;
-        }
-
         /// <summary>One "name=value" per line for the Fields block; empty (the block is skipped) when there are none.</summary>
         public static string FieldText(WaveeLogField[]? fields)
         {
@@ -236,9 +228,6 @@ public static partial class Diagnostics
         bool CompiledIn, IReadOnlyList<LocateCandidate> Candidates, ProvisioningOutcome LocateOutcome, string? LocateReason,
         ProvisioningOutcome? VerifyOutcome, string? VerifyDetail, Setup.RuntimeTrust? SignatureTrust, Setup.RuntimeSignature? Signature)
     {
-        public static RuntimeDiagnostics NotCompiledIn(string reason) =>
-            new(false, [], ProvisioningOutcome.RuntimeUnavailable, reason, null, null, null, null);
-
         /// <summary>Verify was never reached — the page's prose-absence arm.</summary>
         public bool VerifyNeverReached => VerifyOutcome is null && VerifyDetail is null && SignatureTrust is null && Signature is null;
     }

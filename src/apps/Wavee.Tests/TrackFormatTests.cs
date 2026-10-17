@@ -21,6 +21,7 @@ using System.Text;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using Wavee.Theming;
 using Xunit;
 using Format = Wavee.Track.Format;
 using RowMetrics = Wavee.Track.RowMetrics;
@@ -342,7 +343,7 @@ public class TrackFormatTests
     // ── row metrics: the alignment invariant and the drawer's rail ───────────────────────────────────────────────────
 
     static Track.ColumnSet Set(int tier, bool heart, bool thumb, bool classic = false)
-        => new(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: heart, Thumb: thumb,
+        => new(Album: false, By: false, Date: false, Plays: false, Heart: heart, Thumb: thumb,
                Tier: tier, Classic: classic);
 
     [Theory]
@@ -367,17 +368,16 @@ public class TrackFormatTests
         Assert.Equal(Track.Lane.Thumb, RowMetrics.ThumbSize);
         Assert.Equal(Track.Lane.Heart, RowMetrics.HeartCol);
         Assert.Equal(RowMetrics.HeaderHeight, Track.TableRules.HeaderHeightFor(classic: false));
-        for (int density = 0; density <= 3; density++)
-        {
-            Assert.Equal(Track.TableRules.RowHeightFor(density, classic: false), RowMetrics.RowHeightFor(density));
-            Assert.Equal(Track.TableRules.ArtSizeFor(density, classic: false), RowMetrics.ArtSizeFor(density));
-        }
+        // What the core uses before a composition publishes track rows is Classic's Default rung (the shell as it shipped), and its Modern row is the constant.
+        Assert.Equal(Wavee.Themes.Classic.ClassicDensity.Rows(Wavee.Themes.Classic.RowDensity.Default), TrackRowMetrics.Standard);
+        Assert.Equal(RowMetrics.RowHeight, TrackRowMetrics.Standard.ModernRow);
+        Assert.Equal(RowMetrics.ThumbSize, TrackRowMetrics.Standard.ModernArt);
     }
 
     [Fact]
     public void ColumnSet_defaults_keep_the_overflow_lane_and_tier_zero()
     {
-        var set = new Track.ColumnSet(false, false, false, false, false, false, false);
+        var set = new Track.ColumnSet(false, false, false, false, false, false);
 
         Assert.True(set.Actions);
         Assert.Equal(0, set.Tier);
@@ -390,7 +390,7 @@ public class TrackFormatTests
     [InlineData(true, 4, false)]
     [InlineData(false, 0, false)]
     public void ShowTempo_is_the_wish_and_the_tier(bool tempo, int tier, bool expected)
-        => Assert.Equal(expected, RowMetrics.ShowTempo(new Track.ColumnSet(false, false, false, false, false, false, false,
+        => Assert.Equal(expected, RowMetrics.ShowTempo(new Track.ColumnSet(false, false, false, false, false, false,
                                                                            Tier: tier, Tempo: tempo)));
 
     /// <summary>The rail drops from the ART CENTRE: Modern pays <c>PadX − RowInset</c> (its skin margin supplies the rest),

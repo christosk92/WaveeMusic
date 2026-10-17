@@ -57,15 +57,10 @@ public static partial class Controls
     public static readonly PickerShell PickerTile = new(116f, 84f, 8f, 4f);
     /// <summary>The sidebar design card as it appears in Settings, where it shares a page column.</summary>
     public static readonly PickerShell PickerPaneCompact = new(200f, float.NaN, 10f, 7f);
-    /// <summary>The sidebar design card at full size — the fresh-install chooser.</summary>
-    public static readonly PickerShell PickerPane = new(224f, float.NaN, 10f, 7f);
     /// <summary>The cover-style thumbnail: a 76-DIP square miniature inside the shared card shell (92 wide, 8 of resting
     /// inset each side). Content-sized in height — the miniature IS the card's content, and the label sits UNDER the
     /// card rather than in it.</summary>
     public static readonly PickerShell PickerCoverMini = new(92f, float.NaN, 8f, 5f);
-    /// <summary>A wide horizontal row card — the setup wizard's chooser, where the picker reads as a vertical LIST of
-    /// full-width rows rather than a strip of square cards.</summary>
-    public static readonly PickerShell PickerWideRow = new(480f, 100f, 8f, 0f);
 
     /// <summary>The card SHELL: fill, radius, the accent border that grows INWARD on selection, the subtle hover/press
     /// scale.
@@ -85,12 +80,12 @@ public static partial class Controls
         ClipToBounds = true,
         Corners = CornerRadius4.All(Radii.Card),
         Fill = on ? Tok.AccentSubtle : Tok.FillCardDefault,
-        HoverFill = on ? Design.Colors.SelectedHover : Tok.FillCardSecondary,
+        HoverFill = on ? R.Layer.SelectedHover : Tok.FillCardSecondary,
         PressedFill = on ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
         BorderWidth = on ? 2f : 1f,
         BorderColor = on ? Tok.AccentDefault : Tok.StrokeControlDefault,
-        HoverScale = Design.Motion.ScaleSubtle.Hover,
-        PressScale = Design.Motion.ScaleSubtle.Press,
+        HoverScale = R.Motion.ScaleSubtle.Hover,
+        PressScale = R.Motion.ScaleSubtle.Press,
         Cursor = CursorId.Hand,
         Children = body,
     };
@@ -111,10 +106,11 @@ public static partial class Controls
     };
 
     /// <summary>A card (or swatch) over its label — the shape most of the pickers want.</summary>
-    public static BoxEl PickerTitled(Element card, string label, bool on, float gap = Spacing.S, float labelSize = 12f)
+    // The token defaults are nullable: a theme's spacing is read when the element is built, never frozen at compile time.
+    public static BoxEl PickerTitled(Element card, string label, bool on, float? gap = null, float labelSize = 12f)
         => new()
         {
-            Direction = 1, Gap = gap, AlignItems = FlexAlign.Center,
+            Direction = 1, Gap = gap ?? Spacing.S, AlignItems = FlexAlign.Center,
             Children = [card, PickerLabel(label, on, labelSize)],
         };
 
@@ -123,12 +119,15 @@ public static partial class Controls
     /// <summary>A tinted bar segment for a wireframe row — <paramref name="strong"/> picks the identity ink over the
     /// skeleton ink, <paramref name="height"/> the bar's thickness (and, through the circle radius, its pill
     /// shape).</summary>
-    public static Element PickerBar(float grow, PickerInk ink, bool strong = false, float height = Spacing.XXS)
-        => new BoxEl
+    public static Element PickerBar(float grow, PickerInk ink, bool strong = false, float? height = null)
+    {
+        float h = height ?? Spacing.XXS;
+        return new BoxEl
         {
-            Grow = grow, Basis = 0f, MinWidth = 0f, Height = height,
-            Corners = Radii.Circle(height), Fill = strong ? ink.Block : ink.Faint,
+            Grow = grow, Basis = 0f, MinWidth = 0f, Height = h,
+            Corners = Radii.Circle(h), Fill = strong ? ink.Block : ink.Faint,
         };
+    }
 
     /// <summary>The ROW-DENSITY miniature: three rows whose proportions come from the REAL row geometry, compressed by
     /// one scale factor, so the settings tile and the real list cannot drift into two different explanations of
@@ -175,8 +174,10 @@ public static partial class Controls
     /// <summary>The "Modern" track-row wireframe: a square art tile beside a title+subtitle bar pair (or, with
     /// <paramref name="twoLine"/> false, a single bar) — the art-led stacked-row grammar every Modern track list
     /// uses.</summary>
-    public static Element PickerModernRow(PickerInk ink, float height = Spacing.XL, float art = Spacing.L,
-                                          bool twoLine = true) => new BoxEl
+    public static Element PickerModernRow(PickerInk ink, float? height = null, float? art = null,
+                                          bool twoLine = true) => PickerModernRow(ink, height ?? Spacing.XL, art ?? Spacing.L, twoLine);
+
+    static Element PickerModernRow(PickerInk ink, float height, float art, bool twoLine) => new BoxEl
     {
         Height = height, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
         Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
@@ -196,9 +197,9 @@ public static partial class Controls
 
     /// <summary>The "Classic" track-row wireframe: three aligned text-lane bars over a hairline — the three-lane grid +
     /// divider grammar every Classic track list uses.</summary>
-    public static Element PickerClassicRow(PickerInk ink, float height = Spacing.XL) => new BoxEl
+    public static Element PickerClassicRow(PickerInk ink, float? height = null) => new BoxEl
     {
-        Height = height, Direction = 1,
+        Height = height ?? Spacing.XL, Direction = 1,
         Children =
         [
             new BoxEl
@@ -339,7 +340,7 @@ public static partial class Controls
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqCurveProps>();
-            var measuredW = UseMeasuredWidth(1f);
+            var measuredW = UseMeasuredWidth("eq-curve", 1f);
             _props = p;
             _width = measuredW;
             if (p is null) return new BoxEl { AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 250f };
@@ -549,7 +550,7 @@ public static partial class Controls
                 Shadow = Elevation.Tooltip,
                 Children =
                 [
-                    Design.Type.MicroMeta(EqualizerBands[band])
+                    R.Type.MicroMeta(EqualizerBands[band])
                         with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Shrink = 0f },
                     new TextEl(EqCurveRules.DbText(gain))
                         { Size = 12f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1,

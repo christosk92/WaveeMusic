@@ -65,14 +65,14 @@
 // head left the 32-px artist name ~79 DIP ("Tro…") and the 20-px title 3-42 DIP ("P…", "Ta…"): every control was
 // `Shrink 0` and the text was the only flexible child. A thinner row was tried first (W6's compact band, 2026-09-18) and
 // saved ~170 DIP, which was not enough — so both rows STACK instead, each on one reader-width edge with a 24-DIP exit
-// hysteresis:
+// hysteresis (the structure's reader ladder since TC6):
 //   · NARROW (< 640): the block cover drops 120 → 88 and the album head stacks — the title on a line of its own over
 //     the meta and the three circles. A list mount input (`ReaderMountPolicy.MountKey`), so its extents seed fresh.
-//   · MEDIUM (< MediumBelow): the cover spine is gone and the band stacks — avatar + a two-line name over the SAME verbs
+//   · MEDIUM (< the wide band's lane, 748): the cover spine is gone and the band stacks — avatar + a two-line name over the SAME verbs
 //     the wide arm has. NOT a mount input: the band is item 0, a persistent-prefix row, corrected in place in `Settle`.
-// The edges are DERIVED, not chosen, and the tests pin each derivation: the inline head keeps `TitleFloorW` at the narrow
+// The edges are DERIVED, not chosen (a test pins the medium one's sum): the inline head keeps `TitleFloorW` at the narrow
 // edge, the wide band leaves the name `NameMinW` at the medium one. The wide band shares the lane with the 56-DIP spine
-// (one signal drives both), so that edge is `WideBandFixedW + SpineW + NameMinW` = 772 — the plan's "484 + 232 = 716 ≤
+// (one signal drives both), so that edge is `WideBandFixedW + SpineW + NameMinW` = 748 (772 before Y3's one verb row) — the plan's "484 + 232 = 716 ≤
 // 720" left the spine out, and at 720 the name would have had 180 DIP.
 // Every height below is a STATED constant: the tree declares it as its `Height` and the estimator reads the same field,
 // so renderer == estimator by identity rather than by measurement (`library.reader.chrome` logs any exception).
@@ -124,22 +124,8 @@ public readonly partial struct Artist
     /// resort, so the order is total and the key deterministic.</summary>
     public static class ReaderShape
     {
-        // ── the two reader-width edges (#158; moved from the Reader's SpineHideBelow / NarrowBelow / BreakHysteresis) ─
-
-        /// <summary>The narrow edge: under it the block cover drops 120 → 88 and the album head STACKS. The library's
-        /// own 640 (`LibraryLayoutBreakpoints.Collapsed`; WinUI's 641 compact threshold), and already sufficient for the
-        /// inline head — at 640 its title keeps <see cref="TitleFloorW"/> with room to spare (pinned by a test).</summary>
-        public const float NarrowBelow = 640f;
-        /// <summary>Both edges' exit band: an arm entered under its edge holds until the width clears the edge by this
-        /// much, so dragging the grip across an edge cannot oscillate the layout (the page's own rule).</summary>
-        public const float BreakHysteresis = 24f;
-
-        /// <summary>Under 640 the block cover drops 120 → 88 and the album head STACKS; 24-DIP hysteresis on exit.
-        /// An unmeasured width keeps the previous answer (the library page's own rule).</summary>
-        public static bool Narrow(float w, bool was) => w <= 0f ? was : was ? w < NarrowBelow + BreakHysteresis : w < NarrowBelow;
-        /// <summary>Under <see cref="MediumBelow"/> the cover spine is gone AND the band folds to its stacked arm; the
-        /// same hysteresis and the same unmeasured rule.</summary>
-        public static bool Medium(float w, bool was) => w <= 0f ? was : was ? w < MediumBelow + BreakHysteresis : w < MediumBelow;
+        // The two reader-width edges (#158) are the structure's since TC6: its reader ladder (`Wavee.Theming.ArtistLadders.Reader`; Classic
+        // `Rules\Tiers.Artist.cs`: the narrow edge 640, the medium edge DERIVED from the wide band below, 24 DIP of hold on widening each).
 
         // ── block geometry (literals, not Spacing.*: this class is engine-free; the tree reads these same fields) ─────
 
@@ -150,13 +136,15 @@ public readonly partial struct Artist
         /// <summary>The cover spine's width. It stands beside the list, in the same lane, exactly while the reader is NOT
         /// <see cref="Medium"/> — so every width the band or a block gets is the reader's less this, in that arm.</summary>
         public const float SpineW = 56f;
+        /// <summary>The two CHROME items at the head of the one scroller (0 = the artist band, 1 = the pinned sub-rail): every flat index the list speaks is
+        /// <c>Prefix + blockIndex</c>. The reader (core) and the structure's view (which places the band and the rail in slots 0 and 1) read the same number.</summary>
+        public const int Prefix = 2;
+        /// <summary>The sub-rail's padding, above and below the one word-rail row (<c>Controls.Words.Height</c> tall).</summary>
+        public const float SubRailPadTop = 6f, SubRailPadBottom = 10f;
+        /// <summary>The sub-rail's STATED height — pad + the rail row + pad + the 1-DIP divider (49). The list's analytic extent, the pinned clip inset, the scroll spy's probe
+        /// and the rail root's declared <c>Height</c> are this one number, so analytic == measured by identity.</summary>
+        public const float SubRailH = SubRailPadTop + Controls.Words.Height + SubRailPadBottom + Divider;
         public static float CoverOf(bool narrow) => narrow ? CoverEdgeNarrow : CoverEdge;
-        /// <summary>The width the band and every block lay out in: the reader, less the spine when it stands.</summary>
-        public static float ListW(float readerW, bool medium) => medium ? readerW : readerW - SpineW;
-        /// <summary>What a block leaves its head + rows: the list width less the block's padding, its cover and the gap.
-        /// <paramref name="narrow"/> implies <paramref name="medium"/> — the narrow exit (664) is under the medium edge.</summary>
-        public static float BodyWidth(float readerW, bool narrow, bool medium)
-            => ListW(readerW, medium) - BlockPadLeft - CoverOf(narrow) - BlockCoverGap - BlockPadRight;
 
         // ── the album head: one row (inline) or the title over the meta + commands (stacked, under the narrow edge) ────
 
@@ -173,22 +161,15 @@ public readonly partial struct Artist
         /// <summary>The stacked head: the title row, the gap, the commands row and a bottom pad — exactly two track rows.</summary>
         public const float HeadStackedH = HeadTitleRowH + HeadStackGap + HeadCircle + HeadStackPadBottom;   // 72 = 2 × RowH
         public static float HeadHeight(bool narrow) => narrow ? HeadStackedH : HeadH;
-        /// <summary>▶ ♡ ⋯ — three circles and the two gaps between them.</summary>
-        public const float HeadCommandsW = 3f * HeadCircle + 2f * HeadGap;                                  // 116
         /// <summary>The inline title SLOT never goes under this (its flex <c>MinWidth</c>); the meta shrinks first.</summary>
         public const float TitleFloorW = 120f;
-        /// <summary>The title TEXT's width: the whole body (stacked), or the body less the meta, the commands and the two
-        /// gaps around the meta (inline — the title slot is that row's `Grow 1 / Basis 0` filler); the link inset either way.</summary>
-        public static float TitleAvailW(float readerW, bool narrow, bool medium, float metaW)
-            => (narrow ? BodyWidth(readerW, true, true)
-                       : BodyWidth(readerW, false, medium) - HeadGap - metaW - HeadGap - HeadCommandsW) - HeadLinkInsetX;
-        /// <summary>The stacked head's meta: the body less the commands and the one gap before them (the row is
-        /// `Justify End`, so there is no spacer and no spacer's gap to pay for).</summary>
-        public static float StackedMetaAvailW(float readerW) => BodyWidth(readerW, true, true) - HeadGap - HeadCommandsW;
 
         // ── the band: one row (wide) or avatar + name over the same verbs (stacked, under the medium edge) ────────────
 
-        public const float AvatarEdge = 72f, AvatarEdgeStacked = 56f, BandCircle = 36f, IconActionW = 32f;
+        public const float AvatarEdge = 72f, AvatarEdgeStacked = 56f, IconActionW = 32f;
+        /// <summary>The verbs' ONE row (Y3) in both arms: accent Play all · the Follow toggle · shuffle · ↗, every control the
+        /// stock 32 tall, 8 apart.</summary>
+        public const float ActionH = 32f, ActionGap = 8f;
         /// <summary>The Follow slot's reserved width — the LONGER face ("Following" ≈ 106 DIP in en-US), so nothing beside
         /// it moves on a follow flip. A MinWidth in the tree, not a Width: a longer locale label still grows it.</summary>
         public const float FollowSlotW = 108f;
@@ -202,24 +183,18 @@ public readonly partial struct Artist
         public const float NameLine = 40f, NameSubGap = 2f, SubLine = 18f;
         public const float NameColumnH = NameLines * NameLine + NameSubGap + SubLine;                       // 100
         public const float BandH = BandPadTop + AvatarEdge + BandPadBottom;                                // 100 (unchanged)
-        public const float BandStackedH = BandStackPadTop + NameColumnH + BandStackRowGap + BandCircle + BandPadBottom;   // 168
+        public const float BandStackedH = BandStackPadTop + NameColumnH + BandStackRowGap + ActionH + BandPadBottom;   // 164
         public static float BandHeight(bool stacked) => stacked ? BandStackedH : BandH;
-        /// <summary>Everything in the wide band's row that never shrinks: the padding, five gaps, the avatar, Play all at
-        /// its floor, shuffle, the Follow slot and ↗.</summary>
-        public const float WideBandFixedW = 2f * BandPadX + 5f * BandGap + AvatarEdge + PlayButtonMinW + IconActionW + FollowSlotW + IconActionW;   // 484
-        /// <summary>The stacked arm's second row: the play FAB, shuffle, the Follow slot, ↗ and the three gaps.</summary>
-        public const float StackedControlsW = BandCircle + IconActionW + FollowSlotW + IconActionW + 3f * BandStackGap;                           // 244
+        /// <summary>The wide arm's verb row: Play all at its floor, the Follow slot, shuffle and ↗, three gaps (316).</summary>
+        public const float ActionsW = PlayButtonMinW + FollowSlotW + 2f * IconActionW + 3f * ActionGap;
+        /// <summary>Everything in the wide band's row that never shrinks: the padding, the two band gaps (avatar · name ·
+        /// verbs), the avatar and the verb row.</summary>
+        public const float WideBandFixedW = 2f * BandPadX + 2f * BandGap + AvatarEdge + ActionsW;   // 460
         /// <summary>The floor the WIDE band must leave the name: ≈ 13 display glyphs ("Florence + The…").</summary>
         public const float NameMinW = 232f;
-        /// <summary>The medium edge, DERIVED: the narrowest reader whose wide band — which shares the lane with the spine —
-        /// still leaves the name <see cref="NameMinW"/>. Also where the spine goes (one signal drives both).</summary>
-        public const float MediumBelow = WideBandFixedW + SpineW + NameMinW;                               // 772
-        /// <summary>The narrowest reader there is: <c>Shell.Host</c>'s window MinWidth.</summary>
-        public const float MinReaderW = 300f;
-        /// <summary>The name text's width: the list less the stacked row's padding, avatar and gap — or the wide row's fixed
-        /// width. (The link's ±8 padding and margin cancel; the text is the name column.)</summary>
-        public static float NameAvailW(float readerW, bool stacked)
-            => ListW(readerW, stacked) - (stacked ? 2f * BandStackPadX + AvatarEdgeStacked + BandStackGap : WideBandFixedW);
+        /// <summary>The narrowest reader whose wide band — which shares the lane with the spine — still leaves the name <see cref="NameMinW"/>: the
+        /// structure derives its medium edge from it (one arm drives the spine and the band).</summary>
+        public const float WideBandLaneW = WideBandFixedW + SpineW + NameMinW;                             // 748
 
         /// <summary>How many rows a block shimmers when nothing has answered its count yet — four, the plan's literal.
         /// It is a COUNTED skeleton either way (§6 rule 5): a bare card is never an answer.</summary>

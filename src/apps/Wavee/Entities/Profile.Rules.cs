@@ -1,6 +1,6 @@
 // ── Entities/Profile.Rules.cs ──────────────────────────────────────────────────────────────────────────────────────────
 // The profile page's PURE decisions (engine-free; Wavee.Tests drives each one): the body reveal latch, the section plan
-// and each section's body, the hero's tier metrics, the hero's stat cells and the tone. The LOAD verdict is NOT here: it is
+// and each section's body, the hero's metrics and collapse (the tiers are the structure's, TC6), the hero's stat cells and the tone. The LOAD verdict is NOT here: it is
 // the data layer's one vocabulary (`ProfileLoad` + `ProfileLoadRule`, Entities/User.Profile.Rules.cs).
 //
 // Role: CORE (pure)   Owner: U1   Template: ArtistSections / ArtistHeroLayout (Artist.UI.cs §1-§3), BrowseLoadGate
@@ -115,7 +115,7 @@ public static class ProfileSections
         => (s == ProfileSection.Following || s == ProfileSection.Followers) && total > shown;
 }
 
-// ══ 3. THE HERO LAYOUT ════════════════════════════════════════════════════════════════════════════════════════════════
+// ══ 3. THE HERO'S METRICS AND ITS COLLAPSE ARITHMETIC ════════════════════════════════════════════════════════════════
 
 public readonly record struct ProfileHeroMetrics(
     ArtistHeroTier Tier, float Height, float Gutter, float Avatar, float NameLine, int NameLines, int StatRows,
@@ -124,52 +124,14 @@ public readonly record struct ProfileHeroMetrics(
     public bool Stacked => Tier is ArtistHeroTier.Compact or ArtistHeroTier.Narrow;
 }
 
-/// <summary>The round-avatar hero. Tiers are the ARTIST hero's (same thresholds + hysteresis — the two pages share the
-/// band and the collapse arithmetic); heights are this hero's own budget (ONE name line at every tier — a long name ellipsises
-/// into the trim tooltip — and the stats at their row budget), content bottom-aligned, so the sticky box never resizes.</summary>
+/// <summary>The round-avatar hero's tier-free arithmetic: the collapse into the 56-DIP band and the wash under it. The sub-tier is the ARTIST hero's (the
+/// two pages share the band and the collapse arithmetic: <see cref="Wavee.Theming.ArtistLadders.Hero"/>); what each sub-tier lays out (the avatar, the name's
+/// line, the stat rows, the pads and the height they budget) is the structure's (<see cref="Wavee.Theming.ArtistTierPolicy.ProfileHero"/>; Classic:
+/// <c>Rules\Tiers.Profile.cs</c>), content bottom-aligned, so the sticky box never resizes.</summary>
 public static class ProfileHeroLayout
 {
-    public const float WideAvatar = 184f, MediumAvatar = 144f, CompactAvatar = 112f, NarrowAvatar = 96f;
-    /// <summary>The line boxes of ArtistDisplay (96), ArtistTitle (60), ArtistCompactTitle (40).</summary>
-    public const float WideNameLine = 96f, MediumNameLine = 60f, CompactNameLine = 40f;
-    /// <summary>StatHero's 36 + its 12/16 caption.</summary>
-    public const float StatHeight = 52f, StatGap = 24f, StatRowGap = 8f;
-    public const float NameGap = 12f, StackedNameGap = 8f, ActionsGap = 20f, StackedActionsGap = 16f;
-    public const float AvatarGap = 36f, StackedAvatarGap = 16f;
-    /// <summary>Controls.ButtonHeight — FollowToggle / IconAction / More.</summary>
-    public const float ActionRow = 32f;
     /// <summary>The ab6775700000ee85 avatar rendition is 300 px; decoding larger is wasted.</summary>
     public const int AvatarDecodePx = 300;
-
-    public static ProfileHeroMetrics For(float width, ArtistHeroTier previous)
-    {
-        var tier = ArtistHeroLayout.TierFor(width, previous);
-        return tier switch
-        {
-            ArtistHeroTier.Wide => Make(tier, WideAvatar, WideNameLine, 1, 1, 16f, 32f, Spacing.PageWide, ArtistHeroLayout.WideCopyMaxWidth),
-            ArtistHeroTier.Medium => Make(tier, MediumAvatar, MediumNameLine, 1, 1, 16f, 28f, Spacing.XXXL, ArtistHeroLayout.MediumCopyMaxWidth),
-            ArtistHeroTier.Compact => Make(tier, CompactAvatar, CompactNameLine, 1, 1, 16f, 24f, Spacing.L, ArtistHeroLayout.CompactCopyMaxWidth),
-            _ => Make(tier, NarrowAvatar, CompactNameLine, 1, 2, 12f, 20f, Spacing.PageNarrow, ArtistHeroLayout.NarrowCopyMaxWidth),
-        };
-    }
-
-    static ProfileHeroMetrics Make(ArtistHeroTier tier, float avatar, float nameLine, int nameLines, int statRows,
-                                   float top, float bottom, float gutter, float copyMax)
-    {
-        var m = new ProfileHeroMetrics(tier, 0f, gutter, avatar, nameLine, nameLines, statRows, top, bottom, copyMax);
-        float copy = CopyHeight(in m);
-        float body = m.Stacked ? avatar + StackedAvatarGap + copy : MathF.Max(avatar, copy);
-        return m with { Height = top + body + bottom };
-    }
-
-    public static float NameToStats(in ProfileHeroMetrics m) => m.Stacked ? StackedNameGap : NameGap;
-    public static float StatsToActions(in ProfileHeroMetrics m) => m.Stacked ? StackedActionsGap : ActionsGap;
-
-    /// <summary>The identity column's worst case: name lines · gap · stat rows · gap · action row.</summary>
-    public static float CopyHeight(in ProfileHeroMetrics m)
-        => m.NameLine * m.NameLines + NameToStats(in m)
-         + m.StatRows * StatHeight + (m.StatRows - 1) * StatRowGap
-         + StatsToActions(in m) + ActionRow;
 
     public static float CollapseDistance(in ProfileHeroMetrics m) => ArtistHeroLayout.CollapseDistance(m.Height);
     public static float WashHeight(in ProfileHeroMetrics m) => m.Height + ArtistHeroLayout.ContentBlendTail;

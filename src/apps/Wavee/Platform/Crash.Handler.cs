@@ -92,6 +92,7 @@ public static partial class Crash
         static int s_suspendEpoch;
         static int s_firstFrameSeen;              // 0/1
         static volatile string s_installId = "";   // from the parent's I line; "" until it arrives
+        static ParentContext? s_parentContext;
         static bool FirstFrameSeen => Interlocked.CompareExchange(ref s_firstFrameSeen, 0, 0) != 0;   // the parent's F line reached this child
         static int s_modalDepth;
         static int s_exiting;                     // 0/1
@@ -108,6 +109,7 @@ public static partial class Crash
         static int Run(int parentPid, string logFolder, string? logBasePath)
         {
             s_parentPid = parentPid;
+            s_parentContext = null;
             s_logFolder = logFolder;
             s_logBasePath = logBasePath;
             s_lastBeatUnbiased = UnbiasedNow();
@@ -138,6 +140,9 @@ public static partial class Crash
             }
 
             ArmShutdownDeadline(ResolveDeadlineMs());
+            // Stdin may still contain the last parent context or shutdown marker when the process handle signals.
+            // EOF drains it normally; a dump/write stall cannot hold exit reporting open indefinitely.
+            reader.Join(250);
             int exit = OnParentExited();
             try { CloseHandle(s_parentHandle); } catch { }
             return exit;
@@ -177,9 +182,11 @@ public static partial class Crash
         {
             try
             {
-                string? line;
-                while ((line = Console.In.ReadLine()) is not null)
-                    HandleLine(line);
+                while (ContextProtocol.ReadLine(Console.In, out bool oversized) is { } line)
+                {
+                    if (oversized) HandlerLog("handler.line.oversized");
+                    else HandleLine(line);
+                }
             }
             catch (Exception ex) { HandlerLog("handler.reader.failed " + ex.Message); }
         }
@@ -189,6 +196,14 @@ public static partial class Crash
             if (line.Length == 0) return;
             switch (line[0])
             {
+                case 'C':
+                    if (ContextProtocol.TryRead(line, s_parentPid, Volatile.Read(ref s_parentContext), out var context))
+                    {
+                        if (ContextProtocol.FirstFrameSeen(FirstFrameSeen, context)) Interlocked.Exchange(ref s_firstFrameSeen, 1);
+                        Volatile.Write(ref s_parentContext, context);
+                    }
+                    else HandlerLog("handler.context.invalid");
+                    break;
                 case 'B':
                     Interlocked.Exchange(ref s_suspendEpochAtLastBeat, Interlocked.CompareExchange(ref s_suspendEpoch, 0, 0));
                     Interlocked.Exchange(ref s_lastBeatUnbiased, UnbiasedNow());
@@ -281,8 +296,8 @@ public static partial class Crash
             try
             {
                 if (!Bundles.UpdateSummary(dir, s => fault.Resolved
-                        ? s with { HasDump = ok, DumpBytes = bytes, FaultModule = fault.Module, FaultOffset = fault.Offset }
-                        : s with { HasDump = ok, DumpBytes = bytes }))
+                        ? s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false, FaultModule = fault.Module, FaultOffset = fault.Offset }
+                        : s with { HasDump = ok, DumpBytes = ok ? bytes : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false }))
                     HandlerLog("summary.update.failed kind=" + kindToken);
                 if (fault.Resolved && fault.Module.Length > 0)
                     Bundles.AppendReportLine(dir, "fault=" + fault.Module + "+0x" + fault.Offset.ToString("x", CultureInfo.InvariantCulture));
@@ -434,8 +449,7 @@ public static partial class Crash
                     TryDelete(path);
                     return false;
                 }
-                Bundles.EnforceDumpCap(dir);
-                return File.Exists(path);
+                return Bundles.FinalizeDumpCapture(dir);
             }
             catch (Exception ex)
             {
@@ -519,13 +533,16 @@ public static partial class Crash
             {
                 string dir = Bundles.Create(s_logFolder, Kind.Hang, DateTimeOffset.Now);
                 string message = "no UI heartbeat for " + (noBeatSeconds / 1000).ToString(CultureInfo.InvariantCulture) + " s";
-                var summary = Report.BuildSummary(Kind.Hang, null, 0, exceptionType: "Hang", exceptionMessage: message, beforeFirstFrame: !FirstFrameSeen, installIdOverride: s_installId);
+                var context = Volatile.Read(ref s_parentContext);
+                var summary = ContextProtocol.BuildSummary(context, s_parentPid, Environment.ProcessId, Kind.Hang, 0,
+                    message, !FirstFrameSeen, Environment.TickCount64, DateTimeOffset.UtcNow) with { InstallId = s_installId };
                 Bundles.WriteSummary(dir, summary);
                 var sb = new StringBuilder(1024);
-                Report.DescribeSynthetic(message, sb);
+                Report.DescribeParent(message, sb, summary, context);
                 Bundles.WriteReport(dir, sb.ToString());
-                Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None);
+                Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None, parentPid: s_parentPid, sessionId: context?.Metadata.SessionId);
                 bool ok = WriteMiniDump(dir, 0, 0, false);
+                Bundles.UpdateSummary(dir, s => s with { HasDump = ok, DumpBytes = ok ? DumpBytes(dir) : s.DumpBytes, DumpLocalCreated = s.DumpLocalCreated ?? false });
                 Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
                 HandlerLog("hang.dump.written ok=" + (ok ? "true" : "false"));
                 Bundles.PruneNow(s_logFolder);
@@ -550,12 +567,14 @@ public static partial class Crash
                 {
                     string dir = Bundles.Create(s_logFolder, kind, DateTimeOffset.Now);
                     string message = "process exited with code 0x" + code.ToString("x", CultureInfo.InvariantCulture);
-                    var summary = Report.BuildSummary(kind, null, unchecked((int)code), exceptionType: kind.ToString(), exceptionMessage: message, beforeFirstFrame: !FirstFrameSeen, installIdOverride: s_installId);
+                    var context = Volatile.Read(ref s_parentContext);
+                    var summary = ContextProtocol.BuildSummary(context, s_parentPid, Environment.ProcessId, kind, unchecked((int)code),
+                        message, !FirstFrameSeen, Environment.TickCount64, DateTimeOffset.UtcNow) with { InstallId = s_installId };
                     Bundles.WriteSummary(dir, summary);
                     var sb = new StringBuilder(1024);
-                    Report.DescribeSynthetic(message, sb);
+                    Report.DescribeParent(message, sb, summary, context);
                     Bundles.WriteReport(dir, sb.ToString());
-                    Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None);
+                    Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None, parentPid: s_parentPid, sessionId: context?.Metadata.SessionId);
                     Bundles.PruneNow(s_logFolder);
                 }
                 catch (Exception ex) { HandlerLog("parent.exit.bundle.failed " + ex.Message); }
@@ -572,7 +591,9 @@ public static partial class Crash
                 string path = Path.Combine(Files.Root(s_logFolder), Files.HandlerLog);
                 Directory.CreateDirectory(Files.Root(s_logFolder));
                 string stamped = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture)
-                    + " pid=" + s_parentPid.ToString(CultureInfo.InvariantCulture) + " " + line;
+                    + " pid=" + s_parentPid.ToString(CultureInfo.InvariantCulture)
+                    + " reporterPid=" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture)
+                    + " sid=" + (Volatile.Read(ref s_parentContext)?.Metadata.SessionId ?? "unknown") + " " + line;
                 lock (s_logLock) File.AppendAllText(path, stamped + Environment.NewLine, new UTF8Encoding(false));
             }
             catch { }

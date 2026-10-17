@@ -7,14 +7,18 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming.Contracts;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The Rise reference metrics as arithmetic: the plate clamp, the single 770 breakpoint, the footer split, the
-/// 314-of-325 sign-in lane, and the SettingsCard bands of W3b.</summary>
+/// <summary>Classic's wizard plate (`ClassicSetupTiers`, the Standard record): the Rise reference metrics as arithmetic, the plate clamp. The tier ladder, the icon column, the footer
+/// split and the other tiers' records are pinned in <c>ClassicSetupTiersTests</c>.</summary>
 public class SetupWizardLayoutTests
 {
+    static ClassicSetupLayout Plate => ClassicSetupTiers.For(WidthTier.Standard);
+
     [Theory]
     [InlineData(0f, 320f)]      // no viewport known yet → the floor
     [InlineData(1200f, 762f)]
@@ -22,7 +26,7 @@ public class SetupWizardLayoutTests
     [InlineData(800f, 736f)]    // below 826 (762 + 2×32) the plate shrinks
     [InlineData(300f, 320f)]
     public void Width_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.Width(viewport));
+        => Assert.Equal(expected, Plate.RootWidth(viewport));
 
     [Theory]
     [InlineData(0f, 184f)]
@@ -30,99 +34,26 @@ public class SetupWizardLayoutTests
     [InlineData(500f, 436f)]
     [InlineData(200f, 184f)]
     public void Height_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.Height(viewport));
-
-    [Theory]
-    [InlineData(769f, false)]
-    [InlineData(770f, true)]    // one on/off switch, no hysteresis band
-    [InlineData(1200f, true)]
-    public void The_icon_column_shows_at_the_rise_breakpoint(float viewport, bool expected)
-        => Assert.Equal(expected, Setup.Layout.ShowsIcon(viewport));
-
-    [Theory]
-    [InlineData(true, 210f)]
-    [InlineData(false, 0f)]
-    public void The_progress_column_collapses_with_the_icon(bool large, float expected)
-        => Assert.Equal(expected, Setup.Layout.ProgressColumnFor(large));
-
-    [Theory]
-    [InlineData(762f, true, 246f)]    // (762 − 48 − 210 − 12) / 2
-    [InlineData(762f, false, 351f)]
-    [InlineData(706f, true, 218f)]    // viewport 770: the icon column on a shrunken plate
-    [InlineData(636f, false, 288f)]   // viewport 700
-    public void The_footer_splits_the_remainder_equally(float plateW, bool large, float expected)
-        => Assert.Equal(expected, Setup.Layout.FooterButtonWidth(plateW, large));
+        => Assert.Equal(expected, Plate.RootHeight(viewport));
 
     [Fact]
-    public void A_shell_behind_the_plate_is_dimmed_and_nothing_else_is()
+    public void The_back_spacer_applies_only_where_back_sits_in_the_pages_column_on_a_page_that_shows_back()
     {
-        Assert.Equal(Setup.Cover.Dim, Setup.Layout.CoverFor(shellBehind: true));
-        Assert.Equal(Setup.Cover.None, Setup.Layout.CoverFor(shellBehind: false));
-    }
-
-    // 490 − 80 footer − 1 separator − 48 padding − 36 title = 325
-    [Fact]
-    public void The_body_lane_at_the_reference_plate_is_325()
-        => Assert.Equal(325f, Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight));
-
-    // 40 + 20 + 68 + 20 + (82 + 32) + 20 + 32 = 314 ≤ 325 — the old 96-DIP QR and two stacked link rows summed to 388.
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void The_sign_in_idle_body_fits_the_reference_lane(int leadLines)
-        => Assert.True(Setup.Layout.SignInIdleBodyHeight(leadLines) <= Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight),
-            $"{Setup.Layout.SignInIdleBodyHeight(leadLines)} > {Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight)}");
-
-    [Fact]
-    public void A_two_line_lead_sums_to_314_and_a_three_line_lead_overflows_so_the_scrollbar_must_show()
-    {
-        Assert.Equal(314f, Setup.Layout.SignInIdleBodyHeight(2));
-        Assert.True(Setup.Layout.SignInIdleBodyHeight(3) > Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight) - Setup.Layout.BodySpacing);
-    }
-
-    /// <summary>The budget charges the PAINTED v4 symbol at 80 DIP (82), never the request.</summary>
-    [Fact]
-    public void The_qr_budget_is_the_v4_symbol_painted_at_80()
-        => Assert.Equal(82f, Setup.Layout.QrPlateBudget);
-
-    /// <summary>W3b: the scan card's QR wraps below its header while the card is narrower than SettingsCard's 476, and every
-    /// card drops its icon under 286 — two bands inside the wizard's own clamp ladder.</summary>
-    [Theory]
-    [InlineData(770f, 442f)]
-    [InlineData(803f, 475f)]
-    [InlineData(804f, 476f)]
-    [InlineData(587f, 475f)]
-    [InlineData(588f, 476f)]
-    [InlineData(397f, 285f)]
-    [InlineData(398f, 286f)]
-    public void The_card_width_bands_land_on_the_settings_card_thresholds(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.CardWidth(viewport));
-
-    [Fact]
-    public void The_thresholds_the_bands_are_measured_against_are_the_engine_cards()
-    {
-        Assert.True(Setup.Layout.CardWidth(803f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.False(Setup.Layout.CardWidth(804f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.True(Setup.Layout.CardWidth(397f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
-        Assert.False(Setup.Layout.CardWidth(398f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
-    }
-
-    [Fact]
-    public void The_back_spacer_applies_only_without_the_icon_column_on_the_page_that_shows_back()
-    {
-        Assert.True(Setup.Layout.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: false));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: true));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.Terms, iconShown: false));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.SignIn, iconShown: false));
+        var standard = ClassicSetupTiers.For(WidthTier.Standard);   // Back over the icon column's corner: no spacer
+        var small = ClassicSetupTiers.For(WidthTier.Small);         // Back beside the title
+        Assert.False(standard.BackSpacerApplies(Setup.WizardPage.LocalPlayback));
+        Assert.True(small.BackSpacerApplies(Setup.WizardPage.LocalPlayback));
+        Assert.False(small.BackSpacerApplies(Setup.WizardPage.Terms));
+        Assert.False(small.BackSpacerApplies(Setup.WizardPage.SignIn));
     }
 
     [Fact]
     public void Each_page_plays_its_own_oobe_scene()
     {
-        Assert.Equal("eula", Setup.Layout.HeroAsset(Setup.WizardPage.Terms));
-        Assert.Equal("connect", Setup.Layout.HeroAsset(Setup.WizardPage.SignIn));
-        Assert.Equal("connect", Setup.Layout.HeroAsset(Setup.WizardPage.Layout));   // reuses a loaded hero, no new asset
-        Assert.Equal("patch", Setup.Layout.HeroAsset(Setup.WizardPage.LocalPlayback));
+        Assert.Equal("eula", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Terms));
+        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.SignIn));
+        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Theme));   // reuses a loaded hero, no new asset
+        Assert.Equal("patch", Setup.WizardHeroes.AssetFor(Setup.WizardPage.LocalPlayback));
     }
 }
 
@@ -356,6 +287,17 @@ public class SetupWizardRulesTests
         Assert.Equal(2, Setup.WizardRules.OpenPosts(Setup.WizardEntry.TermsRearm));
     }
 
+    [Fact]
+    public void A_due_first_run_or_reauth_holds_the_window_reveal_until_its_plate_is_up()
+    {
+        // Classic tuning F9: the first frame the user sees is final, so it never shows the bare shell the plate then covers.
+        Assert.True(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.FirstRun, shownThisLaunch: false));
+        Assert.True(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.Reauth, shownThisLaunch: false));
+        Assert.False(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.FirstRun, shownThisLaunch: true));
+        Assert.False(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.TermsRearm, shownThisLaunch: false));   // rises over the shell
+        Assert.False(Setup.WizardRules.HoldsReveal(null, shownThisLaunch: false));                            // not due
+    }
+
     [Theory]
     [InlineData(false, true, true, true)]     // the plate is up
     [InlineData(true, false, false, true)]    // armed, about to open
@@ -403,20 +345,20 @@ public class SetupWizardRulesTests
         bool skip = Setup.Gating.SkipSignIn(authed: true);
         while (page != Setup.WizardPage.LocalPlayback)
         {
-            page = Setup.Gating.NextPage(page, skip, skipLayout: false);
+            page = Setup.Gating.NextPage(page, skip, skipTheme: false);
             Assert.NotEqual(Setup.WizardPage.SignIn, page);
         }
     }
 
-    /// <summary>A signed-in first run still offers the Layout step: sign-in skipping never skips it.</summary>
+    /// <summary>A signed-in first run still offers the Theme step: sign-in skipping never skips it.</summary>
     [Fact]
     public void A_signed_in_first_run_walk_stops_on_layout_then_local_playback()
     {
         bool skip = Setup.Gating.SkipSignIn(authed: true);
-        bool skipLayout = !Setup.Gating.ShowsLayout(Setup.WizardEntry.FirstRun);
-        Assert.Equal(Setup.WizardPage.Layout, Setup.Gating.NextPage(Setup.WizardPage.Terms, skip, skipLayout));
-        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.Layout, skip, skipLayout));
-        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Layout, skip, skipLayout));
+        bool skipTheme = !Setup.Gating.ShowsTheme(Setup.WizardEntry.FirstRun);
+        Assert.Equal(Setup.WizardPage.Theme, Setup.Gating.NextPage(Setup.WizardPage.Terms, skip, skipTheme));
+        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.Theme, skip, skipTheme));
+        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Theme, skip, skipTheme));
     }
 }
 
@@ -474,7 +416,7 @@ public class SetupWizardRecolorTests
     public void The_exact_source_accent_maps_to_the_accent_with_the_sources_alpha()
     {
         var c = ColorF.FromRgba(0x00, 0x78, 0xD4, 0x80);
-        var got = Setup.Recolor.Apply(c, Accent, AccentDeep);
+        var got = SetupRecolor.Apply(c, Accent, AccentDeep);
         Assert.Equal(Accent.R, got.R, 3);
         Assert.Equal(Accent.G, got.G, 3);
         Assert.Equal(Accent.B, got.B, 3);
@@ -485,7 +427,7 @@ public class SetupWizardRecolorTests
     public void The_exact_navy_maps_to_the_deep_accent_with_the_sources_alpha()
     {
         var c = ColorF.FromRgba(0x00, 0x2B, 0x67, 0x40);
-        var got = Setup.Recolor.Apply(c, Accent, AccentDeep);
+        var got = SetupRecolor.Apply(c, Accent, AccentDeep);
         Assert.Equal(AccentDeep.R, got.R, 3);
         Assert.Equal(AccentDeep.G, got.G, 3);
         Assert.Equal(AccentDeep.B, got.B, 3);
@@ -496,11 +438,11 @@ public class SetupWizardRecolorTests
     public void The_hue_band_keeps_saturation_and_lightness_but_rotates_the_hue()
     {
         var c = ColorF.FromRgba(0x2E, 0x5D, 0xD3);
-        var (h, s, l) = Design.Palette.ToHsl(c);
+        var (h, s, l) = ColorScience.ToHsl(c);
         Assert.InRange(h, 195f, 285f);
         Assert.True(s >= 0.35f);
 
-        var (gh, gs, gl) = Design.Palette.ToHsl(Setup.Recolor.Apply(c, Accent, AccentDeep));
+        var (gh, gs, gl) = ColorScience.ToHsl(SetupRecolor.Apply(c, Accent, AccentDeep));
         Assert.Equal(s, gs, 2);
         Assert.Equal(l, gl, 2);
         Assert.NotEqual(h, gh, 1);
@@ -514,26 +456,26 @@ public class SetupWizardRecolorTests
                      ColorF.FromRgba(0xFF, 0xFF, 0xFF), ColorF.FromRgba(0xEE, 0xEE, 0xEE), ColorF.FromRgba(0xF1, 0xF0, 0xEF),
                      ColorF.FromRgba(0xE0, 0xDE, 0xDC), ColorF.FromRgba(0, 0, 0),
                  })
-            Assert.Equal(c, Setup.Recolor.Apply(c, Accent, AccentDeep));
+            Assert.Equal(c, SetupRecolor.Apply(c, Accent, AccentDeep));
     }
 
     [Fact]
     public void The_teal_outside_the_hue_band_is_untouched()
     {
         var teal = ColorF.FromRgba(0x96, 0xE9, 0xDC);
-        var (h, s, _) = Design.Palette.ToHsl(teal);
+        var (h, s, _) = ColorScience.ToHsl(teal);
         Assert.True(h < 195f || s < 0.35f);
-        Assert.Equal(teal, Setup.Recolor.Apply(teal, Accent, AccentDeep));
+        Assert.Equal(teal, SetupRecolor.Apply(teal, Accent, AccentDeep));
     }
 
     [Fact]
     public void Alpha_is_always_the_shapes_own()
     {
         var exact = ColorF.FromRgba(0x00, 0x78, 0xD4, 0x33);
-        Assert.Equal(exact.A, Setup.Recolor.Apply(exact, Accent, AccentDeep).A);
+        Assert.Equal(exact.A, SetupRecolor.Apply(exact, Accent, AccentDeep).A);
         var band = ColorF.FromRgba(0x2E, 0x5D, 0xD3, 0x99);
-        Assert.Equal(band.A, Setup.Recolor.Apply(band, Accent, AccentDeep).A);
+        Assert.Equal(band.A, SetupRecolor.Apply(band, Accent, AccentDeep).A);
         var neutral = ColorF.FromRgba(0xFF, 0xFF, 0xFF, 0xCC);
-        Assert.Equal(neutral.A, Setup.Recolor.Apply(neutral, Accent, AccentDeep).A);
+        Assert.Equal(neutral.A, SetupRecolor.Apply(neutral, Accent, AccentDeep).A);
     }
 }

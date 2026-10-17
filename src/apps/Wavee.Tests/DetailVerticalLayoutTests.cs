@@ -18,13 +18,6 @@ public class DetailVerticalLayoutTests
     // 1-DIP steps from an ultra-narrow snap layout to a maximised window with the Hero page layout forced on.
     const float LadderMin = 240f, LadderMax = 1400f;
 
-    [Fact]
-    public void PageLayoutConstants_MirrorPersistedSettingValues()
-    {
-        Assert.Equal(0, VerticalLayout.PageAuto);
-        Assert.Equal(1, VerticalLayout.PageHero);
-    }
-
     // ── the ONE breakpoint: stacked ↔ row flow ───────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -244,32 +237,6 @@ public class DetailVerticalLayoutTests
             }
     }
 
-    // ── the EDITABLE title's run measure (#92) ───────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(572f, 544f)]
-    [InlineData(20f, 0f)]
-    [InlineData(28f, 0f)]
-    [InlineData(0f, 0f)]
-    public void EditableTitleMeasure_IsTheWrapWidthLessThePencilSlot(float wrapWidth, float expected)
-        => Assert.Equal(expected, VerticalLayout.EditableTitleMeasure(wrapWidth));
-
-    [Theory]
-    [InlineData(400f, true)]     // 400 − 48 − 24 − 144 = 184
-    [InlineData(424f, true)]     // 424 − 48 − 24 − 155 = 197
-    [InlineData(820f, true)]     // 820 − 48 − 24 − 240 = 508
-    [InlineData(1200f, true)]    // 888
-    [InlineData(1600f, true)]    // TitleWMax binds: 1000
-    [InlineData(240f, false)]    // stacked, narrow pad: 208
-    [InlineData(600f, false)]    // stacked: 552
-    public void EditableTitleMeasure_PlusPencilSlot_FillsTheWrapWidthExactly(float colW, bool rowFlow)
-    {
-        float wrap = VerticalLayout.TitleWidthFor(colW, rowFlow);
-        float run = VerticalLayout.EditableTitleMeasure(wrap);
-        Assert.True(run > 0f, $"run measure {run} collapsed at colW={colW} row={rowFlow}");
-        Assert.Equal(wrap, run + VerticalLayout.EditableTitlePencilW + VerticalLayout.EditableTitlePencilGap);
-    }
-
     // ── the title TYPE PLAN ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Widening never SHRINKS a short title (its width-fit is never binding, so this walks the height-budget
@@ -381,7 +348,7 @@ public class DetailVerticalLayoutTests
             {
                 var plan = VerticalLayout.TitleTypeFor(w, rowFlow: true, title,
                     eyebrow: true, attribution: true, meta: true);
-                float h = VerticalLayout.IdentityHeightFor(plan, rowFlow: true,
+                float h = VerticalLayout.IdentityHeightFor(plan,
                     eyebrow: true, attribution: true, meta: true);
                 float wrapped = plan.Size <= VerticalLayout.TitleSizeFloor ? (plan.Lines - 1) * plan.LineHeight : 0f;
                 float art = VerticalLayout.ArtworkFor(w, rowFlow: true);
@@ -536,6 +503,16 @@ public class DetailVerticalLayoutTests
         Assert.Equal(VerticalItemRole.Empty, VerticalLayout.ItemRole(2 + visibleTracks, visibleTracks));
     }
 
+    /// <summary>The viewport holds the two prefix items and the row slots — an empty / loading list keeps ONE (the placeholder) — and
+    /// nothing after them: the facts are the insights sheet's (tuned Classic I1), never a list footer.</summary>
+    [Theory]
+    [InlineData(0, 3)]
+    [InlineData(1, 3)]
+    [InlineData(50, 52)]
+    [InlineData(10_000, 10_002)]
+    public void VerticalViewport_HoldsThePrefixAndTheRowSlotsOnly(int visible, int count)
+        => Assert.Equal(count, VerticalLayout.ItemCount(visible));
+
     [Theory]
     [InlineData(260f, 204f)]
     [InlineData(56f, 1f)]
@@ -579,13 +556,6 @@ public class DetailVerticalLayoutTests
     [InlineData(289f, 1024)]
     public void ArtworkDecodePx_UsesStableBuckets(float size, int expected)
         => Assert.Equal(expected, VerticalLayout.ArtworkDecodePx(size));
-
-    [Theory]
-    [InlineData(0f, 112f)]
-    [InlineData(64f, 112f)]
-    [InlineData(420f, 420f)]
-    public void BackdropBand_FloorsBeforeTheHeroIsMeasured(float heroHeight, float expected)
-        => Assert.Equal(expected, VerticalLayout.BackdropBandFor(heroHeight));
 
     [Theory]
     [InlineData(0f)]

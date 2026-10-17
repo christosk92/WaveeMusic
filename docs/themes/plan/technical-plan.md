@@ -373,7 +373,7 @@ family (M7a/M7b together; M2/M3/M4 together).
 |---|---|---|---|
 | WVTH001 | `Wavee.Themes.*` referenced only by `App.cs`, `Theming\Composition\ThemeCatalog.cs`, and inside themes along these edges: a composition file (`Themes\<X>\<X>Theme.cs`) may reference any layer and `Themes\Common`; a structure may reference `Themes\Common` | – | none |
 | WVTH002 | `Themes\**` may not reference `Entities`, `Playback`, `Spotify`, `Store`, `Shell` state, `Platform.Settings`, `Prefs` | `Wavee.Theming.*`, engine, `Loc`/`Strings`, `Icons`, `ColorScience`, content-renderer catalogues (as `MediaSlot`s), `Platform\Controls*` builders moved with Classic (converted into Classic views by P3c) | `Themes\Classic\Structure\LegacyPrefs.cs` only, shrink-only, deleted by the last M-PR |
-| WVTH003 (S1) | no literal looks in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | – | Classic only, emptied by P3c |
+| WVTH003 (S1) | no literal looks in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | – | none (P3c done: hard gate, a baseline file is WVTH901) |
 | WVTH004 (S4) | no identity reads | `Theming\Composition\**` (incl. `ThemePickerFacts`, the one API for "installed + current"), `App.cs`, `ThemeBootstrap.cs`, manifests in `Themes\<X>\<X>Theme.cs`, the feedback diagnostics line (id + option stamp as data) | none |
 | WVTH005 | theme options read/written only by their own layer, `Theming\Options\**` (store, generated section, reset) | – | none |
 | WVTH006 | key ids and props record shape | – | none |
@@ -1712,7 +1712,8 @@ screenshots, §2.5; no golden report, owner Q23). Every key also has per-tier la
 Keys added after the review (missing from BP §2): `Pages.Local` (Local files route, `Shell.cs:54`), `Track.Drawer`
 (+ `.FormatSplit`, `.Credits`; `Track.Drawer.cs`), `Detail.Insights` (+ `Detail.FactCard`), `Episode.Discussion`
 (+ `Episode.CommentCard`, `Episode.ReactionFlyout`), `Shell.ContentState` (offline lane, empty body, not-found, page
-transition; `Shell.UI.cs:965-1036`).
+transition; `Shell.UI.cs:965-1036`), `Shell.NavLibraryHead` and `Shell.NavEmpty` (T5b: Your Library's head with its host
+`INavLibraryHeadHost`, and the pane's empty body; the section header, the "+", the count and the filter box ride the row slot).
 
 | Family | Keys | Classic | WinUI | Zune | Panorama |
 |---|---|---|---|---|---|

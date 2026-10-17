@@ -90,8 +90,13 @@ public static partial class Stage
         public static bool FaceAmbient(VizLayout eff) => FaceIsBackdrop(eff);
 
         /// <summary>The legibility scrim ABOVE the backdrop face, under the cover / lyrics (Stage's StageInk veil, so it follows
-        /// light / dark): 0.42 behind Large art and Centered (no cover-carrying face runs there any more), 0 elsewhere.</summary>
-        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind) => FaceIsBackdrop(eff) ? 0.42f : 0f;
+        /// light / dark), PER FACE (tuned R5; it was one flat 0.42 for every face): the face that actually runs there
+        /// (<see cref="BackdropKind"/>) sets the depth. A cover-carrying face running ambient (Bloom, Ring: broad, bright colour where the
+        /// cover would be) takes the deep <see cref="Tone.BackdropScrimCoverA"/>; a face that draws no now-playing part (sparse marks on
+        /// the floor) the lighter <see cref="Tone.BackdropScrimAtmosphereA"/>. 0 outside Large art and Centered.</summary>
+        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind)
+            => !FaceIsBackdrop(eff) ? 0f
+            : Visualizer.Catalog.DrawsNowPlaying(BackdropKind(eff, kind)) ? Tone.BackdropScrimCoverA : Tone.BackdropScrimAtmosphereA;
 
         /// <summary>[ / ] step the FACE in every layout that draws one (the backdrop changes); only Artist steps layouts.</summary>
         public static bool KeysStepFaces(VizLayout eff) => eff != VizLayout.Artist;
@@ -143,26 +148,6 @@ public static partial class Stage
         /// they take the deep (Lyrics-mode) depth.</summary>
         public static float ScrimFor(Mode mode, VizLayout eff, Visualizer.Kind kind)
             => mode == Mode.Visualizer && eff != VizLayout.Card ? Tone.ScrimA : Tone.ScrimFor(mode, kind);
-
-        /// <summary>The base Field's opacity: near-full under a Card face, breathing (the Lyrics-mode look) under a layout.</summary>
-        public static float BaseFieldFor(float low, Mode mode, VizLayout eff)
-            => Visualizer.Field.BaseOpacity(low, mode == Mode.Visualizer && ShowsFace(eff));
-
-        /// <summary>The options popover's 2×2 layout grid: the cursor after an arrow key (Left 37, Up 38, Right 39, Down 40),
-        /// wrapping within its row / column; any other key leaves it.</summary>
-        public static int CardNav(int index, int keyCode)
-        {
-            int row = index >> 1, col = index & 1;
-            switch (keyCode)
-            {
-                case 37: col ^= 1; break;
-                case 39: col ^= 1; break;
-                case 38: row ^= 1; break;
-                case 40: row ^= 1; break;
-                default: return index;
-            }
-            return (row << 1) | col;
-        }
     }
 
     // ── 3. the artist hero's rules ──────────────────────────────────────────────────────────────────────────────────
@@ -261,7 +246,7 @@ public static partial class Stage
         };
 
         /// <summary>The vertical room the centred layouts use: under the top bar, above the strip (or the transport's gutter).</summary>
-        float RegionTopFor(in Look k) => TopBarH + 8f;
+        float RegionTopFor() => TopBarH + 8f;
         public float ContentBottom(in Look k) => StripH(in k) > 0f ? StripTop(in k) - ContentGap : TransportTop - Pad;
 
         // ── the cover ──
@@ -301,7 +286,7 @@ public static partial class Stage
         }
 
         // ── Large art ──
-        float LargeArtRegionH(in Look k) => MathF.Max(0f, ContentBottom(in k) - RegionTopFor(in k));
+        float LargeArtRegionH(in Look k) => MathF.Max(0f, ContentBottom(in k) - RegionTopFor());
         float LargeArtSlot(in Look k)
         {
             if (Aspect == Aspect.Portrait) return Math.Clamp(Q4(MathF.Min(0.5f * W, 0.3f * H)), 160f, 480f);
@@ -313,7 +298,7 @@ public static partial class Stage
         float LargeArtBlockH(in Look k) => LargeArtSlot(in k) + LargeArtTextGap + TitleBlockH(in k, TitleMaxLines(in k));
         float LargeArtBlockTop(in Look k)
         {
-            float top = RegionTopFor(in k);
+            float top = RegionTopFor();
             if (Aspect == Aspect.Portrait) return TopBarH + 16f;
             return top + MathF.Max(0f, (LargeArtRegionH(in k) - LargeArtBlockH(in k)) * 0.5f);
         }
@@ -326,14 +311,14 @@ public static partial class Stage
         float CenteredCover(in Look k)
         {
             float want = Math.Clamp(Q4(MathF.Min(CenteredCoverFrac * H, CenteredCoverWFrac * W)), CenteredCoverMin, CenteredCoverMax);
-            float room = MathF.Max(0f, ContentBottom(in k) - RegionTopFor(in k) - CenteredTextH(in k));
+            float room = MathF.Max(0f, ContentBottom(in k) - RegionTopFor() - CenteredTextH(in k));
             float fit = k.Spectrum == SpectrumStyle.Ring ? room / RingBoxRatio : room;
             return Math.Clamp(Q4(MathF.Min(want, fit)), SmallHeroMin, CenteredCoverMax);
         }
         float CenteredBlockH(in Look k) => CenteredSlot(in k) + CenteredTextH(in k);
         float CenteredBlockTop(in Look k)
         {
-            float top = RegionTopFor(in k), room = ContentBottom(in k) - top;
+            float top = RegionTopFor(), room = ContentBottom(in k) - top;
             return top + MathF.Max(0f, (room - CenteredBlockH(in k)) * 0.5f);
         }
 
@@ -362,7 +347,7 @@ public static partial class Stage
         /// <summary>The title / meta column centres its lines (a TextEl has no text-align): Centered always, Portrait Large art.</summary>
         public bool TitlesCentered(in Look k) => k.Eff == VizLayout.Centered || (k.Eff == VizLayout.LargeArt && Aspect == Aspect.Portrait);
         /// <summary>The identity block shows the format / lyrics chips: Card (outside the thumb) and Large art; the hero boards have none.</summary>
-        public bool ShowChipsFor(in Look k) => k.Eff is VizLayout.Centered or VizLayout.Artist ? false : ShowChips;
+        public bool ShowChipsFor(in Look k) => k.Eff is VizLayout.Centered or VizLayout.Artist || (!k.IsLayout && IdentityCardOn(k.Mode)) ? false : ShowChips;
 
         public (float Size, float Line) TitleFont(in Look k) => k.Eff switch
         {
@@ -379,7 +364,7 @@ public static partial class Stage
             _ => MetaFont(k.Mode),
         };
         /// <summary>The gap between the title, the meta line and the chips.</summary>
-        public float TitleGapFor(in Look k) => k.Eff == VizLayout.LargeArt ? LargeArtTitleGap : k.Eff == VizLayout.Artist ? 2f : TitleGap;
+        public float TitleGapFor(in Look k) => k.Eff == VizLayout.LargeArt ? LargeArtTitleGap : k.Eff == VizLayout.Artist ? 2f : !k.IsLayout && IdentityCardOn(k.Mode) ? 0f : TitleGap;
         /// <summary>The identity block's height with <paramref name="lines"/> title lines: title · meta · (chips).</summary>
         public float TitleBlockH(in Look k, int lines)
         {
@@ -418,7 +403,7 @@ public static partial class Stage
                         return (pad, top, MathF.Max(0f, W - 2f * pad), MathF.Max(0f, ContentBottom(in k) - top));
                     }
                     float x = PadXFor(in k) + LargeArtSlot(in k) + Q4(LargeArtGapFrac * W);
-                    float y = RegionTopFor(in k);
+                    float y = RegionTopFor();
                     return (x, y, MathF.Max(0f, W - x - PadXFor(in k)), MathF.Max(0f, ContentBottom(in k) - y));
                 }
                 case VizLayout.Artist when k.HeroLyrics:
@@ -430,17 +415,8 @@ public static partial class Stage
                     return (pad, top, MathF.Max(0f, w), MathF.Max(0f, bottom - top));
                 }
                 default:
-                    return (PaneX, PaneTop, PaneW, PaneH);
+                    return (PaneX, PaneTop, LyricsPaneW(k.Mode), PaneH);   // narrowed beside the Up next column (Lyrics mode, C-Stage-Huge4K)
             }
-        }
-        /// <summary>The lyrics type scale for the pane a look gives it: the pane's width over its authored 30-char budget, as
-        /// <see cref="LyricsTypeScale"/> reads it for the Lyrics mode's pane.</summary>
-        public float LyricsTypeScaleFor(in Look k)
-        {
-            if (!k.IsLayout) return LyricsTypeScale;
-            var pane = PaneRect(in k);
-            float size = Math.Clamp(MathF.Round(MathF.Min(0.046f * H, pane.W / 30f) * 0.5f) * 2f, LyricsTypeMin, LyricsTypeMax);
-            return size / LyricsTypeMin;
         }
 
         // ── the Artist hero's name ──

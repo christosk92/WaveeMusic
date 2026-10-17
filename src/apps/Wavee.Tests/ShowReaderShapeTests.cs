@@ -142,7 +142,8 @@ public class ShowReaderShapeTests
         Assert.Equal(year * 100 + month, key);
         Assert.Equal(key, DateKeys.MonthKey(year, month));
         Assert.Equal(year, DateKeys.YearOfMonth(key));
-        Assert.Equal(month, DateKeys.MonthOfMonth(key));
+        Assert.True(DateKeys.TryMonth(key, out _, out int decodedMonth));
+        Assert.Equal(month, decodedMonth);
         // the date rail reads the SAME key: its jump key is the identity and its year decoder agrees
         Assert.Equal(key, ShowDateIndex.KeyOf(key));
         Assert.Equal(year, ShowDateIndex.YearOf(key));

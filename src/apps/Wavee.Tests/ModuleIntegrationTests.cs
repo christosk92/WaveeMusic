@@ -36,7 +36,6 @@ public class ModuleIntegrationTests
 
         Assert.Equal(ModuleProcessState.Ready, process.State);
         Assert.NotNull(process.ProcessId);
-        Assert.True(process.NegotiatedProtocol >= ModuleCatalog.MinProtocol);
 
         await process.StopAsync("test", Ct);
         Assert.Equal(ModuleProcessState.Stopped, process.State);

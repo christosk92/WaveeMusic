@@ -1,5 +1,5 @@
 // ── Entities/Concert.Rules.cs ──────────────────────────────────────────────────────────────────────────────────────
-// the 807 lines of ported concert rules: layout hysteresis, the editorial art geometry, the hub's filter tuple, the
+// the ported concert rules: the hub's filter tuple, the
 // schedule shaping (spotlight, month boards, runs, the 6-tile cap, the near-you guard, tile text), offers, detail facts
 //
 // Role: CORE
@@ -8,7 +8,7 @@
 // Budget: shares Concert.cs's 1,050 (plan §2, ch 17 §9 "honest estimate"); a named partial because Concert.cs would
 //   otherwise pass 1,365 lines (the columns + staging + commit alone are ~1,000)
 // Spec: ch 17 §8 (the pure rules, ported verbatim from 0.2.9 Features/Concerts/{ConcertHubModel, ConcertScheduleModel,
-//   ConcertDetailModel, ConcertLayout}.cs), ch 17 §6 (the ICU copy), ch 17 §0.14 (the provider's clock)
+//   ConcertDetailModel}.cs; ConcertLayout is Classic's since T10b3, `Rules\Tiers.Concert.cs`), ch 17 §6 (the ICU copy), ch 17 §0.14 (the provider's clock)
 //
 // WHAT CHANGED IN THE PORT, AND ONLY THIS:
 //   · The rules take VALUES (ConcertShow, ConcertPlace, ConcertConcept) instead of 0.2.9's Wavee.Core records — a page
@@ -236,123 +236,6 @@ public sealed class ConcertCopy
         set => s_current = value ?? throw new ArgumentNullException(nameof(value));
     }
 }
-
-// ── layout (ConcertLayout.cs, verbatim) ───────────────────────────────────────────────────────────────────────────
-
-/// <summary>Pure responsive decisions for the concert surfaces. Structural changes use separate enter/leave thresholds
-/// so a continuously resizing window cannot flap component subtrees around one boundary.</summary>
-public static class ConcertLayout
-{
-    public const float ScheduleEnterWide = 760f;
-    public const float ScheduleLeaveWide = 720f;
-    public const float EditorialHeroEnterWide = 760f;
-    public const float EditorialHeroLeaveWide = 720f;
-    public const float DetailEnterWide = 920f;
-    public const float DetailLeaveWide = 860f;
-
-    public static bool ScheduleWide(float width, bool wasWide, bool initialized = true) =>
-        !initialized ? width >= ScheduleEnterWide
-        : wasWide ? width >= ScheduleLeaveWide : width >= ScheduleEnterWide;
-
-    public static bool DetailWide(float width, bool wasWide, bool initialized = true) =>
-        !initialized ? width >= DetailEnterWide
-        : wasWide ? width >= DetailLeaveWide : width >= DetailEnterWide;
-
-    public static bool EditorialHeroWide(float width, bool wasWide, bool initialized = true) =>
-        !initialized ? width >= EditorialHeroEnterWide
-        : wasWide ? width >= EditorialHeroLeaveWide : width >= EditorialHeroEnterWide;
-
-    public static EditorialHeroMetrics EditorialHero(bool wide) => wide
-        ? new EditorialHeroMetrics(Height: 320f, MediaHeight: 320f, MediaFraction: 0.44f, Padding: 28f)
-        : new EditorialHeroMetrics(Height: 0f, MediaHeight: 180f, MediaFraction: 1f, Padding: 20f);
-
-    public static WideEditorialMetrics WideEditorial(float width) => width switch
-    {
-        >= 900f => new(Height: 288f, ArtworkFraction: 0.38f, ArtworkMin: 280f, ArtworkMax: 420f,
-            Padding: 28f, SubtitleLines: 3),
-        >= 600f => new(Height: 240f, ArtworkFraction: 0.42f, ArtworkMin: 220f, ArtworkMax: 360f,
-            Padding: 24f, SubtitleLines: 2),
-        _ => new(Height: 220f, ArtworkFraction: 0.55f, ArtworkMin: 180f, ArtworkMax: 280f,
-            Padding: 20f, SubtitleLines: 2),
-    };
-
-    /// <summary>The event tile's chrome over its cell width (ch 17 §9 item 5, derived): pad-top 8 + art (cellW − 16) +
-    /// gap 8 + text (16 + 3 + 20 + 3 + 16) + pad-bottom 12 = cellW + 70.</summary>
-    public const float EventChrome = 70f;
-    /// <summary>The all-events grid's minimum column width and its two gaps (ch 17 §3). Row extra = chrome + row gap = 86.</summary>
-    public const float GridMinColumn = 240f, GridColumnGap = 12f, GridRowGap = 16f;
-    public const float GridRowExtra = EventChrome + GridRowGap;
-}
-
-public readonly record struct EditorialHeroMetrics(float Height, float MediaHeight, float MediaFraction, float Padding);
-
-public readonly record struct WideEditorialMetrics(
-    float Height,
-    float ArtworkFraction,
-    float ArtworkMin,
-    float ArtworkMax,
-    float Padding,
-    int SubtitleLines)
-{
-    public float ArtworkWidth(float availableWidth) =>
-        Math.Clamp(availableWidth * ArtworkFraction, ArtworkMin, Math.Min(ArtworkMax, availableWidth));
-}
-
-// ── #86 — the procedural promo-card art's geometry (Home consumes it; ch 11) ──────────────────────────────────────────
-// BCL-only (no PathData/engine types) so it stays testable: the art component freezes this geometry at mount from its
-// own measured width/height (baked into its Key so a resize remounts) and turns it into engine primitives.
-
-public static class EditorialArtGeometry
-{
-    const double DegToRad = Math.PI / 180.0;
-
-    /// <summary>One circular-arc segment in node-local DIP space.</summary>
-    public static ArcSweep Arc(float cx, float cy, float r, float startDeg, float sweepDeg)
-    {
-        double a0 = startDeg * DegToRad, a1 = (startDeg + sweepDeg) * DegToRad;
-        float x0 = cx + r * (float)Math.Cos(a0), y0 = cy + r * (float)Math.Sin(a0);
-        float x1 = cx + r * (float)Math.Cos(a1), y1 = cy + r * (float)Math.Sin(a1);
-        int largeArc = MathF.Abs(sweepDeg) > 180f ? 1 : 0;
-        int sweepFlag = sweepDeg >= 0f ? 1 : 0;
-        return new ArcSweep(x0, y0, x1, y1, r, largeArc, sweepFlag);
-    }
-
-    /// <summary>The Concerts treatment's outer sweep — a broad arc low in the pane (a stage horizon).</summary>
-    public static ArcSweep ConcertArcOuter(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.62f;
-        return Arc(cx, cy, r, startDeg: -150f, sweepDeg: 120f);
-    }
-
-    /// <summary>The Concerts treatment's inner counter-sweep, swept the OPPOSITE direction.</summary>
-    public static ArcSweep ConcertArcInner(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.46f;
-        return Arc(cx, cy, r, startDeg: 40f, sweepDeg: -110f);
-    }
-
-    /// <summary>The Browse treatment's category mosaic: three rounded tiles at fixed relative fractions of the pane.</summary>
-    public static BrowseTile[] BrowseTiles(float width, float height) =>
-    [
-        new BrowseTile(width * 0.10f, height * 0.14f, width * 0.40f, height * 0.46f),
-        new BrowseTile(width * 0.42f, height * 0.30f, width * 0.34f, height * 0.40f),
-        new BrowseTile(width * 0.30f, height * 0.58f, width * 0.30f, height * 0.34f),
-    ];
-}
-
-/// <summary>One circular-arc segment. <see cref="ToPathData"/> is the SVG path-data fragment the engine's path parser
-/// consumes directly.</summary>
-public readonly record struct ArcSweep(float X0, float Y0, float X1, float Y1, float Radius, int LargeArc, int SweepFlag)
-{
-    public string ToPathData() => string.Format(
-        CultureInfo.InvariantCulture,   // a decimal-comma locale must never corrupt the token stream
-        "M{0:F2},{1:F2} A{2:F2},{2:F2} 0 {3},{4} {5:F2},{6:F2}",
-        X0, Y0, Radius, LargeArc, SweepFlag, X1, Y1);
-}
-
-public readonly record struct BrowseTile(float X, float Y, float Width, float Height);
 
 // ── the hub (ConcertHubModel.cs) ──────────────────────────────────────────────────────────────────────────────────
 
@@ -617,7 +500,7 @@ public readonly record struct ConcertTileText(string Primary, string Secondary, 
 /// <c>now</c> explicitly.
 ///
 /// <para><b>Decision (ch 17 §8's fourth test-only rule): <c>MonthBoardColumns</c> is NOT ported.</b> The board renders one
-/// or two columns from the schedule's own width hysteresis (<see cref="ConcertLayout.ScheduleWide"/>) and
+/// or two columns from the schedule's own width hysteresis (Classic's `ClassicConcertTiers.ScheduleWide`) and
 /// <see cref="BalancedColumns"/>, exactly as 0.2.9's <c>MonthBoard</c> did; the fit maths had no caller and — despite the
 /// chapter's claim — no fact in <c>ConcertSchedulePageTests</c>.</para></summary>
 public static class ConcertScheduleShaping

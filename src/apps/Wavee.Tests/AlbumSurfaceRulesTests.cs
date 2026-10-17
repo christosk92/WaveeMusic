@@ -7,12 +7,12 @@
 // and extents, so a preset moving (a row floor, the Video FAB, the shelf chrome) shows up as a failing fact instead of a
 // skeleton that no longer matches the rows or a strip that clips its tiles.
 //
-// No window, no loop, no element: `Album.SurfaceMetrics` is engine-free by construction.
+// No window, no loop, no element: Classic's `ClassicLibraryPaneRules` (the "Also by" strip's numbers, T10c1; they were `Album.SurfaceMetrics`) is engine-free by construction. (T9b: the music-video hero's own numbers moved with its picture to
+// Classic's `ClassicAlbumLayout`; `AlbumPlaylistContractTests` pins them. What stays here is the pane's strip.)
 
 using Wavee;
 using Xunit;
-using AlbumMetrics = Wavee.Album.SurfaceMetrics;
-using Rules = Wavee.Album.PageRules;
+using AlbumMetrics = Wavee.Themes.Classic.ClassicLibraryPaneRules;
 
 namespace Wavee.Tests;
 
@@ -23,24 +23,11 @@ public class AlbumSurfaceRulesTests
     [Fact]
     public void SkeletonRow_is_as_tall_as_the_real_related_row()
     {
-        // The skeleton draws `Surface(Seed, Shape.RowTile)` and `PageRules.SkeletonHeight` sums `SkelRowH` per row: the
+        // The skeleton draws the real rows' own shape, and the blank and merch rows reserve the 64 floor: the
         // two agree only while the real rows' shape floor IS that number (48 art + 2 × 8 padding = the 64 row floor).
-        Assert.Equal(Rules.SkelRowH, Shape.RowTile.MinHeight);
-        Assert.Equal(Rules.SkelRowH, Shape.RowTile.ArtEdge + 2f * SurfaceGeometry.RowPad);
-    }
-
-    // ── the music-video section ──────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Hero_thumb_keeps_its_numbers_and_its_fab_is_the_video_shapes()
-    {
-        Assert.Equal(200f, AlbumMetrics.HeroThumbW);
-        Assert.Equal(116f, AlbumMetrics.HeroThumbH);
-        // "The hero's badge and a cell's badge are the same object": the shelf cell is `Shape.Video`, whose FAB is 44 and
-        // visible at rest; the hero's overlay takes that FAB from the shape rather than restating it.
-        Assert.Equal(44f, AlbumMetrics.HeroFab);
-        Assert.Equal(Shape.Video.Fab, AlbumMetrics.HeroFab);
-        Assert.Equal(PlayReveal.Always, Shape.Video.Play);
+        Assert.Equal(64f, Shape.RowTile.MinHeight);
+        Assert.Equal(Shape.RowTile.MinHeight, Shape.RowTile.ArtEdge + 2f * SurfaceGeometry.RowPad);
+        Assert.Equal(Shape.RowTile.MinHeight, Shape.RowTileStill.MinHeight);
     }
 
     // ── the pane's "Also by" strip ───────────────────────────────────────────────────────────────────────────────────

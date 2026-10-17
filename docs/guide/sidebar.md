@@ -13,7 +13,10 @@
   and Library (one list with filters, like Spotify's Your Library). Pick one in Settings › Appearance or from the
   sidebar's ⋯ menu.
 - **One renderer.** `PaneView` draws every layout. `SidebarRowPlanner.Build` turns a `SidebarLayoutDoc` and the
-  live library into a flat list of rows; `PaneView` only paints that list.
+  live library into a flat list of rows; `PaneView` only paints that list. The planner, the row ladder, the row diff and
+  the row slot are the structure's since T5a (Classic: `Themes/Classic/Structure/Rules/SidebarPlanner.cs`,
+  `SidebarGeometry.cs`, `Views/Nav/ClassicNavRow.cs`); the pane reaches them through `NavRowKit`
+  (`docs/guide/theming.md` section 2b).
 - **Three pane modes** (Expanded, Compact, Minimal), chosen from the window band (section 4).
 - **One Edit mode** and **one undo ring** (section 8).
 
@@ -30,7 +33,7 @@ SidebarProjectionInput (binder) ────────────────
 - **`SidebarCatalogue`** (`Shell/Sidebar.Layout.cs`) says what each layout can hold: the section kinds
   (`SidebarSectionKind`), their default state, and what is locked.
 - **`SidebarLayoutState`** holds two `LayoutOverlay`s, one per layout. An overlay stores only what the user changed
-  (order, hidden, collapsed, limit, item order, library sort and view).
+  (order, hidden, collapsed, limit, item order, library sort; the list/grid view is the theme's state, not the overlay's).
 - **`SidebarOp`** is every edit: a record per action, applied by **`SidebarLayoutRules.Apply`**. Nothing else
   writes the overlays.
 - **`SidebarLayoutDoc`** is what the planner reads: the resolved section list for the current layout.
@@ -54,8 +57,10 @@ library kinds (Albums, Artists, Podcasts, Audiobooks).
 
 ## 3. Rows and metrics
 
-Row metrics come from the WinUI ladder, held in constants on `SidebarRowGeometry` (`Shell/Sidebar.cs`), and are
-pinned by `SidebarRowGeometryTests`:
+Row metrics come from the WinUI ladder, held in constants on `SidebarGeometry`
+(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and are pinned by `SidebarRowGeometryTests`. Core keeps no copy: it asks the
+kit (`NavRowKit`: the tree ladder, the list inset, a row's pitch, the pill's height, the grid's columns) and the nav-pane policy
+(`NavPanePolicy.RailWidth`):
 
 - Row height 36 (two-line entity rows 40), row margin 2 top and bottom, pane edge 4.
 - Icon column 40, glyph 16, entity art 32 (two-line) or 24 (one-line). Label gap 4, trailing pad 14.
@@ -68,15 +73,19 @@ pane's list: the 4-px pane edge is the only inset the list adds.
 
 ## 4. Modes and the window band
 
-`SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) maps the window width to a band, and the band to a mode:
+The window's width TIER (`WindowTiers`, `docs/guide/theming.md` section 7) maps to a band (`SidebarPaneModeRules.BandOf`:
+Compact is Tiny, Small is Narrow, Standard and up are Wide), and `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) maps the
+band to a mode. Where the bands begin is the structure's window ladder; Classic's is in `Themes/Classic/Structure/Rules/Tiers.cs`. What a band forces (and the
+width bounds, the content floor and the seam) is the structure's `NavPanePolicy` (`ModeFor(WidthTier)`; Classic: `ClassicPolicies.NavPane`). The table is Classic's:
 
 | Band | Width | Mode |
 |---|---|---|
-| Wide | ≥ 700 (leaves Narrow at < 660) | Expanded, or Compact if the user collapsed it |
-| Narrow | 528 to 660 (leaves Wide at ≥ 700, Tiny below 528) | Compact |
-| Tiny | < 528 (leaves at ≥ 568) | Minimal |
+| Wide (Standard, Huge) | ≥ 1048 when widening, ≥ 1008 on a fresh launch (leaves for Narrow below 1008) | Expanded, or Compact if the user collapsed it |
+| Narrow (Small) | 528 to 1007 (leaves for Wide at ≥ 1048, for Tiny below 528) | Compact (the forced 48 rail over the whole band, board C-Breakpoints) |
+| Tiny (Compact) | < 528 (leaves at ≥ 568) | Minimal |
 
-The 40-px hysteresis keeps the band from flickering at a threshold. Narrow and Tiny force their mode whatever the
+The 40-px hysteresis keeps the band from flickering at a threshold, and the band changes on the first frame that is not
+resized (the resized frame keeps the old band), so the pane animates across the crossing instead of snapping. Narrow and Tiny force their mode whatever the
 user wants. In Narrow and Tiny, Edit mode opens the sidebar as an overlay pane instead.
 
 `userCollapsed` is written only in the Wide band and not while editing. In Narrow and Tiny the collapse is
@@ -87,6 +96,10 @@ recomputed, never saved over. The overlay pane slides over the page; the pane an
 
 - **`SidebarProjectionBinder`** (`Shell/Sidebar.Host.cs`) watches the library and builds a `SidebarProjectionInput`:
   the pins, playlists, collections, folders and feeds the planner needs.
+- **`NavModel`** (`Sidebar.Model`, `Shell/NavModel*.cs`) is what a pane reads and calls: the binder's projection as typed
+  facts (destinations with counts, pins, the rootlist, the library list, the feeds), the selected route, what plays, how
+  far each source has answered (`NavReadiness`: Pending, Ready or Failed), the account, edit mode and the layout document,
+  plus the verbs (`INavVerbs`: navigate, play, toggle a section or folder, create, pin, unpin, move a pin). It plans no rows.
 - **Feeds.** `SidebarFeedDemand` says whether a feed is shown. Recent and New releases fetch only while shown, so a
   hidden feed costs no network.
 - **Recents resolution** goes in order: the index, then the resident peek, then the logged title, then skip. A row
@@ -107,10 +120,24 @@ recomputed, never saved over. The overlay pane slides over the page; the pane an
 Two JSON files and one store class:
 
 - **`sidebar.json`** (v3, device-wide): the two layout overlays (per-section shown/collapsed/limit/hidden items/item
-  order, Library's sort, view and Liked toggle). Its DTO is `SidebarDeviceFileDto`.
-- **`settings.json`** keys (device-wide, `Platform.Keys`): the active layout (`sidebar.layout.id`), the pane width
-  (`sidebar.pane.width`), the user's collapse (`sidebar.pane.userCollapsed`), density (`sidebar.pane.density`) and
-  Your Library's chip (`sidebar.library.filter`).
+  order, Library's sort and Liked toggle). Its DTO is `SidebarDeviceFileDto`. An older file's `"view"` member is ignored on read
+  (the `SidebarLibraryView` bootstrap step copied it to the theme state once) and not written again.
+- **`settings.json`** keys (device-wide, `Platform.Keys`): Your Library's chip (`sidebar.library.filter`).
+- **The pane width, the user's collapse and Your Library's list/grid view are the active theme's state** (M7b):
+  `theme.<id>.state.paneWidth` / `.paneCollapsed` / `.libraryView` (`ThemeState`, keys declared on `Sidebar`:
+  `PaneWidthKey`, `PaneCollapsedKey`, `LibraryViewKey`). `Sidebar.Boot` reads them, `Sidebar.Apply` and
+  `Sidebar.SetLibraryView` write them, and the frame's effect calls `Sidebar.FollowThemeState` when the active theme
+  changes. The old `sidebar.pane.width` / `.userCollapsed` and the `view` member of `sidebar.json` were copied once by
+  `ThemeBootstrap`. The view is an undoable ring entry of its own (`SidebarUndoKind.View`) and part of "Reset layout"
+  (`Sidebar.ResetLayoutRecorded`).
+- **The layout and the density are the structure's options, not sidebar keys** (M7a): Classic's `structure.sidebar` and
+  `structure.libraryDensity` (`theme.classic.structure.sidebar` / `.libraryDensity` in `settings.json`; the old
+  `sidebar.layout.id` and `sidebar.pane.density` are copied once by `ThemeBootstrap` and then ignored). The structure
+  publishes them as `NavPanePolicy.Layout` / `Density`; `Sidebar.Boot` reads them from the policy and the frame's
+  effect calls `Sidebar.FollowDesign` when they change without a verb of the sidebar (the Settings options, the palette's
+  option commands, a theme switch). `Sidebar.SwitchLayout` and `Sidebar.SetDensity` (the pane menu, the cards, the undo
+  ring) keep their guards and ring records and store the choice with `ThemeHost.Request(NavPaneOptionIds.…)`. A
+  structure that declares no such option ignores the request: the choice then lasts for the session.
 - **`sidebar.acct-<fnv1a64>.json`** (v1, one per account): pins (in the user's order), local pins, the pin name
   cache, expanded folders, the New releases seen stamp, first-seen stamps and the migration latch. Its DTO is
   `SidebarAccountFileDto`. The file name is a hash of the account key; the key itself is stored inside for
@@ -127,7 +154,7 @@ Example of `sidebar.json` (shape only, values abbreviated):
   "v": 3,
   "layouts": {
     "classic": { "sections": [ { "id": "home" }, { "id": "pinned", "collapsed": true } ] },
-    "library": { "sections": [ { "id": "library", "sort": "recents", "view": "list", "showLiked": true } ] }
+    "library": { "sections": [ { "id": "library", "sort": "recents", "showLiked": true } ] }
   }
 }
 ```
@@ -154,7 +181,7 @@ never deleted from `settings.json`: the latch stops a second read, and removing 
 
 ## 8. Customizing
 
-**Edit mode** (`Shell/Sidebar.Edit.cs`, `Shell/Sidebar.UI.Edit.cs`) shows an Outline of every section and item and an
+**Edit mode** (`Shell/Sidebar.Edit.cs`, `Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs`) shows an Outline of every section and item and an
 edit bar. Keyboard: Space lifts a row, arrows move it, Alt+↑ and Alt+↓ move it by one, Enter toggles shown. Focus lands
 in the Outline on enter and returns to the row by its key on Done or Esc. A section header is clickable only to focus
 it in the Outline; it never toggles from there.
@@ -191,7 +218,7 @@ Shaping is done by `SidebarLibraryShaper` and `SidebarLibraryHeadRules` (`Shell/
 | Add a section kind, or a Collections page | `SidebarSectionKind` and `SidebarCatalogue` (kind rules, items, loc key) |
 | Change what a layout holds or locks | `SidebarCatalogue`, then `SidebarLayoutRules.Apply` for the edit it allows |
 | Add an edit | a new `SidebarOp` record, handled in `SidebarLayoutRules.Apply` and in `Sidebar.Host.cs`'s dispatch |
-| Change a row metric | `SidebarRowGeometry` (`Shell/Sidebar.cs`) |
+| Change a row metric | `SidebarGeometry` (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`); the rail's width is `NavPanePolicy.RailWidth` (`ClassicPolicies.NavPane`) |
 | Add a menu item | `SidebarMenuModel`, then `SidebarMenus.Run` |
 | Add a pane mode or band rule | `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) |
 | Add a persisted field | the DTO in `Shell/Sidebar.Store.cs`, `SidebarStoreJsonCtx`, and a round-trip test |
@@ -204,16 +231,16 @@ Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/
 
 - **Layout and model:** `SidebarCatalogueTests`, `SidebarLayoutRulesTests`, `SidebarVisibilityRulesTests`,
   `SidebarStoreV3Tests`, `SidebarMigrationV2Tests`.
-- **Rows and geometry:** `SidebarRowGeometryTests`, `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
+- **Rows and geometry:** `SidebarRowGeometryTests` (incl. `SidebarGeometryKitTests`), `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
   `SidebarSubtitleRulesTests`, `SidebarProjectionTests`.
 - **Modes and sizing:** `SidebarPaneModeRulesTests`, `SidebarResizeRulesTests`.
-- **Edit, menus and undo:** `SidebarEditRulesTests`, `SidebarMenuModelTests`, `SidebarUndoRingTests`,
-  `SidebarDropTests`, `SidebarTypeAheadRulesTests`.
+- **Edit, menus and undo:** `SidebarEditRulesTests`, `NavEditModelTests`, `NavMenuModelTests`, `SidebarUndoRingTests`,
+  `NavDropRulesTests`, `SidebarTypeAheadRulesTests`.
 - **Library:** `SidebarLibraryShaperTests`, `SidebarLibraryHeadRulesTests`, `SidebarLibraryStateTests`.
 - **Pins and accounts:** `SidebarPinTests`, `SidebarPinSyncTests`, `SidebarAccountStoreTests`.
 - **Feeds and cards:** `SidebarFeedsTests`, `SidebarCardsTests`.
 - **Persistence:** `SidebarFileStoreTests` (against a temp folder).
-- **Wiring:** `SidebarWiringTests`.
+- **Wiring:** `SidebarWiringTests`; the mounted pane is `Wavee.ShellTests/NavPaneMountedTests.cs`.
 - **Revisions and census:** `SidebarRevisionTests`, `SidebarReplanCensusTests`.
 
 Tests assert behaviour through the pure classes. There are no source-text tests.

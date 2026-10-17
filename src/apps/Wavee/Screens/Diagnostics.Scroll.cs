@@ -8,7 +8,7 @@
 // What each level buys: Summary keeps the always-on `scroll.burst` line (Diagnostics.Host.cs — one line per wheel/drag
 // burst, the engine's own `BurstSummary`); Trace additionally records every input, plan and pose, which is what the CSV
 // export (`logs/scroll-<timestamp>.csv`, analyze.py's column layout) is for. The decisions are `ScrollDiagRules` (pure,
-// tested); this file owns the engine calls, the settings writes and the card.
+// tested); this file owns the engine calls, the settings writes and the card's node; the card is the Common view's (`CommonDiagnostics.Widgets.cs`).
 
 using System.Diagnostics;
 using System.Globalization;
@@ -21,6 +21,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Diag;
 using FluentGpu.Scroll.Motion;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -58,119 +59,34 @@ public static class ScrollDiagRules
 
 public static partial class Diagnostics
 {
-    /// <summary>The scroll probe level and feel profile: persisted, applied to the engine, and published as signals the
-    /// card binds. Written persist-then-publish-then-apply, UI thread only.</summary>
-    public static class ScrollSettings
-    {
-        /// <summary>The probe level (<see cref="ScrollDiagRules.LevelOff"/>..<see cref="ScrollDiagRules.LevelTrace"/>).</summary>
-        public static readonly Signal<int> Level = new(ScrollDiagRules.LevelSummary);
-        /// <summary>The selected profile's index in <see cref="ProfileNames"/>.</summary>
-        public static readonly Signal<int> Profile = new(0);
-
-        static string[]? s_profileNames;
-
-        /// <summary>The engine's named feel presets, in <c>FeelProfiles.All</c> order.</summary>
-        public static IReadOnlyList<string> ProfileNames => s_profileNames ??= Names();
-
-        static string[] Names()
-        {
-            var all = FeelProfiles.All;
-            var names = new string[all.Count];
-            for (int i = 0; i < names.Length; i++) names[i] = all[i].Name;
-            return names;
-        }
-
-        /// <summary>Boot: apply the persisted level and profile to the engine before the first window.</summary>
-        public static void Load(IAppSettings settings)
-        {
-            int level = ScrollDiagRules.ClampLevel(settings.Get(Platform.Keys.ScrollProbeLevel));
-            Level.Value = level;
-            ScrollProbe.Level = (ProbeLevel)level;
-            int profile = ScrollDiagRules.ProfileIndex(ProfileNames, settings.Get(Platform.Keys.ScrollFeelProfile));
-            Profile.Value = profile;
-            ScrollTunables.ApplyProfile(ProfileNames[profile]);
-        }
-
-        public static void SetLevel(int level)
-        {
-            level = ScrollDiagRules.ClampLevel(level);
-            Platform.Settings.Set(Platform.Keys.ScrollProbeLevel, level);
-            Level.Value = level;
-            ScrollProbe.Level = (ProbeLevel)level;
-        }
-
-        public static void SetProfile(int index)
-        {
-            if ((uint)index >= (uint)ProfileNames.Count) return;
-            string name = ProfileNames[index];
-            Platform.Settings.Set(Platform.Keys.ScrollFeelProfile, name);
-            Profile.Value = index;
-            ScrollTunables.ApplyProfile(name);
-        }
-
-        /// <summary>Writes every record the probe rings still hold to <c>logs/scroll-&lt;timestamp&gt;.csv</c>; the path, or
-        /// null when the write failed (logged).</summary>
-        public static string? ExportCsv(float dpiScale)
-        {
-            string path = Path.Combine(Platform.LogFolder, ScrollDiagRules.ExportFileName(DateTimeOffset.Now));
-            try
-            {
-                Directory.CreateDirectory(Platform.LogFolder);
-                using var writer = File.CreateText(path);
-                ScrollProbe.ExportCsv(writer, Stopwatch.Frequency,
-                    ScrollDiagRules.RefreshHz(NavigationFrameWatch.RefreshIntervalMs), dpiScale > 0f ? dpiScale : 1f);
-                Log.Info("scroll", "scroll probe exported path=" + path + " level=" + Level.Peek().ToString(CultureInfo.InvariantCulture));
-                return path;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Log.Warn("scroll", "scroll probe export failed path=" + path, ex);
-                return null;
-            }
-        }
-    }
+    static readonly ScrollHost s_scrollHost = new();
 
     /// <summary>The Diagnostics "Scroll" card: the probe level (Off · Summary · Trace), the feel profile, and the CSV
-    /// export. Every control reads/writes <see cref="ScrollSettings"/>; the card holds no state of its own.</summary>
-    sealed class ScrollCardView : Component
+    /// export. The Common view (`CommonDiagnostics.Widgets.cs`) draws it; every control reads/writes <see cref="ScrollProbePrefs"/>
+    /// through <see cref="s_scrollHost"/>; the card holds no state of its own.</summary>
+    static DiagNode ScrollNode() => new DiagScroll(
+        Loc.Get(Strings.Diagnostics.Scroll.Title), Loc.Get(Strings.Diagnostics.Scroll.ProbeLevel),
+        [Loc.Get(Strings.Diagnostics.Scroll.LevelOff), Loc.Get(Strings.Diagnostics.Scroll.LevelSummary), Loc.Get(Strings.Diagnostics.Scroll.LevelTrace)],
+        Loc.Get(Strings.Diagnostics.Scroll.LevelBody), Loc.Get(Strings.Diagnostics.Scroll.Profile), Loc.Get(Strings.Diagnostics.Scroll.Export),
+        Loc.Get(Strings.Diagnostics.Scroll.Caption), s_scrollHost);
+
+    sealed class ScrollHost : IDiagScrollHost
     {
-        static SegmentedItem[] s_levelItems = [];
+        public Signal<int> Level => ScrollProbePrefs.Level;
 
-        static SegmentedItem[] LevelItems()
+        public Signal<int> Profile => ScrollProbePrefs.Profile;
+
+        public IReadOnlyList<string> ProfileNames => ScrollProbePrefs.ProfileNames;
+
+        public void SetLevel(int level) => ScrollProbePrefs.SetLevel(level);
+
+        public void SetProfile(int index) => ScrollProbePrefs.SetProfile(index);
+
+        public void Export(float deviceScale)
         {
-            if (s_levelItems.Length == 0)   // the launch locale is fixed for the process
-                s_levelItems =
-                [
-                    new(Loc.Get(Strings.Diagnostics.Scroll.LevelOff)), new(Loc.Get(Strings.Diagnostics.Scroll.LevelSummary)),
-                    new(Loc.Get(Strings.Diagnostics.Scroll.LevelTrace)),
-                ];
-            return s_levelItems;
-        }
-
-        public override Element Render() => Card(Loc.Get(Strings.Diagnostics.Scroll.Title),
-            Labeled(Loc.Get(Strings.Diagnostics.Scroll.ProbeLevel),
-                Segmented.Create(LevelItems(), ScrollSettings.Level, onChange: ScrollSettings.SetLevel)),
-            Body(Loc.Get(Strings.Diagnostics.Scroll.LevelBody)),
-            Labeled(Loc.Get(Strings.Diagnostics.Scroll.Profile),
-                ComboBox.Create(ScrollSettings.ProfileNames, ScrollSettings.Profile, width: 220f, onChange: ScrollSettings.SetProfile)),
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S,
-                Children = [Button.Standard(Loc.Get(Strings.Diagnostics.Scroll.Export), Export)],
-            },
-            Caption(Loc.Get(Strings.Diagnostics.Scroll.Caption)));
-
-        void Export()
-        {
-            string? path = ScrollSettings.ExportCsv(Context.Scene?.DeviceScale ?? 1f);
+            string? path = ScrollProbePrefs.ExportCsv(deviceScale);
             if (path is null) Notify.Say(Loc.Get(Strings.Diagnostics.Scroll.ExportFailed), InfoBarSeverity.Error);
             else Notify.Say(Strings.Diagnostics.Scroll.Exported(path), InfoBarSeverity.Success);
         }
-
-        static Element Labeled(string label, Element control) => new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Children = [new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Width = RuntimeLabelWidth, Shrink = 0f }, control],
-        };
     }
 }

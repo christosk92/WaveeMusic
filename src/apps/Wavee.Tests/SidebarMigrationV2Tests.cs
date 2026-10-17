@@ -51,7 +51,7 @@ public class SidebarMigrationV2Tests
         var library = Library(r, "library");
         Assert.Equal(SidebarLibrarySort.RecentlyAdded, library.Sort);
         Assert.True(library.Descending == true);
-        Assert.Equal(SidebarLibraryView.List, library.View);
+        Assert.Equal(SidebarLibraryView.List, r.LibraryView);
         Assert.Equal(SidebarDensity.Compact, r.Density);
     }
 

@@ -90,6 +90,27 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   Diagnostics Scroll + Tiles cards and the `scroll.frames` / `scroll.burst` log lines. **No app-side workarounds for
   engine scroll behaviour** — reproduce, then fix in `..\fluent-gpu` (its `fluentgpu-scroll` skill). Guide:
   `docs/guide/scrolling.md`.
+- **The window frame and the content states are the structure's** (themes plan T4a): `Shell.FrameRoot` (`Shell/Shell.UI.cs`)
+  is a `[CoreHost]` that wires the window and mounts `Shell.Frame`; the column, the layers and the content region are
+  `Themes/Classic/Structure/Views/Frame/ClassicFrame.cs`. `ContentHost` decides the page / empty body / not-found / offline-lane
+  state (`Shell.FrameRules.ContentBodyFor` / `ShowsOfflineStrip`) and mounts `Shell.ContentState` (`ClassicContentState.cs`). Edit the picture there,
+  the decision and the wiring in `Shell.UI.cs`; a new surface follows the six steps of `docs/guide/theming.md` section 2b.
+- **The frame's small views are the structure's too** (themes plan T4c): the masthead band + `Page.Head` (`Shell.MastheadBand` in
+  `Shell/Shell.Masthead.UI.cs` is the core host, it publishes a `PageChrome`), the material layer and the four cover leaves
+  (`Platform/ShellMaterial.cs` keeps the channel and the hand-over rule; `Entities/Palette.Host.cs` mounts the leaves by view key), the
+  narrow drawer (`Shell.NarrowDrawer` host keeps the Escape/key-preview chain), the command palette (`Shell.PaletteSession` is the model the
+  card reads; `Shell.CommandTable` is unchanged), the history menu, the file-drop cue, the drag chip layer, the setup cover scrim and the
+  frame-rate HUD (`Diagnostics.FpsOverlayOn` is the rule). Pictures: `Themes/Classic/Structure/Views/{Masthead,Material,Drawer,Palette,FrameBits}`;
+  numbers: `Rules/ClassicFrameBitsRules.cs`; keys: `Theming/Contracts/ViewKeys.FrameBits.cs`.
+- **The overlays and the dialog bodies are the structure's** (themes plan T11a): the account chip and menu, the notification panel, the
+  runtime banner, the update toast's download card, the offline strip, the context menu's identity tile, and the bodies of the log-out
+  card, the play-a-link card, the signature sheet, the destination picker and the credits sheet. The core keeps the overlay handles, dismiss
+  rules, focus traps, the toast queue (the engine's `ToastHost`), the dialog shells (the engine's `ContentDialog`) and every verb: hosts in
+  `Shell/Shell.Overlays.UI.cs` (chip, banner, play-a-link, log-out, signature opener), `Shell/Shell.UI.cs` (the notification panel host and
+  `NotificationsHost`), `Platform/Actions.UI.cs` (the picker's filter, the menu header), `Entities/Track.Drawer.cs` (the credits host).
+  Pictures: `Themes/Classic/Structure/Views/{Overlays,Dialogs}`; numbers: `Rules/Classic{Overlay,Notification,Dialog}Rules.cs`; keys:
+  `Theming/Contracts/ViewKeys.Overlays.cs` (props in `OverlayProps.cs`, `NotificationsProps.cs`, `DialogProps.cs`). Confirm, prompt (rename) and
+  "reset everything" are engine ContentDialog configurations with no picture of the app's own: they have no key.
 - **Full-screen Now Playing + visualizers** — the stage, the eight faces, the demand tiers and fallback ladder, the
   `stage.*` / `viz.*` log events and the Diagnostics card. Guide: `docs/guide/fullscreen-visualizers.md`.
 - [probes.md](probes.md) — the windowless CLI probe arms (`--log-sessions` and the others `Probe.TryRunCliArm`

@@ -6,7 +6,7 @@ the short form for agents that do not load `CLAUDE.md` automatically.
 - **What this is:** the Wavee Spotify desktop client, built on the FluentGpu engine in the **sibling checkout**
   `..\fluent-gpu` (`$(EngineRoot)` in `Directory.Build.props`). Engine rules, the UI programming model and the
   `fluentgpu` skill live there — `..\fluent-gpu\CLAUDE.md`, `..\fluent-gpu\AGENTS.md`.
-- **Build & test:** `dotnet build Wavee.slnx` (Debug **and** `-c Release`), `dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj`,
+- **Build & test:** `dotnet build Wavee.slnx` (Debug **and** `-c Release`), `dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj` (plus `Wavee.ShellTests` and `Wavee.Analyzers.Tests`),
   `Invoke-Pester -Path ops/release/tests`. No CI exists; releases are local (`ops/release/wavee-release.ps1`).
 - **PlayPlay (private, never committed here):** `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`,
   `src/apps/tmp_*`, `ops/tools/playplay_*`, `ops/tools/x64_*`, `ops/*/pyghidra*`, `docs/plans/wavee/{wavee-playplay*,playplay-*,spotiload-offline-path}.md`,

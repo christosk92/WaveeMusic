@@ -6,13 +6,14 @@
 // real overlay rules (`SidebarLayoutRules.Resolve`), so a default, an op and a plan are pinned together, never a
 // hand-built section list.
 //
-// The kept classes test types that survive in shape: the pure plan geometry (`SidebarRowGeometry`), the analytic row
-// extents (`SidebarRowExtents`), the row diff (`SidebarRowDiff`) and the pane invariant (`SidebarPaneInvariant`).
+// The kept classes test types that survive in shape: the pure plan queries (`SidebarPlanQueries`), the analytic row
+// extents (`SidebarRowExtents`) and the pane invariant (`SidebarPaneInvariant`).
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -33,8 +34,8 @@ static class PlanFixture
                SidebarPlaylistFlavor.None) { FolderId = "", FolderName = "", FirstArtistName = "" };
 
     public static SidebarLayoutDoc Doc(SidebarLayoutId layout, Func<SidebarLayoutState, SidebarLayoutState>? edit = null,
-                                       SidebarDensity density = SidebarDensity.Default)
-        => SidebarLayoutRules.Resolve((edit ?? (s => s))(SidebarLayoutState.Default), layout, density);
+                                       SidebarDensity density = SidebarDensity.Default, SidebarLibraryView view = SidebarLibraryView.List)
+        => SidebarLayoutRules.Resolve((edit ?? (s => s))(SidebarLayoutState.Default), layout, density, view);
 
     public static SidebarLayoutState Op(SidebarLayoutState s, SidebarOp op) => SidebarLayoutRules.Apply(s, op, false).State;
 
@@ -378,7 +379,7 @@ public sealed class SidebarRowPlannerTests
     {
         // Fact 21. Seven albums in three columns: strips of 3, 3 and 1.
         var albums = Enumerable.Range(0, 7).Select(i => PlanFixture.Album("a" + i)).ToArray();
-        var grid = Library(PlanFixture.Ops(new SetLibraryView(SidebarLibraryView.Grid)));
+        var grid = GridDoc();
         var plan = Plan(grid, new SidebarProjectionInput(Library: albums), new SidebarPlanOptions(GridColumns: 3));
         Assert.Equal(new[] { 3, 3, 1 }, plan.Rows.Where(r => r.Kind == SidebarRowKind.GridStrip).Select(r => r.ItemCount).ToArray());
     }
@@ -396,16 +397,41 @@ public sealed class SidebarRowPlannerTests
         Assert.DoesNotContain(Plan(Library(), withPins).Rows, r => r.Kind == SidebarRowKind.Empty);
     }
 
-    static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library,
-        s => PlanFixture.Op(s, new SetLibraryView(SidebarLibraryView.Grid)));
+    static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library, view: SidebarLibraryView.Grid);
 
     [Fact]
-    public void Library_GridPending_NoRows()
+    public void Library_GridPending_PlansSkeletonTileStrips()
     {
-        // Pending with an EMPTY published list: no placeholder strips, no skeletons (the list view would show three).
+        // S10: pending with an EMPTY published list, the grid plans its skeleton tiles (8) in strips of the planned column
+        // count, measured like the strips that replace them; never a real strip, never a list skeleton.
         var input = new SidebarProjectionInput(Library: [], LibraryState: SidebarSourceState.Pending);
         var plan = Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3));
-        Assert.DoesNotContain(plan.Rows, r => r.Kind is SidebarRowKind.GridStrip or SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(plan.Rows, r => r.Kind == SidebarRowKind.GridStrip);
+        var strips = plan.Rows.Where(r => r.Kind == SidebarRowKind.Skeleton).ToList();
+        Assert.Equal(new[] { 3, 3, 2 }, strips.Select(r => r.ItemCount));
+        var doc = GridDoc();
+        var lib = doc.Find(SidebarSectionKind.Library);
+        int at = plan.Rows.ToList().FindIndex(r => r.Kind == SidebarRowKind.Skeleton);
+        Assert.True(float.IsNaN(SidebarRowExtents.HeightOf(plan.Rows, at, lib)));
+    }
+
+    [Fact]
+    public void Library_Failed_PlansNoSkeleton_InEitherView()
+    {
+        // S10: a failed source plans no skeleton (the head draws the failure: the banner over what loaded, or the vacancy).
+        var input = new SidebarProjectionInput(Library: [], LibraryState: SidebarSourceState.Error);
+        Assert.DoesNotContain(Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3)).Rows,
+            r => r.Kind is SidebarRowKind.GridStrip or SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(Plan(PlanFixture.Doc(SidebarLayoutId.Library), input).Rows, r => r.Kind == SidebarRowKind.Skeleton);
+    }
+
+    [Fact]
+    public void Classic_FailedTree_KeepsTheSkeleton_NeverTheEmptyHint()
+    {
+        // The Classic layout has no failure voice of its own: a failed rootlist keeps its skeleton, never "no playlists".
+        var plan = Plan(Classic(), new SidebarProjectionInput(PlaylistTree: null, TreeState: SidebarSourceState.Error));
+        Assert.Contains(plan.Rows, r => r.Kind == SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(plan.Rows, r => r.Kind == SidebarRowKind.Empty);
     }
 
     [Fact]
@@ -537,7 +563,7 @@ public sealed class SidebarRowPlannerTests
 #endregion
 
 #region ROW GEOMETRY — SidebarPlanGeometryTests
-// SidebarRowGeometry is the engine-free half of the sidebar's row ladder. The plan helpers under test are the pure geometry
+// SidebarPlanQueries is the engine-free half of the sidebar's row plan (the ladder is the structure's). The plan helpers under test are the pure geometry
 // the selection cue and the drop caret need: the tree's content origin, the row ladder's heights, the cumulative content-space
 // Y, the route → index lookup, the travel direction, the grid fallback and the pin glyph.
 public sealed class SidebarPlanGeometryTests
@@ -556,20 +582,20 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(-3, 0f)]
     public void TreeContentX_IsThirtyOnePerLevelFromTheRowOrigin(int depth, float expected)
     {
-        Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
+        Assert.Equal(expected, SidebarGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
-        int clamped = Math.Clamp(depth, 0, SidebarRowGeometry.MaxIndentDepth);
-        Assert.Equal(SidebarRowGeometry.IndentFor(0) + clamped * SidebarRowGeometry.IndentStep,
-                     SidebarRowGeometry.TreeContentX(depth), 3);
+        int clamped = Math.Clamp(depth, 0, SidebarGeometry.MaxIndentDepth);
+        Assert.Equal(SidebarGeometry.IndentFor(0) + clamped * SidebarGeometry.IndentStep,
+                     SidebarGeometry.TreeContentX(depth), 3);
     }
 
     [Fact]
     public void TreeContentX_MarchesOneIndentStepPerLevel()
     {
         // The step the depth pick reads backwards. If these two ever differ, an outdent lands on the wrong level.
-        for (int d = 0; d < SidebarRowGeometry.MaxIndentDepth; d++)
-            Assert.Equal(SidebarRowGeometry.IndentStep,
-                         SidebarRowGeometry.TreeContentX(d + 1) - SidebarRowGeometry.TreeContentX(d), 3);
+        for (int d = 0; d < SidebarGeometry.MaxIndentDepth; d++)
+            Assert.Equal(SidebarGeometry.IndentStep,
+                         SidebarGeometry.TreeContentX(d + 1) - SidebarGeometry.TreeContentX(d), 3);
     }
 
     // ── 1. the row ladder (WinUI NavigationView) ─────────────────────────────────────────────────────────────────────
@@ -580,8 +606,8 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(SidebarRowShape.EntityTwoLine, 40f, 44f)]
     public void HeightAndPitch_AreTheThreeWinUiShapes(SidebarRowShape shape, float height, float pitch)
     {
-        Assert.Equal(height, SidebarRowGeometry.HeightOf(shape));
-        Assert.Equal(pitch, SidebarRowGeometry.PitchOf(shape));
+        Assert.Equal(height, SidebarGeometry.HeightOf(shape));
+        Assert.Equal(pitch, SidebarGeometry.PitchOf(shape));
     }
 
     [Theory]
@@ -591,69 +617,22 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(4, 93f)]
     [InlineData(9, 93f)]   // clamped at three levels
     public void IndentFor_IsThirtyOnePerLevelClampedAtThree(int depth, float expected)
-        => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
+        => Assert.Equal(expected, SidebarGeometry.IndentFor(depth));
 
     // ── 2. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
-
-    static readonly float[] MixedExtents = [30f, 44f, 44f, 16f, 30f, 48f, 48f];   // header · 2 rows · divider · header · 2 rows
-
-    static Func<int, float> Extents(float[] e) => i => (uint)i < (uint)e.Length ? e[i] : 0f;
-
-    [Fact]
-    public void ContentYOf_IsThePrefixSumOfEveryEarlierRow()
-    {
-        var extentOf = Extents(MixedExtents);
-        int n = MixedExtents.Length;
-        Assert.Equal(0f, SidebarRowGeometry.ContentYOf(0, n, extentOf));
-        Assert.Equal(30f, SidebarRowGeometry.ContentYOf(1, n, extentOf));
-        Assert.Equal(74f, SidebarRowGeometry.ContentYOf(2, n, extentOf));
-        Assert.Equal(118f, SidebarRowGeometry.ContentYOf(3, n, extentOf));
-        Assert.Equal(134f, SidebarRowGeometry.ContentYOf(4, n, extentOf));
-        Assert.Equal(164f, SidebarRowGeometry.ContentYOf(5, n, extentOf));
-        Assert.Equal(212f, SidebarRowGeometry.ContentYOf(6, n, extentOf));
-    }
-
-    [Fact]
-    public void ContentYOf_ClampsBothEnds()
-    {
-        var extentOf = Extents(MixedExtents);
-        int n = MixedExtents.Length;
-        float total = 260f;   // the whole MixedExtents sum
-        Assert.Equal(0f, SidebarRowGeometry.ContentYOf(-5, n, extentOf));
-        Assert.Equal(total, SidebarRowGeometry.ContentYOf(n, n, extentOf));
-        Assert.Equal(total, SidebarRowGeometry.ContentYOf(n + 99, n, extentOf));
-    }
-
-    [Fact]
-    public void ContentYOf_SkipsDegenerateExtents()
-    {
-        // A zero-height row and a NaN (an unmeasured slot) must contribute nothing rather than poisoning every later offset.
-        float[] e = [44f, 0f, float.NaN, 44f];
-        Assert.Equal(88f, SidebarRowGeometry.ContentYOf(4, e.Length, Extents(e)));
-    }
 
     [Fact]
     public void IndexOfRoute_FindsTheFirstMatchAndIgnoresNonTargets()
     {
         string?[] routes = [null, "albums", "", "liked", "albums"];
-        Assert.Equal(1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "albums"));
-        Assert.Equal(3, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "liked"));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "podcasts"));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], ""));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], null));
+        Assert.Equal(1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "albums"));
+        Assert.Equal(3, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "liked"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "podcasts"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], ""));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], null));
         // Ordinal, never culture- or case-insensitive: route keys are identifiers.
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "Albums"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "Albums"));
     }
-
-    [Theory]
-    [InlineData(1, 5, 1)]     // moved down the plan
-    [InlineData(5, 1, -1)]    // moved up
-    [InlineData(3, 3, 0)]     // same row — nothing travelled
-    [InlineData(-1, 4, 0)]    // arriving from off-plan (deep link / collapsed section): direction is unknowable
-    [InlineData(4, -1, 0)]    // leaving to off-plan
-    [InlineData(-1, -1, 0)]
-    public void DirectionOf_IsSignedOnlyWhenBothRowsAreOnThePlan(int from, int to, int expected)
-        => Assert.Equal(expected, SidebarRowGeometry.DirectionOf(from, to));
 
     // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
 
@@ -661,7 +640,7 @@ public sealed class SidebarPlanGeometryTests
     public void GridFallbackColumns_HonoursThePlannerAtAWidePane()
     {
         // 240 available, 3 planner columns, 8-DIP gap: edge = (240 - 16) / 3 = 74.67 — comfortably above the 40 floor.
-        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(3, 240f, 8f, 40f));
+        Assert.Equal(3, SidebarGeometry.GridFallbackColumns(3, 240f, 8f, 40f));
     }
 
     [Fact]
@@ -669,23 +648,23 @@ public sealed class SidebarPlanGeometryTests
     {
         // The narrow-pane case: at the 180-DIP floor (164 DIP available after the 16-DIP pane inset), 4 planner columns would
         // give (164 - 24) / 4 = 35 — under the 40-DIP floor — so the strip falls back to 3.
-        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(4, 164f, 8f, 40f));
+        Assert.Equal(3, SidebarGeometry.GridFallbackColumns(4, 164f, 8f, 40f));
         // A 2-column section never needed the fallback in the first place.
-        Assert.Equal(2, SidebarRowGeometry.GridFallbackColumns(2, 164f, 8f, 40f));
+        Assert.Equal(2, SidebarGeometry.GridFallbackColumns(2, 164f, 8f, 40f));
     }
 
     [Fact]
     public void GridFallbackColumns_NeverExceedsThePlannersColumnCount()
     {
         // A very wide pane must not invent MORE columns than the planner asked for — the planner is the ceiling.
-        Assert.Equal(4, SidebarRowGeometry.GridFallbackColumns(4, 2000f, 8f, 40f));
+        Assert.Equal(4, SidebarGeometry.GridFallbackColumns(4, 2000f, 8f, 40f));
     }
 
     [Fact]
     public void GridFallbackColumns_FloorsAtOneColumn()
     {
         // Even one column's edge can go under the floor at an extreme width — the fallback never returns less than 1.
-        Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(4, 10f, 8f, 40f));
+        Assert.Equal(1, SidebarGeometry.GridFallbackColumns(4, 10f, 8f, 40f));
     }
 
     [Theory]
@@ -693,7 +672,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(0)]
     [InlineData(-3)]
     public void GridFallbackColumns_TreatsANonPositivePlannedCountAsOne(int planned)
-        => Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
+        => Assert.Equal(1, SidebarGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
 
     // ── pin glyph (issue #85, H1) ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -703,7 +682,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(true, true, false)]    // a track is never pinnable (locked decision) even if IsPinned is somehow set
     [InlineData(false, true, false)]
     public void ShowsPinGlyph_IsPinnedAndNeverATrack(bool isPinned, bool isTrack, bool expected)
-        => Assert.Equal(expected, SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack));
+        => Assert.Equal(expected, SidebarPlanQueries.ShowsPinGlyph(isPinned, isTrack));
 }
 #endregion
 
@@ -735,106 +714,6 @@ public sealed class SidebarRowExtentsTests
         Assert.Equal(40f, SidebarRowExtents.HeightOf(rows, 3, section));
         Assert.Equal(40f, SidebarRowExtents.HeightOf(rows, 4, section));
     }
-}
-#endregion
-
-#region ROW DIFF — SidebarRowDiffTests
-// The per-row change marks the pane uses to decide which slots re-realize. A row is changed when its record moved, OR when
-// the entry it addresses changed under an identical record (the regression this type exists for).
-public sealed class SidebarRowDiffTests
-{
-    static SidebarRow Row(string key, int entryIndex = -1, string section = "s",
-                          SidebarRowKind kind = SidebarRowKind.EntityRow)
-        => new(kind, section, 0, entryIndex, 0, key);
-
-    static SidebarLibraryEntry Entry(string id, string name = "n", string uri = "spotify:playlist:x")
-        => new(id, SidebarEntryKind.Playlist, uri, name, "", default, null, 0, 0, 0, 0, 0, 0, false,
-               SidebarPlaylistFlavor.None);
-
-    static readonly IReadOnlyList<SidebarLibraryEntry> NoEntries = Array.Empty<SidebarLibraryEntry>();
-
-    [Fact]
-    public void IdenticalPlans_ChangeNothing()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a"), Row("b"), Row("c") };
-        Span<bool> changed = new bool[3];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, false, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void OnlyTheRowsWhoseRecordMoved_AreMarked()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a"), Row("B!"), Row("c") };
-        Span<bool> changed = new bool[3];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, true, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void RowsBeyondTheOldPlan_AreAlwaysMarked()
-    {
-        var rows = new[] { Row("a") };
-        var next = new[] { Row("a"), Row("b") };
-        Span<bool> changed = new bool[2];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, true }, changed.ToArray());
-    }
-
-    [Fact]
-    public void AShrunkPlan_OnlyReportsTheRowsItStillHas()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a") };
-        Span<bool> changed = new bool[3];
-        changed[1] = changed[2] = false;
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.False(changed[0]);
-        // Indices past the new plan are left alone — the pane never bumps an epoch no slot can legally address.
-        Assert.False(changed[1]);
-        Assert.False(changed[2]);
-    }
-
-    // The regression this type exists for: same row records, different entity behind one of them.
-    [Fact]
-    public void AChangedEntry_MarksTheRowThatAddressesIt_EvenWithAnIdenticalRowRecord()
-    {
-        var rows = new[] { Row("a", entryIndex: 0), Row("b", entryIndex: 1) };
-        var oldEntries = new[] { Entry("p1", "Old name"), Entry("p2") };
-        var newEntries = new[] { Entry("p1", "New name"), Entry("p2") };
-        Span<bool> changed = new bool[2];
-        SidebarRowDiff.Diff(rows, oldEntries, rows, newEntries, changed);
-        Assert.Equal(new[] { true, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void AnEntryIndexThatBecomesOutOfRange_MarksTheRow()
-    {
-        var rows = new[] { Row("a", entryIndex: 1) };
-        var oldEntries = new[] { Entry("p1"), Entry("p2") };
-        var newEntries = new[] { Entry("p1") };
-        Span<bool> changed = new bool[1];
-        SidebarRowDiff.Diff(rows, oldEntries, rows, newEntries, changed);
-        Assert.True(changed[0]);
-    }
-
-    [Fact]
-    public void EntrylessRows_IgnoreTheEntryListEntirely()
-    {
-        // A header/divider/skeleton carries EntryIndex -1: nothing behind it can go stale, so a wholesale entry-list
-        // churn must not re-render it.
-        var rows = new[] { Row("h", entryIndex: -1, kind: SidebarRowKind.SectionHeader) };
-        Span<bool> changed = new bool[1];
-        SidebarRowDiff.Diff(rows, new[] { Entry("p1") }, rows, new[] { Entry("p9", "different") }, changed);
-        Assert.False(changed[0]);
-    }
-
-    [Fact]
-    public void RowChanged_IsFalseOutsideTheNewPlan()
-        => Assert.False(SidebarRowDiff.RowChanged(
-            new[] { Row("a") }, NoEntries, new[] { Row("a") }, NoEntries, index: 5));
 }
 #endregion
 
@@ -980,8 +859,8 @@ public class SidebarPaneInvariantTests
     [Fact]
     public void NestedRowsIndentOneStepPerLevel()
     {
-        Assert.Equal(SidebarRowGeometry.IndentStep, SidebarRowGeometry.IndentFor(1));
-        Assert.Equal(SidebarRowGeometry.IndentFor(3), SidebarRowGeometry.IndentFor(9));   // clamped at 3 levels
+        Assert.Equal(SidebarGeometry.IndentStep, SidebarGeometry.IndentFor(1));
+        Assert.Equal(SidebarGeometry.IndentFor(3), SidebarGeometry.IndentFor(9));   // clamped at 3 levels
     }
 }
 #endregion

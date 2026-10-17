@@ -28,7 +28,6 @@ public class DealerFrameTests
     {
         var frame = Spotify.DealerFrame.Parse("{\"type\":\"ping\"}"u8, Scratch());
         Assert.Equal(Spotify.DealerFrameKind.Ping, frame.Kind);
-        Assert.True(frame.IsPing);
     }
 
     [Fact]
@@ -139,16 +138,6 @@ public class DealerFrameTests
         n = Spotify.DealerFrame.WriteReply(buffer, "k"u8, ok: false);
         Assert.Equal("{\"type\":\"reply\",\"key\":\"k\",\"payload\":{\"success\":false}}",
             Encoding.UTF8.GetString(buffer[..n]));
-    }
-
-    [Fact]
-    public void The_keepalive_frames_are_the_two_the_dealer_expects()
-    {
-        Span<byte> buffer = stackalloc byte[32];
-        int ping = Spotify.DealerFrame.WritePing(buffer);
-        Assert.Equal("{\"type\":\"ping\"}", Encoding.UTF8.GetString(buffer[..ping]));
-        int pong = Spotify.DealerFrame.WritePong(buffer);
-        Assert.Equal("{\"type\":\"pong\"}", Encoding.UTF8.GetString(buffer[..pong]));
     }
 }
 

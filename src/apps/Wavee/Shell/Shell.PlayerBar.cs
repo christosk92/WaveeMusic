@@ -15,10 +15,11 @@
 // the OWNER (0.3's active slot also names a device that just left), the remaining label never prints "−0:00" for a
 // sub-second remainder, and the transport enablement ANDs the model's folded skip restrictions.
 
-using System;
 using System.Globalization;
 
 using FluentGpu.Controls;
+
+using Wavee.Theming.Contracts;
 
 using DeviceKind = Wavee.Spotify.Decode.DeviceKind;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
@@ -47,44 +48,15 @@ public static partial class Shell
     /// </list></summary>
     public enum FaceArm : byte { Live, Hold, Placeholder }
 
-    /// <summary>The title line's ink rung.</summary>
-    public enum NowPlayingInk : byte { Primary, Secondary, Critical }
-
-    /// <summary>What the primary transport button does when clicked.</summary>
-    public enum PrimaryVerb : byte { None, TogglePlay, Retry }
-
     /// <summary>What a single click on a LIST row does (<c>Track.Invoke</c>): start that row, or toggle the deck.</summary>
     public enum RowAction : byte { Start, Toggle }
-
-    /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
-    public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute }
 
     /// <summary>What the centre rail IS right now — decided by the source's own timeline, never by whether a duration
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
     public enum SeekRailMode : byte { Track, Dvr, Line }
 
-    /// <summary>The right cluster's SLOTS, in bit order — which IS the row order. A slot's PRESENCE is a function of the
-    /// tier (<see cref="PlayerBarRules.RightSlots"/>) with ONE exception — the video split, which exists iff the
-    /// current track has a video (user decision 2026-09-16: a 52-DIP hole beside lyrics was worse than the row easing
-    /// once when a video track lands). Playback STATE only lights a slot's FACE (<see cref="PlayerBarRules.SlotFaceVisible"/>).
-    /// That split is still the fix for the bar reflowing on track start: the heart, lyrics and overflow used to ARRIVE
-    /// with <c>active</c>, each arrival stealing width from the centre while every cluster animated its bounds. A track
-    /// starting WITHOUT a video therefore still moves nothing; the centre's seek bar has exactly two widths per tier.</summary>
-    [Flags]
-    public enum RightSlot : ushort
-    {
-        None = 0,
-        Shuffle = 1 << 0,
-        Repeat = 1 << 1,
-        Volume = 1 << 2,
-        VolumeSlider = 1 << 3,
-        Lyrics = 1 << 4,
-        Video = 1 << 5,
-        Queue = 1 << 6,
-        Devices = 1 << 7,
-        Expand = 1 << 8,
-        More = 1 << 9,
-    }
+    // `RightSlot` (the right cluster's slots), `OverflowCommand`, `PrimaryVerb` and `NowPlayingInk` are contract words now
+    // (`Theming\Contracts\PlayerBarVocabulary.cs`, T6a): a theme's player bar draws what these decide and may not name `Shell`.
 
     /// <summary>The folded answer the bar renders from.</summary>
     public readonly record struct PlayerBarFacts(PlayerState State, bool CanTransport, bool PrevEnabled, bool NextEnabled,
@@ -92,6 +64,22 @@ public static partial class Shell
     {
         public bool Active => State == PlayerState.Active;
         public bool PrimaryEnabled => Primary != PrimaryVerb.None;
+
+        /// <summary>The seek rail's facts that are decisions rather than looks (themes plan C2, X8): a theme's rail draws
+        /// what these say and fetches nothing itself.</summary>
+        public static class Seek
+        {
+            /// <summary>Does the rail carry a chapter timeline? An episode on a plain track rail; a DVR window or a live line
+            /// has no chapters to mark.</summary>
+            public static bool ChapterRail(EntityKind kind, SeekRailMode mode)
+                => kind == EntityKind.Episode && mode == SeekRailMode.Track;
+
+            /// <summary>The chapter intervals the rail marks: the fetched chapters normalised against the duration once the
+            /// request is <paramref name="ready"/> (sorted, de-duplicated, each ending where the next starts), else none.</summary>
+            public static PodcastChapterTimeline.Interval[] Chapters(bool ready,
+                IReadOnlyList<Spotify.Podcasts.Chapter> items, int durationMs)
+                => ready ? PodcastChapterTimeline.Normalize(items, durationMs) : [];
+        }
     }
 
     public static class PlayerBarRules
@@ -233,12 +221,13 @@ public static partial class Shell
         public static bool OwnsTransport(Video.TransportOwner owner)
             => owner is Video.TransportOwner.GlobalBar or Video.TransportOwner.PopOut or Video.TransportOwner.Docked;
 
-        /// <summary>The video split button's slot exists on the queue tier AND only while the current track has a video:
+        /// <summary>The video split button's slot exists on a level that carries it (<c>PlayerBarSlots.VideoSplit</c>: its own bit since
+        /// the queue moved down to Compact, tuned Classic P1) AND only while the current track has a video:
         /// with no video the cluster RECLAIMS the 52 DIP rather than carrying an unlit hole beside lyrics (user decision
         /// 2026-09-16, narrowing the earlier tier-only rule). <paramref name="hasVideo"/> is the ONE state input to the
         /// right cluster's width; <c>active</c> is still not one (§0 item 12) — a track starting without a video widens
         /// nothing. Whether the face is lit is separate: <see cref="SlotFaceVisible"/>.</summary>
-        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowQueue && hasVideo;
+        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowVideoSplit && hasVideo;
 
         /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
         /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
@@ -338,7 +327,7 @@ public static partial class Shell
             dest[n++] = OverflowCommand.NowPlaying;
             if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
             // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
-            if (!layout.ShowQueue && active && hasVideo) dest[n++] = OverflowCommand.Video;
+            if (!layout.ShowVideoSplit && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
             return n;
         }
@@ -451,18 +440,33 @@ public static partial class Shell
             _ => PlayerKeyIntent.None,
         };
 
-    /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands.</summary>
-    public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout)
+    /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands. WHAT the podcast bar
+    /// carries at a level is the level's (<c>PlayerTier.PodcastSet</c>, <c>PodcastLeftW</c>: the structure's policy), not a
+    /// comparison against the level ordinals: the bar stays one pressure machine and a structure states its own podcast map.
+    /// <paramref name="policy"/> null is the active one.</summary>
+    public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout, Theming.PlayerBarPolicy? policy = null)
     {
+        var level = ShellPolicy.PlayerBarOr(policy).Tiers[(int)layout.Tier];
+        var slots = level.PodcastSet & level.VisibleSlots;
+        static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
         var next = layout with
         {
-            ShowShuffleRepeat = false,
-            ShowVolumeSlider = false,
-            ShowPrevNext = layout.Tier >= PlayerBarTier.Wide,
-            ShowTimesElapsed = layout.Tier >= PlayerBarTier.Comfortable,
-            ShowTimesRemaining = layout.Tier >= PlayerBarTier.Comfortable,
-            ShowLikeSlot = layout.Tier >= PlayerBarTier.Medium,
-            LeftW = layout.Tier switch { PlayerBarTier.Minimal => layout.ArtSize, PlayerBarTier.Compact => 120f, _ => layout.LeftW },
+            ShowExpand = Has(slots, Theming.PlayerBarSlots.Expand),
+            ShowDevices = Has(slots, Theming.PlayerBarSlots.Devices),
+            ShowQueue = Has(slots, Theming.PlayerBarSlots.Queue),
+            ShowVideoSplit = Has(slots, Theming.PlayerBarSlots.VideoSplit),
+            ShowVolumeSlider = Has(slots, Theming.PlayerBarSlots.VolumeSlider),
+            ShowShuffleRepeat = Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
+            ShowLikeSlot = Has(slots, Theming.PlayerBarSlots.LikeSlot),
+            ShowVolumeButton = Has(slots, Theming.PlayerBarSlots.VolumeButton),
+            ShowLyrics = Has(slots, Theming.PlayerBarSlots.Lyrics),
+            ShowRemoteDeviceLine = Has(slots, Theming.PlayerBarSlots.RemoteDeviceLine),
+            ShowTimesElapsed = Has(slots, Theming.PlayerBarSlots.TimesElapsed),
+            ShowTimesRemaining = Has(slots, Theming.PlayerBarSlots.TimesRemaining),
+            ShowPrevNext = Has(slots, Theming.PlayerBarSlots.PrevNext),
+            ShowSubtitle = Has(slots, Theming.PlayerBarSlots.Subtitle),
+            ShowTitleBlock = Has(slots, Theming.PlayerBarSlots.Title),
+            LeftW = float.IsNaN(level.PodcastLeftW) ? layout.LeftW : level.PodcastLeftW,
         };
         return next with { RightWMax = PlayerBarRules.RightWidth(in next, hasVideo: true) };
     }
@@ -590,12 +594,6 @@ public static partial class Shell
 
     public static class TimeLabel
     {
-        /// <summary>The track slot: wide enough for "-59:59", so 0:09 → 0:10 moves nothing.</summary>
-        public const float SlotW = 44f;
-
-        /// <summary>The live slot, sized once for "GO LIVE −99:59", so the mark ↔ action swap moves nothing.</summary>
-        public const float LiveSlotW = 104f;
-
         /// <summary>Elapsed since TUNE-IN — what "elapsed" means for a broadcast. Before the stamp lands it falls back
         /// to the reported POSITION, never to 0, so the label cannot blink to 0:00 on the way in.</summary>
         public static long ElapsedSinceTuneIn(long tunedInAtUnixMs, long positionMs, long nowUnixMs)

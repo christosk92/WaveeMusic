@@ -7,6 +7,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -19,19 +20,12 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(BrowseMastheadMetrics.TitleLine, Ui.TitleLarge("x").LineHeight);
         Assert.Equal(BrowseMastheadMetrics.Reserve, Spacing.XXXL + Ui.TitleLarge("x").LineHeight);
         // 0.3: the masthead's title IS the SurfaceDisplay face, which keeps the TitleLarge line.
-        Assert.Equal(BrowseMastheadMetrics.TitleLine, Design.Type.SurfaceDisplay("x").LineHeight);
+        Assert.Equal(BrowseMastheadMetrics.TitleLine, R.Type.SurfaceDisplay("x").LineHeight);
     }
 
     [Fact]
-    public void FamilyBodyPad_ClearsTheOverlayThenTheOldBandGap()
-    {
-        Assert.Equal(BrowseMastheadMetrics.Reserve + Spacing.L, BrowseMastheadMetrics.BodyTop);
-        var pad = BrowseMastheadMetrics.FamilyBodyPad(Spacing.L);
-        Assert.Equal(Spacing.PageWide, pad.Left);
-        Assert.Equal(BrowseMastheadMetrics.BodyTop, pad.Top);
-        Assert.Equal(Spacing.PageWide, pad.Right);
-        Assert.Equal(Spacing.L, pad.Bottom);
-    }
+    public void BodyTop_ClearsTheOverlayThenTheOldBandGap()
+        => Assert.Equal(BrowseMastheadMetrics.Reserve + Spacing.L, BrowseMastheadMetrics.BodyTop);
 
     // Finding #3: the band paints nothing, so a scrolling family page cuts its content at the band's lower edge —
     // the reserve itself, never a second number — and feathers that cut with the one fade band every surface uses.
@@ -43,17 +37,16 @@ public class BrowseMastheadMetricsTests
         Assert.True(BrowseMastheadMetrics.ClipFadeBand > 0f);
     }
 
-    // The under-band pad drops the top: the reserve becomes a spacer ABOVE the clipped node, so the spacer + pad
-    // together still clear exactly what FamilyBodyPad cleared.
+    // The under-band pad drops the top: the reserve becomes a spacer ABOVE the clipped node; the sides are the page gutter (TC1).
     [Fact]
-    public void FamilyUnderBandPad_HasNoTop_SoTheSpacerCarriesTheReserve()
+    public void The_family_under_band_pad_has_no_top_so_the_spacer_carries_the_reserve()
     {
-        var pad = BrowseMastheadMetrics.FamilyUnderBandPad(Spacing.XXL);
+        var page = Wavee.Themes.Classic.ClassicTiers.Page(Wavee.Theming.Contracts.WidthTier.Standard);
+        var pad = page.Pad(0f, Spacing.XXL);
         Assert.Equal(0f, pad.Top);
-        Assert.Equal(Spacing.PageWide, pad.Left);
-        Assert.Equal(Spacing.PageWide, pad.Right);
+        Assert.Equal(36f, pad.Left);
+        Assert.Equal(36f, pad.Right);
         Assert.Equal(Spacing.XXL, pad.Bottom);
-        Assert.Equal(BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL).Top, BrowseMastheadMetrics.BodyTop + pad.Top);
     }
 
     [Fact]
@@ -64,6 +57,5 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(100f, BrowseMastheadMetrics.BodyTop);
         Assert.Equal(84f, BrowseMastheadMetrics.ClipInset);
         Assert.Equal(24f, BrowseMastheadMetrics.ClipFadeBand);
-        Assert.Equal(BrowseMastheadMetrics.Reserve, BrowseLayout.MastheadReserve);
     }
 }

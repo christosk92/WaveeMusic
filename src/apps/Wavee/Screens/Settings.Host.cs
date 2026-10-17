@@ -10,8 +10,8 @@
 // Spec: ch 27 §9.3, §1.2 (`Settings.Host`: StorageCensus / MetadataCensus / DeleteOldLogs / ClearAudioBodies /
 // ClearLicenseKeys / ClearMetadata / FactoryReset / RelocateCache / OpenFolder); ch 27 §7 (the toast inventory), W20, W27
 //
-// Every side effect lives here, off the UI thread where it touches the disk; the UI files only call in and post the
-// answer back through the page's poster.
+// Every side effect lives here, off the UI thread where it touches the disk; the structure's Settings view
+// (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`) only calls in and the answer is posted back through the page's poster.
 
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -20,9 +20,12 @@ using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Rhi.D3D12;
+using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Activation;
 using FluentGpu.WindowsApi.Packaging;
 using Wavee.Sdk.Streams;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -33,7 +36,7 @@ public static partial class Settings
     /// <summary>Apply the <c>spotify:</c> association AT THE TOGGLE, in both directions (0.2.9
     /// <c>DeepLink.SyncSpotifySchemeRegistration</c>). UNPACKAGED ONLY: a packaged build's manifest owns its protocols.
     /// Fail-soft (logged).</summary>
-    static void SyncSpotifyScheme(bool on)
+    internal static void SyncSpotifyScheme(bool on)
     {
         try
         {
@@ -49,7 +52,7 @@ public static partial class Settings
 
     /// <summary>Reveal a folder (or a file's folder) in Explorer. Best-effort: a missing path or Explorer never throws
     /// into the UI.</summary>
-    static void OpenFolder(string path)
+    internal static void OpenFolder(string path)
     {
         try
         {
@@ -65,7 +68,16 @@ public static partial class Settings
         }
     }
 
+
+    /// <summary>The stored fullscreen-stage face (already migrated by Prefs.Stage) as its index in the combo's list (the gallery's order).</summary>
+    internal static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
+
     // ══ 2. THE SEAMS (null = the chapter's honest absent state, never a throw) ══════════════════════════════════════
+
+    /// <summary><c>Playback.Audio.SetNormalization</c>, assigned at boot (G-132, V-PA27): the three normalization rows (the toggle,
+    /// the mode, album mode) each persist and then call it, and it re-ramps the playing voices to the new setting within 50 ms.
+    /// Null → the key is still written and the next open reads it.</summary>
+    public static Action? ApplyNormalization;
 
     /// <summary>The entities/store owner assigns (G3): the cache-tier census, called OFF the UI thread. Null (or a null
     /// answer) → the Metadata-cache row keeps its generic description.</summary>
@@ -92,14 +104,65 @@ public static partial class Settings
     /// <c>WaveeNowReceipts.LastCopyText</c>). "" until the About tab has ticked once.</summary>
     public static string ReceiptsText { get; private set; } = "";
 
+    /// <summary>One tick of the About "Wavee right now" block: the nine values the receipts card shows.</summary>
+    public sealed record ReceiptsSample(string Gpu, string WorkingSet, string Managed, string Uptime, string Fps, string Zoom,
+        string GpuAssets, string AppExclusive, string Detail);
+
+    /// <summary>Read the process, the GPU and the frame counter ONCE (the card calls it from a 5 000 ms interval, never from a
+    /// render) and keep the block's text for the diagnostics copy.</summary>
+    public static ReceiptsSample SampleReceipts()
+    {
+        using var proc = System.Diagnostics.Process.GetCurrentProcess();
+        long ws = proc.WorkingSet64;
+        var tier = ReceiptsTier(GpuProfile.Tier);
+        var snap = D3D12Device.LastVideoMemory;
+
+        string gpu = ReceiptsGpuLine();
+        string workingSet = Receipts.Mb(ws);
+        string managed = Receipts.Mb(GC.GetTotalMemory(forceFullCollection: false));
+        string uptime = Receipts.Uptime(DateTime.Now - proc.StartTime);
+        string fps = Receipts.Fps(Diagnostics.Probe.Host?.LastStats.Fps ?? 0);
+        // The tick is plenty for a receipt (a fresh Ctrl+= shows within 5 s) — no zoom subscription to unhook.
+        string zoom = ZoomLadder.Percent(FluentApp.Zoom).ToString(CultureInfo.InvariantCulture) + "%";
+
+        string gpuAssets, appExcl, detail;
+        if (!snap.Valid)
+        {
+            gpuAssets = "— (no Present yet)";
+            appExcl = Receipts.Dash;
+            detail = "GPU video-memory snapshot publishes on the render thread after the first Present.";
+        }
+        else
+        {
+            bool shared = Receipts.IsSharedIgpu(tier, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage);
+            gpuAssets = Receipts.Mb((long)snap.LocalCurrentUsage) + " local  ·  " + Receipts.Mb((long)snap.NonLocalCurrentUsage) + " non-local";
+            appExcl = Receipts.Mb(Receipts.AppExclusive(ws, shared, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage))
+                + "  (" + (shared ? "shared / iGPU" : "discrete") + ")";
+            var c = CultureInfo.InvariantCulture;
+            detail = "Local budget " + Receipts.Mb((long)snap.LocalBudget) + "  ·  non-local budget " + Receipts.Mb((long)snap.NonLocalBudget)
+                + "  ·  tracked D3D12 " + Receipts.Mb(snap.TrackedResourceBytes) + " (" + snap.TrackedResourceCount.ToString(c) + ")"
+                + "  ·  atlas " + snap.AtlasImages.ToString(c) + "/" + snap.AtlasPages.ToString(c)
+                + "  ·  glyphs " + snap.CachedGlyphs.ToString(c) + ". App excl. GPU ≈ working set − "
+                + (shared ? "LOCAL (UMA/shared)" : "NON_LOCAL (system-memory overlap)") + ".";
+        }
+
+        ReceiptsText = "Working set: " + workingSet + "\nManaged heap: " + managed + "\nUptime: " + uptime
+            + "\nFPS: " + fps + "\nZoom: " + zoom + "\nGPU assets: " + gpuAssets
+            + "\nApp memory excl. GPU assets: " + appExcl + "\n" + detail;
+        return new ReceiptsSample(gpu, workingSet, managed, uptime, fps, zoom, gpuAssets, appExcl, detail);
+    }
+
     // ══ 3. PATHS (every one 0.2.9's, rooted at the profile) ════════════════════════════════════════════════════════
 
-    static string AudioCacheDirectory()
+    internal static string AudioCacheDirectory()
         => ChunkDiskCache.ResolveDirectory(Platform.Settings.Get(Platform.Keys.AudioBodyCacheBasePath), Spotify.Audio.DiskCache.DefaultDirectory());
 
-    static string RuntimeDirectory() => Path.Combine(Platform.LocalFolder, "playplay");
+    /// <summary>The audio-body cache's folder as the cache itself reports it (else the resolved setting): what the Storage rows show and open.</summary>
+    internal static string AudioCacheFolder() => s_audioStatus?.Directory ?? AudioCacheDirectory();
 
-    static string ImageCacheDirectory() => Path.Combine(Platform.LocalFolder, "cache", "images");
+    internal static string RuntimeDirectory() => Path.Combine(Platform.LocalFolder, "playplay");
+
+    internal static string ImageCacheDirectory() => Path.Combine(Platform.LocalFolder, "cache", "images");
 
     static long FileBytes(string path)
     {
@@ -121,9 +184,35 @@ public static partial class Settings
 
     // ══ 4. THE CENSUS (NotStarted → Loading → Ready | Failed) ══════════════════════════════════════════════════════
 
+    static readonly Signal<StorageLoadPhase> s_storageLoad = new(StorageLoadPhase.NotStarted);
+    static StorageSnapshot? s_storage;
+    static string? s_storageError;
+    static AudioBodyCacheStatus? s_audioStatus;
+    static int? s_keyCount;
+    static MetadataCacheSnapshot? s_metaStats;
+    static bool s_recount;
+
+    /// <summary>Page mount: a fresh mount censuses again on its first Storage visit (0.2.9's per-instance phase). A census already
+    /// running is left to finish.</summary>
+    static void SeedCensus()
+    {
+        if (s_storageLoad.Peek() != StorageLoadPhase.Loading) s_storageLoad.Value = StorageLoadPhase.NotStarted;
+    }
+
+    /// <summary>The tab changed: the first visit to Storage starts the census.</summary>
+    static void EnterStorage(bool active)
+    {
+        if (active && s_storageLoad.Peek() == StorageLoadPhase.NotStarted) RefreshStorage();
+    }
+
+    /// <summary>The census as the props carry it. Read from the host's render, so a census that lands re-renders the page (the
+    /// phase is a signal; the rest is posted with it).</summary>
+    static SettingsStorageProps StorageFacts()
+        => new(s_storageLoad.Value, s_storage, s_storageError, s_audioStatus, s_keyCount, s_metaStats, AudioCacheFolder());
+
     /// <summary>Start (or queue) a census. A clear that lands while one is running re-runs it when it finishes, so the
     /// bar never keeps pre-clear numbers (parity 48b). The row cards render throughout; only their sizes wait.</summary>
-    static void RefreshStorage()
+    internal static void RefreshStorage()
     {
         if (s_storageLoad.Peek() == StorageLoadPhase.Loading) { s_recount = true; return; }
         s_storage = null;
@@ -190,7 +279,7 @@ public static partial class Settings
 
     /// <summary>After a budget write: trim to the new policy (the cache re-reads the settings on every operation) and
     /// re-read its status, off the UI thread — the meter and the reserve line follow without a full census.</summary>
-    static void RefreshAudioStatus()
+    internal static void RefreshAudioStatus()
     {
         var post = s_post;
         _ = Task.Run(() =>
@@ -215,7 +304,7 @@ public static partial class Settings
     /// earlier days, the size rolls and the legacy rolls (<see cref="LogFileNames.SweepTargets"/>). Crash reports, CSV
     /// captures and other files in <c>logs\</c> are not app logs and stay. Toasts even when there was nothing to delete
     /// (parity 48a). Until 2026-10-02 the sweep matched <c>wavee-*.log</c> and so deleted the live daily file too.</summary>
-    static void DeleteOldLogs()
+    internal static void DeleteOldLogs()
     {
         var post = s_post;
         _ = Task.Run(() =>
@@ -245,12 +334,12 @@ public static partial class Settings
         });
     }
 
-    static void ClearAudioBodies()
+    internal static void ClearAudioBodies()
         => ClearThenRecount(static () => Spotify.Audio.DiskCache.Shared?.ClearAll(), Strings.Settings.Storage.AudioCacheCleared);
 
-    static void ClearSavedKeys() => ClearThenRecount(static () => ClearLicenseKeys?.Invoke(), Strings.Settings.Storage.LicenseKeysCleared);
+    internal static void ClearSavedKeys() => ClearThenRecount(static () => ClearLicenseKeys?.Invoke(), Strings.Settings.Storage.LicenseKeysCleared);
 
-    static void ClearMetadata() => ClearThenRecount(static () => ClearMetadataCache?.Invoke(), Strings.Settings.Storage.MetadataCleared);
+    internal static void ClearMetadata() => ClearThenRecount(static () => ClearMetadataCache?.Invoke(), Strings.Settings.Storage.MetadataCleared);
 
     static void ClearThenRecount(Action work, string toastKey)
     {
@@ -269,7 +358,7 @@ public static partial class Settings
 
     // ══ 6. THE CACHE RELOCATION (W27: dialog 1 → Move | Start empty → dialog 2) ═══════════════════════════════════
 
-    static void PickCacheLocation()
+    internal static void PickCacheLocation()
     {
         // The folder dialog runs on its own thread (Pickers, #155); dialog 1 opens when it answers, UI thread.
         Pickers.Pick(PickerRequest.Folder(Loc.Get(Strings.Settings.Storage.ChooseCacheFolder)),
@@ -279,7 +368,7 @@ public static partial class Settings
 
     /// <summary>Dialog 1. <paramref name="newBase"/> is the PARENT the cache owns a child under; "" = the default root.
     /// "Move existing" is the default button (a move loses nothing).</summary>
-    static void OfferRelocation(string newBase)
+    internal static void OfferRelocation(string newBase)
     {
         if (s_overlay is not { } overlay || Spotify.Audio.DiskCache.Shared is null) return;
         ContentDialog.Show(overlay, d =>
@@ -291,6 +380,7 @@ public static partial class Settings
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             d.PrimaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.Move);
+            OverlayFit.Dialog(d, Controls.DialogWidthWide);   // three buttons: the engine's own implicit width
             // Posted: the second dialog opens after the first has finished closing.
             d.SecondaryClick = () => s_post(() => OfferStartEmpty(newBase));
         });
@@ -309,6 +399,7 @@ public static partial class Settings
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.PrimaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.StartEmptyDeleteOld);
             d.SecondaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.StartEmptyKeepOld);
+            OverlayFit.Dialog(d, Controls.DialogWidthWide);
         });
     }
 
@@ -345,7 +436,7 @@ public static partial class Settings
     /// <summary>After the confirm: arm the reset (a custom audio-cache root rides as an extra root — it can live outside
     /// the profile), spawn the restart broker and end this process. The credential blob lives in store.json inside the
     /// profile, so the next launch's wipe signs the user out.</summary>
-    static void RequestFactoryReset()
+    internal static void RequestFactoryReset()
     {
         try
         {
@@ -361,19 +452,19 @@ public static partial class Settings
 
     // ══ 8. ABOUT: THE NOTICES FILE, THE DIAGNOSTICS COPY, THE IDENTITY STRINGS ═══════════════════════════════════
 
-    const string IssuesUrl = "https://github.com/christosk92/WaveeMusic/issues";
-    const string WebsiteUrl = "https://github.com/christosk92/WaveeMusic";
-    const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
+    internal const string IssuesUrl = "https://github.com/christosk92/WaveeMusic/issues";
+    internal const string WebsiteUrl = "https://github.com/christosk92/WaveeMusic";
+    internal const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
 
     /// <summary>Staged beside Wavee.exe by ops/build/generate-third-party-notices.ps1 at publish/pack time; a plain
     /// `dotnet run` has none, which is exactly what <c>settings.about.noticesMissing</c> says.</summary>
-    const string NoticesFileName = "THIRD-PARTY-NOTICES.txt";
+    internal const string NoticesFileName = "THIRD-PARTY-NOTICES.txt";
 
     static string NoticesPath => Path.Combine(AppContext.BaseDirectory, NoticesFileName);
 
     /// <summary>Wavee's OWN license. Everything third-party is enumerated by the generated notices file, never by a list
     /// in code that drifts the moment a PackageReference changes.</summary>
-    const string WaveeLicense =
+    internal const string WaveeLicense =
         "Copyright (c) 2026 Christos Karapasias\n\n" +
         "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated " +
         "documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation " +
@@ -391,21 +482,22 @@ public static partial class Settings
     // render would be disk I/O on the UI thread.
     static string? s_notices;
 
-    static string ReadNotices()
+    /// <summary>The notices text: the page-mount warm read's result when it has finished, else read here (once).</summary>
+    internal static string ReadNotices() => s_notices ??= SettingsFacts.WarmedNotices ?? LoadNotices();
+
+    /// <summary>Read the shipped notices (pool-thread safe: the localized "missing" sentence is the only UI-adjacent call).</summary>
+    static string LoadNotices()
     {
-        if (s_notices is not null) return s_notices;
-        string text;
-        try { text = File.Exists(NoticesPath) ? File.ReadAllText(NoticesPath) : Loc.Get(Strings.Settings.About.NoticesMissing); }
+        try { return File.Exists(NoticesPath) ? File.ReadAllText(NoticesPath) : Loc.Get(Strings.Settings.About.NoticesMissing); }
         catch (Exception ex)
         {
             Log.Warn("settings", "third-party notices unreadable", ex);
-            text = Loc.Get(Strings.Settings.About.NoticesMissing);   // unreadable reads the same as absent
+            return Loc.Get(Strings.Settings.About.NoticesMissing);   // unreadable reads the same as absent
         }
-        return s_notices = text;
     }
 
     /// <summary>Open the shipped notices with the shell; absent → an Informational toast, unopenable → a Warning.</summary>
-    static void OpenNotices()
+    internal static void OpenNotices()
     {
         if (!File.Exists(NoticesPath))
         {
@@ -422,7 +514,7 @@ public static partial class Settings
 
     /// <summary>"Copy diagnostics info": owner S's full block (<see cref="Feedback.DiagnosticsText"/>, the same text a
     /// report carries) when assigned, else the lines this page can vouch for.</summary>
-    static void CopyDiagnostics()
+    internal static void CopyDiagnostics()
     {
         string text;
         try { text = Feedback.DiagnosticsText?.Invoke() ?? AboutDiagnosticsText(); }
@@ -440,17 +532,17 @@ public static partial class Settings
            + "\nFeed: " + (Update.Host.FeedUrl is { Length: > 0 } feed ? feed : Receipts.Dash) + "\n" + ReceiptsText;
 
     /// <summary>The machine architecture as the feed names it ("arm64" / "x64").</summary>
-    static string ArchToken => RuntimeInformation.OSArchitecture switch
+    internal static string ArchToken => RuntimeInformation.OSArchitecture switch
     {
         Architecture.Arm64 => "arm64",
         Architecture.X64 => "x64",
         var other => other.ToString().ToLowerInvariant(),
     };
 
-    static string OsDescription => RuntimeInformation.OSDescription + " (" + RuntimeInformation.OSArchitecture + ")";
+    internal static string OsDescription => RuntimeInformation.OSDescription + " (" + RuntimeInformation.OSArchitecture + ")";
 
     /// <summary>The beta channel is a SIDE-BY-SIDE package: the link hands the user to App Installer.</summary>
-    static string BetaFeedUrl => Update.RepoUrl + "/releases/download/wavee-beta/Wavee.Beta." + ArchToken + ".appinstaller";
+    internal static string BetaFeedUrl => Update.RepoUrl + "/releases/download/wavee-beta/Wavee.Beta." + ArchToken + ".appinstaller";
 
     static GpuTier ReceiptsTier(GpuPowerTier tier) => tier switch
     {
@@ -461,8 +553,4 @@ public static partial class Settings
 
     static string ReceiptsGpuLine() => Receipts.GpuLine(GpuProfile.AdapterName, ReceiptsTier(GpuProfile.Tier), GpuProfile.IsSoftwareAdapter);
 
-    /// <summary>Every update verb goes through the updater's one door, with the snapshot the button was drawn from.</summary>
-    static void RunUpdate(UpdateRowAction action) => Notify.UpdateCommand?.Invoke(action, Notify.Update.Peek());
-
-    static void OpenWhatsNew() => Shell.GoTo(new Shell.Route(Shell.RouteKind.WhatsNew));
 }

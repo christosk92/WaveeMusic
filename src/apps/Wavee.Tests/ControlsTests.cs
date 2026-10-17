@@ -14,6 +14,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -77,20 +78,20 @@ public class ControlsGeometryTests
     {
         // 428 wide: the inner 412 at 16:9 is 231.75 → 232 (rounded to the pixel grid); + 4 + 8 + 8 + 8 of gutter and
         // plate, 20 title, 2 + 16 caption, 2 + 16 meta = 232 + 84.
-        Assert.Equal(232f, SurfaceGeometry.CoverHeight(428f - 2f * Spacing.S, Design.Size.WideTileAspect));
-        Assert.Equal(232f + 84f, SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, captionLines: 1, metaLine: true));
+        Assert.Equal(232f, SurfaceGeometry.CoverHeight(428f - 2f * Spacing.S, R.Space.WideTileAspect));
+        Assert.Equal(232f + 84f, SurfaceGeometry.ShelfHeight(428f, R.Space.WideTileAspect, captionLines: 1, metaLine: true));
         // The meta line is the labels' 2 gap + one 16 caption line.
-        Assert.Equal(18f, SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, 1, true)
-                          - SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, 1, false));
+        Assert.Equal(18f, SurfaceGeometry.ShelfHeight(428f, R.Space.WideTileAspect, 1, true)
+                          - SurfaceGeometry.ShelfHeight(428f, R.Space.WideTileAspect, 1, false));
     }
 
     [Fact]
     public void The_shelf_chrome_constants_are_the_ones_the_card_renders()
     {
         // SurfaceGeometry restates the spacing tokens as whole-DIP literals (it is engine-free); these pin the two.
-        Assert.Equal(Spacing.XS, SurfaceGeometry.ShelfGutterTop);
+        Assert.Equal(SurfaceGeometry.ShelfGutterTop, Spacing.XS);
         Assert.Equal(0f, SurfaceGeometry.ShelfGutterBottom);
-        Assert.Equal(Spacing.S, SurfaceGeometry.ShelfPlatePad);
+        Assert.Equal(SurfaceGeometry.ShelfPlatePad, Spacing.S);
         Assert.Equal(20f, SurfaceGeometry.CardTitleLineH);
         Assert.Equal(16f, SurfaceGeometry.CardCaptionLineH);
         Assert.Equal(2f, SurfaceGeometry.CardLabelGap);
@@ -99,10 +100,10 @@ public class ControlsGeometryTests
     [Fact]
     public void The_recents_grid_fits_three_columns_on_a_632_page()
     {
-        Assert.Equal(200f, Wavee.HomeUi.Zones.RecentsMinCol);
-        Assert.Equal(3, GridEl.AutoFillColumnCount(632f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
-        Assert.Equal(4, GridEl.AutoFillColumnCount(836f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
-        Assert.Equal(3, GridEl.AutoFillColumnCount(835f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(200f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol);
+        Assert.Equal(3, GridEl.AutoFillColumnCount(632f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(4, GridEl.AutoFillColumnCount(836f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(3, GridEl.AutoFillColumnCount(835f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
     }
 
     [Theory]
@@ -123,10 +124,10 @@ public class ControlsGeometryTests
     [Fact]
     public void The_wide_tile_band_lives_in_the_token_layer()
     {
-        Assert.Equal(330f, Design.Size.WideTileMin);
-        Assert.Equal(440f, Design.Size.WideTileMax);
-        Assert.Equal(16f / 9f, Design.Size.WideTileAspect);
-        Assert.True(Controls.WideDecodePx >= Design.Size.WideTileMax);   // a wide cover never upsamples its decode
+        Assert.Equal(330f, R.Space.WideTileMin);
+        Assert.Equal(440f, R.Space.WideTileMax);
+        Assert.Equal(16f / 9f, R.Space.WideTileAspect);
+        Assert.True(Controls.WideDecodePx >= R.Space.WideTileMax);   // a wide cover never upsamples its decode
     }
 
     [Fact]
@@ -142,9 +143,9 @@ public class ControlsGeometryTests
     [Fact]
     public void The_shelf_card_band_lives_in_the_token_layer()
     {
-        Assert.Equal(148f, Design.Size.ShelfCardMin);
-        Assert.Equal(188f, Design.Size.ShelfCardMax);
-        Assert.True(Controls.ShelfDecodePx >= Design.Size.ShelfCardMax);   // a shelf cover never upsamples its decode
+        Assert.Equal(148f, R.Space.ShelfCardMin);
+        Assert.Equal(188f, R.Space.ShelfCardMax);
+        Assert.True(Controls.ShelfDecodePx >= R.Space.ShelfCardMax);   // a shelf cover never upsamples its decode
     }
 
     [Fact]

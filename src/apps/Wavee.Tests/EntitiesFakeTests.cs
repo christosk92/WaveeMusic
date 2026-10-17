@@ -36,7 +36,7 @@ public class EntitiesFakeTests
         var track0First = Entities.Track(EntityUri.Parse("spotify:track:tr0"));
         string title0First = track0First.Title;
         uint playCount0First = track0First.PlayCount;
-        var liked0First = Wavee.User.Me.LikedEdges[0];
+        var liked0First = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[0];
 
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0);
@@ -44,7 +44,7 @@ public class EntitiesFakeTests
 
         Assert.Equal(title0First, track0Second.Title);
         Assert.Equal(playCount0First, track0Second.PlayCount);
-        Assert.Equal(liked0First.AddedAt, Wavee.User.Me.LikedEdges[0].AddedAt);
+        Assert.Equal(liked0First.AddedAt, Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[0].AddedAt);
     }
 
     [Fact]
@@ -54,12 +54,12 @@ public class EntitiesFakeTests
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0);
         string titleBefore = Entities.Track(EntityUri.Parse("spotify:track:tr12")).Title;
-        int likedAddedAtBefore = Wavee.User.Me.LikedEdges[12].AddedAt;
+        int likedAddedAtBefore = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[12].AddedAt;
 
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0 + 86_400);
         string titleAfter = Entities.Track(EntityUri.Parse("spotify:track:tr12")).Title;
-        int likedAddedAtAfter = Wavee.User.Me.LikedEdges[12].AddedAt;
+        int likedAddedAtAfter = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[12].AddedAt;
 
         Assert.Equal(titleBefore, titleAfter);                       // undated: unchanged
         Assert.Equal(86_400, likedAddedAtAfter - likedAddedAtBefore); // dated: shifted by exactly the offset
@@ -156,7 +156,7 @@ public class EntitiesFakeTests
     static (int Played, int InProgress, int Unplayed) Tally(Show show)
     {
         int played = 0, progress = 0, unplayed = 0;
-        foreach (int slot in show.EpisodeSlots)
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(show.Slot))
         {
             float pct = Episode.Rules.PctOf(new Episode(slot));
             if (Episode.Rules.Played(pct)) played++;
@@ -170,14 +170,14 @@ public class EntitiesFakeTests
     static int LastPlay(Show show)
     {
         int last = 0;
-        foreach (int slot in show.EpisodeSlots) last = Math.Max(last, new Episode(slot).PlayedAt);
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(show.Slot)) last = Math.Max(last, new Episode(slot).PlayedAt);
         return last;
     }
 
     static int PublishedAfter(Show show, int at)
     {
         int n = 0;
-        foreach (int slot in show.EpisodeSlots) if (new Episode(slot).PublishedAt > at) n++;
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(show.Slot)) if (new Episode(slot).PublishedAt > at) n++;
         return n;
     }
 
@@ -209,7 +209,7 @@ public class EntitiesFakeTests
         Assert.Equal(12_431, sh0.RatingCount);
         Assert.NotEqual(0u, sh0.Tone);
 
-        var slots = sh0.EpisodeSlots;
+        var slots = Entities.Current.Edges.ShowEpisodes.Targets(sh0.Slot);
         Assert.Equal(14, slots.Length);
         for (int i = 0; i < slots.Length; i++) Assert.Equal(14 - i, new Episode(slots[i]).Number);
 
@@ -224,7 +224,7 @@ public class EntitiesFakeTests
         Assert.Equal(EpisodeKind.Trailer, trailer.Kind);
         Assert.True(trailer.Knows(EpisodeFields.All));
         Assert.Equal(sh0.Slot, trailer.ShowSlot);
-        Assert.True(sh0.EpisodeSlots.IndexOf(trailer.Slot) < 0);
+        Assert.True(Entities.Current.Edges.ShowEpisodes.Targets(sh0.Slot).IndexOf(trailer.Slot) < 0);
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class EntitiesFakeTests
         Assert.Equal(ConsumptionOrder.Episodic, sh1.Order);
         Assert.Equal(460, sh1.RatingX100);
         Assert.True((sh1.Flags & ShowFlags.Explicit) != 0);
-        foreach (int slot in sh1.EpisodeSlots)
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(sh1.Slot))
         {
             var ep = new Episode(slot);
             Assert.Equal(ep.Number % 2 == 0, (ep.Flags & EpisodeFlags.Explicit) != 0);
@@ -255,7 +255,7 @@ public class EntitiesFakeTests
         Assert.Equal(ShowFlags.Video | ShowFlags.Exclusive, sh2.Flags & (ShowFlags.Video | ShowFlags.Exclusive));
         Assert.Equal(5, sh2.MyRating);
         int paywalled = 0;
-        foreach (int slot in sh2.EpisodeSlots)
+        foreach (int slot in Entities.Current.Edges.ShowEpisodes.Targets(sh2.Slot))
         {
             var ep = new Episode(slot);
             Assert.True((ep.Flags & EpisodeFlags.Video) != 0);

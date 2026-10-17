@@ -66,7 +66,7 @@ public class LibraryPushRulesTests
     [Fact]
     public void The_playlist_topic_names_its_id_as_a_slice_of_the_topic()
     {
-        Assert.Equal(P1, PlaylistId(LibraryPushRules.PlaylistTopicPrefix + P1));
+        Assert.Equal(P1, PlaylistId("hm://playlist/v2/playlist/" + P1));
         Assert.Equal("", PlaylistId("hm://playlist/v2/user/bob/rootlist"));
         Assert.Equal(LibraryPushRules.PlaylistIdChars, P1.Length);
     }
@@ -82,7 +82,7 @@ public class LibraryPushRulesTests
         Assert.True(push.Ok, fixture);
         Assert.StartsWith("spotify:playlist:", push.Uri);
         string id = push.Uri!["spotify:playlist:".Length..];
-        string topic = LibraryPushRules.PlaylistTopicPrefix + id;
+        string topic = "hm://playlist/v2/playlist/" + id;
 
         Assert.Equal(LibraryPush.Playlist, Classify(topic));
         Assert.Equal(id, PlaylistId(topic));

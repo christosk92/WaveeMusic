@@ -156,6 +156,8 @@ public class OmnibarPopupHeightTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class OmnibarRowRulesTests
 {
     [Fact]
@@ -190,16 +192,15 @@ public class OmnibarRowRulesTests
     }
 
     [Theory]
-    [InlineData(Shell.Omnibar.ItemKind.Track, true, true, false, true)]
-    [InlineData(Shell.Omnibar.ItemKind.Episode, true, false, false, true)]
-    [InlineData(Shell.Omnibar.ItemKind.Artist, true, false, true, false)]
-    [InlineData(Shell.Omnibar.ItemKind.Album, true, false, false, false)]
-    [InlineData(Shell.Omnibar.ItemKind.Genre, false, false, false, false)]
-    [InlineData(Shell.Omnibar.ItemKind.User, false, false, true, false)]
-    public void What_a_row_offers(Shell.Omnibar.ItemKind kind, bool play, bool heart, bool circle, bool choosePlays)
+    [InlineData(Shell.Omnibar.ItemKind.Track, true, false, true)]
+    [InlineData(Shell.Omnibar.ItemKind.Episode, true, false, true)]
+    [InlineData(Shell.Omnibar.ItemKind.Artist, true, true, false)]
+    [InlineData(Shell.Omnibar.ItemKind.Album, true, false, false)]
+    [InlineData(Shell.Omnibar.ItemKind.Genre, false, false, false)]
+    [InlineData(Shell.Omnibar.ItemKind.User, false, true, false)]
+    public void What_a_row_offers(Shell.Omnibar.ItemKind kind, bool play, bool circle, bool choosePlays)
     {
         Assert.Equal(play, Shell.Omnibar.CanPlay(kind));
-        Assert.Equal(heart, Shell.Omnibar.ShowsHeart(kind));
         Assert.Equal(circle, Shell.Omnibar.IsCircular(kind));
         Assert.Equal(choosePlays, Shell.Omnibar.ChoosePlays(kind));
     }

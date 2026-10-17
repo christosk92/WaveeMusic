@@ -177,10 +177,10 @@ public class ContentFilterTagsTests
 
         Assert.Equal(new[] { "K-Pop", "Chill", "Jazz", "Metal" }, set.Titles);
         Assert.Equal(2, set.EvidencedCount);
-        Assert.True(set.IsEvidenced(0));
-        Assert.True(set.IsEvidenced(1));
-        Assert.False(set.IsEvidenced(2));
-        Assert.False(set.IsEvidenced(3));
+        Assert.True(0 < set.EvidencedCount);
+        Assert.True(1 < set.EvidencedCount);
+        Assert.False(2 < set.EvidencedCount);
+        Assert.False(3 < set.EvidencedCount);
         Assert.Equal(4, set.Count);
     }
 

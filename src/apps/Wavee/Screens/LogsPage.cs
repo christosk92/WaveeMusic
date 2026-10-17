@@ -7,7 +7,7 @@
 // Owner: S
 // Wave: 0.3 privacy-diagnostics-tab (docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2, §5.2)
 //
-// ENGINE-FREE. The page (`LogsPage.UI.cs`) lays these out and binds them; every decision lives here with a fact in
+// ENGINE-FREE. The core host (`LogsPage.Host.cs`) decides with them and the Common `Pages.Logs` view (`Themes\Common\CommonLogs.cs`) lays them out; every decision lives here with a fact in
 // `Wavee.Tests/LogsPageRulesTests.cs`. `LogView` / `LogCapturePolicy` (the filter, the grouping, the capture levels) stay
 // where they were — `Diagnostics.cs` / `Platform.Settings.cs`.
 

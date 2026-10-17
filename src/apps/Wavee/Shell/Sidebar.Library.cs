@@ -1,6 +1,7 @@
 // ── Shell/Sidebar.Library.cs ───────────────────────────────────────────────────────────────────────────────────────
 // Your Library's head (design P.2a) and list shaping: the page dropdown, the chips, the toolbar's search state, the
-// grid's columns, the head↔list keyboard handoff — and the list shaper (ex LibraryV3View) and the pin window
+// head↔list keyboard handoff — and the list shaper (ex LibraryV3View) and the pin window. The head's heights, insets and
+// toolbar widths and the grid's columns are the structure's (`ClassicLibraryHeadLayout`, `SidebarGeometry.GridColumns`, T5f).
 //
 // Role: CORE · Spec: sidebar-rework-implementation.md §P5.1 · design P.2, P.2a, V.11, Q11-Q13
 
@@ -29,37 +30,6 @@ public readonly record struct SidebarLibraryCounts(int Albums, int Artists, int 
 
 public static class SidebarLibraryHeadRules
 {
-    public const float HomeRowHeight = 40f;       // row A 36 + 2·2 margin
-    public const float SeparatorHeight = 8f;
-    public const float DropdownRowHeight = 40f;
-    public const float ChipRowHeight = 40f;
-    public const float ChipHeight = 32f;
-    public const float ChipGap = 8f;
-    public const float ToolbarHeight = 40f;
-    public const float ToolbarControl = 32f;
-    public const float RuleHeight = 1f;
-    /// <summary>The dropdown title's x in pane space (design P.2a: "at the header's x", pane 14) and its 8-px hit inset.</summary>
-    public const float TitleX = SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX;
-    public const float TitleHitInset = 8f;
-    public const float TitleChevron = 10f;
-    /// <summary>The chip row's and the toolbar's lead/trail inset in pane space (the chips' first edge sits under the title).</summary>
-    public const float BandInsetX = 12f;
-    /// <summary>The whole head above the list: 3 (top inset) + 40 + 8 + 40 + 40 + 40 + 1 = 172.</summary>
-    public const float HeadHeight = SidebarRowGeometry.PaneTopInset + HomeRowHeight + SeparatorHeight + DropdownRowHeight
-                                    + ChipRowHeight + ToolbarHeight + RuleHeight;
-
-    /// <summary>The grid's columns (design P.2: 2–4 from the pane width, no size picker): as many 116-px cells with 8-px
-    /// gaps as the lane fits, clamped to [2, 4]. The lane is the pane minus the list's 4+4 pad and the 8+8 strip inset.</summary>
-    public const float GridMinCell = 116f;
-    public const float GridGap = 8f;
-    public static int GridColumns(float paneWidth)
-    {
-        float lane = paneWidth - 8f - 16f;
-        if (!float.IsFinite(lane) || lane <= 0f) return 2;
-        int n = (int)System.MathF.Floor((lane + GridGap) / (GridMinCell + GridGap));
-        return System.Math.Clamp(n, 2, 4);
-    }
-
     /// <summary>The kind items in their catalogue order ("albums", "artists", "podcasts", "audiobooks").</summary>
     static readonly string[] Items = ["albums", "artists", "podcasts", "audiobooks"];
     static readonly string[] TitleKeys = ["nav.albums", "nav.artists", "nav.podcasts", "nav.audiobooks"];
@@ -141,41 +111,12 @@ public static class SidebarLibraryHeadRules
     public static SidebarLibrarySort Effective(SidebarLibrarySort stored, SidebarLibraryFilter filter)
         => stored == SidebarLibrarySort.CustomOrder && !CustomOrderOffered(filter) ? SidebarLibrarySort.Recents : stored;
 
-    // ── the toolbar's shape at the pane width (design: the sort/view row keeps icons only below 240) ─────────────────
-
-    /// <summary>IconButton's <c>ControlSize.Small</c> box (search, the icon-only sort, ⋯).</summary>
-    public const float ToolbarIconButton = 28f;
-    public const float ToolbarGap = 4f;
-    /// <summary>The labelled sort button's chrome around its label: 8 + 16 glyph + 8 gap + 8.</summary>
-    public const float SortButtonChrome = 40f;
-    /// <summary>Below this pane width List/Grid leave the toolbar (they stay in ⋯ › View, which LibraryOptions always has).</summary>
-    public const float FoldViewBelow = 240f;
+    // ── the toolbar's shape (design: the sort/view row keeps icons only below 240; the widths that decide it are the structure's) ──
 
     /// <summary>Full: [⌕][⇅ label] · [≡][▦][+][⋯]. IconSort: the sort button is icon-only (as while searching). Folded:
     /// icon-only sort AND no List/Grid toggles — the ⋯ (which holds Filters, View and Show Liked Songs) must never be the
     /// control that gets clipped.</summary>
     public enum ToolbarShape : byte { Full = 0, IconSort = 1, Folded = 2 }
-
-    /// <summary>The toolbar's content lane: the pane minus the head's 4+4 pad and the toolbar's own lead inset (8).</summary>
-    public static float ToolbarLane(float paneWidth) => paneWidth - 2f * SidebarRowGeometry.PaneEdge - (BandInsetX - SidebarRowGeometry.PaneEdge);
-
-    /// <summary>The summed control widths plus gaps for a shape (the spacer is 0 at the minimum). The label is measured
-    /// with the row label's estimate (<see cref="SidebarLabelFit.AverageCharWidth"/>).</summary>
-    public static float ToolbarWidth(ToolbarShape shape, string sortLabel)
-    {
-        float sort = shape == ToolbarShape.Full ? SortButtonChrome + sortLabel.Length * SidebarLabelFit.AverageCharWidth : ToolbarIconButton;
-        float view = shape == ToolbarShape.Folded ? 0f : 2f * ToolbarControl;
-        int controls = shape == ToolbarShape.Folded ? 4 : 6;   // search, sort, [List, Grid,] +, ⋯
-        return ToolbarIconButton + sort + view + ToolbarControl + ToolbarIconButton + (controls - 1) * ToolbarGap;
-    }
-
-    /// <summary>The widest shape that fits: Folded below <see cref="FoldViewBelow"/>; the label only when the whole row
-    /// with it fits the lane ("Recently added" at the 320 default does not: icon-only there).</summary>
-    public static ToolbarShape ShapeOf(float paneWidth, string sortLabel)
-    {
-        if (!float.IsFinite(paneWidth) || paneWidth < FoldViewBelow) return ToolbarShape.Folded;
-        return ToolbarWidth(ToolbarShape.Full, sortLabel) <= ToolbarLane(paneWidth) ? ToolbarShape.Full : ToolbarShape.IconSort;
-    }
 
     // ── the keyboard ring (design V.11, P.2a) ────────────────────────────────────────────────────────────────────────
 
@@ -199,7 +140,7 @@ public static class SidebarLibraryHeadRules
 
     /// <summary>The head's Tab order — exactly its left-to-right, top-to-bottom screen order (Q11): Home, the dropdown, the
     /// chips, the toolbar (search or the open box, sort, List, Grid, +, ⋯; the view toggles only when the shape keeps
-    /// them; the open box replaces search and the right-hand group), then the list. <c>LibraryToolbar</c> BUILDS its
+    /// them; the open box replaces search and the right-hand group), then the list. Classic's <c>ClassicLibraryToolbar</c> BUILDS its
     /// controls by walking this list, so the order the fact pins is the order on screen.</summary>
     public static void TabOrder(ToolbarShape shape, bool searching, List<HeadTabStop> into)
     {
@@ -257,14 +198,25 @@ public static class SidebarLibraryEmptyRules
     }
 
     /// <summary>The empty state, in V3's priority order: a failure, then the search, then the chip, then the library itself.
-    /// Pending (or any contributing kind pending) shows skeletons, never an empty state.</summary>
+    /// A failure with nothing to show is the Error vacancy even while another kind is still pending (S10: the planner draws no
+    /// skeleton for a failed source, so "loading" would be a blank pane). Otherwise pending (or any contributing kind
+    /// pending) shows skeletons, never an empty state.</summary>
     public static SidebarLibraryEmpty Of(int scrollerRows, LoadState load, bool anyPending, SidebarLibraryFilter filter, bool searching)
     {
-        if (scrollerRows > 0 || anyPending || load == LoadState.Pending) return SidebarLibraryEmpty.None;
+        if (scrollerRows > 0) return SidebarLibraryEmpty.None;
         if (load == LoadState.Failed) return SidebarLibraryEmpty.Failed;
+        if (anyPending || load == LoadState.Pending) return SidebarLibraryEmpty.None;
         if (searching) return SidebarLibraryEmpty.Search;
         return filter != SidebarLibraryFilter.None ? SidebarLibraryEmpty.Filter : SidebarLibraryEmpty.Library;
     }
+
+    /// <summary>The load state Your Library's published list carries (S10). A contributing kind whose last ask FAILED makes it
+    /// Failed, rows or not: with rows the head draws its retry banner over what loaded, with none the Error vacancy. Otherwise
+    /// an empty list while a contributing kind is still pending is Pending (skeletons), and anything else is Ready.</summary>
+    public static LoadState LoadOf(int publishedCount, bool anyPending, bool anyFailed)
+        => anyFailed ? LoadState.Failed
+         : publishedCount == 0 && anyPending ? LoadState.Pending
+         : LoadState.Ready;
 }
 
 /// <summary>Your Library's fixed metrics: the drill-in width, the breadcrumb band, and the query test the search box reads.</summary>
@@ -399,75 +351,8 @@ public sealed class SidebarLibraryShaper
         EmitLevel(published, _top, 0);
     }
 
-    /// <summary>The parent-folder id of a built row — the sibling band a custom-order drag may move WITHIN. "" for
-    /// a top-level row.</summary>
-    public string ParentOf(int index)
-        => (uint)index < (uint)_rows.Count ? ParentKey(_rows[index]) : "";
-
-    /// <summary>Whether two built rows are siblings. A drop aimed across a folder boundary must not commit here:
-    /// this overlay is Your Library's LOCAL custom order, and moving an item between folders is a rootlist write, made only
-    /// through the resource-drop seam and folder actions.</summary>
-    public bool SameParent(int a, int b)
-        => string.Equals(ParentOf(a), ParentOf(b), StringComparison.Ordinal);
-
-    /// <summary>The same boundary, applied DURING the gesture: the slot a drag from <paramref name="from"/> may
-    /// actually reach when the pointer asks for <paramref name="to"/>. Snapping the REQUESTED slot to the nearest
-    /// one inside the source's sibling run means the gap never opens across a boundary in the first place.
-    /// <para>The run is the SET of same-parent rows, not a contiguous span (an expanded folder's children sit
-    /// between two top-level siblings), so a top-level drag must be able to travel PAST them. Ties go to the lower
-    /// slot — either is equally legal and the choice only needs to be deterministic.</para></summary>
-    public int ClampToSiblingRun(int from, int to)
-    {
-        int n = _rows.Count;
-        if (n == 0 || (uint)from >= (uint)n) return to;
-        if (to < 0) to = 0;
-        else if (to >= n) to = n - 1;
-        if (SameParent(from, to)) return to;
-
-        string parent = ParentKey(_rows[from]);
-        int below = -1, above = -1;
-        for (int i = to - 1; i >= 0; i--)
-            if (string.Equals(ParentKey(_rows[i]), parent, StringComparison.Ordinal)) { below = i; break; }
-        for (int i = to + 1; i < n; i++)
-            if (string.Equals(ParentKey(_rows[i]), parent, StringComparison.Ordinal)) { above = i; break; }
-        // `from` is itself in the run, so at least one side always resolves; the fallback is a no-move.
-        if (below < 0) return above < 0 ? from : above;
-        if (above < 0) return below;
-        return to - below <= above - to ? below : above;
-    }
-
     /// <summary>The stable key (entry id) at a built index — what the pane's reorder band reports per slot.</summary>
     public string KeyAt(int index) => (uint)index < (uint)_rows.Count ? _rows[index].Id : "";
-
-    /// <summary>Materialize the ENTIRE visible order into <paramref name="into"/> as entry ids, with the row at
-    /// <paramref name="from"/> moved to <paramref name="to"/> — "on any user move the whole current visible order
-    /// is written", which is what keeps later appends stable without ever rewriting the overlay again.</summary>
-    public void MaterializeOrder(List<string> into, int from, int to)
-    {
-        into.Clear();
-        for (int i = 0; i < _rows.Count; i++)
-        {
-            int slot = MovedIndex(i, from, to);                    // which VIEW slot supplies row i after the move
-            if ((uint)slot >= (uint)_rows.Count) continue;
-            var e = _rows[slot];
-            // An authored route row (Liked Songs) and a track row have no place in a playlist order.
-            if (e.Kind is SidebarEntryKind.AppRoute or SidebarEntryKind.Track) continue;
-            if (e.Id.Length > 0) into.Add(e.Id);
-        }
-    }
-
-    // The permutation a single remove-at-from/insert-at-to applies, read backwards (which VIEW slot supplies row i).
-    static int MovedIndex(int i, int from, int to)
-    {
-        if (from == to) return i;
-        if (from < to)
-        {
-            if (i < from || i > to) return i;
-            return i == to ? from : i + 1;
-        }
-        if (i < to || i > from) return i;
-        return i == to ? from : i - 1;
-    }
 
     // ── the rebuild ──────────────────────────────────────────────────────────────────────────────────────────────
 

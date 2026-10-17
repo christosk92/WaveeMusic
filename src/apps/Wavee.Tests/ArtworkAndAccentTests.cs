@@ -46,8 +46,8 @@ public class ArtworkDecodeTests
     [InlineData(8f, 8)]      // already on the grid: no rounding past it
     [InlineData(9f, 16)]     // one px past a bucket boundary still costs a whole bucket
     [InlineData(200f, 200)]  // already a clean multiple of 8: untouched
-    [InlineData(44f, 48)]    // User.UI.cs:453 / Concert.Page.cs:1587 / Shell.UI.cs:1702 shape
-    [InlineData(36f, 40)]    // User.UI.cs:476 shape
+    [InlineData(44f, 48)]    // the 44-DIP thumbnail shape
+    [InlineData(36f, 40)]    // the 36-DIP thumbnail shape
     public void The_decode_edge_is_bucketed_up_to_8_never_down(float edge, int expectedDw)
         => Assert.Equal(expectedDw, Controls.ArtworkDecode(edge, edge, 0).DecodeW);
 
@@ -147,7 +147,8 @@ public class AccentLadderTests
         // The regression this pins: before the fix, AccentOf hand-rolled
         // `ColorF.FromRgba((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, 255)` with no Lift. It must now be the
         // LIFTED payload colour (Design.Palette.ChromeFromPayload), not the raw one.
-        Assert.Equal(Design.Palette.ChromeFromPayload(0xFF6A1B9Au), richText);
+        // (The page accent carries its contrast floor, D13: the lifted colour, stepped a rung where it fails 4.5:1.)
+        Assert.Equal(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFF6A1B9Au)), richText);
         Assert.NotEqual(ColorF.FromRgba(0x6A, 0x1B, 0x9A, 255), richText);
     }
 
@@ -173,8 +174,8 @@ public class AccentLadderTests
 
         var p = MakePlaylist("graded-wins", 0xFFC2185Bu, GradedImageId);
 
-        var graded = Design.Palette.ChromeAccent(scheme);
+        var graded = Design.Palette.Floor(Design.Palette.ChromeAccent(scheme));
         Assert.Equal(graded, Playlist.AccentOf(p));
-        Assert.NotEqual(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Playlist.AccentOf(p));
+        Assert.NotEqual(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFFC2185Bu)), Playlist.AccentOf(p));
     }
 }

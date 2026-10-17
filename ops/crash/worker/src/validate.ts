@@ -1,4 +1,4 @@
-import { KINDS, type Kind, type Summary } from "./types.js";
+import { DUMP_OMISSION_REASONS, KINDS, type CollectionFacts, type DumpOmissionReason, type Kind, type Summary } from "./types.js";
 
 export type ValidateResult = { ok: true; value: Summary } | { ok: false; error: string };
 
@@ -42,6 +42,23 @@ function nonNegativeInt(v: unknown): number {
   return Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0;
 }
 
+/** Read optional facts independently of required ingest fields so historical summaries remain useful. */
+export function collectionFacts(json: unknown): CollectionFacts {
+  const o = typeof json === "object" && json !== null && !Array.isArray(json)
+    ? json as Record<string, unknown> : {};
+  const pid = (v: unknown): number | null => uint32(v) > 0 ? v as number : null;
+  return {
+    parentPid: pid(o.parentPid),
+    reporterPid: pid(o.reporterPid),
+    localDumpCreated: typeof o.dumpLocalCreated === "boolean" ? o.dumpLocalCreated : o.hasDump === true ? true : null,
+    localDumpBytes: Number.isSafeInteger(o.dumpBytes) && (o.dumpBytes as number) >= 0 ? o.dumpBytes as number : null,
+    dumpIncluded: typeof o.dumpIncluded === "boolean" ? o.dumpIncluded : null,
+    dumpOmissionReason: typeof o.dumpOmissionReason === "string" &&
+      (DUMP_OMISSION_REASONS as readonly string[]).includes(o.dumpOmissionReason)
+      ? o.dumpOmissionReason as DumpOmissionReason : null,
+  };
+}
+
 /**
  * Validates the `summary` JSON part of a `POST /v1/report` upload against the Summary shape from
  * plan §I. Only the fields the plan calls out as required are enforced strictly (reportId, installId,
@@ -66,6 +83,7 @@ export function validateSummary(json: unknown): ValidateResult {
   if (!isFiniteNumber(o.moduleBase)) return { ok: false, error: "summary.moduleBase is required" };
   if (!isString(o.debugId)) return { ok: false, error: "summary.debugId is required" };
 
+  const collection = collectionFacts(o);
   const value: Summary = {
     reportId: o.reportId,
     installId: o.installId,
@@ -95,6 +113,11 @@ export function validateSummary(json: unknown): ValidateResult {
     exitCode: isFiniteNumber(o.exitCode) ? o.exitCode : 0,
     hasDump: o.hasDump === true,
     dumpBytes: isFiniteNumber(o.dumpBytes) ? o.dumpBytes : 0,
+    dumpLocalCreated: typeof o.dumpLocalCreated === "boolean" ? o.dumpLocalCreated : undefined,
+    parentPid: collection.parentPid ?? undefined,
+    reporterPid: collection.reporterPid ?? undefined,
+    dumpIncluded: collection.dumpIncluded ?? undefined,
+    dumpOmissionReason: collection.dumpOmissionReason ?? undefined,
     exceptionCode: uint32(o.exceptionCode),
     faultModule: sanitizeFaultModule(o.faultModule),
     faultOffset: nonNegativeInt(o.faultOffset),

@@ -197,7 +197,8 @@ public class StagingLeaseTests
         // The other `x = default` through a reference in the staging lists (Concert.cs CloseDeferred's `run = default`),
         // audited against the same miscompile: a deferred run that is never bound must not inherit the previous
         // batch's parent, key or append mode at its index — the commit would land the edges under that parent.
-        var list = new StagedConcertEdgeList();
+        var s = Staging.Rent();
+        var list = s.ConcertEdges;
         var parent = new StagedId(EntityId.ForGid(EntityKind.Artist, Gid(3)));
         var key = new TextRef(4, 9, 7);
         for (int round = 0; round < 3000; round++)
@@ -205,10 +206,18 @@ public class StagingLeaseTests
             list.Clear();
             for (int i = 0; i < 8; i++)
             {
-                int mark = list.PendingMark;
-                list.Push();
-                if ((i & 1) == 0) list.Close(ConcertLink.Lineup, in parent, mark);
-                else list.CloseKeyed(ConcertLink.FeedSection, key, mark, append: true);
+                if ((i & 1) == 0)
+                {
+                    int mark = list.PendingMark;
+                    list.Push();
+                    list.Close(ConcertLink.Lineup, in parent, mark);
+                }
+                else
+                {
+                    var feed = new ConcertRun(s, ConcertLink.FeedSection);   // the feed decode's keyed append
+                    feed.Add();
+                    feed.AppendKeyed(key);
+                }
             }
             Assert.True(list.RunCount == 8 && !list.Runs[0].Parent.IsEmpty && list.Runs[1].Mode == 1);   // the previous tenants
             list.Clear();
@@ -225,6 +234,7 @@ public class StagingLeaseTests
                     $"round {round} run {i}: parent empty {run.Parent.IsEmpty} key {run.ParentKey} mode {run.Mode}");
             }
         }
+        Staging.Return(s);
     }
 
     // ── (c) the store thread ─────────────────────────────────────────────────────────────────────────────────────────

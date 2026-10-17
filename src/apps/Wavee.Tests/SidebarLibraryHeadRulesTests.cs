@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using FluentGpu.Signals;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -16,7 +17,7 @@ public sealed class SidebarLibraryHeadRulesTests
     [Fact]
     public void HeadHeight_Is172()
     {
-        Assert.Equal(172f, SidebarLibraryHeadRules.HeadHeight);
+        Assert.Equal(172f, ClassicLibraryHeadLayout.HeadHeight);
     }
 
     [Fact]
@@ -133,17 +134,6 @@ public sealed class SidebarLibraryHeadRulesTests
     }
 
     [Fact]
-    public void GridColumns_Clamped()
-    {
-        Assert.Equal(2, SidebarLibraryHeadRules.GridColumns(240f));
-        Assert.Equal(2, SidebarLibraryHeadRules.GridColumns(300f));
-        Assert.Equal(3, SidebarLibraryHeadRules.GridColumns(420f));
-        Assert.Equal(4, SidebarLibraryHeadRules.GridColumns(560f));
-        Assert.Equal(4, SidebarLibraryHeadRules.GridColumns(900f));
-        Assert.Equal(2, SidebarLibraryHeadRules.GridColumns(float.NaN));
-    }
-
-    [Fact]
     public void Ring_HomeDropdownList()
     {
         // Down from Home lands on the dropdown; Down from the dropdown goes to the list only when the list has rows.
@@ -188,17 +178,28 @@ public sealed class SidebarLibraryHeadRulesTests
         foreach (float w in new[] { 180f, 200f, 239f, 240f, 260f, 300f, 320f, 400f, 460f })
             foreach (string label in labels)
             {
-                var shape = SidebarLibraryHeadRules.ShapeOf(w, label);
-                Assert.True(SidebarLibraryHeadRules.ToolbarWidth(shape, label) <= SidebarLibraryHeadRules.ToolbarLane(w),
+                var shape = ClassicLibraryHeadLayout.ShapeOf(w, label);
+                Assert.True(ClassicLibraryHeadLayout.ToolbarWidth(shape, label) <= ClassicLibraryHeadLayout.ToolbarLane(w),
                             $"{shape} overflows at {w} with '{label}'");
             }
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, SidebarLibraryHeadRules.ShapeOf(180f, "Recents"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, SidebarLibraryHeadRules.ShapeOf(239f, "Recents"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.IconSort, SidebarLibraryHeadRules.ShapeOf(320f, "Recently added"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, SidebarLibraryHeadRules.ShapeOf(460f, "Recents"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, SidebarLibraryHeadRules.ShapeOf(320f, "Recents"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, SidebarLibraryHeadRules.ShapeOf(float.NaN, "Recents"));
-        Assert.Equal(164f, SidebarLibraryHeadRules.ToolbarLane(180f));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(180f, "Recents"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(239f, "Recents"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.IconSort, ClassicLibraryHeadLayout.ShapeOf(300f, "Recently added"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(320f, "Recently added"));   // Y2: "label ⌄" fits the default
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(460f, "Recents"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(320f, "Recents"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(float.NaN, "Recents"));
+        Assert.Equal(164f, ClassicLibraryHeadLayout.ToolbarLane(180f));
+    }
+
+    [Fact]
+    public void The_labelled_sort_is_one_label_and_one_chevron_28_tall()
+    {
+        // Y2 ("Recents ⌄"): 8 + label + 6 + the 10-DIP chevron + 8, on the toolbar's 28-DIP control height — no sort glyph.
+        Assert.Equal(32f, ClassicLibraryHeadLayout.SortButtonChrome);
+        Assert.Equal(28f, ClassicLibraryHeadLayout.ToolbarIconButton);
+        Assert.Equal(10f, ClassicLibraryHeadLayout.SortChevron);
+        Assert.Equal(12f, ClassicLibraryHeadLayout.SortTextSize);
     }
 
     static readonly SidebarLibraryOptions LikedShown = SidebarLibraryOptions.Default;                 // ShowLiked true
@@ -237,6 +238,21 @@ public sealed class SidebarLibraryHeadRulesTests
         Assert.Equal(SidebarLibraryEmpty.Failed, SidebarLibraryEmptyRules.Of(0, LoadState.Failed, false, SidebarLibraryFilter.Albums, true));
         Assert.Equal(SidebarLibraryEmpty.Search, SidebarLibraryEmptyRules.Of(0, LoadState.Ready, false, SidebarLibraryFilter.Albums, true));
         Assert.Equal(SidebarLibraryEmpty.None, SidebarLibraryEmptyRules.Of(3, LoadState.Failed, false, SidebarLibraryFilter.None, false));
+        // S10: a failure with nothing to show is the Error vacancy even while another kind is still pending (the planner
+        // draws no skeleton for a failed source, so "loading" would be a blank pane).
+        Assert.Equal(SidebarLibraryEmpty.Failed, SidebarLibraryEmptyRules.Of(0, LoadState.Failed, true, SidebarLibraryFilter.None, false));
+    }
+
+    [Fact]
+    public void Load_a_failed_kind_is_failed_with_or_without_rows_and_an_empty_pending_list_is_pending()
+    {
+        // S10: Failed publishes whatever loaded (the head's banner) or nothing (its Error vacancy); never a skeleton.
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(0, anyPending: false, anyFailed: true));
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(12, anyPending: false, anyFailed: true));
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(0, anyPending: true, anyFailed: true));
+        Assert.Equal(LoadState.Pending, SidebarLibraryEmptyRules.LoadOf(0, anyPending: true, anyFailed: false));
+        Assert.Equal(LoadState.Ready, SidebarLibraryEmptyRules.LoadOf(4, anyPending: true, anyFailed: false));
+        Assert.Equal(LoadState.Ready, SidebarLibraryEmptyRules.LoadOf(0, anyPending: false, anyFailed: false));
     }
 
     [Fact]

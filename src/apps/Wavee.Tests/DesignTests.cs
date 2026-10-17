@@ -2,18 +2,20 @@
 //
 // Wave 4's gate for `Platform/Design.cs` (owner L). These are the 0.2.9 suites ch 00 §9.3(6) names, ported with the
 // rules they pin: DesignTokenConvergence, MotionSystem, EntranceStagger, ShellMergedRung, VoiceUnification,
-// LightModeOverhaul, DetailPageTone, ShellWashGeometry, HoverMotionGate, DetailRevealRamp, ContentHostPageTransition.
+// LightModeOverhaul, DetailPageTone, ShellWashGeometry, DetailRevealRamp, ContentHostPageTransition.
 //
 // NOTHING HERE STARTS THE ENGINE LOOP OR OPENS A WINDOW. Every theme-dependent fact goes through the PURE overload
-// (`ShellGroundFor(set, theme)`, `Hairline(seed, theme, bg)`, `PageTone(scheme, theme)`, `StageArm.For(theme)`) rather
-// than mutating `Tok.Theme` — which is exactly why those overloads exist, and why this file can run beside every other
-// suite without a collection of its own.
+// (`ColorScience.ShellGround(set, theme)`, `ColorScience.Hairline(seed, theme, bg)`, `ColorScience.PageTone(scheme, theme)`,
+// `R.StageArm.For(theme)`) rather than mutating `Tok.Theme` — which is exactly why those overloads exist, and why this file can
+// run beside every other suite without a collection of its own. (Classic's COLOUR ROLES are pinned against the formulas they
+// replaced in `Theming\ClassicColourRolesTests.cs`.)
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -30,21 +32,21 @@ public class DesignTypeRampTests
 
     static TextEl Alias(string name) => name switch
     {
-        "TrackTitle" => Design.Type.TrackTitle("x"),
-        "CardTitle" => Design.Type.CardTitle("x"),
-        "TrackMeta" => Design.Type.TrackMeta("x"),
-        "Eyebrow" => Design.Type.Eyebrow("x"),
-        "MicroMeta" => Design.Type.MicroMeta("x"),
-        "DenseMeta" => Design.Type.DenseMeta("x"),
-        "DenseTitle" => Design.Type.DenseTitle("x"),
-        "SheetTitle" => Design.Type.SheetTitle("x"),
-        "RailHeader" => Design.Type.RailHeader("x"),
-        "ModuleHeader" => Design.Type.ModuleHeader("x"),
-        "PageHero" => Design.Type.PageHero("x"),
-        "DetailHero" => Design.Type.DetailHero("x"),
-        "SurfaceDisplay" => Design.Type.SurfaceDisplay("x"),
-        "NowPlayingTitle" => Design.Type.NowPlayingTitle("x"),
-        "PickQuote" => Design.Type.PickQuote("x"),
+        "TrackTitle" => R.Type.TrackTitle("x"),
+        "CardTitle" => R.Type.CardTitle("x"),
+        "TrackMeta" => R.Type.TrackMeta("x"),
+        "Eyebrow" => R.Type.Eyebrow("x"),
+        "MicroMeta" => R.Type.MicroMeta("x"),
+        "DenseMeta" => R.Type.DenseMeta("x"),
+        "DenseTitle" => R.Type.DenseTitle("x"),
+        "SheetTitle" => R.Type.SheetTitle("x"),
+        "RailHeader" => R.Type.RailHeader("x"),
+        "ModuleHeader" => R.Type.ModuleHeader("x"),
+        "PageHero" => R.Type.PageHero("x"),
+        "DetailHero" => R.Type.DetailHero("x"),
+        "SurfaceDisplay" => R.Type.SurfaceDisplay("x"),
+        "NowPlayingTitle" => R.Type.NowPlayingTitle("x"),
+        "PickQuote" => R.Type.PickQuote("x"),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, null),
     };
 
@@ -69,28 +71,28 @@ public class DesignTypeRampTests
     public void The_six_sanctioned_weight_divergences_and_no_seventh()
     {
         // THREE display-face 700s — the masthead voice, not a UI label.
-        Assert.Equal(700, Design.Type.ArtistDisplay("x").ResolvedWeight);
-        Assert.Equal(700, Design.Type.ArtistTitle("x").ResolvedWeight);
-        Assert.Equal(700, Design.Type.ArtistCompactTitle("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistDisplay("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistTitle("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistCompactTitle("x").ResolvedWeight);
         // THREE SemiLight 350s — the same cut the engine's own pivot header uses.
-        Assert.Equal(350, Design.Type.PivotLabel("x").ResolvedWeight);
-        Assert.Equal(350, Design.Type.NpvLyric("x").ResolvedWeight);
-        Assert.Equal(350, Design.Type.StatHero("2B", null).Weight);
+        Assert.Equal(350, R.Type.PivotLabel("x").ResolvedWeight);
+        Assert.Equal(350, R.Type.NpvLyric("x").ResolvedWeight);
+        Assert.Equal(350, R.Type.StatHero("2B", null).Weight);
     }
 
     [Fact]
     public void The_three_artist_aliases_carry_their_shrink_floors()
     {
         // The floor is what makes a long artist name step DOWN inside one rung rather than break to a second line.
-        Assert.Equal(68f, Design.Type.ArtistDisplay("x").MinSize);
-        Assert.Equal(40f, Design.Type.ArtistTitle("x").MinSize);
-        Assert.Equal(28f, Design.Type.ArtistCompactTitle("x").MinSize);
+        Assert.Equal(68f, R.Type.ArtistDisplay("x").MinSize);
+        Assert.Equal(40f, R.Type.ArtistTitle("x").MinSize);
+        Assert.Equal(28f, R.Type.ArtistCompactTitle("x").MinSize);
     }
 
     [Fact]
     public void ArtistDisplay_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistDisplay("x");
+        var el = R.Type.ArtistDisplay("x");
         Assert.Equal(84f, el.Size);
         Assert.Equal(96f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -99,7 +101,7 @@ public class DesignTypeRampTests
     [Fact]
     public void ArtistTitle_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistTitle("x");
+        var el = R.Type.ArtistTitle("x");
         Assert.Equal(48f, el.Size);
         Assert.Equal(60f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -108,7 +110,7 @@ public class DesignTypeRampTests
     [Fact]
     public void ArtistCompactTitle_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistCompactTitle("x");
+        var el = R.Type.ArtistCompactTitle("x");
         Assert.Equal(32f, el.Size);
         Assert.Equal(40f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -117,7 +119,7 @@ public class DesignTypeRampTests
     [Fact]
     public void NowPlayingTitle_is_Ui_Subtitle()
     {
-        var el = Design.Type.NowPlayingTitle("x");
+        var el = R.Type.NowPlayingTitle("x");
         Assert.Equal(20f, el.Size);
         Assert.Equal(28f, el.LineHeight);
         Assert.Equal(600, el.ResolvedWeight);
@@ -126,7 +128,7 @@ public class DesignTypeRampTests
     [Fact]
     public void PickQuote_carries_Title_ramp_at_regular_weight()
     {
-        var el = Design.Type.PickQuote("x");
+        var el = R.Type.PickQuote("x");
         Assert.Equal(28f, el.Size);
         Assert.Equal(36f, el.LineHeight);
         Assert.Equal(400, el.ResolvedWeight);
@@ -135,7 +137,7 @@ public class DesignTypeRampTests
     [Fact]
     public void NpvLyric_carries_Subtitle_metrics_at_SemiLight()
     {
-        var el = Design.Type.NpvLyric("x");
+        var el = R.Type.NpvLyric("x");
         Assert.Equal(20f, el.Size);
         Assert.Equal(28f, el.LineHeight);
         Assert.Equal(350, el.ResolvedWeight);
@@ -144,7 +146,7 @@ public class DesignTypeRampTests
     [Fact]
     public void StatHero_carries_Title_metrics_at_SemiLight()
     {
-        var el = Design.Type.StatHero("2B", null);
+        var el = R.Type.StatHero("2B", null);
         Assert.Equal(28f, el.Size);
         Assert.Equal(36f, el.LineHeight);
         Assert.Equal(350, el.Weight);
@@ -161,11 +163,11 @@ public class DesignTypeRampTests
             Assert.Equal(weight, el.ResolvedWeight);
         }
 
-        OffRamp(Design.Type.PivotLabel("x"), 19f, 25f, 350);
-        OffRamp(Design.Type.MicroMeta("x"), 11f, 15f, 400);
-        OffRamp(Design.Type.DenseMeta("x"), 13f, 18f, 400);
-        OffRamp(Design.Type.DenseTitle("x"), 13f, 18f, 600);
-        OffRamp(Design.Type.SheetTitle("x"), 16f, 22f, 600);
+        OffRamp(R.Type.PivotLabel("x"), 19f, 25f, 350);
+        OffRamp(R.Type.MicroMeta("x"), 11f, 15f, 400);
+        OffRamp(R.Type.DenseMeta("x"), 13f, 18f, 400);
+        OffRamp(R.Type.DenseTitle("x"), 13f, 18f, 600);
+        OffRamp(R.Type.SheetTitle("x"), 16f, 22f, 600);
     }
 
     [Fact]
@@ -173,8 +175,8 @@ public class DesignTypeRampTests
     {
         // Named for the surface, not for the voice — but it borrows every one of PickQuote's numbers, and that
         // borrowing is the thing that must not silently become a second cut.
-        var a = Design.Type.FoldTitle("x");
-        var b = Design.Type.PickQuote("x");
+        var a = R.Type.FoldTitle("x");
+        var b = R.Type.PickQuote("x");
         Assert.Equal(b.Size, a.Size);
         Assert.Equal(b.LineHeight, a.LineHeight);
         Assert.Equal(b.ResolvedWeight, a.ResolvedWeight);
@@ -188,17 +190,17 @@ public class DesignTypeRampTests
         // stacked on one page never looked like the same label. (Sentence case is the other half of the rule and is a
         // parity item rather than a fact: the alias simply passes the string through, so there is no transform to
         // assert the absence of.)
-        Assert.Equal(30f, Design.Type.EyebrowTracking);
-        Assert.Equal(Design.Type.EyebrowTracking, Design.Type.Eyebrow("Daily Mix").CharSpacing);
+        Assert.Equal(30f, R.Type.EyebrowTracking);
+        Assert.Equal(R.Type.EyebrowTracking, R.Type.Eyebrow("Daily Mix").CharSpacing);
     }
 
     [Fact]
     public void A_baseline_paired_span_never_wraps()
     {
         // The small run would land alone on line 2 with no heading to sit on.
-        foreach (var span in new[] { Design.Type.ModuleHeader("Radio", "20 stations"),
-                                     Design.Type.RailHeader("Radio", "20 stations"),
-                                     Design.Type.StatHero("2B", "monthly") })
+        foreach (var span in new[] { R.Type.ModuleHeader("Radio", "20 stations"),
+                                     R.Type.RailHeader("Radio", "20 stations"),
+                                     R.Type.StatHero("2B", "monthly") })
         {
             Assert.Equal(TextWrap.NoWrap, span.Wrap);
             Assert.Equal(1, span.MaxLines);
@@ -212,7 +214,7 @@ public class DesignTypeRampTests
         // The small run shares the heading's BASELINE because the two are one paragraph — which only works if the
         // paragraph carries the HEADING's size and line height, not an average of the two.
         var heading = Ui.Subtitle("");
-        var paired = Design.Type.ModuleHeader("Radio", "20 stations");
+        var paired = R.Type.ModuleHeader("Radio", "20 stations");
         Assert.Equal(heading.Size, paired.Size);
         Assert.Equal(heading.LineHeight, paired.LineHeight);
     }
@@ -224,18 +226,20 @@ public class DesignSizeTests
     public void The_zoom_design_box_agrees_with_the_token_layer()
     {
         // `ZoomAutoPolicy` keeps BCL-only literals so it source-includes cleanly; this is the convergence test ch 00
-        // §9.6 asks for, and it is the whole reason `DesignH` was promoted out of a bare literal.
-        Assert.Equal(Design.Size.PageMaxW, Design.Size.DesignW);
+        // §9.6 asks for, and it is the whole reason `DesignH` was promoted out of a bare literal. `DesignW` is the page
+        // measure of the style the process runs (Classic here): the design box does not follow a style, so a style whose
+        // measure differs must say so in its own table and leave the zoom box alone.
+        Assert.Equal(Design.Size.DesignW, R.Space.PageMaxW);
         Assert.Equal(Design.Size.DesignW, ZoomAutoPolicy.DesignW);
         Assert.Equal(Design.Size.DesignH, ZoomAutoPolicy.DesignH);
     }
 
     [Fact]
-    public void The_rail_widths_agree_with_their_persisted_defaults()
+    public void The_rail_widths_agree_with_their_remembered_defaults()
     {
         // A default that drifts from its token is a user who opens an album and sees a rail one step off the design.
-        Assert.Equal(Design.Size.RailAlbum, Platform.Keys.DetailAlbumRailWidth.Default);
-        Assert.Equal(Design.Size.RailPlaylist, Platform.Keys.DetailPlaylistRailWidth.Default);
+        Assert.Equal(Design.Size.RailAlbum, DetailRailPrefs.WidthKey(RailScope.Album).Default);
+        Assert.Equal(Design.Size.RailPlaylist, DetailRailPrefs.WidthKey(RailScope.Playlist).Default);
     }
 
     [Fact]
@@ -250,13 +254,10 @@ public class DesignSizeTests
     public void An_icon_button_is_control_height_by_construction()
         => Assert.Equal(Design.Size.ControlH, Controls.IconButtonSize);
 
-    [Fact]
-    public void The_media_pill_is_one_step_above_the_control_ladder()
-        => Assert.Equal(36f, Controls.PillHeight);
 
     [Fact]
     public void The_dock_reserves_exactly_its_own_height()
-        => Assert.Equal(Design.Dock.BarH, Design.Dock.Reserve);
+        => Assert.Equal(Design.Size.PlayerBarH, R.Space.DockReserve);
 
     [Fact]
     public void The_content_pane_has_exactly_one_rounded_corner()
@@ -291,8 +292,8 @@ public class DesignColorTests
         // preset with a different canvas is not what this pins.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
         var set = light ? Tok.NeutralPalette.Light : Tok.NeutralPalette.Dark;
-        var composed = ColorContrast.Over(Design.Colors.ContentLayerFor(theme), Design.Colors.ShellGroundFor(set, theme));
-        var opaque = Design.Colors.ContentSurfaceFor(set, theme);
+        var composed = ColorContrast.Over(ColorScience.ContentLayer(theme), ColorScience.ShellGround(set, theme));
+        var opaque = ColorScience.ContentSurface(set, theme);
         Assert.True(Near(composed, opaque), $"{composed} != {opaque}");
     }
 
@@ -301,8 +302,8 @@ public class DesignColorTests
     {
         // A row paints ONE Fill. `Over` is associative, so the merged rung composites pixel-identically to painting the
         // two rungs in sequence — which is exactly what the old hand-picked literals were approximating.
-        Assert.Equal(ColorContrast.Over(Design.Colors.RowHover, Design.Colors.RowZebra), Design.Colors.RowHoverZebra);
-        Assert.Equal(ColorContrast.Over(Design.Colors.RowPressed, Design.Colors.RowZebra), Design.Colors.RowPressedZebra);
+        Assert.Equal(ColorContrast.Over(R.Layer.RowHover, R.Layer.RowZebra), R.Layer.RowHoverZebra);
+        Assert.Equal(ColorContrast.Over(R.Layer.RowPressed, R.Layer.RowZebra), R.Layer.RowPressedZebra);
     }
 
     [Fact]
@@ -310,7 +311,7 @@ public class DesignColorTests
     {
         // THE invariant. In dark the shell's own zebra is LITERALLY the hover fill, which is why the app overrides it:
         // a stripe that equals hover means the row has no hover at all.
-        Assert.True(Design.Colors.RowZebra.A < Design.Colors.RowHover.A,
+        Assert.True(R.Layer.RowZebra.A < R.Layer.RowHover.A,
                     "the stripe must be quieter than the hover that lands on it");
     }
 
@@ -319,9 +320,9 @@ public class DesignColorTests
     {
         // The bug this replaced was an INVERSION: hovering the selected row swapped DOWN to a quieter plate, so pointing
         // at the row you are on looked like a deselection. Hover is strictly stronger than rest; press sits between.
-        float rest = Alpha(Design.Colors.SelectedRest);
-        float hover = Alpha(Design.Colors.SelectedHover);
-        float press = Alpha(Design.Colors.SelectedPressed);
+        float rest = Alpha(R.Layer.SelectedRest);
+        float hover = Alpha(R.Layer.SelectedHover);
+        float press = Alpha(R.Layer.SelectedPressed);
         Assert.True(hover > rest, "hovered-selected must be stronger than selected");
         Assert.True(press > rest && press <= hover, "pressed sits above rest and no higher than hover");
     }
@@ -331,18 +332,18 @@ public class DesignColorTests
     {
         // Transparent is premultiplied BLACK: cross-fading into or out of it drags the whole ramp toward black, which is
         // what read as "the shell tint goes neutral AND DARKER" at almost every navigation.
-        Assert.True(Design.Wash.NeutralGround.A > 0f);
-        Assert.Equal(0.03f, Design.Wash.NeutralGround.A, 4);
+        Assert.True(R.Wash.NeutralGround.A > 0f);
+        Assert.Equal(0.03f, R.Wash.NeutralGround.A, 4);
     }
 
     [Fact]
     public void On_media_ink_is_theme_invariant()
     {
         // White ink on a dark scrim, in BOTH themes. The one surface that flips is the stage, and it has its own arm.
-        Assert.Equal(1f, Design.OnMedia.Ink.R, 3);
-        Assert.Equal(1f, Design.OnMedia.Ink.G, 3);
-        Assert.Equal(1f, Design.OnMedia.Ink.B, 3);
-        Assert.Equal(0f, Design.OnMedia.ScrimRest.R, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.R, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.G, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.B, 3);
+        Assert.Equal(0f, R.OnMedia.ScrimRest.R, 3);
     }
 
     [Fact]
@@ -350,7 +351,7 @@ public class DesignColorTests
     {
         // A REST state needs its own edge before the pointer arrives — which is exactly why the stage's way out is
         // ink-plated rather than scrim-plated on a ground that is already 76% black.
-        Assert.True(Design.OnMedia.GlassPlate.A > Design.OnMedia.GlassHover.A);
+        Assert.True(R.OnMedia.GlassPlate.A > R.OnMedia.GlassHover.A);
     }
 
     static float Alpha(in ColorF c) => c.A;
@@ -368,17 +369,17 @@ public class DesignPaletteTests
     public void Lift_only_ever_lifts()
     {
         var dim = ColorF.FromRgba(10, 20, 10);
-        var lifted = Design.Palette.Lift(dim);
+        var lifted = ColorScience.Lift(dim);
         Assert.True(MathF.Max(lifted.R, MathF.Max(lifted.G, lifted.B)) > MathF.Max(dim.R, MathF.Max(dim.G, dim.B)));
         // Already bright enough ⇒ unchanged. Never darkens.
         var bright = ColorF.FromRgba(250, 250, 250);
-        Assert.Equal(bright, Design.Palette.Lift(bright));
+        Assert.Equal(bright, ColorScience.Lift(bright));
     }
 
     [Fact]
     public void Lift_of_pure_black_is_a_neutral_grey_at_the_target()
     {
-        var c = Design.Palette.Lift(ColorF.FromRgba(0, 0, 0));
+        var c = ColorScience.Lift(ColorF.FromRgba(0, 0, 0));
         Assert.Equal(c.R, c.G, 3);
         Assert.Equal(c.G, c.B, 3);
         Assert.Equal(210f / 255f, c.R, 2);
@@ -388,7 +389,7 @@ public class DesignPaletteTests
     public void Vivid_leaves_a_near_neutral_alone()
     {
         var grey = ColorF.FromRgba(120, 121, 120);
-        Assert.Equal(grey, Design.Palette.Vivid(grey));
+        Assert.Equal(grey, ColorScience.Vivid(grey));
     }
 
     [Fact]
@@ -397,10 +398,10 @@ public class DesignPaletteTests
         // The bright-accent role is pure white in every dark grading and pure black in every light one — 100% over 9,316
         // cached gradings. Reading it as "the accent" made the neutral guard fire on EVERY cover, so every Play CTA in
         // the app rendered system blue. The accent is the most SATURATED role, and white has no saturation.
-        var accent = Design.Palette.Accent(Green);
-        Assert.NotEqual(Design.Palette.ToColor(Green.TextBrightAccent), accent);
+        var accent = ColorScience.Accent(Green);
+        Assert.NotEqual(ColorScience.ToColor(Green.TextBrightAccent), accent);
         var (_, sat, _) = accent.ToHsv();
-        Assert.True(sat > Design.Palette.NeutralS);
+        Assert.True(sat > ColorScience.NeutralS);
     }
 
     [Fact]
@@ -419,34 +420,34 @@ public class DesignPaletteTests
         // THE CLAMP IS THE POINT: hue from the record, lightness and saturation from the PAGE. Two albums by the same
         // artist must read as the same page in two colours.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
-        var tone = Design.Palette.PageTone(Green, theme);
+        var tone = ColorScience.PageTone(Green, theme);
         Assert.NotNull(tone);
-        var (_, s, l) = Design.Palette.ToHsl(tone!.Value);
-        Assert.Equal(light ? Design.Palette.PageToneLightL : Design.Palette.PageToneDarkL, l, 2);
-        Assert.True(s <= (light ? Design.Palette.PageToneLightSMax : Design.Palette.PageToneDarkSMax) + 0.001f);
+        var (_, s, l) = ColorScience.ToHsl(tone!.Value);
+        Assert.Equal(light ? ColorScience.PageToneLightL : ColorScience.PageToneDarkL, l, 2);
+        Assert.True(s <= (light ? ColorScience.PageToneLightSMax : ColorScience.PageToneDarkSMax) + 0.001f);
     }
 
     [Fact]
     public void PageTone_of_greyscale_art_is_the_neutral_tone_and_not_an_invented_hue()
     {
-        Assert.Equal(Design.Palette.PageToneNeutralDark, Design.Palette.PageTone(Grey, ThemeKind.Dark));
-        Assert.Equal(Design.Palette.PageToneNeutralLight, Design.Palette.PageTone(Grey, ThemeKind.Light));
+        Assert.Equal(ColorScience.PageToneNeutralDark, ColorScience.PageTone(Grey, ThemeKind.Dark));
+        Assert.Equal(ColorScience.PageToneNeutralLight, ColorScience.PageTone(Grey, ThemeKind.Light));
     }
 
     [Fact]
     public void PageTone_of_no_grading_is_null_so_the_page_paints_nothing()
-        => Assert.Null(Design.Palette.PageTone(null, ThemeKind.Dark));
+        => Assert.Null(ColorScience.PageTone(null, ThemeKind.Dark));
 
     [Fact]
     public void The_neutral_fallback_scheme_is_greyscale_on_purpose()
     {
         // A fabricated blue made the fallback the one "cover" in the app with a hue, which is precisely the wrong shape
         // to test chrome against.
-        var n = Design.Palette.Neutral;
+        var n = ColorScience.Neutral;
         foreach (uint role in new[] { n.BackgroundBase, n.BackgroundTintedBase, n.TextBase, n.TextSubdued, n.TextBrightAccent })
         {
-            var (_, sat, _) = Design.Palette.ToColor(role).ToHsv();
-            Assert.True(sat <= Design.Palette.NeutralS, "role " + role.ToString("X8") + " has a hue");
+            var (_, sat, _) = ColorScience.ToColor(role).ToHsv();
+            Assert.True(sat <= ColorScience.NeutralS, "role " + role.ToString("X8") + " has a hue");
         }
     }
 
@@ -456,7 +457,7 @@ public class DesignPaletteTests
         // The wire colours already ARE the dark-surface answer, and re-grading them would break the one property the
         // Camelot wheel guarantees: harmonically adjacent keys stay adjacent hues.
         const uint yellow = 0xFFFFD400;
-        Assert.Equal(Design.Palette.ToColor(yellow), Design.Palette.DataDotInk(yellow, ThemeKind.Dark));
+        Assert.Equal(ColorScience.ToColor(yellow), ColorScience.DataDotInk(yellow, ThemeKind.Dark));
     }
 
     [Fact]
@@ -465,8 +466,8 @@ public class DesignPaletteTests
         // Darkening for a light surface is HUE-DEPENDENT: yellow and cyan sit near the top of the luminance curve and
         // need ~three rungs; red and blue need about one, and darkening them as far as yellow turns the wheel into
         // twelve browns.
-        var (_, _, lYellow) = Design.Palette.ToHsl(Design.Palette.DataDotInk(0xFFFFD400, ThemeKind.Light));
-        var (_, _, lRed) = Design.Palette.ToHsl(Design.Palette.DataDotInk(0xFFE53935, ThemeKind.Light));
+        var (_, _, lYellow) = ColorScience.ToHsl(ColorScience.DataDotInk(0xFFFFD400, ThemeKind.Light));
+        var (_, _, lRed) = ColorScience.ToHsl(ColorScience.DataDotInk(0xFFE53935, ThemeKind.Light));
         Assert.Equal(0.30f, lYellow, 2);
         Assert.Equal(0.40f, lRed, 2);
         Assert.True(lYellow < lRed);
@@ -475,7 +476,7 @@ public class DesignPaletteTests
     [Fact]
     public void DataDotInk_never_invents_a_hue_for_a_grey()
     {
-        var c = Design.Palette.DataDotInk(0xFF808080, ThemeKind.Light);
+        var c = ColorScience.DataDotInk(0xFF808080, ThemeKind.Light);
         Assert.Equal(c.R, c.G, 3);
         Assert.Equal(c.G, c.B, 3);
     }
@@ -487,8 +488,8 @@ public class DesignPaletteTests
     [InlineData(359f)]
     public void Hsl_round_trips(float hue)
     {
-        var c = Design.Palette.FromHsl(hue, 0.6f, 0.5f);
-        var (h, s, l) = Design.Palette.ToHsl(c);
+        var c = ColorScience.FromHsl(hue, 0.6f, 0.5f);
+        var (h, s, l) = ColorScience.ToHsl(c);
         Assert.Equal(hue, h, 1);
         Assert.Equal(0.6f, s, 2);
         Assert.Equal(0.5f, l, 2);
@@ -503,7 +504,7 @@ public class DesignPaletteTests
         // every accent-ink digit in the app.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
         var ground = light ? ColorF.FromRgba(0xF9, 0xF9, 0xF9) : ColorF.FromRgba(0x28, 0x28, 0x28);
-        var ink = Design.Palette.Hairline(ColorF.FromRgba(0x2E, 0x7D, 0x32), theme, ground);
+        var ink = ColorScience.Hairline(ColorF.FromRgba(0x2E, 0x7D, 0x32), theme, ground);
         Assert.True(ColorContrast.Ratio(ink, ground) >= 3.1f);
     }
 
@@ -513,7 +514,7 @@ public class DesignPaletteTests
         // Some hues cannot hit AA at the saturation cap (a mid-blue on a dark card tops out ≈4.4:1); those fall back so
         // the digits stay readable rather than staying pretty and illegible.
         var ground = ColorF.FromRgba(0x28, 0x28, 0x28);
-        var ink = Design.Palette.TextInk(ColorF.FromRgba(0x21, 0x96, 0xF3), ThemeKind.Dark, ground);
+        var ink = ColorScience.TextInk(ColorF.FromRgba(0x21, 0x96, 0xF3), ThemeKind.Dark, ground);
         Assert.True(ColorContrast.MeetsAaText(ink, ground));
     }
 
@@ -546,8 +547,8 @@ public class DesignPaletteTests
     }
 }
 
-/// <summary>Pins <see cref="VeilSettlement"/> — the pure decision <see cref="CoverArtistBlendWash"/> and
-/// <see cref="CoverKeyedVeil"/> share to stop two differently-hued veils compositing over the artist photo (repo
+/// <summary>Pins <see cref="VeilSettlement"/> — the pure decision the artist blend wash and
+/// the artist hero veil (<c>ClassicCoverBlend</c>, <c>ClassicCoverVeil</c>) share to stop two differently-hued veils compositing over the artist photo (repo
 /// rule: no source-text tests — the decision was extracted for exactly this).</summary>
 public class VeilSettlementTests
 {
@@ -601,16 +602,16 @@ public class DesignStageArmTests
     {
         // "Dark theme is byte-identical to what shipped" is an executable claim here rather than a promise — and it is
         // what keeps the on-media ladder theme-INVARIANT while the stage alone gets a polarity.
-        var dark = Design.StageArm.For(ThemeKind.Dark);
-        Assert.Equal(Design.OnMedia.Ink, dark.Ink);
-        Assert.Equal(Design.OnMedia.InkSecondary, dark.InkSecondary);
-        Assert.Equal(Design.OnMedia.InkTertiary, dark.InkTertiary);
-        Assert.Equal(Design.OnMedia.ScrimRest, dark.ScrimRest);
-        Assert.Equal(Design.OnMedia.ScrimHover, dark.ScrimHover);
-        Assert.Equal(Design.OnMedia.ScrimPressed, dark.ScrimPressed);
-        Assert.Equal(Design.OnMedia.Stroke, dark.Stroke);
-        Assert.Equal(Design.OnMedia.LightButton, dark.ButtonFill);
-        Assert.Equal(Design.OnMedia.LightButtonInk, dark.ButtonInk);
+        var dark = R.StageArm.For(ThemeKind.Dark);
+        Assert.Equal(R.OnMedia.Ink, dark.Ink);
+        Assert.Equal(R.OnMedia.InkSecondary, dark.InkSecondary);
+        Assert.Equal(R.OnMedia.InkTertiary, dark.InkTertiary);
+        Assert.Equal(R.OnMedia.ScrimRest, dark.ScrimRest);
+        Assert.Equal(R.OnMedia.ScrimHover, dark.ScrimHover);
+        Assert.Equal(R.OnMedia.ScrimPressed, dark.ScrimPressed);
+        Assert.Equal(R.OnMedia.Stroke, dark.Stroke);
+        Assert.Equal(R.OnMedia.LightButton, dark.ButtonFill);
+        Assert.Equal(R.OnMedia.LightButtonInk, dark.ButtonInk);
         Assert.Equal(Tok.MediaStage, dark.Veil);
     }
 
@@ -619,12 +620,12 @@ public class DesignStageArmTests
     {
         // The scrim ALPHAS need no light arm: mixing toward black at a partial alpha destroys far more perceptual
         // luminance than mixing toward white, so the light arm's alpha'd ink clears a HIGHER ratio than dark ships.
-        var light = Design.StageArm.For(ThemeKind.Light);
-        Assert.Equal(Design.Palette.PageToneNeutralLight, light.Veil);
+        var light = R.StageArm.For(ThemeKind.Light);
+        Assert.Equal(ColorScience.PageToneNeutralLight, light.Veil);
         Assert.Equal(Tok.MediaStage, light.Ink);
-        Assert.Equal(Design.OnMedia.ScrimRest.A, light.ScrimRest.A, 3);
-        Assert.Equal(Design.OnMedia.GlassHover.A, light.GlassHover.A, 3);
-        Assert.Equal(Design.OnMedia.GlassPlate.A, light.GlassPlate.A, 3);
+        Assert.Equal(R.OnMedia.ScrimRest.A, light.ScrimRest.A, 3);
+        Assert.Equal(R.OnMedia.GlassHover.A, light.GlassHover.A, 3);
+        Assert.Equal(R.OnMedia.GlassPlate.A, light.GlassPlate.A, 3);
     }
 
     [Fact]
@@ -634,7 +635,7 @@ public class DesignStageArmTests
         // under the dark scrim in light theme.
         foreach (var theme in new[] { ThemeKind.Dark, ThemeKind.Light })
         {
-            var arm = Design.StageArm.For(theme);
+            var arm = R.StageArm.For(theme);
             Assert.Equal(arm.Veil, arm.Floor);
         }
     }
@@ -643,17 +644,17 @@ public class DesignStageArmTests
     public void The_hairline_inverts_with_the_ink()
     {
         // A white hairline on a light plate is not a quiet ring, it is an absent one.
-        var light = Design.StageArm.For(ThemeKind.Light);
+        var light = R.StageArm.For(ThemeKind.Light);
         Assert.Equal(light.Ink.R, light.Stroke.R, 3);
-        Assert.Equal(Design.OnMedia.Stroke.A, light.Stroke.A, 3);
+        Assert.Equal(R.OnMedia.Stroke.A, light.Stroke.A, 3);
     }
 
     [Fact]
     public void The_stage_accent_is_the_chrome_accent_in_dark_and_a_solved_ink_in_light()
     {
         var chrome = ColorF.FromRgba(0x2E, 0x7D, 0x32);
-        Assert.Equal(chrome, Design.StageArm.For(ThemeKind.Dark).AccentFrom(chrome));
-        Assert.NotEqual(chrome, Design.StageArm.For(ThemeKind.Light).AccentFrom(chrome));
+        Assert.Equal(chrome, R.StageArm.For(ThemeKind.Dark).AccentFrom(chrome));
+        Assert.NotEqual(chrome, R.StageArm.For(ThemeKind.Light).AccentFrom(chrome));
     }
 }
 
@@ -680,19 +681,19 @@ public class DesignMotionTests
     [Fact]
     public void Three_scale_tiers_and_nothing_else()
     {
-        Assert.Equal(1.02f, Design.Motion.ScaleSubtle.HoverTarget);
-        Assert.Equal(0.98f, Design.Motion.ScaleSubtle.PressTarget);
-        Assert.Equal(1.04f, Design.Motion.ScaleStandard.HoverTarget);
-        Assert.Equal(0.96f, Design.Motion.ScaleStandard.PressTarget);
-        Assert.Equal(1.07f, Design.Motion.ScaleEmphatic.HoverTarget);
-        Assert.Equal(0.92f, Design.Motion.ScaleEmphatic.PressTarget);
+        Assert.Equal(1.02f, R.Motion.ScaleSubtle.HoverTarget);
+        Assert.Equal(0.98f, R.Motion.ScaleSubtle.PressTarget);
+        Assert.Equal(1.04f, R.Motion.ScaleStandard.HoverTarget);
+        Assert.Equal(0.96f, R.Motion.ScaleStandard.PressTarget);
+        Assert.Equal(1.07f, R.Motion.ScaleEmphatic.HoverTarget);
+        Assert.Equal(0.92f, R.Motion.ScaleEmphatic.PressTarget);
     }
 
     [Fact]
     public void A_dead_affordance_does_not_answer_the_pointer()
     {
-        Assert.Equal(1f, Design.Motion.ScaleStandard.HoverIf(false));
-        Assert.Equal(1f, Design.Motion.ScaleStandard.PressIf(false));
+        Assert.Equal(1f, R.Motion.ScaleStandard.HoverIf(false));
+        Assert.Equal(1f, R.Motion.ScaleStandard.PressIf(false));
     }
 
     [Fact]
@@ -700,7 +701,7 @@ public class DesignMotionTests
     {
         // The source comment said 360; the arithmetic and its test say 320. The code was right, the comment was not.
         Assert.Equal(8, Design.Entrance.StaggerCap);
-        Assert.Equal(320f, Design.Entrance.StaggerCap * Design.Motion.StaggerMs);
+        Assert.Equal(320f, Design.Entrance.StaggerCap * R.Motion.StaggerMs);
         Assert.Equal(320f, Design.Entrance.DelayMs(8));
         Assert.Equal(320f, Design.Entrance.DelayMs(50));   // everything past the cap lands together
         Assert.Equal(0f, Design.Entrance.DelayMs(0));
@@ -727,40 +728,8 @@ public class DesignMotionTests
     {
         // A separate rung for a MECHANICAL reason: the per-item one is capped because a list is unbounded, and this one
         // offsets exactly two authored lines, so the uncapped index × ms spelling is safe.
-        Assert.Equal(45f, Design.Motion.MastheadStaggerMs);
-        Assert.NotEqual(Design.Motion.StaggerMs, Design.Motion.MastheadStaggerMs);
-    }
-}
-
-public class DesignHoverGateTests
-{
-    [Fact]
-    public void The_first_sample_is_a_baseline_and_never_a_hover()
-    {
-        // The engine re-fires a node's move-within at the SAME point when new content lands under a resting cursor —
-        // exactly the back-navigation case — so the first sample must never arm.
-        var gate = default(Design.HoverMotionGate);
-        Assert.False(gate.Observe(new Point2(10f, 10f)));
-        Assert.False(gate.Observe(new Point2(10f, 10f)));
-    }
-
-    [Fact]
-    public void Sub_pixel_jitter_does_not_read_as_movement()
-    {
-        var gate = default(Design.HoverMotionGate);
-        gate.Observe(new Point2(10f, 10f));
-        Assert.False(gate.Observe(new Point2(10.3f, 10.2f)));
-    }
-
-    [Fact]
-    public void A_real_move_arms_it_and_it_stays_armed()
-    {
-        // A one-shot "has real input happened since mount" latch, not a per-hover-cycle re-check: a page the user is
-        // already interacting with must not re-litigate every hover-out/in.
-        var gate = default(Design.HoverMotionGate);
-        gate.Observe(new Point2(10f, 10f));
-        Assert.True(gate.Observe(new Point2(40f, 10f)));
-        Assert.True(gate.Observe(new Point2(40f, 10f)));
+        Assert.Equal(45f, R.Motion.MastheadStaggerMs);
+        Assert.NotEqual(R.Motion.StaggerMs, R.Motion.MastheadStaggerMs);
     }
 }
 
@@ -791,175 +760,40 @@ public class DesignNavMotionTests
     public void The_separator_cannot_occur_in_a_route_or_an_argument()
         => Assert.Contains('\u001F', Design.Nav.SlotKey(new Design.PageSlot(0, "album", "x")));
 
+    /// <summary>THE regression guard: the page swap must finish the exit leg before the enter leg starts, in both
+    /// directions. The enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible
+    /// (measured: summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null
+    /// inherits `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
     [Fact]
-    public void Sidebar_to_sidebar_is_Entrance_and_list_to_album_is_DrillIn()
+    public void The_page_swap_keeps_enter_and_exit_active_and_finishes_the_exit_before_the_enter_starts()
     {
-        Assert.Equal(Design.NavRelation.Entrance, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.Detail, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
-            Design.NavSurface.Detail, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Back));
-    }
-
-    [Fact]
-    public void Same_kind_different_identity_is_Sibling_including_artist_to_artist()
-    {
-        Assert.Equal(Design.NavRelation.Sibling, Design.Nav.RelationOf(
-            Design.NavSurface.Detail, Design.NavSurface.Detail, sameKind: true, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.Fade, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: true, sameIdentity: true,
-            Design.NavTransitionKind.Neutral));
-    }
-
-    [Fact]
-    public void Every_directed_recipe_keeps_enter_and_exit_active()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
         foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
         {
-            var r = Design.Nav.RecipeFor(kind, relation);
+            var r = Design.Nav.RecipeFor(kind);
             Assert.True(r.Enter.Active);
-            Assert.True(r.Exit.Active);
-        }
-    }
-
-    /// <summary>THE regression guard: every SEQUENCED style (everything but None) must finish the exit leg before the
-    /// enter leg starts, on every relation and both directions. This is what the old `DelayMs == 0` test got backwards
-    /// — the enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible (measured:
-    /// summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null inherits
-    /// `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
-    /// <summary>The DEFAULT page motion is Classic — the 0.2.x fade-through — and the default-style overloads really do
-    /// hand it back. The Settings row that offers the other four is developer-only, so this constant is what a normal
-    /// build navigates with, not merely what an untouched profile starts at.</summary>
-    [Fact]
-    public void The_default_page_motion_is_Classic_and_the_default_overloads_use_it()
-    {
-        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-            Assert.Equal(Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, kind, relation), Design.Nav.RecipeFor(kind, relation));
-    }
-
-    [Fact]
-    public void Every_sequenced_style_finishes_the_exit_leg_before_the_enter_leg_starts()
-    {
-        foreach (var style in new[] { Design.PageMotionStyle.Fluent, Design.PageMotionStyle.Spatial, Design.PageMotionStyle.WinUi, Design.PageMotionStyle.Classic })
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-        {
-            var r = Design.Nav.RecipeFor(style, kind, relation);
             Assert.True(r.Exit.Active);
             Assert.NotNull(r.ExitDynamics);
             Assert.Equal(0f, r.ExitDelayMs);
             Assert.True(r.DelayMs >= r.ExitDynamics!.Value.DurationMs,
-                $"{style}/{kind}/{relation}: enter delay {r.DelayMs}ms must be >= the exit duration {r.ExitDynamics!.Value.DurationMs}ms, or the two legs overlap.");
+                $"{kind}: enter delay {r.DelayMs}ms must be >= the exit duration {r.ExitDynamics!.Value.DurationMs}ms, or the two legs overlap.");
         }
     }
 
+    /// <summary>The one page motion is the 0.2.x fade-through: the incoming page travels a badge-twitch against the
+    /// direction the outgoing one leaves, the mirror image going Back, with no vertical motion or scale; Neutral is the
+    /// plain page fade.</summary>
     [Fact]
-    public void Fluent_is_a_plain_crossfade_with_no_geometry_on_any_relation()
+    public void The_page_swap_is_the_old_fade_through_and_neutral_is_the_plain_fade()
     {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Fluent, kind, relation);
-            Assert.Equal(0f, r.Enter.Dx);
-            Assert.Equal(0f, r.Enter.Dy);
-            Assert.Equal(1f, r.Enter.Sx);
-            Assert.Equal(1f, r.Enter.Sy);
-            Assert.Equal(0f, r.Exit.Dx);
-            Assert.Equal(0f, r.Exit.Dy);
-            Assert.Equal(1f, r.Exit.Sx);
-            Assert.Equal(1f, r.Exit.Sy);
-        }
-    }
-
-    [Fact]
-    public void Spatial_entrance_has_no_translation_but_sibling_and_drillin_do()
-    {
-        var entrance = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
-        Assert.Equal(0f, entrance.Enter.Dx);
-        Assert.Equal(0f, entrance.Enter.Dy);
-        Assert.Equal(1f, entrance.Enter.Sx);
-
-        var drill = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
-        Assert.True(drill.Enter.Sx is > 0f and < 1f);
-        Assert.True(drill.Exit.Sx > 1f);
-
-        var sibling = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        Assert.NotEqual(0f, sibling.Enter.Dx);
-    }
-
-    /// <summary>Spatial's Sibling moves ONLY the incoming page — the outgoing page fades in place instead of sliding
-    /// away with it (the WinUI-style "both pages move" treatment is <see cref="PageMotionStyle.WinUi"/>'s job).</summary>
-    [Fact]
-    public void Spatial_sibling_moves_only_the_incoming_page()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.Sibling);
-        Assert.Equal(0f, fwd.Exit.Dx);
-        Assert.Equal(0f, back.Exit.Dx);
-        Assert.Equal(-fwd.Enter.Dx, back.Enter.Dx);
-    }
-
-    [Fact]
-    public void WinUi_entrance_rises_140_DIP_and_the_outgoing_side_only_fades()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Back, Design.NavRelation.Entrance);
-        Assert.Equal(140f, fwd.Enter.Dy);
-        Assert.Equal(0f, fwd.Exit.Dy);
-        Assert.Equal(0f, fwd.Exit.Dx);
-        Assert.Equal(-140f, back.Enter.Dy);
-    }
-
-    [Fact]
-    public void WinUi_sibling_moves_both_pages_by_different_amounts()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        Assert.Equal(200f, fwd.Enter.Dx);
-        Assert.Equal(-150f, fwd.Exit.Dx);
-    }
-
-    [Fact]
-    public void Classic_is_the_old_fade_through_uniform_across_every_relation()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, Design.NavTransitionKind.Forward, relation);
-            Assert.Equal(Expressive.DistBase, r.Enter.Dx);
-            Assert.Equal(-Expressive.DistBase, r.Exit.Dx);
-        }
-    }
-
-    [Fact]
-    public void None_is_an_instant_cut_with_exit_still_active()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.None, Design.NavTransitionKind.Forward, relation);
-            Assert.True(r.Exit.Active);
-            Assert.True(r.Dynamics.DurationMs <= 1f);
-            Assert.True(r.ExitDynamics!.Value.DurationMs <= 1f);
-        }
-    }
-
-    /// <summary>Spatial's DrillIn, named explicitly: the DEFAULT style is Classic, whose DrillIn is the uniform
-    /// fade-through, so this fact belongs to the style rather than to <c>Design.Nav.DefaultStyle</c>.</summary>
-    [Fact]
-    public void DrillIn_is_a_semantic_zoom_not_an_eight_DIP_fade()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.DrillIn);
-        Assert.True(fwd.Enter.Sx is > 0f and < 1f);
-        Assert.True(fwd.Exit.Sx > 1f);
-        Assert.True(back.Enter.Sx > 1f);
-        Assert.True(back.Exit.Sx is > 0f and < 1f);
+        var fwd = Design.Nav.RecipeFor(Design.NavTransitionKind.Forward);
+        var back = Design.Nav.RecipeFor(Design.NavTransitionKind.Back);
+        Assert.Equal(Expressive.DistBase, fwd.Enter.Dx);
+        Assert.Equal(-Expressive.DistBase, fwd.Exit.Dx);
+        Assert.Equal(-Expressive.DistBase, back.Enter.Dx);
+        Assert.Equal(Expressive.DistBase, back.Exit.Dx);
+        Assert.Equal(0f, fwd.Enter.Dy);
+        Assert.Equal(1f, fwd.Enter.Sx);
+        Assert.Equal(FluentGpu.Hooks.MotionRecipes.PageFade, Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral));
     }
 
     [Fact]
@@ -981,7 +815,7 @@ public class DesignNavMotionTests
 
     [Fact]
     public void AccentFor_a_coverless_page_is_the_payload_hex_not_a_live_track()
-        => Assert.Equal(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Detail.AccentFor(null, 0xFFC2185Bu));
+        => Assert.Equal(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFFC2185Bu)), Detail.AccentFor(null, 0xFFC2185Bu));
 }
 
 public class DesignWashTests
@@ -1013,8 +847,9 @@ public class DesignWashTests
     {
         // The same colour reads far weaker over the dark ground, and the light ground has less headroom before a wash
         // turns into a smudge.
-        Assert.True(Design.Wash.HeroAlpha(light: false) > Design.Wash.HeroAlpha(light: true) * 1.5f);
-        Assert.True(Design.Wash.ShelfAlpha(light: false) > Design.Wash.ShelfAlpha(light: true) * 1.5f);
+        var wash = R.Current.Wash;
+        Assert.True(wash.HeroAlpha.Dark > wash.HeroAlpha.Light * 1.5f);
+        Assert.True(wash.ShelfAlpha.Dark > wash.ShelfAlpha.Light * 1.5f);
     }
 
     [Fact]
@@ -1030,7 +865,7 @@ public class DesignWashTests
 
     [Fact]
     public void The_wash_host_inset_is_the_dock()
-        => Assert.Equal(Design.Dock.Reserve, Design.Wash.HostBottomInset);
+        => Assert.Equal(R.Space.DockReserve, Design.Wash.HostBottomInset);
 }
 
 public class DesignTintOwnershipTests
@@ -1048,17 +883,18 @@ public class DesignTintOwnershipTests
     }
 
     [Fact]
-    public void A_claim_with_no_colour_yet_HOLDS_what_is_showing()
+    public void A_claim_with_no_colour_yet_is_the_neutral_ground_never_the_previous_pages_colour()
     {
-        // THE hand-over. This is what stops the chrome dipping to neutral and back between two coloured pages.
-        Assert.Equal(TintOwnership.Outcome.WriteHeldColor,
+        // Classic tuning D15: an album's skeleton must not wear the album before it. The claim is the new page's; its grading
+        // cross-fades in when it lands (a refresh from the owner, below).
+        Assert.Equal(TintOwnership.Outcome.WriteNeutral,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: false)));
     }
 
     [Fact]
     public void A_page_that_has_DECIDED_it_carries_no_colour_writes_neutral()
     {
-        // "Washes are off" / "this layout applies no tint" is a decision, not a transient; it eases to neutral like any
+        // "Surfaces are off" / "this layout applies no tint" is a decision, not a transient; it eases to neutral like any
         // other colour rather than holding the previous page's.
         Assert.Equal(TintOwnership.Outcome.WriteNeutral,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageA, IsClaim: false, Definite: true, HasColor: false)));
@@ -1097,16 +933,6 @@ public class DesignTintOwnershipTests
         // artist's colour for that whole stretch. The gate only needs to know the claim HAS a colour.
         Assert.Equal(TintOwnership.Outcome.WriteKnownColor,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: true)));
-    }
-
-    [Fact]
-    public void A_claim_with_no_cached_grading_still_HOLDS_even_when_the_overview_is_still_unknown()
-    {
-        // The other half of the same fix: an artist whose art has never been graded yet must not dip the chrome to
-        // neutral while its overview is still in flight — the hold is exactly what an overview-agnostic gate needs,
-        // so it must survive moving the gate off Knows(Overview).
-        Assert.Equal(TintOwnership.Outcome.WriteHeldColor,
-            TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: false)));
     }
 }
 

@@ -5,6 +5,17 @@
 export const KINDS = ["Managed", "Native", "Hang", "ExitCode", "UncleanExit"] as const;
 export type Kind = (typeof KINDS)[number];
 
+/** Optional client diagnostic facts from the report's R2 summary. */
+export interface CollectionFacts {
+  parentPid: number | null;
+  reporterPid: number | null;
+  localDumpCreated: boolean | null;
+  localDumpBytes: number | null;
+  /** Client claim; WireReportRow.has_dump alone determines download availability. */
+  dumpIncluded: boolean | null;
+  dumpOmissionReason: "consent" | "missing" | "read-failed" | "size-cap" | null;
+}
+
 export interface WireFrame {
   rva: number;
   offset: number;
@@ -88,6 +99,8 @@ export interface WireReportRow {
   fault_module?: string;
   fault_offset?: number;
   fp_version?: number;
+  /** Included on report detail; absent on list rows and older Workers. */
+  collection?: CollectionFacts;
 }
 
 export interface WireOccurrenceRow {
@@ -265,6 +278,7 @@ export interface AppReport {
   faultModule: string;
   faultOffset: number;
   fpVersion: number;
+  collection?: CollectionFacts;
 }
 
 export interface AppOccurrence {

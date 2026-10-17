@@ -58,14 +58,10 @@ public class TabLabelStagingTests
     }
 
     [Fact]
-    public void ASequencedStyle_LagsByTheExitLeg()
-        => Assert.Equal(Design.Nav.ExitDurationMs, TabLabelStaging.DelayMs(instantCut: false, reducedMotion: false));
-
-    [Fact]
-    public void TheInstantCut_DoesNotLag()
-        => Assert.Equal(0f, TabLabelStaging.DelayMs(instantCut: true, reducedMotion: false));
+    public void ThePageSwap_LagsByTheExitLeg()
+        => Assert.Equal(Design.Nav.ExitDurationMs, TabLabelStaging.DelayMs(reducedMotion: false));
 
     [Fact]
     public void ReducedMotion_DoesNotLag()
-        => Assert.Equal(0f, TabLabelStaging.DelayMs(instantCut: false, reducedMotion: true));
+        => Assert.Equal(0f, TabLabelStaging.DelayMs(reducedMotion: true));
 }

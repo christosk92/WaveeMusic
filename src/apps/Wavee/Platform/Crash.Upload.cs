@@ -53,19 +53,22 @@ public static partial class Crash
         /// <paramref name="boundary"/>: same input, same bytes, every time (byte-exact multipart tests depend on this).</summary>
         public static byte[] Pack(ScrubbedBundle b, ReadOnlyMemory<byte>? dump, long capBytes, string boundary, out bool dumpDropped)
         {
-            byte[] summaryJson = JsonSerializer.SerializeToUtf8Bytes(b.Summary, CrashJson.Default.Summary);
             byte[] reportBytes = Encoding.UTF8.GetBytes(b.ReportTxt);
             byte[] tailBytes = Encoding.UTF8.GetBytes(b.TailTxt);
 
-            if (dump is { } d)
+            if (dump is { Length: > 0 } d)
             {
+                byte[] summaryJson = JsonSerializer.SerializeToUtf8Bytes(b.Summary with
+                    { DumpIncluded = true, DumpOmissionReason = null }, CrashJson.Default.Summary);
                 byte[] withDump = Build(boundary, summaryJson, reportBytes, tailBytes, d.Span);
                 if (withDump.LongLength <= capBytes) { dumpDropped = false; return withDump; }
                 dumpDropped = true;
-                return Build(boundary, summaryJson, reportBytes, tailBytes, null);
+                return Build(boundary, JsonSerializer.SerializeToUtf8Bytes(b.Summary with
+                    { DumpIncluded = false, DumpOmissionReason = "size-cap" }, CrashJson.Default.Summary), reportBytes, tailBytes, null);
             }
             dumpDropped = false;
-            return Build(boundary, summaryJson, reportBytes, tailBytes, null);
+            return Build(boundary, JsonSerializer.SerializeToUtf8Bytes(b.Summary with
+                { DumpIncluded = false, DumpOmissionReason = b.Summary.DumpOmissionReason ?? "missing" }, CrashJson.Default.Summary), reportBytes, tailBytes, null);
         }
 
         static byte[] Build(string boundary, byte[] summaryJson, byte[] report, byte[] tail, ReadOnlySpan<byte> dump)
@@ -99,6 +102,26 @@ public static partial class Crash
         {
             byte[] buf = Encoding.ASCII.GetBytes(s);
             ms.Write(buf, 0, buf.Length);
+        }
+    }
+
+    /// <summary>Actual file-read outcome, separate from local dump creation and the user's inclusion choice.</summary>
+    public sealed record DumpSelection(byte[]? Bytes, string? OmissionReason)
+    {
+        public static DumpSelection Read(string? path, bool requested, Func<string, byte[]>? read = null, string? knownMissingReason = null)
+        {
+            if (!requested) return new(null, "consent");
+            string missingReason = knownMissingReason == "size-cap" ? "size-cap" : "missing";
+            if (string.IsNullOrEmpty(path)) return new(null, missingReason);
+            try
+            {
+                // Bound allocation before reading: the multipart body cannot fit a dump alone above the cap.
+                if (read is null && new FileInfo(path).Length > Bundle.CapBytes) return new(null, "size-cap");
+                byte[] bytes = (read ?? File.ReadAllBytes)(path);
+                return bytes.Length > 0 ? new(bytes, null) : new(null, "missing");
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { return new(null, missingReason); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new(null, "read-failed"); }
         }
     }
 
@@ -247,7 +270,7 @@ public static partial class Crash
 
         static Action<Action>? s_post;
         static int s_draining, s_drainRequested, s_unconfiguredLogged;
-        static IDisposable? s_onlineSub;
+        static IDisposable? s_onlineSub;   // never read on purpose: holds the app-lifetime connectivity subscription
         static System.Threading.Timer? s_retryTimer;
         static readonly object s_gate = new();
         /// <summary>Report ids whose server-retry launch was already counted by THIS process (see <see cref="OutboxMeta.Launches"/>).</summary>
@@ -304,7 +327,8 @@ public static partial class Crash
             {
                 var scrubbed = ScrubForUpload(b, includeDump, out ReadOnlyMemory<byte>? dump);
                 byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, Bundle.BoundaryFor(reportId), out bool dumpDropped);
-                bool dumpIncluded = dump is not null && !dumpDropped;
+                bool dumpIncluded = dump is { Length: > 0 } && !dumpDropped;
+                RecordDumpSelection(b.Dir, scrubbed.Summary, dumpIncluded, dumpDropped);
 
                 string dir = Files.OutboxDir(Host.LogFolder);
                 Directory.CreateDirectory(dir);
@@ -342,7 +366,8 @@ public static partial class Crash
             {
                 var scrubbed = ScrubForUpload(b, includeDump, out ReadOnlyMemory<byte>? dump);
                 byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, Bundle.BoundaryFor(reportId), out bool dumpDropped);
-                bool dumpIncluded = dump is not null && !dumpDropped;
+                bool dumpIncluded = dump is { Length: > 0 } && !dumpDropped;
+                RecordDumpSelection(b.Dir, scrubbed.Summary, dumpIncluded, dumpDropped);
                 var (code, error) = await PostAsync(packed, reportId, ct).ConfigureAwait(false);
                 var outcome = UploadPolicy.Classify(code);
                 string status = StatusText(code);
@@ -584,9 +609,17 @@ public static partial class Crash
             string reportTxt = SafeReadText(b.ReportTxt);
             string[] tailLines = SafeReadLines(b.TailTxt);
             var rules = Scrubber.RulesNow();
-            byte[]? bytes = includeDump ? SafeReadBytes(b.DumpPath) : null;
-            dump = bytes is null ? null : new ReadOnlyMemory<byte>(bytes);
-            return Scrubber.Scrub(b.Summary, reportTxt, tailLines, rules);
+            // Resolve the actual path even if the UI's presence snapshot is stale; deletion and read failure differ.
+            string? knownMissingReason = b.Summary.DumpLocalCreated == true && b.Summary.DumpBytes > Bundles.MaxDumpBytes ? "size-cap" : null;
+            var selection = DumpSelection.Read(Path.Combine(b.Dir, Files.DumpName), includeDump, knownMissingReason: knownMissingReason);
+            dump = selection.Bytes is null ? null : new ReadOnlyMemory<byte>(selection.Bytes);
+            return Scrubber.Scrub(b.Summary with { DumpOmissionReason = selection.OmissionReason }, reportTxt, tailLines, rules);
+        }
+
+        static void RecordDumpSelection(string dir, Summary summary, bool included, bool dropped)
+        {
+            Bundles.UpdateSummary(dir, s => s with
+                { DumpIncluded = included, DumpOmissionReason = included ? null : dropped ? "size-cap" : summary.DumpOmissionReason ?? "missing" });
         }
 
         /// <summary>One POST. <c>Status</c> is the HTTP status code, or <c>null</c> when there was no answer at all
@@ -762,10 +795,5 @@ public static partial class Crash
             try { return File.Exists(path) ? File.ReadAllLines(path) : []; } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
         }
 
-        static byte[]? SafeReadBytes(string? path)
-        {
-            if (path is not { Length: > 0 }) return null;
-            try { return File.Exists(path) ? File.ReadAllBytes(path) : null; } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
-        }
     }
 }

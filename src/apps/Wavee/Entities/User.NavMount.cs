@@ -48,7 +48,9 @@ public enum LibraryNavLayoutKind : byte { Extents, GridFit }
 /// <param name="CellMin">GridFit layouts only: the cell's minimum main-axis extent — the S/M/L ladder
 /// (<see cref="CardCellMinCompact"/>/<see cref="CardCellMinFull"/> plus one <see cref="CardCellStepCompact"/>/
 /// <see cref="CardCellStepFull"/> step per size).</param>
-/// <param name="Gap">The grid's fixed gap between cells (<see cref="GridGap"/>).</param>
+/// <param name="Gap">The grid's gap between the cells of a row (<see cref="GridGap"/>, or the structure's per-tier column gap: <c>LibraryTierPolicy.GridGapsFor</c>). Like
+/// <see cref="CellMin"/> it is live and never part of <see cref="Key"/>.</param>
+/// <param name="RowGap">The grid's gap between rows (<see cref="GridGap"/>, or the structure's per-tier row gap).</param>
 /// <param name="Lettered">The flat a–z projection (headers interleaved with rows) is live: a LIST view under
 /// alphabetical order. False in a grid — a grid has no headers, only the jump strip's first-card index.</param>
 /// <param name="Strip">The A–Z jump strip is present: any view under alphabetical order, grid included.</param>
@@ -64,6 +66,7 @@ public readonly record struct LibraryNavMount(
     float RowExtent,
     float CellMin,
     float Gap,
+    float RowGap,
     bool Lettered,
     bool Strip,
     bool GridPadding,
@@ -84,14 +87,31 @@ public readonly record struct LibraryNavMount(
     /// <summary>The grid's fixed gap between cells, every size and density.</summary>
     public const float GridGap = 8f;
 
+    /// <summary>A grid view's cell minimum (the S/M/L ladder of the compact or the full grid): the fitted grid's own column rule, which the
+    /// navigator's loading shimmer lays its cards out by too (tuned Classic X2), so the cards land where the bars stood. The view and the size are
+    /// clamped like <see cref="For"/>'s. <paramref name="fullBase"/> is the full grid's size-S floor: the core's <see cref="CardCellMinFull"/>, or the
+    /// structure's for the content tier (<c>LibraryTierPolicy.CardCellMinFor</c>, contract 1.22: Classic's Small navigator is 240 wide and draws two 96
+    /// cells); a non-finite or non-positive base reads as the core's.</summary>
+    public static float CellMinFor(int view, int size, float fullBase = CardCellMinFull)
+    {
+        bool compact = User.IsCompactView(Math.Clamp(view, 0, 3));
+        size = Math.Clamp(size, 0, 2);
+        float full = float.IsFinite(fullBase) && fullBase > 0f ? fullBase : CardCellMinFull;
+        return (compact ? CardCellMinCompact : full) + size * (compact ? CardCellStepCompact : CardCellStepFull);
+    }
+
     /// <summary>The one mint. <paramref name="kind"/> is the page's route word ("artists"/"albums"/"podcasts" — the
     /// <c>ScrollKey</c>'s namespace); <paramref name="view"/>/<paramref name="size"/> are the persisted view-switcher
     /// signals (clamped defensively — a corrupt settings value must never index out of the ladder);
     /// <paramref name="alphabetical"/> is <c>sort == LibraryNavSort.Alphabetical</c>; <paramref name="lettersKey"/> is
     /// <see cref="LibraryLetters.Key"/>() from the CURRENT build, 0 when a–z is not the sort (its own folding: it never
-    /// enters the key unless <paramref name="alphabetical"/> AND the view is not a grid).</summary>
-    public static LibraryNavMount For(string kind, int view, int size, bool alphabetical, ulong lettersKey)
+    /// enters the key unless <paramref name="alphabetical"/> AND the view is not a grid). <paramref name="fullBase"/> is the full grid's size-S floor for the
+    /// content tier (<see cref="CellMinFor"/>): it moves <see cref="CellMin"/> only, NEVER the key, so a tier crossing re-fits the mounted grid in place
+    /// (the page rebuilds the grid layout value, the list stays mounted with its scroll and selection). <paramref name="gaps"/> is the same kind of fact: the content tier's grid
+    /// gaps (the core's 8 and 8 where null), live, never in the key.</summary>
+    public static LibraryNavMount For(string kind, int view, int size, bool alphabetical, ulong lettersKey, float fullBase = CardCellMinFull, Theming.LibraryGridGaps? gaps = null)
     {
+        var gridGaps = gaps is { IsValid: true } g ? g : Theming.LibraryGridGaps.Core;
         view = Math.Clamp(view, 0, 3); size = Math.Clamp(size, 0, 2);
         bool grid = User.IsGridView(view), compact = User.IsCompactView(view), lettered = alphabetical && !grid;
         // Order / facts / rows are NOT here: a bound list refreshes them in place. LettersKey is here ONLY while the
@@ -103,8 +123,8 @@ public readonly record struct LibraryNavMount(
                  : (compact ? LibraryNavTemplate.RowCompact : LibraryNavTemplate.Row),
             grid ? LibraryNavLayoutKind.GridFit : LibraryNavLayoutKind.Extents,
             compact ? User.NavRowCompactExtent : User.NavRowExtent,
-            (compact ? CardCellMinCompact : CardCellMinFull) + size * (compact ? CardCellStepCompact : CardCellStepFull),
-            GridGap,
+            CellMinFor(view, size, fullBase),
+            gridGaps.Column, gridGaps.Row,
             lettered, alphabetical, grid,
             "lib:nav:" + kind + ":" + family);
     }

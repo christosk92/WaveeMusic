@@ -25,6 +25,7 @@ public sealed record SidebarMigrationResult(
     SidebarLayoutId Layout,
     SidebarLayoutState State,
     SidebarDensity Density,
+    SidebarLibraryView LibraryView,   // the theme's state (M7b), not part of the layout state
     SidebarLibraryFilter Filter,
     float Width,
     bool UserCollapsed,
@@ -60,7 +61,7 @@ public static class SidebarMigrationV2
         var library = new List<SectionState>(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library).Sections);
         var sort = (uint)input.V3Sort <= 4 ? (SidebarLibrarySort)input.V3Sort : SidebarLibrarySort.Recents;
         var view = input.V3View >= 2 ? SidebarLibraryView.Grid : SidebarLibraryView.List;
-        Set(library, "library", s => s with { Sort = sort, Descending = desc, View = view });
+        Set(library, "library", s => s with { Sort = sort, Descending = desc });
         var density = input.Design == 1 && input.V3View == 0 ? SidebarDensity.Compact : SidebarDensity.Default;
         var filter = input.V3Filter switch
         {
@@ -116,7 +117,7 @@ public static class SidebarMigrationV2
             0L,
             input.V2?.V3?.FirstSeen ?? []);
 
-        return new SidebarMigrationResult(layout, state, density, filter, SidebarPaneBounds.Clamp(input.DesignWidth),
+        return new SidebarMigrationResult(layout, state, density, view, filter, SidebarPaneBounds.Clamp(input.DesignWidth),
             input.DesignCollapsed, account, input.Design == 2 || topBarDiffered, dropped);
     }
 
@@ -238,7 +239,8 @@ public static class SidebarMigrationV2
 }
 
 /// <summary>The migration's IO half, run by <see cref="Sidebar.Boot"/> before anything else loads. The legacy keys are READ
-/// here and nowhere else, and never written again; <c>sidebar-layout.json</c> is left on disk untouched.</summary>
+/// here and nowhere else, and never written again; <c>sidebar-layout.json</c> is left on disk untouched. The layout and the density it
+/// produces go to the structure's options (<see cref="Theming.ThemeHost.Request"/>).</summary>
 internal static class SidebarMigrationHost
 {
     // The legacy keys exist only here (Platform.Keys no longer declares them).
@@ -276,10 +278,14 @@ internal static class SidebarMigrationHost
             return;
         }
 
-        settings.Set(Platform.Keys.SidebarLayoutId, (int)r.Layout);
-        settings.Set(Platform.Keys.SidebarPaneWidth, r.Width);
-        settings.Set(Platform.Keys.SidebarPaneUserCollapsed, r.UserCollapsed);
-        settings.Set(Platform.Keys.SidebarPaneDensity, (int)r.Density);
+        // The layout and the density are the structure's options now (M7a): the migration hands them to the active theme (ThemeBootstrap already ran for this
+        // profile, so a legacy key written here would never be read).
+        Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Layout, r.Layout);
+        Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Density, r.Density);
+        // The pane's width, collapse and the Library's view are the active theme's state (M7b), for the same reason.
+        Theming.ThemeState.Set(Sidebar.PaneWidthKey, r.Width);
+        Theming.ThemeState.Set(Sidebar.PaneCollapsedKey, r.UserCollapsed);
+        Theming.ThemeState.Set(Sidebar.LibraryViewKey, (int)r.LibraryView);
         settings.Set(Platform.Keys.SidebarLibraryFilter, (int)r.Filter);
         settings.Set(Platform.Keys.SidebarMigrationDropped, string.Join(",", r.Dropped));
         settings.Set(Platform.Keys.SidebarBootstrapVersion, 2);

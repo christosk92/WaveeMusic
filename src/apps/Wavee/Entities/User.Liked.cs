@@ -157,14 +157,6 @@ public static class LikedCoverRules
     /// <summary>The cells a flat collection mosaic fills — the floor below which even the mosaic is dishonest.</summary>
     public const int MosaicCells = 4;
 
-    /// <summary>Half a DIP: a responsive width arriving as 149.9997 still reads as square.</summary>
-    public const float SquareEpsilon = 0.5f;
-
-    public static bool IsSquare(float width, float height) => MathF.Abs(width - height) < SquareEpsilon;
-
-    /// <summary>A non-square slot COVER-fits the square treatment at its longer edge.</summary>
-    public static float FitSide(float width, float height) => MathF.Max(width, height);
-
     /// <summary>What a cover of <paramref name="size"/> DIP paints. The floor is INJECTED (the composition owns it); a
     /// non-finite size takes the full treatment (the comparison is written so NaN falls through).</summary>
     public static LikedCoverSite Site(LikedCoverStyle effective, float size, int distinctTiles, float treatmentMinSize)
@@ -237,9 +229,6 @@ public static class LikedCoverRules
         if (h >= 360f) h -= 360f;
         return h;
     }
-
-    /// <summary>The page tone's key for a composed cover — the newest tile — or null with no art.</summary>
-    public static string? ToneAnchorUrl(IReadOnlyList<string> tiles) => tiles is { Count: > 0 } ? tiles[0] : null;
 }
 
 // ── 2. the content-filter chips (ch 07 §8, ContentFilterTags verbatim) ───────────────────────────────────────────────
@@ -254,9 +243,6 @@ public readonly record struct ContentFilterChipSet(IReadOnlyList<string> Titles,
     public static readonly ContentFilterChipSet Empty = new(Array.Empty<string>(), 0);
 
     public int Count => Titles.Count;
-
-    /// <summary>True when at least one track in view carries this chip, i.e. selecting it yields rows.</summary>
-    public bool IsEvidenced(int index) => index < EvidencedCount;
 }
 
 /// <summary>A derived chip with how many tracks in view carry it.</summary>

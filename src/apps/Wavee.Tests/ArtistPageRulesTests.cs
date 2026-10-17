@@ -4,6 +4,7 @@
 // each is pinned against the 0.2.9 behaviour ch 08 records (§1.1, W12, W18, W19, W23, the breakpoint table), plus the
 // resolved-metrics wash forms that fix ch 08 §9's inconsistency #1.
 
+using FluentGpu.Dsl;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -83,17 +84,6 @@ public class ArtistPageRulesTests
         Assert.Equal(11, destinations);
     }
 
-    /// <summary>TopTracks.cs:17-27: wide at 760, held down to 736 once wide, re-entered only at 760.</summary>
-    [Fact]
-    public void TopBandWide_HoldsTwentyFourDipOnceWide()
-    {
-        Assert.True(ArtistSections.TopBandWide(760f, wasWide: false));
-        Assert.False(ArtistSections.TopBandWide(759f, wasWide: false));
-        Assert.True(ArtistSections.TopBandWide(736f, wasWide: true));
-        Assert.False(ArtistSections.TopBandWide(735f, wasWide: true));
-        Assert.True(ArtistSections.PreMeasureWidth >= ArtistSections.TopBandWideW);   // the first frame starts WIDE (parity 90)
-    }
-
     /// <summary>ch 08 audit #4: a ≤ 5-track chart is ONE column at any width; never more than two.</summary>
     [Theory]
     [InlineData(0, 1)]
@@ -104,6 +94,18 @@ public class ArtistPageRulesTests
     [InlineData(50, 2)]
     public void ChartColumns_ClampByRowCount(int total, int expected)
         => Assert.Equal(expected, ArtistSections.ChartColumns(total));
+
+    /// <summary>W5: the chart skeleton stands at the real layout's counts — an empty edge assumes the overview's ten (2 x 5), a known chart
+    /// shows its own length up to that seed, at the columns the chart itself would offer.</summary>
+    [Theory]
+    [InlineData(0, 10, 2, 5)]
+    [InlineData(3, 3, 1, 3)]
+    [InlineData(5, 5, 1, 5)]
+    [InlineData(7, 7, 2, 4)]
+    [InlineData(10, 10, 2, 5)]
+    [InlineData(40, 10, 2, 5)]
+    public void ChartSkeletonShape_IsTheRealLayoutsCounts(int known, int total, int columns, int perColumn)
+        => Assert.Equal((total, columns, perColumn), ArtistSections.ChartSkeletonShape(known));
 
     /// <summary>W18: the tiles keep their order and a zero stat drops its WHOLE tile.</summary>
     [Fact]
@@ -155,20 +157,17 @@ public class ArtistPageRulesTests
     }
 
     /// <summary>ch 08 §9 inconsistency #1: the wash sized from the RESOLVED metrics follows the hero's own hysteretic
-    /// tier — at 870 a page that was Wide keeps the 440 hero AND the 440 + 96 wash, where the width-only form drops to
-    /// Medium's 384 + 96.</summary>
+    /// tier — at 870 a page that was Wide keeps the 440 hero AND the 440 + 96 wash (the structure's hero ladder holds Wide down to 856).</summary>
     [Fact]
     public void BlendWash_FromResolvedMetrics_FollowsTheHysteresis()
     {
-        var held = ArtistHeroLayout.For(870f, ArtistHeroTier.Wide);
-        Assert.Equal(ArtistHeroTier.Wide, held.Tier);
-        Assert.Equal(ArtistHeroLayout.WideHeight + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in held));
-        Assert.Equal(ArtistHeroLayout.MediumHeight + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(870f));
-
-        // Outside every hysteresis band the two forms agree.
-        var wide = ArtistHeroLayout.For(1200f, ArtistHeroTier.Wide);
-        Assert.Equal(ArtistHeroLayout.BlendBackdropHeightFor(1200f), ArtistHeroLayout.BlendBackdropHeightFor(in wide));
-        Assert.Equal(ArtistHeroLayout.BlendBoundaryFor(1200f), ArtistHeroLayout.BlendBoundaryFor(in wide), 4);
-        Assert.Equal(ArtistHeroLayout.PageGutterFor(1200f), wide.Gutter);
+        var tier = Wavee.Themes.Classic.ClassicArtistTiers.HeroTierFor(870f, (int)ArtistHeroTier.Wide);
+        Assert.Equal(ArtistHeroTier.Wide, tier);
+        var held = Wavee.Themes.Classic.ClassicArtistTiers.StandardForm(tier).Metrics(Spacing.PageWide);
+        Assert.Equal(440f + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in held));
+        Assert.Equal(440f / (440f + ArtistHeroLayout.ContentBlendTail), ArtistHeroLayout.BlendBoundaryFor(in held), 4);
+        // A fresh resolve at 870 is Medium: 384 + 96.
+        var fresh = Wavee.Themes.Classic.ClassicArtistTiers.StandardForm(Wavee.Themes.Classic.ClassicArtistTiers.HeroTierFor(870f)).Metrics(Spacing.PageWide);
+        Assert.Equal(384f + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in fresh));
     }
 }

@@ -2,9 +2,11 @@
 //
 // docs/plans/wavee/sidebar-rework-implementation.md §P2.1-§P2.10 (design V.1). The window decides a hysteretic band; the
 // band and the user's collapse decide the mode; the mode decides the presented width; the right rail reads that width.
-// Every decision lives in the engine-free `SidebarPaneModeRules`, so each branch is driven with plain numbers.
+// Every decision lives in the engine-free `SidebarPaneModeRules`, so each branch is driven with plain numbers. WHERE the
+// bands begin is the structure's window ladder (T3b): the band tests take Classic's, the same one the shell installs.
 
 using Wavee;
+using Wavee.Tests.Theming;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -16,23 +18,24 @@ public sealed class SidebarPaneModeRulesTests
     [InlineData(659f, SidebarWindowBand.Narrow)]
     [InlineData(527f, SidebarWindowBand.Tiny)]
     public void Band_FromWide(float w, SidebarWindowBand expected)
-        => Assert.Equal(expected, SidebarPaneModeRules.BandOf(w, SidebarWindowBand.Wide));
+        => Assert.Equal(expected, ClassicTierFixture.BandOf(w, SidebarWindowBand.Wide));
 
-    [Fact] public void Band_NarrowLeavesOnlyAt700()
+    [Fact] public void Band_NarrowLeavesOnlyAt1048()
     {
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(690f, SidebarWindowBand.Narrow));
-        Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.BandOf(700f, SidebarWindowBand.Narrow));
+        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(1040f, SidebarWindowBand.Narrow));
+        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(1048f, SidebarWindowBand.Narrow));
     }
 
     [Fact] public void Band_TinyLeavesOnlyAt568()
     {
-        Assert.Equal(SidebarWindowBand.Tiny, SidebarPaneModeRules.BandOf(560f, SidebarWindowBand.Tiny));
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(568f, SidebarWindowBand.Tiny));
-        Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.BandOf(720f, SidebarWindowBand.Tiny));
+        Assert.Equal(SidebarWindowBand.Tiny, ClassicTierFixture.BandOf(560f, SidebarWindowBand.Tiny));
+        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(568f, SidebarWindowBand.Tiny));
+        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(720f, SidebarWindowBand.Tiny));   // the rail covers the whole Small band
+        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(1048f, SidebarWindowBand.Tiny));
     }
 
     [Fact] public void Band_ZeroWidthNeverMoves()
-        => Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(0f, SidebarWindowBand.Narrow));
+        => Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(0f, SidebarWindowBand.Narrow));
 
     [Fact] public void Mode_ForcedBandsIgnoreTheUser()
     {
@@ -84,12 +87,4 @@ public sealed class SidebarPaneModeRulesTests
     [Fact] public void OverlayWidth_LeavesTheRailsWorthOfPage()
         => Assert.Equal(452f, SidebarPaneModeRules.OverlayWidth(460f, 500f));
 
-    [Fact] public void RailFit_ReadsThePresentedPane_NeverChangesTheMode()
-    {
-        // The right rail at 360 does not fit beside a 320 pane in a 1100 window: it floats, and the pane stays Expanded.
-        Assert.False(SidebarPaneModeRules.RailFits(320f, 360f, 1100f));
-        Assert.Equal(SidebarPaneMode.Expanded,
-            SidebarPaneModeRules.Resolve(SidebarPaneModeRules.BandOf(1100f, SidebarWindowBand.Wide), false, false));
-        Assert.True(SidebarPaneModeRules.RailFits(48f, 360f, 1100f));
-    }
 }

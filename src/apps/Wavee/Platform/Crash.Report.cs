@@ -1,12 +1,6 @@
-// ── Platform/Crash.Report.cs ───────────────────────────────────────────────────────────────────────────────────────
-// The human-readable half of a bundle (`report.txt`) and the machine-readable one (`summary.json`'s `Summary`
-// record): everything today's `Diagnostics.CrashReport.Describe` wrote (version/commit/build/channel/quad/arch/
-// timeLocal/pid/framework/os/module line, `ex.ToString()`, the "Frames (RVA)" section), moved here VERBATIM so WP-E's
-// deletion of `Diagnostics.CrashReport` loses nothing. Callable from EITHER process: every input it reads
-// (`Platform.Version`, the current process's own module, `Platform.Settings` — which never throws even when
-// `Platform.Boot()` was never called, see `Platform.cs`'s Facade doc) degrades to a safe default rather than
-// throwing, which is what lets `Crash.Handler` (the child, which never calls `Platform.Boot`) build its own
-// Hang/ExitCode/UncleanExit bundles through the SAME code path as the parent's Managed/Native ones.
+// Parent-process report capture and parent-context rendering for the child reporter.
+// Synthetic child reports must use DescribeParent and ContextProtocol.BuildSummary: querying the child
+// for process, module, GPU, route or session facts misattributes the parent failure.
 //
 // Role: CORE (engine-free: no D3D, no window — Process/File/reflection reads only)
 // Owner: WP-B
@@ -102,6 +96,29 @@ public static partial class Crash
               .Append(MainModuleLine()).Append("\n\n").Append(message).Append('\n');
         }
 
+        /// <summary>A child-produced report header describes only the supplied parent context.</summary>
+        public static void DescribeParent(string message, StringBuilder sb, Summary summary, ParentContext? context)
+        {
+            static string Known(string? value) => string.IsNullOrEmpty(value) ? "unknown" : value;
+            sb.Append("version=").Append(Known(summary.Version)).Append('\n')
+              .Append("commit=").Append(Known(summary.Commit)).Append('\n')
+              .Append("buildDate=").Append(Known(context?.BuildDate)).Append('\n')
+              .Append("channel=").Append(Known(summary.Channel)).Append('\n')
+              .Append("quad=").Append(Known(summary.Quad)).Append('\n')
+              .Append("arch=").Append(Known(summary.Arch)).Append('\n')
+              .Append("stampUtc=").Append(summary.StampUtc).Append('\n')
+              .Append("pid=").Append(summary.ParentPid).Append('\n')
+              .Append("reporterPid=").Append(summary.ReporterPid).Append('\n')
+              .Append("sessionId=").Append(Known(summary.SessionId)).Append('\n')
+              .Append("uptimeMs=").Append(summary.UptimeMs.ToString(CultureInfo.InvariantCulture)).Append('\n')
+              .Append("framework=").Append(Known(context?.Framework)).Append('\n')
+              .Append("os=").Append(Known(context?.Os)).Append('\n')
+              .Append("module=").Append(Known(context?.ModuleName))
+              .Append(" base=0x").Append(summary.ModuleBase.ToString("x", CultureInfo.InvariantCulture))
+              .Append(" size=0x").Append(summary.ModuleSize.ToString("x", CultureInfo.InvariantCulture))
+              .Append("\n\n").Append(message).Append('\n');
+        }
+
         /// <summary>The current process's main module line — <c>Diagnostics.CrashReport.MainModuleLine</c> verbatim
         /// (<c>module=... base=0x... size=0x...</c>).</summary>
         public static string MainModuleLine()
@@ -143,20 +160,9 @@ public static partial class Crash
 
         // ── 2. the machine-readable summary (summary.json) ─────────────────────────────────────────────────────────
 
-        /// <summary>Fills a <see cref="Summary"/> for one bundle. Safe to call from EITHER process: every field
-        /// degrades to a default rather than throwing — <see cref="InstallId.Ensure"/> over <c>Platform.Settings</c>
-        /// answers "" when no backing store was ever installed (the child never calls <c>Platform.Boot</c>, so its
-        /// bundles carry an empty install id; the parent's carry the real one), and every other read is a reflection
-        /// or <see cref="System.Diagnostics.Process"/> query over the CALLING process, which is exactly what a
-        /// Hang/ExitCode/UncleanExit bundle (written by the child, describing the PARENT it watched) wants for
-        /// everything except the two identifiers <see cref="Crash.Host"/> stamps for those by hand
-        /// (<paramref name="exceptionType"/>/<paramref name="exceptionMessage"/> override <paramref name="ex"/>'s,
-        /// so a synthetic Hang/ExitCode/UncleanExit report needs no fabricated <see cref="Exception"/>).
-        /// <para>#165 W3a: the summary's exception type/message come from <see cref="Unwrap"/>(<paramref name="ex"/>) — the
-        /// fault, not its <c>TargetInvocationException</c>/<c>TypeInitializationException</c>/single-inner
-        /// <c>AggregateException</c> wrapper — while the RVAs still parse the FULL <c>ex.ToString()</c> (inner frames
-        /// included). <paramref name="rvas"/>, when given, replaces that parse (the native path's VEH-captured frames);
-        /// <paramref name="exceptionCode"/> is the native NTSTATUS (0 otherwise).</para></summary>
+        /// <summary>Captures a summary from the parent process. The child uses <see cref="ContextProtocol.BuildSummary"/>
+        /// with its last validated parent context instead. Exceptions are unwrapped for the title while RVA parsing
+        /// keeps the full exception text; native callers can supply captured RVAs and NTSTATUS directly.</summary>
         public static Summary BuildSummary(Kind kind, Exception? ex, int exitCode, bool hasDump = false, long dumpBytes = 0,
             string? exceptionType = null, string? exceptionMessage = null, bool? beforeFirstFrame = null, string? installIdOverride = null,
             long[]? rvas = null, uint exceptionCode = 0)
@@ -201,7 +207,8 @@ public static partial class Crash
                 GpuProfile.AdapterName, GpuProfile.Tier.ToString(), GpuProfile.IsSoftwareAdapter,
                 packaged, locale,
                 Log.SessionId, Log.SinceStartMs, beforeFirstFrame ?? !Host.FirstFrameSeen, Diagnostics.NavigationFrameWatch.Route,
-                exType, exMessage, frames, moduleBase, moduleSize, debugId, exitCode, hasDump, dumpBytes, exceptionCode);
+                exType, exMessage, frames, moduleBase, moduleSize, debugId, exitCode, hasDump, dumpBytes, exceptionCode,
+                ParentPid: Environment.ProcessId, ReporterPid: Environment.ProcessId);
         }
 
         /// <summary>The exception a summary should be TITLED by: peels the wrappers that only say "this happened somewhere

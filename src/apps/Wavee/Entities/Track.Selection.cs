@@ -260,7 +260,7 @@ public readonly partial struct Track
                 return items;
             }
 
-            void Toggle() => TableHost.ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close()), TableHost.MenuPopup);
+            void Toggle() => TableHost.ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), TableHost.MenuPopup);
             return ToolTip.Wrap(LaneGlyph(Icons.More, Toggle, n => anchor.Value = n, null, true), Loc.Get(Strings.Common.More));
         }
 
