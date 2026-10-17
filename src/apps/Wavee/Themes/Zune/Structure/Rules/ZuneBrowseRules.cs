@@ -1,7 +1,7 @@
 // ── Themes/Zune/Structure/Rules/ZuneBrowseRules.cs — the numbers of Zune's Browse directory and category pages (themes plan 6.3; P5 Z5) ─────
 //
 // Boards Z-Browse (its own row 2 is superseded by the band's Browse views, Q30) and Z-Browse-Category; the Compact / Small / Huge boards feed the
-// tier records, which ZT4 tunes.
+// tier records (ZT4).
 //
 //   THE DIRECTORY (Standard): the frame's gutter, 8 under the band, sections 28 apart, each a 26/32 light heading 10 over its body.
 //     top              the Top categories as flat plates 120 tall, four across (no board draws them: Z-Browse put them in its row 2)
@@ -50,7 +50,8 @@ public static class ZuneBrowseRules
     public const int ShimmerCards = 6;
 }
 
-/// <summary>What Zune's Browse pages lay out in one CONTENT tier.</summary>
+/// <summary>What Zune's Browse pages lay out in one CONTENT tier. Every property defaults to Standard's (Z-Browse, Z-Browse-Category); a tier's record
+/// states its differences.</summary>
 public sealed record ZuneBrowseLayout : ITierLayoutRecord
 {
     /// <inheritdoc />
@@ -62,64 +63,135 @@ public sealed record ZuneBrowseLayout : ITierLayoutRecord
     /// <summary>The page's gutter (the frame's).</summary>
     public required float Gutter { get; init; }
 
-    /// <summary>The charts column stands beside For you (its width), or above it (the page's width).</summary>
-    public required bool ChartsBeside { get; init; }
+    /// <summary>The gap between the directory's bands; the plates' gap.</summary>
+    public float ZoneGap { get; init; } = 28f;
+
+    /// <inheritdoc cref="ZoneGap"/>
+    public float PlateGap { get; init; } = ZuneBrowseRules.PlateGap;
+
+    /// <summary>The charts column stands beside For you (its width, the gap between them), or above it (the page's width).</summary>
+    public bool ChartsBeside { get; init; } = true;
 
     /// <inheritdoc cref="ChartsBeside"/>
-    public required float ChartsW { get; init; }
+    public float ChartsW { get; init; } = 420f;
 
-    /// <summary>The chart and Top plates' height, and the Top plates across.</summary>
-    public required float BigPlateH { get; init; }
+    /// <inheritdoc cref="ChartsBeside"/>
+    public float PairGap { get; init; } = ZuneBrowseRules.PairGap;
+
+    /// <summary>The chart and Top plates' height, their name in the 40/48 voice (Huge) instead of the 22/28 one, and the Top plates across.</summary>
+    public float BigPlateH { get; init; } = 120f;
 
     /// <inheritdoc cref="BigPlateH"/>
-    public required int TopCols { get; init; }
+    public bool BigPlateHero { get; init; }
 
-    /// <summary>For you's columns, the genres' and More's columns, the mood plates across and their height.</summary>
-    public required int ForYouCols { get; init; }
+    /// <inheritdoc cref="BigPlateH"/>
+    public int TopCols { get; init; } = 4;
 
-    /// <inheritdoc cref="ForYouCols"/>
-    public required int LinkCols { get; init; }
-
-    /// <inheritdoc cref="ForYouCols"/>
-    public required int MoodCols { get; init; }
+    /// <summary>For you: its columns, its row, the square before each name (the dot at Standard, a 44 colour tile at Compact), and (Huge) plates
+    /// of the given height instead of a list.</summary>
+    public int ForYouCols { get; init; } = 3;
 
     /// <inheritdoc cref="ForYouCols"/>
-    public required float MoodH { get; init; }
+    public float ForYouRowH { get; init; } = ZuneBrowseRules.ForYouRowH;
 
-    /// <summary>The category banner's height, and whether its title is the compact panorama.</summary>
-    public required float BannerH { get; init; }
+    /// <inheritdoc cref="ForYouCols"/>
+    public float ForYouTile { get; init; } = ZuneBrowseRules.DotSize;
+
+    /// <inheritdoc cref="ForYouCols"/>
+    public bool ForYouPlates { get; init; }
+
+    /// <inheritdoc cref="ForYouCols"/>
+    public float ForYouPlateH { get; init; } = 100f;
+
+    /// <summary>The genres' and More's columns and row; the mood plates across and their height.</summary>
+    public int LinkCols { get; init; } = 6;
+
+    /// <inheritdoc cref="LinkCols"/>
+    public float LinkRowH { get; init; } = ZuneBrowseRules.LinkRowH;
+
+    /// <inheritdoc cref="LinkCols"/>
+    public int MoodCols { get; init; } = 6;
+
+    /// <inheritdoc cref="LinkCols"/>
+    public float MoodH { get; init; } = 96f;
+
+    // ── the category page ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The category banner's height, and whether its title is the compact panorama (64/72 instead of 120/130).</summary>
+    public float BannerH { get; init; } = 200f;
 
     /// <inheritdoc cref="BannerH"/>
-    public required bool CompactTitle { get; init; }
+    public bool CompactTitle { get; init; }
+
+    /// <summary>The title's inset from the banner's left and top; the kind's inset from its side (the left at Compact, else the right) and bottom.</summary>
+    public float BannerInsetX { get; init; } = ZuneBrowseRules.BannerTitleInset;
+
+    /// <inheritdoc cref="BannerInsetX"/>
+    public float BannerInsetY { get; init; } = ZuneBrowseRules.BannerTitleInset;
+
+    /// <inheritdoc cref="BannerInsetX"/>
+    public float BannerMetaX { get; init; } = ZuneBrowseRules.BannerMetaInsetX;
+
+    /// <inheritdoc cref="BannerInsetX"/>
+    public float BannerMetaY { get; init; } = ZuneBrowseRules.BannerMetaInsetY;
+
+    /// <inheritdoc cref="BannerInsetX"/>
+    public bool BannerMetaStart { get; init; }
+
+    /// <summary>The minimum hit target of a link word (40 at Compact, 0 = the word's own size elsewhere).</summary>
+    public float LinkTarget { get; init; }
+
+    /// <summary>The sections' top under the banner and the gap between them.</summary>
+    public float CategoryTop { get; init; } = ZuneBrowseRules.CategoryTop;
+
+    /// <inheritdoc cref="CategoryTop"/>
+    public float CategoryGap { get; init; } = 28f;
+
+    /// <summary>A shelf: 0 = the fixed 154 card (Standard), else it fits up to this many cards across, none narrower than the floor.</summary>
+    public int ShelfCols { get; init; }
+
+    /// <inheritdoc cref="ShelfCols"/>
+    public float ShelfMinW { get; init; } = ZuneHomeRules.ShelfCardW;
 }
 
-/// <summary>Zune's Browse tier records (content tier).</summary>
+/// <summary>Zune's Browse tier records (content tier; ZT4 tuned Compact, Small and Huge against Z-Browse-* and Z-Browse-Category-*).</summary>
 public static class ZuneBrowseTiers
 {
-    private static ZuneBrowseLayout Make(WidthTier tier, bool chartsBeside, float chartsW, float bigPlateH, int topCols, int forYouCols, int linkCols,
-        int moodCols, float moodH, float bannerH, bool compactTitle) => new()
+    private static ZuneBrowseLayout Std(WidthTier tier) => new() { Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter };
+
+    // Huge's numbers (Z-Browse-Huge, Z-Browse-Category-Huge); Huge 4K is the same (pages cap at 2400, decision 2).
+    private static ZuneBrowseLayout Huge(WidthTier tier) => Std(tier) with
     {
-        Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, ChartsBeside = chartsBeside, ChartsW = chartsW, BigPlateH = bigPlateH, TopCols = topCols,
-        ForYouCols = forYouCols, LinkCols = linkCols, MoodCols = moodCols, MoodH = moodH, BannerH = bannerH, CompactTitle = compactTitle,
+        ZoneGap = 40f, PlateGap = 16f, ChartsW = 640f, BigPlateH = 216f, BigPlateHero = true,
+        ForYouCols = 5, ForYouPlates = true, ForYouPlateH = 100f, LinkCols = 8, LinkRowH = 40f, MoodCols = 8, MoodH = 140f,
+        BannerH = 260f, BannerInsetX = 38f, BannerInsetY = 48f, BannerMetaY = 28f, CategoryTop = 32f, CategoryGap = 36f, ShelfCols = 8, ShelfMinW = 140f,
     };
 
     private static readonly ZuneBrowseLayout[] s_records =
     [
-        // Compact (Z-Browse-Compact, Z-Browse-Category-Compact): everything stacks, two across, the 104 plates, a 140 banner with the compact title.
-        Make(WidthTier.Compact, chartsBeside: false, chartsW: 0f, bigPlateH: 104f, topCols: 2, forYouCols: 1, linkCols: 2, moodCols: 2, moodH: 88f,
-            bannerH: 140f, compactTitle: true),
-        // Small (Z-Browse-Small): the charts above For you, two-column For you, four genre columns, five moods.
-        Make(WidthTier.Small, chartsBeside: false, chartsW: 0f, bigPlateH: 104f, topCols: 2, forYouCols: 2, linkCols: 4, moodCols: 5, moodH: 80f,
-            bannerH: 160f, compactTitle: true),
-        // Standard (Z-Browse, Z-Browse-Category): the tuned page.
-        Make(WidthTier.Standard, chartsBeside: true, chartsW: 420f, bigPlateH: 120f, topCols: 4, forYouCols: 3, linkCols: 6, moodCols: 6, moodH: 96f,
-            bannerH: 200f, compactTitle: false),
-        // Huge (Z-Browse-Huge, Z-Browse-Category-Huge): a 640 charts column, the 216 plates, eight across.
-        Make(WidthTier.Huge, chartsBeside: true, chartsW: 640f, bigPlateH: 216f, topCols: 4, forYouCols: 4, linkCols: 8, moodCols: 8, moodH: 96f,
-            bannerH: 260f, compactTitle: false),
-        // Huge 4K: Huge's (pages cap at 2400, decision 2).
-        Make(WidthTier.Huge4K, chartsBeside: true, chartsW: 640f, bigPlateH: 216f, topCols: 4, forYouCols: 4, linkCols: 8, moodCols: 8, moodH: 96f,
-            bannerH: 260f, compactTitle: false),
+        // Compact (Z-Browse-Compact, Z-Browse-Category-Compact): 22 between bands; everything stacks, two across (16 apart), 104 plates with the 22/28
+        // name, For you as 56 rows with a 44 colour tile, 88 mood plates; a 140 banner (the 64/72 title 12 in, the kind at the bottom left), two-across shelves.
+        Std(WidthTier.Compact) with
+        {
+            ZoneGap = 22f, PlateGap = 16f, ChartsBeside = false, BigPlateH = 104f, TopCols = 2, ForYouCols = 1, ForYouRowH = 56f, ForYouTile = 44f,
+            LinkCols = 2, LinkRowH = 40f, MoodCols = 2, MoodH = 88f, LinkTarget = 40f,
+            BannerH = 140f, CompactTitle = true, BannerInsetX = 12f, BannerInsetY = 22f, BannerMetaX = 16f, BannerMetaY = 14f, BannerMetaStart = true,
+            CategoryTop = 20f, CategoryGap = 22f, ShelfCols = 2, ShelfMinW = 120f,
+        },
+        // Small (Z-Browse-Small, Z-Browse-Category-Small): 20 between bands; a 280 charts column BESIDE For you (32 apart; its two-column dot list), four
+        // genre columns, five 80 moods; a 120 banner (the 64/72 title 18 in, the kind at the bottom right), five-across shelves.
+        Std(WidthTier.Small) with
+        {
+            ZoneGap = 20f, ChartsW = 280f, PairGap = 32f, BigPlateH = 104f, TopCols = 2, ForYouCols = 2, LinkCols = 4, MoodCols = 5, MoodH = 80f,
+            BannerH = 120f, CompactTitle = true, BannerInsetX = 18f, BannerInsetY = 24f, BannerMetaX = 24f, BannerMetaY = 16f,
+            CategoryTop = 20f, CategoryGap = 20f, ShelfCols = 5, ShelfMinW = 100f,
+        },
+        // Standard (Z-Browse, Z-Browse-Category): the tuned page (the defaults).
+        Std(WidthTier.Standard),
+        // Huge (Z-Browse-Huge, Z-Browse-Category-Huge): 40 between bands; a 640 charts column of 216 plates (the 40/48 name) beside For you as five
+        // 100 plates; eight genre columns of 40 rows, eight 140 moods; a 260 banner; eight-across shelves.
+        Huge(WidthTier.Huge),
+        Huge(WidthTier.Huge4K),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>

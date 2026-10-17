@@ -1,6 +1,6 @@
 // ── Themes/Zune/Structure/Rules/ZuneSearchRules.cs — the numbers of Zune's Search results page (themes plan 6.3; P5 Z5) ──────────────────────
 //
-// Board Z-Search (Standard; the Compact / Small / Huge boards feed the tier records, which ZT4 tunes). The facet strip is the band's row 2 (the
+// Board Z-Search (Standard; the Compact / Small / Huge boards feed the tier records, ZT4's). The facet strip is the band's row 2 (the
 // host publishes it with the counts), so the page is the facet body alone, on the frame's gutter, 8 under the band, its sections 28 apart:
 //
 //   top result | best matches   a 440 column (the "top result" heading and the hit's kind word, the 180 art beside the copy 20 apart: the name
@@ -39,7 +39,20 @@ public static class ZuneSearchRules
     public const int ShimmerRows = 8, ShimmerGenres = 4;
 }
 
-/// <summary>What Zune's Search page lays out in one CONTENT tier.</summary>
+/// <summary>Where the top result's name stands: in the copy beside the art (Standard, Huge), over the art row (Compact) or under it (Small).</summary>
+public enum ZuneSearchHeroName : byte
+{
+    /// <summary>The first line of the copy.</summary>
+    InCopy,
+
+    /// <summary>Over the art row (Z-Search-Compact).</summary>
+    Above,
+
+    /// <summary>Under the art row (Z-Search-Small).</summary>
+    Below,
+}
+
+/// <summary>What Zune's Search page lays out in one CONTENT tier. Every property defaults to Standard's (Z-Search); a tier's record states its differences.</summary>
 public sealed record ZuneSearchLayout : ITierLayoutRecord
 {
     /// <inheritdoc />
@@ -51,46 +64,101 @@ public sealed record ZuneSearchLayout : ITierLayoutRecord
     /// <summary>The page's gutter (the frame's).</summary>
     public required float Gutter { get; init; }
 
-    /// <summary>The top result stands beside best matches (its width), or over them.</summary>
-    public required bool TopBeside { get; init; }
+    /// <summary>The gap between the page's sections.</summary>
+    public float ZoneGap { get; init; } = 28f;
+
+    /// <summary>The top result stands beside best matches (its width, the gap to them), or over them.</summary>
+    public bool TopBeside { get; init; } = true;
 
     /// <inheritdoc cref="TopBeside"/>
-    public required float TopW { get; init; }
+    public float TopW { get; init; } = 440f;
 
-    /// <summary>The top result's art.</summary>
-    public required float HeroArt { get; init; }
+    /// <inheritdoc cref="TopBeside"/>
+    public float TopGap { get; init; } = ZuneSearchRules.TopGap;
 
-    /// <summary>Best matches' and the songs' columns at most.</summary>
-    public required int BestCols { get; init; }
+    /// <summary>The top result's art; the art stands OVER its copy (Huge) instead of beside it; where its name stands; the name in the 64/72 hero voice;
+    /// the ring disc and whether the rings carry their words.</summary>
+    public float HeroArt { get; init; } = 180f;
+
+    /// <inheritdoc cref="HeroArt"/>
+    public bool HeroStacked { get; init; }
+
+    /// <inheritdoc cref="HeroArt"/>
+    public ZuneSearchHeroName HeroName { get; init; } = ZuneSearchHeroName.InCopy;
+
+    /// <inheritdoc cref="HeroArt"/>
+    public bool HeroNameHero { get; init; }
+
+    /// <inheritdoc cref="HeroArt"/>
+    public float RingSize { get; init; } = ZuneHomeRules.RingSize;
+
+    /// <inheritdoc cref="HeroArt"/>
+    public bool RingLabels { get; init; } = true;
+
+    /// <summary>Best matches' and the songs' columns at most, the narrowest column, the row and its art.</summary>
+    public int BestCols { get; init; } = 2;
+
+    /// <inheritdoc cref="BestCols"/>
+    public float BestMinCol { get; init; } = ZuneSearchRules.BestMinCol;
+
+    /// <inheritdoc cref="BestCols"/>
+    public float BestRowH { get; init; } = ZuneSearchRules.BestRowH;
+
+    /// <inheritdoc cref="BestCols"/>
+    public float BestArt { get; init; } = ZuneSearchRules.BestArt;
+
+    /// <summary>The playlist shelf: 0 = the fixed 154 card (Standard), else it fits up to this many cards across, none narrower than the floor.</summary>
+    public int ShelfCols { get; init; }
+
+    /// <inheritdoc cref="ShelfCols"/>
+    public float ShelfMinW { get; init; } = ZuneHomeRules.ShelfCardW;
 
     /// <summary>The genres and related searches stand side by side.</summary>
-    public required bool RunsBeside { get; init; }
+    public bool RunsBeside { get; init; } = true;
 
-    /// <summary>The Genres facet's link columns.</summary>
-    public required int GenreCols { get; init; }
+    /// <summary>The minimum hit target of a link word (40 at Compact, 0 = the word's own size elsewhere).</summary>
+    public float LinkTarget { get; init; }
+
+    /// <summary>The Genres facet's link columns and row.</summary>
+    public int GenreCols { get; init; } = 6;
+
+    /// <inheritdoc cref="GenreCols"/>
+    public float GenreRowH { get; init; } = ZuneBrowseRules.LinkRowH;
 }
 
-/// <summary>Zune's Search tier records (content tier).</summary>
+/// <summary>Zune's Search tier records (content tier; ZT4 tuned Compact, Small and Huge against Z-Search-*).</summary>
 public static class ZuneSearchTiers
 {
-    private static ZuneSearchLayout Make(WidthTier tier, bool topBeside, float topW, float heroArt, int bestCols, bool runsBeside, int genreCols) => new()
+    private static ZuneSearchLayout Std(WidthTier tier) => new() { Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter };
+
+    // Huge's numbers (Z-Search-Huge); Huge 4K is the same (pages cap at 2400, decision 2).
+    private static ZuneSearchLayout Huge(WidthTier tier) => Std(tier) with
     {
-        Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, TopBeside = topBeside, TopW = topW, HeroArt = heroArt, BestCols = bestCols,
-        RunsBeside = runsBeside, GenreCols = genreCols,
+        ZoneGap = 40f, TopW = 480f, HeroArt = 240f, HeroStacked = true, HeroNameHero = true,
+        BestCols = 3, BestRowH = 60f, BestArt = 48f, ShelfCols = 8, ShelfMinW = 140f, GenreCols = 8,
     };
 
     private static readonly ZuneSearchLayout[] s_records =
     [
-        // Compact (Z-Search-Compact): everything stacks, one column.
-        Make(WidthTier.Compact, topBeside: false, topW: 0f, heroArt: 96f, bestCols: 1, runsBeside: false, genreCols: 2),
-        // Small (Z-Search-Small): the top result over best matches, two columns.
-        Make(WidthTier.Small, topBeside: false, topW: 0f, heroArt: 140f, bestCols: 2, runsBeside: false, genreCols: 3),
-        // Standard (Z-Search): the tuned page.
-        Make(WidthTier.Standard, topBeside: true, topW: 440f, heroArt: 180f, bestCols: 2, runsBeside: true, genreCols: 6),
-        // Huge (Z-Search-Huge): three best-match columns.
-        Make(WidthTier.Huge, topBeside: true, topW: 520f, heroArt: 220f, bestCols: 3, runsBeside: true, genreCols: 8),
-        // Huge 4K: Huge's (pages cap at 2400, decision 2).
-        Make(WidthTier.Huge4K, topBeside: true, topW: 520f, heroArt: 220f, bestCols: 3, runsBeside: true, genreCols: 8),
+        // Compact (Z-Search-Compact): 20 between sections, one column: the top result's 40/48 name over a 120 art and its copy (40 rings, no words),
+        // best matches as 56 rows (44 art), the playlist shelf two across.
+        Std(WidthTier.Compact) with
+        {
+            ZoneGap = 20f, TopBeside = false, HeroArt = 120f, HeroName = ZuneSearchHeroName.Above, RingSize = 40f, RingLabels = false,
+            BestCols = 1, BestRowH = 56f, BestArt = 44f, ShelfCols = 2, ShelfMinW = 120f, RunsBeside = false, GenreCols = 2, GenreRowH = 40f, LinkTarget = 40f,
+        },
+        // Small (Z-Search-Small): 18 between sections; a 280 top-result column (a 120 art and its copy, the name UNDER them) beside one column of 52 rows
+        // (40 art), 32 apart; the shelf five across.
+        Std(WidthTier.Small) with
+        {
+            ZoneGap = 18f, TopW = 280f, TopGap = 32f, HeroArt = 120f, HeroName = ZuneSearchHeroName.Below, RingLabels = false,
+            BestCols = 1, BestMinCol = 220f, BestRowH = 52f, ShelfCols = 5, ShelfMinW = 100f, RunsBeside = false, GenreCols = 3,
+        },
+        // Standard (Z-Search): the tuned page (the defaults).
+        Std(WidthTier.Standard),
+        // Huge (Z-Search-Huge): a 480 top-result column (a 240 art over the 64/72 name and its lines), three columns of 60 rows (48 art), eight-across shelf.
+        Huge(WidthTier.Huge),
+        Huge(WidthTier.Huge4K),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>

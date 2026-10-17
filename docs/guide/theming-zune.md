@@ -538,7 +538,45 @@ cross-fade, the cover and the pane spring.
 
 ## ZT4: discovery tiers
 
-_Not built yet._
+Home, Browse and Search draw one record per CONTENT tier (`Rules\Zune{Home,Browse,Search}Rules.cs`: `ZuneHomeTiers`, `ZuneBrowseTiers`,
+`ZuneSearchTiers`). Every property of a record defaults to Standard's board, so a tier states only its differences (`Std(tier) with { ... }`);
+Huge 4K is Huge's (pages cap at 2400, decision 2). Views read `ZuneHomeTiers.Of(ctx.Tier())` and the like; nothing compares a width. Grids and
+shelves are live fits (a `GridEl` with `MinColWidth` and the record's `MaxColumns`; a `PagedShelf` in fit mode with the record's `maxColumns`),
+one keyed node at every tier. Where a tier draws a different tree for one part (Home's history tiles / rows, Browse's For you list / plates) the two
+arms are keyed by the PART, in an unkeyed box, and cross-fade (`ZuneMotion.SwapFade`).
+
+| | Compact | Small | Standard | Huge (= Huge 4K) |
+|---|---|---|---|---|
+| Home zone gap | 22 | 18 | 28 | 36 |
+| Quickplay | one column; 4 x 80 pins; history as 56 rows (44 art); no new group | pins beside history, 3 x 88 tiles, the name alone; no new group | 4 x 132 pins, 3 x 100 history, 3 x 100 new | 6 x 180 pins, 4 x 140 history, 3 x 140 new, groups 48 apart |
+| Daylist | 112 row: 112 art, 22/28 over 2 lines, one 40 play ring at the end, no clock | 112 row: 140 art, 26/32, play + shuffle with words, no clock | 176 strip: 320 art, 40/48, 4 rings, 260 clock | 220 strip: 440 art, 64/72, 3 rings, 320 clock of 52 bars |
+| Home shelves | cover shelf 2 across, wide tiles 2, Browse tiles 2 | cover 5, wide 4, tiles 4; releases beside "because you like" (32 apart) | cover 154 fixed, wide 4, tiles 4, pair 48 apart | cover 8, wide 6, tiles 8 (120 tall, 22 name), 3 cluster columns |
+| Browse | charts above For you; 104 plates; For you 56 rows (44 tile); moods 2 x 88; banner 140 | charts 280 beside For you (2-col dot list); genres 4, moods 5 x 80; banner 120 | charts 420 beside a 3-col list; genres 6, moods 6 x 96; banner 200 | charts 640 (216 plates, 40/48 name) beside 5 plates; genres 8 x 40, moods 8 x 140; banner 260 |
+| Search | name over a 120 art row; best matches 1 column of 56 rows; 40 rings | 280 top-result column (name under the art), 1 column of 52 rows | 440 column, 180 art, name in the copy, 2 columns | 480 column, 240 art over the 64/72 name, 3 columns of 60 rows |
+
+**The one-row daylist.** `Z-Shell-Short` ("330 tall: daylist to one row") needs a height the Short tier (below 700) is too coarse for: the Small board is
+800 x 600, Short by the ladder, and keeps its 112 row. So Tiers.Home.cs declares a window-height RUNG, `ZuneHomeRules.DaylistRung`
+(`home.daylist.full`), crossed from 480 and held 24 on shrinking (a lane assumption between the two boards); not crossed, `ZuneHomeTiers.Of`
+answers the tier's record in its one-row form (56 high, 56 art, the eyebrow and the title on one line, the 36 play ring at the end).
+
+**Crossings.** A tier crossing runs reflows in the frame (the band's inset, the title bar's pill) beside the page, and the engine's reflow-shove
+rule snaps a POSITION slide committed beside a live reflow (ZT1's lesson). So a chapter of a discovery page (a zone, or a pair of zones, a
+Browse band, Search's top row) animates its HEIGHT with a size channel, `ZuneHomeRules.ChapterResize` (the engine's flow reveal, the cut of
+`Design.Reveal.Resize`): the layout lands once and everything below rides the presented extent. Only the OUTERMOST box of a chapter carries it (two
+nested flow reveals would count one height change twice): the daylist strip, the Browse tiles | charts row and a Browse band's charts | For you pair ride
+their chapter. The daylist keeps its art, copy, clock and title nodes through every form; only the end play ring, the meta line and the rings past
+the tier's count come and go.
+
+**Compact targets.** A link word (`K.Link(..., target)`), a cluster's title and a word of Search's runs are at least 40 x 40 at Compact; the
+rows are 56 (40 for a genre row), the rings 40.
+
+**Home row 2 seed.** `Shell.PageChromeChannel.RouteViews` answers Home with the lone "all" view (lit when the route names no facet), so the band
+reserves row 2 on the first frame instead of easing 52 to 84 when `HomeHost` publishes the real words (which replace it under the same id).
+
+**Tests.** `Wavee.Tests\Theming\ZuneDiscoveryRulesTests.cs` (the records per tier, every tier fitting its narrowest window, the one-row rung and its
+hysteresis); `Wavee.ShellTests\ZuneTierLayoutTests.Discovery.cs` (each page at every harness size: the record's page, no overflow, what the record
+decides is what is mounted, Compact targets; each page across 639 / 640, 1007 / 1008, 1919 / 1920, 3199 / 3200 both ways and the heights: the same
+nodes, the daylist gliding).
 
 ## ZT5: detail tiers
 

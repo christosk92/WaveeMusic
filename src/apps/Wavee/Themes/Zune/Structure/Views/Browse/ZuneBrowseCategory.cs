@@ -4,6 +4,8 @@
 // as a panorama word (120/130 at the light 200, lowercase, its line reserved, 40 in from the banner's top left) and its kind at the bottom right
 // (13, 48 in, 24 up), then the page's sections 28 under it and 28 apart on the frame's gutter: a titled shelf is a heading row ("see all" drills
 // into the section with this page as the origin) over 154 covers 16 apart; a tile block is its heading over six-across 96 plates; then "explore all".
+// THE TIERS (`ZuneBrowseLayout`, ZT4): the banner 140 / 120 / 200 / 260 with its title and kind at the tier's insets (the kind at the bottom LEFT at
+// Compact), the sections' top and gap, and the shelf FITTING two / five / eight across (Standard keeps the fixed 154 card).
 // The board's band is 52 (no row 2); the plan's route-level row 2 (Browse's bands, ZC1) wins, so the band keeps its two rows here.
 //
 // The host decided the load verdict, the body's SHAPE (`BrowsePageLayout.Mode`) and each band's rows. SHELVES: the banner and the sections scroll
@@ -69,12 +71,12 @@ internal static class ZuneBrowseCategory
                 new BoxEl
                 {
                     Key = B.BannerTitleKey, Direction = 1, MinWidth = 0f, Justify = FlexJustify.Start,
-                    Padding = new Edges4(B.BannerTitleInset, B.BannerTitleInset, B.BannerTitleInset, 0f), Children = [name],
+                    Padding = new Edges4(lay.BannerInsetX, lay.BannerInsetY, lay.BannerInsetX, 0f), Children = [name],
                 },
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Justify = FlexJustify.End, AlignItems = FlexAlign.End, HitTestVisible = false,
-                    Padding = new Edges4(B.BannerMetaInsetX, 0f, B.BannerMetaInsetX, B.BannerMetaInsetY),
+                    Direction = 1, MinWidth = 0f, Justify = FlexJustify.End, AlignItems = lay.BannerMetaStart ? FlexAlign.Start : FlexAlign.End,
+                    HitTestVisible = false, Padding = new Edges4(lay.BannerMetaX, 0f, lay.BannerMetaX, lay.BannerMetaY),
                     Children =
                     [
                         R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Discovery.Category)) with
@@ -90,8 +92,8 @@ internal static class ZuneBrowseCategory
     /// <summary>The sections' column on the gutter, 28 under the banner, 28 apart.</summary>
     static BoxEl Sections(ZuneBrowseLayout lay, Element[] kids) => new()
     {
-        Direction = 1, Gap = ZuneHomeTiers.For(lay.Tier).ZoneGap, MinWidth = 0f, MaxWidth = R.Space.PageMaxW, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(lay.Gutter, B.CategoryTop, lay.Gutter, B.CategoryBottom), Children = kids,
+        Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, MaxWidth = R.Space.PageMaxW, AlignItems = FlexAlign.Stretch,
+        Padding = new Edges4(lay.Gutter, lay.CategoryTop, lay.Gutter, B.CategoryBottom), Children = kids,
     };
 
     /// <summary>A page that scrolls as one: the banner over <paramref name="content"/> and "explore all".</summary>
@@ -99,10 +101,11 @@ internal static class ZuneBrowseCategory
         => Ui.ScrollView(new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [Banner(p.Title, lay), Sections(lay, [content, ExploreAll(p)])],
+            Children = [Banner(p.Title, lay), Sections(lay, [content, ExploreAll(p, lay)])],
         }) with { Grow = 1f, MinHeight = 0f, ScrollKey = p.ScrollKey };
 
-    static Element ExploreAll(BrowseCategoryProps p) => K.Link("zune-browse-explore-all", Loc.Get(Strings.Browse.ExploreAll), p.ExploreAll);
+    static Element ExploreAll(BrowseCategoryProps p, ZuneBrowseLayout lay)
+        => K.Link("zune-browse-explore-all", Loc.Get(Strings.Browse.ExploreAll), p.ExploreAll, lay.LinkTarget);
 
     // ── the body ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -124,8 +127,8 @@ internal static class ZuneBrowseCategory
     {
         var kids = new List<Element>(p.Bands.Count + 1);
         foreach (var band in p.Bands)
-            kids.Add(band.Facts.Kind == BrowseSectionKind.Shelf ? Shelf(p, band) : Block(p, band, lay));
-        kids.Add(ExploreAll(p));
+            kids.Add(band.Facts.Kind == BrowseSectionKind.Shelf ? Shelf(p, band, lay) : Block(p, band, lay));
+        kids.Add(ExploreAll(p, lay));
         return Ui.ScrollView(new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -136,7 +139,7 @@ internal static class ZuneBrowseCategory
     static readonly Func<float, float> s_cardHeight = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
 
     /// <summary>A shelf: the heading row (a titled shelf's "see all" drills into the section) over 154 covers 16 apart.</summary>
-    static Element Shelf(BrowseCategoryProps p, BrowseBand band)
+    static Element Shelf(BrowseCategoryProps p, BrowseBand band, ZuneBrowseLayout lay)
     {
         var f = band.Facts;
         var view = band.Shelf!;
@@ -149,7 +152,7 @@ internal static class ZuneBrowseCategory
         var host = p.Overlay;
         var open = p.OpenSection;
         Element? header = string.IsNullOrWhiteSpace(f.Title) ? null
-            : K.Heading(f.Title!, null, K.Link("see-all:" + f.Uri, Loc.Get(Strings.Home.SeeAll), () => open(view)));
+            : K.Heading(f.Title!, null, K.Link("see-all:" + f.Uri, Loc.Get(Strings.Home.SeeAll), () => open(view), lay.LinkTarget));
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) =>
             {
@@ -161,7 +164,9 @@ internal static class ZuneBrowseCategory
             cardHeight: s_cardHeight,
             header: header,
             pager: ShelfPager.Chevrons,
-            minCardW: H.ShelfCardW, maxCardW: H.ShelfCardW, fixedCardW: H.ShelfCardW, gap: H.ShelfGap, headerGap: H.HeadGap,
+            // Standard: the fixed 154 card; elsewhere the shelf FITS up to the tier's columns (live props of ONE shelf).
+            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
+            maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,
@@ -181,7 +186,7 @@ internal static class ZuneBrowseCategory
         Element grid = new GridEl
         {
             Key = "zune-browse-block-grid:" + band.Facts.Uri, MinColWidth = B.PlateMinCol, MaxColumns = lay.MoodCols,
-            ColGap = B.PlateGap, RowGap = B.PlateGap, Children = cells,
+            ColGap = lay.PlateGap, RowGap = lay.PlateGap, Children = cells,
         };
         return string.IsNullOrWhiteSpace(band.Facts.Title)
             ? grid with { Key = B.CategorySectionPrefix + band.Facts.Uri }
@@ -212,7 +217,7 @@ internal static class ZuneBrowseCategory
             else second ??= view;
         }
         if (heading is not null) pinned.Insert(0, K.Heading(heading, null, null));
-        pinned.Add(ExploreAll(p));
+        pinned.Add(ExploreAll(p, lay));
 
         IReadOnlyList<HomeCard> cards = concat ? p.Merged : first?.Cards ?? (IReadOnlyList<HomeCard>)Array.Empty<HomeCard>();
         bool charts = first is { IsChart: true } && (!concat || second is null || second.IsChart);
@@ -228,11 +233,11 @@ internal static class ZuneBrowseCategory
                 Banner(p.Title, lay),
                 new BoxEl
                 {
-                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = ZuneHomeTiers.For(lay.Tier).ZoneGap,
-                    Padding = new Edges4(lay.Gutter, B.CategoryTop, lay.Gutter, 0f),
+                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = lay.CategoryGap,
+                    Padding = new Edges4(lay.Gutter, lay.CategoryTop, lay.Gutter, 0f),
                     Children =
                     [
-                        new BoxEl { Direction = 1, Gap = ZuneHomeTiers.For(lay.Tier).ZoneGap, MinWidth = 0f, Children = pinned.ToArray() },
+                        new BoxEl { Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, Children = pinned.ToArray() },
                         new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [grid] },
                     ],
                 },
@@ -252,6 +257,6 @@ internal static class ZuneBrowseCategory
             return K.Section(K.Heading(Loc.Get(Strings.Browse.ExploreAll), null, null),
                 new BoxEl { Direction = 0, Gap = H.ShelfGap, MinWidth = 0f, ClipToBounds = true, Children = cards });
         }
-        return new BoxEl { Direction = 1, Gap = ZuneHomeTiers.For(lay.Tier).ZoneGap, MinWidth = 0f, Children = [ShimmerShelf(), ShimmerShelf()] };
+        return new BoxEl { Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, Children = [ShimmerShelf(), ShimmerShelf()] };
     }
 }

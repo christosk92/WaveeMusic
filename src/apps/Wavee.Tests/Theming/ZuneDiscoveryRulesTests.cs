@@ -5,6 +5,7 @@
 // strip takes the Recents zone, the pairs share a row), the new contract key, and the core host's row 2 (`HomeHost.ChromeRow`: the facet words as
 // views, the lit one current, the Following toggle, "all" alone before the words land).
 
+using FluentGpu.Foundation;
 using FluentGpu.Scroll.Runtime;
 using Wavee.HomeUi;
 using Wavee.Themes.Zune;
@@ -145,43 +146,156 @@ public sealed class ZuneDiscoveryRulesTests
         {
             var home = ZuneHomeTiers.For(tier);
             float inner = NarrowestOf(tier) - 2f * home.Gutter;
-            // The quickplay groups wrap, but each fits on its own.
-            float pins = home.QuickPins * home.PinTileW + (home.QuickPins - 1) * ZuneHomeRules.QuickTileGap;
-            float tiles = home.QuickTiles * home.QuickTileW + (home.QuickTiles - 1) * ZuneHomeRules.QuickTileGap;
-            Assert.True(pins <= inner, $"{tier}: the pins ({pins}) overflow {inner}");
-            Assert.True(tiles <= inner, $"{tier}: the history ({tiles}) overflows {inner}");
-            // The daylist strip leaves its copy room beside the art and the clock.
+            // The quickplay groups wrap, and a group's tiles wrap inside it: each TILE fits on its own; where the groups stand in a row (not Compact) each
+            // group fits on its own too.
+            float pins = home.QuickPins * home.PinTileW + (home.QuickPins - 1) * home.QuickTileGap;
+            float tiles = home.QuickTiles * home.QuickTileW + (home.QuickTiles - 1) * home.QuickTileGap;
+            Assert.True(home.PinTileW <= inner && home.QuickTileW <= inner, $"{tier}: a quickplay tile overflows {inner}");
+            if (!home.QuickStacked)
+            {
+                Assert.True(pins <= inner, $"{tier}: the pins ({pins}) overflow {inner}");
+                if (!home.HistoryRows) Assert.True(tiles <= inner, $"{tier}: the history ({tiles}) overflows {inner}");
+            }
+            // The daylist leaves its copy room beside the art, the clock and the play ring.
             if (home.DaylistForm == ZuneDaylistForm.Strip)
-                Assert.True(home.DaylistArtW + home.ClockW + 2f * ZuneHomeRules.DaylistCopyPad <= inner, $"{tier}: the daylist strip overflows {inner}");
-            else Assert.Equal(0f, home.DaylistArtW);
+                Assert.True(home.DaylistArtW + home.ClockW + 2f * home.DaylistPad <= inner, $"{tier}: the daylist strip overflows {inner}");
+            else
+            {
+                Assert.Equal(0f, home.ClockW);
+                Assert.True(home.DaylistArtW + home.RingSize + 2f * home.DaylistPad <= inner, $"{tier}: the daylist row overflows {inner}");
+            }
 
             var browse = ZuneBrowseTiers.For(tier);
             if (browse.ChartsBeside)
-                Assert.True(browse.ChartsW + ZuneBrowseRules.PairGap + browse.ForYouCols * ZuneBrowseRules.ListMinCol <= inner,
+                Assert.True(browse.ChartsW + browse.PairGap + browse.ForYouCols * ZuneBrowseRules.ListMinCol <= inner,
                     $"{tier}: charts | for you overflows {inner}");
             var search = ZuneSearchTiers.For(tier);
             if (search.TopBeside)
-                Assert.True(search.TopW + ZuneSearchRules.TopGap + ZuneSearchRules.BestMinCol <= inner, $"{tier}: top | best overflows {inner}");
+                Assert.True(search.TopW + search.TopGap + search.BestMinCol <= inner, $"{tier}: top | best overflows {inner}");
             Assert.True(search.HeroArt + ZuneSearchRules.HeroGap <= inner, $"{tier}: the top result's art overflows {inner}");
         }
     }
 
     [Fact]
-    public void The_narrow_tiers_stack_what_the_wide_tiers_set_side_by_side()
+    public void Compact_stacks_everything_and_small_sets_the_boards_pairs_side_by_side()
     {
-        foreach (var tier in new[] { WidthTier.Compact, WidthTier.Small })
-        {
-            Assert.False(ZuneHomeTiers.For(tier).PairBeside);
-            Assert.False(ZuneHomeTiers.For(tier).ChartsBeside);
-            Assert.True(ZuneHomeTiers.For(tier).DaylistStacked);
-            Assert.False(ZuneBrowseTiers.For(tier).ChartsBeside);
-            Assert.False(ZuneSearchTiers.For(tier).TopBeside);
-        }
+        // Compact (Z-Frame-Compact, Z-Home-Compact, Z-Browse-Compact, Z-Search-Compact): one column; four 80 pins, the history as rows, no new group; the
+        // daylist a 112 row with ONE 40 play ring at its end and no clock.
+        var c = ZuneHomeTiers.For(WidthTier.Compact);
+        Assert.True(c.QuickStacked);
+        Assert.True(c.HistoryRows);
+        Assert.Equal(4, c.QuickPins);
+        Assert.Equal(80f, c.PinTileW);
+        Assert.Equal(0, c.QuickFresh);
+        Assert.Equal(ZuneDaylistForm.Row, c.DaylistForm);
+        Assert.Equal(112f, c.DaylistH);
+        Assert.Equal(112f, c.DaylistArtW);
+        Assert.Equal(0f, c.ClockW);
+        Assert.True(c.PlayAtEnd);
+        Assert.Equal(1, c.DaylistRings);
+        Assert.Equal(40f, c.RingSize);
+        Assert.False(c.PairBeside);
+        Assert.False(c.ChartsBeside);
+        Assert.Equal(2, c.ShelfCols);
+        Assert.Equal(56f, c.ReleaseRowH);
+        Assert.False(ZuneBrowseTiers.For(WidthTier.Compact).ChartsBeside);
+        Assert.Equal(1, ZuneBrowseTiers.For(WidthTier.Compact).ForYouCols);
+        Assert.Equal(56f, ZuneBrowseTiers.For(WidthTier.Compact).ForYouRowH);
+        Assert.False(ZuneSearchTiers.For(WidthTier.Compact).TopBeside);
+        Assert.Equal(ZuneSearchHeroName.Above, ZuneSearchTiers.For(WidthTier.Compact).HeroName);
+        Assert.Equal(40f, ZuneSearchTiers.For(WidthTier.Compact).RingSize);
+
+        // Small (Z-Frame-Small, Z-Home-Small, Z-Browse-Small, Z-Search-Small): pins beside history (three 88 tiles, the name alone), the 112 row (140 art,
+        // play and shuffle with words), the release list beside "because you like" 32 apart, the charts beside For you, the top result beside best matches.
+        var s = ZuneHomeTiers.For(WidthTier.Small);
+        Assert.False(s.QuickStacked);
+        Assert.Equal(3, s.QuickPins);
+        Assert.Equal(88f, s.PinTileW);
+        Assert.Equal(88f, s.QuickTileW);
+        Assert.False(s.QuickSubs);
+        Assert.Equal(0, s.QuickFresh);
+        Assert.Equal(ZuneDaylistForm.Row, s.DaylistForm);
+        Assert.Equal(140f, s.DaylistArtW);
+        Assert.Equal(2, s.DaylistRings);
+        Assert.True(s.RingLabels);
+        Assert.False(s.PlayAtEnd);
+        Assert.True(s.PairBeside);
+        Assert.Equal(32f, s.PairGap);
+        Assert.False(s.ChartsBeside);
+        Assert.Equal(5, s.ShelfCols);
+        Assert.True(ZuneBrowseTiers.For(WidthTier.Small).ChartsBeside);
+        Assert.Equal(280f, ZuneBrowseTiers.For(WidthTier.Small).ChartsW);
+        Assert.Equal(120f, ZuneBrowseTiers.For(WidthTier.Small).BannerH);
+        Assert.True(ZuneSearchTiers.For(WidthTier.Small).TopBeside);
+        Assert.Equal(280f, ZuneSearchTiers.For(WidthTier.Small).TopW);
+        Assert.Equal(ZuneSearchHeroName.Below, ZuneSearchTiers.For(WidthTier.Small).HeroName);
+
         foreach (var tier in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
         {
             Assert.True(ZuneHomeTiers.For(tier).PairBeside);
+            Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.For(tier).DaylistForm);
             Assert.False(ZuneHomeTiers.For(tier).DaylistStacked);
         }
+    }
+
+    [Fact]
+    public void The_huge_records_are_the_boards()
+    {
+        var h = ZuneHomeTiers.For(WidthTier.Huge);
+        Assert.Equal(36f, h.ZoneGap);
+        Assert.Equal(6, h.QuickPins);
+        Assert.Equal(180f, h.PinTileW);
+        Assert.Equal(4, h.QuickTiles);
+        Assert.Equal(140f, h.QuickTileW);
+        Assert.Equal(3, h.QuickFresh);
+        Assert.Equal(48f, h.QuickGroupGap);
+        Assert.Equal(220f, h.DaylistH);
+        Assert.Equal(440f, h.DaylistArtW);
+        Assert.Equal(320f, h.ClockW);
+        Assert.Equal(ZuneDaylistTitle.Hero, h.DaylistTitle);
+        Assert.Equal(8, h.ShelfCols);
+        Assert.Equal(6, h.WideCols);
+        Assert.Equal(3, h.ClusterCols);
+        Assert.Equal(8, h.TileCols);
+        var b = ZuneBrowseTiers.For(WidthTier.Huge);
+        Assert.Equal(640f, b.ChartsW);
+        Assert.Equal(216f, b.BigPlateH);
+        Assert.True(b.ForYouPlates);
+        Assert.Equal(8, b.LinkCols);
+        Assert.Equal(260f, b.BannerH);
+        var q = ZuneSearchTiers.For(WidthTier.Huge);
+        Assert.Equal(480f, q.TopW);
+        Assert.Equal(240f, q.HeroArt);
+        Assert.True(q.HeroStacked);
+        Assert.Equal(3, q.BestCols);
+    }
+
+    [Fact]
+    public void A_window_too_short_for_the_strip_folds_the_daylist_to_one_row_and_keeps_every_other_tier_fact()
+    {
+        var policy = ZuneTiers.Policy;
+        Assert.Contains(new NamedRung(ZuneHomeRules.DaylistRung, new TierEdge(ZuneHomeRules.DaylistFullFrom, NarrowHold: ZuneTiers.Hold, WidenHold: 0f), RungAxis.Height),
+            policy.Rungs);
+        // Z-Shell-Short: 330 tall folds it at any width; the Small board's 600 does not (it keeps its 112 row), nor does a regular height.
+        var short330 = ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 330f, 800f));
+        Assert.Equal(ZuneDaylistForm.OneRow, short330.DaylistForm);
+        Assert.Equal(56f, short330.DaylistH);
+        Assert.Equal(56f, short330.DaylistArtW);
+        Assert.Equal(0f, short330.ClockW);
+        Assert.True(short330.PlayAtEnd);
+        Assert.False(short330.DaylistMeta);
+        Assert.Equal(ZuneHomeTiers.For(WidthTier.Small).PinTileW, short330.PinTileW);
+        Assert.Equal(ZuneDaylistForm.Row, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 600f, 800f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 960f, 1440f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.OneRow, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 330f, 1440f)).DaylistForm);
+        // The edge commits at 480 on widening and holds 24 on shrinking (456).
+        Assert.Equal(ZuneDaylistForm.OneRow, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 479f, 1440f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 480f, 1440f)).DaylistForm);
+        var from960 = WindowTiers.Resolve(policy, 1440f, 960f, 1440f);
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 456f, 1440f, previous: from960)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.OneRow, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 455f, 1440f, previous: from960)).DaylistForm);
+        // A view mounted with no policy reads Standard's strip.
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(TierFacts.Unknown).DaylistForm);
     }
 }
 

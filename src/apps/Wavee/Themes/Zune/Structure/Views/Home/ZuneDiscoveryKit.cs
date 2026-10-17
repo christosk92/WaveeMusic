@@ -50,11 +50,12 @@ internal static class ZuneDiscoveryKit
     public static TextEl Sub(string text)
         => R.Type.MicroMeta(text) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
-    /// <summary>A link word: the 13 voice in the secondary ink, the primary on hover, a hand and a hyperlink role.</summary>
-    public static Element Link(string key, string text, Action go)
+    /// <summary>A link word: the 13 voice in the secondary ink, the primary on hover, a hand and a hyperlink role. <paramref name="target"/> is the
+    /// tier's minimum hit target (40 at Compact, 0 elsewhere): the word is centred in a box at least that tall and wide.</summary>
+    public static Element Link(string key, string text, Action go, float target = 0f)
         => new BoxEl
         {
-            Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = target, MinHeight = target,
             Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, OnClick = go,
             Children =
             [
@@ -80,10 +81,11 @@ internal static class ZuneDiscoveryKit
     public static BoxEl Section(Element heading, Element body)
         => new() { Direction = 1, Gap = H.HeadGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [heading, body] };
 
-    /// <summary>The 36 ring: a filled accent disc (<paramref name="primary"/>) or a 2-dip outline in the primary ink, its glyph centred.</summary>
-    public static BoxEl RingDisc(string glyph, bool primary) => new()
+    /// <summary>The ring (36, the tier's <paramref name="size"/>: 40 at Compact): a filled accent disc (<paramref name="primary"/>) or a 2-dip
+    /// outline in the primary ink, its glyph centred.</summary>
+    public static BoxEl RingDisc(string glyph, bool primary, float size = H.RingSize) => new()
     {
-        Width = H.RingSize, Height = H.RingSize, Shrink = 0f, Corners = CornerRadius4.All(H.RingSize / 2f),
+        Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Fill = primary ? Prop.Of(static () => R.Ink.AccentAction) : ColorF.Transparent,
         BorderWidth = primary ? 0f : H.RingStroke, BorderColor = Tok.TextPrimary,
@@ -99,9 +101,9 @@ internal static class ZuneDiscoveryKit
     };
 
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
-    public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick)
+    public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize)
     {
-        var kids = new List<Element>(2) { RingDisc(glyph, primary) };
+        var kids = new List<Element>(2) { RingDisc(glyph, primary, size) };
         if (showLabel)
             kids.Add(R.Type.TrackTitle(label) with { Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap });
         Element box = new BoxEl
@@ -114,8 +116,9 @@ internal static class ZuneDiscoveryKit
     }
 
     /// <summary>A flat plate (a Browse or mood tile): its own colour (the accent where it has none), or its art where it has no colour, its name
-    /// at the bottom left in the on-media ink (15, or the 22 light voice on a <paramref name="big"/> plate). The whole plate opens it.</summary>
-    public static Element Plate(string key, string name, uint? colour, string? art, float height, Action open, bool big = false)
+    /// at the bottom left in the on-media ink (15, or the 22 light voice on a <paramref name="big"/> plate, the 40/48 one on a
+    /// <paramref name="hero"/> plate). The whole plate opens it.</summary>
+    public static Element Plate(string key, string name, uint? colour, string? art, float height, Action open, bool big = false, bool hero = false)
     {
         bool hasColour = colour is { } c && c != 0u;
         var layers = new List<Element>(3);
@@ -126,7 +129,7 @@ internal static class ZuneDiscoveryKit
             HitTestVisible = false,
             Children =
             [
-                (big ? R.Type.QuickplayHead(name) : R.Type.TrackTitle(name)) with
+                (hero ? R.Type.HeroTitle(name) : big ? R.Type.QuickplayHead(name) : R.Type.TrackTitle(name)) with
                 {
                     Color = Prop.Of(static () => R.OnMedia.Ink), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },

@@ -68,7 +68,7 @@ internal static class ZuneBrowseDirectory
     {
         var kids = new List<Element>(5);
         int band = 1;   // the first band's own entrance delay
-        if (ItemsOf(groups, BrowseGroup.Top) is { Count: > 0 } top) kids.Add(Band(BrowseGroup.Top, band++, Plates(top, live, lay.TopCols, lay.BigPlateH, big: true, "top")));
+        if (ItemsOf(groups, BrowseGroup.Top) is { Count: > 0 } top) kids.Add(Band(BrowseGroup.Top, band++, Plates(top, live, lay.TopCols, lay.BigPlateH, big: true, "top", lay.PlateGap, lay.BigPlateHero)));
 
         var charts = ItemsOf(groups, BrowseGroup.Charts);
         var forYou = ItemsOf(groups, BrowseGroup.ForYou);
@@ -77,27 +77,27 @@ internal static class ZuneBrowseDirectory
             bool beside = lay.ChartsBeside && charts is { Count: > 0 } && forYou is { Count: > 0 };
             var pair = new List<Element>(2);
             if (charts is { Count: > 0 })
-                pair.Add(Section(BrowseGroup.Charts, Plates(charts, live, cols: 2, lay.BigPlateH, big: true, "charts")) with
+                pair.Add(Section(BrowseGroup.Charts, Plates(charts, live, cols: 2, lay.BigPlateH, big: true, "charts", lay.PlateGap, lay.BigPlateHero)) with
                 {
                     Key = B.BandPrefix + "charts", Width = beside ? lay.ChartsW : float.NaN, Shrink = 0f,
                 });
             if (forYou is { Count: > 0 })
-                pair.Add(Section(BrowseGroup.ForYou, ForYouList(forYou, live, lay)) with
+                pair.Add(Section(BrowseGroup.ForYou, ForYou(forYou, live, lay)) with
                 {
                     Key = B.BandPrefix + "foryou", Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN,
                 });
             kids.Add(Band("charts+foryou", band++, new BoxEl
             {
-                Direction = (byte)(beside ? 0 : 1), Gap = beside ? B.PairGap : ZuneHomeTiers.For(lay.Tier).ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-                Layout = ZuneMotion.ColumnCollapse, Children = pair.ToArray(),
+                Direction = (byte)(beside ? 0 : 1), Gap = beside ? lay.PairGap : lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                Children = pair.ToArray(),
             }));
         }
 
         if (ItemsOf(groups, BrowseGroup.Genres) is { Count: > 0 } genres) kids.Add(Band(BrowseGroup.Genres, band++, Links(genres, live, lay, "genres")));
         if (ItemsOf(groups, BrowseGroup.MoodActivity) is { Count: > 0 } moods)
-            kids.Add(Band(BrowseGroup.MoodActivity, band++, Plates(moods, live, lay.MoodCols, lay.MoodH, big: false, "mood")));
+            kids.Add(Band(BrowseGroup.MoodActivity, band++, Plates(moods, live, lay.MoodCols, lay.MoodH, big: false, "mood", lay.PlateGap)));
         if (ItemsOf(groups, BrowseGroup.More) is { Count: > 0 } more) kids.Add(Band(BrowseGroup.More, band++, Links(more, live, lay, "more")));
-        return new BoxEl { Direction = 1, Gap = ZuneHomeTiers.For(lay.Tier).ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
+        return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
     static IReadOnlyList<BrowseCategory>? ItemsOf(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups, BrowseGroup g)
@@ -113,7 +113,7 @@ internal static class ZuneBrowseDirectory
     /// <summary>A band's keyed box (the same node at every tier: a crossing reflows it), its entrance on the inner box.</summary>
     static Element Band(string id, int index, Element content) => new BoxEl
     {
-        Key = B.BandPrefix + id + ":band", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Layout = ZuneMotion.ColumnCollapse,
+        Key = B.BandPrefix + id + ":band", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Layout = H.ChapterResize,
         Children = [new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Animate = Design.Entrance.Row(index), Children = [content] }],
     };
 
@@ -141,23 +141,33 @@ internal static class ZuneBrowseDirectory
 
     // ── the cells ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Flat plates in the categories' colours, <paramref name="cols"/> across (ONE keyed grid: the count is a live prop).</summary>
-    internal static Element Plates(IReadOnlyList<BrowseCategory> items, bool live, int cols, float height, bool big, string id)
+    /// <summary>Flat plates in the categories' colours, <paramref name="cols"/> across (ONE keyed grid: the count is a live prop), <paramref name="gap"/>
+    /// apart; the name in the 40/48 voice on a <paramref name="hero"/> plate.</summary>
+    internal static GridEl Plates(IReadOnlyList<BrowseCategory> items, bool live, int cols, float height, bool big, string id, float gap, bool hero = false)
     {
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++)
         {
             var m = BrowseTiles.ModelOf(items[i], live);
-            cells[i] = K.Plate("zune-plate:" + m.Uri, m.Title, m.Color, m.Artwork, height, m.Open, big);
+            cells[i] = K.Plate("zune-plate:" + m.Uri, m.Title, m.Color, m.Artwork, height, m.Open, big, hero);
         }
         return new GridEl
         {
-            Key = "zune-browse-plates:" + id, MinColWidth = B.PlateMinCol, MaxColumns = cols, ColGap = B.PlateGap, RowGap = B.PlateGap, Children = cells,
+            Key = "zune-browse-plates:" + id, MinColWidth = B.PlateMinCol, MaxColumns = cols, ColGap = gap, RowGap = gap, Children = cells,
         };
     }
 
-    /// <summary>For you: a list of 36 rows, the category's colour as a 10 square before its name.</summary>
-    static Element ForYouList(IReadOnlyList<BrowseCategory> items, bool live, ZuneBrowseLayout lay)
+    /// <summary>For you: a list (Standard, Small) or plates (Huge), the two arms keyed alternatives in an unkeyed box that cross-fade across a crossing.</summary>
+    static Element ForYou(IReadOnlyList<BrowseCategory> items, bool live, ZuneBrowseLayout lay)
+    {
+        Element arm = lay.ForYouPlates
+            ? Plates(items, live, lay.ForYouCols, lay.ForYouPlateH, big: false, "foryou", lay.PlateGap) with { Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade }
+            : ForYouList(items, live, lay) with { Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade };
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [arm] };
+    }
+
+    /// <summary>For you as a list: 36 rows with the category's colour as a 10 square before its name (Compact: 56 rows, a 44 tile).</summary>
+    static GridEl ForYouList(IReadOnlyList<BrowseCategory> items, bool live, ZuneBrowseLayout lay)
     {
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++)
@@ -166,13 +176,13 @@ internal static class ZuneBrowseDirectory
             bool colour = m.Color is { } c && c != 0u;
             cells[i] = new BoxEl
             {
-                Key = "zune-foryou:" + m.Uri, Height = B.ForYouRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = B.DotGap, MinWidth = 0f,
+                Key = "zune-foryou:" + m.Uri, Height = lay.ForYouRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = B.DotGap, MinWidth = 0f,
                 Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = m.Open,
                 Children =
                 [
                     new BoxEl
                     {
-                        Width = B.DotSize, Height = B.DotSize, Shrink = 0f,
+                        Width = lay.ForYouTile, Height = lay.ForYouTile, Shrink = 0f,
                         Fill = colour ? ColorScience.ToColor(m.Color!.Value) : Prop.Of(static () => Tok.AccentDefault),
                     },
                     R.Type.TrackTitle(m.Title) with
@@ -184,7 +194,7 @@ internal static class ZuneBrowseDirectory
         }
         return new GridEl
         {
-            Key = "zune-browse-list:foryou", MinColWidth = B.ListMinCol, MaxColumns = lay.ForYouCols, ColGap = B.ListColGap, RowHeight = B.ForYouRowH,
+            Key = "zune-browse-list:foryou", MinColWidth = B.ListMinCol, MaxColumns = lay.ForYouCols, ColGap = B.ListColGap, RowHeight = lay.ForYouRowH,
             Children = cells,
         };
     }
@@ -194,11 +204,11 @@ internal static class ZuneBrowseDirectory
     {
         var models = new BrowseTileModel[items.Count];
         for (int i = 0; i < models.Length; i++) models[i] = BrowseTiles.ModelOf(items[i], live);
-        return LinkGrid(models, lay.LinkCols, id);
+        return LinkGrid(models, lay.LinkCols, id, lay.LinkRowH);
     }
 
     /// <summary>A list of link names (the genres, More, a search's genre links).</summary>
-    internal static Element LinkGrid(IReadOnlyList<BrowseTileModel> models, int cols, string id)
+    internal static Element LinkGrid(IReadOnlyList<BrowseTileModel> models, int cols, string id, float rowH = B.LinkRowH)
     {
         var cells = new Element[models.Count];
         for (int i = 0; i < cells.Length; i++)
@@ -206,7 +216,7 @@ internal static class ZuneBrowseDirectory
             var m = models[i];
             cells[i] = new BoxEl
             {
-                Key = "zune-link:" + m.Uri, Height = B.LinkRowH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Key = "zune-link:" + m.Uri, Height = rowH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = m.Open,
                 Children =
                 [
@@ -219,7 +229,7 @@ internal static class ZuneBrowseDirectory
         }
         return new GridEl
         {
-            Key = "zune-browse-list:" + id, MinColWidth = B.ListMinCol, MaxColumns = cols, ColGap = B.ListColGap, RowHeight = B.LinkRowH, Children = cells,
+            Key = "zune-browse-list:" + id, MinColWidth = B.ListMinCol, MaxColumns = cols, ColGap = B.ListColGap, RowHeight = rowH, Children = cells,
         };
     }
 

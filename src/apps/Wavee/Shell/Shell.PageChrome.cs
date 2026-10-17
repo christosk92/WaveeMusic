@@ -7,7 +7,7 @@
 // included, so the core publishes one more thing here: THE CURRENT PAGE'S CHROME, as a signal, for whatever route is on screen.
 //
 //   · ROUTE-LEVEL ROW 2 (`RouteViews`): a family whose row 2 is a set of sibling routes answers it from the route alone, so the band
-//     shows it on the navigation's first frame, before the page mounts. The Library kinds are the first (`User.LibraryChromeViews`), Browse's bands the second (`BrowseBands.ChromeViews`).
+//     shows it on the navigation's first frame, before the page mounts. The Library kinds are the first (`User.LibraryChromeViews`), Browse's bands the second (`BrowseBands.ChromeViews`), Home's lone "all" a seed (`HomeSeedViews`, ZT4: `HomeHost` publishes the real words).
 //   · IN-PAGE ROW 2 (`Publish`, through the `PageChromeSink` the content host provides around every page): a page's core host or its
 //     theme template publishes its in-page tabs, its actions and its backdrop under its route. LRU 16, as the masthead publications.
 //   · THE MERGE (`ChromeOf`): the title and trail are the masthead's for its family and the destination's title elsewhere; the views
@@ -106,7 +106,17 @@ public static partial class Shell
         /// <summary>The views a route family answers from the route alone (empty for every other route). Pure but for the verbs.</summary>
         public static IReadOnlyList<PageView> RouteViews(in Route route)
             => User.IsLibraryChromeKind(route.Kind) ? User.LibraryChromeViews(route.Kind)
-             : BrowseBands.IsChromeKind(route.Kind) ? BrowseBands.ChromeViews(route) : [];
+             : BrowseBands.IsChromeKind(route.Kind) ? BrowseBands.ChromeViews(route)
+             : route.Kind == RouteKind.Home ? HomeSeedViews(route) : [];
+
+        /// <summary>Home's row-2 SEED (P5 ZT4): the "all" word alone, lit, so a band that draws row 2 reserves it on the navigation's first frame instead
+        /// of easing 52 to 84 when <c>HomeHost</c> publishes the real words from its effect (those replace it under the same "all" id). Only for the
+        /// route that names no facet: a facet switch changes the route's argument inside the mounted page and the host publishes under the new route
+        /// in the same turn, so the real words never give way to a lone "all" there.</summary>
+        static IReadOnlyList<PageView> HomeSeedViews(in Route route)
+            => Entities.Strings.Resolve(route.Arg).Length == 0
+                ? [new PageView(HomeUi.HomeHost.AllViewId, Loc.Get(Strings.Home.FacetAll), Current: true, s_goHome)]
+                : [];
 
         /// <summary>Bumped when a page's publication changes.</summary>
         public static readonly Signal<int> Version = new(0);

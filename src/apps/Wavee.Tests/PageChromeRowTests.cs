@@ -45,7 +45,6 @@ public class PageChromeRowTests
     }
 
     [Theory]
-    [InlineData(Shell.RouteKind.Home)]
     [InlineData(Shell.RouteKind.Recents)]
     [InlineData(Shell.RouteKind.Settings)]
     [InlineData(Shell.RouteKind.Search)]
@@ -53,6 +52,24 @@ public class PageChromeRowTests
     {
         Assert.Empty(Shell.PageChromeChannel.RouteViews(new Shell.Route(kind)));
         Assert.False(User.IsLibraryChromeKind(kind));
+    }
+
+    [Fact]
+    public void Home_answers_the_lone_all_view_as_its_row_two_seed_so_the_band_reserves_row_two_on_the_first_frame()
+    {
+        // P5 ZT4: the host's effect publishes the real facet words (replacing this under the same id); until then "all" stands, lit.
+        var views = Shell.PageChromeChannel.RouteViews(new Shell.Route(Shell.RouteKind.Home));
+        var all = Assert.Single(views);
+        Assert.Equal(Wavee.HomeUi.HomeHost.AllViewId, all.Id);
+        Assert.True(all.Current);
+        Assert.False(string.IsNullOrEmpty(all.Label));
+        Assert.Null(all.Count);
+        Assert.False(User.IsLibraryChromeKind(Shell.RouteKind.Home));
+
+        // A facet switch changes the route's argument inside the mounted page: the host publishes the real words under it in the same turn, so the seed
+        // is not offered there.
+        var facet = new Shell.Route(Shell.RouteKind.Home, default, Entities.Strings.Intern("podcasts-chip".AsSpan()));
+        Assert.Empty(Shell.PageChromeChannel.RouteViews(facet));
     }
 
     [Fact]
