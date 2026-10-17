@@ -1,0 +1,98 @@
+// ── Themes/Zune/Structure/Views/Overlays/ZuneOverlayParts.cs — the parts Zune's overlays and dialogs share (themes plan 6.3, P5 Z8a) ───────────────────
+//
+// A glyph from an engine icon reference, the hairline, the quiet skeleton bar, the accent word (a lowercase command that turns to the ink on hover) and the
+// round verb (a ring, or the accent disc for the play verb). Zune's overlays are flat plates with words on them: the parts are the same few shapes everywhere.
+
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Roles;
+using static FluentGpu.Dsl.Ui;
+
+namespace Wavee.Themes.Zune;
+
+/// <summary>The shared parts of Zune's overlays.</summary>
+internal static class ZuneOverlayParts
+{
+    /// <summary>An <see cref="IconRef"/> as an element: the layered vector when it is registered, else the glyph in its font.</summary>
+    public static Element GlyphOf(IconRef icon, float size, ColorF ink)
+    {
+        if (icon.ThemedName is { Length: > 0 } themed && ThemedIconRegistry.Has(themed)) return ThemedIcon.Create(themed, size);
+        return icon.Glyph is { Length: > 0 } glyph ? Icon(glyph, size, ink, icon.Font) : new BoxEl { Width = size, Height = size, Shrink = 0f };
+    }
+
+    /// <summary>The menu's hairline: 16 in, 5 above and below (the menu style's separator).</summary>
+    public static Element Divider() => new BoxEl
+    {
+        Height = 1f, Shrink = 0f, Margin = ZuneOverlayRules.SheetDividerMargin, Fill = Tok.StrokeDividerDefault, HitTestVisible = false,
+    };
+
+    /// <summary>A quiet bar where a word is not known yet: it keeps the line's height.</summary>
+    public static Element Skeleton(float width, float height) => new BoxEl
+    {
+        Width = width, Height = height, Shrink = 0f, Corners = CornerRadius4.All(ZuneOverlayRules.SkeletonBarRadius), Fill = Tok.FillSubtleSecondary,
+    };
+
+    /// <summary>A circle that stands for a picture not known yet.</summary>
+    public static Element SkeletonCircle(float size) => new BoxEl
+    {
+        Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f), Fill = Tok.FillSubtleSecondary,
+    };
+
+    /// <summary>The round verb of the context menu's strip and sheet: the accent disc for the play verb (the first, when it is a plain command), a 2-DIP ring for the others, the
+    /// accent ring and the filled icon while a toggle is on. Its words are its tool tip and its automation name; a press runs the command and closes the menu.</summary>
+    public static Element RoundVerb(string key, AppBarCommand command, bool disc, float size, float glyph, Action press)
+    {
+        bool on = command.Kind == AppBarCommandKind.ToggleButton && command.IsChecked;
+        bool enabled = command.Enabled;
+        IconRef icon = on && command.CheckedIcon is { } filled ? filled : command.Icon;
+        ColorF ink = !enabled ? Tok.TextDisabled : disc ? Tok.TextOnAccentPrimary : on ? Tok.AccentTextPrimary : Tok.TextPrimary;
+        var corners = CornerRadius4.All(size / 2f);
+        BoxEl verb;
+        if (disc)
+        {
+            verb = new BoxEl
+            {
+                Key = key, Width = size, Height = size, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = corners, Fill = enabled ? Tok.AccentDefault : Tok.AccentDisabled,
+                HoverFill = enabled ? Tok.AccentSecondary : Tok.AccentDisabled, PressedFill = enabled ? Tok.AccentTertiary : Tok.AccentDisabled,
+                Role = AutomationRole.Button, Focusable = enabled, Cursor = enabled ? CursorId.Hand : default, OnClick = enabled ? press : null,
+                Children = [GlyphOf(icon, glyph, ink)],
+            };
+        }
+        else
+        {
+            verb = new BoxEl
+            {
+                Key = key, Width = size, Height = size, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = corners, BorderWidth = ZuneOverlayRules.StripRing,
+                BorderColor = !enabled ? Tok.TextTertiary : on ? Tok.AccentDefault : Tok.TextPrimary,
+                Role = AutomationRole.Button, Focusable = enabled, OnClick = enabled ? press : null,
+                Children = [GlyphOf(icon, glyph, ink)],
+            }.Interactive(Interaction.Subtle, isEnabled: enabled);
+        }
+        return ToolTip.Wrap(verb, command.Label);
+    }
+
+    /// <summary>An engine button drawn as an accent word (a lowercase command in the accent that turns lighter on hover): the action of an info bar, a banner, a toast card.</summary>
+    public static BoxEl AccentWord(string label, Action onClick)
+    {
+        var parts = new TemplateParts();
+        parts.Set<TextEl>(Button.PartLabel, t => ZuneText.Cased(t, LabelKind.Command));
+        var style = Button.DefaultStyle(ButtonAppearance.Standard) with
+        {
+            Foreground = Tok.AccentDefault, HoverForeground = Tok.AccentSecondary, PressedForeground = Tok.AccentTertiary,
+        };
+        return Button.Standard(label, onClick, style, parts: parts);
+    }
+
+    /// <summary>A command word in <paramref name="ink"/> (it turns to the primary ink on hover), at least <paramref name="minHeight"/> tall: the retry word of an amber slab.</summary>
+    public static BoxEl InkWord(string text, Action onClick, ColorF ink, float minHeight) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinHeight = minHeight, MinWidth = minHeight, Padding = ZuneSettingsRules.CmdPadding,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
+        Children = [ZuneText.Command(text) with { Color = ink, HoverColor = Tok.TextPrimary }],
+    }.Interactive(Interaction.Subtle);
+}
