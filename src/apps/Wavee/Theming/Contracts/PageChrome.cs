@@ -77,7 +77,7 @@ public sealed record PageAction(string Id, string Label, Action Invoke, PageActi
 public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = null)
 {
     /// <summary>Claims nothing.</summary>
-    public static PageBackdrop None { get; } = new(null);
+    public static PageBackdrop None { get; } = new(Bleed: null);
 
     /// <summary>Nothing is claimed.</summary>
     public bool IsNone => Bleed is null && (Mix is null || Mix.Count == 0);

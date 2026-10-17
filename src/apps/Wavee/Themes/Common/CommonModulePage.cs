@@ -28,6 +28,7 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using static Wavee.Modules;
+using PageAction = Wavee.Sdk.PageAction;   // a module page's action, not the page chrome's (Wavee.Theming.Contracts.PageAction)
 
 namespace Wavee.Themes.Common;
 

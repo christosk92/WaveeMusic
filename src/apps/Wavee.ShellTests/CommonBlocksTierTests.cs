@@ -28,6 +28,7 @@ using Wavee.Themes.Common;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Xunit;
+using PageAction = Wavee.Sdk.PageAction;
 
 namespace Wavee.ShellTests;
 
