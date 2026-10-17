@@ -47,6 +47,11 @@ public readonly record struct LibraryGridGaps(float Column, float Row)
 /// <summary>What a structure decides about the library navigator's width per content tier, while the user has never dragged it (contract 1.21).</summary>
 public sealed record LibraryTierPolicy
 {
+    /// <summary>The structure draws the ALBUMS library as the board does: an "all artists" column, then the picked artist's albums, then the album's songs. The host then groups
+    /// the albums by their first billed artist (<see cref="LibraryPageProps.Groups"/>) on the split page and narrows the navigator to the picked artist; false (the default,
+    /// Classic's) leaves the albums navigator exactly as it was and publishes no groups. Contract addition after 1.22.</summary>
+    public bool GroupAlbumsByArtist { get; init; }
+
     /// <summary>The navigator's resting width at a Huge content tier (NaN: the key's own default at every tier).</summary>
     public float HugeNavWidth { get; init; } = float.NaN;
 

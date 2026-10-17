@@ -142,8 +142,15 @@ internal static partial class ZuneLibraryPage
     /// <summary>The count as ONE bound text (the host's "312 albums").</summary>
     static Element Count(LibraryPageProps p) => R.Type.DenseMeta("") with
     {
-        // The board's "312 albums": the number and the kind's own words (the page's title), cased by the label role.
-        Text = Prop.Of(() => p.CountText.Current() + " " + p.Title), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+        // The board's "312 albums": the number and the kind's noun, one ICU plural per kind ("1 album", "18 albums"), cased by the label role.
+        Text = Prop.Of(() => CountWords(p, p.Count.Current())), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+    };
+
+    static string CountWords(LibraryPageProps p, int n) => p.Entity switch
+    {
+        EntityKind.Artist => Strings.Theme.Zune.Collection.Library.CountArtists(n),
+        EntityKind.Show => p.IsPodcasts ? Strings.Theme.Zune.Collection.Library.CountShows(n) : Strings.Theme.Zune.Collection.Library.CountAudiobooks(n),
+        _ => Strings.Theme.Zune.Collection.Library.CountAlbums(n),
     };
 
     // ══ THE SORT WORDS ═══════════════════════════════════════════════════════════════════════════════════════════════

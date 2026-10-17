@@ -2828,6 +2828,13 @@
           "sort": "Sort",
           "view": "View",
           "findIn": "find in {kind}",
+          "countAlbums": "{n, plural, one {# album} other {# albums}}",
+          "countArtists": "{n, plural, one {# artist} other {# artists}}",
+          "countShows": "{n, plural, one {# show} other {# shows}}",
+          "countAudiobooks": "{n, plural, one {# audiobook} other {# audiobooks}}",
+          "allArtists": "All artists",
+          "allAlbums": "All albums",
+          "albumsInLibrary": "{n, plural, one {# album} other {# albums}} · in your library",
           "sizeSmall": "Small",
           "sizeMedium": "Medium",
           "sizeLarge": "Large"

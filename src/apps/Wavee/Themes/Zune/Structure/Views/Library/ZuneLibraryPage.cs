@@ -63,9 +63,15 @@ internal static partial class ZuneLibraryPage
         else
         {
             bool artists = props.Entity == EntityKind.Artist;
-            Element right = props.FullSearch
+            bool groups = HasGroups(props);
+            // The albums' "all artists" column (the host's grouping): Small's board has no songs pane beside the covers.
+            Element? right = props.FullSearch
                 ? (artists ? SearchArtistColumns(props, cache) : SearchAlbumDetail(props, cache))
-                : (artists ? ReaderColumn(props, cache.Layout) : DetailColumn(props, cache.Layout));
+                : (artists ? ReaderColumn(props, cache.Layout) : (groups && !cache.Layout.GroupPane ? null : DetailColumn(props, cache.Layout)));
+            var columns = new List<Element>(3);
+            if (groups) columns.Add(GroupColumn(props, cache.Layout));
+            columns.Add(NavColumn(props, cache));
+            if (right is not null) columns.Add(right);
             inner = new BoxEl
             {
                 Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
@@ -75,7 +81,7 @@ internal static partial class ZuneLibraryPage
                     new BoxEl
                     {
                         Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.ColGap,
-                        Children = [NavColumn(props, cache), right],
+                        Children = columns.ToArray(),
                     },
                 ],
             };
@@ -153,7 +159,10 @@ internal static partial class ZuneLibraryPage
             Key = LR.NavKey, Direction = 1,
             Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : l.NavGrow, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
             MinWidth = artists ? l.ReaderNavW : l.NavMinW, MaxWidth = cap, Animate = Design.Reveal.Resize,
-            Children = [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
+            Children = HasGroups(p)
+                // The picked artist's name over their albums: the list is the one flexing child.
+                ? [GroupHeading(p), new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [ListBody(p, c)] }]
+                : [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
         };
     }
 

@@ -330,6 +330,8 @@ public static partial class Platform
         public static SettingKey<int> LibraryView(string kind) => new("library." + kind + ".view", 1);
         public static SettingKey<int> LibrarySize(string kind) => new("library." + kind + ".size", 1);
         public static SettingKey<string> LibrarySelected(string kind) => new("library." + kind + ".selected", "");
+        /// <summary>The albums page's picked artist group (the route key of an artist; "" = every artist). Written only by a structure that asked for the grouping.</summary>
+        public static SettingKey<string> LibraryGroup(string kind) => new("library." + kind + ".group", "");
         public static SettingKey<string> LibraryAlbumKey(string kind) => new("library." + kind + ".albumkey", "");
         public static SettingKey<int> LibraryAlbumSort(string kind) => new("library." + kind + ".album.sort", 0);
         /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
