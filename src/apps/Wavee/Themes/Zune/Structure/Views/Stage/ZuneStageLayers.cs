@@ -226,8 +226,16 @@ internal static class ZuneStageNowPlayingCard
         bool card = a.Form == ZuneStageForm.Card;
         // the Stack draws no card (its cover and titles stand on the face); the allocator's card hangs under the head
         bool drawn = a.Form != ZuneStageForm.Stack;
-        var (x, y, w, h) = card ? (a.Card.X, a.Card.Y, a.Card.W, a.Card.H) : sc.Layout.Value.NowPlayingCardRect(sc.Mode.Value);
-        if (!card) y += ZuneStageTiers.StageOf(in tiers).Drop;
+        var L = sc.Layout.Value;
+        var look = sc.Look.Value;
+        var t = ZuneStageTiers.StageOf(in tiers);
+        var (x, y, w, h) = card ? (a.Card.X, a.Card.Y, a.Card.W, a.Card.H) : L.NowPlayingCardRect(sc.Mode.Value);
+        if (!card)
+        {
+            y += t.Drop;
+            // the 460 card's edge sits on the tier's gutter (the Compact identity card runs full-bleed: its cover and titles sit on the gutter)
+            if (!L.IdentityCardOn(sc.Mode.Value)) x += ZuneStageGeometry.EdgeShift(in L, in look, t);
+        }
         var shown = props.Shown;
         return new BoxEl
         {

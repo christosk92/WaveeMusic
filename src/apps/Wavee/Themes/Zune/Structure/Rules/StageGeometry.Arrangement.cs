@@ -23,7 +23,7 @@
 // one that still does not fit is the PLATE: the allocator's layout of the same look. A change of arrangement (a layout switch, a tier
 // crossing) moves the ONE cover node on its spring and cross-fades the plates, so nothing jumps.
 
-using FluentGpu.Foundation;
+using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -326,4 +326,64 @@ public static partial class ZuneStageGeometry
 
     /// <summary>The caption shows in this arrangement: the Stack has no room for it (the titles and the controls fill the column).</summary>
     public static bool CaptionAllowed(in ZuneStageArrangement a) => a.Form != ZuneStageForm.Stack;
+
+    // ── the plate arrangement on the tier's gutter (the identity, the card and the pane) ─────────────────────────────────
+
+    /// <summary>How far the allocator's left-anchored parts of a PLATE stage (no layout look) move so the identity's left edge sits on the
+    /// tier's gutter (16 / 24 / 48 / 64 / 96): the hero cover and its titles (the allocator puts them at 5.8 % of the width: 44 / 80 / 148
+    /// at 800 / 1440 / 2560), a Compact window's identity card cover (the allocator's 8) and the 460 now-playing card's edge (its 24).
+    /// 0 for a layout look: the Large art, Centered and Artist layouts place their parts by their own rules.</summary>
+    public static float EdgeShift(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier)
+    {
+        if (look.IsLayout) return 0f;
+        float edge = layout.IdentityCardOn(look.Mode) ? layout.CoverX(look.Mode)
+            : look.Mode == Stage.Mode.Visualizer ? Stage.Layout.NowPlayingCardX
+            : layout.CoverX(look.Mode);
+        return tier.Gutter - edge;
+    }
+
+    /// <summary>The title column's width after <see cref="EdgeShift"/>: the identity card's runs to the gutter at the right; a row identity
+    /// (Portrait, Compact) keeps its right edge; the stacked identity and the 460 card's keep their width and move rigidly.</summary>
+    public static float PlateTitleWidth(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier, float shift)
+    {
+        float w = layout.TitleW(in look);
+        if (look.IsLayout) return w;
+        if (layout.IdentityCardOn(look.Mode)) return MathF.Max(0f, layout.W - tier.Gutter - (layout.TitleX(in look) + shift));
+        if (look.Mode != Stage.Mode.Visualizer && layout.IdentityIsRow) return MathF.Max(0f, w - shift);
+        return w;
+    }
+
+    /// <summary>The Up next column's left edge (Lyrics mode, Huge and Huge 4K): the core's rect moved in by the tier's gutter.</summary>
+    public static float UpNextPaneX(in Stage.Layout layout, ZuneStageLayout tier) => MathF.Max(0f, layout.UpNextRect.X - tier.Gutter);
+
+    /// <summary>Where the lyrics' text starts inside the pane: the row's side padding at the stage's type scale (64 at the authored 36,
+    /// 22 at the Compact stage's 26).</summary>
+    public static float LyricsLead(in Stage.Layout layout) => Lyrics.Surface.Timed(true).Scaled(layout.LyricsTypeScale).SidePad;
+
+    /// <summary>The pane region of a plate stage, under the tier's head. The pane sits on the tier's gutter:
+    /// <list type="bullet">
+    /// <item>Portrait (the pane under the identity): its left edge is the gutter, and the lyrics' TEXT starts there (the pane moves left by
+    /// the row's side padding, which the pane clips);</item>
+    /// <item>beside the art (Desktop, Ultrawide): it moves with the art by <see cref="EdgeShift"/>, keeping the art-to-pane gap and its right edge;</item>
+    /// <item>the lyrics pane docked beside the Up next column stops <see cref="ZuneStageLayout.UpNextGap"/> short of it, and is at most
+    /// <see cref="ZuneStageLayout.LyricsPaneMaxW"/> wide (Huge: 900).</item>
+    /// </list>A layout look keeps the allocator's rect.</summary>
+    public static ZuneRect PlatePane(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier, Stage.PaneKind pane)
+    {
+        var (x, y, w, h) = layout.PaneRect(in look);
+        y += tier.Drop;
+        h = MathF.Max(0f, h - tier.Drop);
+        if (look.IsLayout) return new ZuneRect(x, y, w, h);
+        bool lyrics = pane == Stage.PaneKind.Lyrics;
+        float right = x + layout.PaneW;   // the pane's full run (the allocator narrows the lyrics pane by its own Up next gap, which Zune replaces)
+        float nx;
+        if (layout.Aspect == Stage.Aspect.Portrait) nx = tier.Gutter - (lyrics ? LyricsLead(in layout) : 0f);
+        else nx = x + EdgeShift(in layout, in look, tier);
+        if (lyrics && look.Mode == Stage.Mode.Lyrics)
+        {
+            if (layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
+            if (tier.LyricsPaneMaxW > 0f) right = MathF.Min(right, nx + tier.LyricsPaneMaxW);
+        }
+        return new ZuneRect(nx, y, MathF.Max(0f, right - nx), h);
+    }
 }

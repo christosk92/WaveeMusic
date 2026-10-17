@@ -6,6 +6,8 @@
 //   · the window tier is the size's, and the stage draws its tier's record (`ZuneStageTiers.StageOf`): the head is the record's height,
 //     the plate is the height the allocator budgets from the tier's metrics, at the foot;
 //   · the head and the plate never overlap and neither runs outside the window;
+//   · the identity's cover stands on the record's gutter (16 / 24 / 48 / 64 / 96): the pure rules pin the titles, the card and the lyrics lead
+//     (`ZuneStageGeometryTests`: the lyrics' text starts on the gutter under the identity, the Huge column is 900 wide at most);
 //   · at Compact every target of the head and the plate (the seek rail aside) is at least 40 x 40;
 //   · Visualizer mode on a Compact window draws the Stack arrangement with the cover at its record's rect;
 //   · a crossing (Standard → Huge → Huge 4K → Small → Compact → Standard) keeps the stage root, the transport's layer and the cover:
@@ -89,6 +91,10 @@ public sealed partial class ZuneTierLayoutTests
                 var head = Head(shell);
                 Assert.Equal(record.HeadH, head.H, 0.5f);
                 Assert.Equal(0f, head.Y, 0.5f);
+
+                // the identity's cover (the Compact strip's, the hero's) sits on the record's gutter, not the allocator's 5.8 % pad (T4)
+                var cover = StageRect(shell, "stage:cover");
+                Assert.Equal(record.Gutter, cover.X - root.X, 0.5f);
 
                 var plate = StageRect(shell, "stage:transport:plate");
                 Assert.Equal(PlateFor(size.Width, size.Height, in tiers), plate.H, 0.5f);

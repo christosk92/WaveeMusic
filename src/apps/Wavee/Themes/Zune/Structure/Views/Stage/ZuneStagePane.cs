@@ -1,6 +1,8 @@
 // ── Themes/Zune/Structure/Views/Stage/ZuneStagePane.cs — Zune's pane region of the fullscreen stage (P5 Z4b) ────────────────────────
 //
-// The region the core pane host fills (the lyrics pane, Up next, the Artist pane: Z4c's views): TOP-LEFT at the allocator's pane rect, or in
+// The region the core pane host fills (the lyrics pane, Up next, the Artist pane: Z4c's views): TOP-LEFT at the allocator's pane rect moved
+// onto the tier's gutter (`ZuneStageGeometry.PlatePane`: the lyrics' text starts at the gutter under the identity, beside the art the pane
+// keeps its gap to it, and it stops short of the Up next column, at most 900 wide at Huge), or in
 // the Large art column under "playing from …" (`ZuneStageGeometry.Arrange`: Large art keeps its lyrics). It clips, slides to a new rect on
 // the stage's spring and shows only while the layout has a pane and one is chosen. Each pane's body rises 40 and fades in over 500 ms, and
 // fades out in place (the stage's production recipe). WHICH pane shows and the KeepAlive that keeps each one's state are the core's.
@@ -34,13 +36,10 @@ internal static class ZuneStagePane
         var k = sc.Look.Value;
         var tiers = ctx.Tier();   // hooks first, unconditionally
         var a = ZuneStageKit.Arrangement(sc, in tiers);
-        var (x, y, w, h) = a.Form == ZuneStageForm.Column ? (a.Pane.X, a.Pane.Y, a.Pane.W, a.Pane.H) : L.PaneRect(in k);
-        if (a.Form != ZuneStageForm.Column)
-        {
-            // the allocator hangs the pane under its 48 bar: the tier's taller head (the Compact pivot row, 56, 72) takes its top
-            float drop = ZuneStageTiers.StageOf(in tiers).Drop;
-            (y, h) = (y + drop, MathF.Max(0f, h - drop));
-        }
+        // the plate's pane sits on the tier's gutter (the lyrics' text starts there), under the tier's taller head (the Compact pivot row, 56, 72),
+        // and stops short of the Up next column (`ZuneStageGeometry.PlatePane`)
+        var pane = a.Form == ZuneStageForm.Column ? a.Pane : G.PlatePane(in L, in k, ZuneStageTiers.StageOf(in tiers), sc.Pane.Value);
+        var (x, y, w, h) = (pane.X, pane.Y, pane.W, pane.H);
         return new BoxEl
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = w, Height = h, ClipToBounds = true,
