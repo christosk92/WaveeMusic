@@ -75,21 +75,15 @@ public sealed partial class ZuneTierLayoutTests
 
         var huge = ZuneSettingsTiers.For(WidthTier.Huge);
         Assert.Equal(150f, huge.TitleSize);              // Z-Settings-Appearance-Huge: the 150 / 160 panorama
-        Assert.Equal(192f, huge.TitleH);                 // A3: the box holds the 160 line and the descender room (it clipped the g and y)
+        Assert.Equal(160f, huge.TitleH);                 // the zone to the body's 176 (Z-Settings-*-Huge): the panorama sits at -12 on its exact 160 line
         Assert.Equal(260f, huge.ListW);
         Assert.Equal(52f, huge.ListItemH);
         Assert.Equal(760f, huge.ColumnW);
         Assert.Equal(220f, huge.LabelW);
         Assert.Equal(36f, huge.SwatchSize);
 
-        // A3: every tier's title box is at least 1.25 x its size (the panorama's descenders stay inside the clipped box).
-        foreach (var tier in AllTiers)
-        {
-            var r = ZuneSettingsTiers.For(tier);
-            float size = r.TitleSize > 0f ? r.TitleSize : r.CompactTitle ? 64f : 120f;
-            Assert.True(r.TitleH >= size * 1.25f, $"{tier}: the title box {r.TitleH} is under {size * 1.25f}");
-        }
-        Assert.Equal(156f, standard.TitleH);
+        // The panorama sits on its exact line (block line stacking) over a zone that ends where the boards' body starts (140 / 70 / 176 under the band).
+        Assert.Equal(124f, standard.TitleH);
         Assert.Equal(84f, compact.TitleH);
         Assert.Equal(16f, ZuneSettingsRules.TitleBodyGap);
 

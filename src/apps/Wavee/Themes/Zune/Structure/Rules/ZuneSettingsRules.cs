@@ -47,6 +47,9 @@ public sealed record ZuneSettingsLayout
     /// <summary>The title box's height (the larger size's line, reserved).</summary>
     public required float TitleH { get; init; }
 
+    /// <summary>The panorama's top relative to its box (the board sets it at -6, Huge -12): the line box is exactly the stated line height.</summary>
+    public required float TitleTop { get; init; }
+
     /// <summary>The panorama's size and line where the tier sets one beyond the role's two steps (Huge: the board's 150 / 160); 0 keeps the role's.</summary>
     public required float TitleSize { get; init; }
 
@@ -125,13 +128,13 @@ public sealed record ZuneSettingsLayout
 public static class ZuneSettingsTiers
 {
     /// <summary>One record. The title is <paramref name="titleH"/> tall (the larger size's line, reserved); <paramref name="titleSize"/> 0 keeps the role's size.</summary>
-    private static ZuneSettingsLayout Make(WidthTier tier, float target, bool compactTitle, float titleSize, float titleLineH, float titleH,
+    private static ZuneSettingsLayout Make(WidthTier tier, float target, bool compactTitle, float titleSize, float titleLineH, float titleH, float titleTop,
         bool strip, float listW, float listItemH, float navSize, float navLineH, float listGap, float bodyGap,
         float columnW, bool columnGrows, bool stacks, bool rowsWrap, float labelW, float sliderLength, bool aside,
         bool pickerGrows, float cardW, float thumbH, float pickerGap, bool pickerText, float swatch) => new()
     {
         Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, Target = target, CompactTitle = compactTitle,
-        TitleSize = titleSize, TitleLineH = titleLineH, TitleH = titleH,
+        TitleSize = titleSize, TitleLineH = titleLineH, TitleH = titleH, TitleTop = titleTop,
         ListIsStrip = strip, ListW = listW, ListItemH = listItemH, NavSize = navSize, NavLineH = navLineH,
         ListItemPadRight = strip ? ZuneSettingsRules.ListItemPadRightRow : 0f,
         ListGap = listGap, BodyGap = bodyGap, ColumnW = columnW, ColumnGrows = columnGrows, StacksRows = stacks, RowsWrap = rowsWrap, LabelW = labelW,
@@ -143,29 +146,29 @@ public static class ZuneSettingsTiers
     [
         // Compact (Z-Settings-Appearance-Compact, -Playback-Compact, Z-Theme-Options-Compact): the sections are a wrapping row of 40-tall words above the column, the rows stack, the
         // short choices are the board's wrapping 40-tall chips, the picker is 2-up (88 tall, name and line), the swatches 40.
-        Make(WidthTier.Compact, target: 40f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHCompact,
+        Make(WidthTier.Compact, target: 40f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHCompact, titleTop: 0f,
             strip: true, listW: 0f, listItemH: 40f, navSize: 20f, navLineH: 28f, listGap: 4f, bodyGap: 8f,
             columnW: 1000f, columnGrows: true, stacks: true, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 200f, aside: false,
             pickerGrows: true, cardW: 120f, thumbH: 88f, pickerGap: 16f, pickerText: true, swatch: 40f),
         // Small (Z-Settings-Appearance-Small, Z-Theme-Options-Small): a 180 section column of 30-tall 18/24 words, a 520 column, rows beside their labels (140 | rest), the picker 4-up
         // (68 tall, the name alone, 12 apart), the swatches 28.
-        Make(WidthTier.Small, target: 0f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHCompact,
+        Make(WidthTier.Small, target: 0f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleZoneSmall, titleTop: ZuneSettingsRules.TitleTopSmall,
             strip: false, listW: 180f, listItemH: 30f, navSize: 18f, navLineH: 24f, listGap: 0f, bodyGap: 32f,
             columnW: 520f, columnGrows: false, stacks: false, rowsWrap: true, labelW: 140f, sliderLength: 220f, aside: false,
             pickerGrows: true, cardW: 118f, thumbH: 68f, pickerGap: 12f, pickerText: false, swatch: 28f),
         // Standard: the tuned design (the 220 list of 40-tall 20/28 words, the 660 column, the 200 | rest rows, 150 x 100 tiles, 32 swatches).
-        Make(WidthTier.Standard, target: 0f, compactTitle: false, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHPanorama,
+        Make(WidthTier.Standard, target: 0f, compactTitle: false, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleZone, titleTop: ZuneSettingsRules.TitleTop,
             strip: false, listW: 220f, listItemH: 40f, navSize: 20f, navLineH: 28f, listGap: 0f, bodyGap: 48f,
             columnW: 660f, columnGrows: false, stacks: false, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 220f, aside: true,
             pickerGrows: false, cardW: 150f, thumbH: 100f, pickerGap: 16f, pickerText: true, swatch: 32f),
         // Huge (Z-Settings-Appearance-Huge, Z-Theme-Options-Huge): the 150 / 160 panorama, a 260 list of 52-tall 24/32 words 40 from a 760 column, rows 220 | rest, the picker 4-up
         // (120 tall), the swatches 36.
-        Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleHHuge,
+        Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleZoneHuge, titleTop: ZuneSettingsRules.TitleTopHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
             pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
         // Huge 4K: Huge's (pages cap at 2400, owner 6.2; the page holds its 760 column and the frame's 64 gutter).
-        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleHHuge,
+        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleZoneHuge, titleTop: ZuneSettingsRules.TitleTopHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
             pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
@@ -221,6 +224,10 @@ public static class ZuneSettingsRules
     /// <summary>The title box's height: the panorama's (120/130) and its compact step's (64/72) lines plus the room their descenders need
     /// (size x 1.25 and a little: "settings" lost its g and its y in the 130 and 72 boxes, which clip). A 16 gap then parts the box from the body.</summary>
     public const float TitleHPanorama = 156f, TitleHCompact = 84f, TitleBodyGap = 16f;
+
+    /// <summary>The Settings page's panorama zone (Z-Settings-*: the body starts at 140 / 70 / 176 under the band, the 16 gap after the zone): the panorama's own top
+    /// sits inside it on its exact line (the boards set it at -6 / -6 / -12 in CSS, whose line box centres the glyphs differently from ours: measured against the PNGs, +8 / +3 / +12 more), its descenders hanging over the body's first rows.</summary>
+    public const float TitleZone = 124f, TitleZoneSmall = 54f, TitleZoneHuge = 160f, TitleTop = 2f, TitleTopSmall = -3f, TitleTopHuge = 0f;
 
     /// <summary>The Huge panorama (Z-Settings-Appearance-Huge: 150 over a 160 line), whose box (192) reserves the descender room too.</summary>
     public const float TitleSizeHuge = 150f, TitleLineHuge = 160f, TitleHHuge = 192f;

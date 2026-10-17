@@ -254,32 +254,52 @@ internal static class ZuneSearchPage
         string full = Search.SubtitleOf(hit, flags);
         string prefix = kind + TextJoin.Sep;
         string detail = full.StartsWith(prefix, StringComparison.Ordinal) ? full[prefix.Length..] : "";
-        Element word = R.Type.MicroMeta(kind) with
-        {
-            Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
-        };
-        var cell = new List<Element>(2)
-        {
-            new BoxEl
-            {
-                Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Shrink = 0f, Opacity = 1f, HoverOpacity = detailless(data.Trailing) ? 1f : 0f,
-                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing, HitTestVisible = false,
-                Children = [word],
-            },
-        };
-        if (data.Trailing is { } control)
-            cell.Add(new BoxEl
-            {
-                Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Opacity = 0f, HoverOpacity = 1f,
-                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                Children = [control],
-            });
+        string uri = hit.Id.Text;
+        string title = Search.TitleOf(hit);
         return data with
         {
             Subtitle = detail.Length == 0 ? null : R.Type.TrackMeta(detail) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-            Trailing = new BoxEl { ZStack = true, Shrink = 0f, MinWidth = S.KindCellW, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Children = cell.ToArray() },
+            Trailing = Embed.Comp(() => new KindCell { Hit = hit, Uri = uri, Title = title, Kind = kind }) with { Key = "kind-cell:" + uri },
         };
-        static bool detailless(Element? trailing) => trailing is null;
+    }
+
+    /// <summary>The trailing cell: the kind word at the right edge; the save or follow control takes its place on hover, and STAYS (the word stepping
+    /// aside) while the item is saved or followed, because that state is information, not an affordance.</summary>
+    sealed class KindCell : Component
+    {
+        public required string Uri { get; init; }
+        public required string Kind { get; init; }
+        public required EntityRef Hit { get; init; }
+        public required string Title { get; init; }
+
+        public override Element Render()
+        {
+            Element? control = Search.TrailingOf(Hit, Uri, Title);
+            bool saved = control is not null && Controls.Library is { } lib && lib.IsSaved(Uri);
+            Element word = R.Type.MicroMeta(Kind) with
+            {
+                Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
+            };
+            var cell = new List<Element>(2)
+            {
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Opacity = saved ? 0f : 1f, HoverOpacity = control is null ? 1f : 0f,
+                    HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing, HitTestVisible = false,
+                    Children = [word],
+                },
+            };
+            if (control is not null)
+                cell.Add(new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                    Opacity = saved ? 1f : 0f, HoverOpacity = 1f,
+                    HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+                    Children = [control],
+                });
+            return new BoxEl { ZStack = true, Shrink = 0f, MinWidth = S.KindCellW, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Children = cell.ToArray() };
+        }
     }
 
     /// <summary>Hit rows in the tier's columns (best matches, the songs): ONE keyed grid whose column count is a live prop.</summary>
