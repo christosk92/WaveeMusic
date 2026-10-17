@@ -62,6 +62,7 @@ internal static class ZuneBrowseCategory
             Color = Prop.Of(static () => R.OnMedia.Ink), Case = R.Case.For(LabelKind.Heading),
             MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
+        if (lay.TitleSize > 0f) name = name with { Size = lay.TitleSize, LineHeight = lay.TitleLine, CharSpacing = lay.TitleTracking };
         return new BoxEl
         {
             Key = B.BannerKey, Height = lay.BannerH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
