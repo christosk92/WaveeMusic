@@ -491,7 +491,7 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.30 (P5 round G): PageChromeRow.Title, ShellTitleBarProps.OnSearchRoute, ArtistTierPolicy.BandClearance.
         // 1.31 (Zune fidelity): ArtistTierPolicy.ChartRowShape / ChartBalanced, ArtistChartStyle.HeaderWith.
         // 1.32 (Zune fidelity): DetailTableTier.HoverActions / OneLineTrim.
-        Assert.Equal("1.32", ContractVersion.Text);
+        Assert.Equal("1.33", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));

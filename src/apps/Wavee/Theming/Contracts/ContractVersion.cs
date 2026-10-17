@@ -129,6 +129,8 @@
 // (`ArtistChartHeaderArgs`), the chart row / cell / skeleton args' optional row-shape and column fields (defaults keep Classic's).
 // 1.32 (Zune fidelity): `DetailTableTier.HoverActions` (no heart or "..." lane: both stand in the time lane on row hover, `ColumnSet.HoverActions`) and
 // `DetailTableTier.OneLineTrim` (an album's one-line rows stand this far under the density's row).
+// 1.33 (Zune fidelity): `LibraryTierPolicy.GroupAlbumsByArtist`, `LibraryPageProps.Groups` (`LibraryGroupsProps`, `LibraryGroupSet`,
+// `LibraryGroupRow`) and `LibraryPageProps.Count` (the library's albums grouped by artist; Classic publishes no groups).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -144,7 +146,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 32;
+    public const int Minor = 33;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
