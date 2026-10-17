@@ -1,9 +1,12 @@
 // ── Themes/Classic/Style/ClassicStyle.cs — the Classic style (themes plan 6.1) ─────────────────────────────────────────
 //
 // The style IS today's `Design.Definition` (the engine's Neutral palette with Wavee's fonts) carrying Classic's roles
-// (`ClassicRoles`: type, space, motion and case from T2a, the colour roles from T2b), returned as ONE instance for every option set
-// and accent, so the definition the composition resolves is the instance the appearance seed installs and a switch back to Classic
-// adopts by reference. Its one option is the row density (M3, `ClassicDensity`), a metrics preset. It publishes Classic's metrics (T3): the row heights, control
+// (`ClassicRoles`: type, space, motion and case from T2a, the colour roles from T2b), returned as ONE instance for every option set, so
+// the definition the composition resolves is the instance the appearance seed installs and a switch back to Classic adopts by reference.
+// The accent: Classic FOLLOWS THE WINDOWS ACCENT, always (it has no accent option), and it does so through its definition: with the OS
+// accent at the WinUI default the definition is that one instance; with any other OS accent it is the same definition carrying that ramp
+// as `Accent` (one instance per ramp), so the engine's accent is the OS accent without a `Tok.SetAccent` override.
+// Its one option is the row density (M3, `ClassicDensity`), a metrics preset. It publishes Classic's metrics (T3): the row heights, control
 // height, gutter and section gap Classic lays out with, and the track rows at the chosen density.
 
 using FluentGpu.Dsl;
@@ -28,8 +31,25 @@ public sealed class ClassicStyle : IStyleLayer
     /// <inheritdoc />
     public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(ClassicDensity.Option);
 
+    // The definition for the last non-default OS accent: the OS accent changes rarely, so one entry is the whole memo.
+    private static readonly object s_gate = new();
+    private static AccentRamp s_lastRamp = AccentRamp.FluentDefault;
+    private static ThemeDefinition s_lastDefinition = s_definition;
+
     /// <inheritdoc />
-    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent) => s_definition;
+    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
+    {
+        if (osAccent == AccentRamp.FluentDefault) return s_definition;
+        lock (s_gate)
+        {
+            if (s_lastRamp != osAccent)
+            {
+                s_lastDefinition = s_definition with { Accent = osAccent };
+                s_lastRamp = osAccent;
+            }
+            return s_lastDefinition;
+        }
+    }
 
     /// <inheritdoc />
     public StyleMetrics Metrics(OptionValues style) => s_metrics with { TrackRows = ClassicDensity.Rows(style) };

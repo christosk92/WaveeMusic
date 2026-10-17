@@ -20,7 +20,7 @@ public class AppearanceTests
         public int Stored;
         public bool OsLight;
         public int OsReads;
-        public int AccentSeeds, PlainFallbackSeeds;
+        public int AccentSeeds, PlainFallbackSeeds, OverrideReleases;
 
         public ThemeKind CurrentKind => Current;
 
@@ -58,6 +58,12 @@ public class AppearanceTests
             AccentSeeds++;
             if (allowPlainFallback) PlainFallbackSeeds++;
             Log.Add("accent:" + (allowPlainFallback ? "ramp-or-plain" : "ramp"));
+        }
+
+        public void ReleaseAccentOverride()
+        {
+            OverrideReleases++;
+            Log.Add("release");
         }
     }
 
@@ -155,6 +161,18 @@ public class AppearanceTests
         Assert.Equal(atBoot + 1, ports.AccentSeeds);
         Assert.Equal(0, ports.Stored);
         Assert.Equal(new[] { AppearanceModel.TransitionMs }, fades);
+    }
+
+    // ── the engine's accent override ────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_window_coming_up_releases_the_engine_accent_override_and_nothing_else()
+    {
+        var (model, ports, fades) = Make();
+        model.OnWindowCreated();
+        Assert.Equal(new[] { "release" }, ports.Log);   // no accent seed, no OS read, no kind change, no cross-fade
+        Assert.Equal(0, ports.OsReads);
+        Assert.Empty(fades);
     }
 
     // ── the fixed-kind seed (the shell test host) ───────────────────────────────────────────────────────────────────

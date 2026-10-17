@@ -26,6 +26,7 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Hosting;
 using FluentGpu.Localization;
@@ -63,9 +64,25 @@ public static class ThemeHost
     private static readonly Task<ThemeTransactionResult> s_nothingToDo =
         Task.FromResult(new ThemeTransactionResult(ThemeTransactionOutcome.Immediate));
 
-    /// <summary>The OS accent the style resolves its definition with. Defaults to the WinUI ramp (which every definition
-    /// treats as "use the baked accent tokens"); the appearance seed sets the real one.</summary>
+    /// <summary>The OS accent the style resolves its definition with. It is an INPUT, not an override: the active style's
+    /// <c>Definition(options, OsAccent)</c> decides whether it uses it (Classic follows it; Zune only with "use the windows
+    /// accent"), and the engine's accent follows the resolved <c>ThemeDefinition.Accent</c>. Defaults to the WinUI ramp (which every
+    /// definition treats as "use the baked accent tokens"); <c>Appearance</c> feeds the real one at boot and on every OS colour change
+    /// (<see cref="FeedOsAccent"/>). Nothing may push the OS accent through <c>Tok.SetAccent</c>: an engine override wins over the definition.</summary>
     public static AccentRamp OsAccent { get; set; } = AccentRamp.FluentDefault;
+
+    /// <summary>Assigns <see cref="OsAccent"/> from what the OS answered: the exact <paramref name="ramp"/> when it has one, else (only
+    /// when <paramref name="allowPlainFallback"/>) the ramp derived from the <paramref name="plain"/> accent colour, else nothing (the
+    /// previous value stands). Returns true when <see cref="OsAccent"/> changed: the caller then re-installs the active definition
+    /// (<c>Design.SeedPalette</c>), which resolves with the new accent. Pure state, no token set is touched.</summary>
+    public static bool FeedOsAccent(AccentRamp? ramp, ColorF? plain, bool allowPlainFallback)
+    {
+        AccentRamp? next = ramp;
+        if (next is null && allowPlainFallback && plain is { } colour) next = AccentRamp.Derive(colour);
+        if (next is not { } accent || accent == OsAccent) return false;
+        OsAccent = accent;
+        return true;
+    }
 
     /// <summary>True once <see cref="Install"/> ran.</summary>
     public static bool IsInstalled => s_installed;
@@ -186,6 +203,7 @@ public static class ThemeHost
     public static void Reset()
     {
         ThemeCatalog.Set([]);
+        OsAccent = AccentRamp.FluentDefault;
         s_installed = false;
         s_store = null;
         s_values = ThemeOptionValues.Empty;

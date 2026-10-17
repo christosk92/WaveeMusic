@@ -240,7 +240,9 @@ public static partial class Shell
             // report chrome (Crash.Host.ArmProbe) never mounts to dispatch it, so this is the boot arm's only wiring.
             if (Crash.Host.ProbeMode() == "boot") throw new InvalidOperationException("--crash-probe boot");
             FluentAppHarness.Run(
-                static () => new RootHost(),
+                // The factory runs after the engine created the window and before the first frame. The engine installed the OS accent as a
+                // `Tok.SetAccent` override there, which would win over the active theme's accent: release it (Appearance, THE OS ACCENT).
+                static () => { Appearance.OnWindowCreated(); return new RootHost(); },
                 new AppOptions
                 {
                     // MinWidth 300 (DIP): the shell is verified sound below 360 — the detail surface is in vertical

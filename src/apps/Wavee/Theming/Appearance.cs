@@ -17,6 +17,15 @@
 //   ToggleMode()            the flip verb (palette row, profile menu): the other kind, persist the
 //                           explicit mode (Light = 1, Dark = 2), cross-fade. The accent is not touched.
 //   OnSystemColorsChanged() the OS colours changed: the accent ramp follows ALWAYS; the kind only while the mode is System.
+//   OnWindowCreated()       the window exists: the engine installed the OS accent as a `Tok.SetAccent` override while creating it;
+//                           that override is released (see THE OS ACCENT).
+//
+// THE OS ACCENT IS AN INPUT, NOT AN OVERRIDE. `Tok.SetAccent` overrides `ThemeDefinition.Accent`, so while one is set the engine's
+// controls draw the OS accent whatever the active theme's accent is (a Zune swatch). Nothing here calls it any more: the OS ramp is
+// fed to `ThemeHost.OsAccent`, the active style's `Definition(options, osAccent)` decides whether it uses it (Classic always;
+// Zune only with "use the windows accent"), and the definition is installed again, so the engine's accent follows the resolved
+// `ThemeDefinition.Accent`. The engine itself sets one override while it creates the window (after the boot seed): `OnWindowCreated`,
+// called from the root factory (after the window, before the first frame), releases it.
 //
 // LIVE OR TRANSACTION (themes plan 4.2, A4.2). A kind change is a colour change, so it takes the live path (swap in place, the
 // 250 ms cross-fade) — unless the active definition asks for something non-colour to change with the kind (today: a different
@@ -25,6 +34,7 @@
 
 using FluentGpu;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 
 namespace Wavee;
 
@@ -54,9 +64,14 @@ public interface IAppearancePorts
     /// <summary>Switch to <paramref name="kind"/> on the theme transaction (it owns its own dissolve).</summary>
     void ApplyKindInTransaction(ThemeKind kind);
 
-    /// <summary>Push the OS accent into the tokens: the accent ramp when the OS has one; the plain accent colour only
+    /// <summary>Hand the OS accent to the theme host (<c>ThemeHost.OsAccent</c>) and install the active definition again, so the
+    /// style decides what the engine draws: the accent ramp when the OS has one; the plain accent colour only
     /// when <paramref name="allowPlainFallback"/> (the boot and the Settings selector fall back, the OS listener does not).</summary>
     void ApplySystemAccent(bool allowPlainFallback);
+
+    /// <summary>Drop any <c>Tok.SetAccent</c> override: the active definition's accent (which carries the OS accent where the style
+    /// follows it) decides the engine's accent.</summary>
+    void ReleaseAccentOverride();
 }
 
 /// <summary>The mode -> kind decisions and the verbs that apply them. Engine-free: every effect goes through
@@ -91,6 +106,10 @@ public sealed class AppearanceModel
         _ports.ApplyKind(KindOf(mode));   // before the window: nothing to hold, always in place
         _ports.ApplySystemAccent(allowPlainFallback: true);
     }
+
+    /// <summary>The window exists (the root factory runs after the engine created it): release the OS-accent override the engine set
+    /// while creating it, so the active definition's accent decides from the first frame.</summary>
+    public void OnWindowCreated() => _ports.ReleaseAccentOverride();
 
     /// <summary>A fixed kind with no OS read at all (the shell test host): the persisted mode is ignored and the accent is
     /// the token default.</summary>
@@ -184,6 +203,17 @@ public static class Appearance
     /// <summary><c>FluentApp.SystemColorsChanged</c>: follow the OS accent always and the OS theme while the mode is System.</summary>
     public static void OnSystemColorsChanged() => s_model.OnSystemColorsChanged();
 
+    /// <summary>The root factory: the engine's boot override of the accent is released (see the file header).</summary>
+    public static void OnWindowCreated() => s_model.OnWindowCreated();
+
+    /// <summary>Feeds the OS accent to the theme host and installs the active definition again when it changed (see the file
+    /// header). Public so a fact can drive the live path with a chosen OS answer; <see cref="OnSystemColorsChanged"/> reads the OS.
+    /// <paramref name="plain"/> is used only with <paramref name="allowPlainFallback"/>, when the OS has no <paramref name="ramp"/>.</summary>
+    public static void FollowOsAccent(AccentRamp? ramp, ColorF? plain, bool allowPlainFallback)
+    {
+        if (Wavee.Theming.ThemeHost.FeedOsAccent(ramp, plain, allowPlainFallback)) Design.SeedPalette(Tok.Theme);
+    }
+
     /// <summary>Hand over the host's <c>ThemeControl.Request</c> (read with <c>UseContext</c> by the frame and the Settings
     /// page); the live verbs ask it for the cross-fade.</summary>
     public static void BindTransition(Action<float>? request) => s_model.BindTransition(request);
@@ -215,7 +245,9 @@ sealed class LiveAppearancePorts : IAppearancePorts
 
     public void ApplySystemAccent(bool allowPlainFallback)
     {
-        if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
-        else if (allowPlainFallback && FluentApp.SystemAccent() is { } accent) Tok.SetAccent(accent);
+        ReleaseAccentOverride();
+        Appearance.FollowOsAccent(FluentApp.SystemAccentRamp(), allowPlainFallback ? FluentApp.SystemAccent() : null, allowPlainFallback);
     }
+
+    public void ReleaseAccentOverride() => Tok.SetAccent((ColorF?)null);
 }
