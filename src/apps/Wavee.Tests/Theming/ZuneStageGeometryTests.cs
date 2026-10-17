@@ -325,4 +325,133 @@ public sealed class ZuneStageGeometryTests
         var card = CardLook;
         Assert.Equal(ZuneStageForm.Plate, ZuneStageGeometry.Arrange(in compact, in card, Standard, false).Form);
     }
+
+    // ── the plate stage on the tier's gutter (T4): the identity, the card and the pane ───────────────────────────────────
+
+    static StageTierMetrics MetricsOf(WidthTier tier) => tier switch
+    {
+        WidthTier.Compact => ZuneStageTiers.CompactMetrics,
+        WidthTier.Small => ZuneStageTiers.SmallMetrics,
+        WidthTier.Standard => ZuneStageTiers.StandardMetrics,
+        WidthTier.Huge => ZuneStageTiers.HugeMetrics,
+        _ => ZuneStageTiers.Huge4KMetrics,
+    };
+
+    /// <summary>A window of each tier whose stage is a Desktop class (the hero cover left, the pane beside it).</summary>
+    public static TheoryData<WidthTier, float, float> DesktopStages() => new()
+    {
+        { WidthTier.Small, 800f, 600f }, { WidthTier.Standard, 1440f, 900f }, { WidthTier.Huge, 2560f, 1440f }, { WidthTier.Huge4K, 3840f, 2160f },
+    };
+
+    /// <summary>A window of each tier whose stage is Portrait (the identity over the pane): the Compact board's 400 x 860 and twice the width tall.</summary>
+    public static TheoryData<WidthTier, float, float> PortraitStages() => new()
+    {
+        { WidthTier.Compact, 400f, 860f }, { WidthTier.Small, 800f, 1600f }, { WidthTier.Standard, 1440f, 2880f }, { WidthTier.Huge, 2560f, 5120f },
+        { WidthTier.Huge4K, 3840f, 7680f },
+    };
+
+    [Theory, MemberData(nameof(DesktopStages))]
+    public void A_desktop_plate_puts_the_art_and_the_titles_on_the_tier_gutter_and_the_pane_keeps_its_gap(WidthTier tier, float w, float h)
+    {
+        var record = ZuneStageTiers.Stage(tier);
+        var layout = SeedAt(w, h, MetricsOf(tier));
+        Assert.Equal(Stage.Aspect.Desktop, layout.Aspect);
+        var look = Stage.Look.Plain(M.Lyrics);
+
+        // the allocator's 5.8 % pad (44 / 80 / 148 at 800 / 1440 / 2560) is not the art's x: the record's gutter is
+        float shift = ZuneStageGeometry.EdgeShift(in layout, in look, record);
+        Assert.Equal(record.Gutter, layout.CoverX(in look) + shift, 0.01f);
+        Assert.Equal(record.Gutter, layout.TitleX(in look) + shift, 0.01f);
+        Assert.Equal(layout.TitleW(in look), ZuneStageGeometry.PlateTitleWidth(in layout, in look, record, shift), 0.01f);
+
+        // the pane moves with the art: the gap between them is the allocator's, its right edge is the lyrics column's room
+        var pane = ZuneStageGeometry.PlatePane(in layout, in look, record, Stage.PaneKind.Lyrics);
+        float gap = layout.PaneX - (layout.CoverX(in look) + layout.HeroArt);
+        Assert.Equal(record.Gutter + layout.HeroArt + gap, pane.X, 0.01f);
+        Assert.True(pane.Right <= layout.PaneX + layout.PaneW + 0.01f, "the pane never runs past the allocator's right edge");
+        var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), record, Stage.PaneKind.Queue);
+        Assert.Equal(pane.X, queue.X, 0.01f);   // the queue and the artist pane stand where the lyrics do: no pane slides on a mode switch
+    }
+
+    [Theory, MemberData(nameof(PortraitStages))]
+    public void A_portrait_plate_puts_the_identity_and_the_lyrics_lead_on_the_tier_gutter(WidthTier tier, float w, float h)
+    {
+        var record = ZuneStageTiers.Stage(tier);
+        var layout = SeedAt(w, h, MetricsOf(tier));
+        Assert.Equal(Stage.Aspect.Portrait, layout.Aspect);
+        var look = Stage.Look.Plain(M.Lyrics);
+
+        // the cover (Compact: the identity strip's cover, the allocator's 8) and its titles
+        float shift = ZuneStageGeometry.EdgeShift(in layout, in look, record);
+        Assert.Equal(record.Gutter, layout.CoverX(in look) + shift, 0.01f);
+        float titleX = layout.TitleX(in look) + shift;
+        float titleW = ZuneStageGeometry.PlateTitleWidth(in layout, in look, record, shift);
+        Assert.True(titleX > record.Gutter && titleW > 0f, "the titles sit right of the cover");
+        Assert.True(titleX + titleW <= w + 0.01f, "the titles stay inside the stage");
+        if (layout.IdentityCardOn(M.Lyrics)) Assert.Equal(w - record.Gutter, titleX + titleW, 0.01f);   // the strip's titles run to the gutter at the right
+
+        // the lyrics' TEXT starts on the gutter (Compact: 16, not 28 + 22 = 50); the queue's and the artist pane's edge is the gutter itself
+        var lyrics = ZuneStageGeometry.PlatePane(in layout, in look, record, Stage.PaneKind.Lyrics);
+        Assert.Equal(record.Gutter, lyrics.X + ZuneStageGeometry.LyricsLead(in layout), 0.01f);
+        Assert.Equal(layout.PaneX + layout.PaneW, lyrics.Right, 0.01f);   // the right edge is the allocator's
+        var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), record, Stage.PaneKind.Queue);
+        Assert.Equal(record.Gutter, queue.X, 0.01f);
+        Assert.Equal(lyrics.Y, queue.Y, 0.01f);
+        Assert.Equal(record.Drop, lyrics.Y - layout.PaneTop, 0.01f);   // under the tier's head
+    }
+
+    [Fact]
+    public void The_compact_strip_and_the_lyrics_both_start_at_16()
+    {
+        var compact = ZuneStageTiers.Stage(WidthTier.Compact);
+        var layout = SeedAt(400f, 860f, ZuneStageTiers.CompactMetrics);
+        var look = Stage.Look.Plain(M.Lyrics);
+        Assert.Equal(8f, layout.CoverX(in look));   // before: the strip's cover at 8
+        Assert.Equal(16f, layout.CoverX(in look) + ZuneStageGeometry.EdgeShift(in layout, in look, compact));
+        Assert.Equal(22f, ZuneStageGeometry.LyricsLead(in layout));   // the rail's gutter at the Compact stage's 26 type
+        Assert.Equal(28f + 22f, layout.PaneX + ZuneStageGeometry.LyricsLead(in layout));   // before: the lyrics at 50
+        var pane = ZuneStageGeometry.PlatePane(in layout, in look, compact, Stage.PaneKind.Lyrics);
+        Assert.Equal(16f, pane.X + ZuneStageGeometry.LyricsLead(in layout));
+    }
+
+    [Fact]
+    public void The_460_card_stands_on_the_tier_gutter_and_a_layout_look_is_the_allocators()
+    {
+        var layout = Seed(1440f, 900f);
+        var card = CardLook;
+        Assert.Equal(Standard.Gutter, Stage.Layout.NowPlayingCardX + ZuneStageGeometry.EdgeShift(in layout, in card, Standard));
+        var huge = ZuneStageTiers.Stage(WidthTier.Huge);
+        Assert.Equal(huge.Gutter, Stage.Layout.NowPlayingCardX + ZuneStageGeometry.EdgeShift(in layout, in card, huge));
+
+        var large = LargeArt();
+        Assert.Equal(0f, ZuneStageGeometry.EdgeShift(in layout, in large, Standard));
+        var pane = ZuneStageGeometry.PlatePane(in layout, in large, Standard, Stage.PaneKind.Lyrics);
+        var (x, y, pw, ph) = layout.PaneRect(in large);
+        Assert.Equal(new ZuneRect(x, y + Standard.Drop, pw, ph - Standard.Drop), pane);
+    }
+
+    [Fact]
+    public void The_huge_lyrics_column_is_900_wide_at_most_and_stops_short_of_the_up_next_column()
+    {
+        var huge = ZuneStageTiers.Stage(WidthTier.Huge);
+        Assert.Equal(900f, huge.LyricsPaneMaxW);
+        var layout = SeedAt(2560f, 1440f, ZuneStageTiers.HugeMetrics);
+        var look = Stage.Look.Plain(M.Lyrics);
+        Assert.True(layout.UpNextShown(M.Lyrics));
+        var pane = ZuneStageGeometry.PlatePane(in layout, in look, huge, Stage.PaneKind.Lyrics);
+        Assert.True(pane.W <= 900f + 0.01f, $"the Huge lyrics column is {pane.W} wide");
+        Assert.True(pane.W > layout.LyricsPaneW(M.Lyrics), "wider than the 792 the allocator's 336 gap left it (about 610 of text at 48 type)");
+        Assert.True(pane.Right <= ZuneStageGeometry.UpNextPaneX(in layout, huge) - huge.UpNextGap + 0.01f, "it stops short of the Up next column");
+        Assert.Equal(48f, layout.LyricsTypeSize);   // the type is unchanged: the measure is what moved
+
+        // the queue pane is not capped, and the 4K lyrics keep the board's 336 gap (and the column's own cap of 1000 times the scale)
+        var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), huge, Stage.PaneKind.Queue);
+        Assert.Equal(layout.PaneX + layout.PaneW, queue.Right, 0.01f);
+        var k4 = ZuneStageTiers.Stage(WidthTier.Huge4K);
+        Assert.Equal(0f, k4.LyricsPaneMaxW);
+        var big = SeedAt(3840f, 2160f, ZuneStageTiers.Huge4KMetrics);
+        var pane4K = ZuneStageGeometry.PlatePane(in big, in look, k4, Stage.PaneKind.Lyrics);
+        Assert.True(pane4K.Right <= ZuneStageGeometry.UpNextPaneX(in big, k4) - 336f + 0.01f);
+        Assert.True(pane4K.W >= big.LyricsPaneW(M.Lyrics) - 0.01f);
+    }
 }

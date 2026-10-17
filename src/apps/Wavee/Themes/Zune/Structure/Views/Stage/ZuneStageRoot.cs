@@ -218,7 +218,7 @@ internal sealed class ZuneStageUpNextFrame : Component
         var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
         var t = ZuneStageTiers.StageOf(in tiers);
         var r = p.Stage.Layout.Value.UpNextRect;
-        float x = MathF.Max(0f, r.X - t.Gutter), y = r.Y + t.Drop, h = MathF.Max(0f, r.H - t.Drop);
+        float x = G.UpNextPaneX(p.Stage.Layout.Value, t), y = r.Y + t.Drop, h = MathF.Max(0f, r.H - t.Drop);
         return Stage.Layer with
         {
             Children =

@@ -171,6 +171,7 @@ public static class ZuneStageTiers
             WordSize = 14f, WordLine = 20f, Plate = ZunePlateKind.Full, SeekRowH = 40f, PlateRowH = 80f, PlateFootH = 0f,
             GlyphBox = 44f, Glyph = 20f, PlayGlyph = 24f, Disc = 64f, VolumeW = 160f, ClusterGap = 28f, RightGap = 8f, SourceSize = 14f, SourceLine = 20f,
             DeviceH = 44f, Card = s_cardHugeRec, Column = s_columnHuge, Centered = s_centeredHuge, Stack = null,
+            UpNextGap = 64f, LyricsPaneMaxW = 900f,
         },
         // Huge 4K (Z-NowPlaying-Huge4K)
         new()
@@ -180,6 +181,7 @@ public static class ZuneStageTiers
             WordSize = 17f, WordLine = 22f, Plate = ZunePlateKind.Full, SeekRowH = 72f, PlateRowH = 160f, PlateFootH = 0f,
             GlyphBox = 56f, Glyph = 26f, PlayGlyph = 36f, Disc = 96f, VolumeW = 220f, ClusterGap = 40f, RightGap = 14f, SourceSize = 17f, SourceLine = 22f,
             DeviceH = 56f, Card = s_card4KRec, Column = s_column4K, Centered = s_centered4K, Stack = null,
+            UpNextGap = 336f,
         },
     ];
 
@@ -306,6 +308,14 @@ public sealed record ZuneStageLayout
 
     /// <summary>The Compact Visualizer stack (Z-NowPlaying-Compact); null: none.</summary>
     public required ZuneStageStack? Stack { get; init; }
+
+    /// <summary>Lyrics mode docks the Up next column at the right (Huge, Huge 4K): the least gap between the lyrics pane's right edge and the
+    /// column's left edge (Huge: the gutter; Huge 4K: the board's 336). Unused where the tier docks none.</summary>
+    public float UpNextGap { get; init; }
+
+    /// <summary>The widest the lyrics pane runs on a plate stage (Z-Lyrics-Huge: 900, so the 48 type keeps a reading measure and its lines
+    /// do not strand one word); 0: none (the column's own cap of 1000 times the type scale stands).</summary>
+    public float LyricsPaneMaxW { get; init; }
 
     /// <summary>The chrome at the stage's head: the bar and the pivots' row.</summary>
     public float HeadH => BarH + PivotRowH;

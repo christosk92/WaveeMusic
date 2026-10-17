@@ -100,8 +100,10 @@ internal static class ZuneStageIdentity
             default:
             {
                 size = L.CoverSize(in k);
-                (coverX, coverY) = (L.CoverX(in k), L.CoverY(in k));
-                (titlesX, titlesY, titlesW) = (L.TitleX(in k), L.TitleY(in k), L.TitleW(in k));
+                // the allocator's left-anchored parts move onto the tier's gutter (16 / 24 / 48 / 64 / 96): the cover, its titles, the card's edge
+                float shift = G.EdgeShift(in L, in k, t);
+                (coverX, coverY) = (L.CoverX(in k) + shift, L.CoverY(in k));
+                (titlesX, titlesY, titlesW) = (L.TitleX(in k) + shift, L.TitleY(in k), G.PlateTitleWidth(in L, in k, t, shift));
                 // a cover the allocator hung under its 48 bar moves down with the tier's taller head, its titles with it
                 float drop = G.DropFor(coverY, t);
                 coverY += drop;
