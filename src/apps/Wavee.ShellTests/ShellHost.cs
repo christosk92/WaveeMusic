@@ -84,14 +84,6 @@ public sealed class ShellHost : IDisposable
             if (!ThemeHost.Current.Peek().Manifest.Id.Equals(ClassicTheme.Id, StringComparison.Ordinal) || ThemeCatalog.Installed.Count != 1)
                 ClassicAlt.RestoreClassic();
             if (OptionStamps() != _bootOptions) ThemeHost.ResetOptions(ClassicTheme.Id);
-            // The OS accent is process state too (ThemeHost.OsAccent, and an engine Tok.SetAccent override): back to the default, with the
-            // active definition installed again so no earlier fact's accent is drawn.
-            FluentGpu.Dsl.Tok.SetAccent((FluentGpu.Foundation.ColorF?)null);
-            if (ThemeHost.OsAccent != FluentGpu.Dsl.AccentRamp.FluentDefault)
-            {
-                ThemeHost.OsAccent = FluentGpu.Dsl.AccentRamp.FluentDefault;
-                Design.SeedPalette(FluentGpu.Dsl.Tok.Theme);
-            }
             ThemeHost.PublishTiers(in _bootTiers);
         });
 
