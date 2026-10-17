@@ -53,7 +53,7 @@ internal static class ZuneHomeZones
     static IOverlayService? HostOf(IOverlayService? overlay) => Controls.IsNullOverlay(overlay) ? null : overlay;
 
     /// <summary>A zone's heading row: its title and subtitle, "see all" when the zone has a backing section.</summary>
-    static Element Heading(Zone zone, ZuneHomeLayout lay, string? fallbackTitle = null)
+    static BoxEl Heading(Zone zone, ZuneHomeLayout lay, string? fallbackTitle = null)
     {
         var seeAll = HomeVerbs.SeeAll(zone);
         Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, Loc.Get(Strings.Home.SeeAll), seeAll, lay.LinkTarget);
@@ -80,7 +80,7 @@ internal static class ZuneHomeZones
             (item, i, cardW) => Cell(in item, cardW, 1f, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_coverHeight,
-            header: Heading(zone, lay),
+            header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons,
             // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
             // (one node at every tier: these are live props of the shelf).
@@ -110,7 +110,7 @@ internal static class ZuneHomeZones
             (item, i, cardW) => Cell(in item, cardW, R.Space.WideTileAspect, host),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_wideHeight,
-            header: Heading(zone, lay),
+            header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons,
             minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,

@@ -68,7 +68,7 @@ internal static class ZuneDiscoveryKit
         };
 
     /// <summary>A section's heading row: the heading, its subtitle (when the tier shows it), then the link at the end.</summary>
-    public static Element Heading(string title, string? subtitle, Element? tools, bool cased = true)
+    public static BoxEl Heading(string title, string? subtitle, Element? tools, bool cased = true)
     {
         var words = new List<Element>(2) { cased ? HeadingText(title) : HeadingText(title) with { Case = TextCase.AsWritten } };
         if (subtitle is { Length: > 0 }) words.Add(Caption(subtitle) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
@@ -122,7 +122,7 @@ internal static class ZuneDiscoveryKit
         return parts;
     }
 
-    private static BoxEl ChevronTarget(BoxEl circle) => new()
+    private static BoxEl ChevronTarget(BoxEl circle) => circle.OnClick is null ? DormantChevron : new()
     {
         Width = H.ChevronTarget, Height = H.ChevronTarget, Shrink = 0f, Margin = Edges4.All(-(H.ChevronTarget - H.ChevronCircle) / 2f),
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -131,9 +131,13 @@ internal static class ZuneDiscoveryKit
         Children = [circle with { OnClick = null, Opacity = 1f, Cursor = CursorId.Arrow }],
     };
 
+    /// <summary>A chevron with nowhere to go takes no room (the board's shelves have none: their eight covers fill the page and "see all" ends the row):
+    /// zero wide, its margin cancelling the header row's item gap. One node either way (a box), so it never remounts when paging wakes it.</summary>
+    private static readonly BoxEl DormantChevron = new() { Width = 0f, Height = H.ChevronTarget, Shrink = 0f, Margin = new Edges4(-8f, 0f, 0f, 0f), HitTestVisible = false };
+
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
     public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize,
-                               float target = 0f)
+                               float target = 0f, bool stableName = false)
     {
         var kids = new List<Element>(2) { RingDisc(glyph, primary, size) };
         if (showLabel)
@@ -146,6 +150,13 @@ internal static class ZuneDiscoveryKit
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
             OnClick = onClick, Children = kids.ToArray(),
         };
+        // `stableName`: the ring's shape (wrapper and all) is the same with and without its word, so a tier that drops or shows the word keeps the
+        // ring's node (the wrapper is always the tooltip component; its text is empty where the word is on the ring).
+        if (stableName)
+        {
+            string? tip = showLabel ? null : label;
+            return ToolTip.Wrap(box, (Prop<string?>)tip);
+        }
         return showLabel ? box : Controls.Named(box, label);
     }
 

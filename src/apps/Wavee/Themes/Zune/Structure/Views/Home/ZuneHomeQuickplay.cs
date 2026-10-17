@@ -79,7 +79,8 @@ internal static class ZuneHomeQuickplay
         bool stacked = lay.QuickStacked;
         return new BoxEl
         {
-            Key = "zune-home-quick-strip", Direction = (byte)(stacked ? 1 : 0), Wrap = !stacked, Gap = lay.QuickGroupGap, MinWidth = 0f,
+            Key = "zune-home-quick-strip", Direction = (byte)(stacked ? 1 : 0), Wrap = !stacked && lay.QuickWrap, ClipToBounds = !stacked && !lay.QuickWrap,
+            Gap = lay.QuickGroupGap, MinWidth = 0f,
             AlignItems = stacked ? FlexAlign.Stretch : FlexAlign.Start, Children = kids.ToArray(),
         };
     }
@@ -99,10 +100,10 @@ internal static class ZuneHomeQuickplay
         ],
     };
 
-    /// <summary>A group's tiles: a row that wraps, <see cref="ZuneHomeLayout.QuickTileGap"/> apart.</summary>
+    /// <summary>A group's tiles: a row that wraps (a single row where the strip is one row: a wrapping box would take the page's whole width), <see cref="ZuneHomeLayout.QuickTileGap"/> apart.</summary>
     static BoxEl Tiles(Element[] tiles, ZuneHomeLayout lay) => new()
     {
-        Direction = 0, Wrap = true, Gap = lay.QuickTileGap, MinWidth = 0f, Children = tiles,
+        Direction = 0, Wrap = lay.QuickWrap, Gap = lay.QuickTileGap, MinWidth = 0f, Children = tiles,
     };
 
     /// <summary>A quickplay tile: the art, then up to two lines under it, the whole tile one click target.</summary>
