@@ -2772,7 +2772,12 @@
       "band": {},
       "lists": {},
       "player": {},
-      "stage": {},
+      "stage": {
+        "$comment": "Z4b: the fullscreen stage's word actions (lowercased by the case roles). The stage's other words are stage.*.",
+        "options": "Options",
+        "layoutWord": "Layout · {layout}",
+        "faceWord": "Face · {face}"
+      },
       "discovery": {},
       "detail": {},
       "artist": {},
