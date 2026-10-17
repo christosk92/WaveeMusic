@@ -204,7 +204,7 @@ public sealed class ZuneBandMountedTests(ShellHost host)
     // ── row 2 ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Row_two_shows_the_library_kinds_on_a_library_route_and_nothing_on_recents()
+    public void Row_two_shows_the_library_kinds_on_a_library_route_and_nothing_on_history()
         => ZuneHost.Mounted(host, shell =>
         {
             shell.RunFrames(20);
