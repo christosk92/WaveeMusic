@@ -287,6 +287,113 @@ Returns the window's current `TierFacts`:
 
 It also returns the active `theme` and `kind`.
 
+### `lint {rules?, root?, nth?, min?, limit?, ...}`
+
+Checks the mounted scene for the flaws a visual audit looks for, and returns structured findings. It reads the scene as it
+is, so `settle` first (the verbs that change the screen already do). Only what paints is checked: hidden, parked,
+transparent and empty-box nodes are not in it.
+
+| Arg | Meaning |
+|---|---|
+| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a JSON array. Default: all eight. |
+| `root`, `nth` | Lint only the subtree of the node with that key (`nth` picks among duplicates). Default: the whole tree and the overlays. |
+| `min` | Leaves out findings below this severity: `info` (default), `warn` or `error`. |
+| `limit` | The most findings one rule reports, 100 by default. The reply lists the rules it cut in `truncated`. |
+| `typeFloor` | `type`: text under this size in DIP is an error. 11 by default. |
+| `targetFloor`, `targetFloorCompact` | `target`: the smallest hit target outside Compact (32) and at Compact (40). |
+| `gapMin` | `rhythm`: stacked text blocks closer than this are cramped. 2 DIP by default. |
+| `allowTrim` | `trim`: keys or key prefixes (of the text or any ancestor) whose text may be trimmed. |
+| `allowDuplicate` | `duplicate`: labels that may appear twice. |
+| `ignoreUnder` | `duplicate`: key prefixes it does not look inside. Default `shell.titlebar,shell.playerbar`. |
+
+```json
+{"cmd":"lint","args":{"rules":"gutter,clip","min":"warn"},"id":8}
+→ {"id":8,"ok":true,"cmd":"lint","theme":"zune","tier":"Standard","size":{"w":2560,"h":1440},"guide":true,
+   "summary":{"error":1,"warn":0,"info":0,"nodes":812,"edges":7},
+   "rules":{"gutter":{"checked":4,"error":1,"warn":0,"info":0},"clip":{"checked":143,"error":0,"warn":0,"info":0}},
+   "findings":[{"rule":"gutter","severity":"error",
+     "message":"the band's first pivot (band.first-pivot): left edge at 48, expected 80 (-32)",
+     "keys":["zune-band-pivot:home"],"measured":{"x":48,"delta":-32},"expected":{"x":80,"tolerance":1}}]}
+```
+
+**A finding** has these fields:
+
+| Field | Meaning |
+|---|---|
+| `rule` | The rule that found it. |
+| `severity` | `error`, `warn` or `info`. Errors sort first within a rule. |
+| `message` | One line, with the numbers in it. |
+| `keys` | The nodes involved, by key. A node without a key is named by its dump `path`. Use them with `find`, `dump root=` and `click`. |
+| `measured?` | What the scene has, as named numbers (`x`, `w`, `inkBottom`, `gap`, `size`, ...). |
+| `expected?` | What the rule wanted (`x`, `w`, `clipBottom`, `minSize`, `minGap`, ...). |
+
+`summary` counts the findings by severity. `rules` gives each rule's `checked` (how many things it looked at) and its
+counts, so a rule with no findings can be told apart from a rule that had nothing to check.
+
+**The rules** and what they check:
+
+| Rule | What it reports | Severity |
+|---|---|---|
+| `gutter` | The active theme's left-edge expectations: the title-bar lead on the tier's gutter, the band's first pivot and the page column's content on the page column (Zune: `ZuneFrameRules.ColumnLead(width, gutter)` in the content column). Off by more than 1 DIP. | `error` (`warn` for an expectation the theme marks advisory, such as Back at Compact) |
+| `right-edge` | The theme's right-edge expectations: the band's last row-2 action, the page's right content edge and the play bar's last glyph agree within 1 DIP. Zune checks this from Small to Standard. | `error`, the play bar's glyph `warn` |
+| `clip` | (a) Text whose ink runs outside the nearest ancestor that clips it: clipped descenders, a title taller than its fixed box. The ink is the text box, the natural height of an unwrapped run, and the 1.2 × size a tight explicit line height needs. An axis the clipping ancestor scrolls on is allowed (a pivot row fading at the window's edge), and so is everything above it. (b) Sibling boxes that overlap by more than 1 DIP, when both carry text or a target and their parent is not a ZStack or a scroller. | (a) vertical `error`, horizontal `warn`; (b) `warn` |
+| `trim` | Text the engine reports trimmed (`text.trimmed`), with its natural size against its box, and whether it is ellipsised, hard-clipped or overflowing. | `warn` |
+| `type` | Every distinct size / line height / weight with its count (the type scale), and an error per size under `typeFloor`. Icon glyphs are not text here. | scale `info`; floor `error` |
+| `target` | Click targets smaller than 40 × 40 at Compact (32 elsewhere). Sliders, scroll bars, progress bars and inline links are exempt, and a target that fills its interactive parent is that parent's. | `error` at Compact, `warn` elsewhere |
+| `duplicate` | The same action visible twice: click targets with the same role and label whose surfaces differ (the first key of the nearest keyed ancestor, up to the first `:`). The title bar and play bar are skipped. Rows of one list share a surface, so they are not duplicates. | `warn` |
+| `rhythm` | The vertical gaps between consecutive text blocks stacked in one column (`info`, one per container), and a warning for a gap under `gapMin`, or an overlap. | `info` / `warn` |
+
+The edge rules need the theme's help: the theme registers a **lint guide** (`IThemeLintGuide`, registered through
+`ThemeInspection.RegisterLintGuide` when the theme is built). A guide describes where its edges belong in the current window
+tier, as data, and core resolves them against the scene by key. A theme with no guide (Classic) is not checked by `gutter` and
+`right-edge`; the reply says `"guide":false`. An edge whose node is not on screen is not checked.
+
+### `crossing {from, to, frames?, items?, max?, ...}`
+
+Resizes across a tier edge the way the user does, and reports what broke on the way. `from` and `to` are
+`{"w":1440,"h":960}` objects (text form: `from=1440x960 to=1440x400`).
+
+1. It mounts at `from` (or resizes the mount you have, and navigates when `route`, `uri` or `deeplink` is given), settles, and
+   remembers every shown keyed node and its rect. With nothing mounted, the mount args apply (`theme`, `kind`, `route`, `gpu`,
+   `scale`); `remount=true` forces a fresh mount.
+2. It resizes to `to` as the shell tests do (`ZuneTierLayoutTests` `CrossPage`). **Narrowing** goes through the OS modal size
+   loop: a keep-alive paint inside the loop, then `frames` more keep-alive paints outside it (default 1), which still lay out
+   the old tier at the new size, then one more keep-alive paint, the **commit frame**, where the new tier lands. **Widening**
+   skips the loop: `frames` keep-alive paints, then a normal frame as the commit.
+3. It settles, lints the settled scene (the same options as `lint`) and replies.
+
+| Reply field | Meaning |
+|---|---|
+| `tierBefore`, `tierResized`, `tierAfter` | `{window, height, content, rungs}` at the start, after the resized frames and after the commit. |
+| `committed` | The tier or a rung changed. `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
+| `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `remounted`, `vanished`, `appeared`, `recounted`. |
+| `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. |
+| `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
+| `appeared` | Keys shown after that were not before. |
+| `recounted` | Keys that repeat (rows) whose count changed: `{key, before, after}`. |
+| `snapped` | Nodes whose laid-out rect changed **on the commit frame** (compared with the resized frame, so plain window resizing does not count) with nothing animating it: no track on the node or an ancestor, and the presented rect already equal to the laid-out one. Each has `from`, `to` and `dx`, `dy`, `dw`, `dh`. Only the topmost of a subtree is listed. |
+| `jumped` | The snapped nodes that only moved (same size): the content below something that changed height, shifting at once. |
+| `settle` | `{frames, settled}` for the final settle. |
+| `lint` | The settled scene's lint: `theme`, `tier`, `size`, `guide`, `summary`, `rules`, `findings` as in `lint`. |
+| `reducedMotion` | Under reduced motion nothing glides, so every change reads as snapped. |
+| `items` | An arg: how many entries each list shows, 40 by default. |
+
+```json
+{"cmd":"crossing","args":{"from":{"w":1440,"h":960},"to":{"w":1440,"h":400},"theme":"zune","route":"home"},"id":9}
+→ {"id":9,"ok":true,"cmd":"crossing","from":{"w":1440,"h":960},"to":{"w":1440,"h":400},"narrowing":true,"resizedFrames":1,
+   "tierBefore":{"window":"Standard","height":"Regular","content":"Standard","rungs":0},
+   "tierResized":{"window":"Standard","height":"Regular","content":"Standard","rungs":0},
+   "tierAfter":{"window":"Standard","height":"Short","content":"Standard","rungs":0},"committed":true,"heldOldTier":true,
+   "reducedMotion":false,"counts":{"tracked":402,"changedOnCommit":31,"glided":30,"snapped":1,"jumped":0,"remounted":0,
+   "vanished":0,"appeared":0,"recounted":0},"remounted":[],"vanished":[],"appeared":[],"recounted":[],
+   "snapped":[{"key":"zune-home-daylist","from":{"x":48,"y":132,"w":1344,"h":220},"to":{"x":48,"y":132,"w":1344,"h":160},
+               "dx":0,"dy":0,"dw":0,"dh":-60}],"jumped":[],"settle":{"frames":24,"settled":true},
+   "lint":{"theme":"zune","tier":"Standard","size":{"w":1440,"h":400},"guide":true,"summary":{...},"rules":{...},"findings":[...]}}
+```
+
+`python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"` prints a lint (or the lint of a
+crossing) as one line per finding.
+
 ## Typical workflows
 
 ### Audit a page at four sizes
@@ -304,16 +411,40 @@ mount w=2560 h=1440 theme=zune route=home
 dump keysOnly=true
 ```
 
-What to compare across the four sizes:
+What to compare across the four sizes (`lint` does all of this for you, per mount):
 
-- The left edges of the title-bar lead, the band and the first content block, against the tier's gutter.
-- Every `text` with `trimmed: true`.
-- The distinct `sizeDip` / `lineHeight` pairs, which make up the type scale.
-- The hit targets under 40 DIP at Compact.
+- The left edges of the title-bar lead, the band and the first content block, against the tier's gutter (`gutter`).
+- Every `text` with `trimmed: true` (`trim`).
+- The distinct `sizeDip` / `lineHeight` pairs, which make up the type scale (`type`).
+- The hit targets under 40 DIP at Compact (`target`).
 
 `python -I tools/inspect.py -f audit.txt --pretty` runs such a file.
 
+### Lint a page at four sizes
+
+```text
+mount w=400  h=860  theme=zune route=home
+lint min=warn
+mount w=800  h=960  theme=zune route=home
+lint min=warn
+mount w=1440 h=960  theme=zune route=home
+lint min=warn
+mount w=2560 h=1440 theme=zune route=home
+lint min=warn
+```
+
+`python -I tools/inspect.py --findings -f lint.txt` prints each finding as `[error] gutter: message <keys>`. Follow a finding's
+`keys` with `dump root=<key> depth=2` to see the node, or `render path=...` to see it.
+
 ### Check a crossing
+
+One verb does the sequence below and compares for you (see `crossing`):
+
+```text
+crossing from=1440x960 to=1440x400 theme=zune route=home
+```
+
+Read it by hand with:
 
 ```text
 mount w=660 h=860 theme=zune route=home settle=true
@@ -349,4 +480,7 @@ dump root=<the page's root key> depth=3
   `Wavee.ShellTests/InspectSessionMountedTests.cs` drives it on the test host.
 - **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle, Subtree, Play, the fixture grader and the
   theme activation. The shell tests call it for Play, the fixture grader and the Zune activation.
+- **The lint rules are pure.** `Diagnostics.InspectLint` (`Diagnostics.Inspect.Lint.cs`) turns a `Snapshot` of nodes into
+  findings with no engine and no host; `Wavee.Tests/InspectLintTests.cs` pins each rule on hand-built trees.
+  `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
 - **No reflection.** JSON is parsed with `JsonDocument` and written with `Utf8JsonWriter`, so the server is AOT-safe.

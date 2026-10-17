@@ -2,13 +2,18 @@
 //
 // The agent server (Screens/Diagnostics.Inspect*.cs) mounts a theme BY ID, reports which one is active and sets options on a
 // named theme: identity reads, which WVTH004 allows only in the composition layer. They live here, in one place, so the
-// diagnostics code never names ThemeHost.Current, ThemeCatalog or a manifest itself.
+// diagnostics code never names ThemeHost.Current, ThemeCatalog or a manifest itself. The lint's per-theme edge guides
+// (ThemeLintGuide.cs) are registered and looked up here for the same reason.
+
+using System.Collections.Concurrent;
 
 namespace Wavee.Theming;
 
 /// <summary>Theme identity for the inspect server (diagnostics only; never a behaviour switch).</summary>
 public static class ThemeInspection
 {
+    private static readonly ConcurrentDictionary<string, IThemeLintGuide> s_guides = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The active theme's id.</summary>
     public static string ActiveId => ThemeHost.Current.Peek().Manifest.Id;
 
@@ -20,4 +25,15 @@ public static class ThemeInspection
 
     /// <summary>True when the installed theme <paramref name="id"/> is Developer-only (it resolves only with Developer mode on).</summary>
     public static bool IsDeveloperOnly(string id) => Find(id)?.Manifest.Availability == ThemeAvailability.Developer;
+
+    /// <summary>Register the lint guide of theme <paramref name="id"/> (its composition file does, when it builds the theme; a second call replaces the first).</summary>
+    public static void RegisterLintGuide(string id, IThemeLintGuide guide)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        ArgumentNullException.ThrowIfNull(guide);
+        s_guides[id] = guide;
+    }
+
+    /// <summary>The active theme's lint guide, or null when it registered none.</summary>
+    public static IThemeLintGuide? ActiveLintGuide => s_guides.TryGetValue(ActiveId, out IThemeLintGuide? guide) ? guide : null;
 }

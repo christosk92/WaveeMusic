@@ -15,7 +15,8 @@
 // THE SESSION (`InspectSession`) is the UI-thread half and owns no thread, so a shell test drives the very same verbs on its
 // own booted host (Wavee.ShellTests/InspectSessionMountedTests.cs). The grammar and the reply writer are pure
 // (Diagnostics.Inspect.Protocol.cs); the dump and the A1 seams are Diagnostics.Inspect.Dump.cs; the frame/theme/play helpers
-// are Diagnostics.Inspect.Kit.cs.
+// are Diagnostics.Inspect.Kit.cs. Lane A3 adds `lint` (the pure rules Diagnostics.Inspect.Lint.cs, the scene capture and report
+// Diagnostics.Inspect.Lint.Scene.cs) and `crossing` (Diagnostics.Inspect.Crossing.cs); both are partial members of this class.
 //
 // DEVICES (per mount, `Shell.HeadlessDevices`). Unless `--text headless`, a mount runs over lane A1's `OffscreenSurface`: the
 // real D3D12 device (WARP by default) presenting into a hidden, never-activated off-monitor tool window, with a DirectWrite
@@ -236,7 +237,7 @@ public static partial class Diagnostics
     /// <summary>The `--inspect` verbs over the process's booted headless shell. UI THREAD ONLY, no thread of its own: the
     /// server's host and a shell test construct it on the thread that ran <c>Shell.Headless.Boot</c>. Dispose unmounts
     /// (releasing the mount's devices).</summary>
-    public sealed class InspectSession : IDisposable
+    public sealed partial class InspectSession : IDisposable
     {
         readonly bool _realText;
         Shell.HeadlessShell? _shell;
@@ -373,6 +374,8 @@ public static partial class Diagnostics
                     return Inspect.Reply.Ok(id, name, InspectDump.WriteTiers);
                 case Inspect.Verb.Option:
                     return Option(id, name, a);
+                case Inspect.Verb.Crossing:
+                    return Crossing(id, name, a);   // mounts by itself when nothing is
             }
 
             // Everything below needs a mount.
@@ -491,6 +494,8 @@ public static partial class Diagnostics
                     return Dump(id, name, a, shell);
                 case Inspect.Verb.Render:
                     return Render(id, name, a, shell);
+                case Inspect.Verb.Lint:
+                    return Lint(id, name, a, shell);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -541,30 +546,42 @@ public static partial class Diagnostics
 
         string Mount(int id, string name, Inspect.Args a)
         {
-            float w0 = a.Float("w", 1180f), h0 = a.Float("h", 760f), scale = a.Float("scale", 1f);
-            if (!(w0 >= 1f && h0 >= 1f && scale > 0f && scale <= 4f)) return Inspect.Reply.Fail(id, name, "mount wants w, h (DIP) and 0 < scale <= 4");
+            float w0 = a.Float("w", 1180f), h0 = a.Float("h", 760f);
+            if (!MountShell(a, w0, h0, out string error, out bool mounted)) return Inspect.Reply.Fail(id, name, error, mounted ? WriteMountFacts : null);
+            return Settled(id, name, a, WriteMountFacts);
+        }
+
+        /// <summary>The body of `mount` (and of a `crossing` that has nothing mounted): validate the args, replace the mount, navigate. False with
+        /// <paramref name="error"/> on a bad arg or an unknown route; <paramref name="mounted"/> says whether a mount is up after the failure.</summary>
+        bool MountShell(Inspect.Args a, float w0, float h0, out string error, out bool mounted)
+        {
+            error = "";
+            mounted = false;
+            float scale = a.Float("scale", 1f);
+            if (!(w0 >= 1f && h0 >= 1f && scale > 0f && scale <= 4f)) { error = "mount wants w, h (DIP) and 0 < scale <= 4"; return false; }
             ThemeKind? kind = null;
             if (a.Has("kind"))
             {
                 string k = a.Str("kind").ToLowerInvariant();
-                if (k is not ("dark" or "light")) return Inspect.Reply.Fail(id, name, "kind is dark or light");
+                if (k is not ("dark" or "light")) { error = "kind is dark or light"; return false; }
                 kind = k == "light" ? ThemeKind.Light : ThemeKind.Dark;
             }
             string theme = a.Str("theme", InspectKit.ActiveThemeId).ToLowerInvariant();
-            if (!InspectKit.IsShipped(theme)) return Inspect.Reply.Fail(id, name, "unknown theme '" + theme + "' (" + string.Join("|", InspectKit.ThemeIds) + ")");
+            if (!InspectKit.IsShipped(theme)) { error = "unknown theme '" + theme + "' (" + string.Join("|", InspectKit.ThemeIds) + ")"; return false; }
 
             Unmount();
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
-            if (gpu is not ("warp" or "hardware" or "none")) return Inspect.Reply.Fail(id, name, "gpu is warp, hardware or none");
+            if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             _shell = MountOn(w0, h0, scale, gpu);
             _frames++;
+            mounted = true;
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
             {
-                if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error, WriteMountFacts);
+                if (!Navigate(a, out error)) return false;
             }
-            return Settled(id, name, a, WriteMountFacts);
+            return true;
         }
 
         void WriteMountFacts(Utf8JsonWriter w)
@@ -754,35 +771,41 @@ public static partial class Diagnostics
 
         // ── dump ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-        string Dump(int id, string name, Inspect.Args a, Shell.HeadlessShell shell)
+        /// <summary>The nodes a `dump` or `lint` covers: `root` (every node keyed so; `nth` picks one), else the whole tree plus the overlays that do
+        /// not hang under the root (flyouts, dialogs), dumped after it.</summary>
+        bool TryRoots(Inspect.Args a, Shell.HeadlessShell shell, out List<NodeHandle> roots, out string error)
         {
+            error = "";
             SceneStore scene = shell.Host.Scene;
-            var roots = new List<NodeHandle>();
+            roots = [];
             if (a.Has("root"))
             {
                 string key = a.Str("root");
                 foreach (var (node, k) in shell.FindPrefix(key))
                     if (string.Equals(k, key, StringComparison.Ordinal)) roots.Add(node);
-                if (roots.Count == 0) return Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "'");
+                if (roots.Count == 0) { error = "no mounted node keyed '" + key + "'"; return false; }
                 int nth = a.Int("nth", -1);
                 if (nth >= 0)
                 {
-                    if (nth >= roots.Count) return Inspect.Reply.Fail(id, name, "only " + roots.Count + " nodes keyed '" + key + "'");
+                    if (nth >= roots.Count) { error = "only " + roots.Count + " nodes keyed '" + key + "'"; return false; }
                     var one = roots[nth];
                     roots.Clear();
                     roots.Add(one);
                 }
+                return true;
             }
-            else
+            roots.Add(scene.Root);
+            for (int i = 0; i < scene.OverlayCount; i++)
             {
-                roots.Add(scene.Root);
-                // Overlays (flyouts, dialogs) that do not hang under the root are dumped after it.
-                for (int i = 0; i < scene.OverlayCount; i++)
-                {
-                    NodeHandle overlay = scene.OverlayAt(i);
-                    if (!overlay.IsNull && !Under(scene, overlay, scene.Root)) roots.Add(overlay);
-                }
+                NodeHandle overlay = scene.OverlayAt(i);
+                if (!overlay.IsNull && !Under(scene, overlay, scene.Root)) roots.Add(overlay);
             }
+            return true;
+        }
+
+        string Dump(int id, string name, Inspect.Args a, Shell.HeadlessShell shell)
+        {
+            if (!TryRoots(a, shell, out List<NodeHandle> roots, out string error)) return Inspect.Reply.Fail(id, name, error);
             var request = new InspectDump.Request(
                 MaxDepth: a.Int("depth", int.MaxValue),
                 KeysOnly: a.Bool("keysOnly", false),

@@ -72,4 +72,109 @@ public sealed class InspectSessionMountedTests(ShellHost host)
             }
             ShellHost.AssertNoNetwork();
         });
+
+    [Fact]
+    public void Zune_Home_at_400x860_lints_with_the_reply_shape_and_no_gutter_error()
+        => host.Run(() =>
+        {
+            var session = new Diagnostics.InspectSession(realText: true);
+            try
+            {
+                Reply(session, """{"cmd":"mount","args":{"w":400,"h":860,"theme":"zune","kind":"dark","gpu":"none","route":"home"},"id":1}""");
+
+                JsonElement lint = Reply(session, """{"cmd":"lint","id":2}""");
+                Assert.Equal(2, lint.GetProperty("id").GetInt32());
+                Assert.Equal("lint", lint.GetProperty("cmd").GetString());
+                Assert.Equal("zune", lint.GetProperty("theme").GetString());
+                Assert.Equal("Compact", lint.GetProperty("tier").GetString());
+                Assert.True(lint.GetProperty("guide").GetBoolean(), "Zune registers a lint guide: " + lint);
+                Assert.Equal(400d, lint.GetProperty("size").GetProperty("w").GetDouble());
+
+                JsonElement summary = lint.GetProperty("summary");
+                Assert.True(summary.GetProperty("nodes").GetInt32() > 0, "the snapshot is empty: " + lint);
+                foreach (string severity in new[] { "error", "warn", "info" }) Assert.True(summary.TryGetProperty(severity, out _), severity);
+
+                // Every rule ran and says how much it looked at; the type scale is always there (the page has text).
+                JsonElement rules = lint.GetProperty("rules");
+                foreach (string rule in Diagnostics.InspectLint.RuleNames) Assert.True(rules.TryGetProperty(rule, out _), "rule " + rule + " is missing: " + rules);
+                Assert.True(rules.GetProperty("type").GetProperty("checked").GetInt32() > 0, "no text was looked at: " + rules);
+                Assert.True(rules.GetProperty("gutter").GetProperty("checked").GetInt32() >= 1, "no gutter edge was on screen (the band's pivots should be): " + rules);
+
+                int counted = 0;
+                foreach (JsonElement finding in lint.GetProperty("findings").EnumerateArray())
+                {
+                    counted++;
+                    string rule = finding.GetProperty("rule").GetString()!;
+                    string severity = finding.GetProperty("severity").GetString()!;
+                    Assert.Contains(rule, Diagnostics.InspectLint.RuleNames);
+                    Assert.Contains(severity, new[] { "error", "warn", "info" });
+                    Assert.False(string.IsNullOrEmpty(finding.GetProperty("message").GetString()));
+                    Assert.Equal(JsonValueKind.Array, finding.GetProperty("keys").ValueKind);
+                    Assert.False(rule == "gutter" && severity == "error", "a gutter error on Zune Home at 400 x 860: " + finding);
+                }
+                Assert.True(counted > 0, "the type scale alone is info findings: " + lint);
+                Assert.Equal(counted, summary.GetProperty("error").GetInt32() + summary.GetProperty("warn").GetInt32() + summary.GetProperty("info").GetInt32());
+
+                // The arguments: a rule subset on a subtree, a severity floor.
+                JsonElement band = Reply(session, """{"cmd":"lint","args":{"rules":"gutter,type","root":"zune-band","min":"warn"},"id":3}""");
+                Assert.True(band.GetProperty("summary").GetProperty("nodes").GetInt32() < summary.GetProperty("nodes").GetInt32(), "root= did not narrow the lint");
+                Assert.False(band.GetProperty("rules").TryGetProperty("clip", out _));
+                Assert.All(band.GetProperty("findings").EnumerateArray(), f => Assert.NotEqual("info", f.GetProperty("severity").GetString()));
+
+                JsonElement refused = JsonDocument.Parse(session.Execute("""{"cmd":"lint","args":{"rules":"wobble"},"id":4}""", out _)).RootElement.Clone();
+                Assert.False(refused.GetProperty("ok").GetBoolean());
+                Assert.Contains("wobble", refused.GetProperty("error").GetString());
+            }
+            finally
+            {
+                session.Dispose();
+                ZuneHost.Restore();
+            }
+            ShellHost.AssertNoNetwork();
+        });
+
+    [Fact]
+    public void Zune_Home_crossing_1440x960_to_1440x400_remounts_nothing_and_lints_the_settled_page()
+        => host.Run(() =>
+        {
+            var session = new Diagnostics.InspectSession(realText: true);
+            try
+            {
+                JsonElement crossing = Reply(session, """{"cmd":"crossing","args":{"from":{"w":1440,"h":960},"to":{"w":1440,"h":400},"theme":"zune","kind":"dark","gpu":"none","route":"home"},"id":1}""");
+                Assert.Equal("crossing", crossing.GetProperty("cmd").GetString());
+                Assert.True(crossing.GetProperty("narrowing").GetBoolean());
+                Assert.Equal("Regular", crossing.GetProperty("tierBefore").GetProperty("height").GetString());
+                Assert.Equal("Short", crossing.GetProperty("tierAfter").GetProperty("height").GetString());
+                Assert.True(crossing.GetProperty("committed").GetBoolean(), "the height edge did not commit: " + crossing);
+                Assert.True(crossing.GetProperty("heldOldTier").GetBoolean(), "the resized frames already read the new tier: " + crossing);
+
+                JsonElement counts = crossing.GetProperty("counts");
+                Assert.True(counts.GetProperty("tracked").GetInt32() > 0, "no keyed node was followed: " + crossing);
+                Assert.True(crossing.GetProperty("remounted").GetArrayLength() == 0, "nodes were remounted on the crossing: " + crossing.GetProperty("remounted"));
+                Assert.Equal(0, counts.GetProperty("remounted").GetInt32());
+                foreach (string list in new[] { "vanished", "appeared", "recounted", "snapped", "jumped" })
+                    Assert.Equal(JsonValueKind.Array, crossing.GetProperty(list).ValueKind);
+                Assert.True(crossing.GetProperty("settle").GetProperty("settled").GetBoolean(), "the page did not settle: " + crossing.GetProperty("settle"));
+
+                JsonElement lint = crossing.GetProperty("lint");
+                Assert.Equal("zune", lint.GetProperty("theme").GetString());
+                Assert.True(lint.GetProperty("summary").GetProperty("nodes").GetInt32() > 0);
+                Assert.Equal(JsonValueKind.Array, lint.GetProperty("findings").ValueKind);
+
+                // The mount is left at the to-size, and a second crossing reuses it (widening back).
+                Assert.Equal(400d, Reply(session, """{"cmd":"status","id":2}""").GetProperty("size").GetProperty("h").GetDouble());
+                JsonElement back = Reply(session, """{"cmd":"crossing","args":{"from":{"w":1440,"h":400},"to":{"w":1440,"h":960}},"id":3}""");
+                Assert.False(back.GetProperty("narrowing").GetBoolean());
+                Assert.Equal(0, back.GetProperty("counts").GetProperty("remounted").GetInt32());
+
+                JsonElement refused = JsonDocument.Parse(session.Execute("""{"cmd":"crossing","args":{"from":{"w":1440,"h":960}},"id":4}""", out _)).RootElement.Clone();
+                Assert.False(refused.GetProperty("ok").GetBoolean());
+            }
+            finally
+            {
+                session.Dispose();
+                ZuneHost.Restore();
+            }
+            ShellHost.AssertNoNetwork();
+        });
 }
