@@ -195,8 +195,8 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(80f, c.PinTileW);
         Assert.Equal(0, c.QuickFresh);
         Assert.Equal(ZuneDaylistForm.Row, c.DaylistForm);
-        // Audit B-Home 400x860: four UNLABELLED 36 rings (4 x 36 + 3 x 16 = 192) in 40 hit boxes 12 apart, under a 28/36 title of up to two lines; the
-        // strip is a 168 floor that grows with its copy.
+        // Audit B-Home 400x860: four UNLABELLED 36 rings in 40 hit boxes 12 apart, under the daylist title at its full 40/48 step (the Title role, as at
+        // Standard: Zune is a large typeface, so the title is not shrunk to fit) over up to three lines; the strip is a 168 floor that grows with its copy.
         Assert.Equal(168f, c.DaylistH);
         Assert.True(c.DaylistGrows);
         Assert.Equal(112f, c.DaylistArtW);
@@ -207,9 +207,8 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(36f, c.RingSize);
         Assert.Equal(40f, c.RingTarget);
         Assert.Equal(16f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
-        Assert.Equal(28f, c.DaylistTitleSize);
-        Assert.Equal(36f, c.DaylistTitleLine);
-        Assert.Equal(2, c.DaylistTitleLines);
+        Assert.Equal(ZuneDaylistTitle.Title, c.DaylistTitle);
+        Assert.Equal(3, c.DaylistTitleLines);
         // The rings fit the copy beside the art at 400 (a narrower window wraps them and the strip grows).
         Assert.True(4f * c.RingTarget + 3f * c.RingsGap <= 400f - 2f * c.Gutter - c.DaylistArtW - 2f * c.DaylistPad);
         Assert.False(c.PairBeside);
@@ -289,6 +288,26 @@ public sealed class ZuneDiscoveryRulesTests
     }
 
     [Fact]
+    public void The_daylist_title_keeps_its_role_at_every_tier_and_wraps_while_the_strip_grows()
+    {
+        // Zune is a large typeface (owner directive): the title is never set smaller to fit and never ellipsised on one line while it could wrap. Compact
+        // sets it in the same 40/48 role as Standard; every strip tier wraps it over two lines or more and its height is a floor that grows.
+        Assert.Equal(ZuneDaylistTitle.Title, ZuneHomeTiers.For(WidthTier.Compact).DaylistTitle);
+        Assert.Equal(ZuneDaylistTitle.Heading, ZuneHomeTiers.For(WidthTier.Small).DaylistTitle);
+        Assert.Equal(ZuneDaylistTitle.Title, ZuneHomeTiers.For(WidthTier.Standard).DaylistTitle);
+        Assert.Equal(ZuneDaylistTitle.Hero, ZuneHomeTiers.For(WidthTier.Huge).DaylistTitle);
+        foreach (var tier in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+        {
+            var lay = ZuneHomeTiers.For(tier);
+            Assert.True(lay.DaylistTitleLines >= 2, tier + ": the title wraps instead of truncating");
+            Assert.True(lay.DaylistGrows, tier + ": the strip grows to hug a wrapped title");
+        }
+        // Only the one-row form (a window too short for the strip) keeps one line.
+        var oneRow = ZuneHomeTiers.Of(WindowTiers.Resolve(ZuneTiers.Policy, 1440f, 330f, 1440f));
+        Assert.Equal(1, oneRow.DaylistTitleLines);
+    }
+
+    [Fact]
     public void A_window_too_short_for_the_strip_folds_the_daylist_to_one_row_and_keeps_every_other_tier_fact()
     {
         var policy = ZuneTiers.Policy;
@@ -299,7 +318,7 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(ZuneDaylistForm.OneRow, short330.DaylistForm);
         Assert.Equal(56f, short330.DaylistH);
         Assert.False(short330.DaylistGrows);
-        Assert.Equal(0f, short330.DaylistTitleSize);
+        Assert.Equal(1, short330.DaylistTitleLines);
         Assert.Equal(56f, short330.DaylistArtW);
         Assert.Equal(0f, short330.ClockW);
         Assert.True(short330.PlayAtEnd);

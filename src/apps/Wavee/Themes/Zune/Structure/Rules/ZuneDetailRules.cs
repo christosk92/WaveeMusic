@@ -3,8 +3,8 @@
 // Boards Z-Album (Standard, 1440), Z-Album-Small (800), Z-Album-Compact (400), Z-Album-Huge (2560), Z-Album-Huge4K (3840), Album-Page and Album
 // (the early panorama studies), Z-Light-Album (the light pass reads the same numbers).
 //
-// THE COMPOSITION. A Zune detail page is a PANORAMA: the page's title set huge and light across the top (`R.Type.Panorama`, bleeding off the
-// right edge or fitting it, `structure.panoramaFit`), then up to three columns under it: the IDENTITY column (the cover, the artist, the meta
+// THE COMPOSITION. A Zune detail page is a PANORAMA: the page's title set huge and light across the top (`R.Type.Panorama`, wrapping by words over
+// up to two lines so a long name keeps its size, the band hugging it), then up to three columns under it: the IDENTITY column (the cover, the artist, the meta
 // line, the ring actions, the release's courtesy lines), the LIST (a "songs" heading over the track table), and the ASIDE ("more by", the
 // artist, fans also like). The art wash behind the top is the material's (the frame places the core's tint and tone leaves; Zune's material
 // draws them as the wash). The page's title and its views also sit in the band's row 2 (the page publishes them, `Album.Page.cs`).
@@ -19,7 +19,8 @@
 //             play, shuffle and saved live in the band's row 2: one home per verb, audit A4); the meta on two lines.
 //
 // THE PANORAMA BAND is the title's size, its descender (a quarter of it) and 8 of air (`PanoramaHFor`, audit A3: 88 / 158 / 196), so no descender
-// is clipped and the body starts at least 8 under it. A playlist and Liked Songs take their own step (`ZunePlaylistTiers.Panorama`, audit A8).
+// is clipped and the body starts at least 8 under it. EVERY detail kind (album, playlist, Liked Songs, show, episode) sets its title at the SAME step
+// per tier, the record's own: Zune is a large typeface and a title is never made smaller to fit (see below).
 //   Standard  (Z-Album)          the panorama 120/130 over the 240 identity column, the list, and the 260 aside, 48 apart.
 //   Huge      (Z-Album-Huge)     the panorama 150/160; 320 identity, 400 aside (the artist band, "more by" as a grid, fans).
 //   Huge 4K   (Z-Album-Huge4K)   the panorama 150/160; 400 identity, 440 aside, 64 apart, the larger text and the 40 rings, shuffle in the rings.
@@ -32,9 +33,10 @@
 // a 300 window is covered edge to edge); from Standard the aside's section when an aside docks (320 wide alone, 420 at Huge and 440 at 4K; the
 // aside docks by the window tier, the content tier folds it where a docked panel narrows the page); from Huge it rests OPEN (Z-Liked-Huge).
 //
-// THE PANORAMA STEP BY KIND (`ZunePlaylistTiers.Panorama`): an album's is the record's (64/72, 120/130 at Standard, 150/160); a playlist's, a show's and
-// an episode's are 64/72 up to Standard and 150/160 at Huge, Liked Songs' 40/48, 64/72, 120/130; an episode at Standard sets its title at 40/48 over
-// two lines (Z-Episode wraps it; `PanoramaLines`), the band hugging it.
+// THE PANORAMA STEP: one per tier for every kind, the record's own (64/72 at Compact and Small, 120/130 at Standard, 150/160 at Huge and 4K). A long
+// title never shrinks and never ellipsises on one line: it WRAPS by whole words over up to `PanoramaLines` (2) lines and the band HUGS it (its reserved
+// height is a floor; the band's height glides on the size channel, `PanoramaFold`, and everything below rides the presented extent, so nothing jumps).
+// Only a folded band (a short window) draws the title on one line, hidden.
 //
 // THE LADDERS the core resolves by id (`DetailLadders`, declared through `ZuneTiers.LaddersDetail`, Tiers.Detail.cs):
 //   mode    the page column: the vertical arm below 640, the two-column arms from it (820 and 1008 split the core's three rail modes, which
@@ -513,9 +515,9 @@ public sealed record ZuneDetailLayout : ITierLayoutRecord
     /// <summary>The identity column leads with the title (a short window folded the panorama).</summary>
     public bool RailTitle { get; init; }
 
-    /// <summary>The lines the panorama's title may take (1: the board's bleeding or fitted word). An episode at Standard (Z-Episode: the 40/48
-    /// title WRAPS) takes 2: the band then hugs the title, its reserved height a floor, and the words break by whole words (never a truncation).</summary>
-    public int PanoramaLines { get; init; } = 1;
+    /// <summary>The lines the panorama's title may take (2): the title keeps its tier's step and breaks by whole words, the band hugging it (its reserved
+    /// height a floor), so a long name takes more room instead of a smaller size or a one-line ellipsis.</summary>
+    public int PanoramaLines { get; init; } = 2;
 
     /// <summary>Does the panorama's title wrap by whole words (<see cref="PanoramaLines"/> over one)? A folded band never does.</summary>
     public bool PanoramaWraps => PanoramaLines > 1 && PanoramaH > 0f;

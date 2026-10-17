@@ -61,7 +61,7 @@ public sealed class ZuneProfileRulesTests
     }
 
     [Fact]
-    public void A_ranked_row_holds_its_art_and_the_name_never_outgrows_its_reserved_line()
+    public void A_ranked_row_holds_its_art_and_the_names_box_reserves_its_voices_line_as_a_floor()
     {
         foreach (var tier in s_tiers)
         {

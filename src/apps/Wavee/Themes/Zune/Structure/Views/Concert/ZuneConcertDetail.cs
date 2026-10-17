@@ -163,19 +163,17 @@ internal static class ZuneConcertDetail
             });
         }
 
-        bool fit = ZuneOptions.Fit() == PanoramaFit.Fit;
+        // The title keeps its tier's step and wraps over up to TitleLines lines (the identity column grows to hug it), never a one-line ellipsis or a bleed.
         var title = R.Type.Hero(d.Title) with
         {
             Size = lay.TitleSize, LineHeight = lay.TitleLine, Color = Tok.TextPrimary, MinWidth = 0f,
-            MaxLines = lay.TitleSingleLine ? 1 : Rules.TitleLines, Wrap = lay.TitleSingleLine ? TextWrap.NoWrap : TextWrap.Wrap,
-            Trim = lay.TitleSingleLine && !fit ? TextTrim.None : TextTrim.CharacterEllipsis,
-            Shrink = lay.TitleSingleLine && !fit ? 0f : 1f,
+            MaxLines = Rules.TitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f,
         };
 
         var kids = new List<Element>(4)
         {
             new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = caption.ToArray() },
-            lay.TitleSingleLine && !fit ? new BoxEl { Direction = 0, MinWidth = 0f, ClipToBounds = true, Children = [title] } : title,
+            title,
         };
 
         if (date is { } moment)

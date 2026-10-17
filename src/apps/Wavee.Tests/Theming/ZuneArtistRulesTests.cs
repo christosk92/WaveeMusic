@@ -114,8 +114,12 @@ public sealed class ZuneArtistRulesTests
         Assert.Equal(regular.Tier, shortLay.Tier);
         Assert.True(shortLay.HeroH <= regular.HeroH, "the hero gives height back");
         Assert.Equal(ZuneArtistTiers.ShortHeroH, shortLay.HeroH);
-        Assert.True(shortLay.CompactName, "the 64 voice");
-        Assert.Equal(0f, shortLay.NameSize);
+        // The NAME keeps the tier's voice (Zune's type is never made smaller to fit: it wraps and the hero grows; it used to fold to the 64 voice).
+        Assert.Equal(regular.CompactName, shortLay.CompactName);
+        Assert.Equal(regular.NameSize, shortLay.NameSize);
+        Assert.Equal(regular.NameLine, shortLay.NameLine);
+        Assert.Equal(regular.NameTracking, shortLay.NameTracking);
+        Assert.Equal(2, ZuneArtistRules.NameLines);
         Assert.True(shortLay.BodyTop <= regular.BodyTop && shortLay.ZoneGap <= regular.ZoneGap);
         // What is not height is the tier's own: the actions, the columns, the rail, the page.
         Assert.Equal(regular.Actions, shortLay.Actions);
@@ -193,8 +197,10 @@ public sealed class ZuneArtistRulesTests
         var shortRec = ZuneProfileTiers.Of(Window(width, 330f));
         Assert.Equal(regular.Tier, shortRec.Tier);
         Assert.True(shortRec.Avatar <= ZuneProfileRules.ShortAvatar && shortRec.Avatar <= regular.Avatar);
-        Assert.Equal(ZuneProfileName.Title, shortRec.Name);
-        Assert.Equal(ZuneProfileRules.ShortNameLine, shortRec.NameLine);
+        // The name keeps the tier's voice (it used to fold to the 40/48 title voice); it wraps over two lines and the hero grows.
+        Assert.Equal(regular.Name, shortRec.Name);
+        Assert.Equal(regular.NameLine, shortRec.NameLine);
+        Assert.Equal(2, ZuneProfileRules.NameLines);
         Assert.True(shortRec.SectionGap <= ZuneProfileRules.ShortSectionGap);
         // The columns, the rows, the targets and the verbs' home are the tier's own.
         Assert.Equal(regular.TopCols, shortRec.TopCols);
@@ -223,16 +229,21 @@ public sealed class ZuneArtistRulesTests
     [InlineData(1440f)]
     [InlineData(2560f)]
     [InlineData(3840f)]
-    public void A_short_window_folds_the_concert_pages_voices_and_gaps_and_keeps_their_composition(float width)
+    public void A_short_window_folds_the_concert_pages_gaps_but_not_their_voices_and_keeps_their_composition(float width)
     {
         var regular = ZuneConcertTiers.Of(Window(width, 960f));
         var shortRec = ZuneConcertTiers.Of(Window(width, 330f));
         Assert.Equal(regular.Tier, shortRec.Tier);
-        Assert.True(shortRec.TitleSize <= ZuneConcertTiers.Small.TitleSize && shortRec.TitleLine <= ZuneConcertTiers.Small.TitleLine);
-        Assert.True(shortRec.NumeralSize <= ZuneConcertTiers.ShortNumeral);
+        // The SPACE folds; the TYPE does not (the title, the numeral, the date words, the facts and the schedule's name keep the tier's step: they wrap).
+        Assert.Equal(regular.TitleSize, shortRec.TitleSize);
+        Assert.Equal(regular.TitleLine, shortRec.TitleLine);
+        Assert.Equal(regular.NumeralSize, shortRec.NumeralSize);
+        Assert.Equal(regular.NumeralLine, shortRec.NumeralLine);
+        Assert.Equal(regular.DateWordsSize, shortRec.DateWordsSize);
+        Assert.Equal(regular.FactsSize, shortRec.FactsSize);
+        Assert.Equal(regular.ScheduleTitleSize, shortRec.ScheduleTitleSize);
         Assert.True(shortRec.SectionGap <= ZuneConcertTiers.ShortGap && shortRec.ZoneGap <= ZuneConcertTiers.ShortGap);
         Assert.True(shortRec.SchedulePhotoH <= ZuneConcertTiers.ShortPhotoH);
-        Assert.True(shortRec.FactsSize <= ZuneConcertTiers.Standard.FactsSize);
         // The composition is the tier's own: the slab's width and bleed, the lineup, the related columns, the targets.
         Assert.Equal(regular.TicketsW, shortRec.TicketsW);
         Assert.Equal(regular.SlabBleed, shortRec.SlabBleed);

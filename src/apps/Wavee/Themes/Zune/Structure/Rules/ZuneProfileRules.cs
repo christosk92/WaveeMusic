@@ -77,8 +77,11 @@ public static class ZuneProfileRules
     /// <summary>A shelf card (154) and the narrowest cell of the people list (176; 120 at Compact so two share a 300 window, 200 at Huge, 220 at 4K).</summary>
     public const float CardW = 154f, ListCell = 176f, CompactCell = 120f, HugeCell = 200f, Huge4KCell = 220f;
 
-    /// <summary>The Short rung: the avatar's cap, the hero's gap, the title voice's line and the sections' gap.</summary>
-    public const float ShortAvatar = 88f, ShortHeroGap = 20f, ShortNameLine = 48f, ShortSectionGap = 20f;
+    /// <summary>The Short rung: the avatar's cap, the hero's gap and the sections' gap (the name keeps its tier's voice).</summary>
+    public const float ShortAvatar = 88f, ShortHeroGap = 20f, ShortSectionGap = 20f;
+
+    /// <summary>The lines the hero's name may take: it wraps by whole words and the hero grows to hug it (the name never shrinks to fit).</summary>
+    public const int NameLines = 2;
 
     // ── the lists ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -134,7 +137,8 @@ public sealed record ZuneProfileLayout : ITierLayoutRecord
     /// <summary>The name's voice.</summary>
     public required ZuneProfileName Name { get; init; }
 
-    /// <summary>The line height the name's box reserves (the largest line of its voice), so a crossing scales the word and moves nothing under it.</summary>
+    /// <summary>The line height the name's box reserves at least (the largest line of its voice), so a crossing scales the word and moves nothing under it;
+    /// a long name wraps over <see cref="ZuneProfileRules.NameLines"/> lines and the box grows to hug it.</summary>
     public required float NameLine { get; init; }
 
     /// <summary>A hit target: 40 at Compact, 32 elsewhere (the words, the pills, the rings).</summary>
@@ -223,12 +227,13 @@ public static class ZuneProfileTiers
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
     public static ZuneProfileLayout For(WidthTier content) => s_records[Math.Clamp((int)content, 0, s_records.Length - 1)];
 
-    /// <summary>The Short rung (windows 330-699 tall; about 160 of height is left to the page): the avatar, the name and the gaps give their height back
-    /// (an 88 avatar at most, the 40/48 title voice, sections 20 apart); the columns, the rows and the targets are the content tier's own. A pure fold.</summary>
+    /// <summary>The Short rung (windows 330-699 tall; about 160 of height is left to the page): the avatar and the gaps give their height back (an 88 avatar
+    /// at most, sections 20 apart); the NAME keeps its tier's voice (Zune's type is never made smaller to fit: it wraps and the hero grows, the page
+    /// scrolls); the columns, the rows and the targets are the content tier's own. A pure fold.</summary>
     static ZuneProfileLayout Fold(ZuneProfileLayout r) => r with
     {
         Avatar = MathF.Min(r.Avatar, ZuneProfileRules.ShortAvatar), HeroGap = MathF.Min(r.HeroGap, ZuneProfileRules.ShortHeroGap),
-        Name = ZuneProfileName.Title, NameLine = ZuneProfileRules.ShortNameLine, SectionGap = MathF.Min(r.SectionGap, ZuneProfileRules.ShortSectionGap),
+        SectionGap = MathF.Min(r.SectionGap, ZuneProfileRules.ShortSectionGap),
     };
 
     static readonly ZuneProfileLayout[] s_short = [Fold(s_records[0]), Fold(s_records[1]), Fold(s_records[2]), Fold(s_records[3]), Fold(s_records[4])];

@@ -241,7 +241,7 @@ internal static class ZuneProfile
     /// <summary>The eyebrow, the name, the stats, the actions.</summary>
     static Element Copy(in ProfileHeroText t, string uri, ProfileHeroActs? acts, ZuneProfileLayout lay)
     {
-        // A name is a name: never re-cased, one line, the full name in the trim tooltip.
+        // A name is a name: never re-cased, wrapped by whole words over up to NameLines lines (the box hugs them), the full name in the trim tooltip.
         TextEl name = (lay.Name switch
         {
             ZuneProfileName.Panorama => R.Type.Panorama(t.Name),
@@ -249,7 +249,7 @@ internal static class ZuneProfile
             _ => R.Type.PageHero(t.Name),
         }) with
         {
-            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.NameLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         var kids = new List<Element>(4)
         {
@@ -260,7 +260,7 @@ internal static class ZuneProfile
             // The box reserves the larger voice's line, so the word scales on a crossing and nothing under it moves.
             new BoxEl
             {
-                Key = "zune-profile-name", Direction = 1, Justify = FlexJustify.Center, Height = lay.NameLine, MinWidth = 0f, Layout = ZuneMotion.TitleScale,
+                Key = "zune-profile-name", Direction = 1, Justify = FlexJustify.Center, MinHeight = lay.NameLine, MinWidth = 0f, Layout = ZuneMotion.TitleScale,
                 Children = [Controls.TrimmedTitle(name, t.Name)],
             },
             Stats(in t, acts, lay),

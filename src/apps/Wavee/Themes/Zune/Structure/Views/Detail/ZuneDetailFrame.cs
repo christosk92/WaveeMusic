@@ -8,8 +8,8 @@
 //     not, so the tree under the list never changes when the facts arrive (the list keeps its scroll);
 //   · the TWO-COLUMN arm: the PANORAMA band (the page's title across the top, its height the record's, folded on a short window), then ONE row
 //     of [identity column | list | aside], all in the system PAGE COLUMN (`ZuneFrameRules.PageColumn`: the gutter, capped at 2400 and centred past
-//     it, P5 decision 2), so the page x is the band's x at every width (audit A1). A playlist's and Liked Songs' panorama take their own step
-//     (`ZunePlaylistTiers.Panorama`, audit A8); an editable playlist's panorama IS its inline editor (the Title slot). The identity column is the
+//     it, P5 decision 2), so the page x is the band's x at every width (audit A1). Every kind's panorama is the record's step (a long title wraps
+//     and the band hugs it); an editable playlist's panorama IS its inline editor (the Title slot). The identity column is the
 //     record's width (Z-Album 240), not the core's resizable rail: Zune draws no grip. A collapse stored by another theme shows Zune's strip
 //     (`Detail.CompactRail`) with its expand, never a dead end. The list column leads with the "songs" heading on a track page and carries the
 //     insights sheet over its rows (open or not);
@@ -77,10 +77,9 @@ internal static class ZuneDetailFrame
         }
 
         bool dock = p.Aside is not null && lay.AsideW > 0f;
-        // The panorama's own step for a playlist or Liked Songs (audit A8); the columns keep the content tier's record.
+        // The panorama is the content tier's record for every kind (the album's step); a long title wraps and the band hugs it.
         Element band = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec) is { } spec
-            ? K.PanoramaBand(spec.Identity, spec.Slots, ZunePlaylistTiers.Panorama(lay, ZunePlaylistTiers.Of(facts), spec.Identity.Kind),
-                gutter: 0f, bleed: gutter)
+            ? K.PanoramaBand(spec.Identity, spec.Slots, lay, gutter: 0f)
             : new BoxEl { Key = Z.PanoramaKey, Height = lay.PanoramaH, Shrink = 0f, Animate = Z.PanoramaFold };
 
         // ── the list column: the "songs" heading on a track page, the list, and the insights sheet's layer over it (composed open or not) ──

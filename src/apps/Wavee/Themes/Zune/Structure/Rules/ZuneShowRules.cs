@@ -343,7 +343,7 @@ public static class ZuneConcertRules
 
     // ── the event page ──
 
-    /// <summary>The title's line cap where it wraps.</summary>
+    /// <summary>The title's line cap (it wraps by words at every tier; the identity column grows to hug it).</summary>
     public const int TitleLines = 2;
 
     /// <summary>The gap under the numeral (stacked), beside the numeral and its month (Compact), the lift of the words beside it and of the facts.</summary>
@@ -394,7 +394,7 @@ public static class ZuneConcertTiers
     /// under them, the slab stacked and bled to the gutters, the lineup and the related concerts as 64 and 56 rows.</summary>
     public static ZuneConcertLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, TitleSize = 64f, TitleLine = 72f, TitleSingleLine = true, NumeralSize = 64f, NumeralLine = 64f,
+        Tier = WidthTier.Compact, TitleSize = 64f, TitleLine = 72f, NumeralSize = 64f, NumeralLine = 64f,
         DateStacked = false, DateGap = 12f, DateTop = 6f, DateWordsSize = 15f, DateWordsLine = 20f, FactsSize = 15f, FactsLine = 22f, FactsGap = 4f,
         IdentityGap = 6f, SectionGap = 20f, HeroGap = 0f, SlabTop = 20f, TicketsW = 0f, SlabBleed = true, SlabPadX = 0f, SlabPadY = 14f,
         SlabHeadSize = 26f, SlabHeadLine = 32f, OfferRowH = 48f, OfferSize = 15f, LineupAvatar = 48f, LineupRows = true, LineupRowH = 64f,
@@ -406,7 +406,7 @@ public static class ZuneConcertTiers
     /// <summary>Small (Z-Concert-Small): the title 40/48, the numeral 64 over its words, the 260 slab beside the facts, the rows.</summary>
     public static ZuneConcertLayout Small { get; } = Compact with
     {
-        Tier = WidthTier.Small, TitleSize = 40f, TitleLine = 48f, TitleSingleLine = false, DateStacked = true, DateGap = 28f, DateTop = 4f,
+        Tier = WidthTier.Small, TitleSize = 40f, TitleLine = 48f, DateStacked = true, DateGap = 28f, DateTop = 4f,
         DateWordsSize = 13f, DateWordsLine = 18f, HeroGap = 32f, TicketsW = 260f, SlabBleed = false, SlabPadX = 20f, SlabHeadSize = 22f, SlabHeadLine = 28f,
         OfferRowH = 36f, OfferSize = 14f, LineupRowH = 56f, RelatedGap = 0f, Target = 36f, HubPill = 32f, GridMinColumn = 160f, ScheduleDateW = 48f,
         SchedulePhotoH = 180f, LinkTarget = 0f,
@@ -455,22 +455,18 @@ public static class ZuneConcertTiers
         return facts.Height == HeightTier.Short ? s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)] : For(facts.Content);
     }
 
-    /// <summary>The Short rung (windows 330-699 tall: the band folds to 52 and the player bar holds 72, so about 160 of height is left): the
-    /// title, the numeral and the facts take the Small voice at most (40/48 and 15/22), the gaps close, the schedule's photo and name shrink. The
-    /// columns, the slab and the rows are the content tier's own. A pure fold of the tier's record.</summary>
+    /// <summary>The Short rung (windows 330-699 tall: the band folds to 52 and the player bar holds 72, so about 160 of height is left): the SPACE
+    /// closes (the gaps, the schedule's photo); the TYPE does not. The title, the numeral, the date words, the facts and the schedule's name keep the
+    /// tier's own step (Zune is a large typeface: it wraps and the page scrolls, it is never made smaller to fit). The columns, the slab and the rows are
+    /// the content tier's own. A pure fold of the tier's record.</summary>
     static ZuneConcertLayout Fold(ZuneConcertLayout r) => r with
     {
-        TitleSize = MathF.Min(r.TitleSize, Small.TitleSize), TitleLine = MathF.Min(r.TitleLine, Small.TitleLine),
-        NumeralSize = MathF.Min(r.NumeralSize, ShortNumeral), NumeralLine = MathF.Min(r.NumeralLine, ShortNumeral),
-        DateWordsSize = MathF.Min(r.DateWordsSize, Standard.DateWordsSize), DateWordsLine = MathF.Min(r.DateWordsLine, Standard.DateWordsLine),
-        FactsSize = MathF.Min(r.FactsSize, Standard.FactsSize), FactsLine = MathF.Min(r.FactsLine, Standard.FactsLine),
         SectionGap = MathF.Min(r.SectionGap, ShortGap), HeroGap = MathF.Min(r.HeroGap, Standard.HeroGap), ZoneGap = MathF.Min(r.ZoneGap, ShortGap),
-        SchedulePhotoH = MathF.Min(r.SchedulePhotoH, ShortPhotoH), ScheduleTitleSize = MathF.Min(r.ScheduleTitleSize, Small.ScheduleTitleSize),
-        ScheduleTitleLine = MathF.Min(r.ScheduleTitleLine, Small.ScheduleTitleLine),
+        SchedulePhotoH = MathF.Min(r.SchedulePhotoH, ShortPhotoH),
     };
 
-    /// <summary>The folded numeral, the folded gaps and the folded schedule photo's height.</summary>
-    public const float ShortNumeral = 48f, ShortGap = 20f, ShortPhotoH = 140f;
+    /// <summary>The folded gaps and the folded schedule photo's height.</summary>
+    public const float ShortGap = 20f, ShortPhotoH = 140f;
 
     static readonly ZuneConcertLayout[] s_short = [Fold(Compact), Fold(Small), Fold(Standard), Fold(Huge), Fold(Huge4K)];
 }
@@ -484,14 +480,11 @@ public sealed record ZuneConcertLayout : ITierLayoutRecord
     /// <summary>None: every region of the page fits at every size its tier lays out (the columns yield, the slab stacks).</summary>
     public ImmutableArray<TierRegion> Regions => ImmutableArray<TierRegion>.Empty;
 
-    /// <summary>The title's size and line, and whether it is ONE line (a bleeding panorama word, or fitted by <c>structure.panoramaFit</c>).</summary>
+    /// <summary>The title's size and line: the title keeps this step at every height and wraps over <see cref="ZuneConcertRules.TitleLines"/> lines.</summary>
     public required float TitleSize { get; init; }
 
     /// <summary>See <see cref="TitleSize"/>.</summary>
     public required float TitleLine { get; init; }
-
-    /// <summary>See <see cref="TitleSize"/>.</summary>
-    public required bool TitleSingleLine { get; init; }
 
     /// <summary>The date numeral's size and line.</summary>
     public required float NumeralSize { get; init; }

@@ -158,7 +158,6 @@ internal static class ZuneHomeDaylist
             _ => R.Type.HeroTitle(title),
         };
         bool one = lay.DaylistTitleLines <= 1;
-        if (lay.DaylistTitleSize > 0f) text = text with { Size = lay.DaylistTitleSize, LineHeight = lay.DaylistTitleLine };
         return new BoxEl
         {
             Key = "zune-daylist-title", Direction = 1, MinWidth = 0f, Animate = Design.Reduced ? null : ZuneMotion.TitleScale,

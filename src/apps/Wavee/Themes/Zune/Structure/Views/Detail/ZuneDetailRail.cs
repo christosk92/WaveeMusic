@@ -185,12 +185,11 @@ internal static class ZuneDetailRail
 
     // ── the show header ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the panorama (the same rule as a playlist's, `ZunePlaylistTiers.Panorama`:
-    /// Z-Show-Compact, Z-Episode-Compact), the 120 cover beside the meta (the publisher or the show, the rating, the meta line), the ledger, then the ring row
+    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the panorama (the vertical record's 64/72, wrapped over two lines
+    /// with its band hugging the name; Z-Show-Compact, Z-Episode-Compact), the 120 cover beside the meta (the publisher or the show, the rating, the meta line), the ledger, then the ring row
     /// full width; the prerelease card and the release facts under it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a
     /// show's follow and save leave the row where the band's row 2 carries "follow". A SHORT window (under 700 tall, 330 at the least) folds the panorama
-    /// (eased), the cover row, the ledger and the facts: the fixed header is then the show's name in the heading voice over the ring row (a 126-tall page
-    /// keeps room for its list).</summary>
+    /// (eased), the cover row, the ledger and the facts: the fixed header is then the show's name in the heading voice (wrapping over two lines) over the ring row.</summary>
     public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
     {
         var facts = ctx.Tier();
@@ -200,13 +199,13 @@ internal static class ZuneDetailRail
         var spec = p.Spec;
         var id = spec.Identity;
         var slots = spec.Slots;
-        var panorama = ZunePlaylistTiers.Panorama(fold ? lay with { PanoramaH = 0f, RailTitle = true } : lay, ZunePlaylistTiers.Compact, id.Kind);
+        var panorama = fold ? lay with { PanoramaH = 0f, RailTitle = true } : lay;
 
         var kids = new List<Element>(6);
         if (fold)
             kids.Add(K.LateRow("hdr:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? (R.Type.Heading(id.Title) with
             {
-                Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = Z.RailTitleLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             })));
         else
         {

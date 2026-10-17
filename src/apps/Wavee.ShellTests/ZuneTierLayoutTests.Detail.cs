@@ -5,8 +5,8 @@
 //
 //   · the arm is the window's: the vertical arm (the hero, or the show header) at Compact, the two-column arm (the identity column, or Liked Songs' head)
 //     from Small; the frame, its columns and its aside stand inside the content column (no horizontal overflow) and the columns never overlap;
-//   · the panorama band is the kind's step for the tier (`ZunePlaylistTiers.Panorama`): the record's height, folded to 0 on a short window (the
-//     identity column then leads with the title), an episode's title wrapping at Standard (the band hugs it, never under its floor);
+//   · the panorama band is the tier's record for every kind (the album's step): the record's height as a floor, folded to 0 on a short window (the
+//     identity column then leads with the title); a long title wraps over two lines and the band hugs it, never under its floor;
 //   · the identity column stands on the page column's x (A1) and is the record's width;
 //   · at Compact every ring is at least 40 x 40; a short window's show header is the name over the ring row (no cover row).
 //
@@ -91,15 +91,15 @@ public sealed partial class ZuneTierLayoutTests
         if (rail.Key is not null && aside.Key is not null)
             Assert.True(rail.Rect.X + rail.Rect.W <= aside.Rect.X + 0.5f, $"{sizeName}: the identity column ({rail.Rect}) overlaps the aside ({aside.Rect})");
 
-        // The panorama band is the kind's step for the tier; a short window folds it; the vertical arm's is the Compact record's.
+        // The panorama band is the tier's record for every kind (the album's step); a short window folds it; the vertical arm's is the Compact record's.
         var panoramaNode = shell.Find(ZuneDetailRules.PanoramaKey);
         Assert.False(panoramaNode.IsNull, $"{sizeName}: the panorama band is mounted (folded or not)");
         var band = scene.AbsoluteRect(panoramaNode);
         ZuneDetailLayout expected;
         if (vertical)
-            expected = ZunePlaylistTiers.Panorama(fold && !tracks ? ZuneDetailTiers.Hero with { PanoramaH = 0f } : ZuneDetailTiers.Hero, ZunePlaylistTiers.Compact, kind);
+            expected = fold && !tracks ? ZuneDetailTiers.Hero with { PanoramaH = 0f } : ZuneDetailTiers.Hero;
         else
-            expected = ZunePlaylistTiers.Panorama(ZuneDetailTiers.Of(tiers), ZunePlaylistTiers.Of(tiers), kind);
+            expected = ZuneDetailTiers.Of(tiers);
         bool hugs = expected.PanoramaWraps || (kind == DetailKind.Playlist && !shell.Find(ZunePlaylistRules.EditorReadKey).IsNull);
         if (!vertical && fold) Assert.True(band.H <= 0.5f, $"{sizeName}: a short window folds the panorama band ({band})");
         else if (expected.PanoramaH == 0f) Assert.True(band.H <= 0.5f, $"{sizeName}: the folded band ({band})");

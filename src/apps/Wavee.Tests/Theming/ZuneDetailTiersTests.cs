@@ -141,62 +141,44 @@ public sealed class ZuneDetailTiersTests
         }
     }
 
-    // ── the panorama step by kind ────────────────────────────────────────────────────────────────────────────────────────
+    // ── the panorama step: one per tier, the album's, for every kind ─────────────────────────────────────────────────────
 
-    static ZuneDetailLayout Step(WidthTier tier, DetailKind kind)
-        => ZunePlaylistTiers.Panorama(ZuneDetailTiers.For(tier), ZunePlaylistTiers.For(tier), kind);
+    /// <summary>The size a record sets its panorama title at: its own step where it carries one (150 at Huge), else the role's (64 compact, 120 panorama).</summary>
+    static float StepOf(ZuneDetailLayout lay) => lay.PanoramaSize > 0f ? lay.PanoramaSize : lay.PanoramaLarge ? 120f : 64f;
 
     [Theory]
-    [InlineData(DetailKind.Playlist, WidthTier.Compact, 64f)]
-    [InlineData(DetailKind.Playlist, WidthTier.Small, 64f)]
-    [InlineData(DetailKind.Playlist, WidthTier.Standard, 64f)]
-    [InlineData(DetailKind.Playlist, WidthTier.Huge, 150f)]
-    [InlineData(DetailKind.Show, WidthTier.Compact, 64f)]
-    [InlineData(DetailKind.Show, WidthTier.Small, 64f)]
-    [InlineData(DetailKind.Show, WidthTier.Standard, 64f)]
-    [InlineData(DetailKind.Show, WidthTier.Huge, 150f)]
-    [InlineData(DetailKind.Show, WidthTier.Huge4K, 150f)]
-    [InlineData(DetailKind.Episode, WidthTier.Compact, 64f)]
-    [InlineData(DetailKind.Episode, WidthTier.Small, 64f)]
-    [InlineData(DetailKind.Episode, WidthTier.Standard, 40f)]
-    [InlineData(DetailKind.Episode, WidthTier.Huge, 150f)]
-    [InlineData(DetailKind.Liked, WidthTier.Compact, 40f)]
-    [InlineData(DetailKind.Liked, WidthTier.Small, 40f)]
-    [InlineData(DetailKind.Liked, WidthTier.Standard, 64f)]
-    [InlineData(DetailKind.Liked, WidthTier.Huge, 120f)]
-    public void A_pages_panorama_step_follows_its_kind(DetailKind kind, WidthTier tier, float size)
+    [InlineData(WidthTier.Compact, 64f)]
+    [InlineData(WidthTier.Small, 64f)]
+    [InlineData(WidthTier.Standard, 120f)]
+    [InlineData(WidthTier.Huge, 150f)]
+    [InlineData(WidthTier.Huge4K, 150f)]
+    public void Every_detail_kind_sets_its_title_at_the_tiers_large_step(WidthTier tier, float size)
     {
-        var lay = Step(tier, kind);
-        Assert.Equal(size, lay.PanoramaSize);
+        // Zune is a large typeface (owner directive): a playlist, Liked Songs, a show and an episode all read the SAME record as an album, so none of
+        // them has a smaller step of its own (Liked was 40/64, a playlist and a show 64 at Standard, an episode 40).
+        var lay = ZuneDetailTiers.For(tier);
+        Assert.Equal(size, StepOf(lay));
         Assert.Equal(ZuneDetailRules.PanoramaHFor(size), lay.PanoramaH);
         Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, "the band clears the title's descender");
     }
 
     [Fact]
-    public void An_episode_wraps_its_title_at_standard_and_every_other_title_is_one_line()
+    public void The_playlist_record_carries_no_panorama_step_of_its_own()
     {
-        var episode = Step(WidthTier.Standard, DetailKind.Episode);
-        Assert.Equal(2, episode.PanoramaLines);
-        Assert.True(episode.PanoramaWraps);
-        foreach (var tier in AllTiers)
-            foreach (var kind in new[] { DetailKind.Album, DetailKind.Playlist, DetailKind.Liked, DetailKind.Show, DetailKind.Episode })
-            {
-                if (kind == DetailKind.Episode && tier == WidthTier.Standard) continue;
-                Assert.Equal(1, Step(tier, kind).PanoramaLines);
-            }
+        Assert.DoesNotContain(typeof(ZunePlaylistLayout).GetProperties(), p => p.Name.Contains("Panorama"));
+        Assert.Equal(120f, StepOf(ZuneDetailRules.Standard));      // the Standard playlist, Liked, show and episode read this one
     }
 
     [Fact]
-    public void An_albums_panorama_keeps_the_records_own_step()
+    public void A_long_title_wraps_over_two_lines_and_the_band_hugs_it_instead_of_shrinking_or_ellipsising()
     {
         foreach (var tier in AllTiers)
         {
-            var record = ZuneDetailTiers.For(tier);
-            var album = Step(tier, DetailKind.Album);
-            Assert.Equal(record.PanoramaSize, album.PanoramaSize);
-            Assert.Equal(record.PanoramaH, album.PanoramaH);
+            var lay = ZuneDetailTiers.For(tier);
+            Assert.Equal(2, lay.PanoramaLines);
+            Assert.True(lay.PanoramaWraps, tier + ": a title wraps by whole words and the band (its height a floor) grows with it");
         }
-        Assert.Equal(158f, Step(WidthTier.Standard, DetailKind.Album).PanoramaH);   // 120/130 over its descender and 8 of air
+        Assert.True(ZuneDetailTiers.Hero.PanoramaWraps);
     }
 
     // ── the short window ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -212,13 +194,8 @@ public sealed class ZuneDetailTiersTests
         var lay = ZuneDetailTiers.Of(in facts);
         Assert.Equal(0f, lay.PanoramaH);
         Assert.True(lay.RailTitle);
-        // A folded band stays folded under every kind's step, and a wrapping title does not reopen it.
-        foreach (var kind in new[] { DetailKind.Playlist, DetailKind.Liked, DetailKind.Show, DetailKind.Episode })
-        {
-            var stepped = ZunePlaylistTiers.Panorama(lay, ZunePlaylistTiers.Of(in facts), kind);
-            Assert.Equal(0f, stepped.PanoramaH);
-            Assert.False(stepped.PanoramaWraps);
-        }
+        // A folded band never wraps (its title is hidden on one line) and a wrapping title does not reopen it.
+        Assert.False(lay.PanoramaWraps);
     }
 
     [Theory]

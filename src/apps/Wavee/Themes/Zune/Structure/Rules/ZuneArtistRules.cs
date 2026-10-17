@@ -191,6 +191,9 @@ public static class ZuneArtistRules
     /// <summary>The gap between the name and the caption under it.</summary>
     public const float NameCaptionGap = 14f;
 
+    /// <summary>The lines the hero's name may take: it wraps by whole words and the hero grows to hug it (the name never shrinks to fit).</summary>
+    public const int NameLines = 2;
+
     /// <summary>The gap between the caption and the secondary row (Huge).</summary>
     public const float ActionsTop = 14f;
 
@@ -439,12 +442,13 @@ public static class ZuneArtistTiers
     public static ZuneArtistLayout For(WidthTier content) => s_records[Math.Clamp((int)content, 0, s_records.Length - 1)];
 
     /// <summary>The Short rung (windows 330-699 tall, Z-Shell-Short: the band folds to 52 and the player bar holds 72, so about 160 of height is left to
-    /// the page): the hero gives its height back. It keeps its copy (the eyebrow, the 64 compact name, the caption, Huge's secondary row, Compact's
-    /// actions row) and hugs it, with no spring; the body starts closer and the sections sit closer. The record is a pure fold of the content tier's.</summary>
+    /// the page): the hero's SPACE tightens. It keeps its copy AT THE TIER'S TYPE (the eyebrow, the name at the tier's step, the caption, Huge's secondary
+    /// row, Compact's actions row; Zune's type is never made smaller to fit) and hugs it, with no spring, so the hero is as tall as its name and the page
+    /// scrolls; the body starts closer and the sections sit closer. The record is a pure fold of the content tier's.</summary>
     static ZuneArtistLayout Fold(ZuneArtistLayout r) => r with
     {
-        HeroH = ShortHeroH, EyebrowTop = ShortEyebrowTop, CaptionBottom = ShortCaptionBottom, CompactName = true, NameSize = 0f, NameLine = 0f,
-        NameTracking = 0f, BodyTop = ShortBodyTop, ZoneGap = MathF.Min(r.ZoneGap, ShortZoneGap),
+        HeroH = ShortHeroH, EyebrowTop = ShortEyebrowTop, CaptionBottom = ShortCaptionBottom,
+        BodyTop = ShortBodyTop, ZoneGap = MathF.Min(r.ZoneGap, ShortZoneGap),
     };
 
     /// <summary>The folded hero's floor, its eyebrow's top and its caption's foot, the body's top and the sections' gap.</summary>

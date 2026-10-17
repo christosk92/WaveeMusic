@@ -179,35 +179,6 @@ public sealed record ZunePlaylistLayout : ITierLayoutRecord
     /// <summary>The detail record the playlist's pieces read (the rings' size, the artist voice, the label size): Compact reads the vertical hero's.</summary>
     public required ZuneDetailLayout Detail { get; init; }
 
-    /// <summary>The playlist's own panorama step (audit A8: it borrowed the album's): 64/72 up to Standard, 150/160 at Huge (Z-Playlist-Owned-Followed).</summary>
-    public required float PlaylistPanoramaSize { get; init; }
-
-    /// <summary>See <see cref="PlaylistPanoramaSize"/>.</summary>
-    public required float PlaylistPanoramaLine { get; init; }
-
-    /// <summary>Liked Songs' own panorama step (Z-Liked): 40/48 at Compact and Small, 64/72 at Standard, 120/130 at Huge.</summary>
-    public required float LikedPanoramaSize { get; init; }
-
-    /// <summary>See <see cref="LikedPanoramaSize"/>.</summary>
-    public required float LikedPanoramaLine { get; init; }
-
-    /// <summary>A show's panorama step (ZT5: the same rule as a playlist's, since a show's name is free text too): 64/72 up to Standard, 150/160 at Huge
-    /// (Z-Show-Compact, Z-Show-Huge; the Standard and Small boards set the name in the identity column, which a folded band still does on a short window).</summary>
-    public float ShowPanoramaSize { get; init; } = 64f;
-
-    /// <summary>See <see cref="ShowPanoramaSize"/>.</summary>
-    public float ShowPanoramaLine { get; init; } = 72f;
-
-    /// <summary>An episode's panorama step (Z-Episode-*): 64/72 at Compact and Small, 150/160 at Huge, and at Standard the board's 40/48 title that WRAPS
-    /// (<see cref="EpisodePanoramaLines"/>): an episode's name is a sentence, and a 120 line of it would bleed past the window.</summary>
-    public float EpisodePanoramaSize { get; init; } = 64f;
-
-    /// <summary>See <see cref="EpisodePanoramaSize"/>.</summary>
-    public float EpisodePanoramaLine { get; init; } = 72f;
-
-    /// <summary>The lines an episode's panorama title may take: 1 where it bleeds (or fits), 2 where it wraps.</summary>
-    public int EpisodePanoramaLines { get; init; } = 1;
-
     /// <summary>None: every region fits at every size its tier lays out (the list yields, the lead grows).</summary>
     public ImmutableArray<TierRegion> Regions => ImmutableArray<TierRegion>.Empty;
 }
@@ -220,7 +191,6 @@ public static class ZunePlaylistTiers
     {
         Tier = WidthTier.Compact, Target = 40f, CoverStrip = 28f, LeadLarge = false, LeadMinHeight = 148f, LeadTop = 24f,
         LeadFieldFull = true, LeadFieldH = 44f, LeadFieldRadius = 22f, RecDuration = false, Detail = ZuneDetailTiers.Hero,
-        PlaylistPanoramaSize = 64f, PlaylistPanoramaLine = 72f, LikedPanoramaSize = 40f, LikedPanoramaLine = 48f,
     };
 
     /// <summary>Small (Z-Playlist-Owned-Followed-Small): the 160 column, the 36 strip.</summary>
@@ -228,22 +198,18 @@ public static class ZunePlaylistTiers
     {
         Tier = WidthTier.Small, Target = 32f, CoverStrip = 36f, LeadLarge = true, LeadMinHeight = 188f, LeadTop = 32f,
         LeadFieldFull = false, LeadFieldH = 40f, LeadFieldRadius = 0f, RecDuration = true, Detail = ZuneDetailRules.Small,
-        PlaylistPanoramaSize = 64f, PlaylistPanoramaLine = 72f, LikedPanoramaSize = 40f, LikedPanoramaLine = 48f,
     };
 
     /// <summary>Standard (Z-Playlist-Owned-Followed, Z-State-Empty-Playlist): the 40/48 lead over a 560 field.</summary>
     public static ZunePlaylistLayout Standard { get; } = Small with
     {
-        Tier = WidthTier.Standard, LeadMinHeight = 200f, LeadTop = 40f, Detail = ZuneDetailRules.Standard, LikedPanoramaSize = 64f, LikedPanoramaLine = 72f,
-        EpisodePanoramaSize = 40f, EpisodePanoramaLine = 48f, EpisodePanoramaLines = 2,
+        Tier = WidthTier.Standard, LeadMinHeight = 200f, LeadTop = 40f, Detail = ZuneDetailRules.Standard,
     };
 
     /// <summary>Huge (Z-Playlist-Owned-Followed-Huge): Standard's, in the Huge detail record.</summary>
     public static ZunePlaylistLayout Huge { get; } = Standard with
     {
-        Tier = WidthTier.Huge, Detail = ZuneDetailRules.Huge, PlaylistPanoramaSize = 150f, PlaylistPanoramaLine = 160f,
-        LikedPanoramaSize = 120f, LikedPanoramaLine = 130f, ShowPanoramaSize = 150f, ShowPanoramaLine = 160f,
-        EpisodePanoramaSize = 150f, EpisodePanoramaLine = 160f, EpisodePanoramaLines = 1,
+        Tier = WidthTier.Huge, Detail = ZuneDetailRules.Huge,
     };
 
     /// <summary>Huge 4K (decision 2 caps pages at 2400): Huge's with the 40 targets.</summary>
@@ -261,25 +227,4 @@ public static class ZunePlaylistTiers
 
     /// <summary>The record the playlist and Liked views read for <paramref name="facts"/> (Standard's where no frame resolved the tiers: a view mounted alone).</summary>
     public static ZunePlaylistLayout Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Content);
-
-    /// <summary>The detail record <paramref name="lay"/> with the panorama step of <paramref name="kind"/> from <paramref name="pl"/> (audit A8; ZT5 brings
-    /// the show and the episode onto the same rule), its band sized by <see cref="ZuneDetailRules.PanoramaHFor"/> (a folded band stays folded). An album
-    /// keeps the record's own step (120/130 at Standard, 150/160 at Huge).</summary>
-    public static ZuneDetailLayout Panorama(ZuneDetailLayout lay, ZunePlaylistLayout pl, DetailKind kind)
-    {
-        (float size, float line, int lines) = kind switch
-        {
-            DetailKind.Playlist => (pl.PlaylistPanoramaSize, pl.PlaylistPanoramaLine, 1),
-            DetailKind.Liked => (pl.LikedPanoramaSize, pl.LikedPanoramaLine, 1),
-            DetailKind.Show => (pl.ShowPanoramaSize, pl.ShowPanoramaLine, 1),
-            DetailKind.Episode => (pl.EpisodePanoramaSize, pl.EpisodePanoramaLine, pl.EpisodePanoramaLines),
-            _ => (0f, 0f, 1),
-        };
-        if (!(size > 0f)) return lay;
-        return lay with
-        {
-            PanoramaSize = size, PanoramaLine = line, PanoramaLines = lines,
-            PanoramaH = lay.PanoramaH > 0f ? ZuneDetailRules.PanoramaHFor(size) : 0f,
-        };
-    }
 }

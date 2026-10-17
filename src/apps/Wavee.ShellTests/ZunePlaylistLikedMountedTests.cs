@@ -8,7 +8,8 @@
 //   liked        Liked Songs draws the frame's head arm (no rail: the panorama and the meta over the list) with Zune's table, and publishes play and
 //                shuffle (its views are the library route's row, which stands)
 //   rules        the cover looks Zune draws (stock, mosaic, tone) and how the engine's nine fold into them; the tier records (Compact targets are 40)
-//   tuning (T2)  playlist and Liked take their own panorama step with a band that clears the descender (audit A8, A3); an owned playlist's panorama IS
+//   tuning (T2)  playlist and Liked set their title at the ALBUM's panorama step per tier (Zune is a large typeface: no kind has a smaller step of its
+//                own) with a band that clears the descender (A3) and a long title that WRAPS, the band hugging it; an owned playlist's panorama IS
 //                its inline editor (Z6b1 must-fix: the rename is reachable); Liked draws no page-bar play / shuffle while the band carries them (A4)
 //
 // There is no empty-playlist fixture in the fake dataset, so the lead of an empty playlist (Z-State-Empty-Playlist) is pinned through its rules: the field is the
@@ -107,29 +108,23 @@ public sealed class ZunePlaylistLikedMountedTests(ShellHost host)
     }
 
     [Fact]
-    public void Playlist_and_liked_take_their_own_panorama_step_and_the_band_clears_its_descender()
+    public void Playlist_and_liked_use_the_albums_panorama_step_and_the_band_clears_its_descender()
     {
-        var album = ZuneDetailRules.Standard;
-        foreach (var (tier, playlist, liked) in new[]
+        // The page's title is the record's step for EVERY kind: Liked used to take its own 40/48 (Compact, Small) and 64/72 (Standard), a playlist 64/72
+        // up to Standard. Zune is a large typeface, so the playlist and Liked pages read the album's record (64 compact and small, 120 Standard, 150 Huge).
+        foreach (var (tier, size) in new[]
                  {
-                     (WidthTier.Compact, 64f, 40f), (WidthTier.Small, 64f, 40f), (WidthTier.Standard, 64f, 64f), (WidthTier.Huge, 150f, 120f),
-                     (WidthTier.Huge4K, 150f, 120f),
+                     (WidthTier.Compact, 64f), (WidthTier.Small, 64f), (WidthTier.Standard, 120f), (WidthTier.Huge, 150f), (WidthTier.Huge4K, 150f),
                  })
         {
-            var pl = ZunePlaylistTiers.For(tier);
-            var lay = ZuneDetailTiers.For(tier == WidthTier.Compact ? WidthTier.Small : tier);
-            var p = ZunePlaylistTiers.Panorama(lay, pl, DetailKind.Playlist);
-            var l = ZunePlaylistTiers.Panorama(lay, pl, DetailKind.Liked);
-            Assert.Equal(playlist, p.PanoramaSize);
-            Assert.Equal(liked, l.PanoramaSize);
-            Assert.True(p.PanoramaLine > p.PanoramaSize && l.PanoramaLine > l.PanoramaSize, $"{tier}: a line taller than the step");
-            Assert.True(p.PanoramaH >= playlist * 1.25f + 8f - 0.5f, $"{tier}: the playlist band clears its descender ({p.PanoramaH})");
-            Assert.True(l.PanoramaH >= liked * 1.25f + 8f - 0.5f, $"{tier}: the Liked band clears its descender ({l.PanoramaH})");
-            // An album keeps the album's step; a folded band stays folded.
-            Assert.Same(lay, ZunePlaylistTiers.Panorama(lay, pl, DetailKind.Album));
-            Assert.Equal(0f, ZunePlaylistTiers.Panorama(lay with { PanoramaH = 0f }, pl, DetailKind.Liked).PanoramaH);
+            var lay = ZuneDetailTiers.For(tier);
+            float step = lay.PanoramaSize > 0f ? lay.PanoramaSize : lay.PanoramaLarge ? 120f : 64f;      // the role's 120 where the record carries none
+            Assert.Equal(size, step);
+            Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, $"{tier}: the band clears its descender ({lay.PanoramaH})");
+            Assert.True(lay.PanoramaWraps, $"{tier}: a long title wraps and the band hugs it");
+            Assert.Equal(2, lay.PanoramaLines);
         }
-        Assert.Equal(88f, ZunePlaylistTiers.Panorama(album, ZunePlaylistTiers.Standard, DetailKind.Liked).PanoramaH);
+        Assert.Equal(158f, ZuneDetailRules.Standard.PanoramaH);   // Liked Songs at Standard: the 120 band, not 88
     }
 
     // ── the playlist ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -154,7 +149,7 @@ public sealed class ZunePlaylistLikedMountedTests(ShellHost host)
         }, W, H);
 
     [Fact]
-    public void The_playlist_and_liked_panoramas_take_their_own_step_mounted()
+    public void The_playlist_and_liked_panoramas_take_the_albums_step_mounted()
         => ZuneHost.Mounted(host, shell =>
         {
             shell.RunFrames(10);
@@ -162,15 +157,28 @@ public sealed class ZunePlaylistLikedMountedTests(ShellHost host)
             UntilBackground(shell, () => !shell.Find(ZuneDetailRules.RailKey).IsNull, "pl1's identity column");
             shell.RunFrames(60);
             var band = shell.Host.Scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
-            Assert.True(band.H >= 64f * 1.25f - 0.5f, $"the playlist band clears a 64 title's descender ({band})");
+            Assert.True(band.H >= ZuneDetailRules.Standard.PanoramaH - 0.5f, $"the playlist band is the album's 120 band at least ({band})");
 
             Shell.GoTo(s_liked);
             UntilBackground(shell, () => !shell.Find(ZuneDetailRules.HeadKey).IsNull, "Liked Songs' head arm");
             shell.RunFrames(60);
             var liked = shell.Host.Scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
-            Assert.True(liked.H >= 64f * 1.25f - 0.5f, $"the Liked band clears a 64 title's descender ({liked})");
-            Assert.True(liked.H < ZuneDetailRules.Standard.PanoramaH - 0.5f, $"Liked takes its own 64 step, not the album's 120 ({liked})");
+            Assert.True(liked.H >= ZuneDetailRules.Standard.PanoramaH - 0.5f, $"Liked uses the album's step: its band is the 120 band at least, not a smaller 64 one ({liked})");
         }, W, H);
+
+    [Fact]
+    public void A_long_title_wraps_in_the_compact_hero_and_the_band_grows_instead_of_truncating()
+        => ZuneHost.Mounted(host, shell =>
+        {
+            shell.RunFrames(10);
+            Shell.GoTo(s_liked);
+            UntilBackground(shell, () => !shell.Find(ZuneDetailRules.HeroKey).IsNull, "Zune's vertical hero on Liked Songs at 300");
+            shell.RunFrames(60);
+            // "Liked Songs" at 64 is wider than a 300 window's page column, so it breaks by words over two lines and the band hugs both (it was one clipped line):
+            // the band is taller than the one-line floor, at least two lines of the 72 step.
+            var band = shell.Host.Scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
+            Assert.True(band.H >= 2f * 72f - 1f, $"the Compact band hugs a two-line 64/72 title ({band}), over the {ZuneDetailRules.Compact.PanoramaH} one-line floor");
+        }, 300f, 860f);
 
     [Fact]
     public void A_playlist_draws_zunes_frame_with_zunes_track_table_and_publishes_its_row_two()
