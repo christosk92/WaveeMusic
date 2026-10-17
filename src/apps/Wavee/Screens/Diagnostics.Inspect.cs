@@ -426,7 +426,7 @@ public static partial class Diagnostics
                             Queue(new InputEvent(InputKind.PointerDown, p, button, 0, mods, TimestampMs: _ms));
                             RunFrames(1);
                             Queue(new InputEvent(InputKind.PointerUp, p, button, 0, mods, TimestampMs: _ms + 50));
-                            RunFrames(1);
+                            if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the release lands on
                         }
                         return Settled(id, name, a, w =>
                         {
@@ -465,8 +465,8 @@ public static partial class Diagnostics
                         RunFrames(1);
                         var wheel = new ScrollInputEvent(ScrollSource.MouseWheel, ScrollGesture.Notch, 0, p, dx, dy, 0, KeyModifiers.None);
                         Queue(InputEvent.ForScroll(in wheel, timestampMs: _ms));
-                        RunFrames(1);
-                        return Settled(id, name, a, w =>
+                        if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the notch lands on
+                        return Settled(id, name, a, traceScroll: key ?? "main", body: w =>
                         {
                             if (key is null) return;
                             NodeHandle viewport = ScrollUnder(shell.Host.Scene, shell.Find(key));
@@ -496,6 +496,8 @@ public static partial class Diagnostics
                     return Render(id, name, a, shell);
                 case Inspect.Verb.Lint:
                     return Lint(id, name, a, shell);
+                case Inspect.Verb.Trace:
+                    return Trace(id, name, a, shell);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -877,16 +879,29 @@ public static partial class Diagnostics
         }
 
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled.</summary>
-        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null)
+        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "")
         {
             int frames = 0;
             bool settled = false;
-            if (a.Bool("settle", true)) (frames, settled) = Settle(a.Int("max", 600));
+            InspectTrace.Result? trace = null;
+            if (Tracing(a) && _shell is { } shell)
+            {
+                // `trace=N` on any settling verb: no settle, N traced frames from the frame after the action (docs: agent-inspect.md)
+                if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
+                trace = RunTrace(shell, o);
+            }
+            else if (a.Bool("settle", true)) (frames, settled) = Settle(a.Int("max", 600));
             return Inspect.Reply.Ok(id, name, w =>
             {
                 w.WriteNumber("frames", frames);
                 w.WriteBoolean("settled", settled);
                 body?.Invoke(w);
+                if (trace is not null)
+                {
+                    w.WriteStartObject("trace");
+                    InspectTrace.Write(w, trace);
+                    w.WriteEndObject();
+                }
             });
         }
 
