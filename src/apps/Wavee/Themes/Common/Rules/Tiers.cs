@@ -159,6 +159,9 @@ public readonly record struct CommonCustomizeLayout(float Gutter, float MaxWidth
 /// <param name="Target">The smallest hit target (0 = the control's own size).</param>
 public readonly record struct CommonModuleLayout(float Gutter, float MaxWidth, float Target)
 {
+    /// <summary>The capped column is centred in the page (a structure whose band and titles share a centred page column) instead of standing at the left edge.</summary>
+    public bool Centered { get; init; }
+
     /// <summary>The layout of <paramref name="tier"/>.</summary>
     public static CommonModuleLayout For(in TierFacts tier)
         => new(CommonTiers.Gutter(tier.Content, CommonModuleRules.Gutter), CommonTiers.ColumnMax, CommonTiers.Target(tier.Content));

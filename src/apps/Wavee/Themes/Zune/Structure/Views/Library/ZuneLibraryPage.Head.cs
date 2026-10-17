@@ -37,7 +37,21 @@ internal static partial class ZuneLibraryPage
 
         if (l.Single)
         {
-            // Compact: row one the sort and the view, row two the find field and the count; every control 40.
+            // Compact: row one the sort and the view, row two the find field and the count; every control 40. On the Short rung (330-699 tall) the head is ONE row: the sort
+            // button, the find field and the view's "..." menu (it carries every view); the count goes. Rows are keyed so the crossing keeps the first row and fades the second.
+            // (Podcasts' two mode words fill the first row, so its head keeps two rows: its view is still the menu alone.)
+            if (l.OneRow && !p.IsPodcasts)
+            {
+                var one = new List<Element>(3) { lead };
+                if (find is not null) one.Add(find);
+                else one.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
+                if (view is not null) one.Add(view);
+                return new BoxEl
+                {
+                    Key = LR.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
+                    Children = [new BoxEl { Key = "lib:head:r1", Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = one.ToArray() }],
+                };
+            }
             var first = new List<Element>(3) { lead, new BoxEl { Grow = 1f, MinWidth = 0f } };
             if (view is not null) first.Add(view);
             var second = new List<Element>(2);
@@ -45,11 +59,15 @@ internal static partial class ZuneLibraryPage
             if (count is not null) second.Add(count);
             var rows = new List<Element>(2)
             {
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = first.ToArray() },
+                new BoxEl { Key = "lib:head:r1", Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = first.ToArray() },
             };
             if (second.Count > 0)
-                rows.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = second.ToArray() });
-            return new BoxEl { Key = LR.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Children = rows.ToArray() };
+                rows.Add(new BoxEl
+                {
+                    Key = "lib:head:r2", Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH,
+                    Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = second.ToArray(),
+                });
+            return new BoxEl { Key = LR.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize, Children = rows.ToArray() };
         }
 
         var kids = new List<Element>(6) { lead };
@@ -243,21 +261,27 @@ internal static partial class ZuneLibraryPage
                 _handle.ClosedAction = () => _handle = null;
             }
 
+            // The Short Compact head carries the "..." menu alone (its radio items hold every view); the words fade out of the row, the menu keeps its node.
+            bool menuOnly = UseProps<ZuneLibraryLayout>().ViewMenuOnly;
+            var more = new BoxEl
+            {
+                Key = "lib:view:more", Width = Math.Max(LR.ViewMoreEdge, height), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = Flyout,
+                Children = [Icon(Icons.More, LR.ViewMoreGlyph, Tok.TextSecondary)],
+            };
+            Element[] kids = menuOnly
+                ? [more]
+                :
+                [
+                    K.LabelText(Loc.Get(Strings.Theme.Zune.Collection.Library.View)) with { Key = "lib:view:label", Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade },
+                    K.Word("lib:view:grid", Loc.Get(Strings.Library.View.Grid), grid, () => view.Value = User.IsCompactView(view.Peek()) ? 2 : 3, height) with { Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade },
+                    K.Word("lib:view:list", Loc.Get(Strings.Library.View.List), !grid, () => view.Value = User.IsCompactView(view.Peek()) ? 0 : 1, height) with { Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade },
+                    more,
+                ];
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f, OnRealized = h => _anchor = h,
-                Children =
-                [
-                    K.LabelText(Loc.Get(Strings.Theme.Zune.Collection.Library.View)),
-                    K.Word("lib:view:grid", Loc.Get(Strings.Library.View.Grid), grid, () => view.Value = User.IsCompactView(view.Peek()) ? 2 : 3, height),
-                    K.Word("lib:view:list", Loc.Get(Strings.Library.View.List), !grid, () => view.Value = User.IsCompactView(view.Peek()) ? 0 : 1, height),
-                    new BoxEl
-                    {
-                        Key = "lib:view:more", Width = Math.Max(LR.ViewMoreEdge, height), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = Flyout,
-                        Children = [Icon(Icons.More, LR.ViewMoreGlyph, Tok.TextSecondary)],
-                    },
-                ],
+                Children = kids,
             };
         }
 

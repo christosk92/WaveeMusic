@@ -671,7 +671,21 @@ _Not built yet._
 
 ## ZT7: collection tiers
 
-_Not built yet._
+The library and the module page tuned per tier against `Z-Library-*` (+ `-Compact`, `-Small`, `-Huge`) and the Short height rung. Recents already carried a record per content tier
+(`ZuneRecentsTiers`) and was not changed. Numbers live in the records (`ZuneLibraryTiers`, `ZuneModuleTiers`); no key changed.
+
+- **Huge and Huge 4K fill the 2400 column.** The board draws four columns (artists, the artist, albums, songs); the host mounts a navigator and one right column, so Huge keeps those two
+  and shares the width: the pane rests at the board's songs column (640) and grows 1 share to the navigator's 2, up to 1200. A grid navigator is uncapped (its cells fill the column), a
+  list stops at 960 (`NavMaxW`; the grid's is `GridNavMaxW`). The artists' list is the board's 280 and the reader takes the rest. At 2560 the pair covers 2432 of 2464 (grid) or 2208 (list);
+  it used to cover 1648.
+- **Short rung (330-699 tall, 126 of page).** `ZuneLibraryTiers.Of(facts, single)` reads the height tier. The page's top is 4 and the head-to-body gap 8 (`PageTop`, `BodyGap`). The
+  album and show panes fold the header and the verbs into ONE row (`PaneBrief`: the title, which still opens the page, then play, shuffle, the heart and "..."), because the full header
+  is as tall as the page. Compact's head is ONE 40 row (`OneRow`): the sort button, the find field and the "..." view menu; the count and the grid and list words go (the menu carries
+  every view). Podcasts keeps two rows (its mode words fill the first). Both forms keep the same child slots, so the rows and the table keep their nodes and scroll across the crossing.
+- **Module page.** A Common block (`CommonModulePage`), drawn in the style's roles (Zune's type scale). `ZuneModuleTiers` places it on Zune's page column: the frame's gutter (16 / 24 / 48 / 48
+  / 64), a centred 2400 column that starts at the band's x, a 40 target at Compact and no masthead reserve. `CommonModulePage.Page(props, layout, topReserve)` takes the layout; Classic's
+  `Template` is unchanged. The registry refuses a second template for a key, so the structure registers it through `CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page")`.
+- **Local files** is the playlist page (Z6b1 / ZT5 own `Views\Detail\*`); it has no collection view of its own and no board.
 
 ## ZT8: screens, overlays, dialogs and states tiers
 
