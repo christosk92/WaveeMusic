@@ -263,7 +263,7 @@ public static partial class Controls
             readonly bool _fit;
             readonly Prop<string> _more;
             readonly float[]? _nat;
-            readonly Signal<int>? _shown;
+            readonly Signal<int>? _fitShown;
             float _avail;
             NodeHandle _moreAnchor;
             OverlayHandle? _menu;
@@ -275,7 +275,7 @@ public static partial class Controls
             {
                 _fit = fit;
                 _more = more ?? (Prop<string>)"";
-                if (fit) { _nat = new float[words.Count]; _shown = new Signal<int>(words.Count); }
+                if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
                 _fill = fill;
@@ -356,7 +356,7 @@ public static partial class Controls
                 bool big = _big;
                 Func<bool> isOn = () => selected.Value == code;
                 Prop<bool> visible = w.Visible ?? true;
-                if (_shown is { } shown)
+                if (_fitShown is { } shown)
                 {
                     var own = w.Visible;
                     int index = i;
@@ -445,7 +445,7 @@ public static partial class Controls
             /// <summary>Re-decide how many leading words show (<see cref="FitCount"/>), from their kept natural widths (or the label estimate) and the slot.</summary>
             void Refit()
             {
-                if (_nat is not { } nat || _shown is not { } shown) return;
+                if (_nat is not { } nat || _fitShown is not { } shown) return;
                 Span<float> widths = stackalloc float[nat.Length];
                 for (int i = 0; i < nat.Length; i++)
                 {
@@ -467,7 +467,7 @@ public static partial class Controls
             /// a radio menu of the folded words; picking one is a tap on it (the active one re-selects: the library flips its direction).</summary>
             Element MoreWord()
             {
-                var shown = _shown!;
+                var shown = _fitShown!;
                 var selected = _selected;
                 Func<ColorF> tone = _tone;
                 bool big = _big;
@@ -515,7 +515,7 @@ public static partial class Controls
             void OpenMore()
             {
                 var overlay = _overlay;
-                if (overlay is null || Controls.IsNullOverlay(overlay) || _shown is not { } shown) return;
+                if (overlay is null || Controls.IsNullOverlay(overlay) || _fitShown is not { } shown) return;
                 if (_menu is { IsOpen: true } open) { open.Close(); return; }
                 _menu = overlay.Open(
                     () => _moreAnchor,
