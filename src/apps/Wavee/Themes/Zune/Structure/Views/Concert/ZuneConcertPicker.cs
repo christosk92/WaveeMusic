@@ -26,6 +26,9 @@ internal static class ZuneConcertPicker
     /// <summary>The registered template of <see cref="ViewKeys.ConcertPlacePicker"/>.</summary>
     public static Element Template(ConcertPlacePickerProps props, in ViewContext ctx)
     {
+        // The picker never outgrows the window it opens in (300 wide at Compact): the field takes what the card leaves.
+        var viewport = ctx.Hooks.UseContextSignal(Viewport.Size).Value;
+        float card = Rules.FlyoutWidthIn(Rules.PickerW, viewport.Width);
         var results = props.Results.Value;
         bool loading = props.Loading.Value;
         string? error = props.Error.Value;
@@ -40,7 +43,7 @@ internal static class ZuneConcertPicker
         {
             Embed.Comp(() => new EditableText
             {
-                Placeholder = Loc.Get(Strings.Concerts.Location.SearchCities), Width = Rules.PickerFieldW, Height = Rules.PickerFieldH, Text = query(),
+                Placeholder = Loc.Get(Strings.Concerts.Location.SearchCities), Width = Rules.PickerFieldIn(card), Height = Rules.PickerFieldH, Text = query(),
             }),
             Button.Standard(Loc.Get(loading ? Strings.Concerts.Location.Locating : Strings.Concerts.Location.UseMine),
                 props.UseMyLocation, isEnabled: !loading),
@@ -48,13 +51,13 @@ internal static class ZuneConcertPicker
         if (!string.IsNullOrWhiteSpace(error))
             kids.Add(Body(error) with { Color = Tok.SystemFillCritical, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MaxLines = 3, MinWidth = 0f });
         kids.Add(rows.Length > 0
-            ? new ScrollEl { ContentSized = true, MaxHeight = Rules.PickerResultsMaxH, Content = new BoxEl { Direction = 1, Gap = Rules.FlyoutGap, Children = rows } }
+            ? new ScrollEl { ContentSized = true, MaxHeight = Rules.PickerResultsIn(viewport.Height), Content = new BoxEl { Direction = 1, Gap = Rules.FlyoutGap, Children = rows } }
             : new BoxEl
             {
                 Height = Rules.PickerRowH, AlignItems = FlexAlign.Center, Direction = 0,
                 Children = [R.Type.TrackMeta(Loc.Get(loading ? Strings.Concerts.Location.Searching : Strings.Concerts.Location.NoneFound)) with { Case = R.Case.For(LabelKind.Label) }],
             });
-        return new BoxEl { Direction = 1, Width = Rules.PickerW, Gap = Spacing.S, Padding = Edges4.All(Spacing.M), Children = kids.ToArray() };
+        return new BoxEl { Direction = 1, Width = card, Gap = Spacing.S, Padding = Edges4.All(Spacing.M), Children = kids.ToArray() };
     }
 
     static Element PlaceRow(int slot, Action onClick)

@@ -9,7 +9,7 @@
 //     with Back, the T1 audit's A9), Back (40 x 40; its history menu opens on right-click or touch-hold where the capabilities offer it), and
 //     the trail from the page's chrome (`ZuneFrameContext.PageChrome`): the crumbs in the tertiary ink with the current page in the secondary
 //     one, never at Compact. The lead starts on the page's gutter (16 / 24 / 48 / 48 / 64). When the row is short the trail gives way; the
-//     wordmark and Back never do. At Compact, while the omnibar holds a query (the Search route) or has the focus, the search is the FIELD
+//     wordmark and Back never do. At Compact, while the Search route is on screen (the core's `OnSearchRoute`) or the field has the focus, the search is the FIELD
 //     filling the lead beside Back instead of the magnifier (Z-Search-Compact: "the field takes the title bar"), so the query stays visible.
 //   · TRAILING: the search (the pill from Standard up, 220 / 320 / 400, growing while focused; the magnifier below), the account (the core's
 //     chip host; "Connecting" as a caption; "Sign in" / "Reconnect" as the accent button) and, on the pill tiers, the bell with the accent dot.
@@ -83,12 +83,12 @@ internal static class ZuneTitleBar
 
     // ── the lead island ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The search is the field in the lead island (Compact, a query or the focus, the flyout closed). Subscribing (the versions
+    /// <summary>The search is the field in the lead island (Compact, the Search route or the focus, the flyout closed). Subscribing (the versions
     /// read it).</summary>
     private static bool FieldInLead(ShellTitleBarProps props, in TierFacts tiers)
     {
         var model = props.Search.Model;
-        return ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBarOf(tiers), props.Search.TextCell().Value, model.FlyoutOpen.Value,
+        return ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBarOf(tiers), props.OnSearchRoute(), model.FlyoutOpen.Value,
             model.SearchFocused.Value);
     }
 
@@ -96,7 +96,7 @@ internal static class ZuneTitleBar
     private static bool PeekFieldInLead(ShellTitleBarProps props, ZuneTitleBarLayout rec)
     {
         var model = props.Search.Model;
-        return ZuneFrameRules.FieldInLead(rec, props.Search.TextCell().Peek(), model.FlyoutOpen.Peek(), model.SearchFocused.Peek());
+        return ZuneFrameRules.FieldInLead(rec, props.OnSearchRoute(), model.FlyoutOpen.Peek(), model.SearchFocused.Peek());
     }
 
     private static Element LeadIsland(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts)

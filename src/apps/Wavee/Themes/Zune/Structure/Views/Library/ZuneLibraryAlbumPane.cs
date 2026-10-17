@@ -41,9 +41,10 @@ internal static class ZuneLibraryAlbumPane
 
         // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
         float box = ctx.Tier().Content == WidthTier.Compact ? LR.CompactCommandBox : LR.CommandBox;
-        // The "open album" word needs room the Small pane (300) lacks: there the verb stays in the "..." menu instead of shrinking to "o...".
-        bool openWord = ZuneLibraryTiers.For(ctx.Tier().Content, single: ctx.Tier().Content == WidthTier.Compact).OpenWord;
-        BoxEl child = props.State == AlbumPaneState.Header ? K.HeaderSkeleton() : Body(props, cell, box, openWord);
+        // The "open album" word needs room the Small pane (300) lacks: there the verb stays in the "..." menu instead of shrinking to "o...". On the Short rung the pane folds
+        // its header and verbs into one row (the title opens the album).
+        var layout = ZuneLibraryTiers.Of(ctx.Tier(), single: ctx.Tier().Content == WidthTier.Compact);
+        BoxEl child = props.State == AlbumPaneState.Header ? K.HeaderSkeleton() : Body(props, cell, box, layout.OpenWord, layout.PaneBrief);
         // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the
         // table's scroll and re-ask the model).
         return new BoxEl
@@ -87,7 +88,7 @@ internal static class ZuneLibraryAlbumPane
         }
     }
 
-    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell, float box, bool openWord)
+    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell, float box, bool openWord, bool brief)
     {
         Element rows = p.State == AlbumPaneState.Failed
             // The Error voice supplies its own subtitle and Retry label; only the headline is ours.
@@ -99,8 +100,10 @@ internal static class ZuneLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                K.PaneHeader(p.Title, p.Open, K.ArtistLine(p.Artists), p.Meta),
-                Commands(p, box, openWord),
+                // Both forms keep four children in the same slots (the second is an empty slot when brief), so the rows area below keeps its node (and the table its scroll)
+                // across a height crossing.
+                brief ? K.BriefHeader(p.Title, p.Open, Verbs(p, box), box) : K.PaneHeader(p.Title, p.Open, K.ArtistLine(p.Artists), p.Meta),
+                brief ? new BoxEl { Shrink = 0f } : Commands(p, box, openWord),
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move.
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] },
@@ -132,6 +135,15 @@ internal static class ZuneLibraryAlbumPane
             ],
         };
     }
+
+    /// <summary>The Short rung's verbs, rings only (play, shuffle, the heart, the "..."): each at least <paramref name="box"/> tall. "Open album" is the title.</summary>
+    static Element[] Verbs(LibraryAlbumPaneProps p, float box) =>
+    [
+        Target(ZuneDiscoveryKit.Ring("lib-pane-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: false, primary: true, p.Play), box),
+        Target(ZuneDiscoveryKit.Ring("lib-pane-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: false, primary: false, p.Shuffle), box),
+        K.Save(p.Uri, p.Title, box) with { Key = p.SaveKey },
+        K.MoreButton(p.More, box),
+    ];
 
     /// <summary>A ring verb at least <paramref name="box"/> tall: a command is a target.</summary>
     static Element Target(Element ring, float box) => new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinHeight = box, Shrink = 0f, Children = [ring] };

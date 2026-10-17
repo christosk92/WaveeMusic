@@ -194,7 +194,8 @@ internal static partial class ZuneProfileList
             var culture = CultureInfo.CurrentCulture;
             kids.Add(new BoxEl
             {
-                Direction = 0, Gap = Z.WordGap, Shrink = 0f, AlignItems = FlexAlign.Center,
+                // Wraps where the three words outrun a 300 window (a second row of 40 targets), never a clipped word or a horizontal overflow.
+                Direction = 0, Wrap = true, Gap = Z.WordGap, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Children =
                 [
                     Word(c, ProfileChip.All, Strings.Person.List.Chip.All, counts.All, s.Chip, culture),
@@ -229,7 +230,7 @@ internal static partial class ZuneProfileList
         if (on) word = word with { Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight };
         return new BoxEl
         {
-            Key = "zune-people-word:" + (int)chip, Direction = 0, Shrink = 0f, MinHeight = c.Target, AlignItems = FlexAlign.Center,
+            Key = "zune-people-word:" + (int)chip, Direction = 0, Shrink = 0f, MinWidth = c.Target, MinHeight = c.Target, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Cursor = available ? CursorId.Hand : CursorId.Arrow, Role = AutomationRole.Button, Focusable = available, IsEnabled = available,
             AllowFocusOnInteraction = false, OnClick = available ? click : null,
             Children = [word],

@@ -42,8 +42,16 @@ public static class ZuneLibraryRules
     /// <summary>The page's top under the band, and the gap from the head to the body.</summary>
     public const float PageTop = 8f, HeadBodyGap = 16f;
 
-    /// <summary>The navigator's cap at Huge and 4K (the list or the grid of covers): a 2400 page is never one 1960-wide list.</summary>
+    /// <summary>The navigator LIST's cap at Huge and 4K: a 2400 page is never one 1960-wide list of tiny rows. (A GRID has no cap: its cells fill the column.)</summary>
     public const float NavCap = 960f;
+
+    /// <summary>Huge's pane (the album's songs, the board's 640 column) rests at 640 and grows with the navigator, 1 share to the navigator's 2, up to this cap: the
+    /// 2400 column is filled by the two columns instead of leaving the right side empty (the board draws four: artists, the artist, albums, songs).</summary>
+    public const float PaneCap = 1200f, HugePaneW = 640f, HugeNavGrow = 2f, HugePaneGrow = 1f;
+
+    /// <summary>The Short height rung (330-699 tall, 126 of page under the band): the page's top and the head-to-body gap tighten, and the pane folds its header and
+    /// verbs into one row so the rows keep room.</summary>
+    public const float ShortPageTop = 4f, ShortBodyGap = 8f, ShortHeadGap = 4f, ShortPaneBottom = 4f;
 
     /// <summary>The head: its height, the gap between its words and the gap between its groups, the find field's width.</summary>
     public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
@@ -212,8 +220,43 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The full grid's size-S cell floor (NaN: the core's 116).</summary>
     public required float CardCellMin { get; init; }
 
-    /// <summary>The navigator's widest (NaN: it takes what the pane leaves). Huge caps it at 960 so a 2400 page is not one 1960-wide list of tiny rows.</summary>
+    /// <summary>The navigator LIST's widest (NaN: it takes what the pane leaves). Huge caps it at 960 so a 2400 page is not one 1960-wide list of tiny rows.</summary>
     public float NavMaxW { get; init; } = float.NaN;
+
+    /// <summary>The navigator GRID's widest (NaN: the grid takes what the pane leaves; its cells fill the column, so no cap is needed).</summary>
+    public float GridNavMaxW { get; init; } = float.NaN;
+
+    /// <summary>The navigator's and the pane's flex shares of the width the page has left (the navigator rests at 0, the pane at <see cref="PaneW"/>). 1 / 0 is the
+    /// fixed-pane form (Compact, Small, Standard); Huge shares 2 / 1 so both columns fill the 2400 column.</summary>
+    public float NavGrow { get; init; } = 1f;
+
+    /// <inheritdoc cref="NavGrow"/>
+    public float PaneGrow { get; init; } = 0f;
+
+    /// <summary>The pane's widest when it grows (NaN: it never grows, <see cref="PaneW"/> is its width).</summary>
+    public float PaneMaxW { get; init; } = float.NaN;
+
+    /// <summary>The page's top under the band and the gap from the head to the body: the Regular rung's, or the Short rung's tighter pair.</summary>
+    public float PageTop { get; init; } = ZuneLibraryRules.PageTop;
+
+    /// <inheritdoc cref="PageTop"/>
+    public float BodyGap { get; init; } = ZuneLibraryRules.HeadBodyGap;
+
+    /// <summary>The window is on the Short height rung (330-699 tall).</summary>
+    public bool Short { get; init; }
+
+    /// <summary>Compact on the Short rung: the head is ONE 40 row (sort button, find, the "..." view menu); the count and the view words go (the menu carries every view).</summary>
+    public bool OneRow => Single && Short;
+
+    /// <summary>The count shows (the one-row head has no room for it).</summary>
+    public bool ShowCount => !OneRow;
+
+    /// <summary>The view is the "..." menu alone (the grid and list words, and their label, go).</summary>
+    public bool ViewMenuOnly => OneRow;
+
+    /// <summary>The pane folds its header and verbs into ONE row (title, then the rings) and drops the attribution, the meta line, the "also by" line and the
+    /// "open album" word: on the Short rung the full header alone is as tall as the page.</summary>
+    public bool PaneBrief => Short;
 
     /// <summary>The pane's "open album" word shows (the pane's commands row has room for it); at Small the pane is 300 and the word would shrink to
     /// "o...", so the verb stays in the "..." menu instead.</summary>
@@ -271,13 +314,25 @@ public static class ZuneLibraryTiers
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
-        // Huge (Z-Library-*-Huge): wider columns, the pane 440, the list 260, 48 apart.
-        Make(WidthTier.Huge, headH: 28f, headGap: 8f, colGap: 48f, paneW: 440f, readerNavW: 260f, navMin: 320f, sortMenu: false, rightMin: 440f,
-            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with { NavMaxW = ZuneLibraryRules.NavCap },
+        // Huge (Z-Library-*-Huge): the board's 280 artists list, the songs column 640 (it grows with the navigator up to 1200, the navigator 2 shares to its 1, so
+        // the pair fills the 2400 column), 48 apart. A grid navigator is uncapped (its cells fill); a list stops at 960.
+        HugeRecord(WidthTier.Huge),
         // Huge 4K: Huge's (pages cap at 2400, decision 2).
-        Make(WidthTier.Huge4K, headH: 28f, headGap: 8f, colGap: 48f, paneW: 440f, readerNavW: 260f, navMin: 320f, sortMenu: false, rightMin: 440f,
-            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with { NavMaxW = ZuneLibraryRules.NavCap },
+        HugeRecord(WidthTier.Huge4K),
     ];
+
+    private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
+        sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
+    {
+        NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+    };
+
+    /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>
+    private static readonly ZuneLibraryLayout[] s_short = Array.ConvertAll(s_records, static r => r with
+    {
+        Short = true, PageTop = ZuneLibraryRules.ShortPageTop, BodyGap = ZuneLibraryRules.ShortBodyGap,
+        HeadGap = r.Single ? ZuneLibraryRules.ShortHeadGap : r.HeadGap,
+    });
 
     /// <summary>The policy the structure publishes for the core host (`ThemePolicies.LibraryTiers`): the grid's gaps per content tier and Small's cell floor. The
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
@@ -290,12 +345,13 @@ public static class ZuneLibraryTiers
     /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or
     /// split. A split page in a Compact content tier (the ladders' holds differ by a frame) reads Small's; Standard's where no frame resolved the tiers.</summary>
     public static ZuneLibraryLayout Of(in TierFacts facts, bool single)
-        => For(facts.Policy is null ? WidthTier.Standard : facts.Content, single);
+        => For(facts.Policy is null ? WidthTier.Standard : facts.Content, single, facts.Policy is not null && facts.Height == HeightTier.Short);
 
-    /// <summary>The record for content tier <paramref name="content"/>.</summary>
-    public static ZuneLibraryLayout For(WidthTier content, bool single)
+    /// <summary>The record for content tier <paramref name="content"/> on the Regular height rung, or the Short rung's (<paramref name="short"/>).</summary>
+    public static ZuneLibraryLayout For(WidthTier content, bool single, bool @short = false)
     {
-        if (single) return s_records[0];
-        return s_records[Math.Clamp(Math.Max((int)content, (int)WidthTier.Small), 1, s_records.Length - 1)];
+        var all = @short ? s_short : s_records;
+        if (single) return all[0];
+        return all[Math.Clamp(Math.Max((int)content, (int)WidthTier.Small), 1, all.Length - 1)];
     }
 }

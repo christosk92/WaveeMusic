@@ -6,6 +6,10 @@
 // rows with the self row on the 5 % wash, covers at the Cover radius, the playing version's title in the accent; the format split button's
 // two square halves washing on hover.
 //
+// PER TIER (ZT5). The version row is a flex row (the cover, the title over its meta, the waveform strip, the format split button); the waveform is the
+// one part with a fixed width (64 bars, 191 DIP), so it leaves the row where the CONTENT tier is Compact (a 300 page has 190 DIP for the whole row)
+// and fades back in from Small. It is its own component (`WaveHost`, a template here has no view context), reading the tier it is drawn in.
+//
 // WHAT THE CORE KEEPS. Which drawer is open, the keyed mount, the reveal wiring (`OnRealized`), the indent, the demand and the relations, the
 // facts, the version entries and their order, the reserved video row, the waveform's peaks, the "arriving" latch, the format override and
 // its overlay, and the play verb. A template draws and never names core state (WVTH002).
@@ -13,8 +17,10 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
@@ -314,10 +320,47 @@ internal static class ZuneTrackDrawer
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
                     ],
                 },
-                peaks is null ? new BoxEl() : Waveform.Create(new WaveformModel(peaks, DrawerRules.WaveBars), key: "waveform"),
+                Embed.Comp(new WaveProps(peaks), static () => new WaveHost()) with { Key = "waveform-slot" },
                 a.FormatButton(version, parent, kind),
             ],
         };
+    }
+
+    sealed record WaveProps(float[]? Peaks);
+
+    /// <summary>The waveform slot: the strip where the peaks are known and the content tier has the room, else nothing. The strip enters and leaves
+    /// with the arms' cross-fade (the slot is an unkeyed box over a children list, so the keyed strip's Enter / Exit run).</summary>
+    sealed class WaveHost : Component, IPropsHost
+    {
+        WaveProps? _latest;
+        readonly Signal<WaveProps?> _props = new(null);
+
+        public void ApplyProps(object props)
+        {
+            _latest = (WaveProps)props;
+            _props.Value = _latest;
+        }
+
+        public override Element Render()
+        {
+            _ = _props.Value;
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            bool room = tiers.Policy is null || tiers.Content >= WidthTier.Small;
+            var peaks = _latest?.Peaks;
+            if (peaks is null || !room) return new BoxEl { Shrink = 0f };
+            return new BoxEl
+            {
+                Shrink = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "waveform", Shrink = 0f, Enter = ZuneDetailRules.ArmFade, Exit = ZuneDetailRules.ArmFade, Transition = ZuneDetailRules.ArmFadeMotion,
+                        Children = [Waveform.Create(new WaveformModel(peaks, DrawerRules.WaveBars), key: "waveform-strip")],
+                    },
+                ],
+            };
+        }
     }
 
     /// <summary>16:9 with a play badge for the video, the bare square otherwise, at the Cover radius; the now-playing overlay on the version

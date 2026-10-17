@@ -192,7 +192,8 @@ internal static class ZuneSearchPage
 
         TextEl name = (lay.HeroNameHero ? R.Type.Hero(title) : R.Type.PageHero(title)) with
         {
-            Key = "zune-search-top-name", MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            // The name keeps its role's size and wraps by whole words (the card grows to hug it); an ellipsis only after the last line.
+            Key = "zune-search-top-name", MaxLines = S.NameLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         var copy = new List<Element>(4);
         if (lay.HeroName == ZuneSearchHeroName.InCopy) copy.Add(name);

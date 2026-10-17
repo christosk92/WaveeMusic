@@ -66,19 +66,18 @@ internal static class ZuneArtistPage
     {
         var facts = ctx.Tier();
         var lay = ZuneArtistTiers.Of(in facts);
-        var fit = ZuneOptions.Fit();
         var latchCell = ctx.Hooks.UseRef<Latch?>(null);
         var latch = latchCell.Value ??= new Latch();
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         var chart = latch.Chart ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly (the hero must not fade from 0 over a held photograph).
-        Element? body = p.BodyReady ? Compose(p, latch, lay, fit) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, lay) : null;
 
         // ONE region, and the shimmer is DERIVED: a representative tree at the loaded page's geometry, never a tree to mount. Reveal.Soft is the
         // page-level reveal the rest of the app uses; Group null, not the route: the chart's inner region must NOT join this one.
         Element region = new SkelRegionEl(
-            Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, lay, fit),
+            Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, lay),
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry),
             Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
             Group: null, SmoothResize: false);
@@ -108,7 +107,7 @@ internal static class ZuneArtistPage
 
     // ── the loaded page ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element Compose(ArtistPageProps p, Latch latch, ZuneArtistLayout lay, PanoramaFit fit)
+    static Element Compose(ArtistPageProps p, Latch latch, ZuneArtistLayout lay)
     {
         Artist a = p.Artist;
         string uri = a.Uri.Text;
@@ -134,7 +133,7 @@ internal static class ZuneArtistPage
             });
         }
 
-        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, fit, p.Accent, in acts);
+        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, p.Accent, in acts);
         float washH = lay.HeroH + Rules.WashTail;
         // The blend wash, from the cover's grading (a cover-keyed leaf: a grading re-renders only the wash). Under artwork wash only; the leaf reads
         // the option itself.
@@ -169,10 +168,10 @@ internal static class ZuneArtistPage
 
     /// <summary>The derived shimmer's SOURCE: the same hero over a representative shape at the tier's real heights (no actions: never skeleton
     /// content), then the chart's skeleton at the tier's columns and rows. Every geometry is the loaded page's, so nothing shifts when it lands.</summary>
-    static Element Shimmer(ArtistPageProps p, ArtistChartStyle? chart, ZuneArtistLayout lay, PanoramaFit fit)
+    static Element Shimmer(ArtistPageProps p, ArtistChartStyle? chart, ZuneArtistLayout lay)
     {
         var none = new ZuneArtistHero.Acts(null, null, null, null);
-        Element hero = ZuneArtistHero.Build(Artist.HeroText.Placeholder, "", lay, fit, p.AccentPeek(), in none);
+        Element hero = ZuneArtistHero.Build(Artist.HeroText.Placeholder, "", lay, p.AccentPeek(), in none);
         Element chartShape = chart is null ? new BoxEl()
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows));
         var column = new List<Element>(3) { hero };

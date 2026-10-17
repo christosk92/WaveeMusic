@@ -76,7 +76,7 @@ internal sealed class ZuneProfileLatch
             SecPending[k] = () => Verdict[k] == ProfileSectionBody.Seed;
             SecFailed[k] = () => Verdict[k] == ProfileSectionBody.Error;
             SecContent[k] = () => Els[k] ?? new BoxEl();
-            SecShimmer[k] = () => ZuneProfileSections.SeedShelf(s, ZuneProfile.InnerWidth(P, Layout));
+            SecShimmer[k] = () => ZuneProfileSections.SeedShelf(s, ZuneProfile.InnerWidth(P, Layout), Layout.CardW);
             SecFailedPanel[k] = () => ZuneProfileSections.SectionError(s, Retry[k]);
         }
     }
@@ -196,8 +196,8 @@ internal static class ZuneProfile
             Children =
             [
                 Hero(ProfileHeroText.PlaceholderFor(p.Own), "", null, lay),
-                ZuneProfileSections.SeedShelf(first, inner),
-                ZuneProfileSections.SeedShelf(second, inner),
+                ZuneProfileSections.SeedShelf(first, inner, lay.CardW),
+                ZuneProfileSections.SeedShelf(second, inner, lay.CardW),
             ],
         };
     }
@@ -241,7 +241,7 @@ internal static class ZuneProfile
     /// <summary>The eyebrow, the name, the stats, the actions.</summary>
     static Element Copy(in ProfileHeroText t, string uri, ProfileHeroActs? acts, ZuneProfileLayout lay)
     {
-        // A name is a name: never re-cased, one line, the full name in the trim tooltip.
+        // A name is a name: never re-cased, wrapped by whole words over up to NameLines lines (the box hugs them), the full name in the trim tooltip.
         TextEl name = (lay.Name switch
         {
             ZuneProfileName.Panorama => R.Type.Panorama(t.Name),
@@ -249,7 +249,7 @@ internal static class ZuneProfile
             _ => R.Type.PageHero(t.Name),
         }) with
         {
-            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.NameLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         var kids = new List<Element>(4)
         {
@@ -260,7 +260,7 @@ internal static class ZuneProfile
             // The box reserves the larger voice's line, so the word scales on a crossing and nothing under it moves.
             new BoxEl
             {
-                Key = "zune-profile-name", Direction = 1, Justify = FlexJustify.Center, Height = lay.NameLine, MinWidth = 0f, Layout = ZuneMotion.TitleScale,
+                Key = "zune-profile-name", Direction = 1, Justify = FlexJustify.Center, MinHeight = lay.NameLine, MinWidth = 0f, Layout = ZuneMotion.TitleScale,
                 Children = [Controls.TrimmedTitle(name, t.Name)],
             },
             Stats(in t, acts, lay),
@@ -347,7 +347,9 @@ internal static class ZuneProfile
         }
         return new BoxEl
         {
-            Key = Z.ActionsKey, Direction = 0, Gap = Z.ActionsGap, AlignItems = FlexAlign.Center, Height = edge, Shrink = 0f, MinWidth = 0f,
+            // A row that wraps (a floor, not a height): beside a 96 avatar a 300 window leaves 156 for "open account", share and "...", so the last ring
+            // takes a second 40 row instead of running off the page. Wider windows keep the one row, and the shimmer's blank is the same one-row floor.
+            Key = Z.ActionsKey, Direction = 0, Wrap = true, Gap = Z.ActionsGap, AlignItems = FlexAlign.Center, MinHeight = edge, Shrink = 0f, MinWidth = 0f,
             Margin = new Edges4(0f, Z.ActionsTop, 0f, 0f), Children = kids.ToArray(),
         }.Skeletonized(false);
     }

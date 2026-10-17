@@ -8,8 +8,8 @@
 //     not, so the tree under the list never changes when the facts arrive (the list keeps its scroll);
 //   · the TWO-COLUMN arm: the PANORAMA band (the page's title across the top, its height the record's, folded on a short window), then ONE row
 //     of [identity column | list | aside], all in the system PAGE COLUMN (`ZuneFrameRules.PageColumn`: the gutter, capped at 2400 and centred past
-//     it, P5 decision 2), so the page x is the band's x at every width (audit A1). A playlist's and Liked Songs' panorama take their own step
-//     (`ZunePlaylistTiers.Panorama`, audit A8); an editable playlist's panorama IS its inline editor (the Title slot). The identity column is the
+//     it, P5 decision 2), so the page x is the band's x at every width (audit A1). Every kind's panorama is the record's step (a long title wraps
+//     and the band hugs it); an editable playlist's panorama IS its inline editor (the Title slot). The identity column is the
 //     record's width (Z-Album 240), not the core's resizable rail: Zune draws no grip. A collapse stored by another theme shows Zune's strip
 //     (`Detail.CompactRail`) with its expand, never a dead end. The list column leads with the "songs" heading on a track page and carries the
 //     insights sheet over its rows (open or not);
@@ -18,7 +18,10 @@
 //     WINDOW tier (`DetailTierLayout.AsideDocked`); Zune lays it out by the CONTENT tier, so where a docked panel leaves the page Small the frame
 //     folds the aside and provides `Detail.AsideDocked = false` around the page: the album's "more by", artist and fans return to the band under
 //     the rows instead of vanishing. The slot is in the row at every tier (width 0 where none docks) and eases its width, so a crossing never
-//     re-parents the list.
+//     re-parents the list. An aside that holds the insights ALONE (Liked Songs) takes the record's insights width (320 / 420 / 440, `InsightsW`);
+//     one with a body takes the record's aside. The insights rest open from Huge (the tier policy's `InsightsRestOpen`);
+//   · a SHORT window (under 700 tall) folds the panorama band; the identity column leads with the title (`RailTitle`), and the HEAD arm, which has no
+//     column, states the title over its meta.
 //
 // THE ART WASH is the material's: the frame places the core's tint claim and tone plane (Zune's material draws them as the wash, `ZuneMaterial`).
 // MOTION: a mode crossing cross-fades the arms (keyed Exit / Enter); the panorama band and the aside ease their sizes; the entrance of the page's
@@ -74,10 +77,9 @@ internal static class ZuneDetailFrame
         }
 
         bool dock = p.Aside is not null && lay.AsideW > 0f;
-        // The panorama's own step for a playlist or Liked Songs (audit A8); the columns keep the content tier's record.
+        // The panorama is the content tier's record for every kind (the album's step); a long title wraps and the band hugs it.
         Element band = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec) is { } spec
-            ? K.PanoramaBand(spec.Identity, spec.Slots, ZunePlaylistTiers.Panorama(lay, ZunePlaylistTiers.Of(facts), spec.Identity.Kind),
-                gutter: 0f, bleed: gutter)
+            ? K.PanoramaBand(spec.Identity, spec.Slots, lay, gutter: 0f)
             : new BoxEl { Key = Z.PanoramaKey, Height = lay.PanoramaH, Shrink = 0f, Animate = Z.PanoramaFold };
 
         // ── the list column: the "songs" heading on a track page, the list, and the insights sheet's layer over it (composed open or not) ──
@@ -93,8 +95,12 @@ internal static class ZuneDetailFrame
             arm = Page(p, gutter, band, [
                 new BoxEl
                 {
+                    // A short window folds the panorama and this arm has no identity column to lead with the title, so the head states it (one line,
+                    // the heading voice as written: a name), over the meta.
                     Key = Z.HeadKey, Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, lay.RailGap),
-                    Children = [K.Meta(head.Spec.Identity, float.NaN, lay)],
+                    Children = lay.RailTitle
+                        ? [K.NamedHeading(head.Spec.Identity.Title) with { Key = "head:title" }, new BoxEl { Key = "head:meta", Direction = 1, MinWidth = 0f, Children = [K.Meta(head.Spec.Identity, float.NaN, lay)] }]
+                        : [new BoxEl { Key = "head:meta", Direction = 1, MinWidth = 0f, Children = [K.Meta(head.Spec.Identity, float.NaN, lay)] }],
                 },
                 new BoxEl
                 {
@@ -118,7 +124,7 @@ internal static class ZuneDetailFrame
                 {
                     // The record's width (eased across a crossing); the resist cue the core binds is kept (paint-bound).
                     Key = Z.RailKey, Direction = 1, Width = lay.RailW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-                    Opacity = tc.RailOpacity, Animate = Z.SlotReveal,
+                    Opacity = tc.RailOpacity, Animate = Z.ColumnReflow,
                     Enter = Z.ArmFade, Exit = Z.ArmFade, Transition = Z.ArmFadeMotion,
                     Children = [ctx.View(ViewKeys.DetailRail, tc.Rail! with { RailWidth = lay.RailW })],
                 };
@@ -232,12 +238,14 @@ internal static class ZuneDetailFrame
     static Element AsideSlot(DetailFrameProps p, ZuneDetailLayout lay, bool dock)
     {
         if (!dock || p.Aside is not { } aside)
-            return new BoxEl { Key = Z.AsideKey, Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.SlotReveal };
+            return new BoxEl { Key = Z.AsideKey, Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.ColumnReflow };
         var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
         var kids = new List<Element>(2);
         if (aside.Body is { } body) kids.Add(Ctx.Provide(InAside, true, body));
-        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!, lay.AsideW));
-        float slotW = lay.ColumnGap + lay.AsideW;
+        // An aside that holds the insights ALONE takes the bento's own width (320 / 420 / 440); one that holds a body takes the record's column.
+        float asideW = aside.Body is null && lay.InsightsW > 0f ? lay.InsightsW : lay.AsideW;
+        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!, asideW));
+        float slotW = lay.ColumnGap + asideW;
         Prop<float> width = slotW;
         if (aside.Body is null && insights is { } only)
         {
@@ -247,7 +255,7 @@ internal static class ZuneDetailFrame
         return new BoxEl
         {
             Key = Z.AsideKey, Direction = 1, Width = width, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-            Padding = new Edges4(lay.ColumnGap, 0f, 0f, 0f), Animate = Z.SlotReveal,
+            Padding = new Edges4(lay.ColumnGap, 0f, 0f, 0f), Animate = Z.ColumnReflow,
             Children =
             [
                 Ui.ScrollView(new BoxEl

@@ -150,9 +150,8 @@ public sealed class InspectSessionMountedTests(ShellHost host)
 
                 JsonElement counts = crossing.GetProperty("counts");
                 Assert.True(counts.GetProperty("tracked").GetInt32() > 0, "no keyed node was followed: " + crossing);
-                // Known (round G): the one-row daylist moves its play ring into the strip's end slot, a new parent, so it remounts. Anything else is new.
-                var remounted = crossing.GetProperty("remounted").EnumerateArray().Select(r => r.GetProperty("key").GetString()).Where(k => k != "zune-daylist-play").ToArray();
-                Assert.True(remounted.Length == 0, "nodes were remounted on the crossing: " + crossing.GetProperty("remounted"));
+                // The daylist's play ring keeps its parent (the copy box) in every form, so nothing remounts on the crossing (round G).
+                Assert.True(crossing.GetProperty("remounted").GetArrayLength() == 0, "nodes were remounted on the crossing: " + crossing.GetProperty("remounted"));
                 foreach (string list in new[] { "vanished", "appeared", "recounted", "snapped", "jumped" })
                     Assert.Equal(JsonValueKind.Array, crossing.GetProperty(list).ValueKind);
                 Assert.True(crossing.GetProperty("settle").GetProperty("settled").GetBoolean(), "the page did not settle: " + crossing.GetProperty("settle"));
@@ -166,7 +165,7 @@ public sealed class InspectSessionMountedTests(ShellHost host)
                 Assert.Equal(400d, Reply(session, """{"cmd":"status","id":2}""").GetProperty("size").GetProperty("h").GetDouble());
                 JsonElement back = Reply(session, """{"cmd":"crossing","args":{"from":{"w":1440,"h":400},"to":{"w":1440,"h":960}},"id":3}""");
                 Assert.False(back.GetProperty("narrowing").GetBoolean());
-                Assert.All(back.GetProperty("remounted").EnumerateArray(), r => Assert.Equal("zune-daylist-play", r.GetProperty("key").GetString()));   // the same known round-G remount
+                Assert.True(back.GetProperty("remounted").GetArrayLength() == 0, "nodes were remounted widening back: " + back.GetProperty("remounted"));
 
                 JsonElement refused = JsonDocument.Parse(session.Execute("""{"cmd":"crossing","args":{"from":{"w":1440,"h":960}},"id":4}""", out _)).RootElement.Clone();
                 Assert.False(refused.GetProperty("ok").GetBoolean());

@@ -87,7 +87,7 @@ internal static class ZuneHomeZones
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
-            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-shelf-blank:" + i.ToString(CultureInfo.InvariantCulture)
@@ -114,7 +114,7 @@ internal static class ZuneHomeZones
             pager: ShelfPager.Chevrons,
             minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
-            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
                 ? "zune-wide-blank:" + i.ToString(CultureInfo.InvariantCulture)

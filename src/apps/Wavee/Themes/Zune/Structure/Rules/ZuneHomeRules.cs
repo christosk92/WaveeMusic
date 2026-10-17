@@ -70,6 +70,11 @@ public static class ZuneHomeRules
     /// <summary>The action rings: the 36 disc, its 2 ring, the glyph.</summary>
     public const float RingSize = 36f, RingStroke = 2f, RingGlyph = 13f;
 
+    /// <summary>The daylist's save heart button (the target inside the ring; the button freezes its box at mount, so one size at every tier) and the
+    /// shelf pager's chevron: the 32 circle in a 40 hit box (the box overhangs the circle by 4 each side with a negative margin, so the header keeps
+    /// its layout).</summary>
+    public const float SaveHitBox = 40f, ChevronCircle = 32f, ChevronTarget = 40f;
+
     /// <summary>The clock: its right inset, its line gap, the bars (40 wide, 6 tall, the current one 20, 4 apart).</summary>
     public const float ClockPadRight = 32f, ClockGap = 8f, BarW = 40f, BarH = 6f, BarLitH = 20f, BarGap = 4f;
 
@@ -169,13 +174,13 @@ public enum ZuneDaylistForm : byte
 /// <summary>Which role the daylist's title is set in.</summary>
 public enum ZuneDaylistTitle : byte
 {
-    /// <summary>The quickplay head, 22/28 (Compact: two lines; the one-row form: one).</summary>
+    /// <summary>The quickplay head, 22/28 (the one-row form: one line).</summary>
     Group,
 
     /// <summary>The heading, 26/32 (Small).</summary>
     Heading,
 
-    /// <summary>The daylist title, 40/48 (Standard).</summary>
+    /// <summary>The daylist title, 40/48 (Standard, and Compact: the title keeps its step, wrapping over up to three lines).</summary>
     Title,
 
     /// <summary>The hero, 64/72 (Huge).</summary>
@@ -244,11 +249,13 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <inheritdoc cref="DaylistForm"/>
     public float ClockW { get; init; } = 260f;
 
-    /// <summary>The title's role and its lines, the copy's side insets.</summary>
+    /// <summary>The title's role and its lines, the copy's side insets. The title keeps its role's size at every tier (Zune is a large typeface): a long
+    /// name WRAPS over up to <see cref="DaylistTitleLines"/> lines and the strip grows to hug it (<see cref="DaylistGrows"/>), never an ellipsis on one line.
+    /// Only the one-row form (a window too short for the strip) keeps one line.</summary>
     public ZuneDaylistTitle DaylistTitle { get; init; } = ZuneDaylistTitle.Title;
 
     /// <inheritdoc cref="DaylistTitle"/>
-    public int DaylistTitleLines { get; init; } = 1;
+    public int DaylistTitleLines { get; init; } = 2;
 
     /// <inheritdoc cref="DaylistTitle"/>
     public float DaylistPad { get; init; } = ZuneHomeRules.DaylistCopyPad;
@@ -269,14 +276,9 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <summary>The ring's hit box where it is larger than the disc (Compact: a 36 disc in a 40 target, the brief's Compact rule); 0 = the disc itself.</summary>
     public float RingTarget { get; init; }
 
-    /// <summary>The daylist title's own size and line where the tier sets it between two roles (Compact 28/36, A-audit Home); 0 = the role's.</summary>
-    public float DaylistTitleSize { get; init; }
-
-    /// <inheritdoc cref="DaylistTitleSize"/>
-    public float DaylistTitleLine { get; init; }
-
-    /// <summary>The strip's height is a floor (<see cref="DaylistH"/>) and grows with its copy (Compact: a wrapped title or wrapped rings never clip).</summary>
-    public bool DaylistGrows { get; init; }
+    /// <summary>The strip's height is a floor (<see cref="DaylistH"/>) and grows with its copy (a wrapped title or wrapped rings never clip); its height
+    /// glides on the size channel (<see cref="ZuneHomeRules.ChapterResize"/>). False only in the one-row form.</summary>
+    public bool DaylistGrows { get; init; } = true;
 
     /// <inheritdoc cref="DaylistRings"/>
     public float RingsGap { get; init; } = ZuneHomeRules.DaylistActionsGap;
@@ -379,15 +381,14 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
-        // no new group; the daylist a 168 floor (112 art, the title 28/36 over two lines, then four unlabelled 36 rings 16 apart, each in a 40 target
-        // 12 apart: 4 x 36 + 3 x 16 = 192; the strip grows where they wrap); one column of everything,
+        // no new group; the daylist a 168 floor (112 art, the title at the daylist step 40/48 over up to three lines, then four unlabelled 36 rings, each in
+        // a 40 target 12 apart; the strip grows with the title and where the rings wrap); one column of everything,
         // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 2,
-            DaylistTitleSize = 28f, DaylistTitleLine = 36f, DaylistGrows = true,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
             DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
@@ -423,7 +424,7 @@ public static class ZuneHomeTiers
         ZoneGap = Math.Min(r.ZoneGap, 14f), QuickGroupGap = Math.Min(r.QuickGroupGap, 14f), Subtitles = false,
         DaylistForm = ZuneDaylistForm.OneRow, DaylistH = 56f, DaylistArtW = 56f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 1,
         DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = ZuneHomeRules.RingSize, PlayAtEnd = true,
-        DaylistTitleSize = 0f, DaylistTitleLine = 0f, DaylistGrows = false,
+        DaylistGrows = false,
     });
 
     /// <summary>The record for <paramref name="facts"/>: its content tier's, in its one-row daylist form where the window is too short for the

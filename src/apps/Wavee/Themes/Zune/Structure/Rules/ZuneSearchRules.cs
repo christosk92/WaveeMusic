@@ -26,6 +26,9 @@ public static class ZuneSearchRules
     /// <summary>The top result: the gap between its art and the copy, the copy's line gap, the gap to best matches (the art is the tier's).</summary>
     public const float HeroGap = 20f, HeroLineGap = 6f, TopGap = 56f;
 
+    /// <summary>The lines the top result's name may take: it keeps its role's size and wraps by whole words, the card hugging it.</summary>
+    public const int NameLines = 2;
+
     /// <summary>Best matches: the row, its art, the gap between columns, the narrowest column.</summary>
     public const float BestRowH = 56f, BestArt = 40f, BestColGap = 40f, BestMinCol = 280f;
 

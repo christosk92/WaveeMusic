@@ -138,6 +138,22 @@ public sealed record ZuneArtistLayout : ITierLayoutRecord
     /// <summary>The widest the page's column grows.</summary>
     public required float PageMax { get; init; }
 
+    /// <summary>A bare link word's minimum hit edge (the "discography" and "see all" words, the external links, the crumb): 40 at Compact, 0 elsewhere
+    /// (the word is its own target).</summary>
+    public required float LinkTarget { get; init; }
+
+    /// <summary>A shelf card's width (and the discography grid's narrowest cell is <see cref="DiscoMinColumn"/>), and a music-video card's.</summary>
+    public required float ShelfCardW { get; init; }
+
+    /// <inheritdoc cref="ShelfCardW"/>
+    public required float VideoCardW { get; init; }
+
+    /// <summary>The lightbox's filmstrip thumb and its top chrome's height, by the WINDOW tier the overlay covers.</summary>
+    public required float LightboxThumb { get; init; }
+
+    /// <inheritdoc cref="LightboxThumb"/>
+    public required float LightboxChromeH { get; init; }
+
     /// <summary>The width of the page's column: the page (capped at the measure), less both gutters.</summary>
     public float ColumnWidth(float width) => MathF.Max(1f, MathF.Min(width, PageMax) - Gutter - Gutter);
 
@@ -174,6 +190,9 @@ public static class ZuneArtistRules
 
     /// <summary>The gap between the name and the caption under it.</summary>
     public const float NameCaptionGap = 14f;
+
+    /// <summary>The lines the hero's name may take: it wraps by whole words and the hero grows to hug it (the name never shrinks to fit).</summary>
+    public const int NameLines = 2;
 
     /// <summary>The gap between the caption and the secondary row (Huge).</summary>
     public const float ActionsTop = 14f;
@@ -219,11 +238,15 @@ public static class ZuneArtistRules
 
     // ── the shelves ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A shelf's card and the gap between cards; a music-video card's width.</summary>
-    public const float ShelfCardW = 154f, ShelfGap = 16f, VideoCardW = 240f;
+    /// <summary>The Standard shelf card and the gap between cards (a tier's own card is <see cref="ZuneArtistLayout.ShelfCardW"/>).</summary>
+    public const float ShelfCardW = 154f, ShelfGap = 16f;
 
-    /// <summary>A music-video card's width is the shelf's; the shelf's edge fade.</summary>
+    /// <summary>The shelf's edge fade.</summary>
     public const float ShelfEdgeFade = 36f;
+
+    /// <summary>How far under the page viewport's top a pivot click parks a section and where the scroll spy's line starts: Zune's band sits OUTSIDE the
+    /// viewport (it is the frame's), so only a little air keeps a heading off the band's hairline (Classic's sticky band is 56 inside it).</summary>
+    public const float SectionAir = 16f;
 
     /// <summary>The merch card's gap and padding.</summary>
     public const float MerchGap = 8f, MerchPad = 8f;
@@ -259,6 +282,9 @@ public static class ZuneArtistRules
     public const int UpcomingCoverDecode = 160;
 
     // ── the discography ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The discography grid's narrowest cell at Huge and Huge 4K (the boards' eight and eleven across), and Huge 4K's gap between cells.</summary>
+    public const float HugeCell = 200f, Huge4KGap = 20f;
 
     /// <summary>The cell's chrome under its square cover (the shared surface's geometry), and the row gap folded into the grid.</summary>
     public const float CardChrome = 50f, RowGap = 20f;
@@ -358,8 +384,16 @@ public static class ZuneArtistTiers
         bool aboutBeside)
     {
         float gutter = ZuneTiers.Frame(tier).Gutter;
+        bool huge = tier >= WidthTier.Huge, k4 = tier == WidthTier.Huge4K;
         return new()
         {
+            // A bare link word is 40 at Compact; a shelf card grows at Huge (the grid's cell does) and is the board's 220 at 4K (as Home's); the lightbox's
+            // strip and chrome follow the window.
+            LinkTarget = tier == WidthTier.Compact ? 40f : 0f,
+            ShelfCardW = k4 ? 220f : huge ? 180f : ZuneArtistRules.ShelfCardW,
+            VideoCardW = k4 ? 340f : huge ? 280f : 240f,
+            LightboxThumb = k4 ? 88f : huge ? 72f : tier == WidthTier.Compact ? 48f : ZuneArtistRules.Thumb,
+            LightboxChromeH = k4 ? 104f : huge ? 88f : tier == WidthTier.Compact ? 64f : ZuneArtistRules.ChromeH,
             Tier = tier, Gutter = gutter, ZoneGap = zoneGap, BodyTop = bodyTop, HeroH = heroH, EyebrowTop = eyebrowTop,
             CaptionBottom = captionBottom, CompactName = compactName, NameSize = nameSize, NameLine = nameLine, NameTracking = nameTracking,
             Actions = actions, Secondary = secondary, Target = target, ChartColumns = chartCols, ChartRows = ArtistSections.ChartMaxRows,
@@ -388,23 +422,51 @@ public static class ZuneArtistTiers
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.None, target: 36f, chartCols: 2, chartMaxW: 0f,
             railBeside: true, railW: 300f, railGap: 48f, latestArt: 96f, pickArt: 64f, drawerCols: 0, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
         // Huge (Z-Artist-Huge): a 400 hero with the 150 name, play · shuffle · follow in the band, radio and "..." in a row under the caption, the
-        // chart capped at 1200 beside a 360 rail, the 2400 page column.
+        // chart capped at 1200 beside a 360 rail, the 2400 page column, the grid's cells 200 wide (the board's eight across at 2560).
         Make(WidthTier.Huge, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
             nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
             chartMaxW: ZuneArtistRules.HugeChartMaxW, railBeside: true, railW: 360f, railGap: 48f, latestArt: 128f, pickArt: 72f, drawerCols: 4,
-            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
-        // Huge 4K: Huge's (pages cap at 2400, decision 2); ZT6 tunes the board's 520 hero and the 440 rail against it.
-        Make(WidthTier.Huge4K, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell },
+        // Huge 4K (Z-Artist-Huge4K) on the 2400 page column (decision 2: the board fills 2632, the page stops at 2400). KEPT from the board: the 520 hero
+        // (the 150 name, a 56 eyebrow, a 24 foot), the 440 rail with its 64 gap, the 44 section gap, the 32 body top, the 88 pick art, the cells 200 wide with
+        // a 20 gap (eleven across at 2400, the board's count), the 220 shelf cards. GIVEN UP to the cap: the board's 2632 column (the chart is the column
+        // less the rail: two chart columns of about 920, the board's 1000, so it carries no extra cap), and its third body column ("about" stays the
+        // pivot's own "details" section; the pivot's anchors are the core's plan). The latest release stays a 160 row in the rail (the board stacks a 240).
+        Make(WidthTier.Huge4K, zoneGap: 44f, bodyTop: 32f, heroH: 520f, eyebrowTop: 56f, captionBottom: 24f, compactName: false, nameSize: 150f,
             nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
-            chartMaxW: ZuneArtistRules.HugeChartMaxW, railBeside: true, railW: 360f, railGap: 48f, latestArt: 128f, pickArt: 72f, drawerCols: 4,
-            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
+            chartMaxW: 0f, railBeside: true, railW: 440f, railGap: 64f, latestArt: 160f, pickArt: 88f, drawerCols: 4,
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell, DiscoGap = ZuneArtistRules.Huge4KGap },
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
     public static ZuneArtistLayout For(WidthTier content) => s_records[Math.Clamp((int)content, 0, s_records.Length - 1)];
 
-    /// <summary>The record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public static ZuneArtistLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);
+    /// <summary>The Short rung (windows 330-699 tall, Z-Shell-Short: the band folds to 52 and the player bar holds 72, so about 160 of height is left to
+    /// the page): the hero's SPACE tightens. It keeps its copy AT THE TIER'S TYPE (the eyebrow, the name at the tier's step, the caption, Huge's secondary
+    /// row, Compact's actions row; Zune's type is never made smaller to fit) and hugs it, with no spring, so the hero is as tall as its name and the page
+    /// scrolls; the body starts closer and the sections sit closer. The record is a pure fold of the content tier's.</summary>
+    static ZuneArtistLayout Fold(ZuneArtistLayout r) => r with
+    {
+        HeroH = ShortHeroH, EyebrowTop = ShortEyebrowTop, CaptionBottom = ShortCaptionBottom,
+        BodyTop = ShortBodyTop, ZoneGap = MathF.Min(r.ZoneGap, ShortZoneGap),
+    };
+
+    /// <summary>The folded hero's floor, its eyebrow's top and its caption's foot, the body's top and the sections' gap.</summary>
+    public const float ShortHeroH = 132f, ShortEyebrowTop = 8f, ShortCaptionBottom = 8f, ShortBodyTop = 8f, ShortZoneGap = 20f;
+
+    static readonly ZuneArtistLayout[] s_short = [Fold(s_records[0]), Fold(s_records[1]), Fold(s_records[2]), Fold(s_records[3]), Fold(s_records[4])];
+
+    /// <summary>The record for <paramref name="facts"/>: the content tier's, folded on a Short window; Standard's where no frame resolved the tiers (a
+    /// view mounted alone).</summary>
+    public static ZuneArtistLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return For(WidthTier.Standard);
+        return facts.Height == HeightTier.Short ? s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)] : For(facts.Content);
+    }
+
+    /// <summary>The record of the WINDOW's tier, for an overlay that covers the window (the lightbox): its sizes follow the window, not the page
+    /// beside a docked panel. Standard's where no frame resolved the tiers.</summary>
+    public static ZuneArtistLayout OfWindow(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Window);
 
     /// <summary>The policy Zune publishes for the core's artist hosts.</summary>
     public static ArtistTierPolicy Policy { get; } = new ZuneArtistTierPolicy();
@@ -417,8 +479,14 @@ public sealed class ZuneArtistTierPolicy : ArtistTierPolicy
     public override ArtistHeroMetrics Hero(ArtistHeroTier tier, in TierFacts facts, float width) => ZuneArtistTiers.Of(in facts).Metrics(tier);
 
     /// <inheritdoc />
+    public override float BandClearance(in TierFacts facts) => ZuneArtistRules.SectionAir;
+
+    /// <inheritdoc />
     public override int ChartMaxColumns(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartColumns;
 
     /// <inheritdoc />
     public override int ChartRows(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartRows;
+
+    /// <inheritdoc />
+    public override float ProfileListMinCell(in TierFacts facts) => ZuneProfileTiers.Of(in facts).ListMinCell;
 }

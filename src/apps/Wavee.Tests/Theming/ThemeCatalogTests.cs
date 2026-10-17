@@ -488,7 +488,7 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.27 (P5 round B): Track.RowState.OnThisPc.
         // 1.28 (P5 round D): Home.Quickplay.
         // 1.29 (P5 rounds E-F): docked pane arrangements, ChromePolicy.Small, OverlayPolicy.Small.
-        Assert.Equal("1.29", ContractVersion.Text);
+        Assert.Equal("1.30", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));

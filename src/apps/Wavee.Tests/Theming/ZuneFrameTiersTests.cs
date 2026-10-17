@@ -144,6 +144,19 @@ public sealed class ZuneFrameTiersTests
         var compact = ZuneBandRules.Band(WidthTier.Compact);
         Assert.True(compact.Row1H >= 40f);
         Assert.True(compact.Row2H >= 40f);
+        // A short view word ("all") is still a 40 wide hit box at Compact (round G); no other tier widens it.
+        Assert.Equal(40f, compact.ViewMinW);
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(0f, ZuneBandRules.Band(tier).ViewMinW);
+    }
+
+    [Fact]
+    public void The_bare_account_chip_has_a_40_floor_at_compact_alone()
+    {
+        Assert.Equal(40f, ZuneOverlayTiers.Compact.ChipMinWidth);
+        Assert.Equal(ZuneOverlayRules.ChipTouchHeight, ZuneOverlayTiers.Compact.ChipHeight);
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(0f, ZuneOverlayTiers.For(tier).ChipMinWidth);
     }
 
     // ── the chrome budgets ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -362,12 +375,13 @@ public sealed class ZuneFrameTiersTests
         var compact = ZuneFrameRules.TitleBar(WidthTier.Compact);
         Assert.Equal(40f, compact.PillH);
         Assert.Equal(20f, compact.PillRadius);
-        Assert.True(ZuneFrameRules.FieldInLead(compact, "m83", flyoutOpen: false, focused: false));
-        Assert.True(ZuneFrameRules.FieldInLead(compact, "", flyoutOpen: false, focused: true));
-        Assert.False(ZuneFrameRules.FieldInLead(compact, "", flyoutOpen: false, focused: false));
-        Assert.False(ZuneFrameRules.FieldInLead(compact, "m83", flyoutOpen: true, focused: true));
+        // The Search route is the core's exact flag (contract 1.30, ShellTitleBarProps.OnSearchRoute), not a query proxy.
+        Assert.True(ZuneFrameRules.FieldInLead(compact, onSearchRoute: true, flyoutOpen: false, focused: false));
+        Assert.True(ZuneFrameRules.FieldInLead(compact, onSearchRoute: false, flyoutOpen: false, focused: true));
+        Assert.False(ZuneFrameRules.FieldInLead(compact, onSearchRoute: false, flyoutOpen: false, focused: false));
+        Assert.False(ZuneFrameRules.FieldInLead(compact, onSearchRoute: true, flyoutOpen: true, focused: true));
         foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
-            Assert.False(ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBar(tier), "m83", flyoutOpen: false, focused: true));
+            Assert.False(ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBar(tier), onSearchRoute: true, flyoutOpen: false, focused: true));
 
         // The account's name: 160 on the pill tiers (and the field budget charges it), the core's cap elsewhere.
         Assert.Equal(76f, ZuneFrameRules.AccountNameCap(ZuneFrameRules.TitleBar(WidthTier.Small), 76f));

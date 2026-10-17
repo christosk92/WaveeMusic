@@ -5,7 +5,7 @@
 //   · the RING: a 36 circle (40 at Compact and 4K), a filled accent disc for play and a 2-dip outline for the rest, its glyph centred, its
 //     lowercase word beside it where the tier writes one (play, saved). The SAVE ring is its own component: it reads the saved set and wears
 //     the accent ring and the filled heart while saved ("saved"), the outline and the empty heart otherwise ("save");
-//   · the PANORAMA: the page's title in the panorama voice, one line, bleeding off the edge or fitting it (`structure.panoramaFit`);
+//   · the PANORAMA: the page's title in the panorama voice at the tier's step, wrapped over up to two lines with the band hugging it;
 //   · the HEADING (26/32 light, lowercased by the heading case role) and the LINK word (13, secondary, primary on hover);
 //   · the keyed ROWS of a column (a position-only FLIP when a row above arrives, a fade-up for a row that arrives late) and the skeleton BARS.
 //
@@ -62,10 +62,11 @@ internal static class ZuneDetailKit
     /// <summary>A heading that carries a NAME ("More by Daft Punk"): the heading voice as written, never re-cased.</summary>
     public static TextEl NamedHeading(string text) => Heading(text) with { Case = TextCase.AsWritten };
 
-    /// <summary>A link word: the 13 voice in the secondary ink, the primary on hover, a hand and a hyperlink role.</summary>
-    public static Element Link(string key, string text, Action go) => new BoxEl
+    /// <summary>A link word: the 13 voice in the secondary ink, the primary on hover, a hand and a hyperlink role. <paramref name="minHeight"/> is its hit
+    /// height (a heading row's 40: the Compact minimum), the word centred in it.</summary>
+    public static Element Link(string key, string text, Action go, float minHeight = 0f) => new BoxEl
     {
-        Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+        Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, MinHeight = minHeight,
         Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, OnClick = go,
         Children =
         [
@@ -96,34 +97,40 @@ internal static class ZuneDetailKit
 
     // ── the panorama ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The page's title in the panorama voice (the record's step), one line: bleeding off the right edge (NoWrap, no trim: the band
-    /// clips it) or fitting the window (ellipsised), per <c>structure.panoramaFit</c>. A title is a name: never re-cased.</summary>
+    /// <summary>The page's title in the panorama voice (the record's step, for every kind): WRAPPED by whole words over up to
+    /// <see cref="ZuneDetailLayout.PanoramaLines"/> lines and hugged by its band, so a long name keeps its size (an ellipsis only after the last line). A
+    /// folded band (a short window) hides the title on one line. A title is a name: never re-cased.</summary>
     public static TextEl Panorama(string title, ZuneDetailLayout lay)
     {
         var text = lay.PanoramaLarge ? R.Type.Panorama(title) : R.Type.PanoramaCompact(title);
         if (lay.PanoramaSize > 0f) text = text with { Size = lay.PanoramaSize, LineHeight = lay.PanoramaLine };
-        bool fit = ZuneOptions.Fit() == PanoramaFit.Fit;
+        if (lay.PanoramaWraps)
+            return text with
+            {
+                Color = Tok.TextPrimary, MaxLines = lay.PanoramaLines, Wrap = TextWrap.WrapWholeWords,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            };
         return text with
         {
-            Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-            Trim = fit ? TextTrim.CharacterEllipsis : TextTrim.None, MinWidth = 0f, Shrink = fit ? 1f : 0f,
+            Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
     }
 
-    /// <summary>The panorama's band: its reserved height (eased: a short window folds it), the title nudged onto the gutter's optical edge. Clipped,
-    /// so a bleeding title stops at the page's edge and a folded band hides it. <paramref name="gutter"/> is the inset the band adds itself (0 inside the
-    /// page column, which pads the gutter: the nudge then becomes a negative margin), <paramref name="bleed"/> how far a bleeding title runs past the
-    /// band's right edge (the column's gutter, so it still meets the page's edge).
+    /// <summary>The panorama's band: its reserved height (eased: a short window folds it), the title nudged onto the gutter's optical edge. Clipped, so
+    /// a folded band hides the title. <paramref name="gutter"/> is the inset the band adds itself (0 inside the page column, which pads the gutter: the
+    /// nudge then becomes a negative margin).
     ///
-    /// THE TITLE. An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama,
-    /// as under Classic). The editor takes the panorama's step and wraps by words; the band then HUGS it (its reserved height a floor, eased on the size
-    /// channel), so a two-line title or the edit arm's field and words push the body down instead of clipping. A folded band (a short window) draws the
-    /// plain title: the identity column leads with the editor there.</summary>
-    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, float bleed = 0f)
+    /// THE TITLE. The title keeps its tier's step and WRAPS by whole words over <see cref="ZuneDetailLayout.PanoramaLines"/> lines; the band HUGS it (its
+    /// reserved height a floor, eased on the size channel), so a long name pushes the body down instead of shrinking or clipping. An editable playlist
+    /// hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as under Classic); the editor takes
+    /// the same step and the band hugs it likewise (the edit arm's field and words push the body down). A folded band (a short window) draws the plain
+    /// title, hidden: the identity column leads with the editor there.</summary>
+    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter)
     {
-        bool fit = ZuneOptions.Fit() == PanoramaFit.Fit;
         float lead = gutter + lay.PanoramaNudgeX;
         bool editor = slots.Title is not null && lay.PanoramaH > 0f;
+        // The editor and a wrapping title stand INSIDE the page and let the band hug them.
+        bool inside = editor || lay.PanoramaWraps;
         Element title;
         if (slots.Title is { } edit && editor)
         {
@@ -135,16 +142,16 @@ internal static class ZuneDetailKit
         return new BoxEl
         {
             Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-            Height = editor ? float.NaN : lay.PanoramaH, MinHeight = editor ? lay.PanoramaH : 0f,
+            Height = inside ? float.NaN : lay.PanoramaH, MinHeight = inside ? lay.PanoramaH : 0f,
             Animate = Z.PanoramaFold, HitTestVisible = editor,
-            // The editor wraps inside the page (it never bleeds: its words and its pencil must stay on screen).
-            Padding = new Edges4(MathF.Max(0f, lead), 0f, fit || editor ? gutter : 0f, 0f),
-            Margin = new Edges4(MathF.Min(0f, lead), 0f, fit || editor ? 0f : -bleed, 0f),
+            // The editor and the title wrap inside the page (the editor's words and pencil must stay on screen).
+            Padding = new Edges4(MathF.Max(0f, lead), 0f, gutter, 0f),
+            Margin = new Edges4(MathF.Min(0f, lead), 0f, 0f, 0f),
             Children =
             [
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = editor ? 1f : 0f, Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, 0f),
+                    Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = inside ? 1f : 0f, Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, 0f),
                     Animate = ZuneMotion.TitleScale, Opacity = Z.PanoramaOpacity,
                     Children = [title],
                 },
@@ -393,7 +400,7 @@ internal static class ZuneDetailKit
     static readonly Func<Element> s_metaShimmer = static () => R.Type.DenseMeta(Z.MetaShimmerText) with { MaxLines = 1 };
 
     /// <summary>The default artist line where a page declares no attribution slot: the billed names as one link run in the record's artist voice.</summary>
-    public static Element Artists(Detail.Identity id, float width, ZuneDetailLayout lay)
+    public static Element Artists(Detail.Identity id, float width, ZuneDetailLayout lay, float hit = 0f)
     {
         var artists = id.Artists;
         if (artists is not { Count: > 0 })
@@ -403,8 +410,8 @@ internal static class ZuneDetailKit
         Element text = ArtistText(names, width, lay);
         return go is null ? text : new BoxEl
         {
-            Direction = 0, MinWidth = 0f, MaxWidth = width, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = go, Children = [text],
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MaxWidth = width, MinHeight = hit, Role = AutomationRole.Hyperlink, Focusable = true,
+            Cursor = CursorId.Hand, OnClick = go, Children = [text],
         };
     }
 

@@ -68,10 +68,65 @@ public sealed partial class ZuneTierLayoutTests
             {
                 var r = scene.AbsoluteRect(node);
                 if (r.W <= 0f) continue;
-                Assert.True(r.H >= 40f - 0.5f, $"{size}: {key} is {r.H} tall, under 40");
+                Assert.True(r.W >= 40f - 0.5f && r.H >= 40f - 0.5f, $"{size}: {key} is {r.W} x {r.H}, under 40 x 40");
+            }
+            // The account chip is a 40 target too (a bare avatar is 24 + its padding; the record gives it the floor).
+            var chip = shell.Find("zchip");
+            if (!chip.IsNull)
+            {
+                var r = scene.AbsoluteRect(chip);
+                Assert.True(r.W >= 40f - 0.5f && r.H >= 40f - 0.5f, $"{size}: zchip is {r.W} x {r.H}, under 40 x 40");
             }
         }
     });
+
+    [Fact]
+    public void The_panels_pivot_words_are_40_targets_in_a_scroller_at_compact() => Mounted(shell =>
+    {
+        shell.RunFrames(20);
+        var scene = shell.Host.Scene;
+        try
+        {
+            Shell.PanelHost.Shared.SetMode(Shell.RailMode.Queue);
+            Until(shell, () => !shell.Find(ZuneFrameRules.PanelPivotsKey).IsNull, "the panel's pivot scroller");
+            shell.RunFrames(40);
+            Assert.Equal(PanelPlacement.Sheet, Shell.Ui.PanelPlacement.Peek());
+            var words = shell.FindPrefix(ZuneFrameRules.PanelPivotKeyPrefix);
+            Assert.NotEmpty(words);
+            foreach (var (node, key) in words)
+            {
+                var r = scene.AbsoluteRect(node);
+                Assert.True(r.H >= 40f - 0.5f, $"{key} is {r.H} tall, under 40");
+            }
+            // The words sit in the scroller, which stays inside the head, never past the panel's edge (a clip would cut the last word mid-letter).
+            var head = scene.AbsoluteRect(Node(shell, ZuneFrameRules.PanelHeadKey));
+            var scroller = scene.AbsoluteRect(Node(shell, ZuneFrameRules.PanelPivotsKey));
+            Assert.True(scroller.X >= head.X - 0.5f && scroller.X + scroller.W <= head.X + head.W + 0.5f, "the pivot scroller stays in the head");
+        }
+        finally
+        {
+            Shell.PanelHost.Shared.Close();
+            shell.RunFrames(30);
+        }
+    }, 400f, 860f);
+
+    [Fact]
+    public void The_bands_title_on_a_detail_page_is_the_entity_name_not_the_kind() => Mounted(shell =>
+    {
+        shell.RunFrames(20);
+        var route = Shell.For(EntityUri.Parse("spotify:album:al2"), "Album");
+        Shell.GoTo(route);
+        UntilBackground(shell, () => !shell.Find(ZuneBandRules.Row2TitleKey).IsNull, "the band's title");
+        UntilBackground(shell, () => Shell.PageChromeChannel.Current.Value is { } c && c.Title != Shell.Dest(Shell.Current.Value).Title,
+            "the album's name replaces its kind");
+        var chrome = Shell.PageChromeChannel.Current.Value!;
+        Assert.False(string.IsNullOrEmpty(chrome.Title));
+        // The crumbs keep the destination's words (the kind), and the title node keeps its place as the name arrives.
+        Assert.NotEmpty(chrome.Crumbs);
+        Assert.True(shell.Host.Scene.AbsoluteRect(Node(shell, ZuneBandRules.Row2TitleKey)).H >= ZuneBandRules.Band(ThemeHost.Facts.Peek().Tiers.Window).Row2H - 0.5f);
+        Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+        shell.RunFrames(30);
+    }, 1440f, 960f);
 
     [Theory]
     [InlineData(800f, 960f)]     // Small: the panel floats (Z-Frame-Narrow)

@@ -74,6 +74,15 @@ public static class ZuneProfileRules
     /// <summary>The seeds the shimmer stands in with, at most (a shelf of this many seed cards).</summary>
     public const int SeedCards = 8;
 
+    /// <summary>A shelf card (154) and the narrowest cell of the people list (176; 120 at Compact so two share a 300 window, 200 at Huge, 220 at 4K).</summary>
+    public const float CardW = 154f, ListCell = 176f, CompactCell = 120f, HugeCell = 200f, Huge4KCell = 220f;
+
+    /// <summary>The Short rung: the avatar's cap, the hero's gap and the sections' gap (the name keeps its tier's voice).</summary>
+    public const float ShortAvatar = 88f, ShortHeroGap = 20f, ShortSectionGap = 20f;
+
+    /// <summary>The lines the hero's name may take: it wraps by whole words and the hero grows to hug it (the name never shrinks to fit).</summary>
+    public const int NameLines = 2;
+
     // ── the lists ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The list page's head: the top inset under the band, the gap under it, the gap between the heading and the name link.</summary>
@@ -128,7 +137,8 @@ public sealed record ZuneProfileLayout : ITierLayoutRecord
     /// <summary>The name's voice.</summary>
     public required ZuneProfileName Name { get; init; }
 
-    /// <summary>The line height the name's box reserves (the largest line of its voice), so a crossing scales the word and moves nothing under it.</summary>
+    /// <summary>The line height the name's box reserves at least (the largest line of its voice), so a crossing scales the word and moves nothing under it;
+    /// a long name wraps over <see cref="ZuneProfileRules.NameLines"/> lines and the box grows to hug it.</summary>
     public required float NameLine { get; init; }
 
     /// <summary>A hit target: 40 at Compact, 32 elsewhere (the words, the pills, the rings).</summary>
@@ -169,6 +179,12 @@ public sealed record ZuneProfileLayout : ITierLayoutRecord
 
     /// <summary>The list shimmer's columns before the body is measured.</summary>
     public required int ListShimmerCols { get; init; }
+
+    /// <summary>A shelf card's width (154; the grid's cell at Huge and the board's 220 at 4K).</summary>
+    public required float CardW { get; init; }
+
+    /// <summary>A bare link word's minimum hit edge ("see all", the list's name link): 40 at Compact, 0 elsewhere (the word is its own target).</summary>
+    public required float LinkTarget { get; init; }
 }
 
 /// <summary>Zune's profile tier records (content tier; ZT7 tunes Compact, Small and Huge against their boards).</summary>
@@ -176,35 +192,57 @@ public static class ZuneProfileTiers
 {
     private static ZuneProfileLayout Make(WidthTier tier, float sectionGap, float avatar, float heroGap, ZuneProfileName name, float nameLine,
         float target, float actionsH, float statH, bool ownVerbs, int topCols, float topMinCol, float topColGap, float topRowGap, float topRowH, float topArt,
-        float rankW, int shimmerCols) => new()
+        float rankW, int shimmerCols, float listMinCell, float cardW) => new()
     {
         Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, SectionGap = sectionGap, Avatar = avatar, HeroGap = heroGap, Name = name, NameLine = nameLine,
         Target = target, ActionsH = actionsH, StatH = statH, OwnVerbsInHero = ownVerbs, TopCols = topCols, TopMinCol = topMinCol, TopColGap = topColGap,
-        TopRowGap = topRowGap, TopRowH = topRowH, TopArt = topArt, RankW = rankW, ListMinCell = 176f, ListShimmerCols = shimmerCols,
+        TopRowGap = topRowGap, TopRowH = topRowH, TopArt = topArt, RankW = rankW, ListMinCell = listMinCell, ListShimmerCols = shimmerCols,
+        CardW = cardW, LinkTarget = tier == WidthTier.Compact ? 40f : 0f,
     };
 
     private static readonly ZuneProfileLayout[] s_records =
     [
         // Compact (Z-Profile-Compact): gutter 16, a 96 avatar, one column of 64 ranked rows, every action 40.
         Make(WidthTier.Compact, sectionGap: 20f, avatar: 96f, heroGap: 16f, ZuneProfileName.Title, nameLine: 48f, target: 40f, actionsH: 40f, statH: 40f, ownVerbs: true,
-            topCols: 1, topMinCol: 200f, topColGap: 0f, topRowGap: 0f, topRowH: 64f, topArt: 48f, rankW: 48f, shimmerCols: 2),
+            topCols: 1, topMinCol: 200f, topColGap: 0f, topRowGap: 0f, topRowH: 64f, topArt: 48f, rankW: 48f, shimmerCols: 2,
+            listMinCell: ZuneProfileRules.CompactCell, cardW: ZuneProfileRules.CardW),
         // Small (Z-Profile-Small): a 112 avatar, the 40/48 name, two columns of 56 rows, 36 actions.
         Make(WidthTier.Small, sectionGap: 20f, avatar: 112f, heroGap: 24f, ZuneProfileName.Title, nameLine: 48f, target: 32f, actionsH: 36f, statH: 20f, ownVerbs: true,
-            topCols: 2, topMinCol: 240f, topColGap: 32f, topRowGap: 0f, topRowH: 56f, topArt: 44f, rankW: 48f, shimmerCols: 3),
+            topCols: 2, topMinCol: 240f, topColGap: 32f, topRowGap: 0f, topRowH: 56f, topArt: 44f, rankW: 48f, shimmerCols: 3,
+            listMinCell: ZuneProfileRules.ListCell, cardW: ZuneProfileRules.CardW),
         // Standard (Z-Profile): the tuned page: a 160 avatar, the 64/72 name, five columns of 64 rows (56 art), the band holds open account and share.
         Make(WidthTier.Standard, sectionGap: 28f, avatar: 160f, heroGap: 32f, ZuneProfileName.Hero, nameLine: 72f, target: 32f, actionsH: 36f, statH: 20f, ownVerbs: false,
-            topCols: 5, topMinCol: 220f, topColGap: 24f, topRowGap: 12f, topRowH: 64f, topArt: 56f, rankW: 52f, shimmerCols: 4),
+            topCols: 5, topMinCol: 220f, topColGap: 24f, topRowGap: 12f, topRowH: 64f, topArt: 56f, rankW: 52f, shimmerCols: 4,
+            listMinCell: ZuneProfileRules.ListCell, cardW: ZuneProfileRules.CardW),
         // Huge (Z-Profile-Huge): a 240 avatar, the 120 panorama name, five columns of 80 rows (72 art), sections 40 apart.
         Make(WidthTier.Huge, sectionGap: 40f, avatar: 240f, heroGap: 48f, ZuneProfileName.Panorama, nameLine: 130f, target: 32f, actionsH: 36f, statH: 20f, ownVerbs: true,
-            topCols: 5, topMinCol: 260f, topColGap: 32f, topRowGap: 20f, topRowH: 80f, topArt: 72f, rankW: 56f, shimmerCols: 6),
-        // Huge 4K: Huge's (the page caps at 2400, decision 2).
+            topCols: 5, topMinCol: 260f, topColGap: 32f, topRowGap: 20f, topRowH: 80f, topArt: 72f, rankW: 56f, shimmerCols: 6,
+            listMinCell: ZuneProfileRules.HugeCell, cardW: ZuneProfileRules.HugeCell),
+        // Huge 4K: Huge's on the page column (decision 2: the page caps at 2400), its cards the board's 220 as Home's and the artist's (no 4K board).
         Make(WidthTier.Huge4K, sectionGap: 40f, avatar: 240f, heroGap: 48f, ZuneProfileName.Panorama, nameLine: 130f, target: 32f, actionsH: 36f, statH: 20f, ownVerbs: true,
-            topCols: 5, topMinCol: 260f, topColGap: 32f, topRowGap: 20f, topRowH: 80f, topArt: 72f, rankW: 56f, shimmerCols: 6),
+            topCols: 5, topMinCol: 260f, topColGap: 32f, topRowGap: 20f, topRowH: 80f, topArt: 72f, rankW: 56f, shimmerCols: 6,
+            listMinCell: ZuneProfileRules.Huge4KCell, cardW: ZuneProfileRules.Huge4KCell),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
     public static ZuneProfileLayout For(WidthTier content) => s_records[Math.Clamp((int)content, 0, s_records.Length - 1)];
 
-    /// <summary>The record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public static ZuneProfileLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);
+    /// <summary>The Short rung (windows 330-699 tall; about 160 of height is left to the page): the avatar and the gaps give their height back (an 88 avatar
+    /// at most, sections 20 apart); the NAME keeps its tier's voice (Zune's type is never made smaller to fit: it wraps and the hero grows, the page
+    /// scrolls); the columns, the rows and the targets are the content tier's own. A pure fold.</summary>
+    static ZuneProfileLayout Fold(ZuneProfileLayout r) => r with
+    {
+        Avatar = MathF.Min(r.Avatar, ZuneProfileRules.ShortAvatar), HeroGap = MathF.Min(r.HeroGap, ZuneProfileRules.ShortHeroGap),
+        SectionGap = MathF.Min(r.SectionGap, ZuneProfileRules.ShortSectionGap),
+    };
+
+    static readonly ZuneProfileLayout[] s_short = [Fold(s_records[0]), Fold(s_records[1]), Fold(s_records[2]), Fold(s_records[3]), Fold(s_records[4])];
+
+    /// <summary>The record for <paramref name="facts"/>: the content tier's, folded on a Short window; Standard's where no frame resolved the tiers (a
+    /// view mounted alone).</summary>
+    public static ZuneProfileLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return For(WidthTier.Standard);
+        return facts.Height == HeightTier.Short ? s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)] : For(facts.Content);
+    }
 }

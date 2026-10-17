@@ -142,21 +142,33 @@ internal static class ZuneLibraryKit
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids };
     }
 
+    /// <summary>The pane's title as a link that opens the page: one line, shrinking before anything beside it does.</summary>
+    public static BoxEl TitleLink(string title, Action open) => new()
+    {
+        Direction = 0, Shrink = 1f, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false,
+        OnClick = open, Children = [PaneTitle(title)],
+    };
+
     /// <summary>The pane's header: the title (one line, a link that opens the page), the billed attribution, then the meta. A stated height is not drawn: the words stack.</summary>
     public static Element PaneHeader(string title, Action open, Element attribution, string meta) => new BoxEl
     {
         Direction = 1, Gap = LR.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.PaneMetaBottom),
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 0, Shrink = 0f, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false,
-                OnClick = open, Children = [PaneTitle(title)],
-            },
-            attribution,
-            PaneMeta(meta),
-        ],
+        Children = [TitleLink(title, open) with { Shrink = 0f }, attribution, PaneMeta(meta)],
     };
+
+    /// <summary>The Short rung's pane header: the title link and the verbs in ONE row (the title yields first), because the full header (title, billed artists, meta, then the
+    /// verbs) is as tall as the whole 126 DIP page. <paramref name="verbs"/> are the rings and buttons, each already a target; the title is a <paramref name="target"/> tall
+    /// link itself (40 at Compact).</summary>
+    public static Element BriefHeader(string title, Action open, Element[] verbs, float target)
+    {
+        var kids = new Element[verbs.Length + 1];
+        kids[0] = TitleLink(title, open) with { Grow = 1f, MinHeight = target, AlignItems = FlexAlign.Center };
+        Array.Copy(verbs, 0, kids, 1, verbs.Length);
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.ShortPaneBottom), Children = kids,
+        };
+    }
 
     /// <summary>The pane's loading twin: the title and meta as bars in the same slots, so the dissolve into the real header moves nothing.</summary>
     public static BoxEl HeaderSkeleton() => new()

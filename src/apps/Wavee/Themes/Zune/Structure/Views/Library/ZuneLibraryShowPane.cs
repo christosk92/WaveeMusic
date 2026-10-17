@@ -35,7 +35,9 @@ internal static class ZuneLibraryShowPane
     {
         // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
         bool compact = ctx.Tier().Content == WidthTier.Compact;
-        BoxEl child = props.HeaderReady ? Body(props, compact) : K.HeaderSkeleton();
+        // On the Short rung the header and the verbs share one row (the full header is as tall as the 126 DIP page).
+        bool brief = ZuneLibraryTiers.Of(ctx.Tier(), single: compact).PaneBrief;
+        BoxEl child = props.HeaderReady ? Body(props, compact, brief) : K.HeaderSkeleton();
         return new BoxEl
         {
             ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -44,9 +46,26 @@ internal static class ZuneLibraryShowPane
     }
 
     /// <summary>The pane's column: the header, the command row and the SAME reader the route page mounts. The scroll key scopes its position per library slot (the host's).</summary>
-    static BoxEl Body(LibraryShowPaneProps p, bool compact)
+    static BoxEl Body(LibraryShowPaneProps p, bool compact, bool brief)
     {
         float box = compact ? LR.CompactCommandBox : LR.CommandBox;
+        if (brief)
+            // [the title and the verbs in one row, an empty slot, the reader]: the same three slots as the full form, so the reader keeps its node across a height crossing.
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, ClipToBounds = true,
+                Children =
+                [
+                    K.BriefHeader(p.Title, p.Open,
+                    [
+                        p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),
+                        new BoxEl { Visible = p.HeartShown, Children = [K.Save(p.Uri, p.Title, box)] },
+                        K.MoreButton(p.More, box),
+                    ], box),
+                    new BoxEl { Shrink = 0f },
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [p.Reader!] },
+                ],
+            };
         Element header = K.PaneHeader(p.Title, p.Open, R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, p.Meta);
         Element commands = new BoxEl
         {

@@ -109,6 +109,28 @@ internal static class ZuneDiscoveryKit
         ],
     };
 
+    /// <summary>The shelf pager's chevrons as 40 x 40 hit boxes (round G; the engine's circle is 32): pass as <c>parts:</c> to <c>PagedShelf.Create</c>.
+    /// The circle keeps its look inside the box, and the box overhangs it by 4 on each side with a negative margin, so the header's layout is the
+    /// engine's. The box takes the click, the fade of a disabled chevron and the hand; the circle is the picture.</summary>
+    public static TemplateParts ChevronTargets { get; } = MakeChevronTargets();
+
+    private static TemplateParts MakeChevronTargets()
+    {
+        var parts = new TemplateParts();
+        parts[PagedShelf.PartChevronPrev] = static circle => ChevronTarget(circle);
+        parts[PagedShelf.PartChevronNext] = static circle => ChevronTarget(circle);
+        return parts;
+    }
+
+    private static BoxEl ChevronTarget(BoxEl circle) => new()
+    {
+        Width = H.ChevronTarget, Height = H.ChevronTarget, Shrink = 0f, Margin = Edges4.All(-(H.ChevronTarget - H.ChevronCircle) / 2f),
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Role = AutomationRole.Button, Cursor = circle.OnClick is null ? CursorId.Arrow : CursorId.Hand,
+        OnClick = circle.OnClick, Opacity = circle.Opacity,
+        Children = [circle with { OnClick = null, Opacity = 1f, Cursor = CursorId.Arrow }],
+    };
+
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
     public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize,
                                float target = 0f)

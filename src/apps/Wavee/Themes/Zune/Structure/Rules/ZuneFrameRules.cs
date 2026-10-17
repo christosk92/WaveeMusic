@@ -14,7 +14,7 @@
 //   Every button is 40 x 40 (the Compact target floor holds at every tier); the notification dot is 6, 9 in from the button's top right.
 //   The pill grows while it is focused (plan 6.3, the #205-era list): +120 at every pill tier, eased (an assumption: no board says how much).
 //   The wordmark is drawn whole from Small up and never at Compact (the T1 audit's A9); at Compact the search is the field filling the lead
-//   beside Back while the omnibar holds a query or the focus (Z-Search-Compact); the account's name is capped at 160 on the pill tiers.
+//   beside Back while the Search route is on screen (the core's `OnSearchRoute`) or the field has the focus (Z-Search-Compact); the account's name is capped at 160 on the pill tiers.
 //
 //   THE PAGE COLUMN (the T1 audit's A1; P5 decision 2): every page's content is capped at 2400 between the gutters and centred
 //   (`PageRow` around `PageColumn`), and the band's rows sit in the same column, so the band's first pivot, every title and the page's content start at
@@ -49,8 +49,7 @@ namespace Wavee.Themes.Zune;
 /// <param name="FlyoutW">The magnifier's flyout width (the window less the gutters when narrower).</param>
 /// <param name="Wordmark">The wordmark leads the row (every tier but Compact, where Back leads on the gutter: the T1 audit's A9, the
 /// wordmark never truncates, so where it has no room it is not drawn).</param>
-/// <param name="QueryField">While the omnibar holds a query (the core's rule: the omnibar IS the search page's query, so this is the Search
-/// route with a query) the search is the FIELD, filling the lead island beside Back, instead of the magnifier (Compact: Z-Search-Compact,
+/// <param name="QueryField">While the Search route is on screen (the core's exact `OnSearchRoute` flag, contract 1.30) the search is the FIELD, filling the lead island beside Back, instead of the magnifier (Compact: Z-Search-Compact,
 /// "the field takes the title bar").</param>
 /// <param name="AccountNameW">The account chip's name at most this wide (Standard, Huge, Huge 4K: 160); 0 keeps the core's name budget.</param>
 public sealed record ZuneTitleBarLayout(WidthTier Tier, bool Pill, bool Crumbs, bool BellInRow, float Gap, float PillW, float PillH,
@@ -141,10 +140,11 @@ public static class ZuneFrameRules
 
     /// <summary>The search is the field filling the lead island (<see cref="ZuneTitleBarLayout.QueryField"/>): the tier draws it there, its
     /// flyout is closed (typing in the magnifier's flyout keeps the magnifier, its anchor, until the flyout closes on the search), and the
-    /// omnibar holds a query (<paramref name="query"/> non-empty: the Search route) or the field has the focus (clearing the query while
-    /// typing in it never takes the field away under the caret).</summary>
-    public static bool FieldInLead(ZuneTitleBarLayout rec, string query, bool flyoutOpen, bool focused)
-        => rec.QueryField && !flyoutOpen && (query.Length > 0 || focused);
+    /// Search route is on screen (<paramref name="onSearchRoute"/>, the core's exact flag, contract 1.30: not "the omnibar holds a query",
+    /// which a stale query outside the route also satisfied) or the field has the focus (clearing the query while typing in it never takes
+    /// the field away under the caret).</summary>
+    public static bool FieldInLead(ZuneTitleBarLayout rec, bool onSearchRoute, bool flyoutOpen, bool focused)
+        => rec.QueryField && !flyoutOpen && (onSearchRoute || focused);
 
     /// <summary>The account name's cap in <paramref name="rec"/>'s tier: the record's, else the core's <paramref name="coreCap"/>.</summary>
     public static float AccountNameCap(ZuneTitleBarLayout rec, float coreCap) => rec.AccountNameW > 0f ? rec.AccountNameW : coreCap;
@@ -307,6 +307,11 @@ public static class ZuneFrameRules
     /// <summary>The pivot head: 44 tall, 12 from the panel's top, 6 above the body, inset 24 left and 8 right (the close glyph's own 40 box
     /// carries the board's 20).</summary>
     public const float PanelHeadH = 44f, PanelPivotGap = 18f;
+
+    /// <summary>The pivot words' scroller (the words run under an edge fade when they outgrow the panel instead of clipping mid-word; round G) and
+    /// the fade's width. The words' boxes are the head's whole height (44, over the touch floor of 40).</summary>
+    public const string PanelPivotsKey = "zune-panel-pivots";
+    public const float PanelEdgeFade = 32f;
 
     /// <summary>The pivot head's padding.</summary>
     public static readonly Edges4 PanelHeadPadding = new(24f, 12f, 8f, 6f);

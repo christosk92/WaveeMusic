@@ -314,7 +314,7 @@ internal static class ZuneAlbumTrailing
     {
         bool aside = ctx.Hooks.UseContext(ZuneDetailFrame.InAside);
         var lay = ZuneDetailTiers.Of(ctx.Tier());
-        Element? link = p.Count > p.Shown ? K.Link("stack:all", Strings.Home.ShowAllCount(p.Count), p.Expand) : null;
+        Element? link = p.Count > p.Shown ? K.Link("stack:all", Strings.Home.ShowAllCount(p.Count), p.Expand, Z.AsideHeadingH) : null;
         Element body;
         if (aside && lay.MoreByGrid)
         {

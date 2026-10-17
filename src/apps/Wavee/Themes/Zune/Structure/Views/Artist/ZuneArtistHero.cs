@@ -44,7 +44,7 @@ internal static class ZuneArtistHero
 
     /// <summary>The hero: eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
     /// ride a layer over it.</summary>
-    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, PanoramaFit fit, ColorF accent, in Acts acts)
+    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts)
     {
         float gutter = lay.Gutter;
         bool shimmer = acts.Play is null;
@@ -56,11 +56,11 @@ internal static class ZuneArtistHero
 
         TextEl name = lay.CompactName ? R.Type.PanoramaCompact(text.Name) : R.Type.Panorama(text.Name);
         if (lay.NameSize > 0f) name = name with { Size = lay.NameSize, LineHeight = lay.NameLine, CharSpacing = lay.NameTracking };
+        // The name keeps its tier's step (a short window included) and WRAPS by whole words over up to NameLines lines; the hero grows to hug it, so a
+        // long name takes more room instead of a smaller size or a one-line ellipsis.
         name = name with
         {
-            Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
-            // Bleed runs off the hero's edge (the hero clips it); Fit trims it. A live prop of the same node.
-            Trim = fit == PanoramaFit.Fit ? TextTrim.CharacterEllipsis : TextTrim.None,
+            Color = Tok.TextPrimary, MaxLines = Rules.NameLines, Wrap = TextWrap.WrapWholeWords, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis,
         };
         // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it.
         Element nameBox = new BoxEl
@@ -95,8 +95,7 @@ internal static class ZuneArtistHero
                 Children = [Secondary(uri, lay, acts)],
             });
 
-        // MinHeight, not Height: the record's height is a floor and the copy's flow can exceed it (a wrapping caption pushes the body down). Clipped
-        // only for the bleeding name, which runs off the right edge.
+        // MinHeight, not Height: the record's height is a floor and the copy's flow can exceed it (a wrapping name or caption pushes the body down).
         return new BoxEl
         {
             Key = Rules.HeroKey, MinHeight = lay.HeroH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
@@ -155,7 +154,8 @@ internal static class ZuneArtistHero
     /// <summary>The 36 ring (the 40 target at Compact) with its lowercase word beside it where <paramref name="showLabel"/>.</summary>
     static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action? onClick, float target)
     {
-        Element ring = K.Ring(key, glyph, label, showLabel, primary, onClick ?? s_noop);
+        // The clickable node is the kit's ring box: its hit edge is the tier's target (40 at Compact, the ring's own 36 elsewhere), the disc centred in it.
+        Element ring = K.Ring(key, glyph, label, showLabel, primary, onClick ?? s_noop, target: target);
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = target, MinWidth = showLabel ? 0f : target,

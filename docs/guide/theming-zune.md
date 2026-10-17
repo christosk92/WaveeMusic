@@ -663,15 +663,91 @@ nodes, the daylist gliding).
 
 ## ZT5: detail tiers
 
-_Not built yet._
+Album, playlist, Liked Songs, show and episode at every width tier and on a short window, against `Z-Album*`, `Z-Playlist-*`, `Z-Liked*`, `Z-Show*`, `Z-Episode*` and
+`Z-Sizes-Breakpoints` (there is no `Z-Part-TrackTable` board). The frame, the panorama and the page column are Z6a1's and T2/T3's; ZT5 finishes the ladders' tier
+records, the table, the insights and the show and episode pages, and hardens every page from 300 to 3840 wide and at 330 tall.
+
+**One body.** `ZuneListRules.DetailTiers` is the single `DetailPolicyFor` body (`ZunePolicies.Lists.cs`); the three ladders (`detail.mode`, `detail.table`,
+`detail.height`) are declared by `LaddersDetail` (`Rules\Tiers.Detail.cs`, numbers in `ZuneDetailRules`).
+
+| | Compact | Small | Standard | Huge | Huge 4K |
+|---|---|---|---|---|---|
+| Arm (page mode ladder) | vertical (hero or show header) | two-column | two-column | two-column | two-column |
+| Track table | Compact row: art or number, title over "artist · time", heart, 40 "..." (no header, no list "#") | # · art · title · time · "..."; the Album lane where the table ladder admits it ("album from 900") | + album, added, plays | the same | the same (the wide twin) |
+| Identity column (rest) | - | 160 | 240 | 320 | 400 |
+| Aside | - | - (its sections return under the rows) | 260, docks by the window tier | 400 | 440 |
+| Insights | sheet over the list (never wider than the page) | sheet (320 to 400) | the aside's section, closed until asked (320 wide alone) | the aside's section, rests OPEN (420) | the same (440) |
+
+The Huge 4K row is `ZuneListRules.Huge4K`, the `HugeWide` twin the core reads past the third pane's rung (`pane.third`, a window of 3200). Row heights follow the
+user's density at every tier (P5 decision 3); the boards' lane widths are the core's `Track.TracksFor` (within a few DIP of the boards).
+
+**Panorama step by kind** (`ZunePlaylistTiers.Panorama`): an album's is the record's (64/72, 120/130 at Standard, 150/160); a playlist's, a show's and an
+episode's are 64/72 up to Standard and 150/160 at Huge; Liked Songs' 40/48, 64/72, 120/130. An episode at Standard sets its title at 40/48 over two lines
+(Z-Episode wraps it): `ZuneDetailLayout.PanoramaLines`, and the band hugs the title (its reserved height a floor).
+
+**Show and episode.** They stand in the same frame as the album (the page column, the panorama, the identity column, the aside slot). The vertical arm's
+fixed show header now opens with the panorama (Z-Show-Compact), the 120 cover beside the meta, the ledger, then the ring row. One home per verb: the band's
+row 2 carries "follow" from Small up, so the rail's follow ring and heart leave (the show's own primary, resume or the ghost play, stays); Compact keeps them.
+The rating line is a 40 target at Compact.
+
+**The short window (under 700 tall, 330 at the least).** The two-column arm folds the panorama band (flow-revealed: the columns ride it) and the identity
+column leads with the title; Liked Songs' head states the title over the meta; a show's or an episode's fixed vertical header folds to the name over the ring
+row (about 96 tall), so a 126-tall page keeps room for its list.
+
+**Crossings.** The identity column, the aside and the docked insights ease their WIDTH with a reflow (`ZuneDetailRules.ColumnReflow`: the list beside them
+yields smoothly; the earlier clip-window reveal laid the neighbours out at the final size at once); the panorama band eases its height with a flow reveal
+(`PanoramaFold`). Nothing is keyed on a tier.
+
+**The drawer.** The waveform strip (191 wide, fixed) leaves the version row where the content tier is Compact and fades in from Small (`WaveHost`).
+
+**Compact targets.** Rings 40, the hero's artist line 40 tall (`ZuneDetailRules.HitHeight`), the "show all" link of a stack 40, the rating line 40, the insights
+toggle and close 40.
+
+**Row 2 (Z6b1 item 3, not done).** The playlist's "recommended" and "collaborators" views and its "invite" action need a core seam; see the lane report.
+
+**Tests.** `Wavee.Tests\Theming\ZuneDetailTiersTests.cs` (the table form, the aside, the insights' rest and widths, the wide twin, the panorama step by kind, the
+short fold, the Compact minimum); `Wavee.ShellTests\ZuneTierLayoutTests.Detail.cs` (each page at every harness size: the arm, the band, the columns and the
+page column's x; the album across 1008, 1920, 3200 and the 700 height, both ways: the same nodes, the columns gliding).
 
 ## ZT6: artist and people tiers
 
-_Not built yet._
+Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneShowRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
+
+**Records.** Each family has a record per content tier and every one reads `ZuneTiers.Frame(tier).Gutter`. `Of(facts)` returns the content tier's record, folded on a Short window (330-699 tall: the band folds to 52 and the bar holds 72, so about 160 DIP are left to the page); a view mounted with no frame reads Standard's. A record carries what the tier lays out: the artist's hero height, name voice, where the actions stand, the chart's columns, cap and rail, the shelf cards and the grid cell; the profile's avatar, name voice, ranked columns, cards and list cell; the concert's title, numeral, slab and rows. A bare link word is a `LinkTarget` (40 at Compact, 0 where the word is its own target).
+
+**Short rung.** The artist's hero gives its height back (a 132 floor that still hugs its copy, the 64 compact name, the body 8 under it, sections at most 20 apart). The profile's avatar is at most 88 with the 40/48 title voice and 20-apart sections. The concerts' title, numeral and facts take the Small voice at most (40/48, 48, 15/22), the gaps and the schedule's photo shrink (20, 140). The columns, slabs, rows and targets stay the tier's own.
+
+**Huge 4K artist (the conflict).** The board draws the page 2632 wide with a 520 hero, a 440 rail and about as a third body column; decision 2 caps pages at 2400. Kept from the board: the 520 hero (the 150 name, a 56 eyebrow, a 24 foot), the 440 rail 64 from the chart, the 44 section gap and 32 body top, the 88 pick art, 200 cells with a 20 gap (eleven across 2400, the board's count), 220 shelf cards (as Home's). Given up to the cap: the 2632 column (the chart is the column less the rail, two columns of about 920 against the board's 1000, so it carries no cap of its own; Huge keeps its audited 1200), and the third body column ("about" stays the pivot's own "details" section, because the pivot's anchors are the core's plan). The latest release stays a 160 row in the rail (the board stacks a 240 square). Huge 4K profile and concerts have no board: they are Huge's with the 220 cards and the 480 slab.
+
+**Pivot clearance (core seam).** Classic's pivot click parks a section 56 under the viewport's top (its sticky band is inside the viewport) and its scroll spy starts there. Zune's band is the frame's, outside the viewport. `ArtistTierPolicy.BandClearance(facts)` (default `Detail.BandLayout.Height`, so Classic and the shell before tiers are unchanged) is read by both `Artist.PageHost` and `Profile.PageHost` for the click's margin and the spy's band edge; Zune answers `ZuneArtistRules.SectionAir` (16).
+
+**Own profile (core fix).** `--fake`'s account row is the bare id "wavee-listener", which no provider owns, so its `EntityUri` is not valid; the profile host gated the row on validity and answered "isn't available" forever. `Profile.PageHost` now binds a subject whose uri is valid, or whose row is yours (`Entities.Current.MeSlot`). This changes Classic's own profile in `--fake` (and for any account whose row is a bare id) from "isn't available" to its page.
+
+**Popups.** The concert flyouts and the place picker are 320 / 264 / 360 DIP at their natural width and the window less 12 each side below that (`ZuneConcertRules.FlyoutWidthIn`); the calendar's days share the flyout (38 at most) and are 40 tall at Compact, the month's back target 40.
+
+**Compact.** The hero's rings are 40 targets (the kit ring's box is the clickable node), the discography and "see all" link words and the external links are 40 boxes, the discography's three words wrap to a second row at 300, the profile's action row wraps to a second row of 40 targets beside a 96 avatar, and the people list's chip words wrap. The people list's narrowest card is the profile record's (`ArtistTierPolicy.ProfileListMinCell`): 120 at Compact (two across 300), 176, 200 at Huge, 220 at 4K.
+
+**Lightbox.** The overlay covers the window, so its thumb and top row follow the window tier (`ZuneArtistTiers.OfWindow`): thumb 48 / 56 / 56 / 72 / 88, top row 64 / 72 / 72 / 88 / 104.
+
+**Tests.** `Wavee.Tests\Theming\ZuneArtistRulesTests.cs` (the records, the 4K reconciliation, the Short folds, the clearance, the popups' fit); `Wavee.ShellTests\ZuneTierLayoutTests.Artist.cs` (the artist, the discography, the concert hub and event pages, the profile and the people list at every harness size, their parts across every edge both ways, the own profile reaching Ready, and a pivot click parking at the clearance).
 
 ## ZT7: collection tiers
 
-_Not built yet._
+The library and the module page tuned per tier against `Z-Library-*` (+ `-Compact`, `-Small`, `-Huge`) and the Short height rung. Recents already carried a record per content tier
+(`ZuneRecentsTiers`) and was not changed. Numbers live in the records (`ZuneLibraryTiers`, `ZuneModuleTiers`); no key changed.
+
+- **Huge and Huge 4K fill the 2400 column.** The board draws four columns (artists, the artist, albums, songs); the host mounts a navigator and one right column, so Huge keeps those two
+  and shares the width: the pane rests at the board's songs column (640) and grows 1 share to the navigator's 2, up to 1200. A grid navigator is uncapped (its cells fill the column), a
+  list stops at 960 (`NavMaxW`; the grid's is `GridNavMaxW`). The artists' list is the board's 280 and the reader takes the rest. At 2560 the pair covers 2432 of 2464 (grid) or 2208 (list);
+  it used to cover 1648.
+- **Short rung (330-699 tall, 126 of page).** `ZuneLibraryTiers.Of(facts, single)` reads the height tier. The page's top is 4 and the head-to-body gap 8 (`PageTop`, `BodyGap`). The
+  album and show panes fold the header and the verbs into ONE row (`PaneBrief`: the title, which still opens the page, then play, shuffle, the heart and "..."), because the full header
+  is as tall as the page. Compact's head is ONE 40 row (`OneRow`): the sort button, the find field and the "..." view menu; the count and the grid and list words go (the menu carries
+  every view). Podcasts keeps two rows (its mode words fill the first). Both forms keep the same child slots, so the rows and the table keep their nodes and scroll across the crossing.
+- **Module page.** A Common block (`CommonModulePage`), drawn in the style's roles (Zune's type scale). `ZuneModuleTiers` places it on Zune's page column: the frame's gutter (16 / 24 / 48 / 48
+  / 64), a centred 2400 column that starts at the band's x, a 40 target at Compact and no masthead reserve. `CommonModulePage.Page(props, layout, topReserve)` takes the layout; Classic's
+  `Template` is unchanged. The registry refuses a second template for a key, so the structure registers it through `CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page")`.
+- **Local files** is the playlist page (Z6b1 / ZT5 own `Views\Detail\*`); it has no collection view of its own and no board.
 
 ## ZT8: screens, overlays, dialogs and states tiers
 

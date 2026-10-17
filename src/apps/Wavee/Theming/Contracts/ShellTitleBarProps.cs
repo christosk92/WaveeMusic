@@ -122,4 +122,8 @@ public sealed record ShellTitleBarProps
 
     /// <summary>The search's props; the row mounts <see cref="ViewKeys.ShellSearch"/> with this record and sets its form.</summary>
     public required ShellSearchProps Search { get; init; }
+
+    /// <summary>The Search route is on screen (contract 1.30), read tracked: the exact flag a title bar that moves the omnibar's field into
+    /// its lead island at the touch tier keys on, where it used to guess from "the omnibar holds a query". False by default (a fixture).</summary>
+    public Func<bool> OnSearchRoute { get; init; } = static () => false;
 }
