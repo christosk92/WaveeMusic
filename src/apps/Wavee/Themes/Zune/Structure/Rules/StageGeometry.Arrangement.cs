@@ -23,7 +23,8 @@
 // one that still does not fit is the PLATE: the allocator's layout of the same look. A change of arrangement (a layout switch, a tier
 // crossing) moves the ONE cover node on its spring and cross-fades the plates, so nothing jumps.
 
-using FluentGpu.Foundation;
+using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
 

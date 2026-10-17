@@ -222,6 +222,8 @@ public static class ZuneArtistRules
 
     /// <summary>The biography text's size and line height, the text's share of the band beside the facts, and the gap between the columns.</summary>
     public const float BioSize = 14f, BioLine = 20f, BioShare = 0.62f, AboutGap = 48f, AboutInnerGap = 16f;
+    /// <summary>The bio's lines before "read more" in the "about" section (the board draws a full paragraph).</summary>
+    public const int BioLines = 4;
 
     /// <summary>A fact: its numeral's gap to its label, its basis and the gap between facts.</summary>
     public const float FactGap = 2f, FactBasis = 140f, FactsGap = 24f;
