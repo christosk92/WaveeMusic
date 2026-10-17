@@ -104,33 +104,35 @@ internal static class ClassicBrowseDirectory
     }
 
     /// <summary>The Charts deck in the tier's form: a stack of full-width tiles at Compact and Small (136 / 140 high), the paged deck at Standard (two up) and
-    /// Huge (four up), each at the tier's tile height and cover (<c>C-Browse-*</c>).</summary>
+    /// Huge (four up), each at the tier's tile height and cover (<c>C-Browse-*</c>).
+    /// <para>A crossing never snaps the band (plan 3.3). Within a form the part survives: the deck is ONE paged shelf whose column cap and tile height are
+    /// live props (1920 re-fits the same deck), the stack ONE column at the band's width (528 keeps it). The paged deck and the stack are genuinely different
+    /// trees (a horizontal virtual shelf with its pager; a plain column), so the two forms are keyed apart and cross-fade on the crossing that swaps them (the
+    /// content edge between Small and Standard): the shared tier cross-fade the release notes' highlight cards use. The band around them
+    /// (<see cref="BandBox"/>) reflows its height, so the bands below glide to their new place instead of jumping.</para></summary>
     static Element Deck(IReadOnlyList<HomeSectionView> sections, Action<HomeSectionView> openTile, Action? openHeader, ClassicBrowseLayout layout, float firstW)
     {
         var band = layout.Charts;
         string title = Loc.Get(Strings.Browse.Charts);
-        if (!band.Stacked)
-            return HomeModules.FoldDeck(sections, title, openTile, openHeader, band.MaxColumns, band.TileH, band.Cover);
-        return Responsive.Of("browse:charts-stack", w => HomeModules.FoldStack(sections, title, openTile, w, openHeader, band.TileH, band.Cover), fallback: firstW);
+        Element form = band.Stacked
+            ? Responsive.Of("browse:charts-stack", w => HomeModules.FoldStack(sections, title, openTile, w, openHeader, band.TileH, band.Cover), fallback: firstW)
+            : HomeModules.FoldDeck(sections, title, openTile, openHeader, band.MaxColumns, band.TileH, band.Cover);
+        return new BoxEl
+        {
+            Key = band.Stacked ? ClassicBrowseTiers.ChartsStackKey : ClassicBrowseTiers.ChartsDeckKey,
+            Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            Children = [form],
+        };
     }
 
     static readonly Action<HomeSectionView> s_noopSection = static _ => { };
 
-    /// <summary>The live Charts slot: the core host, in the band's entrance row.</summary>
-    static readonly Func<int, ClassicBrowseLayout, float, Element> s_liveChartsBand = static (index, _, _) => new BoxEl
-    {
-        Direction = 1, MinWidth = 0f,
-        Animate = Design.Entrance.Row(index),
-        Children = [Embed.Comp(static () => new BrowseChartsBand())],
-    };
+    /// <summary>The live Charts slot: the core host (the band box around it carries the key, the reflow and the entrance).</summary>
+    static readonly Func<ClassicBrowseLayout, float, Element> s_liveChartsBand = static (_, _) => Embed.Comp(static () => new BrowseChartsBand());
 
-    /// <summary>The loading Charts slot: the Fold deck over its seed, in the same entrance row.</summary>
-    static readonly Func<int, ClassicBrowseLayout, float, Element> s_seedChartsBand = static (index, layout, firstW) => new BoxEl
-    {
-        Direction = 1, MinWidth = 0f,
-        Animate = Design.Entrance.Row(index),
-        Children = [Deck(HomeBrowseCards.ChartDeckSeed, s_noopSection, null, layout, firstW)],
-    };
+    /// <summary>The loading Charts slot: the Fold deck over its seed, in the same band box.</summary>
+    static readonly Func<ClassicBrowseLayout, float, Element> s_seedChartsBand = static (layout, firstW) => Deck(HomeBrowseCards.ChartDeckSeed, s_noopSection, null, layout, firstW);
 
     // ── the body and its bands ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -140,14 +142,14 @@ internal static class ClassicBrowseDirectory
     /// as tiles) and <paramref name="chartsBandAt"/> is injected in its slot, always. <paramref name="live"/> false is the
     /// loading directory: every cell still hovers and does nothing.</summary>
     static Element DirectoryBody(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups,
-                                 bool live, Func<int, ClassicBrowseLayout, float, Element> chartsBandAt, ClassicBrowseLayout layout, float firstW)
+                                 bool live, Func<ClassicBrowseLayout, float, Element> chartsBandAt, ClassicBrowseLayout layout, float firstW)
     {
         var children = new List<Element>(groups.Count + 2);
         int band = 1;   // the first band's OWN entrance delay (0.2.9: the masthead used to hold rung 0)
         for (int b = 0; b < BrowseTaxonomy.BandOrder.Count; b++)
         {
             var g = BrowseTaxonomy.BandOrder[b];
-            if (g == BrowseGroup.Charts) { children.Add(chartsBandAt(band++, layout, firstW) with { Key = "browse-band:charts" }); continue; }
+            if (g == BrowseGroup.Charts) { children.Add(BandBox(s_bandKeys[(int)BrowseGroup.Charts], band++, 0f, [chartsBandAt(layout, firstW)])); continue; }
             if (ItemsOf(groups, g) is { Count: > 0 } items) children.Add(BandOf(g, items, live, band++, layout, firstW));
         }
         return new BoxEl { Direction = 1, Gap = layout.BandGap, MinWidth = 0f, Children = children.ToArray() };
@@ -182,14 +184,21 @@ internal static class ClassicBrowseDirectory
             BrowseGroup.MoodActivity => Responsive.Of("browse:moods", state, static (st, w) => BarGrid(st, w), fallback: firstW),
             _ => Responsive.Of("browse:more", state, static (st, w) => MoreGrid(st, w), fallback: firstW),
         };
-        return new BoxEl
-        {
-            Key = s_bandKeys[(int)group],
-            Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-            Animate = Design.Entrance.Row(index),
-            Children = [BandLabel(GroupLabel(group)), body],
-        };
+        return BandBox(s_bandKeys[(int)group], index, Spacing.S, [BandLabel(GroupLabel(group)), body]);
     }
+
+    /// <summary>A band's box (Home's chapter shape): the keyed node is the SAME at every tier and reflows (position and size, its size revealed) when a crossing
+    /// moves or resizes it, so the Charts band's deck-to-stack swap and a grid's re-fit push the bands below along a glide, never a jump (plan 3.3); the
+    /// entrance (its stagger at <paramref name="index"/>) rides the inner box.</summary>
+    static BoxEl BandBox(string key, int index, float gap, Element[] children) => new()
+    {
+        Key = key, Direction = 1, MinWidth = 0f,
+        Layout = ClassicTierMotion.Reflow,
+        Children =
+        [
+            new BoxEl { Direction = 1, Gap = gap, MinWidth = 0f, Animate = Design.Entrance.Row(index), Children = children },
+        ],
+    };
 
     /// <summary>Top / For you: a wrapping row of pills at their own natural width — no grid, no column count. At Compact For you is one scrolling strip with a
     /// faded edge (<c>C-Browse-Compact</c>), its chips 40 high.</summary>

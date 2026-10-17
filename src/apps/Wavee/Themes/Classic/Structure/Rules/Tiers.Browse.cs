@@ -103,6 +103,10 @@ public static class ClassicBrowseTiers
     /// <summary>The More grid's column floor (the board's 168).</summary>
     public const float MoreColMin = 168f;
 
+    /// <summary>The Charts band's two forms, keyed apart: the paged deck (Standard, Huge) and the stack (Compact, Small) are different trees, so the crossing
+    /// between them cross-fades one into the other (<see cref="ClassicTierMotion.SwapFade"/>) inside the band's reflow; within a form the part survives.</summary>
+    public const string ChartsDeckKey = "browse:charts:deck", ChartsStackKey = "browse:charts:stack";
+
     /// <summary>The record for <paramref name="facts"/>' content tier; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ClassicBrowseLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);
 

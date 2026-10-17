@@ -305,6 +305,11 @@ versions separately under `v*` and is not tracked in this file.)
   player bar, the "Choose device" button on a message (and the tray's Devices entry) now slides the Now playing sheet up if it is down, shows
   its Now playing page if it was on Lyrics or Queue, and opens the same device list as the sheet's Devices button; with the sheet already
   open it just opens the list. The sheet's Lyrics, Devices and Queue buttons now sit 14 under the playback controls, as designed (it was 8).
+- **Browse's Charts and Search's Best matches no longer jump when the window crosses a size step.** Widening or narrowing Browse past the
+  point where Charts turns from a row of cards you page through into a list of tiles (or back) used to swap them in one frame and shove the
+  sections below; the two now cross-fade while the sections below slide to their new place. Search's Best matches kept the row size it opened
+  with: in a narrow window its rows now become the narrow 60-tall rows with smaller covers (and grow back to 64 when widened) without being
+  rebuilt, and the list resizes smoothly.
 - **Resizing the window past a size step no longer rebuilds parts of the page.** Crossing 528, 1008 or 1920 wide (or the page widths 600,
   880 and 1600) used to throw away Home's shelves, the "See all" grid, Browse and Search shelves and grids, the Recents tabs, the Settings
   tab strip and number boxes, the What's new picker, cards and sections, the log list and the artist page's shelves, chart and albums, and

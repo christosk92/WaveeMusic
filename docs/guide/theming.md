@@ -2096,6 +2096,12 @@ and where two forms differ only in arrangement they share one container whose sh
 direction) so the children move instead of being reparented. Only a genuinely different tree swaps, keyed per family, under the shared
 cross-fade. Classic's crossing recipes are `Rules\Tiers.Motion.cs` (`ClassicTierMotion.Reflow`, `.Shove`, `.SwapFade`, and `.Resize` for a part whose height alone changes, such as the artist chart's rows past the 4K rung: a flow reveal that the page below rides). Where the nav
 pane changes (528, 1008) the content card is the one projection root of the commit and the page reflows inside its glide.
+A swap reserves its region: the box around the two forms reflows its height (`ClassicTierMotion.Reflow`) and its siblings below glide, as Browse's
+Charts band does between its paged deck (Standard, Huge) and its stack (Compact, Small): the forms are keyed `ClassicBrowseTiers.ChartsDeckKey` /
+`.ChartsStackKey` and cross-fade, and every Browse band is a keyed reflowing box with its entrance on an inner box (Home's chapter shape). A card a
+shelf builds is re-rendered only when its ITEM changes, so a card whose form follows the tier is a component that reads the facts it is drawn in:
+Search's Best matches rows are `BestMatchRowHost`s (the row form of `ClassicSearchTiers.Of`, the shelf's live row height
+`ClassicSearchLayout.BestMatchRowH`). PagedShelf's `rows` stays mount configuration, so Best matches keeps the rows per page it mounted with.
 `Wavee.ShellTests\TierLayoutTests.Crossing.cs` mounts each page, scrolls and focuses it, crosses 528 and 1008 (and 1920 for Home) both
 ways and asserts the same nodes, the kept offset and focus, and tracks on the crossing frame.
 

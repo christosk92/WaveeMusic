@@ -284,6 +284,20 @@ public class ClassicDiscoveryTierTests
         Assert.Equal(7, l.FacetGridColumns(1368f));
     }
 
+    [Theory]
+    [InlineData(WidthTier.Compact, 60f)]    // C-Search-Compact: 44 art in a 60 row
+    [InlineData(WidthTier.Small, 64f)]      // the tuned 48 in 64
+    [InlineData(WidthTier.Standard, 64f)]
+    [InlineData(WidthTier.Huge, 64f)]
+    public void Search_BestMatches_RowIsTheTiersRow(WidthTier tier, float rowH)
+    {
+        var l = SearchOf(tier);
+        Assert.Equal(rowH, l.BestMatchRowH);
+        // The shelf's row is the hit row's own floor where the tier sets one, so a crossing re-sizes the shelf with its rows.
+        if (l.RowMinH > 0f) Assert.Equal(l.RowMinH, l.BestMatchRowH);
+        else Assert.Equal(Search.BestMatchRowH, l.BestMatchRowH);
+    }
+
     [Fact]
     public void Search_Huge_PutsTheTopResultBesideBestMatches()
     {
