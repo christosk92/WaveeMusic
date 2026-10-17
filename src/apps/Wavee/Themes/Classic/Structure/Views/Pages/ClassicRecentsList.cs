@@ -21,9 +21,10 @@ namespace Wavee.Themes.Classic;
 /// parent — a deliberate remount on a re-cut.</summary>
 internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, int shapeEpoch) : Component
 {
-    /// <summary>The day rail entering or leaving with a tier crossing: opacity only (the list takes its 44 back as the rail goes), 160 ms.</summary>
+    /// <summary>The day rail entering or leaving with a tier crossing (the list takes its 44 back as the rail goes), 160 ms on opacity; and, while it stays, gliding to its new
+    /// place when the layout moves it (the flush rail of Small <-> the gapped one of Standard: its left edge and its margin change in one commit), over the same 160 ms.</summary>
     static readonly LayoutTransition s_rail = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicRecentsRules.RailFadeMs, Easing.SmoothOut),
+        TransitionChannels.Opacity | TransitionChannels.Position, TransitionDynamics.Tween(ClassicRecentsRules.RailFadeMs, Easing.SmoothOut),
         Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(ClassicRecentsRules.RailFadeMs, Easing.SmoothOut));
 
@@ -42,7 +43,8 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
             Children = layout.Rail
                 ?
                 [
-                    new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] },
+                    // The list's width follows the body's right pad and the rail's gap (Small is flush, Standard keeps 36 and 12), so a crossing resizes it: it glides, its size revealed.
+                    new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Layout = ClassicTierMotion.Reflow, Children = [detail] },
                     // The HStack item is a stretch COLUMN around the rail: Grow on the rail's own root would steal width.
                     new BoxEl
                     {
@@ -50,7 +52,7 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
                         Margin = new Edges4(0f, 0f, layout.FlushRail ? ClassicRecentsRules.RailMarginRight : 0f, 0f), Children = [rail],
                     },
                 ]
-                : [new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] }],
+                : [new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Layout = ClassicTierMotion.Reflow, Children = [detail] }],
         };
         Element zoomedOut = Embed.Comp(() => new ClassicRecentsCalendar(host, shapeEpoch)) with { Key = "recents-calendar:" + FormatCache.Int(shapeEpoch) };
         return SemanticZoom.Create(
