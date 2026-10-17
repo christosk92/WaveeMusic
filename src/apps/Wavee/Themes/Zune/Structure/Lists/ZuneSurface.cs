@@ -175,7 +175,8 @@ internal static class ZuneSurface
         {
             Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f,
             MinHeight = s.MinHeight, MinWidth = 0f,
-            Padding = Edges4.All(SurfaceGeometry.RowPad),
+            // A floor under art + 2 x pad (Search's 52 / 56 rows of Z-Search-Small / -Compact) trims the pad to fit it; every other row keeps 8.
+            Padding = new Edges4(SurfaceGeometry.RowPad, RowPadY(edge, s.MinHeight), SurfaceGeometry.RowPad, RowPadY(edge, s.MinHeight)),
             Children = trailing is null ? [artBox, column] : [artBox, column, trailing],
         };
         if (lane || !SurfaceRules.ShowsMenuTrailing(in s, hasMenu, d.ShowMenu)) return flow;
@@ -185,6 +186,9 @@ internal static class ZuneSurface
             Children = chrome ? [flow, MenuOverlay()] : [flow],
         };
     }
+
+    static float RowPadY(float edge, float floor)
+        => float.IsNaN(floor) ? SurfaceGeometry.RowPad : Math.Clamp((floor - edge) / 2f, 0f, SurfaceGeometry.RowPad);
 
     // The trailing "..." overlay over the row's end: an opaque square chip that is itself a hover reveal.
     static Element MenuOverlay() => new BoxEl

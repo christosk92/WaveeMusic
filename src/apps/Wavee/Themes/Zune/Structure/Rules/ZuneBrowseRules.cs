@@ -41,7 +41,7 @@ public static class ZuneBrowseRules
     public const float ListMinCol = 120f, PlateMinCol = 120f;
 
     /// <summary>The category banner: the title's inset from the top left, the kind's inset from the bottom right.</summary>
-    public const float BannerTitleInset = 40f, BannerMetaInsetX = 48f, BannerMetaInsetY = 24f;
+    public const float BannerTitleInset = 40f, BannerTitleInsetY = 26f, BannerMetaInsetX = 48f, BannerMetaInsetY = 24f;
 
     /// <summary>The category page's top under the banner and its foot.</summary>
     public const float CategoryTop = 28f, CategoryBottom = 32f;
@@ -123,11 +123,20 @@ public sealed record ZuneBrowseLayout : ITierLayoutRecord
     /// <inheritdoc cref="BannerH"/>
     public bool CompactTitle { get; init; }
 
+    /// <summary>The title's own size, line and tracking where the tier states them (Huge: 150/160/-3 on Z-Browse-Category-Huge); 0 = the role's.</summary>
+    public float TitleSize { get; init; }
+
+    /// <inheritdoc cref="TitleSize"/>
+    public float TitleLine { get; init; }
+
+    /// <inheritdoc cref="TitleSize"/>
+    public float TitleTracking { get; init; }
+
     /// <summary>The title's inset from the banner's left and top; the kind's inset from its side (the left at Compact, else the right) and bottom.</summary>
     public float BannerInsetX { get; init; } = ZuneBrowseRules.BannerTitleInset;
 
     /// <inheritdoc cref="BannerInsetX"/>
-    public float BannerInsetY { get; init; } = ZuneBrowseRules.BannerTitleInset;
+    public float BannerInsetY { get; init; } = ZuneBrowseRules.BannerTitleInsetY;
 
     /// <inheritdoc cref="BannerInsetX"/>
     public float BannerMetaX { get; init; } = ZuneBrowseRules.BannerMetaInsetX;
@@ -164,7 +173,7 @@ public static class ZuneBrowseTiers
     {
         ZoneGap = 40f, PlateGap = 16f, ChartsW = 640f, BigPlateH = 216f, BigPlateHero = true,
         ForYouCols = 5, ForYouPlates = true, ForYouPlateH = 100f, LinkCols = 8, LinkRowH = 40f, MoodCols = 8, MoodH = 140f,
-        BannerH = 260f, BannerInsetX = 38f, BannerInsetY = 48f, BannerMetaY = 28f, CategoryTop = 32f, CategoryGap = 36f, ShelfCols = 8, ShelfMinW = 140f,
+        BannerH = 260f, TitleSize = 150f, TitleLine = 160f, TitleTracking = -3f, BannerInsetX = 38f, BannerInsetY = 28f, BannerMetaY = 28f, CategoryTop = 32f, CategoryGap = 36f, ShelfCols = 8, ShelfMinW = 140f,
     };
 
     private static readonly ZuneBrowseLayout[] s_records =
@@ -175,7 +184,7 @@ public static class ZuneBrowseTiers
         {
             ZoneGap = 22f, PlateGap = 16f, ChartsBeside = false, BigPlateH = 104f, TopCols = 2, ForYouCols = 1, ForYouRowH = 56f, ForYouTile = 44f,
             LinkCols = 2, LinkRowH = 40f, MoodCols = 2, MoodH = 88f, LinkTarget = 40f,
-            BannerH = 140f, CompactTitle = true, BannerInsetX = 12f, BannerInsetY = 22f, BannerMetaX = 16f, BannerMetaY = 14f, BannerMetaStart = true,
+            BannerH = 140f, CompactTitle = true, BannerInsetX = 12f, BannerInsetY = 15f, BannerMetaX = 16f, BannerMetaY = 14f, BannerMetaStart = true,
             CategoryTop = 20f, CategoryGap = 22f, ShelfCols = 2, ShelfMinW = 120f,
         },
         // Small (Z-Browse-Small, Z-Browse-Category-Small): 20 between bands; a 280 charts column BESIDE For you (32 apart; its two-column dot list), four
@@ -183,7 +192,7 @@ public static class ZuneBrowseTiers
         Std(WidthTier.Small) with
         {
             ZoneGap = 20f, ChartsW = 280f, PairGap = 32f, BigPlateH = 104f, TopCols = 2, ForYouCols = 2, LinkCols = 4, MoodCols = 5, MoodH = 80f,
-            BannerH = 120f, CompactTitle = true, BannerInsetX = 18f, BannerInsetY = 24f, BannerMetaX = 24f, BannerMetaY = 16f,
+            BannerH = 120f, CompactTitle = true, BannerInsetX = 18f, BannerInsetY = 17f, BannerMetaX = 24f, BannerMetaY = 16f,
             CategoryTop = 20f, CategoryGap = 20f, ShelfCols = 5, ShelfMinW = 100f,
         },
         // Standard (Z-Browse, Z-Browse-Category): the tuned page (the defaults).
