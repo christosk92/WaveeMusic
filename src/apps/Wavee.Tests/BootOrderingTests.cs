@@ -101,7 +101,7 @@ public sealed class BootOrderingTests : IDisposable
         // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership) —
         // and realtime-capture-implementation.md unit 6 appended RouteKind.CaptureDiagnostics, registered above. 36 less
         // RouteKind.SidebarCustomize, deleted with the sidebar's customizer in P3.
-        Assert.Equal(35, Shell.RouteKindCount);
+        Assert.Equal(36, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════

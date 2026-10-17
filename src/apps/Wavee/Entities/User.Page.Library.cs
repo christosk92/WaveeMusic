@@ -138,12 +138,12 @@ public readonly partial struct User
     // A band-style structure draws the library's kinds as row 2 (Z-Library-*: liked · albums · artists · podcasts · audiobooks, the
     // route on screen lit). They are sibling ROUTES, not page state, so they are answered from the route alone
     // (`Shell.PageChromeChannel.RouteViews`) and stand on the navigation's first frame. Publish only: this page's own picture and its
-    // Compact kind chips (`KindChips`, Classic's order) are untouched. The board's "playlists" view has no library route (playlists live
-    // in the nav tree), so it is not here.
+    // Compact kind chips (`KindChips`, Classic's order) are untouched. The board's "playlists" view is the playlists route
+    // (`RouteKind.LibraryPlaylists`, Z7: `LibraryPlaylists`, below), second in the row, so a structure without a nav tree reaches the list.
 
     /// <summary>The library kinds, in row 2's order.</summary>
     static readonly Shell.RouteKind[] s_chromeKinds =
-        [Shell.RouteKind.Liked, Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks];
+        [Shell.RouteKind.Liked, Shell.RouteKind.LibraryPlaylists, Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks];
 
     /// <summary>One cached go-to verb per kind (an equal row compares its verbs by reference).</summary>
     static readonly Action[] s_chromeGo = Array.ConvertAll(s_chromeKinds, static kind => (Action)(() => Shell.GoTo(new Shell.Route(kind))));

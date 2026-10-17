@@ -2,8 +2,8 @@
 //
 // The core half of the page-chrome channel (Shell/Shell.PageChrome.cs) as pure facts:
 //
-//   ROW 2 OF A LIBRARY ROUTE IS ANSWERED FROM THE ROUTE. Every library kind answers the same five views, in the band's order (liked,
-//   albums, artists, podcasts, audiobooks), with exactly its own view lit, before any page mounts; every other route answers none.
+//   ROW 2 OF A LIBRARY ROUTE IS ANSWERED FROM THE ROUTE. Every library kind answers the same six views, in the band's order (liked,
+//   playlists, albums, artists, podcasts, audiobooks), with exactly its own view lit, before any page mounts; every other route answers none.
 //
 //   THE PAGE'S OWN VIEWS WIN, AND WITHDRAWING THEM GIVES THE ROUTE'S BACK. The merge is the page's views when it published any, else
 //   the route's; the actions and the backdrop are only ever the page's.
@@ -21,17 +21,18 @@ namespace Wavee.Tests;
 public class PageChromeRowTests
 {
     static readonly Shell.RouteKind[] s_library =
-        [Shell.RouteKind.Liked, Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks];
+        [Shell.RouteKind.Liked, Shell.RouteKind.LibraryPlaylists, Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks];
 
     static string NameOf(Shell.RouteKind kind) => Shell.NameOf(new Shell.Route(kind));
 
     [Theory]
     [InlineData(Shell.RouteKind.Liked)]
+    [InlineData(Shell.RouteKind.LibraryPlaylists)]
     [InlineData(Shell.RouteKind.LibraryAlbums)]
     [InlineData(Shell.RouteKind.LibraryArtists)]
     [InlineData(Shell.RouteKind.LibraryPodcasts)]
     [InlineData(Shell.RouteKind.LibraryAudiobooks)]
-    public void Every_library_route_answers_the_five_kinds_in_the_bands_order_with_itself_lit(Shell.RouteKind kind)
+    public void Every_library_route_answers_the_six_kinds_in_the_bands_order_with_itself_lit(Shell.RouteKind kind)
     {
         var views = Shell.PageChromeChannel.RouteViews(new Shell.Route(kind));
 
@@ -64,7 +65,7 @@ public class PageChromeRowTests
         var crumb = Assert.Single(chrome.Crumbs);
         Assert.Equal(chrome.Title, crumb.Label);
         Assert.Null(crumb.Go);
-        Assert.Equal(5, chrome.Views.Count);
+        Assert.Equal(6, chrome.Views.Count);
         Assert.Equal(NameOf(Shell.RouteKind.LibraryPodcasts), chrome.CurrentView?.Id);
         Assert.Empty(chrome.Actions);
         Assert.True(chrome.Backdrop.IsNone);
@@ -88,7 +89,7 @@ public class PageChromeRowTests
             // Actions alone: the route's views stand beside the page's actions.
             Assert.True(Shell.PageChromeChannel.Publish(route, new PageChromeRow([], [play])));
             chrome = Shell.PageChromeChannel.ChromeOf(route);
-            Assert.Equal(5, chrome.Views.Count);
+            Assert.Equal(6, chrome.Views.Count);
             Assert.Same(play, Assert.Single(chrome.Actions));
             Assert.True(chrome.Backdrop.IsNone);
         }
@@ -97,7 +98,7 @@ public class PageChromeRowTests
             Shell.PageChromeChannel.Publish(route, null);
         }
         var back = Shell.PageChromeChannel.ChromeOf(route);
-        Assert.Equal(5, back.Views.Count);
+        Assert.Equal(6, back.Views.Count);
         Assert.Empty(back.Actions);
         // Withdrawing what is not there changes nothing.
         Assert.False(Shell.PageChromeChannel.Publish(route, PageChromeRow.Empty));
@@ -151,6 +152,7 @@ public class PageChromeRowTests
     [InlineData(Shell.RouteKind.Concert, Shell.BandRules.Browse)]
     [InlineData(Shell.RouteKind.Liked, Shell.BandRules.Library)]
     [InlineData(Shell.RouteKind.LibraryAudiobooks, Shell.BandRules.Library)]
+    [InlineData(Shell.RouteKind.LibraryPlaylists, Shell.BandRules.Library)]
     [InlineData(Shell.RouteKind.Recents, Shell.BandRules.Recents)]
     [InlineData(Shell.RouteKind.Album, -1)]
     [InlineData(Shell.RouteKind.Artist, -1)]

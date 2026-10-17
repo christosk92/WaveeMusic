@@ -175,10 +175,10 @@ public sealed class ShellCapabilitiesMountedTests(ShellHost host)
                 Assert.Equal(Shell.NameOf(new Shell.Route(Shell.RouteKind.LibraryArtists)), chrome.CurrentView?.Id);
                 Assert.Equal(Shell.BandRules.Library, band.Current());
 
-                // Recents publishes no row 2 (Home publishes its facets since P5 Z5).
+                // Recents publishes its four pivots as row 2 (P5 Z7; Classic's band draws none of it).
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));
                 shell.RunFrames(30);
-                Assert.Empty(band.Chrome.Peek()!.Views);
+                Assert.Equal(4, band.Chrome.Peek()!.Views.Count);
                 Assert.Equal(Shell.BandRules.Recents, band.Current());
             }
             finally

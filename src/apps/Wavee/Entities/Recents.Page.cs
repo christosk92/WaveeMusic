@@ -49,6 +49,7 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
+using ChromeView = Wavee.Theming.Contracts.PageView;
 
 namespace Wavee;
 
@@ -127,6 +128,14 @@ public readonly partial struct Recents
         public Action<WheelEventArgs> ForwardWheelAction { get; }
         readonly Action _resolveAccentDay, _rollover, _refresh, _ensureEdge, _adopt, _activated, _deactivated, _openOverview, _retry;
         readonly Action<KeyEventArgs> _onKeyDown;
+
+        // ── row 2 (P5 Z7): the band's pivots and the Overview word. The row is rebuilt when the selected pivot moves and published from an effect. ──
+        readonly Action _publishChrome, _withdrawChrome;
+        readonly Action[] _chromeGo = new Action[ChromePivots.Length];
+        PageChromeSink _sink = PageChromeSink.None;
+        PageChromeRow? _chromeRow;
+        string? _chromeChip;
+        int _chromeVersion;
         /// <summary>The sticky band's watch over the list's scroll handle (<see cref="ScrollController"/>'s): mounted by the list surface,
         /// it re-runs on every published offset/extent and writes only on a projected change.</summary>
         public Action WatchStickyAction { get; }
@@ -204,6 +213,13 @@ public readonly partial struct Recents
             _activated = OnActivated;
             _deactivated = OnDeactivated;
             _openOverview = OpenOverviewFromMasthead;
+            for (int i = 0; i < _chromeGo.Length; i++)
+            {
+                string? token = ChromePivots[i].Token;
+                _chromeGo[i] = () => GoPivot(token);
+            }
+            _publishChrome = () => _sink.Publish(_chromeRow);
+            _withdrawChrome = () => _sink.Publish(null);
             _retry = () => { if (Recents.Me.Slot > 0) Entities.RefreshEdge(FetchEdge.Recents, Recents.Me.Slot); };
             _onKeyDown = e =>
             {
@@ -249,6 +265,12 @@ public readonly partial struct Recents
             int shapeEpoch = ShapeEpoch.Value;
             _ = Epoch.Value;
             var shape = ShapeNow;
+
+            // Row 2 (P5 Z7): the four pivots and the Overview word, for a structure whose band draws them (Classic's draws none).
+            _sink = UseContext(PageChromeSink.Context);
+            UpdateChrome(Chip.Value);
+            UseEffect(_publishChrome, DepKey.From(_chromeVersion));
+            UseEffect(() => _withdrawChrome, DepKey.Empty);
 
             // The page PROVIDES its accent (the view wraps the tree): the equalizer, the # cell and the save button read "this page's accent"
             // through the context instead of knowing they sit in Recents (§0 #16).
@@ -317,6 +339,39 @@ public readonly partial struct Recents
             UpdateSticky((float)ScrollController.Offset.Peek(), (float)ScrollController.ViewportLength.Peek());
             CalendarDay.Value = Today;
             ShapeEpoch.Value = ShapeEpoch.Peek() + 1;
+        }
+
+        // ── row 2: the pivots (P5 Z7) ──────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The band's pivots in order: a stable id (a node key, never the label), the pivot's token (null is All) and its word.</summary>
+        static readonly (string Id, string? Token, string LabelKey)[] ChromePivots =
+        [
+            ("all", null, Strings.Detail.Filter.All),
+            ("music", RecentsView.PivotMusic, Strings.Recents.Chip.Music),
+            ("podcasts", RecentsView.PivotPodcasts, Strings.Recents.Chip.Podcasts),
+            ("artists", RecentsView.PivotArtists, Strings.Recents.Pivot.Artists),
+        ];
+
+        /// <summary>A band pivot was picked: a pivot with no rows to show is inert (the same rule as the strip it replaces).</summary>
+        void GoPivot(string? token)
+        {
+            if (token is not null && !RecentsView.PivotAvailable(ShapeNow.Rows, token)) return;
+            SelectPivot(token);
+        }
+
+        /// <summary>Rebuild row 2 when the selected pivot moved (the verbs are cached, so an equal row compares by reference).</summary>
+        void UpdateChrome(string? chip)
+        {
+            if (_chromeRow is not null && string.Equals(_chromeChip, chip, StringComparison.Ordinal)) return;
+            _chromeChip = chip;
+            _chromeVersion++;
+            var views = new ChromeView[ChromePivots.Length];
+            for (int i = 0; i < views.Length; i++)
+            {
+                var pivot = ChromePivots[i];
+                views[i] = new ChromeView(pivot.Id, Loc.Get(pivot.LabelKey), Current: string.Equals(pivot.Token, chip, StringComparison.OrdinalIgnoreCase), _chromeGo[i]);
+            }
+            _chromeRow = new PageChromeRow(views, [new PageAction("overview", Loc.Get(Strings.Recents.Overview), _openOverview, PageActionKind.Word)]);
         }
 
         public void SelectPivot(string? token)

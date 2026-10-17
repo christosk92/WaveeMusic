@@ -2814,7 +2814,21 @@
         "discography": "Discography",
         "about": "About"
       },
-      "collection": {},
+      "collection": {
+        "$comment": "Z7: the collection (library, Recents, profile). Words are written as people say them; the style's case roles lower them. library: sort and view are the head's two labels, the sizes are the grid's S/M/L menu steps. recents: busiestDay leads the overview's 'Busiest day · Oct 6 · 31 plays' line, jumpToToday is its link. profile: the page's words are the core's person.* keys; nothing new.",
+        "library": {
+          "sort": "Sort",
+          "view": "View",
+          "sizeSmall": "Small",
+          "sizeMedium": "Medium",
+          "sizeLarge": "Large"
+        },
+        "recents": {
+          "busiestDay": "Busiest day",
+          "jumpToToday": "Jump to today"
+        },
+        "profile": {}
+      },
       "overlays": {
         "$comment": "Z8a: the overlays (the offline strip's notice). Words are written as people say them; the style's case roles lower them.",
         "offlineNotice": "You're offline · cached content still works; playback and edits resume when you're back",
