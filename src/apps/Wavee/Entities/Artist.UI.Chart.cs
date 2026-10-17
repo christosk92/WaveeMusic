@@ -17,9 +17,10 @@
 // time the extended list, the kind-185 counts or the media facts landed. Here the shelf's items are (index, slot) value
 // pairs and every row reads `Edges.ArtistPopular` + its Track row LIVE through a memo over (slot, version, row state):
 // a table publish that changes a title, a count or a like re-skins exactly that row and remounts nothing (ReuseGuard).
-// The only remount keys left are the ones that change a row's CHILD COUNT or the shelf's mount configuration:
+// The only remount keys left are the ones that change a row's CHILD COUNT or the shelf's style:
 //  · the cell key   "row:" + uri + "|art"/"|noart" + "|classic"/"|modern"  ("chart#" + i for an empty uri) — ch 08 audit #5;
-//  · the shelf key  columns (1/2) × art × classic — `maxColumns` and `cardHeight` are PagedShelf ctor configuration.
+//  · the shelf key  art × classic. The column cap, the rows per column and the row height are LIVE props of the mounted PagedShelf, so a
+//    tier crossing (Huge 4K's four columns of four against Huge's three of five) re-fits the SAME shelf: its page and selection survive.
 //
 // ── ZERO ALLOCATION ON A SCROLL FRAME ────────────────────────────────────────────────────────────────────────────────
 //
@@ -63,8 +64,7 @@ public readonly partial struct Artist
     // The geometry of the shelf (the row height, the gaps, the 264 card minimum that is a BREAKPOINT for two columns, the edge fade) and the
     // check lane's motion are the structure's: `ArtistChartStyle.Metrics` (Classic: `Rules\ClassicArtistChartLayout.cs`, ArtistPopular.cs:88-108).
 
-    // columns 1/2 × art × classic
-    // The chart shelf's key per STYLE (artwork column, Classic or modern rows): the column count is NOT in it — the cap is a live prop of the
+    // The chart shelf's key per STYLE (artwork column, Classic or modern rows): no column or row count is in it — both are live props of the
     // mounted shelf, so a tier crossing re-fits the SAME chart (its page and the row selection's slots survive) instead of remounting it.
     static readonly string[] s_chartShelfKeys =
     [
@@ -201,13 +201,14 @@ public readonly partial struct Artist
             Selection.ItemCount = _items.Length;
 
             // The tier's widest chart and its rows per column (TC6: two columns at Standard, more at Huge, one at Compact; Huge 4K's four rows), read
-            // tracked: a window crossing re-renders the chart. The skeleton reads the same pair (the fields), so it keeps the chart's columns per tier.
+            // tracked: a window crossing re-renders the chart and re-fits the mounted shelf to both (live props, never a key). The skeleton reads the
+            // same pair (the fields), so it keeps the chart's columns per tier.
             var chartTiers = ShellPolicy.Tracked.ArtistTiers;
             var tierFacts = facts.Value.Tiers;
             _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
             _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
             int cols = ArtistSections.ChartColumns(_items.Length, _maxColumns, _rows);
-            int shelfKey = (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);   // no column count: the fit is live (the crossing re-fits the same shelf)
+            int shelfKey = (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);   // no column or row count: the fit is live (the crossing re-fits the same shelf)
             Element shelf = PagedShelf.Create(
                 _items,
                 cardAt: _cardAt,
@@ -230,23 +231,10 @@ public readonly partial struct Artist
                 onInvoke: _invoke,
                 selectionMode: ItemsSelectionMode.Extended,
                 selection: Selection);
-            // The shelf's remount key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert). The
-            // rows per column are the shelf's frozen mount configuration too, so they key a pass-through column around it (only a crossing that
-            // changes them, Huge 4K's four rows against five, remounts the shelf; the selection model is this host's and survives it).
-            // A key on the region content's ROOT would be inert, so the keyed column is the root's one child.
-            _shelf = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = _rows == ArtistSections.ChartMaxRows ? "chart-rows" : "chart-rows:" + _rows.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                        Direction = 1, MinWidth = 0f,
-                        Children = [style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] })],
-                    },
-                ],
-            };
+            // The shelf's style key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert). The
+            // rows per column are a live prop like the column cap (PagedShelf re-fits a multi-row strip to another row count in place and keeps
+            // the page holding its first row), so nothing here keys on the tier.
+            _shelf = style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] });
 
             // The selection bar is its own component, so a select/clear re-renders the bar and the bound row chrome, never this host or the shelf.
             return style.Frame(new ArtistChartFrameArgs

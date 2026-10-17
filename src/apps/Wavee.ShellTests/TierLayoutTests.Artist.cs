@@ -11,10 +11,12 @@
 //   · ONE alignment source: the hero's copy starts where the magazine's sections start (the 4K review found the copy at the 36 gutter while Top tracks sat
 //     in the capped, centred column);
 //   · the 56 section row is under the hero at Huge only, the More button ends the Huge hero's actions, the albums are a strip at Compact only;
-//   · at Compact every hit target of the hero's action row is at least 40 x 40, and the concert hub's pills are 40 tall.
+//   · at Compact every hit target of the hero's action row is at least 40 x 40, and the concert hub's pills are 40 tall;
+//   · the chart crosses the 3200 rung (and back past its 40 hold) as the SAME shelf and strip, re-fit to four rows and back, its page kept.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using Wavee;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
@@ -146,6 +148,68 @@ public sealed partial class TierLayoutTests
             Assert.True(MathF.Abs(copyX - pageX - layout.ColumnInset(pageW, ClassicTiers.PageOf(tiers).Gutter)) <= 1f,
                 $"{size.Name}: the hero's copy is {copyX - pageX} in, not the column inset");
         }
+    }
+
+    // ── the chart across the Huge 4K rung (C-Artist-Huge's 3 x 5 against C-Artist-Huge4K's 4 x 4) ─────────────────────────────────────────
+
+    /// <summary>The chart's rows per column are a live prop of the mounted shelf: widening across 3200 (no hold) and narrowing back past its 40 hold
+    /// (3159) re-fit the SAME shelf and its strip (the same nodes, never a key carrying the tier), keep the strip's page, and the chart's height glides
+    /// from five rows to four and back with the page below riding it.</summary>
+    [Fact]
+    public void Crossing_the_4K_rung_re_fits_the_same_chart_shelf_and_keeps_its_page()
+    {
+        const string what = "Artist chart 3199 -> 3200 -> 3159";
+        OnPage(ArtistPage.Route, "artist-page:", 3199f, shell =>
+        {
+            Until(shell, () => shell.FindPrefix("chart-shelf:").Count == 1, "the chart's shelf on screen");
+            var scene = shell.Host.Scene;
+            Assert.False(ClassicDetailTiers.Policy.IsHugeWide(Tiers), $"{what}: 3199 is past the 4K rung");
+            Assert.Equal(5, ShellPolicy.Now.ArtistTiers.ChartRows(Tiers));
+
+            var shelf = Single(shell, "chart-shelf:");
+            var strip = Subtree(scene, shelf.Node).FirstOrDefault(n => scene.HasScroll(n));
+            Assert.False(strip.IsNull, $"{what}: the chart's strip is not mounted");
+            // On the strip's last page where the chart has more than one (a showcase chart of ten fits one page at both fits: page 0 kept).
+            var handle = Handle(shell, strip);
+            if (handle.MaxOffset > 0.5) { handle.ScrollTo(handle.MaxOffset, ScrollMove.Immediate); shell.RunFrames(30); }
+            double offset = Handle(shell, strip).OffsetNow;
+            float fiveRows = scene.Bounds(shelf.Node).H;
+
+            // Widening across 3200: the 4K record, the same shelf and strip, the chart a row shorter, gliding there.
+            var parts0 = new List<Part> { PartOf(shell, "chart shelf", shelf.Node), PartOf(shell, "chart strip", strip) };
+            ResizedFrame(shell, 3200f, narrowing: false);
+            var parts = Restate(shell, parts0);
+            CrossingFrame(shell, narrowing: false);
+            Assert.True(ClassicDetailTiers.Policy.IsHugeWide(Tiers), $"{what}: 3200 did not cross the 4K rung");
+            AssertKeptAndGliding(shell, parts, what + " (widening)");
+            shell.RunFrames(60);
+            AssertSameChart(shell, shelf.Node, strip, what + " (widening)");
+            Assert.Equal(4, ShellPolicy.Now.ArtistTiers.ChartRows(Tiers));
+            float fourRows = scene.Bounds(shelf.Node).H;
+            Assert.True(fourRows < fiveRows - 0.5f, $"{what}: the chart is {fourRows} tall at four rows, {fiveRows} at five");
+            Assert.True(offset < 0.5 == Handle(shell, strip).OffsetNow < 0.5, $"{what}: the strip's page moved ({offset} -> {Handle(shell, strip).OffsetNow})");
+
+            // Narrowing back past the hold (3160 still holds the 4K record): Huge's five rows, the same shelf again.
+            parts0 = new List<Part> { PartOf(shell, "chart shelf", shelf.Node), PartOf(shell, "chart strip", strip) };
+            ResizedFrame(shell, 3159f, narrowing: true);
+            parts = Restate(shell, parts0);
+            CrossingFrame(shell, narrowing: true);
+            Assert.False(ClassicDetailTiers.Policy.IsHugeWide(Tiers), $"{what}: 3159 did not cross back below the 4K hold");
+            AssertKeptAndGliding(shell, parts, what + " (narrowing)");
+            shell.RunFrames(60);
+            AssertSameChart(shell, shelf.Node, strip, what + " (narrowing)");
+            Assert.Equal(5, ShellPolicy.Now.ArtistTiers.ChartRows(Tiers));
+            Assert.True(MathF.Abs(scene.Bounds(shelf.Node).H - fiveRows) <= 0.5f, $"{what}: the chart is {scene.Bounds(shelf.Node).H} tall back at five rows, not {fiveRows}");
+            Assert.True(offset < 0.5 == Handle(shell, strip).OffsetNow < 0.5, $"{what}: the strip's page moved ({offset} -> {Handle(shell, strip).OffsetNow})");
+        });
+    }
+
+    /// <summary>The chart's shelf and its strip are the nodes they were before the crossings (nothing remounted).</summary>
+    static void AssertSameChart(Shell.HeadlessShell shell, NodeHandle shelf, NodeHandle strip, string what)
+    {
+        var now = Single(shell, "chart-shelf:").Node;
+        Assert.True(now.Equals(shelf), $"{what}: the chart's shelf was remounted");
+        Assert.True(shell.Host.Scene.IsLive(strip), $"{what}: the chart's strip was remounted");
     }
 
     // ── the profile page's own assertions ───────────────────────────────────────────────────────────────────────────
