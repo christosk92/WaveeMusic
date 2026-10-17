@@ -12,7 +12,8 @@ using Wavee.Theming;
 using Xunit;
 
 using L = Wavee.Stage.Layout;
-using M = Wavee.Stage.Mode;
+using M = Wavee.Stage.Mode;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Tests.Theming;
 

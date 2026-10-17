@@ -68,8 +68,8 @@ public sealed class ZuneScreensMountedTests(ShellHost host)
             Settings.Open(Settings.Tab.Playback);
             shell.RunFrames(60);
 
-            Node(shell, ZuneSettings.TitleKey);
-            Node(shell, ZuneSettings.SectionsKey);
+            Node(shell, "zs:title");
+            Node(shell, "zs:sections");
             Node(shell, "zs:scroll:playback");
             // One word per tab, the open one included.
             foreach (string slug in Settings.TabSlugs) Node(shell, "zs:link:" + slug);
@@ -135,7 +135,7 @@ public sealed class ZuneScreensMountedTests(ShellHost host)
             {
                 Settings.Open(tab);
                 shell.RunFrames(40);
-                Node(shell, ZuneSettings.TitleKey);
+                Node(shell, "zs:title");
                 Node(shell, "zs:scroll:" + Settings.TabSlugs[(int)tab]);
             }
         }, width, height);

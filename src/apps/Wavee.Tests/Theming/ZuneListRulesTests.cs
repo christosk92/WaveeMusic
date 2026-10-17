@@ -7,7 +7,8 @@
 using FluentGpu.Foundation;
 using Wavee.Themes.Zune;
 using Wavee.Theming;
-using Xunit;
+using Xunit;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Tests.Theming;
 
@@ -53,7 +54,7 @@ public sealed class ZuneListRulesTests
         Assert.Equal(ZuneStyleKeys.DensityCompact, ZuneListRules.DensityLabelKey(ZuneDensity.Compact));
         Assert.Equal(ZuneStyleKeys.DensityStandard, ZuneListRules.DensityLabelKey(ZuneDensity.Standard));
         Assert.Equal(ZuneStyleKeys.DensityComfortable, ZuneListRules.DensityLabelKey(ZuneDensity.Comfortable));
-        Assert.Equal("style." + ZuneDensityOption.Option.Id, ZuneListRules.DensityQualifiedId);
+        Assert.Equal(ZuneListRules.DensityQualifiedId, "style." + ZuneDensityOption.Option.Id);
     }
 
     [Fact]

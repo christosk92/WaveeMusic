@@ -30,7 +30,7 @@ internal static class ZuneSurface
 
     /// <summary>The plate of a kind: (rest fill, hover fill, pressed fill, rest opacity, dash). Zune's plates are washes, never strokes, except
     /// the Outline kind's dashed frame (an "add" tile).</summary>
-    static (ColorF Fill, ColorF Hover, ColorF Pressed, float Rest, bool Dashed) PlateOf(PlateKind kind)
+    static (ColorF Fill, ColorF Hover, ColorF Pressed, float RestOpacity, bool Dashed) PlateOf(PlateKind kind)
     {
         var r = PlateRules.Of(kind);
         return r.HasRootFill
@@ -59,7 +59,7 @@ internal static class ZuneSurface
                 new BoxEl
                 {
                     Grow = 1f, HitTestVisible = false, Corners = corners,
-                    Opacity = plate.Rest, HoverOpacity = 1f,
+                    Opacity = plate.RestOpacity, HoverOpacity = 1f,
                     HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
                     PressDurationMs = MotionTok.ControlFaster.DurationMs, PressEasing = MotionTok.ControlFaster.Easing,
                     Fill = plate.Fill, HoverFill = plate.Hover, PressedFill = plate.Pressed,

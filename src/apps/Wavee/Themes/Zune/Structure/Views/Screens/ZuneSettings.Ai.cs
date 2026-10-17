@@ -53,26 +53,26 @@ internal static partial class ZuneSettings
             switch (st.Phase)
             {
                 case AiLyrics.SetupPhase.NeedsSetup:
-                    kids.Add(Main(k, Loc.Get(AiS.Setup.Title), AiS.Setup.Sub(AiLyrics.Rules.FormatBytes(st.PendingDownloadBytes)),
+                    kids.Add(MainRow(k, Loc.Get(AiS.Setup.Title), AiS.Setup.Sub(AiLyrics.Rules.FormatBytes(st.PendingDownloadBytes)),
                         k.Cmd(Loc.Get(AiS.Setup.Action), () => DownloadThen(st.PendingDownloadBytes, static () => AiLyrics.StartDownload()), accent: true),
                         Master(k, true, true)));
                     break;
                 case AiLyrics.SetupPhase.Downloading:
-                    kids.Add(Main(k, st.Download.Label.Length > 0 ? AiS.Downloading.Title(st.Download.Label) : Loc.Get(AiS.Setup.Title), DownloadLine(st),
+                    kids.Add(MainRow(k, st.Download.Label.Length > 0 ? AiS.Downloading.Title(st.Download.Label) : Loc.Get(AiS.Setup.Title), DownloadLine(st),
                         DownloadBar(st), k.Cmd(Loc.Get(AiS.Pause), static () => AiLyrics.PauseDownload()),
                         k.Cmd(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
                     break;
                 case AiLyrics.SetupPhase.Paused:
-                    kids.Add(Main(k, Loc.Get(AiS.Paused.Title), AiS.Paused.Sub(AiLyrics.Rules.FormatBytes(st.Download.Done), AiLyrics.Rules.FormatBytes(st.Download.Total)),
+                    kids.Add(MainRow(k, Loc.Get(AiS.Paused.Title), AiS.Paused.Sub(AiLyrics.Rules.FormatBytes(st.Download.Done), AiLyrics.Rules.FormatBytes(st.Download.Total)),
                         ZuneKit.Bar(Fraction(st.Download.Done, st.Download.Total), Z.AiBarWidth, ProgressBarState.Paused),
                         k.Cmd(Loc.Get(AiS.Resume), () => DownloadThen(Remaining(st), static () => AiLyrics.ResumeDownload()), accent: true),
                         k.Cmd(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
                     break;
                 case AiLyrics.SetupPhase.Preparing:
-                    kids.Add(Main(k, Loc.Get(AiS.Preparing.Title), PrepareLine(st), PrepareBar(st)));
+                    kids.Add(MainRow(k, Loc.Get(AiS.Preparing.Title), PrepareLine(st), PrepareBar(st)));
                     break;
                 case AiLyrics.SetupPhase.Ready:
-                    kids.Add(Main(k, Loc.Get(AiS.Title),
+                    kids.Add(MainRow(k, Loc.Get(AiS.Title),
                         st.NpuName.Length > 0 ? Loc.Get(AiS.Ready.Title) + " · " + AiS.Ready.Sub(st.NpuName, st.NpuDriver) : Loc.Get(AiS.Ready.Title),
                         Master(k, true, true)));
                     kids.Add(k.DocRow(D(Tab.Appearance, "aiWordSync"), k.Toggle(D(Tab.Appearance, "aiWordSync")), Loc.Get(AiS.WordSyncSub)));
@@ -93,13 +93,13 @@ internal static partial class ZuneSettings
                         }));
                     break;
                 case AiLyrics.SetupPhase.Error:
-                    kids.Add(Main(k, Loc.Get(AiS.Title), Loc.Get(AiS.Sub), Master(k, true, true)));
+                    kids.Add(MainRow(k, Loc.Get(AiS.Title), Loc.Get(AiS.Sub), Master(k, true, true)));
                     kids.Add(ErrorBar(k, st));
                     break;
                 default:
                     // Unknown (before the boot scan), Unavailable and Off share one shape: the switch only changes state.
                     bool unavailable = unknown || st.Phase == AiLyrics.SetupPhase.Unavailable;
-                    kids.Add(Main(k, Loc.Get(AiS.Title),
+                    kids.Add(MainRow(k, Loc.Get(AiS.Title),
                         unavailable ? Loc.Get(unknown ? AiS.Sub : AiLyrics.Rules.UnavailableKey(st.Availability)) : Loc.Get(AiS.Sub),
                         Master(k, !unavailable && st.Enabled, !unavailable)));
                     break;
@@ -116,7 +116,7 @@ internal static partial class ZuneSettings
         }
 
         /// <summary>The main row: ONE node in every phase (its words and controls change).</summary>
-        static Element Main(ZuneKit k, string title, string? hint, params Element[] controls)
+        static Element MainRow(ZuneKit k, string title, string? hint, params Element[] controls)
             => k.Row("zs:row:ai", title, hint, new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls,

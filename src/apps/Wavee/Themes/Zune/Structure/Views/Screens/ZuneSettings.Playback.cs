@@ -204,7 +204,7 @@ internal static partial class ZuneSettings
 
             if (facts.IsReady)
             {
-                string version = facts.PackId is { Length: > 0 } pack ? facts.Version + " (" + pack + ")" : facts.Version;
+                string version = facts.PackId is { Length: > 0 } pack ? facts.Version + " (" + pack + ")" : facts.Version ?? "";
                 string signature = Setup.RuntimeSignatureSummary(facts);
                 bool canView = facts.Signature is { FilePath: { Length: > 0 } path } && File.Exists(path);
                 return Group(k, "zs:runtime:ready", Loc.Get(Strings.Settings.Common.Ready), Loc.Get(Strings.Settings.Playback.RuntimeReadySub),

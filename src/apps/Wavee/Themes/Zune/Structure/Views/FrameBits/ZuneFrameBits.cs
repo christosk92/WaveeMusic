@@ -16,7 +16,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
-using Wavee.Theming.Contracts;
+using Wavee.Theming.Contracts;
+using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
 
