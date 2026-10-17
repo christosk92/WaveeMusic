@@ -100,10 +100,11 @@ internal static class ZuneHomeQuickplay
         ],
     };
 
-    /// <summary>A group's tiles: a row that wraps (a single row where the strip is one row: a wrapping box would take the page's whole width), <see cref="ZuneHomeLayout.QuickTileGap"/> apart.</summary>
+    /// <summary>A group's tiles: ONE row where the groups stand side by side (a wrapping box takes the whole line it is measured on, so every group would
+    /// fill the page and the strip would stack them: the owner's Home), a wrapping row only in the Compact column, <see cref="ZuneHomeLayout.QuickTileGap"/> apart.</summary>
     static BoxEl Tiles(Element[] tiles, ZuneHomeLayout lay) => new()
     {
-        Direction = 0, Wrap = lay.QuickWrap, Gap = lay.QuickTileGap, MinWidth = 0f, Children = tiles,
+        Direction = 0, Wrap = lay.QuickStacked, Gap = lay.QuickTileGap, MinWidth = 0f, Children = tiles,
     };
 
     /// <summary>A quickplay tile: the art, then up to two lines under it, the whole tile one click target.</summary>

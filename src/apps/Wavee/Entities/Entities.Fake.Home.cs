@@ -84,6 +84,19 @@ public static partial class Entities
         SeedRecents(now0);
     }
 
+    /// <summary>The pins a --fake account starts with (the band's and the Home quickplay's "pins" group): four of the fake playlists the user
+    /// library already pins (<c>Entities.Fake.cs</c>: pl0, pl1, pl2, pl4), named and covered like the rail's rows. Silent, never written: the
+    /// sidebar's account file is the demo's temp folder.</summary>
+    internal static IReadOnlyList<SidebarPin> FakePins(long now0)
+    {
+        int[] pinned = [0, 1, 2, 4];
+        var pins = new SidebarPin[pinned.Length];
+        for (int i = 0; i < pins.Length; i++)
+            pins[i] = new SidebarPin(SidebarPinId.PlaylistPrefix + PlaylistUri(pinned[i]), SidebarEntryKind.Playlist, PlaylistUri(pinned[i]),
+                s_playlistNames[Wrap(pinned[i], s_playlistNames.Length)], (now0 - i * 86_400L) * 1000L) { Cover = Cover(pinned[i] + 8) };
+        return pins;
+    }
+
     // ── 1. the catalogue: the "Spotify" owner and forty editorial playlists ─────────────────────────────────────────
 
     static void SeedCatalogue(long now0)
@@ -255,14 +268,18 @@ public static partial class Entities
             string roseAlbumUri = "spotify:album:hmRoseUpcoming", roseArtistUri = "spotify:artist:hmRose";
             string henryAlbumUri = "spotify:album:hmHenryMoodieNewSingle", henryArtistUri = "spotify:artist:hmHenryMoodie";
 
+            // The release shelf is dated against the WALL clock, not the fixed seed epoch: the planner's "released in the last 42 days" test
+            // (ReleaseDetect) reads the wall clock, and the fixed epoch is already 50 days in the past, so on it this whole shelf (and the
+            // "new" quickplay group fed by it) vanished from every --fake Home. The dates stay relative offsets, so "friday" / "last week" read right.
+            long fresh0 = Math.Max(now0, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             var vaultboy = MockAlbum(s, vaultboyAlbumUri, "I loved you too much to just laugh it off",
-                "https://i.scdn.co/image/ab67616d00001e02a28a0b1cc269fa15e243eb77", (int)now0, AlbumKind.Single);
-            var troye = MockAlbum(s, troyeAlbumUri, "Slip", Cover(31), (int)now0, AlbumKind.Single);
-            var puth = MockAlbum(s, puthAlbumUri, "Charlie", Cover(32), (int)(now0 - 2 * 86_400), AlbumKind.EP);
-            var richBrianRelease = MockAlbum(s, richBrianAlbumUri, "New Wave", Cover(33), (int)(now0 - 1 * 86_400), AlbumKind.Single);
+                "https://i.scdn.co/image/ab67616d00001e02a28a0b1cc269fa15e243eb77", (int)fresh0, AlbumKind.Single);
+            var troye = MockAlbum(s, troyeAlbumUri, "Slip", Cover(31), (int)fresh0, AlbumKind.Single);
+            var puth = MockAlbum(s, puthAlbumUri, "Charlie", Cover(32), (int)(fresh0 - 2 * 86_400), AlbumKind.EP);
+            var richBrianRelease = MockAlbum(s, richBrianAlbumUri, "New Wave", Cover(33), (int)(fresh0 - 1 * 86_400), AlbumKind.Single);
             var rose = MockAlbum(s, roseAlbumUri, "rosie (Pre-Save)", "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966",
-                (int)(now0 + 8 * 86_400), AlbumKind.Album);
-            var henryMoodieRelease = MockAlbum(s, henryAlbumUri, "Better Now", Cover(34), (int)(now0 - 4 * 86_400), AlbumKind.Single);
+                (int)(fresh0 + 8 * 86_400), AlbumKind.Album);
+            var henryMoodieRelease = MockAlbum(s, henryAlbumUri, "Better Now", Cover(34), (int)(fresh0 - 4 * 86_400), AlbumKind.Single);
 
             MockArtist(s, vaultboyArtistUri, "vaultboy", Cover(39));
             MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35));
@@ -288,8 +305,8 @@ public static partial class Entities
                 "https://i.scdn.co/image/ab67706f000000024b2cb319c9b6d646fdf27e8c", 50, PlaylistFormat.Editorial);
             var emailsAlbum = MockAlbum(s, "spotify:album:2g4aJTa5ejGpp0O0GKzWAQ", "emails i can't send fwd:",
                 "https://i.scdn.co/image/ab67616d00001e020f45623be014a592a5815827", (int)(now0 - 200 * 86_400));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like Troye Sivan", SectionKind.HomeBaseline,
-                [troyeRadio, popTerjineun, emailsAlbum], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like", SectionKind.HomeBaseline,
+                [MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35)), troyeRadio, popTerjineun, emailsAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
 
             var roseRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4vmmujp8nGFY", "ROSÉ Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3eVa5w3URK5duf6eyVDbu9/en", 50, PlaylistFormat.Radio);
@@ -299,22 +316,22 @@ public static partial class Entities
             var rosieAlbum = MockAlbum(s, rosieAlbumUri, "rosie",
                 "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966", (int)(now0 - 150 * 86_400));
             albumArtistLinks.Add((rosieAlbumUri, roseArtistUri));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like ROSÉ", SectionKind.HomeBaseline,
-                [roseRadio, romanticizing, rosieAlbum], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like", SectionKind.HomeBaseline,
+                [MockArtist(s, roseArtistUri, "ROSÉ", Cover(37)), roseRadio, romanticizing, rosieAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
 
             var sadHour = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWSqBruwoIXkA", "sad hour",
                 "https://i.scdn.co/image/ab67706f000000021ec2ef7e5cc1221d4b45354e", 150, PlaylistFormat.Editorial);
             var thisIsHenry = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO4j9SIr", "This Is Henry Moodie",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/7hr9W3IjXcm3UlLY7guLk5/nl", 50, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of Henry Moodie", SectionKind.HomeBaseline,
-                [sadHour, thisIsHenry, dm4], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of", SectionKind.HomeBaseline,
+                [MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38)), sadHour, thisIsHenry, dm4], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
 
             var thisIsSavage = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO2drKmY", "This Is Savage Garden",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/3NRFinRTEqUCfaTTZmk8ek/en-GB", 50, PlaylistFormat.Editorial);
             var guiltyPleasures = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX4pUKG1kS0Ac", "Guilty Pleasures",
                 "https://i.scdn.co/image/ab67706f000000027773630113d067b9590817f4", 150, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of Savage Garden", SectionKind.HomeBaseline,
-                [thisIsSavage, guiltyPleasures], total: 2, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of", SectionKind.HomeBaseline,
+                [MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40)), thisIsSavage, guiltyPleasures], total: 3, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
 
             // -- RecentGrid support: WLUWD and 90's Nederlandstalig are two of the real uris `s_recentsSeed` (above)
             // points at, staged here (no section membership needed) purely so the RecentGrid renders a real title/
@@ -479,7 +496,7 @@ public static partial class Entities
     /// batch as `StagedId` values -- every mockup card is a real entity `Mock*` already minted, so re-encoding its uri
     /// as text a second time (what `StageSection`'s `string[]` overload does) would just waste arena bytes.</summary>
     static StagedId StageSectionIds(Staging s, string sectionUri, string title, SectionKind kind,
-        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset)
+        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
         ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
@@ -493,6 +510,15 @@ public static partial class Entities
         int mark = s.Edges.PendingMark;
         foreach (var cardId in cardIds) s.Edges.Push().Target = cardId;
         s.Edges.Close(Relation.SectionCards, in id, mark);
+
+        // A baseline ("because you like") band's rows are its PREVIEW TRACKS (ClusterFold reads `Edges.SectionPreviewTracks`; a live feed fills them
+        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks.
+        if (firstPreviewTrack >= 0)
+        {
+            int pm = s.Edges.PendingMark;
+            for (int i = 0; i < 3; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
+            s.Edges.Close(Relation.SectionPreviewTracks, in id, pm);
+        }
         return id;
     }
 

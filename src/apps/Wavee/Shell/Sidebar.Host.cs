@@ -96,6 +96,8 @@ public static partial class Sidebar
         s_accountLoaded = false;                                          // a re-Boot reloads the account even for the same key
         s_accountFile = null;
         EnsureAccount(Entities.Current.Key);
+        // --fake: a demo account with pins (silent load: nothing is written, the demo folder is per process), so the band and Home's quickplay show them.
+        if (Platform.Args.Fake && Pins.Count == 0) Pins.LoadFrom(Entities.FakePins(Platform.Clock.SeedEpoch));
         Pins.OnChanged = CommitAccount;                                   // every pin mutation is a commit point
         _ = Model;                                                        // the nav model exists from here: no network, no binder start (the pane's pump starts it)
         Log.Info("sidebar", "boot layout=" + Layout.Peek() + " fault=" + LayoutFileFault);
