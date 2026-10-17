@@ -218,7 +218,7 @@ internal static class ZuneHomeDaylist
             Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
             // The strip's own height (176 / 112 / 56 across the tiers and the height rung) glides on a SIZE channel, so it holds a track on the crossing frame
             // whatever the chapter around it does (a position-only slide would snap beside a live reflow).
-            Layout = H.ChapterResize,
+            Layout = H.DaylistResize,
             Fill = Prop.Of(static () => Tok.FillCardDefault), Corners = R.Shape.All(ShapeRole.Card),
             Children = kids.ToArray(),
         };

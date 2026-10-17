@@ -17,7 +17,8 @@
 using System.Collections.Immutable;
 using FluentGpu.Foundation;
 using Wavee.HomeUi;
-using Wavee.Theming;
+using Wavee.Theming;
+
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -145,6 +146,11 @@ public static class ZuneHomeRules
     /// slid would pop under the reveal that is still easing above it. A size channel has no such snap. Shared by Home, Browse and Search.</summary>
     public static readonly LayoutTransition ChapterResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
+    /// <summary>The daylist strip's own height across a crossing (176 / 168 / 112 / 56): a reflow on the height axis. A FlowReveal would snap here, since the
+    /// engine snaps flow reveals on the frame an interactive resize ends, and a height-rung crossing is exactly that frame.</summary>
+    public static readonly LayoutTransition DaylistResize = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 }
 
 /// <summary>How the daylist strip is arranged in a tier (one tree in every form: only its direction and sizes are live props).</summary>

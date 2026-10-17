@@ -418,10 +418,11 @@ public sealed partial class ZuneTierLayoutTests
                 if (Array.IndexOf(glide, p.Name) < 0 || Design.Reduced) continue;
                 var now = scene.Bounds(p.Node);
                 if (MathF.Abs(now.H - p.Local.H) <= 0.5f) continue;
-                bool glides = false;
-                for (var n = p.Node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
-                    if (shell.Host.Animation.HasTracks(n)) { glides = true; break; }
-                Assert.True(glides, $"{what}: {p.Name} snapped to its new height ({p.Local.H} -> {now.H}) instead of gliding");
+                // A track up its chain, or a FlowReveal presenting a height still short of the laid-out one (that glide is paint-time, no track).
+                bool glides = MathF.Abs(scene.PresentedAbsoluteRect(p.Node).H - now.H) > 0.5f;
+                for (var n = p.Node; !glides && !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
+                    if (shell.Host.Animation.HasTracks(n)) glides = true;
+                Assert.True(glides, $"{what}: {p.Name} snapped to its new height ({p.Local.H} -> {now.H}, presented {scene.PresentedAbsoluteRect(p.Node).H}) instead of gliding");
             }
 
             // Settled: the page's parts inside the content region.

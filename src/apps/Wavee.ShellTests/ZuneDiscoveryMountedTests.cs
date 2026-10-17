@@ -140,11 +140,13 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
                     "a cover shelf and a 'see all' word in the fake feed");
                 shell.RunFrames(30);
                 var scene = shell.Host.Scene;
-                var column = scene.AbsoluteRect(Node(shell, ZuneHomeRules.ColumnKey));
+                // the heading's x is its title group's (every shelf heading shares it; the column's own rect includes its gutter padding)
+                var firstTools = scene.Parent(shell.FindPrefix("see-all:")[0].Node);
+                float headingX = scene.AbsoluteRect(scene.FirstChild(scene.Parent(firstTools))).X;
 
-                // A5: no plate padding, so the first card (its art) stands on the heading's x, which is the column's.
+                // A5: no plate padding, so the first card (its art) stands on the heading's x.
                 var card = scene.AbsoluteRect(shell.FindPrefix("zune-shelf-card:")[0].Node);
-                Assert.True(MathF.Abs(card.X - column.X) <= 0.5f, $"the shelf art is at {card.X}, its heading at {column.X}");
+                Assert.True(MathF.Abs(card.X - headingX) <= 0.5f, $"the shelf art is at {card.X}, its heading at {headingX}");
 
                 // A6: the tools stand at least 14 right of the title group (the heading row is [words, tools]).
                 foreach (var (link, key) in shell.FindPrefix("see-all:"))
