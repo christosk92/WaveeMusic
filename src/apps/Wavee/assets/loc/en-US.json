@@ -2762,7 +2762,13 @@
         "bigNumerals": "big light numbers",
         "bigNumeralsSub": "albums, artists, the queue"
       },
-      "frame": {},
+      "frame": {
+        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the panel's close tool tip.",
+        "wordmark": "wavee",
+        "back": "Back",
+        "searchPlaceholder": "search",
+        "closePanel": "Close"
+      },
       "band": {},
       "lists": {},
       "player": {},
