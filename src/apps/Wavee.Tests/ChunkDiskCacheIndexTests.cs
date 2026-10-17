@@ -165,7 +165,7 @@ public sealed class ChunkDiskCacheIndexTests : IDisposable
     [Fact]
     public void A_trim_that_evicts_a_complete_file_flips_it()
     {
-        long big = ChunkDiskCache.MinBudgetBytes + 4L * Chunk;          // crosses the smallest budget the cache honours
+        long big = ChunkDiskCache.MinBudgetBytes - Chunk;               // fits the smallest budget alone; with FileA beside it the total crosses it
         SkipWhenTheVolumeIsInsideTheReserve(_dir, big + (8L << 20));
         using var cache = new ChunkDiskCache(_dir, ChunkDiskCache.MinBudgetBytes);
         cache.BuildIndex();
@@ -174,9 +174,9 @@ public sealed class ChunkDiskCacheIndexTests : IDisposable
         var edges = new Edges();
         cache.CompletionChanged += edges.On;
 
-        // The write that crosses the budget trims least-recently-used first: FileA was written before every chunk of FileB.
+        // The cache never writes past its budget, so FileB fits alone; FileA beside it crosses the budget, and a trim drops the least-recently-used first: FileA.
         Write(cache, FileB, big, All(big));
-        cache.Trim();
+        cache.TrimToBudget(ChunkDiskCache.MinBudgetBytes);   // Trim() reads the settings policy's budget, not this instance's
 
         Assert.False(cache.IsComplete(FileA));
         Assert.Contains(FileA, edges.Seen);

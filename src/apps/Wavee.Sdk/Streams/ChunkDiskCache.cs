@@ -788,7 +788,9 @@ public sealed class ChunkDiskCache : IDisposable
         if (!capacity.Available || capacity.FreeBytes - growth < capacity.ReserveBytes) return false;
         if (capacity.BudgetBytes is not { } budget) return true;
         if (Volatile.Read(ref _approxBytes) + growth <= budget) return true;
-        TrimInternal(root, budget);
+        // Make room for THIS write: trimming to the budget itself is a no-op while the cache sits just under it, which refused
+        // every later write once the cache was full (it never evicted, so it stopped caching new music).
+        TrimInternal(root, Math.Max(0, budget - growth));
         return Volatile.Read(ref _approxBytes) + growth <= budget;
     }
 

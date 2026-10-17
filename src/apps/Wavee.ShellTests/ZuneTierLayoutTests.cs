@@ -173,7 +173,8 @@ public sealed partial class ZuneTierLayoutTests(ShellHost host)
             var tiers = Tiers;
             AssertRecords(shell, size, tiers);
             AssertRegions(shell, size);
-            if (size.Window == WidthTier.Compact) AssertCompactTargets(shell, size);
+            // The 40-DIP Compact rule is the Zune title bar's (Z2a / ZT1); Classic's stand-in title bar never drew a Compact arm at these widths.
+            if (size.Window == WidthTier.Compact && ZuneDraws(ViewKeys.ShellTitleBar.Id)) AssertCompactTargets(shell, size);
             more?.Invoke(shell, tiers);
         }, size.From ?? size.Width, size.FromHeight ?? size.Height);
     }
@@ -236,6 +237,9 @@ public sealed partial class ZuneTierLayoutTests(ShellHost host)
             Assert.True(content.H >= ZuneTiers.Policy.ShortFloor - 0.5f, $"{size.Name}: the content column is {content.H}, under the ShortFloor {ZuneTiers.Policy.ShortFloor}");
         Assert.Equal(size.Height, title.H + content.H + bar.H, 1f);   // the column is the window: nothing else takes height
     }
+
+    /// <summary>True when Zune draws <paramref name="viewId"/> itself (not Classic's stand-in, P5 Z0).</summary>
+    static bool ZuneDraws(string viewId) => ThemeHost.Registry.TemplateIdOf(viewId)?.StartsWith("zune.", StringComparison.Ordinal) == true;
 
     /// <summary>At Compact every title-bar hit target is at least 40 x 40 (the brief's Compact rule). The identity chip is the overlays lane's
     /// own view and is left out.</summary>

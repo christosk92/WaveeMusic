@@ -314,6 +314,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The audio cache keeps caching once it is full.** When the cache sat just under its size limit, it refused every new piece of
+  a song instead of making room, so new music stopped being cached until something else freed space. It now evicts the songs you
+  played longest ago to fit the new one.
 - **The library no longer flashes its one-column view when the window narrows past 1008 wide.** For a few frames the albums list
   briefly turned into the drill-in view and back, because the page measured itself beside the navigation pane before the pane
   narrowed. The page now waits for that layout before it changes form.
