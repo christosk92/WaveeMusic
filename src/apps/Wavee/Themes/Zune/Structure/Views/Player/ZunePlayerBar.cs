@@ -1,0 +1,351 @@
+// ── Themes/Zune/Structure/Views/Player/ZunePlayerBar.cs — Zune's `Player.Bar` (P5 Z4a) ──────────────────────────────────────────────
+//
+// Boards Z-PlayBar, Z-Part-PlayBar, Z-PlayBar-Small / -Huge / -Compact and Z-Light-PlayBar: a flat, square bar (the style's player-bar
+// layer) in two rows,
+//
+//   SEEK ROW        the 2-px seek line along the bar's top edge, full width (`Player.SeekRail`, its 12 hit box reaching 5 either side of the
+//                   line); with the `seekTimes` parameter at AtSliderEnds (Panorama) the row is 16 tall with the times at its two ends. A load
+//                   longer than the core's sweep delay turns the line into a sweep.
+//   TRANSPORT ROW   the identity column (art · "playing on …" in the accent · title · artists · the heart), the transport centred in what is
+//                   left (previous · the round accent DISC · next, or −10 · disc · +10 · the speed word for an episode, the times under it),
+//                   and the tools as words and glyphs: shuffle · repeat · mute · the volume line · lyrics · video ▾ · queue · devices ·
+//                   full screen · "…", as the level carries them (`Tiers.Player.cs`). What a level drops is in "…" (the core's overflow).
+//
+// THE MINI BAR (Compact, Z-PlayBar-Compact): 64 at the foot of the reserved 72, the 2-px progress line, the identity as ONE door to now
+// playing (art 44 · title · artists), then the disc and next (+10 for an episode).
+//
+// One element tree for every level and both forms: the identity, the art, the disc and each tool keep their keys, so a level crossing FLIPs
+// them (MoveMotion) and a tool that lights or dims fades in place (FaceMotion); a line that comes or goes (the "playing on" line, a time)
+// enters and leaves with a fade. No key names a level or a form.
+//
+// THE CORE HALF RUNS FIRST: `props.Host.Use(ctx.Hooks)` runs the bar's bookkeeping hooks and answers the decided `PlayerBarView`; every hook
+// below runs in every form, in the same order. The bar root is the layout firewall (`IsolateLayout`). The seek rail and the time labels are
+// the core hosts `props.SeekBar` / `props.TimeText` (they mount this lane's `Player.SeekRail` / `Player.TimeLabel`, `ZuneTransport.cs`).
+//
+// Casing: the tool words, "playing on" and the menus' words are cased by the style's roles (Zune: lowercase); titles and names keep their own.
+
+using FluentGpu.Animation;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
+
+using L = Wavee.Themes.Zune.ZunePlayerLayout;
+using T = Wavee.Themes.Zune.ZuneTransportLayout;
+
+namespace Wavee.Themes.Zune;
+
+/// <summary>Zune's play bar.</summary>
+internal static partial class ZunePlayerBar
+{
+    /// <summary>The node keys the mounted tests find: the bar inside its slot, its seek row, the seek line's box, the transport row, the
+    /// disc, the identity column and the tools.</summary>
+    public const string BarKey = L.BarKey, SeekRowKey = L.SeekRowKey, SeekKey = L.SeekKey, RowKey = L.RowKey, DiscKey = L.DiscKey,
+        LeftKey = L.LeftKey, RightKey = L.RightKey;
+
+    /// <summary>The registered template of <see cref="ViewKeys.PlayerBar"/>.</summary>
+    public static Element Template(PlayerBarProps props, in ViewContext ctx)
+    {
+        var rc = ctx.Hooks;
+        var verbs = props.Verbs;
+
+        // ── the core half: its hooks, then the decided view ──
+        var v = props.Host.Use(rc);
+        var m = v.Metrics;
+        var facts = ctx.Tier();
+        var tier = ZunePlayerTiers.BarOf(facts);
+        var look = ZunePlayerTiers.LookOf(m, tier.Tier);
+        bool mini = tier.Form == ZuneBarForm.Mini;
+        bool ends = !mini && ZuneOptions.Times() == SeekTimes.AtSliderEnds;
+        float seekRowH = ends ? ZunePlayerTiers.SeekEndsRowH : ZunePlayerTiers.SeekLineH;
+
+        // ── hooks (positional, stable order, every form) ──
+        var titleLinkHover = rc.UseSignal(false);
+        var likeNode = rc.UseRef<NodeHandle>(default);
+        var likePrevious = rc.UseRef((0, false));
+        var metaNode = rc.UseRef<NodeHandle>(default);
+        var facePrevious = rc.UseRef<EntityRef>(default);
+        var videoAnchor = rc.UseRef<NodeHandle>(default);
+        var videoMenu = rc.UseRef<OverlayHandle?>(null);
+        var overlay = rc.UseContext(Overlay.Service);
+        var input = rc.UseContext(InputHooks.Current);
+        var begin = rc.UseContext(SharedTransition.Begin);
+        var barNode = rc.UseRef<NodeHandle>(default);
+        float artScale = rc.UseContext(Viewport.Scale);
+
+        // The heart pops on the same playable's save edge only, on the captured node (a keyed remount would reset its hover mid-toggle).
+        int playingSlot = v.Face.IsNone ? 0 : v.Face.Slot;
+        rc.UseLayoutEffect(() =>
+        {
+            var (previousSlot, previouslyLiked) = likePrevious.Value;
+            likePrevious.Value = (playingSlot, v.Liked);
+            if (props.LikePops(previousSlot, previouslyLiked, playingSlot, v.Liked) && v.LikeLit
+                && !likeNode.Value.IsNull && rc.Anim is { } anim)
+                anim.IconSwapIn(likeNode.Value);
+        }, DepKey.From(playingSlot, v.Liked ? 1 : 0));
+
+        // The face's one authored change: the text cross-fades when the identity it states swaps (never into or out of a hold).
+        var faceRef = v.Face;
+        rc.UseLayoutEffect(() =>
+        {
+            var was = facePrevious.Value;
+            facePrevious.Value = faceRef;
+            if (was.IsNone || faceRef.IsNone || was.Equals(faceRef)) return;
+            if (metaNode.Value.IsNull || rc.Anim is not { } anim) return;
+            anim.Animate(metaNode.Value, AnimChannel.Opacity, 0f, 1f, L.FaceSwap.EffectiveDurationMs(AnimChannel.Opacity), Easing.FluentDecelerate);
+        }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
+
+        // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
+        var meta = MetaColumn(props, v, look, mini, titleLinkHover, metaNode);
+        var art = new BoxEl
+        {
+            Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, Animate = L.MoveMotion,
+            Cursor = !mini && v.ArtNav ? CursorId.Hand : null,
+            OnClick = !mini && v.ArtNav ? props.NavigateArt : null,
+            Role = !mini && v.ArtNav ? AutomationRole.Hyperlink : AutomationRole.None,
+            Focusable = !mini && v.ArtNav,
+            HitTestVisible = !mini,
+            Children = [Controls.Artwork(v.ArtUrl, look.Art, look.Art, R.Shape.For(ShapeRole.Cover), morphKey: props.ArtMorphKey, scale: artScale, keepWhileHidden: true)],
+        };
+
+        var leftKids = new List<Element>(3) { art };
+        if (v.ShowTitleBlock) leftKids.Add(meta);
+        if (!mini && v.ShowLikeSlot) leftKids.Add(HeartSlot(props, v, look, likeNode));
+        BoxEl left = mini
+            ? new BoxEl
+            {
+                Key = LeftKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = L.IdGap,
+                Animate = L.MoveMotion, ClipToBounds = true,
+                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
+                OnClick = props.OpenNowPlaying,
+                Draggable = v.Draggable ? Drag.Source(props.DragPayload) : null,
+                Children = leftKids.ToArray(),
+            }
+            : new BoxEl
+            {
+                Key = LeftKey, Width = look.IdW, Shrink = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = L.IdGap,
+                Animate = L.MoveMotion, ClipToBounds = true,
+                Draggable = v.Draggable ? Drag.Source(props.DragPayload) : null,
+                Children = leftKids.ToArray(),
+            };
+        // Right-click / Menu key / long-press: the track menu over the now-playing target (the stage shares the seam).
+        left = left.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
+
+        // ── the transport ─────────────────────────────────────────────────────────────────────────────────────────────
+        var transport = new List<Element>(5);
+        if (v.OwnsTransport)
+        {
+            if (v.Episode && !mini) transport.Add(StepWord(props, -L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-back-10" });
+            if (!v.Episode && v.ShowPrevNext && !mini)
+                transport.Add(ToolTip.Wrap(Glyph(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Previous)) with { Key = "prev" });
+            transport.Add(Disc(props, v, look) with { Key = DiscKey });
+            if (!v.Episode && v.ShowPrevNext)
+                transport.Add(ToolTip.Wrap(Glyph(Icons.Next, () => verbs.Next(), v.NextEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Next)) with { Key = "next" });
+            if (v.Episode) transport.Add(StepWord(props, L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-forward-10" });
+            if (v.Episode && !mini) transport.Add(Embed.Comp(new SpeedProps(props, look.WordSize, look.Button), static () => new ZuneEpisodeSpeed()) with { Key = "episode-speed" });
+        }
+        var transportRow = new BoxEl
+        {
+            Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = look.TransportGap, Shrink = 0f,
+            Animate = L.MoveMotion, Children = transport.ToArray(),
+        };
+
+        Element row;
+        if (mini)
+        {
+            row = new BoxEl
+            {
+                Key = RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = look.RowGap,
+                Padding = new Edges4(look.PadLeft, 0f, look.PadRight, 0f), Animate = L.MoveMotion,
+                Children = [left, transportRow],
+            };
+        }
+        else
+        {
+            var centreKids = new List<Element>(2) { transportRow };
+            if (!ends && v.OwnsTransport && (v.ShowTimesElapsed || v.ShowTimesRemaining)) centreKids.Add(TimesRow(props, v));
+            var centre = new BoxEl
+            {
+                Key = "centre", Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Gap = L.TimesGap, Animate = L.MoveMotion,
+                // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
+                DropTarget = Drop.Target<DragPayload>(Drag.Resource,
+                    accepts: static p => p.CanCopyTracks,
+                    onDrop: (p, session) => verbs.DropPlayNext(p),
+                    caption: static _ => Loc.Get(Strings.Drag.PlayNext),
+                    refusalCaption: static p => Loc.Get(p.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd),
+                    visualPolicy: DropTargetVisualPolicy.Spotlight),
+                Children = centreKids.ToArray(),
+            };
+
+            var tools = new List<Element>(10);
+            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            {
+                var slot = (RightSlot)bit;
+                if ((v.Slots & slot) != 0) tools.Add(Tool(props, v, look, slot, begin, overlay, videoAnchor, videoMenu));
+            }
+            var right = new BoxEl
+            {
+                Key = RightKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = L.ToolGap,
+                Animate = L.MoveMotion, Children = tools.ToArray(),
+            };
+            row = new BoxEl
+            {
+                Key = RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = look.RowGap,
+                Padding = new Edges4(look.PadLeft, 0f, look.PadRight, 0f), Animate = L.MoveMotion,
+                Children = [left, centre, right],
+            };
+        }
+
+        // ── the seek row (a layer over the bar's top edge) ────────────────────────────────────────────────────────────
+        Element line = mini
+            ? new BoxEl
+            {
+                Key = "progress", Grow = 1f, Height = T.LineH, Direction = 0,
+                Children = [props.ProgressLine is { } progress ? progress() : new BoxEl { Grow = 1f, Fill = Tok.TextPrimary with { A = T.RailA } }],
+            }
+            : new BoxEl
+            {
+                Key = SeekKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = seekRowH, Direction = 1, Opacity = v.TopEdgeSweeps ? 0f : 1f,
+                Animate = L.FaceMotion, HitTestPassThrough = true,
+                Children = v.OwnsTransport
+                    ? [new BoxEl { Height = T.HitH, Shrink = 0f, Direction = 0, Margin = T.RailMargin(seekRowH), Children = [props.SeekBar()] }]
+                    : [],
+            };
+        var seekKids = new List<Element>(3);
+        if (ends && v.OwnsTransport && v.ShowTimesElapsed) seekKids.Add(new BoxEl { Key = "elapsed", Animate = L.ItemMotion, Children = [props.TimeText(false)] });
+        seekKids.Add(line);
+        if (ends && v.OwnsTransport && v.ShowTimesRemaining) seekKids.Add(new BoxEl { Key = "remaining", Animate = L.ItemMotion, Children = [props.TimeText(true)] });
+        var seekRow = new BoxEl
+        {
+            Key = SeekRowKey, Height = seekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
+            Padding = ends ? new Edges4(look.PadLeft, 0f, look.PadRight, 0f) : default,
+            Gap = ends ? look.TransportGap : 0f, Animate = L.MoveMotion,
+            Children = seekKids.ToArray(),
+        };
+
+        var layers = new List<Element>(3)
+        {
+            new BoxEl
+            {
+                Key = "body", Grow = 1f, Direction = 1,
+                Children = [new BoxEl { Key = "seek-room", Height = seekRowH, Shrink = 0f, Animate = L.MoveMotion, HitTestVisible = false }, row],
+            },
+            new BoxEl { Key = "seek-layer", Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [seekRow] },
+        };
+        // A load past the core's sweep delay: the line becomes a sweep (the rail fades under it, keeping its scrub state).
+        if (v.TopEdgeSweeps)
+            layers.Add(new BoxEl
+            {
+                Key = "sweep", Grow = 1f, Direction = 1, HitTestVisible = false, Animate = L.ItemMotion,
+                Children = [new BoxEl { Height = T.LineH, Shrink = 0f, ClipToBounds = true, Direction = 0, Children = [ProgressBar.Indeterminate(m.TopEdgeWidth)] }],
+            });
+
+        return new BoxEl
+        {
+            Direction = 1, Justify = FlexJustify.End, Height = tier.SlotH, Shrink = 0f, IsolateLayout = true,
+            Animate = L.MoveMotion,
+            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+            OnRealized = node => barNode.Value = node,
+            OnClick = () => input.FocusNode?.Invoke(barNode.Value, true),
+            OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = BarKey, Height = tier.BarH, Shrink = 0f, ZStack = true, Fill = R.Layer.PlayerBar, Animate = L.MoveMotion,
+                    Children = layers.ToArray(),
+                },
+            ],
+        };
+    }
+
+    /// <summary>"playing on …" (the accent, above the title), the title (a link to the album or the show) and the artists.</summary>
+    static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
+    {
+        const string titleKey = "np-title", artistsKey = "np-artists";
+        Prop<ColorF> titleInk = Prop.Of(() => titleLinkHover.Value && props.TitleHasRoute() ? Tok.AccentTextPrimary : InkOf(props.TitleInk()));
+        var titleRun = new TextEl(Prop.Of<string>(props.TitleText))
+        {
+            Size = look.TitleSize, LineHeight = look.TitleLine, Weight = L.TitleWeight, Color = titleInk,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        bool marquee = v.Marquee && !mini;
+        BoxEl title = marquee
+            ? (BoxEl)Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
+            {
+                FontSize = look.TitleSize, Weight = L.TitleWeight, Foreground = titleInk,
+                Speed = L.MarqueeSpeed, CycleMs = L.MarqueeCycleMs, EndPauseMs = L.MarqueeEndPauseMs, StartDelayMs = L.MarqueeStartDelayMs,
+                Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
+            })
+            : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
+        title = title with { Key = titleKey };
+        if (v.TitleNav && !mini)
+            title = title with
+            {
+                Cursor = CursorId.Hand, OnClick = props.NavigateTitle, Role = AutomationRole.Hyperlink, Focusable = true,
+                OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
+                OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
+            };
+
+        var kids = new List<Element>(3);
+        if (v.RemoteLine)
+            kids.Add(new BoxEl
+            {
+                Key = "remote-device-line", Animate = L.ItemMotion, MinWidth = 0f,
+                Children = [Embed.Comp(new RemoteProps(props, look.FromSize, look.FromLine), static () => new ZuneRemoteLine())],
+            });
+        kids.Add(marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey });
+        if (v.ShowArtistLine)
+        {
+            var credits = new CreditsProps(props, look.SubSize, look.SubLine, Linked: !mini);
+            kids.Add(marquee
+                ? Marquee.Content(() => new ZuneCredits(credits), new Marquee.Style
+                {
+                    Speed = L.MarqueeSpeed, CycleMs = L.MarqueeCycleMs, EndPauseMs = L.MarqueeEndPauseMs, StartDelayMs = L.MarqueeStartDelayMs,
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
+                }) with { Key = artistsKey }
+                : new BoxEl { Key = artistsKey, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new ZuneCredits())] });
+        }
+
+        return new BoxEl
+        {
+            Key = "meta", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f, Justify = FlexJustify.Center, ClipToBounds = true,
+            Animate = L.MoveMotion, OnRealized = h => metaNode.Value = h,
+            Children = kids.ToArray(),
+        };
+    }
+
+    static ColorF InkOf(NowPlayingInk ink) => ink switch
+    {
+        NowPlayingInk.Secondary => Tok.TextSecondary,
+        NowPlayingInk.Critical => Tok.SystemFillCritical,
+        _ => Tok.TextPrimary,
+    };
+
+    /// <summary>The times under the transport: elapsed, " · " and the remaining time, as the level carries them (each enters and leaves with a
+    /// fade, so the row never jumps).</summary>
+    static Element TimesRow(PlayerBarProps props, PlayerBarView v)
+    {
+        var kids = new List<Element>(3);
+        if (v.ShowTimesElapsed) kids.Add(new BoxEl { Key = "elapsed", Animate = L.ItemMotion, Children = [props.TimeText(false)] });
+        if (v.ShowTimesElapsed && v.ShowTimesRemaining)
+            kids.Add(new BoxEl
+            {
+                Key = "times-sep", Animate = L.ItemMotion,
+                Children = [new TextEl(" · ") { Size = T.TimeSize, LineHeight = T.TimeLine, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }],
+            });
+        if (v.ShowTimesRemaining) kids.Add(new BoxEl { Key = "remaining", Animate = L.ItemMotion, Children = [props.TimeText(true)] });
+        return new BoxEl
+        {
+            Key = "times", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Height = T.TimeLine, Shrink = 0f,
+            Animate = L.MoveMotion, Children = kids.ToArray(),
+        };
+    }
+}
