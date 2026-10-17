@@ -2781,7 +2781,13 @@
         "$comment": "Z4b: the fullscreen stage's word actions (lowercased by the case roles). The stage's other words are stage.*.",
         "options": "Options",
         "layoutWord": "Layout · {layout}",
-        "faceWord": "Face · {face}"
+        "faceWord": "Face · {face}",
+        "$comment2": "Z4c: the rest of the stage, the Up next column, the lyrics view and video (lowercased by the case roles; names are never re-cased).",
+        "aboutArtist": "About the artist",
+        "upNextFrom": "From",
+        "upNextMore": "{count} more",
+        "videoFullScreen": "Video · full screen",
+        "videoMiniPlayerWord": "Mini player"
       },
       "discovery": {},
       "detail": {},

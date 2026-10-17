@@ -227,7 +227,43 @@ transport's slot: the plates cross-fade (`ZuneMotion.SwapFade`) and the one cove
 
 ## Z4c: the rest of the stage
 
-_Not built yet._
+`ZuneStructure.StageMore.cs` registers eleven keys, each winning over Classic's stand-in: `Stage.Hero`, `.ArtistName`, `.ArtistPane`
+(`Structure\Views\Stage\ZuneHero.cs`, `ZuneArtistName.cs`, `ZuneArtistPane.cs`), `Queue.StagePane` (`ZuneUpNext.cs`), `Lyrics.View`
+(`Views\Lyrics\ZuneLyrics.cs`) and `Video.Docked`, `.Pip`, `.PopOut`, `.Fullscreen`, `.JoinPoster`, `.PlacementMenu` (`Views\Video\ZuneVideo*.cs`). The numbers
+are `Rules\ZuneStageMoreRules.cs` (`ZuneStageHeroRules`, `ZuneStageArtistRules`, `ZuneStageUpNextRules`, `ZuneStageLyricsRules`, `ZuneStageVideoRules` with its per-window-tier
+`ZuneStageVideoLayout`). The core keeps every decision, hook and state machine (the hero's facts, the pane's facts, the lane, the lyrics clock and follow, the media
+pipeline); Zune changes the picture.
+
+**Hero and name** (Z-NowPlaying-Artist): the stage's choreography is kept whole (the Ken Burns on a posed box, the cross-fade over the old artist, the blurred
+cover until the overview answers, the next header decoded hidden in the last ten seconds). The scrims are Zune's: the stage veil at 0.35 at the top, clear by a
+quarter, 0.3 at 60 %, the "Image dimming" foot; with the lyrics over the image, the left veil. The name is the display face at 300, -0.02 em, the ink at 0.92, a
+quarter of the stage's height (72 to 300), two lines at most, bottom-anchored above the identity row; no eyebrow.
+
+**Artist pane**: "about the artist" as the board has it (20/28 at 600, the bio 14/21 in the secondary ink, the word actions "follow" and "go to artist" under
+it); the name, credits, Popular, Where people listen and Fans also like are built from Zune's parts (no plates, lowercase headings through the heading case, flat
+rows, the 2-px accent line for the cities, square covers).
+
+**Up next** (Z-Queue-Page): the "autoplay" word as the toggle; per section a heading in the display face (26/32 at 300) with a quiet word beside it ("clear" on
+the user's queue, "from <context> · n more" on the continuation, the count on autoplay); 60-tall flat rows (the position in the display face, the 44 square cover,
+17/22 title over 13/18 artists, the duration, a 40 remove target); the glass lights a row on hover. Every metric scales by the stage's queue scale and is rounded
+as rendered (the lane's drag maths needs exact slot heights).
+
+**Lyrics view** (Z-Lyrics): the same tree for the panel and the stage's reading column (left-anchored, capped at 1000 times the type scale). The lines are Z3's
+(`ZuneLyricsLines`: the sung line in the accent). The view adds the "resync" pill (a flat plate with the countdown ring and the word in the accent, a target of
+the window tier's height), the accent breathing dots, the video note, and the AI disclosure under the layers.
+
+**Video**: the docked card is the hollow reservation (the hole rule: no transition, opacity or scale on an ancestor of the picture) and the watch page's 16:9
+frame; the docked overlay's hover strip is words ("mini player", "full screen") and a close glyph; the mini player is square with the flyout shadow and no ring,
+a 32 strip (the drag surface and the close glyph) and the eight resize zones; the fullscreen bar is the 48 bar of Z-Video ("video · full screen", the title, "exit
+full screen"); the pop-out keeps its OS caption band; the poster dims the cover to 0.4 and shows the ring or the fault in lowercase label words; the placement menu is
+`MenuFlyout.Create` over the core's decided rows (the plate is Zune's menu style). Compact shows the chrome at rest with 40 targets.
+
+**Loc:** `theme.zune.stage.{aboutArtist,upNextFrom,upNextMore,videoFullScreen,videoMiniPlayerWord}`. **Tests:** `Wavee.ShellTests\ZuneVideoLyricsMountedTests.cs`.
+
+**Gaps (no verb or prop reaches the view):** the lyrics "translate" word (the secondary-line choice has no verb on `ILyricsHost`; the lines draw the secondary line
+when the user's choice says so); the Up next "shuffle" and "repeat" words (the transport has them; `QueueStagePaneProps` carries only the queue verbs); the Artist
+pane's "more like this"; the fullscreen bar's "switch to audio"; the mini player's title and "back to wavee" and its bottom control bar (the on-media transport is
+its own key); the docked strip's "turn off video" is a glyph, not a word, to fit the 296 card.
 
 ## Z5: discovery
 
