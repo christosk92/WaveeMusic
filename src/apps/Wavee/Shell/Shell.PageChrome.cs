@@ -200,11 +200,45 @@ public static partial class Shell
             };
         }
 
-        /// <summary>The content host's effect: republish the current page's chrome (it re-runs on a navigation and on any publication).</summary>
+        /// <summary>The route whose chrome the band shows: the committed route's once the page swap has LANDED, the leaving page's until then
+        /// (see <see cref="LandIfDue"/>). <c>None</c> before the first commit: the first frame is final.</summary>
+        static readonly Signal<Route> s_landed = new(Route.None);
+
+        static bool s_landDue;
+
+        /// <summary>The page swap's landing edge, armed by the content host's staged timer (<see cref="Shell.Shown"/>: the exit leg has run, the
+        /// incoming page's enter starts). It does not write the signal itself: a timer's write is reconciled AFTER the frame's FLIP capture, so
+        /// the band's height (row 2 coming or going) would SNAP and take the page with it. <see cref="LandIfDue"/> writes it from the host's
+        /// after-animations phase of the SAME frame instead, which leaves it pending into the next frame's capture, and the band eases.</summary>
+        internal static void ArmLanding() => s_landDue = true;
+
+        /// <summary>The host's after-animations hook: land the swap if it is due.</summary>
+        internal static void LandIfDue()
+        {
+            if (!s_landDue) return;
+            s_landDue = false;
+            s_landed.Value = Shell.Current.Peek();
+        }
+
+        /// <summary>The content host's effect: republish the page chrome of the page ON SCREEN (it re-runs on a navigation, on the landing and on
+        /// any publication).</summary>
         internal static void PublishCurrent()
         {
-            var route = Shell.Current.Value;
+            var route = OnScreenRoute();
             s_current.Value = route.IsNone ? null : ChromeOf(route);
+        }
+
+        /// <summary>The route of the page ON SCREEN as the band sees it: the committed route once the swap has landed (or inside one keep-alive
+        /// slot, a facet or tab switch or album to album, where there is no swap), the leaving page's until then. The band's lit pivot reads it
+        /// too, so a detail page's title does not flash up over the leaving page's row 2 for the exit leg. Subscribing.</summary>
+        public static Route OnScreenRoute()
+        {
+            var committed = Shell.Current.Value;
+            // The content host holds the leaving page for its exit leg (Design.Nav.ExitDurationMs) and lands the swap when the incoming page's
+            // enter starts, so row 2 swaps WITH the page (its words fade through in step with it) instead of a whole exit leg ahead of it.
+            var landed = s_landed.Value;
+            bool sameSlot = !landed.IsNone && !committed.IsNone && string.Equals(SlotKey(in landed), SlotKey(in committed), StringComparison.Ordinal);
+            return sameSlot || FrameRules.SwapLanded(in landed, in committed) ? committed : landed;
         }
 
         // ══ THE PAGE SCROLL ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -312,7 +346,7 @@ public static partial class Shell
         public static readonly BandProps Band = new()
         {
             Destinations = CachedDestinations,
-            Current = static () => BandRules.IndexOf(Shell.Current.Value.Kind),
+            Current = static () => BandRules.IndexOf(OnScreenRoute().Kind),
             Pins = static () => Sidebar.Model.BandPins(ShellCaps.PinCap(ShellCaps.Tracked)),
             Chrome = s_current,
             Scroll = s_scroll,

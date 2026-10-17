@@ -828,7 +828,9 @@ public static partial class Shell
     /// (<see cref="TabLabelStaging"/>) so the label lands WITH the page instead of a frame ahead of it.</summary>
     public static readonly Signal<Route> Shown = new(Route.None);
 
-    static readonly Action s_landShown = static () => Shown.Value = Current.Peek();
+    static readonly object s_chromeLanding = new();
+
+    static readonly Action s_landShown = static () => { Shown.Value = Current.Peek(); PageChromeChannel.ArmLanding(); };
 
     /// <summary>The keep-alive page-swap boundary, the masthead band overlaid on it, and the offline lane. Pages receive
     /// route VALUES, never the route signal — the boundary is the only route subscriber.</summary>
@@ -844,6 +846,8 @@ public static partial class Shell
             // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
             var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
+            // The band's chrome lands from the host's after-animations phase (PageChromeChannel.ArmLanding), so its height eases instead of snapping.
+            UseContext(InputHooks.Current).SetAfterAnimations(s_chromeLanding, PageChromeChannel.LandIfDue);
             UseSignalEffect(() =>
             {
                 _ = Current.Value;

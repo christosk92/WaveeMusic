@@ -162,6 +162,9 @@ internal static class ZuneFrame
             new BoxEl
             {
                 Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                // The slot eases its own height (a reflow, anchored at the top and clipped at the foot): the band inside changes height at once, and a
+                // slot that merely hugged an animating child snapped to the child's target (the page jumped by the row's 32). The page follows frame by frame.
+                Animate = Design.Reduced ? null : ZuneBandRules.HeightMotion,
                 // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
                 OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
                 Children = [ctx.View(ViewKeys.ShellNavPane, props.NavPane)],

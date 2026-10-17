@@ -521,8 +521,13 @@ public static partial class Design
         /// <summary>The page swap's badge-twitch travel — the 0.2.x fade-through, verbatim.</summary>
         public const float ClassicDx = Expressive.DistBase;
 
-        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, Easing.FluentDecelerate);
-        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, Easing.FluentAccelerate);
+        // CONTINUITY: sampled at the frame clock (16 ms), the Fluent cubics break the swap. FluentAccelerate ends at ~4x the average
+        // slope: the leaving page was at 0.70 on its last drawn frame and removed with a 0.70 -> 0 step. FluentDecelerate starts steeper
+        // than that: the entering page's first drawn frame (6 ms into its leg) was already at 0.23 and 1.8 DIP in, then 2.95 DIP further
+        // on the next. A linear exit finishes at the slope it started at (the last step is one frame's worth, 0.11), and the quadratic
+        // ease-out starts at a quarter of the cubic's rate (0.06 on the first frame) and still settles.
+        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, Easing.EaseOut);
+        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, Easing.Linear);
 
         /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
         static LayoutTransition SeqTranslate(float enterDx, float exitDx) => new(
