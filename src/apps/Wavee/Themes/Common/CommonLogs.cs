@@ -147,7 +147,7 @@ internal static class CommonLogs
             bool header = !layout.TwoLineRows;
             var card = new List<Element>(5)
             {
-                ColumnHeader(post) with
+                ColumnHeader(post, folded: !header) with
                 {
                     Key = "logs:colhead", Animate = Design.Reveal.Resize, ClipToBounds = true,
                     Height = header ? CommonLogsRules.ColumnHeaderHeight : 0f, HitTestVisible = header,
@@ -387,33 +387,39 @@ internal static class CommonLogs
 
         // ── the list card: column header · body · footer ────────────────────────────────────────────────────────────
 
-        /// <summary>The same padding, gap and column widths as <see cref="LogRow"/>; only Time is interactive (flips the sort).</summary>
-        BoxEl ColumnHeader(Action<Action> post)
+        /// <summary>The same padding, gap and column widths as <see cref="LogRow"/>; only Time is interactive (flips the sort). <paramref name="folded"/> (the two-line
+        /// rows, which have no column header): the SAME nodes, folded to no height by the caller, whose columns give way to the card's width (shrink to it, never
+        /// past it: a folded header lays nothing out beyond the card) and whose sort button is no target (no role, no focus, no input) until it unfolds.</summary>
+        BoxEl ColumnHeader(Action<Action> post, bool folded)
         {
             bool newestFirst = _newestFirst.Value != 0;
+            float give = folded ? 1f : 0f;   // the fixed columns' shrink: none while the header stands (they mirror the rows' columns), all of it while folded
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Height = CommonLogsRules.ColumnHeaderHeight, Shrink = 0f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Height = CommonLogsRules.ColumnHeaderHeight, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
                 Children =
                 [
-                    new BoxEl { Width = CommonLogsRules.ChevronSlot, Shrink = 0f },
-                    new BoxEl { Width = CommonLogsRules.DotSlot, Shrink = 0f },
-                    TimeHeader(newestFirst, post),
-                    HeaderLabel(Loc.Get(Strings.Logs.ColLevel)) with { Width = CommonLogsRules.LevelColumn, Shrink = 0f },
-                    HeaderLabel(Loc.Get(Strings.Logs.ColCategory)) with { Width = CommonLogsRules.CategoryColumn, Shrink = 0f },
-                    HeaderLabel(Loc.Get(Strings.Logs.ColMessage)) with { Grow = 1f, MinWidth = 0f },
+                    new BoxEl { Width = CommonLogsRules.ChevronSlot, Shrink = give, MinWidth = 0f },
+                    new BoxEl { Width = CommonLogsRules.DotSlot, Shrink = give, MinWidth = 0f },
+                    TimeHeader(newestFirst, post, folded),
+                    HeaderLabel(Loc.Get(Strings.Logs.ColLevel)) with { Width = CommonLogsRules.LevelColumn, Shrink = give, MinWidth = 0f },
+                    HeaderLabel(Loc.Get(Strings.Logs.ColCategory)) with { Width = CommonLogsRules.CategoryColumn, Shrink = give, MinWidth = 0f },
+                    HeaderLabel(Loc.Get(Strings.Logs.ColMessage)) with { Grow = 1f, Shrink = give, MinWidth = 0f },
                 ],
             };
         }
 
         static TextEl HeaderLabel(string text) => R.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary };
 
-        /// <summary>The sortable Time header: the arrow shows where the NEWEST row sits. A click flips the order.</summary>
-        Element TimeHeader(bool newestFirst, Action<Action> post) => new BoxEl
+        /// <summary>The sortable Time header: the arrow shows where the NEWEST row sits. A click flips the order. Folded (see <see cref="ColumnHeader"/>), it stays
+        /// the same node but is no control: no button role, no tab stop, no input, and it shrinks with the other columns.</summary>
+        Element TimeHeader(bool newestFirst, Action<Action> post, bool folded) => new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = CommonLogsRules.SortGap, Width = CommonLogsRules.TimeColumn, Shrink = 0f,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = CommonLogsRules.SortGap, Width = CommonLogsRules.TimeColumn,
+            Shrink = folded ? 1f : 0f, MinWidth = 0f, ClipToBounds = folded,
+            Role = folded ? AutomationRole.None : AutomationRole.Button, Focusable = !folded, IsEnabled = !folded, HitTestVisible = !folded,
+            Cursor = folded ? null : CursorId.Hand,
             OnClick = () => post(() => { _newestFirst.Value = newestFirst ? 0 : 1; _expandedSeq.Value = -1; }),
             Children =
             [

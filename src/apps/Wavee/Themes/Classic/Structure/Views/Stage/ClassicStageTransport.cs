@@ -270,8 +270,11 @@ internal sealed class ClassicStageTransportPlace : Component
         var sc = p.Stage;
         var L = sc.Layout.Value;
         bool gallery = sc.Mode.Value == Stage.Mode.Visualizer && sc.GalleryShown.Value;   // the root's own gate on the docked gallery
+        // "chrome:transport" sits on THIS layer, whose first child is the card (the root's Show layer above the component's anchor is
+        // "chrome:transport:motion"): FirstChild of the chrome key is the placed card, as for the top bar and the gallery
         return Stage.Layer with
         {
+            Key = "chrome:transport",
             Children =
             [
                 new BoxEl

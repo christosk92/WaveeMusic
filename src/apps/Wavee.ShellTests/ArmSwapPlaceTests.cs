@@ -112,6 +112,33 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
         return new Point2(at.X + r.X + r.W / 2f, at.Y + r.Y - sc.OffsetY + r.H / 2f);
     }
 
+    /// <summary>A screen point inside the part of <paramref name="item"/> its viewport shows (the middle of that part), scrolling the item's top to
+    /// the band's top first when less than half of it shows: a click near a cell's edge can land outside the list.</summary>
+    static Point2 ShownPoint(Shell.HeadlessShell shell, NodeHandle vp, int item)
+    {
+        var scene = shell.Host.Scene;
+        Assert.True(scene.TryGetScroll(vp, out var sc));
+        var r = sc.Layout!.ItemRect(item, Cross(in sc));
+        if (ShownSpan(in sc, r.Y, r.H) < r.H * 0.5f)
+        {
+            var handle = shell.Host.TryGetScrollHandle(vp);
+            Assert.NotNull(handle);
+            handle!.ScrollTo(MathF.Max(0f, r.Y - Inset(in sc)), ScrollMove.Immediate);
+            shell.RunFrames(5);
+            Assert.True(scene.TryGetScroll(vp, out sc));
+            r = sc.Layout!.ItemRect(item, Cross(in sc));
+        }
+        float top = MathF.Max(r.Y, sc.OffsetY + Inset(in sc));
+        float bottom = MathF.Min(r.Y + r.H, sc.OffsetY + sc.ViewportH);
+        Assert.True(bottom - top >= 8f, $"item {item} shows {bottom - top} DIP of its {r.H} in the viewport");
+        var at = scene.PresentedAbsoluteRect(vp);
+        return new Point2(at.X + r.X + r.W / 2f, at.Y + (top + bottom) / 2f - sc.OffsetY);
+    }
+
+    /// <summary>How much of the span [<paramref name="y"/>, + <paramref name="h"/>) the viewport shows (below its band's inset).</summary>
+    static float ShownSpan(in ScrollState sc, float y, float h)
+        => MathF.Max(0f, MathF.Min(y + h, sc.OffsetY + sc.ViewportH) - MathF.Max(y, sc.OffsetY + Inset(in sc)));
+
     static void ClickAt(Shell.HeadlessShell shell, Point2 p, KeyModifiers mods = KeyModifiers.None, uint at = 1000)
     {
         shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, p, 0, 0, mods));
@@ -131,7 +158,10 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
         {
             shell.Window.Composited = true;
             Shell.GoTo(s_playlist);
-            Until(shell, () => !shell.Find(Arm + "two-column").IsNull && shell.FindPrefix("list:").Count == 1 && shell.FindPrefix("row").Count > 4,
+            // A wall-clock wait, not a frame budget: a Spotify playlist this process never revalidated opens RevalidateThenPaint and the page HOLDS its
+            // rows (the shimmer) on that /diff for up to ListFreshness.BlockingBudgetMs (1500 ms of the Stopwatch clock, ListOpen); the offline host
+            // does not settle it sooner, and 240 headless frames run in a fraction of that.
+            UntilBackground(shell, () => !shell.Find(Arm + "two-column").IsNull && shell.FindPrefix("list:").Count == 1 && shell.FindPrefix("row").Count > 4,
                   "the playlist's two-column arm and its rows");
             shell.RunFrames(60);
             var scene = shell.Host.Scene;
@@ -224,13 +254,11 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
             Assert.True(scene.TryGetScroll(vp, out var sc));
             Assert.True(sc.ItemCount > 12, $"the fake library has {sc.ItemCount} albums, too few to scroll");
 
-            // Pick the third item (on its words, under a card's cover and its play button), then scroll the navigator so the item at the
-            // band's top is a few rows down.
+            // Pick the third item, then scroll the navigator so the item at the band's top is a few rows down. The click lands inside the part of
+            // the item the navigator SHOWS: at this 560-tall window the Small navigator's grid (240 wide, two 96-floor cards a row under its 156 head)
+            // ends about where the second row's foot is, so a point near the cell's foot can fall under the viewport and pick nothing.
             string first = LibraryViewPrefs.Read("albums").SelectedKey;
-            var cell = RowPoint(scene, vp, 2);
-            Assert.True(scene.TryGetScroll(vp, out var nav));
-            var cellRect = nav.Layout!.ItemRect(2, Cross(in nav));
-            ClickAt(shell, new Point2(cell.X, cell.Y + cellRect.H / 2f - 10f));
+            ClickAt(shell, ShownPoint(shell, vp, 2));
             shell.RunFrames(20);
             string picked = LibraryViewPrefs.Read("albums").SelectedKey;
             Assert.False(string.IsNullOrEmpty(picked), "the pick is the page's");

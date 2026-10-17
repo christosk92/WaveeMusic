@@ -141,6 +141,10 @@ public sealed partial class TierLayoutTests
         Assert.True(now.Equals(before.Node), $"{what}: {key} was remounted on the crossing");
     }
 
+    /// <summary>The content offset of item <paramref name="index"/> of virtual viewport <paramref name="viewport"/> (its row's top); NaN without an extent.</summary>
+    static double ItemTop(Shell.HeadlessShell shell, NodeHandle viewport, int index)
+        => shell.Host.Scene.ScrollRef(viewport).Extent is { } extent ? extent.OffsetOf(index) : double.NaN;
+
     static ScrollHandle Handle(Shell.HeadlessShell shell, NodeHandle viewport)
         => shell.Host.TryGetScrollHandle(viewport) ?? throw new InvalidOperationException("no scroll handle on the viewport");
 
@@ -224,6 +228,8 @@ public sealed partial class TierLayoutTests
             double offset = ScrollTo(shell, viewport, 2000.0);   // a long way down
             Assert.True(offset > 50.0, $"{what}: the grid scrolled");
             int anchor = shell.Host.Scene.ScrollRef(viewport).AnchorIndex;
+            // Where the anchor item (the first item of the first FULLY visible row) sits on screen: the re-fit keeps it there.
+            double anchorScreen = ItemTop(shell, viewport, anchor) - offset;
 
             ResizedFrame(shell, to, narrowing);
             var parts = Restate(shell, [grid]);
@@ -234,7 +240,17 @@ public sealed partial class TierLayoutTests
             Assert.True(ScrollUnder(shell, grid.Node).Equals(viewport), $"{what}: the grid's viewport was remounted");
 
             shell.RunFrames(30);
-            Assert.True(Handle(shell, viewport).OffsetNow > 0.5, $"{what}: the grid's scroll was reset to the top");
+            // The re-fit keeps the anchor item where the user saw it, held at the content's start. A widening that pulls the anchor item up into the new
+            // FIRST row (800 -> 1440 at the end of the 12-item fixture: the second row's first item at 4 columns falls into the first row at the resized
+            // frame's 7 and the new tier's 5) rests at the top by that very rule: the item at the top is still the one the user saw. Only an anchor the
+            // re-fit leaves below its old place must scroll.
+            double shown = Handle(shell, viewport).OffsetNow;
+            double top = ItemTop(shell, viewport, anchor);
+            if (top > anchorScreen + 0.5)
+                Assert.True(shown > 0.5, $"{what}: the grid's scroll was reset to the top (item {anchor} at {top}, on screen at {anchorScreen} before)");
+            float viewportH = shell.Host.Scene.ScrollRef(viewport).ViewportH;
+            Assert.True(top >= shown - 0.5 && top < shown + viewportH,
+                $"{what}: item {anchor}, at the grid's top before the crossing, left the screen (its row at {top}, the scroll at {shown}, the viewport {viewportH} tall)");
             // The re-fit keeps the anchor ROW where the user sees it: the item at the top is the old one, or one of its row's new neighbours.
             int now = shell.Host.Scene.ScrollRef(viewport).AnchorIndex;
             Assert.True(Math.Abs(now - anchor) <= 12, $"{what}: the grid's top item jumped from {anchor} to {now}");
@@ -407,9 +423,18 @@ public sealed partial class TierLayoutTests
         string what = $"Artist {from} -> {to}";
         OnPage(ArtistPage.Route, "artist-page:", from, shell =>
         {
-            var parts0 = PartsOf(shell, "shelf", static k => k == "shelf");
+            // The discography draws a different tree at Compact (C-Artist-Compact: each facet a strip of album cards, `disco-arm:strip`) than above it (the
+            // inline grid with its drawer, `disco-arm:grid`): a crossing at 528 swaps the arm under the cross-fade BY DESIGN, so neither the grid nor the
+            // strip's shelf survives it. A crossing that keeps the arm (1008) keeps the grid. Every other shelf, and the chart, survives every crossing.
+            bool armSwaps = (TierAt(from) == WidthTier.Compact) != (TierAt(to) == WidthTier.Compact);
+            string armBefore = TierAt(from) == WidthTier.Compact ? "disco-arm:strip" : "disco-arm:grid";
+            string armAfter = TierAt(to) == WidthTier.Compact ? "disco-arm:strip" : "disco-arm:grid";
+            var arms = shell.FindPrefix("disco-arm:");
+            foreach (var (_, key) in arms) Assert.True(string.Equals(key, armBefore, StringComparison.Ordinal), $"{what}: the discography draws {key} at {from}, not {armBefore}");
+
+            var parts0 = PartsOf(shell, "shelf", static k => k == "shelf").FindAll(p => !UnderAny(shell, p.Node, arms));   // a strip arm's shelf is the arm's
             parts0.AddRange(PartsOf(shell, "chart-shelf:"));
-            parts0.AddRange(PartsOf(shell, "disco-lazy"));
+            if (!armSwaps) parts0.AddRange(PartsOf(shell, "disco-lazy"));
             Assert.NotEmpty(parts0);
             var scroller = Single(shell, "artist-scroll:").Node;
             double offset = ScrollTo(shell, scroller, 800.0);
@@ -424,7 +449,25 @@ public sealed partial class TierLayoutTests
             Assert.True(Single(shell, "artist-scroll:").Node.Equals(scroller), $"{what}: the page scroller was remounted");
             if (offset > 50.0) Assert.True(Handle(shell, scroller).OffsetNow > 0.5, $"{what}: the page scroll was reset to the top");
             foreach (var p in parts) Assert.True(shell.Host.Scene.IsLive(p.Node), $"{what}: {p.Name} did not survive the settle");
+
+            // The arm: kept (the same nodes) where the tier keeps it, swapped for the other one (the old arm gone after its fade) where it does not.
+            var armsNow = shell.FindPrefix("disco-arm:");
+            Assert.Equal(arms.Count, armsNow.Count);
+            foreach (var (_, key) in armsNow) Assert.True(string.Equals(key, armAfter, StringComparison.Ordinal), $"{what}: the discography draws {key} at {to}, not {armAfter}");
+            foreach (var (node, key) in arms)
+                Assert.True(shell.Host.Scene.IsLive(node) != armSwaps,
+                    armSwaps ? $"{what}: {key} outlived its cross-fade" : $"{what}: {key} was rebuilt on a crossing that keeps it");
         });
+    }
+
+    /// <summary>True when <paramref name="node"/> is one of <paramref name="roots"/> or inside one.</summary>
+    static bool UnderAny(Shell.HeadlessShell shell, NodeHandle node, List<(NodeHandle Node, string Key)> roots)
+    {
+        var scene = shell.Host.Scene;
+        for (var n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
+            foreach (var (root, _) in roots)
+                if (n.Equals(root)) return true;
+        return false;
     }
 
     // ── the release notes page (the loaded fixture): the picker, the cards, the sections ──────────────────────────────────

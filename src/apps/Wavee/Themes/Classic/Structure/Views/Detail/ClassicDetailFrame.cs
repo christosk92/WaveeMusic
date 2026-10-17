@@ -89,15 +89,18 @@ internal static partial class ClassicDetailFrame
         // A TRACK page lays the insights sheet over its list column, below the list bar (tuned Classic I1, board C-Liked): composed open or
         // not, so the list never remounts; the layer takes hits only while the sheet is open (its light-dismiss closes it on a list click),
         // so a closed sheet leaves every row and the bar reachable.
-        // At Huge (the tier record, board C-Liked-Huge) the pane DOCKS instead: a 360 column beside the list that the list yields its width to.
+        // At Huge on a page with no rail (the tier record, board C-Liked-Huge) the pane DOCKS instead: a 360 column beside the list that the list
+        // yields its width to; a rail page shows it in its aside.
         // The tree is the same in every tier — [the list host (the list + the sheet's layer) | the dock slot] — so a crossing never re-parents
         // the list (it keeps its scroll); the tier only decides which of the two carries the pane.
         if (p.Sheet is { } listSheet)
         {
             var open = listSheet.Toggle.Open;
-            // With an aside the insights live in it (the toggle shows them there): no sheet over the list and no dock beside it.
+            // With an aside the insights live in it (the toggle shows them there): no sheet over the list and no dock beside it. The 360 dock is the
+            // HEAD arm's alone (a page with no rail, C-Liked-Huge): a rail page's insights dock in its aside (C-Playlist-Huge / -Followed-Huge), and
+            // one with no aside yet (no recommendations, facts not settled) keeps the sheet rather than a dock the boards never draw.
             bool inAside = p.Aside is not null;
-            bool docked = !inAside && detailTier.InsightsDocked;
+            bool docked = !inAside && p.Head is not null && detailTier.InsightsDocked;
             right = right with
             {
                 Direction = 0,

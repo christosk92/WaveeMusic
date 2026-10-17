@@ -164,10 +164,12 @@ internal static class ClassicStageRoot
                 }),
                 // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own height, the window tier's), full width at the
                 // tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23), or beside a gallery that runs to the foot
-                // (C-Stage-Huge); its own component places it, so a gallery toggle re-renders the placement and not this surface.
+                // (C-Stage-Huge); its own component places it, so a gallery toggle re-renders the placement and not this surface. This
+                // layer carries only the Enter/Exit: "chrome:transport" sits on the placement's own layer, whose FIRST CHILD is the card
+                // (the contract every chrome key keeps: the keyed layer's first child is the bar, the card or the pane).
                 Flow.Show(v.ChromeVisible, Stage.Layer with
                 {
-                    Key = "chrome:transport",
+                    Key = "chrome:transport:motion",
                     Enter = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
                     Children = [Embed.Comp(new ClassicStageTransportPlace.Props(v.Stage, v.Transport), static () => new ClassicStageTransportPlace())],
                 }),

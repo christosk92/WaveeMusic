@@ -132,7 +132,10 @@ internal static partial class ClassicReleaseNotes
             cells[i] = new BoxEl
             {
                 Key = "secw:" + (sections[i].Key ?? version + ":" + i.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Shove,   // a re-fit moves the same section into its new cell
+                // A re-fit moves the same section into its new cell AND resizes it (the track width, the row height): the cell glides on both, its size
+                // revealed (a clip), so the section inside is laid out at its final width from the first frame. Position-only (Shove) left a cell whose
+                // column kept its origin but changed its width snapping into its new box.
+                Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Reflow,
                 Children = [sections[i]],
             };
         main.Add(new GridEl
