@@ -932,8 +932,9 @@ public static partial class Shell
                 return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
                     Ctx.Provide(MeasureMemory.Scope, MeasureScopeOf(route),
                         Ctx.Provide(PageChromeSink.Context, PageChromeChannel.SinkFor(route),
-                            ViewSlots.View(ViewKeys.ShellContentState,
-                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route))))));
+                            // P5 Z2b: the content host names the page's main scroller to the page-scroll signal (Shell.PageScrollFollower.cs).
+                            FollowPageScroll(route, ViewSlots.View(ViewKeys.ShellContentState,
+                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route)))))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));

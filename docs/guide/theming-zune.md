@@ -134,7 +134,36 @@ Tests: `Wavee.ShellTests\ZuneFrameMountedTests.cs`.
 
 ## Z2b: the band and the material
 
-_Not built yet._
+Registered by `ZuneStructure.Band.cs`; numbers in `Rules\ZuneBandRules.cs` (record `ZuneBandLayout` per window tier, board Z-Part-Band).
+
+- **The band** (`Shell.NavPane`, `Views\Band\ZuneBand.cs`) draws from `NavPaneProps.Band` (contract 1.26) and reads the page chrome
+  through `ZuneFrameContext.PageChrome`. Row 1: home · browse · library · recents as lowercase pivot words (the `Pivot` role; the lit one
+  at `FacetTitleStyle.SelectedWeight` in the primary ink, the rest tertiary), starting on the frame's gutter, then "pinned" and up to six
+  pins (art; a click opens, a hover-revealed play disc plays, a 4-dip accent dot marks the playing pin). Pins show at Standard and Huge
+  only (P5 decision 4) and follow the `bandPins` option. Row 2: the page's views (Library's kinds, Browse's bands, in-page tabs), the
+  current one at the selected weight; a detail page (no lit pivot) leads with its title and a hairline and underlines the current view in
+  the accent; then the page's actions (play disc, shuffle ring, word pills). No views and no actions: no row 2.
+- **Heights**: row 1 44 + row 2 32 + 8 = 84 at Standard (Compact 92, Huge 4K 112); row 1 + 8 = 52 without row 2 or collapsed (Huge 4K
+  72). The band's root eases its own height over 250 ms (a reflow on the height axis, `ZuneBandRules.HeightMotion`); the rows keep their
+  height and are clipped, so nothing jumps.
+- **Collapse** (`collapseBand`, Compact, Small and Standard): row 2 folds while the page last scrolled down (`BandProps.Scroll`) and comes
+  back on the way up or at the top. Huge and Huge 4K never collapse.
+- **Overflow** (`pivotOverflow`): EdgeFadeScroll scrolls the pivot run under an edge fade (Compact also rotates the lit pivot to the front,
+  the words sliding); MoreMenu, at Compact and Small, keeps the lit pivot and folds the rest (and the hub's profile and settings) into a
+  "more" menu. Row 2 scrolls under a fade at Compact and Small.
+- **Keys**: each row is a tab list with one tab stop (the lit word); Left, Right, Home and End move the focus; Enter opens.
+- **The page scroll is reported by the content host** (`Shell\Shell.PageScrollFollower.cs`): `PageBody` wraps each page in a follower
+  that finds the page's outermost vertical scroller (preferring one keyed with the page's scroll scope) and reports its offset through the
+  page-chrome channel; a page that reports through `PageChromeSink.ReportScroll` itself still wins (the last report is followed).
+- **The material** (`Shell.Material`, `Views\Material\ZuneMaterial.cs`): the flat ground (the style's shell ground), then by the
+  `background` option: artwork wash (the published cover tint as a band over the title bar and the band), mix (the page's
+  `Backdrop.Mix` covers, faint, behind the top of the window), none (the ground alone). Under artwork wash and mix the page's
+  `Backdrop.Bleed` (an artist's header) lies faint behind the band and the head. Live.
+- **Cover leaves**: PageTone **Own** (artwork wash: the page tone as a band fading out within the hero; else nothing), ArtistBlend **Own**
+  (artwork wash: the style's blend ladder; else nothing), ArtistVeil **Own** (neutral, never tinted), TintBinder **Own** (publishes the cover
+  tint under artwork wash and a definite "no colour" otherwise).
+- **Nothing**: `Shell.NavLibraryHead`, `Shell.NavEmpty`, `Shell.NavSectionFlyout`, `Shell.NavFolderFlyout`, `Shell.NavEdit` (the core pane
+  never mounts under Zune: `NavTree` is false).
 
 ## Z3: the lists
 
