@@ -13,6 +13,11 @@
 // that keep 700 (ArtistDisplay, ArtistTitle, ArtistCompactTitle: the masthead voice, not UI labels) and the three that keep
 // SemiLight 350 (PivotLabel, NpvLyric, StatHero: the same WinUI SemiLight the engine's own pivot control uses). A SEVENTH is a
 // regression. PivotLabel (19/25) is the second and last sanctioned off-ramp size (the other is the picker label's own line box).
+//
+// CONTRACT 1.26 (P5, ZV) adds the pivot-and-panorama type roles and the shape roles. Classic draws none of those surfaces, so every new
+// type role REUSES a voice the table already has or copies the numbers a Classic surface sets today without a role (the stage's title,
+// wordmark and timed lyric line), and every shape role is a radius a Classic surface draws today: no Classic view reads them yet, and
+// nothing Classic paints changes. The lyric line's 700 is the lyrics surface's own row weight (`Lyrics.RowMetrics`), not a new voice.
 
 using System.Runtime.CompilerServices;
 using FluentGpu.Foundation;
@@ -30,7 +35,7 @@ public static class ClassicRoles
 
     /// <summary>Classic's role table. One immutable instance: the style publishes it on its definition and every read of
     /// <c>R</c> before a definition is installed falls back to it.</summary>
-    public static WaveeStyleRoles Table { get; } = new(Type(), Ink(), Layer(), Space(), OnMedia(), StageArm(), Wash(), Lyrics(), Motion(), Case());
+    public static WaveeStyleRoles Table { get; } = new(Type(), Ink(), Layer(), Shape(), Space(), OnMedia(), StageArm(), Wash(), Lyrics(), Motion(), Case());
 
     /// <summary>Registers this table as the roles a read uses while no installed definition carries any (the boot steps ahead of
     /// the appearance seed, and a unit-test process that never boots the shell). Runs when the assembly loads, so core code
@@ -43,6 +48,13 @@ public static class ClassicRoles
         // The pair of rungs a role keeps from the engine ramp: Caption 12/16, Body 14/20, BodyStrong 14/20/600, BodyLarge 18/24,
         // Subtitle 20/28/600, Title 28/36/600, TitleLarge 40/52/600, Display 68/92/600. The rest of each role is its deviation.
         var pickQuote = new TextRole(TypeRung.Title, Face: DisplayFace, Weight: 400, Tracking: -12f);
+        var pageHero = new TextRole(TypeRung.Title);
+        var detailHero = new TextRole(TypeRung.Title, Face: DisplayFace, Tracking: -20f);
+        var railHeader = new TextRole(TypeRung.Subtitle);
+        var moduleHeader = new TextRole(TypeRung.Subtitle, Face: DisplayFace, Tracking: -6f);
+        var surfaceDisplay = new TextRole(TypeRung.TitleLarge, Face: DisplayFace, Weight: 400, Tracking: -12f);
+        var pivotLabel = new TextRole(TypeRung.BodyLarge, Face: DisplayFace, Size: 19f, LineHeight: 25f, Weight: 350, Tracking: -6f);
+        var rowNumber = new TextRole(TypeRung.Caption);   // ClassicRowCells.NumberCell: Caption 12/16 (the tertiary ink is the call site's)
         return new TypeRoles(
             DisplayFace: DisplayFace,
             TrackTitle: new TextRole(TypeRung.BodyStrong),                                           // 14/20/600
@@ -53,11 +65,11 @@ public static class ClassicRoles
             DenseMeta: new TextRole(TypeRung.Body, Size: 13f, LineHeight: 18f),                       // 13/18
             DenseTitle: new TextRole(TypeRung.BodyStrong, Size: 13f, LineHeight: 18f),                // 13/18/600
             SheetTitle: new TextRole(TypeRung.BodyLarge, Size: 16f, LineHeight: 22f, Weight: 600),    // 16/22/600
-            RailHeader: new TextRole(TypeRung.Subtitle),                                             // 20/28/600
-            ModuleHeader: new TextRole(TypeRung.Subtitle, Face: DisplayFace, Tracking: -6f),          // 20/28/600, display face, -6
-            PageHero: new TextRole(TypeRung.Title),                                                  // 28/36/600
-            DetailHero: new TextRole(TypeRung.Title, Face: DisplayFace, Tracking: -20f),              // 28/36/600, display face, -20
-            SurfaceDisplay: new TextRole(TypeRung.TitleLarge, Face: DisplayFace, Weight: 400, Tracking: -12f),   // 40/52/400, display face
+            RailHeader: railHeader,                                                                  // 20/28/600
+            ModuleHeader: moduleHeader,                                                              // 20/28/600, display face, -6
+            PageHero: pageHero,                                                                      // 28/36/600
+            DetailHero: detailHero,                                                                  // 28/36/600, display face, -20
+            SurfaceDisplay: surfaceDisplay,                                                          // 40/52/400, display face
             HeroTitle: new TextRole(TypeRung.TitleLarge, Face: DisplayFace, Weight: 600, Tracking: -12f),        // 40/52/600, display face
             ArtistDisplay: new TextRole(TypeRung.Display, Face: DisplayFace, Size: 84f, LineHeight: 96f, Weight: 700, Tracking: -28f, MinSize: 68f),
             ArtistTitle: new TextRole(TypeRung.TitleLarge, Face: DisplayFace, Size: 48f, LineHeight: 60f, Weight: 700, Tracking: -20f, MinSize: 40f),
@@ -65,14 +77,43 @@ public static class ClassicRoles
             NowPlayingTitle: new TextRole(TypeRung.Subtitle),                                        // 20/28/600
             PickQuote: pickQuote,                                                                    // 28/36/400, display face, -12
             FoldTitle: pickQuote,                                                                    // the same cut, named for the Fold tile
-            PivotLabel: new TextRole(TypeRung.BodyLarge, Face: DisplayFace, Size: 19f, LineHeight: 25f, Weight: 350, Tracking: -6f),
+            PivotLabel: pivotLabel,
             NpvLyric: new TextRole(TypeRung.Subtitle, Face: DisplayFace, Weight: 350, Tracking: -6f), // 20/28/350, display face
             StatHero: new TextRole(TypeRung.Title, Face: DisplayFace, Weight: 350, Tracking: -6f),    // 28/36/350, display face
             // The Home facet row: 28/36 display words, 400 at rest and 600 selected, 8-DIP plates 40 tall, 24 apart, the first item
             // pulled -8 so its WORD sits on the page's leading edge; the compact form is one rung down with the plates 8 apart.
             FacetTitle: new FacetRole(28f, 36f, DisplayFace, 0f, 400, 600, new Edges4(8f, 2f, 8f, 2f), 40f, 24f, -8f),
-            FacetCompact: new FacetRole(20f, 28f, DisplayFace, 0f, 400, 600, new Edges4(8f, 2f, 8f, 2f), 40f, 8f, -8f));
+            FacetCompact: new FacetRole(20f, 28f, DisplayFace, 0f, 400, 600, new Edges4(8f, 2f, 8f, 2f), 40f, 8f, -8f),
+            // ── the pivot-and-panorama vocabulary (contract 1.26). Classic draws no panorama, band or quickplay group: each role is the
+            //    voice Classic ALREADY sets for the same job, so a structure that reads one under Classic draws Classic's type.
+            Panorama: surfaceDisplay,                                                                // a place's name: the surface masthead, 40/52/400
+            PanoramaCompact: pageHero,                                                               // the page title, 28/36/600
+            Hero: detailHero,                                                                        // a record's hero (ClassicDetailHero), 28/36/600 display
+            Pivot: pivotLabel,                                                                       // the pivot tab header, 19/25/350 display
+            SubPivot: new TextRole(TypeRung.Body),                                                   // the stock SelectorBar's word, 14/20/400
+            Numeral: rowNumber,                                                                      // a track row's number, 12/16
+            NumeralLarge: rowNumber,                                                                 // the artist chart's number is the row's (ClassicArtistChart)
+            NowPlayingDisplay: new TextRole(TypeRung.TitleLarge, Face: DisplayFace),                  // the stage hero's title, 40/52/600 display (Stage.TitleFont)
+            Wordmark: new TextRole(TypeRung.Caption, Weight: 600),                                   // the stage top bar's "Wavee", 12/16/600
+            LyricsLine: new TextRole(TypeRung.Title, Size: 36f, LineHeight: 46f, Weight: 700),        // the stage's timed line (Lyrics.Surface.Timed(large)), 36/46/700
+            Heading: railHeader,                                                                     // a section header, 20/28/600
+            QuickplayHead: moduleHeader);                                                            // a Home module header, 20/28/600 display
     }
+
+    // The corner radius of each kind of surface Classic draws today (literals, so the table builds while the assembly loads; the engine's
+    // ramp is RadiiScale.FluentDefault in Classic's definition, pinned equal by ClassicRolesTests).
+    private static ShapeRoles Shape() => new(
+        Card: 8f,          // a media card and a shelf cell: Radii.Card (Surface.Bound, the card plate)
+        Cover: 6f,         // content artwork: ClassicLibraryRules.CardArtCorner, the player bar's art, the episode row's art
+        Control: 4f,       // a Wavee-drawn plate: Radii.Control
+        Overlay: 8f,       // flyouts, menus, the dialog card: Radii.Overlay
+        Tile: 8f,          // a surface tile (ClassicSurface: Radii.Card off the row form)
+        PinArt: 6f,        // a nav row's cover at 32 / 40 (Sidebar.Cover.Radius)
+        Avatar: 999f,      // a person: Radii.Full (the engine clamps to half the box)
+        CurrentMark: 2f,   // the nav pane's selection pill (SidebarGeometry.PillRadius)
+        ContentSeam: 8f,   // the content region's corner facing the nav pane (Design.Size.ContentPaneCorners: Radii.Card)
+        OmniRow: 4f,       // the omnibar's suggestion row (ClassicSearch: Radii.Control)
+        SeekTrack: 2f);    // the seek line's track: the engine Slider's TrackCornerRadius, which ClassicTransport draws
 
     private static SpaceRoles Space() => new(
         SectionGap: 32f, SectionGapWide: 40f, PageMaxW: 1600f,

@@ -1,6 +1,6 @@
 // ── Theming/Roles/R.cs — the facade every view reads its style roles through (themes plan 5.4) ─────────────────────────
 //
-// `R.Type.MicroMeta(text)`, `R.Space.SectionGap`, `R.Motion.ScaleSubtle.Hover`, `R.Case.For(kind)`, and (T2b) the colour roles
+// `R.Type.MicroMeta(text)`, `R.Space.SectionGap`, `R.Shape.All(ShapeRole.Cover)`, `R.Motion.ScaleSubtle.Hover`, `R.Case.For(kind)`, and (T2b) the colour roles
 // `R.Layer.RowHover`, `R.Ink.AccentDecor`, `R.OnMedia.ScrimRest`, `R.Wash.CoverMix`, `R.StageArm.For(kind)`: the active style's
 // roles, read where the element is built. The roles are `Tok.Definition.AppRoles`, the table the active `ThemeDefinition` carries, so
 //   · a definition swap (`Tok.Use`, a theme switch, a Live option that moves a role) reaches the NEXT read: nothing is cached
@@ -34,6 +34,9 @@ public static class R
 
     /// <summary>The surfaces and row ladders.</summary>
     public static LayerReads Layer => new(Current.Layer);
+
+    /// <summary>The corner radius of each kind of surface (<c>R.Shape.All(ShapeRole.Cover)</c>, <c>R.Shape.Cover</c>).</summary>
+    public static ShapeRoles Shape => Current.Shape;
 
     /// <summary>The page-rhythm, shelf and flyout geometry. <see cref="SpaceRoles.DockReserve"/> follows the ACTIVE structure's player-bar
     /// height (T6a): the bar's height is the structure's (<c>PlayerBarPolicy.Height</c>), and a page reserves what the bar covers, so

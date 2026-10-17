@@ -82,6 +82,32 @@ public sealed class ClassicPoliciesTests
     }
 
     [Fact]
+    public void Classic_fills_the_1_26_metrics_with_what_it_draws_today()
+    {
+        var m = ClassicTheme.Create().Metrics(ThemeOptionValues.Empty);
+        // A docked side pane from the Huge tier and at 4K: the floor of Classic's two docked panes (380 up to 2560, 420 from 3840).
+        Assert.Equal(380f, m.DockedPane);
+        Assert.Equal(420f, m.DockedPane4K);
+        Assert.Equal(ClassicPanelTiers.HugeW, m.DockedPane);
+        Assert.Equal(ClassicPanelTiers.Huge4KW, m.DockedPane4K);
+        Assert.Equal(ClassicPanelTiers.Huge.Rule.FloorW, m.DockedPane);
+        Assert.Equal(ClassicPanelTiers.Huge.Rule.FloorMaxW, m.DockedPane4K);
+        // A nav pane item is the pane's row; cards sit the card grid's gap apart.
+        Assert.Equal(36f, m.PaneItem);
+        Assert.Equal(SidebarGeometry.RowHeight, m.PaneItem);
+        Assert.Equal(12f, m.CardGap);
+        Assert.Equal(ClassicRoles.Table.Space.GridGap, m.CardGap);
+    }
+
+    [Fact]
+    public void No_metric_is_published_by_a_style_that_publishes_none()
+    {
+        var u = StyleMetrics.Unset;
+        Assert.Equal((0f, 0f, 0f, 0f), (u.DockedPane, u.DockedPane4K, u.PaneItem, u.CardGap));
+        Assert.NotEqual(u, u with { DockedPane = 360f });   // a new member takes part in equality, so a metrics change republishes
+    }
+
+    [Fact]
     public void Classic_offers_every_capability()
     {
         Assert.Equal(ShellCapabilities.Unrestricted, ClassicTheme.Create().Capabilities(ThemeOptionValues.Empty));

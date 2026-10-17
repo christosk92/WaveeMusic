@@ -96,10 +96,16 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
 
 /// <summary>The style's metrics: the row heights, the gutters and the control height a structure lays out with. A value
 /// type, so a style hands them out without allocating.</summary>
+/// <remarks>Contract 1.26 adds four members a structure with docked side panes and a density preset reads (themes plan 5.5, 6.4.1 rows
+/// 16 and 41): <see cref="DockedPane"/> and <see cref="DockedPane4K"/>, the width of each docked side pane from the second-pane rung and
+/// from Huge 4K (how MANY dock is the structure's); <see cref="PaneItem"/>, the height of a navigation pane's item; and
+/// <see cref="CardGap"/>, the gap between the cards of a grid or a shelf. A density option moves <see cref="RowSingle"/>,
+/// <see cref="PaneItem"/> and <see cref="CardGap"/> together.</remarks>
 public readonly record struct StyleMetrics(
     float RowSingle, float RowDouble, float RowWithArt, float ControlHeight,
     float PivotRow, float SubPivotRow, float SeekRow, float TransportRow, float SearchWidth,
     float Gutter, float Section, float MinPageColumn, float PanoramaCompactBelow,
+    float DockedPane, float DockedPane4K, float PaneItem, float CardGap,
     TrackRowMetrics TrackRows = default)
 {
     /// <summary>No metric published (every member 0): what a style that publishes none answers. Wavee Classic publishes its own

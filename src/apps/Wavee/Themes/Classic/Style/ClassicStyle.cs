@@ -37,10 +37,13 @@ public sealed class ClassicStyle : IStyleLayer
     /// <summary>Classic's metrics. A one-line row is the nav item (44), a two-line or art row the track row (56, whose cover is a
     /// 40 thumb); the control is 32; the player bar is ONE 72-DIP row, so its seek line has no row of its own (0) and the
     /// transport row is the whole dock; the search field grows to 420; the page gutter is the definition's wide page margin and
-    /// sections are 32 apart; a page column keeps 480 of content. Classic has no pivot band and no panorama title (0).</summary>
+    /// sections are 32 apart; a page column keeps 480 of content. Classic has no pivot band and no panorama title (0). A docked side
+    /// pane is 380 wide from the Huge tier and 420 at 4K (the floor of Classic's two docked panes, `ClassicPanelTiers.HugeW` /
+    /// `Huge4KW`); a nav pane item is the pane's 36 row (`SidebarGeometry.RowHeight`); cards sit the card grid's 12 apart.</summary>
     private static readonly StyleMetrics s_metrics = new(
         RowSingle: Design.Size.NavItemH, RowDouble: Design.Size.TrackRowH, RowWithArt: Design.Size.TrackRowH,
         ControlHeight: Design.Size.ControlH, PivotRow: 0f, SubPivotRow: 0f, SeekRow: 0f, TransportRow: Design.Size.PlayerBarH,
         SearchWidth: 420f, Gutter: Design.Definition.Spacing.PageWide, Section: ClassicRoles.Table.Space.SectionGap,
-        MinPageColumn: 480f, PanoramaCompactBelow: 0f);
+        MinPageColumn: 480f, PanoramaCompactBelow: 0f,
+        DockedPane: 380f, DockedPane4K: 420f, PaneItem: 36f, CardGap: ClassicRoles.Table.Space.GridGap);
 }

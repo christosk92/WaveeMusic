@@ -65,6 +65,37 @@ public sealed class StyleRolesTests(ShellHost host)
         });
 
     [Fact]
+    public void A_shape_role_swap_is_a_non_colour_change_that_reaches_the_next_read()
+        => host.Run(() =>
+        {
+            ThemeDefinition original = Tok.Definition;
+            ThemeKind kind = Tok.Theme;
+            int epoch = Tok.Epoch, style = Tok.StyleEpoch;
+            try
+            {
+                Assert.Equal(6f, R.Shape.Cover);
+                var squared = ClassicRoles.Table with { Shape = ClassicRoles.Table.Shape with { Cover = 2f, Card = 0f } };
+                Assert.False(ClassicRoles.Table.DiffersOnlyInColours(squared));
+                Tok.Use(original with { AppRoles = squared }, kind);
+                Assert.Equal(2f, R.Shape.Cover);
+                Assert.Equal(FluentGpu.Foundation.CornerRadius4.All(0f), R.Shape.All(ShapeRole.Card));
+                Assert.Equal((epoch + 1, style + 1), (Tok.Epoch, Tok.StyleEpoch));   // geometry: applied as a unit, never a colour fade
+            }
+            finally { Restore(original, kind); }
+        });
+
+    [Fact]
+    public void Classic_alt_differs_from_classic_in_shape_roles_so_a_switch_between_them_is_a_transaction()
+    {
+        var classic = (WaveeStyleRoles)ClassicAlt.ClassicDefinition.AppRoles!;
+        var alt = (WaveeStyleRoles)ClassicAlt.Definition.AppRoles!;
+        Assert.Same(ClassicRoles.Table, classic);
+        Assert.Equal(classic with { Shape = alt.Shape }, alt);   // the shapes are the one role family that differs
+        Assert.False(classic.DiffersOnlyInColours(alt));
+        Assert.False(alt.DiffersOnlyInColours((WaveeStyleRoles)ClassicAlt.SquareDefinition.AppRoles!));
+    }
+
+    [Fact]
     public void An_equal_valued_table_is_adopted_without_an_epoch()
         => host.Run(() =>
         {

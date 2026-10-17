@@ -423,6 +423,9 @@ public sealed class ClassicColourRolesTests
         Assert.True(recoloured.DiffersOnlyInColours(table));
         // …and a non-colour role beside the colour change is not.
         Assert.False(table.DiffersOnlyInColours(recoloured with { Space = recoloured.Space with { SectionGap = 48f } }));
+        // …nor is a shape (contract 1.26): a radius is geometry, so a definition swap that moves one is a transaction, never a live colour fade.
+        Assert.False(table.DiffersOnlyInColours(recoloured with { Shape = recoloured.Shape with { Card = 0f } }));
+        Assert.False(recoloured.DiffersOnlyInColours(table with { Shape = table.Shape with { Avatar = 0f } }));
     }
 
     [Fact]

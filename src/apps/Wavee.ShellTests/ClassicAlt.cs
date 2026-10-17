@@ -1,7 +1,7 @@
 // ── Wavee.ShellTests/ClassicAlt.cs — the test-only theme that switches live (themes plan P4 exit, A4.2) ────────────────
 //
 // Classic's structure (every view key, the real frame) with a style whose definition differs from Classic's in NON-COLOUR tables:
-// other spacing and other radii. A switch between the two can therefore not take the live colour path; it is a theme
+// other spacing, other radii and (contract 1.26) other shape roles. A switch between the two can therefore not take the live colour path; it is a theme
 // transaction, end to end, on the real mounted shell: prewarm, freeze, the apply flush (persist `theme.id`, activate, install the
 // definition, remount the root), settle, thaw. It also declares one Transaction-mode style option (`squareCorners`, radii only)
 // for the same-structure case (plan 5.6: an in-place re-render keeps the state of every slot whose template did not change).
@@ -27,12 +27,16 @@ public static class ClassicAlt
     /// <summary>Classic's definition (what the appearance seed installs for Classic).</summary>
     public static ThemeDefinition ClassicDefinition { get; } = new ClassicStyle().Definition(OptionValues.Empty, AccentRamp.FluentDefault);
 
-    /// <summary>ClassicAlt's definition: Classic's colours with other spacing and radii (a non-colour change).</summary>
+    /// <summary>ClassicAlt's definition: Classic's colours with other spacing, radii and shape roles (a non-colour change).</summary>
     public static ThemeDefinition Definition { get; } = ClassicDefinition with
     {
         Id = "classic-alt",
         Spacing = ClassicDefinition.Spacing with { S = ClassicDefinition.Spacing.S + 2f, M = ClassicDefinition.Spacing.M + 4f },
         Radii = ClassicDefinition.Radii with { Card = ClassicDefinition.Radii.Card + 4f },
+        AppRoles = ClassicRoles.Table with
+        {
+            Shape = ClassicRoles.Table.Shape with { Card = ClassicRoles.Table.Shape.Card + 4f, Tile = ClassicRoles.Table.Shape.Tile + 4f },
+        },
     };
 
     /// <summary>The definition with <c>squareCorners</c> on.</summary>
@@ -40,6 +44,10 @@ public static class ClassicAlt
     {
         Id = "classic-alt-square",
         Radii = Definition.Radii with { Control = 0f, Card = 0f, Overlay = 0f },
+        AppRoles = ClassicRoles.Table with
+        {
+            Shape = ClassicRoles.Table.Shape with { Card = 0f, Tile = 0f, Control = 0f, Overlay = 0f, OmniRow = 0f },
+        },
     };
 
     /// <summary>Puts Classic back alone, AS ACTIVE: <c>theme.id</c>, the installed set and the installed definition (an install

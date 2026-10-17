@@ -81,14 +81,59 @@ public sealed record FacetRole(
     float LabelSize, float LineHeight, string? Face, float Tracking, int RestWeight, int SelectedWeight,
     Edges4 ItemPadding, float ItemHeight, float ItemGap, float LeadingInset);
 
+/// <summary>The size a composition gives its panorama titles (<see cref="TypeRoles.WithPanorama"/>): the engine ramp's Display rung
+/// (68/92) or its Title Large rung (40/52). The style's face and tracking for the panorama are kept either way.</summary>
+public enum PanoramaSize : byte { Display68, TitleLarge40 }
+
 /// <summary>The type roles of a style. Every style defines all of them (themes plan S2).</summary>
+/// <remarks>The twelve roles after <c>FacetCompact</c> are the vocabulary a pivot-and-panorama structure reads (themes plan 5.4, contract
+/// 1.26). A style that draws no panorama or pivot still gives each one a value: the closest voice it already has, so a structure that
+/// reads one under that style draws the style's own type.
+/// <list type="bullet">
+/// <item><c>Panorama</c>: the page's name set larger than the column, the one voice that may bleed past it.</item>
+/// <item><c>PanoramaCompact</c>: the panorama title where the page is too narrow for it (below <c>StyleMetrics.PanoramaCompactBelow</c>).</item>
+/// <item><c>Hero</c>: a record page's hero title (an album, a playlist, Liked Songs): the record's name, not the place's.</item>
+/// <item><c>Pivot</c> / <c>SubPivot</c>: a first-row pivot (the band's destinations, a page's primary pivots) / a second-row one (views,
+/// categories, in-page tabs).</item>
+/// <item><c>Numeral</c> / <c>NumeralLarge</c>: a row's number (a track's position, a chart rank) / a number that leads a feature row (the
+/// artist page's Popular chart, an episode's chapters).</item>
+/// <item><c>NowPlayingDisplay</c>: the full-screen now-playing title set as type.</item>
+/// <item><c>Wordmark</c>: the app's name where the frame writes it.</item>
+/// <item><c>LyricsLine</c>: a lyrics line on the full-size lyrics surface.</item>
+/// <item><c>Heading</c>: a section heading inside a page.</item>
+/// <item><c>QuickplayHead</c>: the head of a Home quickplay group.</item>
+/// </list></remarks>
 public sealed record TypeRoles(
     string DisplayFace,
     TextRole TrackTitle, TextRole CardTitle, TextRole TrackMeta, TextRole Eyebrow, TextRole MicroMeta, TextRole DenseMeta,
     TextRole DenseTitle, TextRole SheetTitle, TextRole RailHeader, TextRole ModuleHeader, TextRole PageHero, TextRole DetailHero,
     TextRole SurfaceDisplay, TextRole HeroTitle, TextRole ArtistDisplay, TextRole ArtistTitle, TextRole ArtistCompactTitle,
     TextRole NowPlayingTitle, TextRole PickQuote, TextRole FoldTitle, TextRole PivotLabel, TextRole NpvLyric, TextRole StatHero,
-    FacetRole FacetTitle, FacetRole FacetCompact);
+    FacetRole FacetTitle, FacetRole FacetCompact,
+    TextRole Panorama, TextRole PanoramaCompact, TextRole Hero, TextRole Pivot, TextRole SubPivot, TextRole Numeral,
+    TextRole NumeralLarge, TextRole NowPlayingDisplay, TextRole Wordmark, TextRole LyricsLine, TextRole Heading, TextRole QuickplayHead)
+{
+    /// <summary>This table with the panorama title on the ramp rung <paramref name="size"/> names: the rung's size, line height and weight,
+    /// the style's face and tracking. A composition option that sizes the panorama applies it to the style's table (themes plan 6.4.2),
+    /// so every call starts from the style's own role and the result never depends on an earlier call.</summary>
+    public TypeRoles WithPanorama(PanoramaSize size) => this with
+    {
+        Panorama = Panorama with
+        {
+            Rung = size == PanoramaSize.TitleLarge40 ? TypeRung.TitleLarge : TypeRung.Display,
+            Size = null, LineHeight = null, Weight = null, MinSize = null,
+        },
+    };
+
+    /// <summary>This table with the big numerals on (<paramref name="on"/> true: the table as it is) or off: both numeral roles become the
+    /// body rung (14/20), set in the call site's ink like every role. Applied to the style's table (themes plan 6.4.2), so "on" is the
+    /// style's own numerals and never a restore of an earlier "off".</summary>
+    public TypeRoles WithBigNumerals(bool on) => on ? this : this with
+    {
+        Numeral = new TextRole(TypeRung.Body),
+        NumeralLarge = new TextRole(TypeRung.Body),
+    };
+}
 
 /// <summary>The call syntax of the type roles: <c>R.Type.MicroMeta(text)</c> builds the active style's role. A view reads
 /// <c>R.Type</c> where it builds the element (the table is re-read on every call, so a definition swap reaches the next
@@ -176,6 +221,42 @@ public readonly struct TypeFactory
 
     /// <summary>The now-playing view's lyrics-peek reel.</summary>
     public TextEl NpvLyric(string s) => _roles.NpvLyric.Make(s);
+
+    /// <summary>The panorama title (a pivot-and-panorama structure's page name).</summary>
+    public TextEl Panorama(string s) => _roles.Panorama.Make(s);
+
+    /// <summary>The panorama title on a page too narrow for <see cref="Panorama"/>.</summary>
+    public TextEl PanoramaCompact(string s) => _roles.PanoramaCompact.Make(s);
+
+    /// <summary>A record page's hero title.</summary>
+    public TextEl Hero(string s) => _roles.Hero.Make(s);
+
+    /// <summary>A first-row pivot.</summary>
+    public TextEl Pivot(string s) => _roles.Pivot.Make(s);
+
+    /// <summary>A second-row pivot.</summary>
+    public TextEl SubPivot(string s) => _roles.SubPivot.Make(s);
+
+    /// <summary>A row's number.</summary>
+    public TextEl Numeral(string s) => _roles.Numeral.Make(s);
+
+    /// <summary>A number that leads a feature row.</summary>
+    public TextEl NumeralLarge(string s) => _roles.NumeralLarge.Make(s);
+
+    /// <summary>The full-screen now-playing title set as type.</summary>
+    public TextEl NowPlayingDisplay(string s) => _roles.NowPlayingDisplay.Make(s);
+
+    /// <summary>The app's name where the frame writes it.</summary>
+    public TextEl Wordmark(string s) => _roles.Wordmark.Make(s);
+
+    /// <summary>A lyrics line on the full-size lyrics surface.</summary>
+    public TextEl LyricsLine(string s) => _roles.LyricsLine.Make(s);
+
+    /// <summary>A section heading inside a page.</summary>
+    public TextEl Heading(string s) => _roles.Heading.Make(s);
+
+    /// <summary>The head of a Home quickplay group.</summary>
+    public TextEl QuickplayHead(string s) => _roles.QuickplayHead.Make(s);
 
     /// <summary>A glanceable stat: one number the reader takes in without reading. <paramref name="unit"/> is the small run
     /// that shares the numeral's baseline (built as ONE paragraph); null yields the numeral alone.</summary>

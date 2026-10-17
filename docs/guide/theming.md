@@ -74,6 +74,7 @@ point it builds an element:
 ```csharp
 Element title = R.Type.TrackTitle(name);                  // text: the role's rung + deviations (TypeRoles)
 Gap = R.Space.SectionGap, MaxWidth = R.Space.PageMaxW      // page rhythm, shelf and flyout geometry (SpaceRoles)
+Corners = R.Shape.All(ShapeRole.Cover)                     // the corner radius of a kind of surface (ShapeRoles, contract 1.26)
 HoverScale = R.Motion.ScaleSubtle.Hover                    // interaction scale tiers, stagger rungs (MotionRoles)
 Case = R.Case.For(LabelKind.Navigation)                    // how the style cases the words it writes (CaseRoles)
 ```
@@ -94,6 +95,32 @@ light/dark flip keeps the active theme's roles.
 the shell) `R` falls back to a registered baseline. `ClassicRoles` registers itself with a module initializer, so core never names
 a theme and no read lands on an empty table. A test that needs other roles installs a definition carrying them in the shell
 test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok` may change.
+
+**The pivot-and-panorama vocabulary and the shape roles (contract 1.26, P5).** A Zune-shaped structure reads type and radii Classic never
+needed. They are members of the same records, so every style defines them (S2) and Classic gives each one the value its surfaces use today:
+
+| Role | What it is | Classic's value (what it draws today) |
+|---|---|---|
+| `R.Type.Panorama` / `PanoramaCompact` | the page's name set larger than the column / the same where the page is narrower than `StyleMetrics.PanoramaCompactBelow` | `SurfaceDisplay` (40/52/400 display) / `PageHero` (28/36/600) |
+| `R.Type.Hero` | a record page's hero title | `DetailHero` |
+| `R.Type.Pivot` / `SubPivot` | a first-row pivot / a second-row one | `PivotLabel` (19/25/350 display) / Body 14/20 (the stock `SelectorBar` word) |
+| `R.Type.Numeral` / `NumeralLarge` | a row's number / a number that leads a feature row | Caption 12/16, both (`ClassicRowCells.NumberCell`) |
+| `R.Type.NowPlayingDisplay` | the full-screen now-playing title set as type | Title Large 40/52/600 display (the stage hero's title) |
+| `R.Type.Wordmark` | the app's name where the frame writes it | Caption 12/16/600 (the stage top bar's "Wavee") |
+| `R.Type.LyricsLine` | a line on the full-size lyrics surface | 36/46/700 (`Lyrics.Surface.Timed(large: true)`) |
+| `R.Type.Heading` / `QuickplayHead` | a section heading / the head of a Home quickplay group | `RailHeader` / `ModuleHeader` |
+| `R.Shape` (`ShapeRoles`, `ShapeRole`) | one uniform radius per kind of surface: `Card`, `Cover`, `Control`, `Overlay`, `Tile`, `PinArt`, `Avatar`, `CurrentMark`, `ContentSeam`, `OmniRow`, `SeekTrack`; read as `R.Shape.Cover`, `R.Shape.For(role)` or `R.Shape.All(role)` (a `CornerRadius4`). A radius at or above half the box is a full round | 8, 6, 4, 8, 8, 6, 999, 2, 8, 4, 2 (the engine ramp's card, control, overlay and full rungs; covers and nav art 6; the nav pill 2; the slider track 2) |
+
+Two helpers belong to the table, for a composition that applies an option to the style's roles (plan 6.4.2):
+`TypeRoles.WithPanorama(PanoramaSize)` puts `Panorama` on the Display (68/92) or Title Large (40/52) rung and keeps the style's face and
+tracking; `TypeRoles.WithBigNumerals(bool)` is the table itself when on and turns both numeral roles into the Body rung when off. Both start
+from the table they are given, so "on" is never a restore of an earlier "off". The style metrics gain `DockedPane` / `DockedPane4K` (each
+docked side pane's width from the second-pane rung and from Huge 4K; how many dock is the structure's), `PaneItem` (a navigation pane item's
+height) and `CardGap` (the gap between cards); a density option moves `RowSingle`, `PaneItem` and `CardGap` together. Classic publishes
+380 / 420 (its Huge panes' floor), 36 (`SidebarGeometry.RowHeight`) and 12 (`R.Space.GridGap`). No Classic view reads the new roles or
+metrics yet, so nothing Classic draws changes. A **shape is not a colour**: a table that differs in `Shape` is a transaction
+(`DiffersOnlyInColours` is false). `ClassicRolesTests` pins Classic's values against the surfaces that draw them and walks the role records by
+reflection (every style defines every role, every text role has its `R.Type` call).
 
 **What stayed in `Design`.** The behaviour (`Entrance`, `Reveal`, `Nav`, `Cadence`, `Reduced`; the frame clock left for `Platform\FrameTime.cs`,
 a clock and not a token, so a `[CoreHost]` may read it), the Fluent duration ladder
@@ -137,7 +164,7 @@ asked for, and reads everything else as live as the call. The numbers a style gi
 | **A colour or an alpha that differs by kind is a role**; a view never writes `Tok.Theme == ThemeKind.Light ? a : b` | The branch is the style's decision. The 27 branches in `Design.cs`, `Controls.cs`, `Concert.UI.cs` (now `ClassicConcertCells.cs`), `Deck.UI.cs`, `Rail.UI.cs`, `ClassicMaterial.cs` (was `Shell.Masthead.UI.cs`) and `Detail.UI.cs` are role reads now |
 | **The polarity as an ARGUMENT is `R.Kind` / `R.IsLight`** | Selecting the graded half of a cover (`Design.SchemeFor`, `ChromeSchemeFor`, `PlaceholderFor`), the `light` flag of the pure follow-button maths (`ButtonRules.FollowStyle`) and the theme picker's preview image need the kind, not a colour. Apart from the stage faces' own `dark` flag (`StageInk.IsDark`; T7 re-points the faces) and the install paths (`Appearance`, `ThemeHost`, `Tok.Use`), these are the only places code asks for the kind |
 | **Re-derive by `Tok.Epoch`, never by the light/dark flag; never KEY a node on either** (themes plan X44, tuning F10) | `Tok.Epoch` moves for a kind flip AND a definition swap: the shell tint binder keys its publish effect on it, and the three pages that republished a `Signal<ThemeKind>` (Detail, Artist, Profile) re-derive their accent from an effect keyed on it. A wash or tone plane is keyed on its surface (`Palette.ToneKey(route)`), not the theme: the live cross-fade re-runs its colour in place and fades it with every other colour (EP20); a theme key would remount it and snap it |
-| **A colour-only table is not a transaction** | `WaveeStyleRoles.DiffersOnlyInColours` compares the type, space, motion and case roles; ink, layer, on-media, stage arm, wash and lyrics may differ. A swap that moves only those bumps `Tok.Epoch` and leaves `StyleEpoch`, so the engine takes the live cross-fade path |
+| **A colour-only table is not a transaction** | `WaveeStyleRoles.DiffersOnlyInColours` compares the type, shape, space, motion and case roles; ink, layer, on-media, stage arm, wash and lyrics may differ. A swap that moves only those bumps `Tok.Epoch` and leaves `StyleEpoch`, so the engine takes the live cross-fade path |
 
 **The maths is `Platform\ColorScience.cs`.** Lift, vivid, the hairline and text-ink contrast solves (the 22-iteration bisection stays 22), the page-tone
 clamp, the data-hue ink, the shell ground and content step, the placeholder blend and the accent ladder take the theme **kind**, the card surface and
@@ -153,8 +180,8 @@ mounted view repainting).
 **What stayed in `Design` of colour, and why.** `SchemeFor` / `ChromeSchemeFor` / `PlaceholderFor` / `WatchedPlaceholder` (they read a cover's grading
 for the active polarity from the palette TABLE: data selection, not a look), `Design.Palette` (above), `Design.Wash`'s window-relative GEOMETRY and
 paint budget (not a look), the shell material channel (`ShellMaterial`, `TintOwnership`, now `Platform\ShellMaterial.cs`), while the four cover-leaf components read their
-alphas and recipes from `R.Wash` and are Classic's material views since T4c. The shape roles (`ShapeRole`) and the icon table (`IconTable`) are not part
-of T2b: their consumers (the omnibar row, the surface shapes, the route glyphs) are the T3/T4/T6/T8 PRs.
+alphas and recipes from `R.Wash` and are Classic's material views since T4c. The shape roles (`ShapeRoles`) joined in contract 1.26 (see Style roles
+above); the icon table (`IconTable`) is not part of the vocabulary yet: its consumers are the route glyphs.
 
 ## 2a. Policies and metrics (T3)
 
