@@ -87,13 +87,17 @@ public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = nu
 /// <param name="Views">The page's views (empty = the route's own row stands).</param>
 /// <param name="Actions">The page's actions.</param>
 /// <param name="Backdrop">The page's backdrop claim; null = none.</param>
-public sealed record PageChromeRow(IReadOnlyList<PageView> Views, IReadOnlyList<PageAction> Actions, PageBackdrop? Backdrop = null)
+/// <param name="Title">The page's entity name (an album's, an artist's, a playlist's title), contract 1.30: a detail page publishes it once
+/// its model is loaded, and the frame folds it into <see cref="PageChrome.Title"/> so a band draws the name, not the kind ("Album"). Null or empty
+/// while the model loads: the destination's kind stands, and the title slot keeps its height. Never re-cased: it is the entity's own name.</param>
+public sealed record PageChromeRow(IReadOnlyList<PageView> Views, IReadOnlyList<PageAction> Actions, PageBackdrop? Backdrop = null,
+    string? Title = null)
 {
     /// <summary>Publishes nothing.</summary>
     public static PageChromeRow Empty { get; } = new([], []);
 
-    /// <summary>Holds nothing (no view, no action, no backdrop).</summary>
-    public bool IsEmpty => Views.Count == 0 && Actions.Count == 0 && (Backdrop is null || Backdrop.IsNone);
+    /// <summary>Holds nothing (no view, no action, no backdrop, no title).</summary>
+    public bool IsEmpty => Views.Count == 0 && Actions.Count == 0 && (Backdrop is null || Backdrop.IsNone) && string.IsNullOrEmpty(Title);
 }
 
 /// <summary>What a page publishes for the frame to draw above it: its title and trail, and the state of its "Show all" tool. Since

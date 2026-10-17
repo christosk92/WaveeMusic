@@ -364,7 +364,7 @@ public readonly partial struct Album
                 bool saved = lib.IsSaved(target);
                 actions.Add(new PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
             }
-            _sink.Publish(new PageChromeRow(views, actions));
+            _sink.Publish(new PageChromeRow(views, actions, Title: c.Title));
         }
 
         static bool IsPreReleaseSubject(EntityUri subject)

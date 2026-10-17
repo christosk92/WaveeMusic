@@ -70,6 +70,11 @@ public static class ZuneHomeRules
     /// <summary>The action rings: the 36 disc, its 2 ring, the glyph.</summary>
     public const float RingSize = 36f, RingStroke = 2f, RingGlyph = 13f;
 
+    /// <summary>The daylist's save heart button (the target inside the ring; the button freezes its box at mount, so one size at every tier) and the
+    /// shelf pager's chevron: the 32 circle in a 40 hit box (the box overhangs the circle by 4 each side with a negative margin, so the header keeps
+    /// its layout).</summary>
+    public const float SaveHitBox = 40f, ChevronCircle = 32f, ChevronTarget = 40f;
+
     /// <summary>The clock: its right inset, its line gap, the bars (40 wide, 6 tall, the current one 20, 4 apart).</summary>
     public const float ClockPadRight = 32f, ClockGap = 8f, BarW = 40f, BarH = 6f, BarLitH = 20f, BarGap = 4f;
 

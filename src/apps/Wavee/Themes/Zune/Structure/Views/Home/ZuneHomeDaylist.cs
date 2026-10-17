@@ -16,6 +16,12 @@
 //   one row       a window too short for any of them (Z-Shell-Short, the height rung): 56 high, 56 art, the eyebrow and the title on one line, the
 //                 36 play ring at the end
 // The whole plate opens the daylist; its right click and the "…" ring open the playlist's own menu. The skeleton is the same builders over placeholders.
+// ONE PARENT FOR THE RINGS (round G): the rings row (`zune-daylist-actions`) is a child of the copy box (`zune-daylist-copy`) in EVERY form, play
+// first. Under the strip's forms the copy is a column (the text block over the rings row); in the one-row form it is a row (the text block, then the
+// rings row, which holds the play ring alone, at the strip's end). The play ring never changes parent, so a height crossing keeps its node and its move
+// is a slide, not a remount.
+// HIT TARGETS (Compact, 40 x 40): the node that takes the click is the ring's target box (`zune-daylist-more`) or the heart button itself at the target's
+// size (`save:<uri>`); the disc is only the picture inside, never a smaller target of its own.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -94,11 +100,24 @@ internal static class ZuneHomeDaylist
     /// has words.</summary>
     static Element SaveRing(string uri, string title, ZuneHomeLayout lay)
     {
-        var disc = K.RingDisc(Icons.Heart, primary: false, lay.RingSize) with
+        // The picture (the outlined disc, no glyph of its own) under the heart button, which is the target: its box is `SaveHitBox` (40) at every
+        // tier (the button freezes its props at mount, so the size cannot follow the tier; where the stack is the disc's 36 it fits the stack).
+        float stack = MathF.Max(lay.RingSize, lay.RingTarget);
+        var disc = K.RingDisc(Icons.Heart, primary: false, lay.RingSize) with { Children = [], HitTestVisible = false };
+        Element ring = new BoxEl
         {
-            Children = [Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Box = lay.RingSize - 2f * H.RingStroke }) with { Key = "save:" + uri }],
+            Direction = 0, ZStack = true, Width = stack, Height = stack, Shrink = 0f,
+            Children =
+            [
+                new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false, Children = [disc] },
+                new BoxEl
+                {
+                    Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestPassThrough = true,
+                    Children = [Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Box = H.SaveHitBox }) with { Key = "save:" + uri }],
+                },
+            ],
         };
-        var kids = new List<Element>(2) { disc };
+        var kids = new List<Element>(2) { ring };
         if (lay.RingLabels)
             kids.Add(R.Type.TrackTitle(Loc.Get(Strings.Home.Save)) with
             {
@@ -115,19 +134,15 @@ internal static class ZuneHomeDaylist
     /// <summary>The "…" ring: a stand-alone icon action that re-enters the context funnel, so the plate's attached menu opens anchored at it.</summary>
     static Element MoreRing(ZuneHomeLayout lay)
     {
-        var disc = K.RingDisc(Icons.More, primary: false, lay.RingSize) with
+        // ONE node at every tier: the target box (the disc's size where the tier has no larger target) takes the click and re-enters the context funnel;
+        // the disc inside is the picture. The key stays on the target (the node the tests and the pointer find).
+        Element ring = new BoxEl
         {
-            BlocksDragArm = true,
-            Children = [Controls.IconAction(Icons.More, null, requestsContext: true, size: lay.RingSize - 2f * H.RingStroke)],
+            Key = "zune-daylist-more", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f, BlocksDragArm = true,
+            MinWidth = lay.RingTarget, MinHeight = lay.RingTarget,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, ClickRequestsContext = true,
+            Children = [K.RingDisc(Icons.More, primary: false, lay.RingSize)],
         };
-        // Where the tier draws the disc inside a larger target the key stays on the target (the node the tests and the pointer find).
-        Element ring = lay.RingTarget > lay.RingSize
-            ? new BoxEl
-            {
-                Key = "zune-daylist-more", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f, BlocksDragArm = true,
-                MinWidth = lay.RingTarget, MinHeight = lay.RingTarget, Children = [disc],
-            }
-            : disc with { Key = "zune-daylist-more" };
         return Controls.Named(ring, Loc.Get(Strings.Home.More));
     }
 
@@ -163,9 +178,9 @@ internal static class ZuneHomeDaylist
     {
         int shown = Math.Min(rings.Length, lay.DaylistRings);
         var inCopy = new List<Element>(shown);
-        for (int i = lay.PlayAtEnd ? 1 : 0; i < shown; i++) inCopy.Add(rings[i]);
+        for (int i = 0; i < shown; i++) inCopy.Add(rings[i]);
 
-        var copyKids = new List<Element>(4)
+        var textKids = new List<Element>(3)
         {
             R.Type.DenseMeta(eyebrow) with
             {
@@ -174,17 +189,29 @@ internal static class ZuneHomeDaylist
             TitleBox(title, lay),
         };
         if (lay.DaylistMeta)
-            copyKids.Add(R.Type.DenseMeta(meta) with
+            textKids.Add(R.Type.DenseMeta(meta) with
             {
                 Key = "zune-daylist-meta", Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
-        if (inCopy.Count > 0)
-            copyKids.Add(new BoxEl
+
+        // The copy: ONE box, the rings row its last child in every form. A column under the strip's forms (the text block, then the rings row 8 below
+        // it); a row in the one-row form (the text block grows, the rings row, the play ring alone, ends it). The rings row slides to its place.
+        bool end = lay.PlayAtEnd;
+        var copyKids = new Element[]
+        {
+            new BoxEl
+            {
+                Key = "zune-daylist-text", Direction = 1, Gap = H.DaylistCopyGap, MinWidth = 0f, Justify = FlexJustify.Center,
+                Grow = end ? 1f : 0f, Shrink = 1f, Basis = end ? 0f : float.NaN, Children = textKids.ToArray(),
+            },
+            new BoxEl
             {
                 Key = "zune-daylist-actions", Direction = 0, Wrap = true, Gap = lay.RingsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Margin = new Edges4(0f, H.DaylistActionsTop, 0f, 0f), Children = inCopy.ToArray(),
-            });
+                Shrink = end ? 0f : 1f, Margin = end ? default : new Edges4(0f, H.DaylistActionsTop, 0f, 0f),
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide, Children = inCopy.ToArray(),
+            },
+        };
 
         var kids = new List<Element>(4)
         {
@@ -195,9 +222,10 @@ internal static class ZuneHomeDaylist
             },
             new BoxEl
             {
-                Key = "zune-daylist-copy", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                Justify = FlexJustify.Center, Gap = H.DaylistCopyGap, Padding = new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
-                Children = copyKids.ToArray(),
+                Key = "zune-daylist-copy", Direction = end ? 0 : 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Justify = end ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
+                Gap = end ? lay.DaylistPad : H.DaylistCopyGap, Padding = new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
+                Children = copyKids,
             },
             new BoxEl
             {
@@ -205,13 +233,6 @@ internal static class ZuneHomeDaylist
                 Width = lay.ClockW, Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = [clock],
             },
         };
-        if (lay.PlayAtEnd)
-            kids.Add(new BoxEl
-            {
-                Key = "zune-daylist-end", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Margin = new Edges4(0f, 0f, lay.DaylistPad, 0f),
-                Children = [rings[0]],
-            });
-
         return new BoxEl
         {
             Key = H.DaylistKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,

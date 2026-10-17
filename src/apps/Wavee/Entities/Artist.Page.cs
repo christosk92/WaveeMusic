@@ -632,7 +632,8 @@ public readonly partial struct Artist
                 actions.Add(new PageAction(FollowActionId, Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
                     () => lib.ToggleSaved(uri, name), PageActionKind.Word, Enabled: _chromeReady));
             }
-            _chromeRow = new PageChromeRow(views, actions, _chromeBleed is { Length: > 0 } bleed ? new PageBackdrop(Bleed: bleed) : null);
+            _chromeRow = new PageChromeRow(views, actions, _chromeBleed is { Length: > 0 } bleed ? new PageBackdrop(Bleed: bleed) : null,
+                Title: _chromeName.Length > 0 ? _chromeName : null);
             _sink.Publish(_chromeRow);
         }
 

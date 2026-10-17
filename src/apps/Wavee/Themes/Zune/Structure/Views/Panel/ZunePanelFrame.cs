@@ -7,7 +7,8 @@
 //   surface   the panel ground (#1b1b1b; the frame's reservation paints it while the panel is docked and open, so the slide-out never
 //             shows a hole); floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
 //   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show.
-//   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case): queue · lyrics ·
+//   head      (round G: the words are 44-tall hit boxes and sit in a horizontal scroller under an edge fade, never clipped mid-word; the current
+//             word is brought into view) the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case): queue · lyrics ·
 //             now playing · friends (where the capabilities offer the friends panel) and video while the video body is up; the current one
 //             in the primary ink, the rest tertiary. A word shows its body in the same panel (`PanelProps.ShowMode`); a pane that offers none
 //             (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word. The close glyph (40 x 40) ends the row.
@@ -32,6 +33,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -59,7 +61,7 @@ internal static class ZunePanel
     };
 
     /// <summary>The pivot head: the words (but the bodies the linked panes beside it show), then the close glyph (none on a linked pane).</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends)
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, PanelHeadNodes? nodes = null)
     {
         var words = new List<Element>(5);
         if (props.ShowMode is { } show)
@@ -68,19 +70,26 @@ internal static class ZunePanel
             {
                 if (mode == PanelMode.Friends && !friends) continue;
                 if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
-                words.Add(Pivot(mode, mode == body, show));
+                words.Add(Pivot(mode, mode == body, show, nodes));
             }
-            if (body == PanelMode.Video) words.Add(Pivot(PanelMode.Video, current: true, show));
+            if (body == PanelMode.Video) words.Add(Pivot(PanelMode.Video, current: true, show, nodes));
         }
-        else words.Add(Pivot(body, current: true, show: null));
+        else words.Add(Pivot(body, current: true, show: null, nodes));
 
         var row = new List<Element>(2)
         {
-            new BoxEl
+            // The words scroll under an edge fade when they outgrow the head (Compact's sheet, the 340 panel with "friend activity"), never clip.
+            new ScrollEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap, Height = ZuneFrameRules.PanelHeadH,
-                Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-                Children = words.ToArray(),
+                Key = ZuneFrameRules.PanelPivotsKey, Horizontal = true, Height = ZuneFrameRules.PanelHeadH,
+                Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                AutoEdgeFade = true, AutoEdgeFadeBand = ZuneFrameRules.PanelEdgeFade, SuppressScrollBar = true,
+                OnRealized = h => { if (nodes is not null) nodes.Viewport = h; },
+                Content = new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap, Height = ZuneFrameRules.PanelHeadH,
+                    Children = words.ToArray(),
+                },
             },
         };
         if (!view.Linked) row.Add(Close(props.Close));
@@ -92,19 +101,26 @@ internal static class ZunePanel
         };
     }
 
-    private static Element Pivot(PanelMode mode, bool current, Action<PanelMode>? show)
+    private static Element Pivot(PanelMode mode, bool current, Action<PanelMode>? show, PanelHeadNodes? nodes)
     {
         var text = R.Type.Heading(Word(mode)) with
         {
             Color = current ? Tok.TextPrimary : Tok.TextTertiary, HoverColor = Tok.TextPrimary,
             Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
         };
-        if (show is null || current) return new BoxEl { Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, Children = [text] };
+        // The word's box is the head's whole height (44): the touch floor of 40 holds at every tier, the word centred in it.
+        Action<NodeHandle>? realized = nodes is null ? null : h => nodes.Pivot(mode, h);
+        if (show is null || current)
+            return new BoxEl
+            {
+                Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, Height = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
+                OnRealized = realized, Children = [text],
+            };
         return new BoxEl
         {
-            Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f,
+            Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, Height = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            OnClick = () => show(mode),
+            OnClick = () => show(mode), OnRealized = realized,
             Children = [text],
         };
     }
@@ -195,6 +211,21 @@ internal static class ZunePanel
     ];
 }
 
+/// <summary>The head's realized nodes (the pivots' scroller and each word), kept by the frame so the current word can be brought into view.</summary>
+internal sealed class PanelHeadNodes
+{
+    readonly Dictionary<PanelMode, NodeHandle> _pivots = new();
+
+    /// <summary>The scroller's viewport.</summary>
+    public NodeHandle Viewport;
+
+    /// <summary>The word for <paramref name="mode"/> was realized.</summary>
+    public void Pivot(PanelMode mode, NodeHandle node) => _pivots[mode] = node;
+
+    /// <summary>The word for <paramref name="mode"/>, or null while it is not realized.</summary>
+    public NodeHandle PivotOf(PanelMode mode) => _pivots.TryGetValue(mode, out var node) ? node : NodeHandle.Null;
+}
+
 /// <summary>The panel's frame: the surface, the slide, the head and the body on show. A component because the slide targets the rendered
 /// root and keeps its seeded-once flag across renders.</summary>
 internal sealed class ZunePanelFrame : Component
@@ -206,6 +237,7 @@ internal sealed class ZunePanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     bool _escapes;
+    readonly PanelHeadNodes _headNodes = new();
 
     public override Element Render()
     {
@@ -256,6 +288,17 @@ internal sealed class ZunePanelFrame : Component
             anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : ZuneFrameRules.PanelSlideMs, ZuneFrameRules.PanelSlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
+        // The word of the body on show is brought into view in the head's scroller (nearest edge, clear of the fade), when the body changes or the
+        // panel opens.
+        UseLayoutEffect(() =>
+        {
+            if (!open || Context.Scene is not { } scene) return;
+            var viewport = _headNodes.Viewport;
+            var word = _headNodes.PivotOf(body);
+            if (viewport.IsNull || word.IsNull || !scene.IsLive(viewport) || !scene.IsLive(word)) return;
+            scene.BringIntoView(viewport, word, align: float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, margin: ZuneFrameRules.PanelEdgeFade);
+        }, DepKey.From((int)body, open ? 1 : 0));
+
         _surfaceFill ??= () => props.InlineAndOpen() ? ColorF.Transparent : R.Layer.FloatingPane;
         _onBounds ??= r => props.BodyHeightChanged(r.H);
 
@@ -268,7 +311,7 @@ internal sealed class ZunePanelFrame : Component
         // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
         // of the hero instead.
         if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, view, body, friends));
+        column.Add(ZunePanel.Head(props, view, body, friends, _headNodes));
         column.Add(bodySlot);
 
         return new BoxEl

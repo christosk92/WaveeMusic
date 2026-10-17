@@ -68,8 +68,11 @@ namespace Wavee.Themes.Zune;
 /// <see cref="PivotOverflow.EdgeFadeScroll"/> parameter the run still scrolls rather than clip).</param>
 /// <param name="Narrow">The tier is narrow enough that the <see cref="PivotOverflow.MoreMenu"/> parameter folds the other pivots into
 /// a "more" word (Compact and Small).</param>
+/// <param name="ViewMinW">A row-2 view's hit box is at least this wide (Compact: 40, the touch floor, so a short word such as "all" is a 40 x 40
+/// target; the word is centred in it. 0 = the word's own width).</param>
 public sealed record ZuneBandLayout(WidthTier Tier, float Inset, float Row1H, float Row2H, float UnderH, float PivotGap, float RowGap,
-    bool Pins, float PinArt, float Row2Gap, float Row2End, bool TitleAndActions, bool Collapses, bool Rotate, bool Fade, bool Narrow)
+    bool Pins, float PinArt, float Row2Gap, float Row2End, bool TitleAndActions, bool Collapses, bool Rotate, bool Fade, bool Narrow,
+    float ViewMinW = 0f)
     : ITierLayoutRecord
 {
     /// <summary>The band with both rows.</summary>
@@ -107,7 +110,7 @@ public static class ZuneBandRules
     private static readonly ZuneBandLayout[] s_bands =
     [
         new(WidthTier.Compact, Inset: 16f, Row1H: 44f, Row2H: 40f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
-            Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true),
+            Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true, ViewMinW: 40f),
         new(WidthTier.Small, Inset: 24f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
             Row2Gap: 20f, Row2End: 24f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: true, Narrow: true),
         new(WidthTier.Standard, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,

@@ -53,6 +53,7 @@ public static partial class Shell
         ToggleNotifications = OpenNotificationPanel,
         Pin = CurrentPin,
         Search = SearchProps(),
+        OnSearchRoute = static () => Current.Value.Kind == RouteKind.Search,
     };
 
     /// <summary>The allocation as the view reads it (<see cref="ChromeRowState"/>): the form of the identity chip and of the search

@@ -292,6 +292,9 @@ public sealed record ZuneOverlayLayout
     /// <summary>The chip's height (the stock 32; Compact 40).</summary>
     public required float ChipHeight { get; init; }
 
+    /// <summary>The bare chip's width floor (the touch tier's 40 x 40 target: a 24 avatar and its padding are 32; 0 = the content's width).</summary>
+    public float ChipMinWidth { get; init; }
+
     // ── the notification panel ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A row's least height (52; Compact 56) and a word's least height (the filter words, the row actions: Compact 40, else 32).</summary>
@@ -381,7 +384,7 @@ public static class ZuneOverlayTiers
             ContextSheet: true, MenuSize: ControlSize.Large),
         ChromeRow = ZuneTiers.Frame(WidthTier.Compact).TitleBarH,
         CardFills = true, CardMargin = 16f, CardPadding = new Edges4(16f, 20f, 16f, 16f), FieldHeight = 40f,
-        PanelMargin = 8f, ChipHeight = ZuneOverlayRules.ChipTouchHeight,
+        PanelMargin = 8f, ChipHeight = ZuneOverlayRules.ChipTouchHeight, ChipMinWidth = ZuneOverlayRules.ChipTouchHeight,
         RowMinHeight = 56f, WordHeight = 40f,
         StripHeight = 40f, StripPadX = 16f, StripShortNotice = true,
         VacancyQuietTitle = true, VacancyPadX = 16f, VacancyActionsStack = true, VacancyLift = ZuneOverlayRules.OfflineVacancyLift,
