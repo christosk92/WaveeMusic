@@ -95,13 +95,5 @@ static class ShellProbe
     /// <summary>Play one fake track as its own context from <paramref name="fromMs"/> (the headless probe's single-track arm,
     /// Diagnostics.Probe.Play).</summary>
     public static void Play(string uri, int fromMs = 0)
-    {
-        Assert.True(EntityId.TryParse(uri.AsSpan(), out EntityId id), uri);
-        EntityRef row = Entities.Ref(id);
-        Span<EntityRef> refs = [row];
-        Span<QueueEdge> rows = stackalloc QueueEdge[1];
-        int n = Diagnostics.Headless.BuildContextQueue(refs, 0, refs, rows);
-        Queue.Replace(refs[..n], rows[..n]);
-        Playback.PlayNow(row, id, Queue.CursorOf(0), Playback.PlayableKind.Audio, fromMs);
-    }
+        => Assert.True(Diagnostics.InspectKit.Play(uri, fromMs), uri);   // the app's own recipe (Screens/Diagnostics.Inspect.Kit.cs)
 }

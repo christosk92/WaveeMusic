@@ -60,7 +60,7 @@ public sealed class ShellHost : IDisposable
             // The network grader (Palette.Filler) is null under --fake, so no cover is ever graded and no surface that
             // colours itself from artwork (the shell washes, the tints) would exist. The fixture grades every cover one
             // colour, from the first frame on: a cover asked while no grader exists is marked failed for good.
-            Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static _ => (Palette.Graded?)FixtureGrade));
+            Diagnostics.InspectKit.InstallFixtureGrader();   // the app's own fixture grader (Screens/Diagnostics.Inspect.Kit.cs)
             _bootOptions = OptionStamps();
             _bootTiers = ThemeHost.Facts.Peek().Tiers;
             BootLog = Log.Snapshot();
@@ -86,9 +86,6 @@ public sealed class ShellHost : IDisposable
             if (OptionStamps() != _bootOptions) ThemeHost.ResetOptions(ClassicTheme.Id);
             ThemeHost.PublishTiers(in _bootTiers);
         });
-
-    static readonly Scheme FixtureScheme = new(0xFF2E4A7Au, 0xFF3D5F99u, 0xFFFFFFFFu, 0xFFB3C2DDu, 0xFF8FB8FFu);
-    static readonly Palette.Graded FixtureGrade = new(FixtureScheme, FixtureScheme, HasLight: true, BestFitIsLight: false);
 
     void Loop()
     {
