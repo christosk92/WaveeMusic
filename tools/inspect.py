@@ -18,6 +18,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 
@@ -47,6 +48,9 @@ class Server:
         self.out = self.proc.stdout
         self.inp = self.proc.stdin
         self.pipe = None
+        # The server writes diagnostics to stderr; an undrained pipe fills up and blocks the UI thread.
+        self.err = bytearray()
+        threading.Thread(target=self._drain_stderr, daemon=True).start()
         if pipe:
             line = self._read_line()   # {"kind":"listening","pipe":"\\\\.\\pipe\\name"}
             path = json.loads(line)["pipe"]
@@ -64,12 +68,25 @@ class Server:
         if self.ready.get("kind") != "ready":
             sys.exit("inspect.py: the server did not come up: " + json.dumps(self.ready))
 
+    def _drain_stderr(self):
+        try:
+            for chunk in iter(lambda: self.proc.stderr.read(4096), b""):
+                self.err += chunk
+                del self.err[:-65536]
+        except (OSError, ValueError):
+            pass
+
     def _read_line(self):
         buf = bytearray()
         while True:
             ch = self.out.read(1)
             if not ch:
-                err = self.proc.stderr.read().decode("utf-8", "replace") if self.proc.poll() is not None else ""
+                if self.proc.poll() is None:
+                    try:
+                        self.proc.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        pass
+                err = bytes(self.err).decode("utf-8", "replace") if self.proc.poll() is not None else ""
                 sys.exit("inspect.py: the server closed the stream. " + err)
             if ch == b"\n":
                 return buf.decode("utf-8").rstrip("\r")
