@@ -2805,7 +2805,10 @@
         "edit": "Edit",
         "category": "Category"
       },
-      "detail": {},
+      "detail": {
+        "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
+        "songs": "Songs"
+      },
       "artist": {},
       "collection": {},
       "overlays": {

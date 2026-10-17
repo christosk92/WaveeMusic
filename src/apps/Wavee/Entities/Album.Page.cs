@@ -28,6 +28,14 @@
 // The frame invokes a slot only when its spec changes, and the table invokes the trailing thunk only when its args
 // change, so every slot body is a component that reads the tables it paints.
 //
+// ── ROW 2 (P5 Z6a1, contract 1.26) ───────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the page's title, its views and its actions in its band's row 2, so the page host publishes them through
+// the `PageChromeSink` the content host provides around the page: the views "Songs" (current: the page itself) and "More by <artist>" (the lead
+// artist's page) once the billing is known, the actions Play, Shuffle and Save / Saved (the word follows the saved set). The inputs are folded
+// into a value the render computes; a keyed effect hands it to a signal, and an auto-tracked effect (it also reads the saved set) publishes the
+// row, so a save elsewhere re-words the action without re-rendering the page. Classic draws its own head and reads none of it.
+//
 // ── DEMAND (the GateAlbumPage pattern, Detail.UI.cs §6) ──────────────────────────────────────────────────────────────
 //
 // The page asks for its WHOLE model from effects: the album's Detail groups + the tracklist edge once per (album slot,
@@ -177,6 +185,15 @@ public readonly partial struct Album
         readonly Action _demandAlbum, _demandTracked;
         readonly Func<PageStamp> _stamp;
 
+        // ── row 2 (P5 Z6a1): what the band draws for this page (see the file header) ──
+        PageChromeSink _sink = PageChromeSink.None;
+        ChromeInputs _chromeNext;
+        readonly Signal<ChromeInputs> _chromeIn = new(default);
+        readonly Action _syncChrome, _publishChrome, _playChrome, _noView;
+
+        /// <summary>What row 2 says: the album, its title once known, the heart's target and the lead artist (the "More by" view).</summary>
+        readonly record struct ChromeInputs(EntityUri Subject, EntityUri SaveTarget, string? Title, EntityUri Artist, string? ArtistName);
+
         /// <summary>Exactly what <see cref="Detail.Identity.For"/> and the page's own FrameSpec fields read off the
         /// tables: the album row (title, cover, kind, year, count, the prerelease columns), the tracklist edge and every
         /// member's version (durations, availability, the notice rules), the billing edge and every billed artist's
@@ -197,6 +214,10 @@ public readonly partial struct Album
             _demandAlbum = DemandAlbum;
             _demandTracked = DemandTracked;
             _stamp = Stamp;
+            _syncChrome = () => _chromeIn.SetIfChanged(_chromeNext);
+            _publishChrome = PublishChrome;
+            _playChrome = () => { var a = _display; if (a.IsValid) DetailVerbs.PlayContext(a.Uri)(); };
+            _noView = static () => { };
             _actions = new Detail.FrameActions { Shuffle = ShuffleAlbum, More = MoreMenu, CoverDrag = CoverPayload };
             Func<float, Element> attribution = w => FacePile(_display, w);
             Func<Element> preRelease = () => Countdown(_display.Uri, _upcomingAt, _accent);
@@ -250,6 +271,12 @@ public readonly partial struct Album
             UseEffect(_demandAlbum, DepKey.From(a.Slot, (int)scopeEpoch));
             UseEffect(_demandTracked);
 
+            // Row 2 (P5 Z6a1): the inputs this render knows, handed to the publishing effect. Hooks before any early return.
+            _sink = UseContext(PageChromeSink.Context);
+            _chromeNext = ChromeOf(a, in stamp);
+            UseEffect(_syncChrome, DepKey.From(_chromeNext.GetHashCode()));
+            UseEffect(_publishChrome);
+
             if (!a.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             // W18: an unresolvable prerelease route — the tracklist ask for the prerelease row failed and nothing named it.
@@ -301,6 +328,43 @@ public readonly partial struct Album
                 Slots = _slots,
                 RouteKey = p.RouteKey,
             });
+        }
+
+        /// <summary>Row 2's inputs for <paramref name="a"/> (default while there is no album).</summary>
+        static ChromeInputs ChromeOf(Album a, in PageStamp stamp)
+        {
+            if (!a.IsValid) return default;
+            var billed = a.ArtistSlots;
+            var lead = billed.Length > 0 ? new Artist(billed[0]) : default;
+            bool named = lead.IsValid && lead.Knows(ArtistFields.Name);
+            var save = stamp.Identity.SaveTarget.IsValid ? new EntityUri(stamp.Identity.SaveTarget) : a.Uri;
+            return new ChromeInputs(a.Uri, save, a.Knows(AlbumFields.Title) ? a.Title : null,
+                                    named ? lead.Uri : default, named ? lead.Name : null);
+        }
+
+        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
+        void PublishChrome()
+        {
+            var c = _chromeIn.Value;
+            if (!c.Subject.IsValid) return;
+            var views = new List<PageView>(2) { new("songs", Loc.Get(Strings.Search.Songs), true, _noView) };
+            if (c.ArtistName is { } name)
+            {
+                var artist = c.Artist;
+                views.Add(new PageView("moreby", Strings.Detail.MoreBy(name), false, () => Shell.GoTo(Shell.For(artist, name))));
+            }
+            var actions = new List<PageAction>(3)
+            {
+                new("play", Loc.Get(Strings.Detail.Play), _playChrome, PageActionKind.Play),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), ShuffleAlbum, PageActionKind.Shuffle),
+            };
+            if (Controls.Library is { } lib)
+            {
+                string target = c.SaveTarget.Text, title = c.Title ?? "";
+                bool saved = lib.IsSaved(target);
+                actions.Add(new PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
+            }
+            _sink.Publish(new PageChromeRow(views, actions));
         }
 
         static bool IsPreReleaseSubject(EntityUri subject)

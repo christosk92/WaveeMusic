@@ -348,7 +348,30 @@ quickplay with pins, row 2's facets lit and switching, Browse filtering on a ban
 
 ## Z6a1: the detail frame and the album
 
-_Not built yet._
+Boards Z-Album (Standard), Z-Album-Small, Z-Album-Compact, Z-Album-Huge, Z-Album-Huge4K, Album-Page / Album (studies), Z-Light-Album.
+Registrar `ZuneStructure.Detail.cs`; views `Structure\Views\Detail\*` and `Structure\Views\Album\*`; numbers `Rules\ZuneDetailRules.cs`;
+ladders `Rules\Tiers.Detail.cs` (`LaddersDetail`).
+
+- **Composition.** A detail page is a panorama: the title across the top (`R.Type.Panorama` / `PanoramaCompact`, bleeding off the edge or
+  fitting it per `structure.panoramaFit`), then up to three columns: the identity column (cover, artist, meta line, ring actions, the
+  release's courtesy lines), the list (a "songs" heading over Z3's table), the aside ("more by", the artist, fans also like). The art wash is
+  the material's: the frame places the core's tint claim and tone plane.
+- **Records by content tier** (`ZuneDetailTiers.Of`): Compact = the vertical arm (the hero); Small 160 identity, no aside; Standard 240 / 260;
+  Huge 320 / 400 ("more by" as a grid, the artist band); Huge 4K 400 / 440, 64 apart. A short window folds the panorama band (eased) and the
+  identity column leads with the title. Pages cap at 2400 between the gutters.
+- **Ladders** the core resolves by id: `detail.mode` (vertical arm below 640; 820 and 1008 split the core's rail modes), `detail.table`
+  (300 … 860, re-admitted 24 past the edge), `detail.height` (700 / 900). Every edge holds 24 on narrowing.
+- **Aside.** The core docks it by the window tier (`ZuneListRules.DetailTiers`: `AsideDocked` from Standard); the frame lays it out by the
+  content tier and, where a docked panel leaves the page Small, folds it and provides `Detail.AsideDocked = false`, so its sections return
+  under the rows. The release facts stay in the identity column (Z-Album's ℗ line), never in the aside.
+- **Detail.Rail / CompactRail: own.** No grip (the column is the record's width). A collapse stored by another theme shows Zune's strip (cover
+  and a 40 expand target).
+- **Hero** (Compact): panorama, cover (0.42 of the column, 96 to 144) beside the artist and the meta, the 40 ring row (words from a 340 inner
+  measure), the description, the list bar. Its height is one rule (`ZuneDetailRules.HeroHeight`) the skeleton reserves too.
+- **Row 2.** `Album.Page.cs` publishes the views "songs" (current) and "more by <artist>" (the artist's page) and the actions play,
+  shuffle and save / saved (the word follows the saved set) through the `PageChromeSink`.
+- **Words.** Rings and headings the theme writes are lowercased by the case roles; a heading that carries a name ("More by Daft Punk")
+  and every title or artist keep their casing.
 
 ## Z6a2: the artist page
 
