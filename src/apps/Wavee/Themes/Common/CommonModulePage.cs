@@ -41,6 +41,12 @@ internal static class CommonModulePage
 
     /// <summary>The registered template of <see cref="ViewKeys.ModulePage"/>.</summary>
     public static Element Template(ModulePageProps props, in ViewContext ctx)
+        => Page(props, CommonModuleLayout.For(ctx.Tier()), BrowseMastheadMetrics.Reserve);
+
+    /// <summary>The page in a layout the CALLER decided: a structure with its own page column (Zune's: the frame's gutter, a centred 2400 column, no masthead above)
+    /// passes its <see cref="CommonModuleLayout"/> and the height its masthead reserves (0 where there is none). <see cref="Template"/> is this with the tier's layout and
+    /// Classic's reserve.</summary>
+    internal static Element Page(ModulePageProps props, CommonModuleLayout layout, float topReserve)
     {
         if (!props.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error, title: Loc.Get(Strings.ModulePage.Error));
 
@@ -54,7 +60,6 @@ internal static class CommonModulePage
         string stagePlayable = ready ? Pages.StagePlayableUri(moduleId, live) : "";
         WatchPageModel? model = ready ? WatchPageModel.From(live, Pages.IsPlayingEntity(stagePlayable, nowUri)) : null;
         Action retry = props.Retry;
-        var layout = CommonModuleLayout.For(ctx.Tier());
         float target = layout.Target;
 
         var body = Skel.Region(loadable,
@@ -66,7 +71,7 @@ internal static class CommonModulePage
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f,
-            Padding = new Edges4(0f, BrowseMastheadMetrics.Reserve, 0f, 0f),
+            Padding = new Edges4(0f, topReserve, 0f, 0f),
             Children =
             [
                 model is null
@@ -75,12 +80,12 @@ internal static class CommonModulePage
                     {
                         // The props of the stage freeze inside it, so its identity and poster are folded into the key.
                         Key = "module-stage-slot:" + stagePlayable + "|" + (model.PosterUrl ?? ""),
-                        Direction = 0, Padding = new Edges4(layout.Gutter, 0f, layout.Gutter, 0f),
+                        Direction = 0, Padding = new Edges4(layout.Gutter, 0f, layout.Gutter, 0f), Justify = layout.Centered ? FlexJustify.Center : FlexJustify.Start,
                         Children = [Capped(layout, Stage(stagePlayable, model.PosterUrl))],
                     },
                 ScrollView(new BoxEl
                 {
-                    Direction = 0, MinWidth = 0f,
+                    Direction = 0, MinWidth = 0f, Justify = layout.Centered ? FlexJustify.Center : FlexJustify.Start,
                     Padding = new Edges4(layout.Gutter, CommonModuleRules.ScrollPad, layout.Gutter, R.Space.DockReserve + CommonModuleRules.ScrollPad),
                     Children = [Capped(layout, body)],
                 }) with { Grow = 1f, MinHeight = 0f, ScrollKey = props.ScrollKey },
@@ -88,7 +93,7 @@ internal static class CommonModulePage
         };
     }
 
-    /// <summary>One column that grows to the tier's max width and stops, at the page's left edge (the Huge fill rule).</summary>
+    /// <summary>One column that grows to the tier's max width and stops, at the page's left edge (the Huge fill rule) or, where the layout says so, centred.</summary>
     static Element Capped(CommonModuleLayout layout, Element content)
         => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = layout.MaxWidth, Children = [content] };
 

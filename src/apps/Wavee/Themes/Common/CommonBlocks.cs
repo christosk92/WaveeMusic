@@ -25,14 +25,15 @@ namespace Wavee.Themes.Common;
 /// <summary>Registers every Common block.</summary>
 public static class CommonBlocks
 {
-    /// <summary>Adds every Common view to <paramref name="views"/>. Called by a structure's <c>Register</c>.</summary>
-    public static void Register(ViewRegistryBuilder views)
+    /// <summary>Adds every Common view to <paramref name="views"/>. Called by a structure's <c>Register</c>. A structure that draws the module page in its own page
+    /// column passes its template (and a template id) as <paramref name="module"/>: the view registry refuses a second template for a key, so the choice is made here.</summary>
+    public static void Register(ViewRegistryBuilder views, ViewTemplate<ModulePageProps>? module = null, string moduleTemplateId = "common.module.page")
     {
         views.Add(ViewKeys.HistoryPage, CommonHistory.Template, "common.history");
         views.Add(ViewKeys.HomeCustomize, CommonCustomize.Template, "common.customize");
         views.Add(ViewKeys.ShellFps, CommonFps.Template, "common.fps");
         CommonDiagnostics.Register(views);
         CommonLogs.Register(views);
-        views.Add(ViewKeys.ModulePage, CommonModulePage.Template, "common.module.page");
+        views.Add(ViewKeys.ModulePage, module ?? CommonModulePage.Template, moduleTemplateId);
     }
 }

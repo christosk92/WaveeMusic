@@ -57,7 +57,7 @@ internal static partial class ZuneLibraryPage
         else if (props.SavedEpisodesMode)
             inner = new BoxEl
             {
-                Key = LR.SavedKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = LR.HeadBodyGap,
+                Key = LR.SavedKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
                 Children = [Head(props, cache), props.SavedEpisodes()],
             };
         else
@@ -68,7 +68,7 @@ internal static partial class ZuneLibraryPage
                 : (artists ? ReaderColumn(props, cache.Layout) : DetailColumn(props, cache.Layout));
             inner = new BoxEl
             {
-                Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = LR.HeadBodyGap,
+                Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
                 Children =
                 [
                     Head(props, cache),
@@ -85,7 +85,7 @@ internal static partial class ZuneLibraryPage
         return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = LR.PageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            Padding = new Edges4(0f, LR.PageTop, 0f, 0f),
+            Padding = new Edges4(0f, cache.Layout.PageTop, 0f, 0f),
             OnBoundsChanged = cache.OnBounds, Children = [inner],
         }, cache.Layout.Gutter);
     }
@@ -145,20 +145,23 @@ internal static partial class ZuneLibraryPage
     {
         bool artists = p.Entity == EntityKind.Artist;
         var l = c.Layout;
+        // A GRID's cells fill whatever column it gets; a LIST (and the search hits) stop at the record's cap so a 2400 page is never one 1960-wide list. The view cell is
+        // read here so the cap follows a grid <-> list switch (the column eases its width, the node is the same one).
+        float cap = artists ? float.NaN : (!p.FullSearch && User.IsGridView(p.View().Value) ? l.GridNavMaxW : l.NavMaxW);
         return Section with
         {
             Key = LR.NavKey, Direction = 1,
-            Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : 1f, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
-            MinWidth = artists ? l.ReaderNavW : l.NavMinW, MaxWidth = artists ? float.NaN : l.NavMaxW, Animate = Design.Reveal.Resize,
+            Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : l.NavGrow, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
+            MinWidth = artists ? l.ReaderNavW : l.NavMinW, MaxWidth = cap, Animate = Design.Reveal.Resize,
             Children = [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
         };
     }
 
     /// <summary>The pane's column: a width of its own beside the navigator (the album's songs), the 380 of Standard.</summary>
-    static BoxEl PaneSection(string key, ZuneLibraryLayout l) => Section with
-    {
-        Key = key, Width = l.PaneW, Shrink = 0f, MinWidth = l.PaneW, Animate = Design.Reveal.Resize,
-    };
+    static BoxEl PaneSection(string key, ZuneLibraryLayout l) => l.PaneGrow > 0f
+        // The growing form (Huge): rests at PaneW, takes its share of what the navigator leaves, up to PaneMaxW.
+        ? Section with { Key = key, Basis = l.PaneW, Grow = l.PaneGrow, Shrink = 0f, MinWidth = l.PaneW, MaxWidth = l.PaneMaxW, Animate = Design.Reveal.Resize }
+        : Section with { Key = key, Width = l.PaneW, Shrink = 0f, MinWidth = l.PaneW, Animate = Design.Reveal.Resize };
 
     static Element DetailColumn(LibraryPageProps p, ZuneLibraryLayout l)
     {
@@ -208,7 +211,7 @@ internal static partial class ZuneLibraryPage
         if (depth == 0)
             body = new BoxEl
             {
-                Key = "col:nav", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = LR.HeadBodyGap,
+                Key = "col:nav", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = c.Layout.BodyGap,
                 Children = [Head(p, c), p.SavedEpisodesMode
                     ? p.SavedEpisodes()
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
@@ -236,15 +239,15 @@ internal static partial class ZuneLibraryPage
         return new BoxEl
         {
             Key = LR.CollapsedKey, Animate = s_arm, Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = depth == 0 ? [wrapper] : [CrumbBar(p.Crumbs, p.PickDepth), wrapper],
+            Children = depth == 0 ? [wrapper] : [CrumbBar(p.Crumbs, p.PickDepth, c.Layout.BodyGap), wrapper],
         };
     }
 
     /// <summary>The collapsed layout's breadcrumb: a plain band, a 1-DIP divider under it.
     /// <para>KEYED. It is the first child of the collapsed root, as the head is of the wide one: unkeyed, the reconciler would pair the two by ordinal.</para></summary>
-    static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick) => new BoxEl
+    static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick, float gap) => new BoxEl
     {
-        Key = "lib:crumbs", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, LR.HeadBodyGap),
+        Key = "lib:crumbs", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, gap),
         Children =
         [
             BreadcrumbBar.Create(crumbs, onPick),
