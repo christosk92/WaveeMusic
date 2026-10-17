@@ -484,7 +484,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.24 (the remaining board items): PanelTransportProps.Source / Device / ToggleDevicePicker, the unavailable-songs bar, DetailTableTier.ListIndex,
         // PlaylistRecsProps.Lead, FacetRowProps.ToggleFriends, SearchBodyModel.ArtistRail, LibraryTierPolicy's Small widths.
         // 1.25 (the last Classic gaps): PanelTransportProps.DevicePickerRequest, LibraryTierPolicy's grid gaps.
-        Assert.Equal("1.25", ContractVersion.Text);
+        // 1.26 (P5 round A): the Zune role vocabulary (type, shape, metrics), page chrome row 2 and the band.
+        Assert.Equal("1.26", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -510,7 +511,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 23));
         Assert.True(ContractVersion.IsCompatible(1, 24));
         Assert.True(ContractVersion.IsCompatible(1, 25));
-        Assert.False(ContractVersion.IsCompatible(1, 26));
+        Assert.True(ContractVersion.IsCompatible(1, 26));
+        Assert.False(ContractVersion.IsCompatible(1, 27));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

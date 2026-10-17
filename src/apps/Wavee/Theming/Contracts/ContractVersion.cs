@@ -109,6 +109,12 @@
 // 1.25 (the last Classic gaps): the optional `PanelTransportProps.DevicePickerRequest` (a request, such as a toast's "Choose device", that the
 // now-playing sheet answers by opening its Devices door's picker), and the library grid's per-tier gaps (`LibraryGridGaps`, `LibraryTierPolicy.CompactGridGaps` /
 // `.SmallGridGaps` / `.StandardGridGaps` / `.HugeGridGaps` and `GridGapsFor`; null keeps the core's 8 / 8).
+// 1.26 (P5 round A, the seams Zune needs): the role vocabulary: twelve `TypeRoles` members (Panorama, PanoramaCompact, Hero, Pivot, SubPivot,
+// Numeral, NumeralLarge, NowPlayingDisplay, Wordmark, LyricsLine, Heading, QuickplayHead) with `PanoramaSize`, `WithPanorama` and `WithBigNumerals`,
+// `ShapeRole` / `ShapeRoles` with `WaveeStyleRoles.Shape` and `R.Shape` (a non-colour role), and `StyleMetrics.DockedPane` / `.DockedPane4K` /
+// `.PaneItem` / `.CardGap` (positional constructors changed before any external theme existed, as 1.2 did); page chrome row 2: `PageChrome.Views` /
+// `.Actions` / `.Backdrop` / `.CurrentView`, `PageView`, `PageAction`, `PageActionKind`, `PageBackdrop`, `PageChromeRow` and the `PageChromeSink`
+// context; the band: `NavPaneProps.Band`, `BandProps`, `BandDestination`, `BandPin`, `PageScroll` and `PageScrollDirection`.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -124,7 +130,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 25;
+    public const int Minor = 26;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
