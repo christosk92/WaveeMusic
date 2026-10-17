@@ -127,6 +127,7 @@ public static partial class Shell
         {
             RequireUiThread();
             if (s_mounted is not null) throw new InvalidOperationException("Reset the navigation between mounts, not under one.");
+            Tabs.Expand();   // a fact under a theme without tabs collapses the workspace: the next fact starts with every tab back
             var home = new Route(RouteKind.Home, Tab: Tabs.ActiveId);
             s_nav = new Nav(home);
             Motion.Value = NavTransitionKind.Neutral;
