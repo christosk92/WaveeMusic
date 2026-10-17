@@ -158,7 +158,47 @@ _Not built yet._
 
 ## Z8b: the screens
 
-_Not built yet._
+Settings, the theme picker and its options, the setup wizard, the release notes, and the report and crash dialogs. All fifteen keys are Zune's own
+(`Structure\ZuneStructure.Screens.cs`); Zune's registrations win over Classic's stand-in key by key.
+
+**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page and its seven tabs), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
+`ZuneCrash.cs`; numbers and tier records in `Structure\Rules\ZuneSettingsRules.cs` (settings) and `Rules\ZuneSetupRules.cs` (setup, release notes
+and the two dialogs); loc `theme.zune.screens`; tests `Wavee.ShellTests\ZuneScreensMountedTests.cs`.
+
+**Keys.** `Pages.Settings`, `Settings.ThemePicker`, `Settings.ThemeOptions` (page and wizard variants), `Setup.Wizard / Terms / SignIn / Theme /
+LocalPlayback / SignInDoor / RuntimeCard`, `Pages.WhatsNew`, `ReleaseNotes.Viewer`, `ReleaseNotes.AfterUpdatePlate`, `Dialog.Feedback`,
+`Dialog.Crash`. Template ids: `zune.screens.settings[.theme-picker|.theme-options]`, `zune.setup.*`, `zune.release-notes.*`, `zune.dialog.*`.
+
+**Settings.** A panorama title ("settings"), a lowercase section list (the seven core tabs: the page state and every deep link name a tab), and the
+open tab's column. The column is the document drawn: every `SettingsDoc` section of the tab is a group (a 26/300 heading over label | control rows), so a
+new document row shows up with its words and its writer; the controls that need labels or ranges (combos, chips, sliders) are built per row in
+`ZuneSettings.<Tab>.cs`. Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for
+their life and re-read the document on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), and
+beside the column (or under it, by flex wrap) a live preview built from the roles. Node identity: the list, lane, groups and rows are the same nodes in
+every tier; a tier changes their direction, wrap and widths only.
+
+**Theme options.** `ZuneSettings.Theme.cs` draws the core's `SettingsOptionsView` by row kind: toggles as switches, short selects as chips (a combo
+past four or when the structure asks for one), the accent as a row of square swatches, sliders, confirmed actions, "reset" beside the heading. The
+wizard variant has no reset and always stacks.
+
+**Setup.** A flat plate on the dialog ground with an accent column (the step as a 150 numeral at 35 % ink-on-accent, the page's name, the four steps);
+the footer is the step label over a 2 DIP line, back and the secondary as words, the primary as the round accent button with its word. Compact is a sheet
+with a 120 accent strip and a stacked footer. The core model (`Setup.WizardModel`, `Commands.ResolveFor`) decides everything.
+
+**Release notes.** A panorama title; the main column (since line, hero, highlight panels, the changelog groups) beside the release rail at Standard and up,
+a picker under the title below it. The viewer and the after-update plate are built from Zune's parts (no board draws them, owner Q18).
+
+**Dialogs.** The report and crash bodies keep the core chrome; the body width is the active structure's overlay fit (`DialogFit.FormBodyWidth`), frozen
+at open. Compact folds the preview behind a 40 row, Huge is a two-pane card.
+
+**Numbers.** `ZuneSettingsTiers.For/Of` (content tier), `ZuneSetupTiers`, `ZuneReleaseNotesTiers` (page: content tier; overlays: window tier),
+`ZuneDialogTiers`. The sizes the lane covers are Standard; the others are sane variations ZT8 tunes against the -Compact, -Small and -Huge boards.
+
+**Conflicts with the boards (the plan and the owner win).** The board lists twelve sections; the core page is a seven-tab cell, so account, devices and
+keyboard have no document rows and are not built, and audio, lyrics, feedback & help are groups of Playback, Appearance, About and Privacy. No downloads
+(Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line are not built (nothing installs a theme
+from a folder). Compact and Small draw the section list as a wrapping row above the column, not a drill-in. The Standard preview column wraps under the
+options when the window is too narrow for both.
 
 ## Z9: the states, "on this PC", the light pass and the completeness test
 
