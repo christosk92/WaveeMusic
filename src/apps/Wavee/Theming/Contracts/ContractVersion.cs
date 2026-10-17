@@ -119,6 +119,10 @@
 // display fact, no offline playback), which every row contract carrying the row state passes through; Browse's bands answer row 2.
 // 1.28 (P5 round D): the `Home.Quickplay` key (`HomeQuickplayProps`: the band's pins, history and new releases at the top of Home;
 // Classic registers Nothing for it).
+// 1.29 (P5 rounds E-F): docked panes per tier: `PanelArrangement`, `DockedPane`, `PaneSide`, `PanelModeSet`, `PanelTierRule.Panes` /
+// `.Arrangement` / `.DocksThree` and `MaxDocked` 1-3, `PanelPolicy.ArrangementAt` / `.PaneAt`, `PanelView.Beside` / `.Linked`,
+// `ShellFrameProps.DockedPanes` with `DockedPaneProps` (`RailWiring.QueuePane` removed: the core's hard-wired queue pane becomes the
+// tier's arrangement; Classic's rule docks exactly as before); `ChromePolicy.Small` and `OverlayPolicy.Small` (null keeps Standard's).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -134,7 +138,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 28;
+    public const int Minor = 29;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

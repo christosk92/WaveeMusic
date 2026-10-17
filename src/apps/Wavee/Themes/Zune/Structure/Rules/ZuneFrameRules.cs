@@ -236,10 +236,6 @@ public static class ZuneFrameRules
         TransitionDynamics.Tween(DockMs, Easing.SmoothOut), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(DockMs, Easing.SmoothOut), SuppressDescendantTransitions: true);
 
-    /// <inheritdoc cref="DockMs"/>
-    public static readonly LayoutTransition PanelHostAnim = new(TransitionChannels.Position | TransitionChannels.Size,
-        TransitionDynamics.Tween(DockMs, Easing.SmoothOut), SizeMode.Reveal,
-        ExitDynamics: TransitionDynamics.Tween(DockMs, Easing.SmoothOut), SuppressDescendantTransitions: true);
 
     // ── the panel ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

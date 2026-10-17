@@ -487,7 +487,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.26 (P5 round A): the Zune role vocabulary (type, shape, metrics), page chrome row 2 and the band.
         // 1.27 (P5 round B): Track.RowState.OnThisPc.
         // 1.28 (P5 round D): Home.Quickplay.
-        Assert.Equal("1.28", ContractVersion.Text);
+        // 1.29 (P5 rounds E-F): docked pane arrangements, ChromePolicy.Small, OverlayPolicy.Small.
+        Assert.Equal("1.29", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -516,7 +517,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 26));
         Assert.True(ContractVersion.IsCompatible(1, 27));
         Assert.True(ContractVersion.IsCompatible(1, 28));
-        Assert.False(ContractVersion.IsCompatible(1, 29));
+        Assert.True(ContractVersion.IsCompatible(1, 29));
+        Assert.False(ContractVersion.IsCompatible(1, 30));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

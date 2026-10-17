@@ -56,12 +56,7 @@ public static class WindowTiers
     /// the second pane while the queue is open beside it and the tier docks two.</summary>
     public static float PanelsReserved(PanelPolicy panel, WidthTier window, float viewportWidth, bool railOpen, Shell.RailMode mode,
         float railWidth, bool queueBeside)
-    {
-        var rule = panel.For(window);
-        float floor = rule.FloorFor(viewportWidth);
-        bool second = Shell.FrameRules.SecondOpen(queueBeside, rule.DocksTwo, railOpen, mode);
-        return Shell.FrameRules.PanelsReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, floor), second, Shell.FrameRules.SecondWidth(floor));
-    }
+        => Shell.FrameRules.PanelsReserved(panel.For(window), viewportWidth, railOpen, mode, railWidth, queueBeside);   // every docked pane, linked ones included (P5 ZT2)
 
     /// <summary>The tiers of a window of <paramref name="viewportWidth"/> by <paramref name="viewportHeight"/> whose content
     /// region is <paramref name="contentWidth"/> wide, through <paramref name="policy"/>. With no <paramref name="previous"/>
