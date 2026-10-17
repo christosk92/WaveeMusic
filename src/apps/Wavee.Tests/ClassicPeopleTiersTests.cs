@@ -180,6 +180,34 @@ public class ClassicPeopleTiersTests
         Assert.Equal(4, layout.DrawerColumns);                           // C-Discography-Huge: the drawer's four columns
     }
 
+    [Theory]
+    [InlineData(3840f, 3200f, true)]     // narrowing from 4K: the rung holds 40
+    [InlineData(3840f, 3160f, true)]
+    [InlineData(3840f, 3159f, false)]    // past the hold: back to Huge's three columns of five
+    [InlineData(2560f, 3199f, false)]    // widening: no hold, the rung itself
+    [InlineData(2560f, 3200f, true)]
+    [InlineData(3159f, 3200f, true)]     // back across the rung after a narrowing drop
+    public void The_chart_record_crosses_the_4K_rung_with_its_hold(float from, float to, bool wide)
+    {
+        var start = Facts(from, 1440f, from - 320f);
+        var facts = WindowTiers.Resolve(ClassicTiers.Policy, to, 1440f, to - 320f, previous: start);
+        var layout = ClassicArtistTiers.Of(facts);
+        Assert.Same(wide ? ClassicArtistTiers.Huge4K : ClassicArtistTiers.Huge, layout);
+        // C-Artist-Huge4K's 4 x 4 against C-Artist-Huge's 3 x 5: the chart host reads both through the policy and pushes them to the SAME
+        // mounted shelf as live props (no key carries them), so the crossing re-fits the chart in place.
+        Assert.Equal(wide ? 4 : 3, ClassicArtistTiers.Policy.ChartMaxColumns(facts));
+        Assert.Equal(wide ? 4 : 5, ClassicArtistTiers.Policy.ChartRows(facts));
+    }
+
+    [Fact]
+    public void The_chart_glides_to_its_new_height_and_everything_below_rides_it()
+    {
+        // The holder of the chart's shelf takes ClassicTierMotion.Resize: a height-only flow reveal on the reflow's 280 ms tween (plan 3.3).
+        var resize = ClassicTierMotion.Resize;
+        Assert.Equal(FluentGpu.Foundation.TransitionChannels.Size, resize.Channels);
+        Assert.Equal(FluentGpu.Foundation.SizeMode.FlowReveal, resize.Size);
+    }
+
     [Fact]
     public void Only_Huge_draws_the_section_row_and_only_Compact_draws_the_discography_strip()
     {

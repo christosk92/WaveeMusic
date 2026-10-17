@@ -2091,10 +2091,10 @@ window reports 0) resolves to "keep the previous tier", so a restore returns to 
 
 **A crossing keeps the parts it keeps.** A part that survives a crossing keeps its node, so its scroll offset, selection and focus
 survive with it: never key a node on a tier, a form or a layout record. Where a control froze a prop at mount the prop is live
-(PagedShelf's band, pager and card height; a bound ItemsView's responsive cell floor; `LazyGridFit`; NumberBox's style; ComboBox's size),
+(PagedShelf's band, pager, card height and the rows of a multi-row strip; a bound ItemsView's responsive cell floor; `LazyGridFit`; NumberBox's style; ComboBox's size),
 and where two forms differ only in arrangement they share one container whose shape is the tier's (a grid's track count, a box's
 direction) so the children move instead of being reparented. Only a genuinely different tree swaps, keyed per family, under the shared
-cross-fade. Classic's crossing recipes are `Rules\Tiers.Motion.cs` (`ClassicTierMotion.Reflow`, `.Shove`, `.SwapFade`). Where the nav
+cross-fade. Classic's crossing recipes are `Rules\Tiers.Motion.cs` (`ClassicTierMotion.Reflow`, `.Shove`, `.SwapFade`, and `.Resize` for a part whose height alone changes, such as the artist chart's rows past the 4K rung: a flow reveal that the page below rides). Where the nav
 pane changes (528, 1008) the content card is the one projection root of the commit and the page reflows inside its glide.
 `Wavee.ShellTests\TierLayoutTests.Crossing.cs` mounts each page, scrolls and focuses it, crosses 528 and 1008 (and 1920 for Home) both
 ways and asserts the same nodes, the kept offset and focus, and tracks on the crossing frame.

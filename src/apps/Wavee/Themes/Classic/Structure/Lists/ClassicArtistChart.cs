@@ -65,8 +65,9 @@ internal static class ClassicArtistChart
     };
 
     /// <summary>A key on a component's ROOT is inert (ReconcileSingleChild pairs by type alone), so the keyed shelf is a CHILD of a pass-through
-    /// column (ch 08 §9 trap 2).</summary>
-    static Element Shelf(Element keyedShelf) => new BoxEl { Direction = 1, MinWidth = 0f, Children = [keyedShelf] };
+    /// column (ch 08 §9 trap 2). The column is the chart's one height: a crossing that changes the rows per column (Huge 4K's four against five)
+    /// re-fits the same shelf, and the column glides to the new height with everything below riding it (<see cref="ClassicTierMotion.Resize"/>).</summary>
+    static Element Shelf(Element keyedShelf) => new BoxEl { Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Resize, Children = [keyedShelf] };
 
     /// <summary>The standard selection bar, standalone, 8 up from the chart's bottom.</summary>
     static Element Bar(int count, Func<int, Element> lane) => Controls.SelectionBar(count, lane, standalone: true, bottomPadding: Spacing.S);

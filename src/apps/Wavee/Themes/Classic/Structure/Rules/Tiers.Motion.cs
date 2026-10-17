@@ -29,6 +29,12 @@ public static class ClassicTierMotion
     public static readonly LayoutTransition Reflow = new(
         TransitionChannels.Position | TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut), SizeMode.Reveal);
 
+    /// <summary>A surviving part whose HEIGHT alone changes (the artist chart taking four rows past the Huge 4K rung, five below it): the
+    /// layout lands once at the final height, the presented extent tweens from the old one and everything below rides the difference, so
+    /// nothing under the part jumps and nothing re-lays out per frame (the engine's flow reveal, vertical only).</summary>
+    public static readonly LayoutTransition Resize = new(
+        TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 

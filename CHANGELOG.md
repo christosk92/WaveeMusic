@@ -300,6 +300,8 @@ versions separately under `v*` and is not tracked in this file.)
   build them fresh: they lost their scroll position, page or focus and popped in. They now stay the same and glide into their new size and
   place; a list or grid keeps the item at its top, and only parts that really change shape (the What's new rail and picker, its poster and
   row cards) fade from one to the other.
+- **The artist page's Top tracks no longer rebuilds when a very wide window crosses 3200 wide.** It switches between three columns of five
+  and four columns of four in place: it keeps its page and your selected songs, and its height glides to the new size instead of jumping.
 - **The narrow-window drawer, the Now Playing sheet and the other bottom sheets behave like overlays.** In a narrow Classic
   window the mouse wheel and the touchpad scrolled the page under an open drawer or sheet; they now scroll the drawer's or
   the sheet's own list, and the page behind never moves. The drawer shows the full navigation under the account row again
