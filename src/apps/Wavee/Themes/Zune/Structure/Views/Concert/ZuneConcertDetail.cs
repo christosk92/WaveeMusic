@@ -121,20 +121,26 @@ internal static class ZuneConcertDetail
         Element identity = Identity(d, lay, seed);
         if (d.Offers.Length == 0) return identity;
         Element slab = Tickets(d.Offers, lay, rings, gutter);
-        if (lay.TicketsW > 0f)
-            return new BoxEl
-            {
-                Key = "zune-concert:hero", Direction = 0, Gap = lay.HeroGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-                Children =
-                [
-                    new BoxEl { Key = "zune-concert:identity", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [identity] },
-                    new BoxEl { Key = "zune-concert:slab", Direction = 1, Width = lay.TicketsW, Shrink = 0f, Children = [slab] },
-                ],
-            };
+        // ONE tree at every tier: only the hero's direction and the two wrappers' sizing change across the Compact/Small edge, so the identity (and the
+        // date inside it) is the SAME node after a crossing and glides instead of being remounted under a different parent.
+        bool beside = lay.TicketsW > 0f;
         return new BoxEl
         {
-            Key = "zune-concert:hero", Direction = 1, Gap = lay.SlabTop, MinWidth = 0f,
-            Children = [identity, slab],
+            Key = "zune-concert:hero", Direction = beside ? (byte)0 : (byte)1, Gap = beside ? lay.HeroGap : lay.SlabTop, MinWidth = 0f,
+            AlignItems = beside ? FlexAlign.Start : FlexAlign.Stretch,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "zune-concert:identity", Direction = 1, Grow = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN, MinWidth = 0f,
+                    Children = [identity],
+                },
+                new BoxEl
+                {
+                    Key = "zune-concert:slab", Direction = 1, Width = beside ? lay.TicketsW : float.NaN, Shrink = beside ? 0f : 1f,
+                    Children = [slab],
+                },
+            ],
         };
     }
 

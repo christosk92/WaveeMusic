@@ -149,16 +149,27 @@ public sealed partial class ZuneTierLayoutTests(ShellHost host)
     internal void Mounted(Action<Shell.HeadlessShell> body, float width, float height) => ZuneHost.Mounted(host, body, width, height);
 
     /// <summary>Mount the app under Zune at <paramref name="sizeName"/> (resizing into it from its <c>From</c> size when it has one), show
-    /// <paramref name="page"/>, run every frame assertion, then <paramref name="more"/> (the page's own record checks).</summary>
-    internal void AssertPage(TierPage page, string sizeName, Action<Shell.HeadlessShell, TierFacts>? more = null)
+    /// <paramref name="page"/>, run every frame assertion, then <paramref name="more"/> (the page's own record checks). A page with its own width
+    /// ladder (the detail pages' mode ladder) holds an edge only while it is mounted: a page mounted fresh inside a hold zone resolves the plain
+    /// edge, with no history to hold. <paramref name="openFirst"/> opens the page at the <c>From</c> size and resizes it into the edge, the way a
+    /// user narrows a window with the page open.</summary>
+    internal void AssertPage(TierPage page, string sizeName, Action<Shell.HeadlessShell, TierFacts>? more = null, bool openFirst = false)
     {
         var size = Sizes[sizeName];
         ZuneHost.Mounted(host, shell =>
         {
+            bool opened = false;
             if (size.Resized)
             {
                 // Reached by a resize: the settled size's crossing commits on the first frame that is not resized.
                 shell.RunFrames(20);
+                if (openFirst && page.Route.Kind != Shell.RouteKind.Home)
+                {
+                    Shell.GoTo(page.Route);
+                    Until(shell, () => shell.FindPrefix(page.ReadyKeyPrefix).Count > 0, page.Name + " on screen at " + size.Name + "'s starting size");
+                    shell.RunFrames(40);
+                    opened = true;
+                }
                 shell.Resize(size.Width, size.Height);
                 shell.Host.Paint(0, keepAlive: true);
                 shell.Host.RunFrame();
@@ -168,7 +179,7 @@ public sealed partial class ZuneTierLayoutTests(ShellHost host)
             shell.Host.RunFrame();
             AssertTier(size);
 
-            if (page.Route.Kind != Shell.RouteKind.Home) Shell.GoTo(page.Route);
+            if (!opened && page.Route.Kind != Shell.RouteKind.Home) Shell.GoTo(page.Route);
             Until(shell, () => shell.FindPrefix(page.ReadyKeyPrefix).Count > 0, page.Name + " on screen at " + size.Name);
             shell.RunFrames(40);   // entrances and the panel settle
             AssertTier(size);      // navigating never moves the tier
