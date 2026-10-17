@@ -112,7 +112,7 @@ public sealed partial class TierLayoutTests
         }
 
         // The discography: a strip of album cards at Compact, the inline grid elsewhere (never both).
-        Assert.Equal(0, shell.FindPrefix(layout.DiscoStrip ? "disco-arm:grid" : "disco-arm:strip").Count);
+        Assert.Empty(shell.FindPrefix(layout.DiscoStrip ? "disco-arm:grid" : "disco-arm:strip"));
 
         // The hero: one arm once the page has settled, the record's for the page's own width.
         var page = shell.FindPrefix("artist-page:");
