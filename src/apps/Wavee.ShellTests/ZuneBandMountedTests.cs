@@ -204,7 +204,7 @@ public sealed class ZuneBandMountedTests(ShellHost host)
     // ── row 2 ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Row_two_shows_the_library_kinds_on_a_library_route_and_nothing_on_home()
+    public void Row_two_shows_the_library_kinds_on_a_library_route_and_nothing_on_recents()
         => ZuneHost.Mounted(host, shell =>
         {
             shell.RunFrames(20);
@@ -221,9 +221,10 @@ public sealed class ZuneBandMountedTests(ShellHost host)
                 Assert.Equal(Shell.BandRules.Library, band.Current());
                 Until(shell, () => MathF.Abs(BandH(shell) - standard.ExpandedH) < 0.5f, "the band at its full height with row 2");
 
-                Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
-                Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on Home");
-                Until(shell, () => MathF.Abs(BandH(shell) - standard.CollapsedH) < 0.5f, "the band is row 1 alone on Home");
+                // Home publishes its facets as row 2 (Z5); Recents publishes none.
+                Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));
+                Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on Recents");
+                Until(shell, () => MathF.Abs(BandH(shell) - standard.CollapsedH) < 0.5f, "the band is row 1 alone on Recents");
                 Assert.Empty(shell.FindPrefix(ZuneBandRules.ViewKeyPrefix));
             }
             finally
