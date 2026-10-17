@@ -33,7 +33,7 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -57,7 +57,7 @@ internal static partial class ZuneLibraryPage
         else if (props.SavedEpisodesMode)
             inner = new BoxEl
             {
-                Key = L.SavedKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = L.HeadBodyGap,
+                Key = LR.SavedKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = LR.HeadBodyGap,
                 Children = [Head(props, cache), props.SavedEpisodes()],
             };
         else
@@ -68,7 +68,7 @@ internal static partial class ZuneLibraryPage
                 : (artists ? ReaderColumn(props, cache.Layout) : DetailColumn(props, cache.Layout));
             inner = new BoxEl
             {
-                Key = L.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = L.HeadBodyGap,
+                Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = LR.HeadBodyGap,
                 Children =
                 [
                     Head(props, cache),
@@ -84,8 +84,8 @@ internal static partial class ZuneLibraryPage
         // The page publishes no shell material: the library is the app's accent-neutral browser.
         return new BoxEl
         {
-            Key = L.PageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            MaxWidth = R.Space.PageMaxW + gutter + gutter, Padding = new Edges4(gutter, L.PageTop, gutter, 0f),
+            Key = LR.PageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+            MaxWidth = R.Space.PageMaxW + gutter + gutter, Padding = new Edges4(gutter, LR.PageTop, gutter, 0f),
             OnBoundsChanged = cache.OnBounds, Children = [inner],
         };
     }
@@ -147,7 +147,7 @@ internal static partial class ZuneLibraryPage
         var l = c.Layout;
         return Section with
         {
-            Key = L.NavKey, Direction = 1,
+            Key = LR.NavKey, Direction = 1,
             Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : 1f, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
             MinWidth = artists ? l.ReaderNavW : l.NavMinW, Animate = Design.Reveal.Resize,
             Children = [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
@@ -162,16 +162,16 @@ internal static partial class ZuneLibraryPage
 
     static Element DetailColumn(LibraryPageProps p, ZuneLibraryLayout l)
     {
-        if (!p.HasSelection) return PaneSection(L.EmptyKey, l) with { Children = [EmptyCompact(Loc.Get(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum))] };
+        if (!p.HasSelection) return PaneSection(LR.EmptyKey, l) with { Children = [EmptyCompact(Loc.Get(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum))] };
         // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
-        return PaneSection(L.PaneKey, l) with { Children = [p.Pane()] };
+        return PaneSection(LR.PaneKey, l) with { Children = [p.Pane()] };
     }
 
     /// <summary>The artists view's ONE right-hand column: the reader. There is no third pane: the reader is the leaf.</summary>
     static Element ReaderColumn(LibraryPageProps p, ZuneLibraryLayout l)
     {
-        if (!p.HasSelection) return Section with { Key = L.EmptyKey, Grow = 1f, Basis = 0f, Children = [EmptyCompact(Loc.Get(Strings.Library.SelectArtist))] };
-        return Section with { Key = L.ReaderKey, Grow = 1f, Basis = 0f, MinWidth = l.RightMin > 0f ? l.RightMin : 0f, Children = [p.Pane()] };
+        if (!p.HasSelection) return Section with { Key = LR.EmptyKey, Grow = 1f, Basis = 0f, Children = [EmptyCompact(Loc.Get(Strings.Library.SelectArtist))] };
+        return Section with { Key = LR.ReaderKey, Grow = 1f, Basis = 0f, MinWidth = l.RightMin > 0f ? l.RightMin : 0f, Children = [p.Pane()] };
     }
 
     static Element EmptyCompact(string text)
@@ -182,21 +182,21 @@ internal static partial class ZuneLibraryPage
     /// <summary>The drill: opacity only, 160 ms, and the arriving leaf slides 12 DIP in from the right. A depth swap is a mount/unmount of a keyed wrapper, so the engine's
     /// enter/exit terminals do the work: no frame clock.</summary>
     static readonly LayoutTransition s_drillIn = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: L.DrillDx, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut));
+        TransitionChannels.Opacity, TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut),
+        Enter: new EnterExit(Dx: LR.DrillDx, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut));
 
     /// <summary>The two arms (the split columns and the one-column drill-in) cross-fade when the layout tier crosses: the arriving arm fades in while the leaving one fades out
     /// as an exit orphan under it, never a snap. Opacity only.</summary>
     static readonly LayoutTransition s_arm = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut),
+        TransitionChannels.Opacity, TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut),
         Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut));
+        ExitDynamics: TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut));
 
     static readonly LayoutTransition s_drillRoot = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut),
+        TransitionChannels.Opacity, TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut),
         Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(L.DrillMs, Easing.SmoothOut));
+        ExitDynamics: TransitionDynamics.Tween(LR.DrillMs, Easing.SmoothOut));
 
     /// <summary>TWO rungs when BROWSING, for every kind: depth 0 the navigator, depth 1 the pane (albums / podcasts) or the reader (artists). SEARCH mode keeps its columns,
     /// so the artists view keeps a third rung for them: depth 0 artist hits, 1 album hits, 2 track hits.</summary>
@@ -208,7 +208,7 @@ internal static partial class ZuneLibraryPage
         if (depth == 0)
             body = new BoxEl
             {
-                Key = "col:nav", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = L.HeadBodyGap,
+                Key = "col:nav", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = LR.HeadBodyGap,
                 Children = [Head(p, c), p.SavedEpisodesMode
                     ? p.SavedEpisodes()
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
@@ -235,7 +235,7 @@ internal static partial class ZuneLibraryPage
         // KEYED against the wide arm's key: see the file header.
         return new BoxEl
         {
-            Key = L.CollapsedKey, Animate = s_arm, Direction = 1, Grow = 1f, ClipToBounds = true,
+            Key = LR.CollapsedKey, Animate = s_arm, Direction = 1, Grow = 1f, ClipToBounds = true,
             Children = depth == 0 ? [wrapper] : [CrumbBar(p.Crumbs, p.PickDepth), wrapper],
         };
     }
@@ -244,7 +244,7 @@ internal static partial class ZuneLibraryPage
     /// <para>KEYED. It is the first child of the collapsed root, as the head is of the wide one: unkeyed, the reconciler would pair the two by ordinal.</para></summary>
     static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick) => new BoxEl
     {
-        Key = "lib:crumbs", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, L.HeadBodyGap),
+        Key = "lib:crumbs", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, LR.HeadBodyGap),
         Children =
         [
             BreadcrumbBar.Create(crumbs, onPick),

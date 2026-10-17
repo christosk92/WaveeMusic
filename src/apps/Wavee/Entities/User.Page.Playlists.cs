@@ -17,6 +17,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Reconciler;
+using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;

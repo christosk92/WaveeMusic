@@ -16,7 +16,7 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneLibraryKit;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -49,7 +49,7 @@ internal static partial class ZuneLibraryPage
             };
             if (second.Count > 0)
                 rows.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = l.HeadGap, MinWidth = 0f, Height = l.HeadH, Children = second.ToArray() });
-            return new BoxEl { Key = L.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Children = rows.ToArray() };
+            return new BoxEl { Key = LR.HeadKey, Direction = 1, Gap = l.HeadGap, Shrink = 0f, MinWidth = 0f, Children = rows.ToArray() };
         }
 
         var kids = new List<Element>(6) { lead };
@@ -59,7 +59,7 @@ internal static partial class ZuneLibraryPage
         if (count is not null) kids.Add(count);
         return new BoxEl
         {
-            Key = L.HeadKey, Direction = 0, Height = l.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = L.GroupGap, MinWidth = 0f,
+            Key = LR.HeadKey, Direction = 0, Height = l.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = LR.GroupGap, MinWidth = 0f,
             Children = kids.ToArray(),
         };
     }
@@ -95,11 +95,11 @@ internal static partial class ZuneLibraryPage
     static Element Find(LibraryPageProps p, ZuneLibraryLayout l)
         => new BoxEl
         {
-            Key = "lib:find", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, Basis = L.FindW, Grow = l.Single ? 1f : 0f,
+            Key = "lib:find", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, Basis = LR.FindW, Grow = l.Single ? 1f : 0f,
             Children =
             [
                 AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: p.Filter(), queryIcon: Icons.Search, grow: 1f,
-                    maxFillWidth: L.FindW, minHeight: l.HeadH, cornerRadius: R.Shape.For(ShapeRole.Control)),
+                    maxFillWidth: LR.FindW, minHeight: l.HeadH, cornerRadius: R.Shape.For(ShapeRole.Control)),
             ],
         };
 
@@ -134,7 +134,7 @@ internal static partial class ZuneLibraryPage
                     else { sort.Value = code; desc.Value = false; }
                 }, height, on ? (descending ? Icons.ChevronUp : Icons.ChevronDown) : null);
             }
-            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, MinWidth = 0f, Shrink = 0f, Children = kids };
+            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f, Children = kids };
         }
     }
 
@@ -166,12 +166,12 @@ internal static partial class ZuneLibraryPage
 
             return new BoxEl
             {
-                Key = "lib:sort", Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordChevronGap, Shrink = 0f, Height = height,
+                Key = "lib:sort", Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordChevronGap, Shrink = 0f, Height = height,
                 Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = Flyout, OnRealized = h => _anchor = h,
                 Children =
                 [
                     K.WordText(Loc.Get(LibraryWordRail.WordKey(current)), active: true),
-                    Icon(descending ? Icons.ChevronUp : Icons.ChevronDown, L.ChevronGlyph, Tok.TextTertiary),
+                    Icon(descending ? Icons.ChevronUp : Icons.ChevronDown, LR.ChevronGlyph, Tok.TextTertiary),
                 ],
             };
         }
@@ -204,7 +204,7 @@ internal static partial class ZuneLibraryPage
             int selected = mode.Value;
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, MinWidth = 0f, Shrink = 0f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f,
                 Children =
                 [
                     K.Word("lib:mode:0", Loc.Get(Strings.Podcast.Reader.FollowedShows), selected == 0, () => mode.Value = 0, height),
@@ -245,7 +245,7 @@ internal static partial class ZuneLibraryPage
 
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, MinWidth = 0f, Shrink = 0f, OnRealized = h => _anchor = h,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f, OnRealized = h => _anchor = h,
                 Children =
                 [
                     K.LabelText(Loc.Get(Strings.Theme.Zune.Collection.Library.View)),
@@ -253,9 +253,9 @@ internal static partial class ZuneLibraryPage
                     K.Word("lib:view:list", Loc.Get(Strings.Library.View.List), !grid, () => view.Value = User.IsCompactView(view.Peek()) ? 0 : 1, height),
                     new BoxEl
                     {
-                        Key = "lib:view:more", Width = Math.Max(L.ViewMoreEdge, height), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Key = "lib:view:more", Width = Math.Max(LR.ViewMoreEdge, height), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = Flyout,
-                        Children = [Icon(Icons.More, L.ViewMoreGlyph, Tok.TextSecondary)],
+                        Children = [Icon(Icons.More, LR.ViewMoreGlyph, Tok.TextSecondary)],
                     },
                 ],
             };

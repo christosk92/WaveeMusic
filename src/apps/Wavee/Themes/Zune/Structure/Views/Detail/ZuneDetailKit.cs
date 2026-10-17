@@ -274,7 +274,7 @@ internal static class ZuneDetailKit
         }
         return new BoxEl
         {
-            Key = key, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = lay.ActionsGap, RowGap = lay.ActionsGap, MinWidth = 0f,
+            Key = key, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = lay.ActionsGap, MinWidth = 0f,
             Layout = Shove, Children = kids.ToArray(),
         };
     }
@@ -297,7 +297,7 @@ internal static class ZuneDetailKit
         var kids = new Element[Math.Max(1, count)];
         for (int i = 0; i < kids.Length; i++)
             kids[i] = new BoxEl { Width = lay.RingSize, Height = lay.RingSize, Shrink = 0f, Corners = CornerRadius4.All(lay.RingSize / 2f) };
-        return new BoxEl { Key = key, Direction = 0, Wrap = true, Gap = lay.ActionsGap, RowGap = lay.ActionsGap, MinWidth = 0f, Children = kids };
+        return new BoxEl { Key = key, Direction = 0, Wrap = true, Gap = lay.ActionsGap, MinWidth = 0f, Children = kids };
     }
 
     /// <summary>Copy the page's web link with the confirmation toast, where a clipboard seam exists.</summary>

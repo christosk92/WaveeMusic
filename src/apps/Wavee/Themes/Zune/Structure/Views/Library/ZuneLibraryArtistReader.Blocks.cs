@@ -15,7 +15,7 @@ using FluentGpu.Scroll.Effects;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneLibraryKit;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 
 namespace Wavee.Themes.Zune;
 
@@ -66,9 +66,9 @@ internal static partial class ZuneLibraryArtistReader
                 }
                 int trackSlot = tracks[r];
                 // ZERO-based: `Track.NumberCell` prints `displayIndex + 1`.
-                kids[r] = Track.EagerRow(new Track(trackSlot), r, in L.Cols, L.Tracks, Artist.ReaderShape.RowH,
+                kids[r] = Track.EagerRow(new Track(trackSlot), r, in LR.Cols, LR.Tracks, Artist.ReaderShape.RowH,
                     () => cell.PlayTrack(trackSlot),
-                    in L.RowOptions)
+                    in LR.RowOptions)
                     with { Key = "t:" + trackSlot.ToString(CultureInfo.InvariantCulture) };
             }
             rows = new BoxEl
@@ -108,7 +108,7 @@ internal static partial class ZuneLibraryArtistReader
                                     Cursor = valid ? CursorId.Hand : CursorId.Arrow,
                                     Role = valid ? AutomationRole.Button : AutomationRole.None,
                                     OnClick = valid ? go : null,
-                                    Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null, cover, cover, R.Shape.For(ShapeRole.Cover), decodePx: L.BlockDecodePx)],
+                                    Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null, cover, cover, R.Shape.For(ShapeRole.Cover), decodePx: LR.BlockDecodePx)],
                                 },
                                 R.Type.MicroMeta(caption) with
                                 {
@@ -126,7 +126,7 @@ internal static partial class ZuneLibraryArtistReader
                 new BoxEl
                 {
                     Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault,
-                    Margin = new Edges4(L.ReaderInset, 0f, L.ReaderInset, 0f),
+                    Margin = new Edges4(LR.ReaderInset, 0f, LR.ReaderInset, 0f),
                 },
             ],
         };
@@ -139,10 +139,10 @@ internal static partial class ZuneLibraryArtistReader
         Direction = 0, Height = Artist.ReaderShape.RowH, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
         Children =
         [
-            new BoxEl { Width = L.ReaderNumLane, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Controls.PendingBar(L.ShimNumW, L.ShimBarH)] },
-            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Children = [Controls.PendingBar(L.ShimRowTitleW(i), L.ShimBarH)] },
+            new BoxEl { Width = LR.ReaderNumLane, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Controls.PendingBar(LR.ShimNumW, LR.ShimBarH)] },
+            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Children = [Controls.PendingBar(LR.ShimRowTitleW(i), LR.ShimBarH)] },
             new BoxEl { Width = Track.Lane.HeartTrailing, Shrink = 0f },
-            new BoxEl { Width = L.ReaderClockLane, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Children = [Controls.PendingBar(L.ShimClockW, L.ShimBarH)] },
+            new BoxEl { Width = LR.ReaderClockLane, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Children = [Controls.PendingBar(LR.ShimClockW, LR.ShimBarH)] },
         ],
     };
 
@@ -192,7 +192,7 @@ internal static partial class ZuneLibraryArtistReader
     {
         TextEl text = R.Type.QuickplayHead(title) with
         {
-            Size = L.HeadTitleSize, LineHeight = Artist.ReaderShape.HeadTitleLine, Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary,
+            Size = LR.HeadTitleSize, LineHeight = Artist.ReaderShape.HeadTitleLine, Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary,
             BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         Element link = new BoxEl
@@ -223,9 +223,9 @@ internal static partial class ZuneLibraryArtistReader
         Element metaSlot = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
-            Children = [new BoxEl { Width = L.ShimmerMetaW, Height = L.ShimmerMetaH, Corners = R.Shape.All(ShapeRole.Control) }],
+            Children = [new BoxEl { Width = LR.ShimmerMetaW, Height = LR.ShimmerMetaH, Corners = R.Shape.All(ShapeRole.Control) }],
         };
-        Element titleBar = new BoxEl { Width = L.ShimmerTitleW, Height = Artist.ReaderShape.HeadTitleLine, Corners = R.Shape.All(ShapeRole.Control) };
+        Element titleBar = new BoxEl { Width = LR.ShimmerTitleW, Height = Artist.ReaderShape.HeadTitleLine, Corners = R.Shape.All(ShapeRole.Control) };
         if (!narrow)
             return new BoxEl
             {

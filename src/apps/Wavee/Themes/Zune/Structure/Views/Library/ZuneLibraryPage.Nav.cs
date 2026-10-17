@@ -20,7 +20,7 @@ using FluentGpu.Signals;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -42,32 +42,32 @@ internal static partial class ZuneLibraryPage
     {
         bool compact = User.IsCompactView(view);
         if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist, gaps);
-        var rows = new Element[L.NavSkelRows];
+        var rows = new Element[LR.NavSkelRows];
         for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact, entity == EntityKind.Artist) with { Key = "navskel:" + i };
         return new BoxEl { Key = "navskel", Direction = 1, Children = rows };
     }
 
     static Element NavShimmerRow(bool compact, bool circular)
     {
-        Element title = R.Type.TrackTitle("Loading title") with { Width = L.NavSkelTitleW };   // loc-allow: skeleton shimmer template: the leaf only sizes the bar
+        Element title = R.Type.TrackTitle("Loading title") with { Width = LR.NavSkelTitleW };   // loc-allow: skeleton shimmer template: the leaf only sizes the bar
         Element text = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f,
             Children = compact
                 ? [title]
-                : [title, R.Type.MicroMeta("Loading subtitle") with { Width = L.NavSkelSubtitleW }],   // loc-allow: skeleton shimmer template
+                : [title, R.Type.MicroMeta("Loading subtitle") with { Width = LR.NavSkelSubtitleW }],   // loc-allow: skeleton shimmer template
         };
         return new BoxEl
         {
             Height = compact ? User.NavRowCompactPlate : User.NavRowPlate,
             Margin = new Edges4(0f, User.NavRowMarginY, 0f, User.NavRowMarginY),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = L.RowGap, Padding = new Edges4(L.RowPadX, 0f, L.RowPadX, 0f),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
             Children = compact
                 ? [text]
                 : [new BoxEl
                 {
-                    Width = L.RowArt, Height = L.RowArt, Shrink = 0f,
-                    Corners = circular ? CornerRadius4.All(L.RowArt) : R.Shape.All(ShapeRole.Cover), Fill = Tok.FillSubtleSecondary,
+                    Width = LR.RowArt, Height = LR.RowArt, Shrink = 0f,
+                    Corners = circular ? CornerRadius4.All(LR.RowArt) : R.Shape.All(ShapeRole.Cover), Fill = Tok.FillSubtleSecondary,
                 }, text],
         };
     }
@@ -76,7 +76,7 @@ internal static partial class ZuneLibraryPage
     /// formula, <c>GridEl.AutoFillColumnCount</c>), each card the fill-width square cover and, outside the compact grid, the name line.</summary>
     static Element NavGridShimmer(bool compact, float cellMin, bool circular, LibraryGridGaps gaps)
     {
-        var cards = new Element[L.NavSkelCards];
+        var cards = new Element[LR.NavSkelCards];
         for (int i = 0; i < cards.Length; i++) cards[i] = NavShimmerCard(compact, circular) with { Key = "navskel:" + i };
         return new BoxEl
         {
@@ -95,10 +95,10 @@ internal static partial class ZuneLibraryPage
         };
         Element content = new BoxEl
         {
-            Direction = 1, Gap = L.CardNameGap, ClipToBounds = true,
+            Direction = 1, Gap = LR.CardNameGap, ClipToBounds = true,
             Children = compact
                 ? [art]
-                : [art, R.Type.DenseMeta("Loading title") with { Width = L.NavSkelCardNameW }],   // loc-allow: skeleton shimmer template: the leaf only sizes the bar
+                : [art, R.Type.DenseMeta("Loading title") with { Width = LR.NavSkelCardNameW }],   // loc-allow: skeleton shimmer template: the leaf only sizes the bar
         };
         return new BoxEl { Direction = 1, Children = [content] };
     }
@@ -144,7 +144,7 @@ internal static partial class ZuneLibraryPage
     static Element LetterHeader(BoundItemScope<LibraryNavItem> scope) => new BoxEl
     {
         Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
-        Padding = new Edges4(L.RowPadX, 0f, L.RowPadX, 0f),
+        Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
         Children = [ZuneProfileLetters.Glyph(scope.Text(static it => ZuneProfileLetters.LetterText(-it.Slot - 1)))],
     };
 
@@ -162,12 +162,12 @@ internal static partial class ZuneLibraryPage
             Children = compact ? [TitleText(scope, sel)] : [TitleText(scope, sel), NavSubtitle(scope, kind)],
         };
         var kids = new List<Element>(3);
-        if (!compact) kids.Add(ArtBox(scope, L.RowArt, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover)));
+        if (!compact) kids.Add(ArtBox(scope, LR.RowArt, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover)));
         kids.Add(text);
         if (compact && circular) kids.Add(NavSubtitle(scope, kind) with { Grow = 0f, Shrink = 0f, MinWidth = 0f });
         Element content = new BoxEl
         {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = L.RowGap, Padding = new Edges4(L.RowPadX, 0f, L.RowPadX, 0f),
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
             Draggable = User.DragOf(scope), Children = kids.ToArray(),
         };
         // The PLATE height, not the row extent: the chrome's own margin is what makes the outer extent the host's seed. Setting the extent here would measure the plate plus the margin.
@@ -182,7 +182,7 @@ internal static partial class ZuneLibraryPage
         Element art = FillArt(scope, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover));
         Element content = new BoxEl
         {
-            Direction = 1, Gap = L.CardNameGap, ClipToBounds = true, Padding = Edges4.All(L.CardPadSelected), Draggable = User.DragOf(scope),
+            Direction = 1, Gap = LR.CardNameGap, ClipToBounds = true, Padding = Edges4.All(LR.CardPadSelected), Draggable = User.DragOf(scope),
             Children = compact
                 ? [art]
                 : [art, new BoxEl
@@ -233,7 +233,7 @@ internal static partial class ZuneLibraryPage
 
     static Element FillArt(in BoundItemScope<LibraryNavItem> scope, float corners) => new ImageEl
     {
-        Source = scope.Image(static it => User.ArtOf(it)), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = L.CardDecodePx,
+        Source = scope.Image(static it => User.ArtOf(it)), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = LR.CardDecodePx,
         Corners = CornerRadius4.All(corners),
         Placeholder = scope.Color(static it => Design.PlaceholderFor(User.ArtOf(it))),
     };
@@ -297,7 +297,7 @@ internal static partial class ZuneLibraryPage
                 new BoxEl { Key = "ic-content", Direction = 1, Children = [content] },
                 new BoxEl
                 {
-                    Key = "ic-ring", HitTestVisible = false, Corners = R.Shape.All(ShapeRole.Cover), BorderWidth = L.CardRing,
+                    Key = "ic-ring", HitTestVisible = false, Corners = R.Shape.All(ShapeRole.Cover), BorderWidth = LR.CardRing,
                     BorderColor = Prop.Of(() => isSel() ? Tok.AccentDefault : ColorF.Transparent), BrushTransitionMs = Design.Motion.Fast,
                 },
                 new BoxEl

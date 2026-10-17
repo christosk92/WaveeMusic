@@ -19,7 +19,7 @@ using FluentGpu.Signals;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -29,16 +29,16 @@ internal static partial class ZuneLibraryPage
     static readonly Func<bool> s_true = static () => true, s_false = static () => false;
 
     // The shimmer rows are the surface's own seed face at each hit's shape (an artist and an album hit share one).
-    static readonly Func<Element> s_skelNameRow = static () => Controls.Surface(Controls.CardData.Seed, L.NameShape);
-    static readonly Func<Element> s_skelTrackRow = static () => Controls.Surface(Controls.CardData.Seed, L.TrackShape);
+    static readonly Func<Element> s_skelNameRow = static () => Controls.Surface(Controls.CardData.Seed, LR.NameShape);
+    static readonly Func<Element> s_skelTrackRow = static () => Controls.Surface(Controls.CardData.Seed, LR.TrackShape);
 
     /// <summary>Retained hits stay put; only a real insert/remove/reorder animates (90 ms in, 70 ms out).</summary>
     static readonly LayoutTransition s_searchRowChange = new(
         TransitionChannels.Position | TransitionChannels.Opacity,
-        TransitionDynamics.Tween(L.HitEnterMs, Easing.SmoothOut),
-        Enter: new EnterExit(Dy: L.HitEnterDy, Opacity: 0f, Active: true),
+        TransitionDynamics.Tween(LR.HitEnterMs, Easing.SmoothOut),
+        Enter: new EnterExit(Dy: LR.HitEnterDy, Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(L.HitExitMs, Easing.SmoothOut));
+        ExitDynamics: TransitionDynamics.Tween(LR.HitExitMs, Easing.SmoothOut));
 
     // ══ THE COLUMNS ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -91,20 +91,20 @@ internal static partial class ZuneLibraryPage
         var trackRows = TrackRows(search);
         Element albumPane = Section with
         {
-            Key = "s:albums", Basis = L.SearchMidDefault, MinWidth = p.RailOpen ? L.SearchAlbumsMinRailOpen : L.SearchAlbumsMin,
+            Key = "s:albums", Basis = LR.SearchMidDefault, MinWidth = p.RailOpen ? LR.SearchAlbumsMinRailOpen : LR.SearchAlbumsMin,
             Shrink = 1f, Grow = 0f,
             Children = [FacetHeader(Loc.Get(Strings.Search.Albums), p.Shimmer ? -1 : albumCount, p.Awaiting), AlbumHits(p, explain: false)],
         };
         Element trackPane = Section with
         {
-            Key = "s:tracks", Grow = 1f, Basis = 0f, MinWidth = L.SearchTracksMin, Shrink = 1f,
+            Key = "s:tracks", Grow = 1f, Basis = 0f, MinWidth = LR.SearchTracksMin, Shrink = 1f,
             Children = [FacetHeader(Loc.Get(Strings.Search.Songs), p.Shimmer ? -1 : trackRows.Length, p.Awaiting),
                         SearchSkel(p, s_skelTrackRow, () => SearchScroll(trackRows))],
         };
         // Keyed like the other arms of `right` (lib:reader / lib:detail / lib:empty): this row's children must never pair across a branch swap by ordinal alone.
         return new BoxEl
         {
-            Key = L.SearchKey, Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, Gap = l.ColGap,
+            Key = LR.SearchKey, Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, Gap = l.ColGap,
             Children = [albumPane, trackPane],
         };
     }
@@ -141,14 +141,14 @@ internal static partial class ZuneLibraryPage
 
     static Element ShimmerStack(Func<Element> row)
     {
-        var kids = new Element[L.SkelRows];
+        var kids = new Element[LR.SkelRows];
         for (int i = 0; i < kids.Length; i++) kids[i] = row() with { Key = "skel:" + i };
-        return new BoxEl { Direction = 1, Gap = L.HitGap, Children = kids };
+        return new BoxEl { Direction = 1, Gap = LR.HitGap, Children = kids };
     }
 
     static Element SearchScroll(Element[] rows) => ScrollView(new BoxEl
     {
-        Direction = 1, Gap = L.HitGap, Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve),
+        Direction = 1, Gap = LR.HitGap, Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve),
         Children = rows,
     }) with { Grow = 1f };
 
@@ -166,7 +166,7 @@ internal static partial class ZuneLibraryPage
                 ? R.Type.MicroMeta(subtitle) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
                 : null,
             Controls.ArtUrl(LibraryRows.ImageOf(kind, slot)), onClick,
-            Circular: L.IsCircular(kind), Drag: User.HitDrag(kind, slot))
+            Circular: LR.IsCircular(kind), Drag: User.HitDrag(kind, slot))
         {
             Menu = Search.MenuOf(new EntityRef(kind, slot)),
             Eyebrow = string.IsNullOrEmpty(eyebrow)
@@ -174,7 +174,7 @@ internal static partial class ZuneLibraryPage
                 : R.Type.MicroMeta(eyebrow) with { Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             Highlight = (matchStart, matchLen), Selected = selected,
         };
-        return HitSurface(key, data, L.NameShape);
+        return HitSurface(key, data, LR.NameShape);
     }
 
     /// <summary>A track hit: the shared track row (<c>Track.RowData</c>: the cover, the artists, the play affordance, the "…" and the right-click track menu, and the single-track
@@ -183,7 +183,7 @@ internal static partial class ZuneLibraryPage
     {
         var data = Track.RowData(new Track(trackSlot), new Track.RowDataOptions(OnClick: onClick, OnPlay: onClick, ShowArtwork: true))
             with { Highlight = (matchStart, matchLen) };
-        return HitSurface(key, data, L.TrackShape);
+        return HitSurface(key, data, LR.TrackShape);
     }
 
     // The hit's keyed layout-transition wrapper around its surface: retained hits stay put (`s_searchRowChange`).
@@ -196,7 +196,7 @@ internal static partial class ZuneLibraryPage
     /// <summary>A facet header: the lowercase word and its count (hidden when &lt; 0; faded while a newer answer is coming).</summary>
     static Element FacetHeader(string label, int count, bool refining) => new BoxEl
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordChevronGap, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, L.PaneMetaBottom),
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordChevronGap, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, LR.PaneMetaBottom),
         Children =
         [
             ZuneLibraryKit.LabelText(label),
@@ -204,7 +204,7 @@ internal static partial class ZuneLibraryPage
                 ? R.Type.DenseMeta(FormatCache.Int(count)) with
                 {
                     Weight = 600, BrushTransitionMs = Design.Motion.Faster,
-                    Color = refining ? Tok.TextTertiary with { A = Tok.TextTertiary.A * L.RefiningAlpha } : Tok.TextTertiary,
+                    Color = refining ? Tok.TextTertiary with { A = Tok.TextTertiary.A * LR.RefiningAlpha } : Tok.TextTertiary,
                 }
                 : new BoxEl(),
         ],
@@ -213,7 +213,7 @@ internal static partial class ZuneLibraryPage
     /// <summary>The left search column's zero-hit copy (13, tertiary, left-aligned): not the browse empty state.</summary>
     static Element SearchMessage(string text) => new BoxEl
     {
-        Padding = new Edges4(0f, L.PaneMetaBottom, 0f, L.PaneMetaBottom),
+        Padding = new Edges4(0f, LR.PaneMetaBottom, 0f, LR.PaneMetaBottom),
         Children = [R.Type.DenseMeta(text) with { Color = Tok.TextTertiary }],
     };
 }

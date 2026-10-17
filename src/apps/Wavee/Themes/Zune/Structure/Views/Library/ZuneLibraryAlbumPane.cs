@@ -23,7 +23,7 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneLibraryKit;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -40,7 +40,7 @@ internal static class ZuneLibraryAlbumPane
         cell.Prepare();
 
         // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
-        float box = ctx.Tier().Content == WidthTier.Compact ? L.CompactCommandBox : L.CommandBox;
+        float box = ctx.Tier().Content == WidthTier.Compact ? LR.CompactCommandBox : LR.CommandBox;
         BoxEl child = props.State == AlbumPaneState.Header ? K.HeaderSkeleton() : Body(props, cell, box);
         // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the
         // table's scroll and re-ask the model).
@@ -113,7 +113,7 @@ internal static class ZuneLibraryAlbumPane
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = L.PaneCommandsGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, L.PaneCommandsTop, 0f, L.PaneCommandsBottom),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.PaneCommandsGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, LR.PaneCommandsTop, 0f, LR.PaneCommandsBottom),
             Children =
             [
                 Target(ZuneDiscoveryKit.Ring("lib-pane-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true, p.Play), box),
@@ -156,12 +156,12 @@ internal static class ZuneLibraryAlbumPane
     {
         var cells = new List<Element>(tracks.Length)
         {
-            Cell(Controls.PendingBar(L.ShimNumW, L.ShimBarH), FlexJustify.Center),
+            Cell(Controls.PendingBar(LR.ShimNumW, LR.ShimBarH), FlexJustify.Center),
         };
         if (set.Heart) cells.Add(new BoxEl());
-        cells.Add(Cell(Controls.PendingBar(L.ShimRowTitleW(i), L.ShimBarH), FlexJustify.Start));
-        if (set.Artist) cells.Add(Cell(Controls.PendingBar(L.ShimArtistW, L.ShimBarH), FlexJustify.Start));
-        cells.Add(Cell(Controls.PendingBar(L.ShimClockW, L.ShimBarH), FlexJustify.End));
+        cells.Add(Cell(Controls.PendingBar(LR.ShimRowTitleW(i), LR.ShimBarH), FlexJustify.Start));
+        if (set.Artist) cells.Add(Cell(Controls.PendingBar(LR.ShimArtistW, LR.ShimBarH), FlexJustify.Start));
+        cells.Add(Cell(Controls.PendingBar(LR.ShimClockW, LR.ShimBarH), FlexJustify.End));
         if (set.Actions) cells.Add(new BoxEl());
         float padX = Track.RowMetrics.PadXFor(set.Tier);
         return new GridEl
@@ -199,8 +199,8 @@ internal static class ZuneLibraryAlbumPane
         }
         return new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = L.AlsoByGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
-            Padding = new Edges4(0f, L.AlsoByTop, 0f, L.AlsoByBottom), Children = kids,
+            Direction = 0, Wrap = true, Gap = LR.AlsoByGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
+            Padding = new Edges4(0f, LR.AlsoByTop, 0f, LR.AlsoByBottom), Children = kids,
         };
     }
 }

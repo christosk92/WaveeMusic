@@ -19,7 +19,7 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneLibraryKit;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -46,12 +46,12 @@ internal static class ZuneLibraryShowPane
     /// <summary>The pane's column: the header, the command row and the SAME reader the route page mounts. The scroll key scopes its position per library slot (the host's).</summary>
     static BoxEl Body(LibraryShowPaneProps p, bool compact)
     {
-        float box = compact ? L.CompactCommandBox : L.CommandBox;
+        float box = compact ? LR.CompactCommandBox : LR.CommandBox;
         Element header = K.PaneHeader(p.Title, p.Open, R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, p.Meta);
         Element commands = new BoxEl
         {
-            Direction = 0, Gap = L.PaneCommandsGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
-            Padding = new Edges4(0f, L.PaneCommandsTop, 0f, L.PaneCommandsBottom),
+            Direction = 0, Gap = LR.PaneCommandsGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
+            Padding = new Edges4(0f, LR.PaneCommandsTop, 0f, LR.PaneCommandsBottom),
             Children =
             [
                 p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),

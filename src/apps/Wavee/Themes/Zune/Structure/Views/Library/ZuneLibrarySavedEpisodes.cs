@@ -12,7 +12,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 
 namespace Wavee.Themes.Zune;
 
@@ -35,7 +35,7 @@ internal static class ZuneLibrarySavedEpisodes
 
     static Element[] SeedRows(EpisodeRowStyle? style)
     {
-        var rows = new Element[L.SavedSeedRows];
+        var rows = new Element[LR.SavedSeedRows];
         for (int i = 0; i < rows.Length; i++) rows[i] = Episode.SeedReaderRow(style, false);
         return rows;
     }

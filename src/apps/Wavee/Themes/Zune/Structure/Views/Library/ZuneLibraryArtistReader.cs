@@ -26,7 +26,7 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneLibraryKit;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 
 namespace Wavee.Themes.Zune;
 
@@ -125,10 +125,10 @@ internal static partial class ZuneLibraryArtistReader
 
     /// <summary>The band's ONE verb row: play all (the accent ring and its word), the Follow toggle, then the shuffle and go-to rings named by their tooltips,
     /// <see cref="Artist.ReaderShape.ActionGap"/> apart. WIDE it always fits (the medium edge is derived from it). STACKED it measures its own lane and, where the whole row would
-    /// not fit (<see cref="L.FoldVerbs"/>), folds shuffle and go-to into one "…" menu, so it never clips.</summary>
+    /// not fit (<see cref="LR.FoldVerbs"/>), folds shuffle and go-to into one "…" menu, so it never clips.</summary>
     static Element Verbs(IArtistReaderHost host, string uri, string? name, bool stacked)
         => stacked
-            ? Responsive.Of("reader:verbs", w => VerbRow(host, uri, name, folded: L.FoldVerbs(w)))
+            ? Responsive.Of("reader:verbs", w => VerbRow(host, uri, name, folded: LR.FoldVerbs(w)))
             : VerbRow(host, uri, name, folded: false);
 
     static Element VerbRow(IArtistReaderHost host, string uri, string? name, bool folded)
@@ -166,7 +166,7 @@ internal static partial class ZuneLibraryArtistReader
     static Element Avatar(Artist a, bool named, float edge) => new BoxEl
     {
         Width = edge, Height = edge, Shrink = 0f, Corners = Radii.Circle(edge), ClipToBounds = true,
-        Children = [Controls.Artwork(named ? Controls.ArtUrl(a.ImageId) : null, edge, edge, R.Shape.For(ShapeRole.Avatar), decodePx: L.AvatarDecodePx)],
+        Children = [Controls.Artwork(named ? Controls.ArtUrl(a.ImageId) : null, edge, edge, R.Shape.For(ShapeRole.Avatar), decodePx: LR.AvatarDecodePx)],
     };
 
     /// <summary>The Follow toggle in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own, so the one box is what keeps the toggle out of the name column's width. The
@@ -246,8 +246,8 @@ internal static partial class ZuneLibraryArtistReader
         [
             new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, Shrink = 0f, MinWidth = 0f,
-                Padding = new Edges4(L.ReaderInset, Artist.ReaderShape.SubRailPadTop, L.ReaderInset, Artist.ReaderShape.SubRailPadBottom),
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, Shrink = 0f, MinWidth = 0f,
+                Padding = new Edges4(LR.ReaderInset, Artist.ReaderShape.SubRailPadTop, LR.ReaderInset, Artist.ReaderShape.SubRailPadBottom),
                 Children = [ScopeWords(scope, host.ReleaseTotal, () => host.NarrowNow()), new BoxEl { Grow = 1f, MinWidth = 0f }, SortWords(sort)],
             },
             new BoxEl { Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
@@ -265,7 +265,7 @@ internal static partial class ZuneLibraryArtistReader
             : s_allReleases.Get(total.Current(), static n => ScopeWordText(Strings.Library.Scope.AllReleases, n)));
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, MinWidth = 0f, Shrink = 1f,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 1f,
             Children = [BoundWord("reader:scope:0", Loc.Bind(Strings.Library.Scope.InLibrary), scope, 0), BoundWord("reader:scope:1", all, scope, 1)],
         };
     }
@@ -281,10 +281,10 @@ internal static partial class ZuneLibraryArtistReader
     /// word is a plain set.</summary>
     static Element SortWords(Signal<int> sort)
     {
-        var words = new Element[L.ReaderSortWords];
+        var words = new Element[LR.ReaderSortWords];
         for (int i = 0; i < words.Length; i++)
             words[i] = BoundWord("reader:sort:" + FormatCache.Int(i), Loc.Bind(ReaderSortKey(i)), sort, i);
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = L.WordGap, MinWidth = 0f, Shrink = 0f, Children = words };
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f, Children = words };
     }
 
     static string ReaderSortKey(int code) => code switch
@@ -297,7 +297,7 @@ internal static partial class ZuneLibraryArtistReader
     /// <summary>One word over a signal: lit (primary) while the signal holds <paramref name="code"/>, the secondary ink otherwise; a tap sets it. The ink is a bind.</summary>
     static Element BoundWord(string key, Prop<string> label, Signal<int> selected, int code) => new BoxEl
     {
-        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Height = L.HeadH,
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Height = LR.HeadH,
         Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => selected.Value = code,
         Children =
         [
@@ -322,7 +322,7 @@ internal static partial class ZuneLibraryArtistReader
         Padding = new Edges4(Spacing.M, Spacing.M, 0f, Spacing.M),
         Children =
         [
-            ItemsView.CreateBound(props.BlockCount, h.DotAt!, RepeatLayout.Stack(L.DotPitch), new ListOptions
+            ItemsView.CreateBound(props.BlockCount, h.DotAt!, RepeatLayout.Stack(LR.DotPitch), new ListOptions
             {
                 SelectionMode = ItemsSelectionMode.None, Controller = props.SpineController, Grow = 1f,
                 CountSignal = props.SpineCount,
@@ -346,17 +346,17 @@ internal static partial class ZuneLibraryArtistReader
         Element dot = new BoxEl
         {
             Key = "dot:" + a.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Width = L.DotEdge, Height = L.DotEdge, Shrink = 0f,
+            Width = LR.DotEdge, Height = LR.DotEdge, Shrink = 0f,
             Corners = R.Shape.All(ShapeRole.Cover), ClipToBounds = true,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
             OnClick = () => host.BringToTop(i),
-            Opacity = Prop.Of(() => current.Value == i ? L.DotOpacityCurrent
-                                  : saved ? L.DotOpacitySaved : L.DotOpacityCatalogue),
-            HoverOpacity = L.DotOpacityHover,
-            BorderWidth = L.DotRing,
+            Opacity = Prop.Of(() => current.Value == i ? LR.DotOpacityCurrent
+                                  : saved ? LR.DotOpacitySaved : LR.DotOpacityCatalogue),
+            HoverOpacity = LR.DotOpacityHover,
+            BorderWidth = LR.DotRing,
             BorderColor = Prop.Of(() => current.Value == i ? Tok.AccentDefault : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Fast,
-            Children = [Controls.Artwork(Controls.ArtUrl(a.ImageId), L.DotEdge, L.DotEdge, L.DotArtRadius, decodePx: L.DotDecodePx)],
+            Children = [Controls.Artwork(Controls.ArtUrl(a.ImageId), LR.DotEdge, LR.DotEdge, LR.DotArtRadius, decodePx: LR.DotDecodePx)],
         };
         // No name yet, no tooltip: an empty tooltip is a hover that says nothing.
         return name.Length > 0 ? Controls.Named(dot, name) : dot;
@@ -400,7 +400,7 @@ internal static partial class ZuneLibraryArtistReader
             Direction = 1, Shrink = 0f, MinWidth = 0f,
             Height = tail.Height,
             // The vacancy owns its own padding (and centres inside it); the line and the air take the list's gutter.
-            Padding = tail.Kind == 2 ? new Edges4() : new Edges4(L.ReaderInset, Spacing.S, L.ReaderInset, Spacing.XL),
+            Padding = tail.Kind == 2 ? new Edges4() : new Edges4(LR.ReaderInset, Spacing.S, LR.ReaderInset, Spacing.XL),
             Children = body,
         };
     }
@@ -445,7 +445,7 @@ internal static partial class ZuneLibraryArtistReader
             // The pitch is the ITEM's, not the layout's: `RepeatLayout.Stack` carries no gap, so the band under the cover is this box's own bottom.
             return new BoxEl
             {
-                Direction = 1, MinWidth = 0f, Height = L.DotPitch,
+                Direction = 1, MinWidth = 0f, Height = LR.DotPitch,
                 Children = host.TryBlockAt(i, out var b) ? new Element[] { Dot(host, i, in b) } : Array.Empty<Element>(),
             };
         }

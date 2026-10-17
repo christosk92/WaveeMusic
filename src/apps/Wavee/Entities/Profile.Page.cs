@@ -267,7 +267,7 @@ public static partial class Profile
             bool composed = !unavailable && _bodyReady;
             ProfileSectionSlot[] sections = composed ? PlanSections(u) : [];
             _chromeCount = composed ? _pivotCount : 0;
-            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch, _chromeCount));
+            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch, _chromeCount, 0));
             UseSignalEffect(_watchScroll);
 
             // The accent and the band's engaged edge are read here, as the page always read them (only for a body that is composed): this render wakes on

@@ -15,7 +15,7 @@ using FluentGpu.Signals;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
-using L = Wavee.Themes.Zune.ZuneLibraryRules;
+using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -26,9 +26,9 @@ internal static class ZuneLibraryKit
     /// <summary>The selection swap: the leaving pane fades out as an exit orphan (drawn UNDER the live tree) while the entering one rises 6 DIP into place. Opacity only
     /// (a page-sized subtree is the blur-group perf cliff); faster out than in, so the new album never waits for the old one.</summary>
     public static readonly LayoutTransition PaneSwap = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(L.SwapInMs, Easing.SmoothOut),
-        Enter: new EnterExit(Dy: L.SwapDy, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(L.SwapOutMs, Easing.SmoothOut));
+        TransitionChannels.Opacity, TransitionDynamics.Tween(LR.SwapInMs, Easing.SmoothOut),
+        Enter: new EnterExit(Dy: LR.SwapDy, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(LR.SwapOutMs, Easing.SmoothOut));
 
     /// <summary>A page-level word (13 voice): the secondary ink, the primary when <paramref name="active"/> or hovered; cased as a command.</summary>
     public static TextEl WordText(string text, bool active) => R.Type.DenseMeta(text) with
@@ -47,10 +47,10 @@ internal static class ZuneLibraryKit
     public static Element Word(string key, string text, bool active, Action go, float height, string? chevron = null)
     {
         var kids = new List<Element>(2) { WordText(text, active) };
-        if (chevron is not null) kids.Add(Icon(chevron, L.ChevronGlyph, Tok.TextTertiary));
+        if (chevron is not null) kids.Add(Icon(chevron, LR.ChevronGlyph, Tok.TextTertiary));
         return new BoxEl
         {
-            Key = key, Direction = 0, Gap = L.WordChevronGap, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f,
+            Key = key, Direction = 0, Gap = LR.WordChevronGap, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = go,
             Children = kids.ToArray(),
         };
@@ -59,7 +59,7 @@ internal static class ZuneLibraryKit
     /// <summary>A 1-DIP rule between two groups of words.</summary>
     public static Element Divider() => new BoxEl
     {
-        Width = L.DividerW, Height = L.DividerH, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
+        Width = LR.DividerW, Height = LR.DividerH, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
     };
 
     /// <summary>A pane title (22 light): one line, cased as written (a name).</summary>
@@ -118,7 +118,7 @@ internal static class ZuneLibraryKit
     }
 
     /// <summary>The heart: the shared save button at <paramref name="box"/> (keyed on the uri; props freeze at mount).</summary>
-    public static Element Save(string uri, string name, float box, float glyph = L.SaveGlyph)
+    public static Element Save(string uri, string name, float box, float glyph = LR.SaveGlyph)
         => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = glyph, Box = box }) with { Key = "save:" + uri };
 
     /// <summary>The billed artists as one comma-joined run of links (the secondary ink, the primary on hover), each shrinkable and clipped so a long bill yields. An
@@ -145,7 +145,7 @@ internal static class ZuneLibraryKit
     /// <summary>The pane's header: the title (one line, a link that opens the page), the billed attribution, then the meta. A stated height is not drawn: the words stack.</summary>
     public static Element PaneHeader(string title, Action open, Element attribution, string meta) => new BoxEl
     {
-        Direction = 1, Gap = L.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PaneMetaBottom),
+        Direction = 1, Gap = LR.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.PaneMetaBottom),
         Children =
         [
             new BoxEl
@@ -161,11 +161,11 @@ internal static class ZuneLibraryKit
     /// <summary>The pane's loading twin: the title and meta as bars in the same slots, so the dissolve into the real header moves nothing.</summary>
     public static BoxEl HeaderSkeleton() => new()
     {
-        Direction = 1, Gap = L.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PaneMetaBottom),
+        Direction = 1, Gap = LR.PaneTitleGap, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, LR.PaneMetaBottom),
         Children =
         [
-            new BoxEl { Height = L.PaneTitleSlotH, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start, Children = [Controls.PendingBar(L.ShimTitleW, L.ShimTitleBarH)] },
-            new BoxEl { Height = L.PaneMetaSlotH, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start, Children = [Controls.PendingBar(L.ShimMetaW, L.ShimBarH)] },
+            new BoxEl { Height = LR.PaneTitleSlotH, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start, Children = [Controls.PendingBar(LR.ShimTitleW, LR.ShimTitleBarH)] },
+            new BoxEl { Height = LR.PaneMetaSlotH, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start, Children = [Controls.PendingBar(LR.ShimMetaW, LR.ShimBarH)] },
         ],
     };
 }
