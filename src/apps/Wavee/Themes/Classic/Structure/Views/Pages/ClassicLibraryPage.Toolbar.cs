@@ -41,15 +41,24 @@ internal static partial class ClassicLibraryPage
         picker = new BoxEl
         {
             Key = "lib:picker", Direction = 1, MinWidth = 0f, MinHeight = layout.ControlH, Layout = ClassicTierMotion.Shove,
+            // The slot's ONE child is an unkeyed column that holds the keyed form: the engine reconciles a slot's lone child in place (same element type, key ignored), which would patch
+            // the sort button into the word rail instead of swapping them; a children LIST matches by key, so the leaving form exits and the entering one enters.
             Children =
             [
-                swaps
-                    ? picker with
-                    {
-                        Key = layout.Single || sortButton ? "lib:picker:sort" : "lib:picker:rail",
-                        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
-                    }
-                    : picker,
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f,
+                    Children =
+                    [
+                        swaps
+                            ? picker with
+                            {
+                                Key = layout.Single || sortButton ? "lib:picker:sort" : "lib:picker:rail",
+                                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                            }
+                            : picker,
+                    ],
+                },
             ],
         };
         Element? filter = p.SavedEpisodesMode
