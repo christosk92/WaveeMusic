@@ -210,8 +210,18 @@ public readonly partial struct Episode
         readonly ScrollHandle _scroll = new();
         long _scrollKey = long.MinValue;
 
+        // ── row 2 (P5 Z6b2, contract 1.26): a band-style structure (Zune) draws the four words in its band's row 2 and its reader draws no pivot,
+        // so the reader publishes them through the `PageChromeSink` the content host provides around the page: one view per section, the spy's
+        // answer current, a click scrolling its section. Gated on what they are built from (the episode, the current section). Classic draws its
+        // own pivot and reads none of it. ──
+        Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
+        readonly Action _publishChrome;
+        string _chromeUri = "";
+        long _chromeSig = long.MinValue;
+
         public EpisodeReader()
         {
+            _publishChrome = PublishChrome;
             for (int i = 0; i < SectionCount; i++)
             {
                 int index = i;
@@ -240,6 +250,9 @@ public readonly partial struct Episode
             string key = epoch + ":" + p.Subject.Text;
             UseEffect(_resolveSpy);   // auto-tracks _scrollY/_viewportH — re-answers on every scroll step let through
             UseSignalEffect(_watchScroll);
+            _sink = UseContext(Contracts.PageChromeSink.Context);
+            _chromeUri = e.Uri.Text;
+            UseEffect(_publishChrome);   // auto-tracks the spy's answer (_active) — row 2 follows the scroll
 
             return ViewSlots.View(Contracts.ViewKeys.EpisodeReader, new Contracts.EpisodeReaderProps(
                 _sectionClicks, _active, _anchorRealized,
@@ -251,6 +264,24 @@ public readonly partial struct Episode
                 Comments: Embed.Comp(new PodcastReaderUI.DiscussionProps(p.Subject.Text, false),
                     static () => new PodcastReaderUI.Discussion()) with { Key = "comments:" + key },
                 Key: key, ScrollKey: UseContext(Shell.PageScrollScope) + key, CaptureViewport: _captureViewport, Scroll: _scroll));
+        }
+
+        /// <summary>Publishes row 2: About · Chapters · Transcript · Comments, the spy's section current (see the field block).</summary>
+        void PublishChrome()
+        {
+            int active = _active.Value;
+            if (_chromeUri.Length == 0) return;
+            long sig = HashCode.Combine(_chromeUri, active);
+            if (sig == _chromeSig) return;
+            _chromeSig = sig;
+            var views = new Contracts.PageView[SectionCount]
+            {
+                new("about", Loc.Get(Strings.Podcast.Tabs.About), active == 0, _sectionClicks[0]),
+                new("chapters", Loc.Get(Strings.Podcast.Tabs.Chapters), active == 1, _sectionClicks[1]),
+                new("transcript", Loc.Get(Strings.Podcast.Tabs.Transcript), active == 2, _sectionClicks[2]),
+                new("comments", Loc.Get(Strings.Podcast.Tabs.Comments), active == 3, _sectionClicks[3]),
+            };
+            _sink.Publish(new Contracts.PageChromeRow(views, []));
         }
 
         void GoToSection(int section)

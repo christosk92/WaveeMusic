@@ -289,6 +289,10 @@ public readonly record struct ConcertActView(string Name, string? Image, int Art
 public sealed record ConcertDetailView(string Title, string DateLine, string? Doors, string Place, string? Ages, string? Status,
                                         ConcertOfferView[] Offers, ConcertActView[] Lineup, ConcertShelfItem[] Related, string? ImageUrl, uint Accent)
 {
+    /// <summary>The show's date and time in the PROVIDER's clock, as a value (P5 Z6b2): a band-style structure sets the day as a numeral and the month and weekday
+    /// as words beside it, which a formatted <see cref="DateLine"/> cannot give it in every culture. Null for the skeleton (the view stands a seed date in).</summary>
+    public DateTimeOffset? Date { get; init; }
+
     /// <summary>The skeleton's content.</summary>
     public static readonly ConcertDetailView Seed = new(" ", "Saturday, January 1, 2030 · 20:00", "Doors open 19:00",
         "Venue name placeholder · City placeholder", null, null,

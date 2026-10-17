@@ -2807,7 +2807,9 @@
       },
       "detail": {
         "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
-        "songs": "Songs"
+        "songs": "Songs",
+        "details": "Details",
+        "ticketsNote": "Prices come from the ticket providers, not Wavee"
       },
       "artist": {
         "$comment": "Z6a2: the artist page, its lightbox and the discography. Written as people say them; the style's case roles lower them. Names are never re-cased.",
