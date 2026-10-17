@@ -117,13 +117,17 @@ internal static class ClassicBrowseDirectory
         Element form = band.Stacked
             ? Responsive.Of("browse:charts-stack", w => HomeModules.FoldStack(sections, title, openTile, w, openHeader, band.TileH, band.Cover), fallback: firstW)
             : HomeModules.FoldDeck(sections, title, openTile, openHeader, band.MaxColumns, band.TileH, band.Cover);
-        return new BoxEl
+        Element keyed = new BoxEl
         {
             Key = band.Stacked ? ClassicBrowseTiers.ChartsStackKey : ClassicBrowseTiers.ChartsDeckKey,
             Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
             Children = [form],
         };
+        // The keyed form sits in a CHILDREN LIST, never as the region's (or a component's) single child: a single-child slot reconciles a same-type
+        // child in place and ignores its key, so the deck box would be patched into the stack box (no remount, no cross-fade, the old key kept on the
+        // node). A children list matches by key, so the old form exits (fading) and the new one enters.
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [keyed] };
     }
 
     static readonly Action<HomeSectionView> s_noopSection = static _ => { };
