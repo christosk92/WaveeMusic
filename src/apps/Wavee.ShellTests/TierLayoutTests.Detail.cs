@@ -216,9 +216,12 @@ public sealed partial class TierLayoutTests
         Assert.Same(size.StartsWith("huge4k", StringComparison.Ordinal) ? ClassicDetailTiers.Huge4K : ClassicDetailTiers.Huge, record);
         if (shell.FindPrefix("aside:scroll:").Count == 0) return;   // the arm settled vertical (a Hero page layout): no aside, the band keeps it all
         Assert.Equal(record.Aside!.AlbumWidth, shell.Host.Scene.AbsoluteRect(shell.FindPrefix("aside:scroll:")[0].Node).W, 0.5f);
-        // At most one artist card and one fans section on the page: the aside's.
-        Assert.True(shell.FindPrefix("about:").Count == 0, "the band still draws About the artist beside the aside's card");
-        Assert.True(shell.FindPrefix("aside:fans").Count <= 1);
-        Assert.True(shell.FindPrefix("hdr:release").Count == 0 && shell.FindPrefix("rail:release").Count == 0, "the rail still carries About this release");
+        // At most one artist card and one fans section on the page: the aside's. Only the page IN the card counts: an album page the keep-alive
+        // parked from an earlier test (at another tier) sits outside it.
+        var inCard = new HashSet<NodeHandle>(Subtree(shell.Host.Scene, Node(shell, ClassicFrameLayout.ContentCardKey)));
+        int OnPage(string prefix) => shell.FindPrefix(prefix).Count(p => inCard.Contains(p.Node));
+        Assert.True(OnPage("about:") == 0, "the band still draws About the artist beside the aside's card");
+        Assert.True(OnPage("aside:fans") <= 1);
+        Assert.True(OnPage("hdr:release") == 0 && OnPage("rail:release") == 0, "the rail still carries About this release");
     });
 }

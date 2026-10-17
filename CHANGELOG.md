@@ -314,6 +314,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The library no longer flashes its one-column view when the window narrows past 1008 wide.** For a few frames the albums list
+  briefly turned into the drill-in view and back, because the page measured itself beside the navigation pane before the pane
+  narrowed. The page now waits for that layout before it changes form.
 - **"Choose device" opens the Devices list in a narrow window.** In a window under 528 wide, where Now playing is a sheet that covers the
   player bar, the "Choose device" button on a message (and the tray's Devices entry) now slides the Now playing sheet up if it is down, shows
   its Now playing page if it was on Lyrics or Queue, and opens the same device list as the sheet's Devices button; with the sheet already
