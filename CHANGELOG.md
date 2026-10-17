@@ -85,7 +85,10 @@ versions separately under `v*` and is not tracked in this file.)
   its end, every setting sits under its name with its control full width (choices open as a 40-tall picker, switches keep their row in a
   48 by 40 cell), buttons, links, sliders, selectors and radio buttons are at least 40 big, the About card stacks, and the theme picker is
   two columns of thumbnails. In a small window the tabs scroll and fade and the theme cards are one strip you scroll sideways. In a very
-  large window (1920 wide and up) each tab's sections share two columns of up to 1000 each, left-aligned, and the theme cards are 184 wide.
+  large window (1920 wide and up) each tab's sections share two columns of up to 1000 each, left-aligned, and the theme cards share one row that fits
+  the column, up to 184 wide each, so five always sit side by side. When the window crosses 1920 wide the sections slide between one
+  and two columns and keep your scroll position, open sections and focus, and the theme cards slide to their new places when the
+  window changes size instead of being rebuilt.
 - **Setup: the wizard has a layout for every window size.** Compact is a full-screen sheet with a stacked footer and 40-DIP buttons; Small
   drops the icon column and shows the two sign-in cards side by side; Huge is a larger 960 x 600 plate. The 770-pixel icon breakpoint is gone.
 - **What's new follows the window size.** Compact swaps the release rail for a 40-high release picker under the title, stacks the hero's
