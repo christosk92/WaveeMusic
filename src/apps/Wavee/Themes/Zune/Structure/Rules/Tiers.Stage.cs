@@ -53,17 +53,17 @@ public static class ZuneStageTiers
         IdentityCard = true, GalleryOnDemand = true,
     };
 
-    /// <summary>Small: the 96 plate (Z-Lyrics-Small), the lyrics 30 up to 36.</summary>
-    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 0f, LyricsTypeMin: 30f, LyricsTypeMax: 36f);
+    /// <summary>Small: the 96 plate (Z-Lyrics-Small), the lyrics at the board's 36 (never less: Zune's type is large).</summary>
+    public static StageTierMetrics SmallMetrics { get; } = new(TransportH: 96f, TransportInset: 0f, LyricsTypeMin: 36f, LyricsTypeMax: 36f);
 
-    /// <summary>Standard: the full-bleed 112 plate, the lyrics 36 grown up to 64.</summary>
-    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: PlateH, TransportInset: 0f, LyricsTypeMin: 36f, LyricsTypeMax: 64f);
+    /// <summary>Standard: the full-bleed 112 plate, the lyrics at the board's 56 (Z-Lyrics: 56/68 at 300), grown up to 64 on a tall stage.</summary>
+    public static StageTierMetrics StandardMetrics { get; } = new(TransportH: PlateH, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 64f);
 
-    /// <summary>Huge: the 120 plate (Z-Lyrics-Huge), the lyrics capped at 48, the 440 Up next column beside them.</summary>
-    public static StageTierMetrics HugeMetrics { get; } = new(TransportH: 120f, TransportInset: 0f, LyricsTypeMin: 36f, LyricsTypeMax: 48f) { UpNextW = 440f };
+    /// <summary>Huge: the 120 plate (Z-Lyrics-Huge), the lyrics at the board's 56 (the sung line draws at 72), the 440 Up next column beside them.</summary>
+    public static StageTierMetrics HugeMetrics { get; } = new(TransportH: 120f, TransportInset: 0f, LyricsTypeMin: 56f, LyricsTypeMax: 56f) { UpNextW = 440f };
 
-    /// <summary>Huge 4K: the 280 plate (Z-NowPlaying-Huge4K), the lyrics 40 up to 64, the 560 Up next column.</summary>
-    public static StageTierMetrics Huge4KMetrics { get; } = new(TransportH: 280f, TransportInset: 0f, LyricsTypeMin: 40f, LyricsTypeMax: 64f) { UpNextW = 560f };
+    /// <summary>Huge 4K: the 280 plate (Z-NowPlaying-Huge4K), the lyrics at 84 (the Huge board's 56 at 1.5), the 560 Up next column.</summary>
+    public static StageTierMetrics Huge4KMetrics { get; } = new(TransportH: 280f, TransportInset: 0f, LyricsTypeMin: 84f, LyricsTypeMax: 84f) { UpNextW = 560f };
 
     /// <summary>Zune's stage policy: the core's class edges, the metrics above (Huge 4K through the stage's own rung). One instance, so a
     /// republish is not a change. Declared after the metrics it names: initializers run in textual order.</summary>
@@ -130,6 +130,25 @@ public static class ZuneStageTiers
 
     static readonly ZuneStageVoice s_stackVoice = new(40f, 48f, 300, -12f, 20f, 28f, 400, 13f, 18f, 13f, 18f, 40f, 72f, 0f, 64f, 48f, 20f, 24f, 0f, 48f);
 
+    // ── Lyrics mode's identity column and line rhythm (Z-Lyrics, -Small, -Huge; Compact keeps the allocator's identity card) ──────────────
+
+    static readonly ZuneStageLyricsSide s_lyricsSideStandard = new(Cover: 300f, Gap: 80f, PadTop: 144f, Centered: false, ColGap: 14f, TitleTop: 0f,
+        TitleSize: 26f, TitleLine: 32f, ArtistSize: 15f, ArtistLine: 20f, ArtistDisplay: false, TagSize: 12f, TagLine: 16f, TagTop: 0f);
+
+    static readonly ZuneStageLyricsSide s_lyricsSideSmall = new(180f, 40f, 0f, true, 8f, 0f, 22f, 28f, 14f, 20f, false, 11f, 14f, 0f);
+
+    static readonly ZuneStageLyricsSide s_lyricsSideHuge = new(440f, 96f, 40f, false, 8f, 18f, 40f, 48f, 22f, 28f, true, 13f, 18f, 8f);
+
+    static readonly ZuneStageLyricsSide s_lyricsSide4K = new(660f, 144f, 60f, false, 12f, 27f, 60f, 72f, 33f, 42f, true, 20f, 27f, 12f);
+
+    static readonly ZuneStageLyricsRhythm s_rhythmCompact = new(LineRatio: 32f / 26f, RowPad: 5f, Weight: 300, Tracking: -12f);
+
+    static readonly ZuneStageLyricsRhythm s_rhythmSmall = new(46f / 36f, 2f, 300, -11f);
+
+    static readonly ZuneStageLyricsRhythm s_rhythmStandard = new(68f / 56f, 3f, 300, -9f);
+
+    static readonly ZuneStageLyricsRhythm s_rhythmHuge = new(64f / 56f, 13f, 300, -18f);
+
     static readonly ZuneStageStack s_stack = new(Top: 12f, CoverFrac: 0.76f, CoverMin: 160f, TitleTop: 20f, SeekTop: 18f, BottomPad: 16f, s_stackVoice);
 
     // ── the stage views' record (per window tier) ────────────────────────────────────────────────────────────────────────
@@ -144,6 +163,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Stack, SeekRowH = 36f, PlateRowH = 68f, PlateFootH = 44f,
             GlyphBox = 44f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 0f, ClusterGap = 16f, RightGap = 4f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 40f, Card = s_cardStandard, Column = s_columnStandard, Centered = null, Stack = s_stack,
+            LyricsRhythm = s_rhythmCompact,
         },
         // Small (Z-NowPlaying-Small, Z-Lyrics-Small, Z-Queue-Page-Small)
         new()
@@ -153,6 +173,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.HeartLead, SeekRowH = 30f, PlateRowH = 66f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 17f, PlayGlyph = 20f, Disc = 48f, VolumeW = 96f, ClusterGap = 20f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnSmall, Centered = s_centeredSmall, Stack = null,
+            LyricsSide = s_lyricsSideSmall, LyricsRhythm = s_rhythmSmall,
         },
         // Standard (Z-NowPlaying, -Card, -LargeArt, -Centered, Z-Lyrics, Z-Queue-Page): Z4b's frame.
         new()
@@ -162,6 +183,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Full, SeekRowH = 36f, PlateRowH = 76f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 128f, ClusterGap = 24f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnStandard, Centered = s_centeredStandard, Stack = null,
+            LyricsSide = s_lyricsSideStandard, LyricsRhythm = s_rhythmStandard,
         },
         // Huge (Z-NowPlaying-Huge, Z-Lyrics-Huge, Z-Queue-Page-Huge)
         new()
@@ -171,7 +193,7 @@ public static class ZuneStageTiers
             WordSize = 14f, WordLine = 20f, Plate = ZunePlateKind.Full, SeekRowH = 40f, PlateRowH = 80f, PlateFootH = 0f,
             GlyphBox = 44f, Glyph = 20f, PlayGlyph = 24f, Disc = 64f, VolumeW = 160f, ClusterGap = 28f, RightGap = 8f, SourceSize = 14f, SourceLine = 20f,
             DeviceH = 44f, Card = s_cardHugeRec, Column = s_columnHuge, Centered = s_centeredHuge, Stack = null,
-            UpNextGap = 64f, LyricsPaneMaxW = 900f,
+            UpNextGap = 96f, LyricsSide = s_lyricsSideHuge, LyricsRhythm = s_rhythmHuge,
         },
         // Huge 4K (Z-NowPlaying-Huge4K)
         new()
@@ -181,7 +203,7 @@ public static class ZuneStageTiers
             WordSize = 17f, WordLine = 22f, Plate = ZunePlateKind.Full, SeekRowH = 72f, PlateRowH = 160f, PlateFootH = 0f,
             GlyphBox = 56f, Glyph = 26f, PlayGlyph = 36f, Disc = 96f, VolumeW = 220f, ClusterGap = 40f, RightGap = 14f, SourceSize = 17f, SourceLine = 22f,
             DeviceH = 56f, Card = s_card4KRec, Column = s_column4K, Centered = s_centered4K, Stack = null,
-            UpNextGap = 336f,
+            UpNextGap = 336f, LyricsSide = s_lyricsSide4K, LyricsRhythm = s_rhythmHuge,
         },
     ];
 
@@ -317,6 +339,13 @@ public sealed record ZuneStageLayout
     /// do not strand one word); 0: none (the column's own cap of 1000 times the type scale stands).</summary>
     public float LyricsPaneMaxW { get; init; }
 
+    /// <summary>Lyrics mode's identity column at this tier (the cover, "title", the accent artist line, the quiet tag line, left of the lines);
+    /// null: the allocator's identity (Compact's card).</summary>
+    public ZuneStageLyricsSide? LyricsSide { get; init; }
+
+    /// <summary>The stage's lyric lines' rhythm at this tier (line height, gap, the sung line's growth, the light display voice).</summary>
+    public ZuneStageLyricsRhythm? LyricsRhythm { get; init; }
+
     /// <summary>The chrome at the stage's head: the bar and the pivots' row.</summary>
     public float HeadH => BarH + PivotRowH;
 
@@ -365,3 +394,17 @@ public sealed record ZuneStageStack(float Top, float CoverFrac, float CoverMin, 
 {
     public float ControlsH => Voice.SeekH + Voice.RowH + Voice.AsideH;
 }
+
+/// <summary>Lyrics mode's identity column (Z-Lyrics): a Cover-wide column of the cover, the title, the accent artist line and the quiet tag line,
+/// <c>Gap</c> left of the lines. <c>PadTop</c> is the cover's top under the head; <c>Centered</c> centres the column between the head and the plate.</summary>
+public sealed record ZuneStageLyricsSide(float Cover, float Gap, float PadTop, bool Centered, float ColGap, float TitleTop, float TitleSize, float TitleLine,
+    float ArtistSize, float ArtistLine, bool ArtistDisplay, float TagSize, float TagLine, float TagTop)
+{
+    /// <summary>The column's height: the cover, the title (with its extra top), the artist line and the tag line, a gap between each.</summary>
+    public float ColumnH => Cover + ColGap + TitleTop + TitleLine + ColGap + ArtistLine + ColGap + TagTop + TagLine;
+}
+
+/// <summary>The stage's lyric lines at one window tier: the line height as a ratio of the type, the pad above and below each line (the board's
+/// gap is twice this), the weight (300, the display face) and the tracking in thousandths of an em. (The Compact and Huge boards draw the sung
+/// line one step larger: not done, a size change would jump the row's height.)</summary>
+public sealed record ZuneStageLyricsRhythm(float LineRatio, float RowPad, ushort Weight, float Tracking);

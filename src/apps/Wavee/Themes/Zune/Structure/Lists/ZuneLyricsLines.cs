@@ -27,6 +27,7 @@ using FluentGpu.Reconciler;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Text;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -284,6 +285,11 @@ internal sealed class ZuneLyricsRow : Component
         bool neutral = Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback);
         var ink = host.Ink;
         var m = host.Metrics;
+        // the stage's lines in the board's rhythm (Z-Lyrics: the display face at 300, the line a ratio of the type, a tier's gap); the rail keeps the core's
+        var facts = UseContext(ThemeFactsContext.Signal);
+        var rhythm = host.OnStage && facts is not null && !host.IsPodcast ? ZuneStageTiers.StageOf(facts.Value.Tiers).LyricsRhythm : null;
+        if (rhythm is not null)
+            m = m with { LineHeight = MathF.Round(m.FontSize * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
         if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
@@ -292,7 +298,7 @@ internal sealed class ZuneLyricsRow : Component
         // browsing an episode that does not play) highlights nothing.
         ColorF accent = host.Accent is { } stageAccent && isActive && !neutral ? stageAccent.Value : R.Ink.AccentAction;
         ColorF lineInk = ZuneListRules.LyricsLineInk(isActive && !neutral, accent, neutral ? ink.Secondary : ink.Primary);
-        var weight = R.Type.LyricsLine("").ResolvedWeight;
+        var weight = rhythm is null ? R.Type.LyricsLine("").ResolvedWeight : rhythm.Weight;
 
         Element main = new TextEl(line.Text)
         {
@@ -300,6 +306,7 @@ internal sealed class ZuneLyricsRow : Component
             Color = lineInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine,
             BrushTransitionMs = Design.Motion.Fast,   // the rest <-> accent flip never snaps in one frame
         };
+        if (rhythm is not null) main = ((TextEl)main) with { FontFamily = R.Type.DisplayFace, CharSpacing = rhythm.Tracking };
 
         string? secondaryText = host.SecondaryLine.Value switch
         {

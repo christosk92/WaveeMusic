@@ -38,7 +38,10 @@ internal static class ZuneStagePane
         var a = ZuneStageKit.Arrangement(sc, in tiers);
         // the plate's pane sits on the tier's gutter (the lyrics' text starts there), under the tier's taller head (the Compact pivot row, 56, 72),
         // and stops short of the Up next column (`ZuneStageGeometry.PlatePane`)
-        var pane = a.Form == ZuneStageForm.Column ? a.Pane : G.PlatePane(in L, in k, ZuneStageTiers.StageOf(in tiers), sc.Pane.Value);
+        var tier = ZuneStageTiers.StageOf(in tiers);
+        var pane = a.Form == ZuneStageForm.Column ? a.Pane
+            : G.LyricsSide(in L, in k, tier) is { } side && sc.Pane.Value == Stage.PaneKind.Lyrics ? side.Pane
+            : G.PlatePane(in L, in k, tier, sc.Pane.Value);
         var (x, y, w, h) = (pane.X, pane.Y, pane.W, pane.H);
         return new BoxEl
         {
