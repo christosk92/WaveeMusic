@@ -53,19 +53,31 @@ public static partial class Sidebar
     // MOUNT POINT (stage B contract)
     public static Element DrawerPane() => ViewSlots.View(ViewKeys.ShellNavPane, DrawerPaneProps);
 
-    /// <summary>The docked pane's props (one instance: equal across re-pushes, so the template runs once per theme).</summary>
+    /// <summary>The docked pane's props (one instance: equal across re-pushes, so the template runs once per theme). <c>Band</c> is the data
+    /// a band-style pane draws instead (P5 ZK, <c>Shell.PageChromeChannel.Band</c>).</summary>
     public static readonly NavPaneProps DockedPaneProps = new()
     {
         InDrawer = false,
-        Mount = static kit => Embed.Comp(() => new PaneHost(inDrawer: false, kit)),
+        Mount = static kit => MountPane(inDrawer: false, kit),
+        Band = Shell.PageChromeChannel.Band,
     };
 
     /// <summary>The drawer pane's props.</summary>
     public static readonly NavPaneProps DrawerPaneProps = new()
     {
         InDrawer = true,
-        Mount = static kit => Embed.Comp(() => new PaneHost(inDrawer: true, kit)),
+        Mount = static kit => MountPane(inDrawer: true, kit),
+        Band = Shell.PageChromeChannel.Band,
     };
+
+    /// <summary>What a structure without a nav tree gets when its template mounts the pane anyway: nothing (a zero box, out of hit-testing).</summary>
+    static readonly BoxEl s_noPane = new() { Key = "sidebar.none", Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+
+    /// <summary>THE NAV-TREE CAPABILITY (P5 ZK): the core pane mounts only under a structure that offers a nav tree. Decided when the
+    /// template mounts it (a theme switch remounts the root, so the next structure decides again); the frame's presentation is gated
+    /// live as well (<c>FrameModel.Gate</c>), so the docked column is empty and the drawer unmounted whatever the template does.</summary>
+    static Element MountPane(bool inDrawer, NavRowKit kit)
+        => ShellCaps.Now.NavTree ? Embed.Comp(() => new PaneHost(inDrawer, kit)) : s_noPane;
 
     // ══ 2. THE LAYOUT HOST ═════════════════════════════════════════════════════════════════════════════════════════════
     // The projection binder, its pump and its first-build epoch are the nav model's (NavModel.Binder.cs): the host only

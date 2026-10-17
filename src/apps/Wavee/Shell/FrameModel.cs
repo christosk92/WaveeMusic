@@ -70,6 +70,12 @@ public static class FrameModel
         return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width, policy), 1f);
     }
 
+    /// <summary>THE NAV-TREE CAPABILITY (P5 ZK): under a structure without a nav tree (<c>ShellCapabilities.NavTree</c> false) the pane is
+    /// never presented, whatever the band, the policy or the user's collapse say: no mode but <see cref="SidebarPaneMode.Minimal"/>, a zero
+    /// width, no fade. The stored width and collapse are untouched, so a structure with a tree presents them again. A no-op with a tree.</summary>
+    public static NavPaneState Gate(in NavPaneState pane, bool navTree)
+        => navTree ? pane : pane with { Mode = SidebarPaneMode.Minimal, PresentedWidth = 0f, Fade = 1f };
+
     /// <summary>Is a seam drag being presented (rather than the resolved mode)? The frame reads the seam signal only then.</summary>
     public static bool PresentsDrag(bool dragging, SidebarWindowBand band, Theming.NavPanePolicy? policy = null)
         => dragging && SidebarPaneModeRules.SeamVisible(band, policy);
@@ -156,7 +162,12 @@ public sealed class FrameVerbs : IFrameVerbs
 
     public void GoBack() => Shell.GoBack();
     public void GoForward() => Shell.GoForward();
-    public void NewTab() => Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
+    /// <summary>Ctrl+T. Refused under a structure without tabs (<c>ShellCapabilities.Tabs</c> false, P5 ZK): there is no tab to open.</summary>
+    public void NewTab()
+    {
+        if (!ShellCaps.Now.Tabs) return;
+        Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
+    }
     public void TogglePalette() => Shell.PaletteOpen.Value = !Shell.PaletteOpen.Peek();
     public void FocusSearch() => Shell.FocusSearch();
     public void OpenSettings() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));

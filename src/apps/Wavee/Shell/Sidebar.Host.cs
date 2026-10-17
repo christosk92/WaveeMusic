@@ -498,7 +498,8 @@ public static partial class Sidebar
     /// and the user drops (or presses Esc) and enters again. A drag can never straddle the Outline swap.</para></summary>
     public static void EnterEdit()
     {
-        if (Editing.Peek()) return;
+        // A structure without a nav tree (P5 ZK) mounts no pane to edit.
+        if (Editing.Peek() || !ShellCaps.Now.NavTree) return;
         if (Drag.IsLive())
         {
             Notify.Say(Loc.Get("sidebar.edit.finishDrag"), InfoBarSeverity.Informational, dedupeKey: "sidebar.edit.finish-drag");
@@ -611,10 +612,11 @@ public static partial class Sidebar
     public static void CommitSeam() => Apply(SidebarResizeRules.Resolve(Seam.Peek(), ResizeState(), Editing.Peek()));
 
     /// <summary>The title-bar toggle, the seam's double-click and Enter: in the Wide band it flips the user's collapse;
-    /// in Narrow/Tiny it opens or closes the overlay pane and never writes the collapse. Disabled while editing.</summary>
+    /// in Narrow/Tiny it opens or closes the overlay pane and never writes the collapse. Disabled while editing, and refused under a
+    /// structure without a nav tree (P5 ZK: there is no pane to toggle).</summary>
     public static void TogglePane()
     {
-        if (Editing.Peek()) return;
+        if (Editing.Peek() || !ShellCaps.Now.NavTree) return;
         if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.Value = !OverlayOpen.Peek(); return; }
         Apply(SidebarResizeRules.Toggle(ResizeState()));
     }
@@ -625,7 +627,7 @@ public static partial class Sidebar
     /// a no-op while editing (Edit already presents the pane).</summary>
     public static void OpenPane()
     {
-        if (Editing.Peek()) return;
+        if (Editing.Peek() || !ShellCaps.Now.NavTree) return;
         if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.SetIfChanged(true); return; }
         if (UserCollapsed.Peek()) Apply(SidebarResizeRules.Toggle(ResizeState()));
     }

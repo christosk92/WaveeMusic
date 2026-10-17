@@ -327,8 +327,8 @@ search form) and the suggestions body alone (the progress slot, the pending heig
 
 **`PageChrome`** (`Theming\Contracts\PageChrome.cs`) is the value the core hands the frame for a page's head: today the title, the trail
 (`PageCrumb`: a label and a navigate verb, none on the current page), the "Show all" tool's state and the head's form (`PageHeadForm`, `Shell.HeadFormOf`: by the route's kind), built from the masthead publications
-(`Shell.Mastheads`, the nav origins, `Shell.TryMasthead`). Views, band pivots, actions, the material claim and the backdrop join it as additive members
-with the lanes that have data for them.
+(`Shell.Mastheads`, the nav origins, `Shell.TryMasthead`). Since contract 1.26 it also carries **row 2** (`Views`, `Actions`, `Backdrop`, empty by
+default): see "Page chrome row 2, the band and the shell capabilities (P5 ZK)" below.
 
 **Props that cannot carry a writable signal.** The tint binder publishes into the shell material, and a props record may not hold a `Signal<T>`
 (WVTH006), so it carries a `MaterialPort` (`Platform\ShellMaterial.cs`): one cached object per slot, compared by reference, whose `Publish` is
@@ -340,6 +340,51 @@ rule (`TintOwnership`: a claim, an owner-only refresh, never a clear, so a navig
 **Tests.** `Wavee.ShellTests\FrameBitsMountedTests.cs`: Classic is the registered template of every key above, each view stands in the real
 shell or alone under `ViewHarness` with fixture props (the masthead row, the drawer's two states, the palette's rows and keyboard, the file-drop
 cue, the scrim, the HUD only in developer mode), and the cover leaves still publish the shell tint through the port.
+
+### Page chrome row 2, the band and the shell capabilities (P5 ZK)
+
+A band-style structure (Zune) draws the frame differently from Classic: no nav tree, no tabs and no forward button, a two-row band over
+the page column (row 1: the destinations and the pins; row 2: the page's own words), and a head for every page. ZK gives the core the
+seams for it; Classic reads none of them and is unchanged.
+
+**Row 2 on `PageChrome`** (contract 1.26). `Views` (`PageView`: id, label, current, `Go`, an optional count), `Actions` (`PageAction`: id,
+label, verb, `PageActionKind` Play / Shuffle / Word, enabled) and `Backdrop` (`PageBackdrop`: the `Bleed` image, or the `Mix` covers) are
+additive init members with empty defaults. They come from two places, merged by `Shell.PageChromeChannel.ChromeOf(route)`:
+
+| Source | Who publishes | How |
+|---|---|---|
+| route level | a family whose row 2 is sibling routes; today the Library kinds (liked, albums, artists, podcasts, audiobooks: `User.LibraryChromeViews`) | `PageChromeChannel.RouteViews(route)`: answered from the route alone, so the views stand on the navigation's first frame |
+| in page | a page's core host or its theme template | the `PageChromeSink` the content host provides around every page (`ctx.Hooks.UseContext(PageChromeSink.Context)`): `Publish(PageChromeRow)` from an effect, `Publish(null)` from its cleanup. No `Shell` named |
+
+The page's views win over the route's; its actions and backdrop are its own. The title and trail are the masthead's for its family and
+the destination's title elsewhere (one crumb, the page itself). `PageChromeChannel.Current` is the chrome of the page on screen, a signal
+the content host republishes on every navigation and publication.
+
+**The band** (`NavPaneProps.Band`, `BandProps`, contract 1.26): one static record on both pane mounts. `Destinations` (home, browse, library,
+recents; `BandDestination`), `Current` (the lit index, `Shell.BandRules.IndexOf`: Home and its sections, Browse and its family with the
+concerts, the library kinds, Recents; -1 elsewhere), `Pins` (`NavModel.BandPins(max)`: the pins in the user's order, folders left out, at most
+`ShellCapabilities.MaxBandPins`, each with `Go`, `Play` and a tracked `Playing`), `Chrome` (the current page's chrome), `Scroll` (`PageScroll`:
+the current page's offset and the direction it last travelled past `PageScrollRules.DeadZone`; a page names its main scroller with
+`PageChromeSink.ReportScroll(handle.Offset)`) and `Hub` (the hub list a narrow band's lead word opens: row 1, profile, settings). Whether the
+pins show at a tier, how the band collapses and how its words overflow are the structure's. Read `Scroll` in a bound prop, never a render body.
+
+**The capabilities** (`ShellCapabilities`, read through `ShellCaps.Now` / `.Tracked`):
+
+| Member off | What the core does |
+|---|---|
+| `Tabs` | `Chrome.Resolve(..., tabs: false)`: no strip, no count button, no "+" slot, none priced; Ctrl+T and the "+" verb refuse; "open in a new tab" (History's own tab) navigates in place; the workspace **collapses** to the active tab (`TabWorkspace.Collapse`, `Shell.FollowTabsCapability`, an effect of the frame, so it lands in the transaction that changed the capability), the others parked with their ids and pins; the persisted pins are the whole workspace; a structure with tabs **expands** it back (owner Q4); palette rows with ids `tabs.*` are hidden |
+| `ForwardButton` | `ShellCaps.Budget`: the budget never admits Forward, so the row neither draws nor prices it (Alt+Right still goes forward) |
+| `NavTree` | the pane is never presented (`FrameModel.Gate`: Minimal, width 0, no seam), `NavPaneProps.Mount` answers an empty box, the drawer does not mount, `Sidebar.TogglePane` / `OpenPane` / `EnterEdit` refuse, the title bar's toggle is disabled, and the palette hides "Edit sidebar" and "New folder" |
+| `MaxBandPins` | the band's pins are capped |
+
+`HistoryMenu` and `FriendsPanel` are kept by every structure so far. A template may read the capabilities itself
+(`ctx.Hooks.UseContext(ThemeFactsContext.Signal).Value.Capabilities`), for instance to leave its own pane toggle out.
+
+**Tests.** Pure: `Wavee.Tests\PageChromeRowTests.cs` (the Library row per route, the merge, the band's lit index, the scroll rule),
+`ShellCapabilityRulesTests.cs` (the budget without Forward, the row without tabs, the workspace's collapse and expansion, the palette filter).
+Mounted: `Wavee.ShellTests\ShellCapabilitiesMountedTests.cs` under the test-only `ClassicBand` theme (Classic's views, Tabs, Forward and NavTree
+off, six band pins): no tab island and no Forward, no pane mounted, the workspace collapsed on the switch and restored on the switch back, the
+band's pins capped at six, and the current chrome carrying the Library row.
 
 ### The navigation pane's rows (T5a)
 
@@ -1626,6 +1671,7 @@ The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Co
 | frame-rate overlay | `Shell.Fps` (unchanged key and props; T4c drew it in Classic) | the frame root: `Diagnostics.FpsOverlayOn` | `CommonFps` |
 | not-found | none: the content state's NotFound arm | `Shell.ContentHost` decides | `CommonNotFound.Block(key, glyph, goHome)`, called by a theme's `Shell.ContentState` template (the page box and the offline lane stay the theme's) |
 | diagnostics, logs | see the diagnostics section | | `CommonDiagnostics`, `CommonLogs` |
+| nothing (P5 ZK) | any key a structure has no picture for: `CommonNothing.Register(views, key)`, template id `common.nothing.<key id>` | the key's own host still runs | `CommonNothing`: a zero box, not hit-testable. Not a way to stop a core host that needs a picture (the pane): that is a capability |
 
 **History keeps today's behaviour.** The page re-renders on the log's version and on its three signals, exactly as the component did; a route this build has no page for stays in the log at 0.6 opacity and inert while its delete stays live; Clear all asks first (Cancel is the default button), a row delete does not; Most recent trims the last row's divider of every card, Most visited keeps every divider. The projection is built per render by the core (at most 500 rows) and carries ready-to-draw facts (title, glyph, kind label, argument, timestamp, visit count, reachability and the two verbs), so the view names no `Shell`.
 

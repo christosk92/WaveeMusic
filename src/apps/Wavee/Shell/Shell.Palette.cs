@@ -118,11 +118,14 @@ public static partial class Shell
         /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.
         /// <paramref name="playerStyleRows"/> false drops the two now-playing style rows (<see cref="IsPlayerStyleRow"/>): they are
         /// offered only where a style can change Now playing (<c>Rail.PlayerPrefs.StyleChoiceVisible</c>, #199).</summary>
+        /// <param name="caps">The active shell capabilities (P5 ZK); null = every capability on. A row whose feature the structure does
+        /// not offer is left out (<see cref="HiddenBy"/>).</param>
         public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf,
-            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, bool playerStyleRows = true)
+            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, bool playerStyleRows = true, Theming.ShellCapabilities? caps = null)
         {
             var builtins = Builtins();
             if (!playerStyleRows) builtins = Array.FindAll(builtins, static r => !IsPlayerStyleRow(r.Id));
+            if (caps is { } c && (!c.NavTree || !c.Tabs)) builtins = Array.FindAll(builtins, r => !HiddenBy(r.Id, c));
             int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
             if (registryActions is not null)
@@ -159,6 +162,19 @@ public static partial class Shell
 
         /// <summary>The builtin rows that pick the hero's presentation or player style (the Cover/Player toggle, the next style).</summary>
         public static bool IsPlayerStyleRow(string id) => id is "settings.npvPresentation" or "settings.npvNextStyle";
+
+        /// <summary>The builtin rows that act on the navigation tree (Edit the sidebar, New folder): a structure without one has nowhere for
+        /// them to land (P5 ZK).</summary>
+        public static bool IsNavTreeRow(string id) => id is "sidebar.edit" or "library.newFolder";
+
+        /// <summary>Rows that open or manage tabs: their ids start with <c>tabs.</c> (none is a builtin today; the rule is the filter's,
+        /// so a tab row added later is hidden without a theme check of its own).</summary>
+        public static bool IsTabRow(string id) => id.StartsWith("tabs.", StringComparison.Ordinal);
+
+        /// <summary>Is the row <paramref name="id"/> hidden under <paramref name="caps"/>? Nav-tree rows without a nav tree, tab rows without
+        /// tabs; every other row stays.</summary>
+        public static bool HiddenBy(string id, Theming.ShellCapabilities caps)
+            => (!caps.NavTree && IsNavTreeRow(id)) || (!caps.Tabs && IsTabRow(id));
 
         /// <summary>Which target a palette invocation supplies, in preference order NowPlaying → ActiveRoute → None.
         /// False = the descriptor needs a picked entity and earns no palette row.</summary>
@@ -399,7 +415,8 @@ public static partial class Shell
     sealed class PaletteSession : IPaletteSession
     {
         readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
-            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), playerStyleRows: Platform.Developer.Enabled.Peek() && !Diagnostics.StoreShot.Presenting.Peek());   // Rail.PlayerPrefs.StyleChoiceVisible, peeked
+            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), playerStyleRows: Platform.Developer.Enabled.Peek() && !Diagnostics.StoreShot.Presenting.Peek(),   // Rail.PlayerPrefs.StyleChoiceVisible, peeked
+            caps: ShellCaps.Now);
         readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
         readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
         int _count;

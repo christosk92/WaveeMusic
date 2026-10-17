@@ -309,8 +309,9 @@ public static partial class Shell
                 // The pane's resting width for the first tier (contract 1.21: Classic Huge 320 while never resized), before the seed lays it out.
                 Sidebar.FollowTier(tiers.WindowNow, policies.NavPane);
                 var size0 = vp.Peek();
-                var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height), tiers.WindowNow,
-                    Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek(), policies.NavPane);
+                // A structure without a nav tree presents no pane from the first frame (P5 ZK).
+                var pane0 = FrameModel.Gate(FrameModel.Seed(new WindowFacts(size0.Width, size0.Height), tiers.WindowNow,
+                    Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek(), policies.NavPane), ShellCaps.Now.NavTree);
                 Sidebar.Band.SetIfChanged(pane0.Band);
                 Sidebar.Mode.SetIfChanged(pane0.Mode);
                 Sidebar.PresentedWidth.SetIfChanged(pane0.PresentedWidth);
@@ -337,9 +338,13 @@ public static partial class Shell
             UseSignalEffect(static () => { _ = Theming.ThemeState.Scope.Value; Sidebar.FollowThemeState(); });
             // THE PANE'S RESTING WIDTH PER TIER (contract 1.21): a pane the user never resized follows the window tier's width (Classic Huge 320).
             UseSignalEffect(() => Sidebar.FollowTier(tiers.Window, ShellPolicy.Tracked.NavPane));
-            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
-            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(
-                SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));
+            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here), and under a
+            // structure without a nav tree (P5 ZK: there is no pane to toggle).
+            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(ShellCaps.Tracked.NavTree
+                && SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));
+            // THE TABS CAPABILITY (P5 ZK, owner Q4): a structure without tabs collapses the workspace to the active tab (the others parked
+            // and persisted), one with tabs brings them back. Tracked, so it lands in the transaction that changed the capability.
+            UseSignalEffect(static () => FollowTabsCapability(ShellCaps.Tracked.Tabs));
             // THE ONE PRESENTATION EFFECT: ① the mode, ② the presented width. A live drag presents Track(seam). It never
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
             UseSignalEffect(() =>
@@ -353,7 +358,9 @@ public static partial class Shell
                 var nav = ShellPolicy.Tracked.NavPane;
                 bool dragging = FrameModel.PresentsDrag(_sidebarDragging.Value, band, nav);
                 float seam = dragging ? Sidebar.Seam.Value : 0f;
-                var pane = FrameModel.Present(new WindowFacts(size.Width, size.Height), band, collapsed, editing, expandedWidth, dragging, seam, nav);
+                // A structure without a nav tree presents no pane at all (P5 ZK); the stored width and collapse are left alone.
+                var pane = FrameModel.Gate(FrameModel.Present(new WindowFacts(size.Width, size.Height), band, collapsed, editing, expandedWidth,
+                    dragging, seam, nav), ShellCaps.Tracked.NavTree);
                 if (dragging)
                 {
                     Sidebar.Mode.SetIfChanged(pane.Mode);
@@ -517,7 +524,10 @@ public static partial class Shell
                 // The BUDGET is the window tier's (tracked): Classic's Compact row folds the tab strip into a count button and its Huge row
                 // seats a wider search and wider tabs. The tier commits on the first frame that is not resized, so the row re-allocates
                 // once per crossing, on the frame the crossing animates.
-                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window));
+                // THE CAPABILITIES (P5 ZK): no forward button drops Forward from the budget; no tabs drops the whole tab island.
+                var caps = ShellCaps.Tracked;
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value),
+                    ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps), caps.Tabs);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
@@ -582,7 +592,8 @@ public static partial class Shell
             RailFloats = static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value),
             // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so the clipped column widens with it.
             SidebarColumnWidth = static () => FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
-            SidebarSeamWidth = static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)),
+            // No seam under a structure without a nav tree (P5 ZK): there is no pane beside the content.
+            SidebarSeamWidth = static () => FrameRules.SidebarSeamWidth(ShellCaps.Tracked.NavTree && SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)),
             RailGapWidth = static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
             RailReservedWidth = static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value),
             RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
@@ -843,6 +854,10 @@ public static partial class Shell
                 if (!ClaimsMaterial(r))
                     ShellMaterial.Publish(MaterialState, s_neutralMaterialOwner, isClaim: true, definite: true, tint: null, wash: null);
             });
+            // THE PAGE-CHROME CHANNEL (P5 ZK): the current page's chrome (title, trail, row 2) and its scroll, for a band-style structure.
+            // Classic reads neither; both follow the route and the pages' publications through the sink provided below (PageBody).
+            UseSignalEffect(static () => PageChromeChannel.PublishCurrent());
+            UseSignalEffect(static () => PageChromeChannel.FollowScroll());
             // Frame attribution + the CLEARING half of the stage-playable claim (value-gated: an idle nav writes nothing).
             UseSignalEffect(static () =>
             {
@@ -906,7 +921,8 @@ public static partial class Shell
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the
     /// structure's <c>Shell.ContentState</c> view, which draws it (T4a). The core decides which state and builds the page; the
     /// body box, the not-found page and the lane are the theme's. The scroll scope is provided around the slot, so the page below
-    /// reads it as it always did.</summary>
+    /// reads it as it always did; so is the page's <see cref="PageChromeSink"/> (P5 ZK): what the page or its template publishes for
+    /// row 2, and the scroller it names, land under its route.</summary>
     static Element PageBody(Route route)
     {
         var factory = PageFor(route);
@@ -915,8 +931,9 @@ public static partial class Shell
             case ContentStateKind.Page:
                 return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
                     Ctx.Provide(MeasureMemory.Scope, MeasureScopeOf(route),
-                        ViewSlots.View(ViewKeys.ShellContentState,
-                            ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route)))));
+                        Ctx.Provide(PageChromeSink.Context, PageChromeChannel.SinkFor(route),
+                            ViewSlots.View(ViewKeys.ShellContentState,
+                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route))))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));
@@ -1140,7 +1157,8 @@ public static partial class Shell
         public override Element Render()
         {
             var band = Sidebar.Band.Value;
-            bool overlay = SidebarPaneModeRules.HasOverlay(band);
+            // A structure without a nav tree has no drawer either (P5 ZK): nothing mounts, nothing opens.
+            bool overlay = ShellCaps.Tracked.NavTree && SidebarPaneModeRules.HasOverlay(band);
             bool pinned = SidebarPaneModeRules.OverlayPinned(band, Sidebar.Editing.Value);
             bool open = overlay && (Sidebar.OverlayOpen.Value || pinned);
             var hooks = UseContext(InputHooks.Current);

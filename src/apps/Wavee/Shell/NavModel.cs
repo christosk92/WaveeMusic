@@ -24,6 +24,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -225,6 +226,52 @@ public sealed partial class NavModel : INavVerbs
         int at = pins.IndexOf(id);
         if (at >= 0 && pins[at].Name.Length > 0) return pins[at].Name;
         return SidebarPinId.RouteOf(id) is { } route ? Shell.Dest(Shell.Parse(route)).Title : "";
+    }
+
+    // ── the band's pins (P5 ZK, the read seam a band-style pane draws from) ───────────────────────────────────────────────
+
+    IReadOnlyList<BandPin> _bandPins = [];
+    int _bandPinsVersion = -1, _bandPinsMax = -1;
+    string _bandPinsAccount = "";
+
+    /// <summary>The pins a band shows: the live account's pins in the user's order, folders left out (a folder opens nothing), at most
+    /// <paramref name="max"/> (the active structure's <c>ShellCapabilities.MaxBandPins</c>). Each carries its open and play verbs and its
+    /// playing fact. SUBSCRIBES the caller to the pin store's version; the list is rebuilt only when the store, the account or the cap
+    /// moved, so an equal read hands back the same instance.</summary>
+    public IReadOnlyList<BandPin> BandPins(int max)
+    {
+        int version = Sidebar.PinsVersion.Value;
+        string account = Sidebar.AccountKey;
+        max = Math.Max(0, max);
+        if (version == _bandPinsVersion && max == _bandPinsMax && string.Equals(account, _bandPinsAccount, StringComparison.Ordinal))
+            return _bandPins;
+        _bandPinsVersion = version;
+        _bandPinsMax = max;
+        _bandPinsAccount = account;
+        _bandPins = BuildBandPins(Sidebar.Pins, max);
+        return _bandPins;
+    }
+
+    IReadOnlyList<BandPin> BuildBandPins(IReadOnlyList<SidebarPin> pins, int max)
+    {
+        if (max == 0 || pins.Count == 0) return [];
+        var list = new List<BandPin>(Math.Min(max, pins.Count));
+        for (int i = 0; i < pins.Count && list.Count < max; i++)
+        {
+            var pin = pins[i];
+            string routeKey = pin.RouteKey;
+            if (pin.Kind == SidebarEntryKind.Folder || routeKey.Length == 0) continue;
+            string name = pin.Name.Length > 0 ? pin.Name : PinName(pin.Id);
+            string uri = pin.Uri;
+            bool playable = uri.Length > 0 && pin.Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album
+                or SidebarEntryKind.Artist or SidebarEntryKind.Show;
+            list.Add(new BandPin(
+                pin.Id, name, pin.Cover.Length > 0 ? pin.Cover : null, pin.Kind == SidebarEntryKind.Artist,
+                Go: () => Navigate(routeKey, name),
+                Play: playable ? () => Play(uri) : null,
+                Playing: uri.Length > 0 ? () => ReadPlaying().Active && PlayingRelatesTo(uri) : static () => false));
+        }
+        return list;
     }
 
     // ── verbs ───────────────────────────────────────────────────────────────────────────────────────────────────────────

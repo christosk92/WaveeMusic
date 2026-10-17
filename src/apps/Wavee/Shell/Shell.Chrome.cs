@@ -249,17 +249,27 @@ public static partial class Shell
             FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
             => Resolve(width, EstimatedTabExtent(tabCount, 0, budget), previous, chip, budget);
 
+        /// <param name="width">The row's width.</param>
+        /// <param name="naturalTabExtent">The strip's measured natural extent.</param>
+        /// <param name="previous">The allocation on screen (the hysteresis memory); null for a fresh resolve.</param>
+        /// <param name="chip">The identity chip's form.</param>
+        /// <param name="budget">The budget (null = the active one).</param>
+        /// <param name="tabs">The structure offers tabs (<c>ShellCapabilities.Tabs</c>, P5 ZK). False: the row has no tab island at all (no
+        /// strip, no count button, no "+" slot) and prices none, so the search and the identity get its room.</param>
         public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null, bool tabs = true)
         {
             var b = ShellPolicy.BudgetOr(budget);
+            // No tabs: the count form's arithmetic with nothing to seat (no "+" slot, a zero island, a viewport floor of zero), and the
+            // island is never admitted below (StageFor's `tabs`).
+            if (!tabs) b = b with { TabsAsCount = true, TabViewportMinW = 0f };
             width = MathF.Max(0f, width);
             // The count form's island is one nav button whatever the strip would measure.
-            naturalTabExtent = b.TabsAsCount ? b.NavButtonW : MathF.Max(b.TabViewportMinW, naturalTabExtent);
-            var candidate = StageFor(width, naturalTabExtent, chip, b);
+            naturalTabExtent = !tabs ? 0f : b.TabsAsCount ? b.NavButtonW : MathF.Max(b.TabViewportMinW, naturalTabExtent);
+            var candidate = StageFor(width, naturalTabExtent, chip, b, tabs);
             if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null, b);
 
-            var reserved = StageFor(MathF.Max(0f, width - b.PromotionHysteresisW), naturalTabExtent, chip, b);
+            var reserved = StageFor(MathF.Max(0f, width - b.PromotionHysteresisW), naturalTabExtent, chip, b, tabs);
             var held = new Stage(
                 candidate.Name && (old.ShowName || reserved.Name),
                 candidate.Actions && (old.ShowActions || reserved.Actions),
@@ -404,7 +414,7 @@ public static partial class Shell
 
         readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field, bool Tabs = true);
 
-        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip, ChromeBudget b)
+        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip, ChromeBudget b, bool tabsOffered = true)
         {
             bool name = false, actionsInRow = false;
             bool forward = width > b.ForwardEnterW;
@@ -415,7 +425,8 @@ public static partial class Shell
             // optional island is bought yet, so this runs against the bare row — and it only ever binds far below the
             // narrowest width at which a field is possible at all (FixedBudget + 280 + one tab ≈ 780+).
             // The count form's island is one whole nav button, so that is what it must keep (a strip keeps its viewport's floor).
-            float essentialTabs = b.TabsAsCount ? b.NavButtonW : b.TabViewportMinW;
+            // A structure without tabs has no island to keep at all.
+            float essentialTabs = !tabsOffered ? 0f : b.TabsAsCount ? b.NavButtonW : b.TabViewportMinW;
             bool FitsEssential()
                 => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW
                    >= essentialTabs;
@@ -423,8 +434,8 @@ public static partial class Shell
             if (!FitsEssential()) trailing = false;
             if (!FitsEssential()) back = false;
             // The count form is one whole button or nothing: it needs its own nav-button width, never the strip's 32-DIP sliver.
-            bool tabs = !b.TabsAsCount
-                || width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW >= b.NavButtonW;
+            bool tabs = tabsOffered && (!b.TabsAsCount
+                || width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW >= b.NavButtonW);
 
             // ── THE PROMOTION RULE (#88): a width threshold is a PERMISSION, not a decision ───────────────────────────
             //
@@ -570,13 +581,74 @@ public static partial class Shell
     /// documented controlled-prop idiom) can never make an activation look like a no-op. That pre-write is exactly
     /// what made the old shell early-return on "selection unchanged" and leave the content on the previous tab's page.
     /// <para>Ids are minted once and never reused, so drag/reorder/pin moves keep every tab's identity (the keep-alive
-    /// slot key and the strip's item key are both built from it).</para></summary>
+    /// slot key and the strip's item key are both built from it).</para>
+    /// <para><b>Collapsed (P5 ZK, owner Q4).</b> Under a structure without tabs (<c>ShellCapabilities.Tabs</c> false) the workspace is
+    /// <see cref="Collapse">collapsed</see> to its active tab: <see cref="Tabs"/> holds that tab alone and the others are PARKED, in
+    /// their order, with their ids and pins. Every navigation still lands on the active tab, "open in a new tab" navigates in place
+    /// (<see cref="Open"/>), and the ops that would add, close, reorder or pin a tab are refused. The persisted subset is the WHOLE
+    /// workspace (<see cref="PinnedSnapshot"/>), so a parked pin is never dropped from the settings file, and <see cref="Expand"/> puts
+    /// every parked tab back around the active one when a structure with tabs comes back.</para></summary>
     public sealed class TabWorkspace
     {
         readonly List<WorkspaceTab> _tabs = [];
         int _nextId = 1;
 
+        /// <summary>The whole workspace as it stood when it collapsed (the active tab at its place), or null while it is not collapsed.</summary>
+        List<WorkspaceTab>? _parked;
+
         public IReadOnlyList<WorkspaceTab> Tabs => _tabs;
+
+        /// <summary>The workspace is collapsed to its active tab (a structure without tabs is active).</summary>
+        public bool Collapsed => _parked is not null;
+
+        /// <summary>How many tabs are parked behind the active one while collapsed (0 otherwise).</summary>
+        public int ParkedCount => _parked is { } parked ? Math.Max(0, parked.Count - 1) : 0;
+
+        /// <summary>Collapse to the active tab and park the others (a structure without tabs became active). False when it already was.
+        /// Never a route intent: the active tab and its page stay exactly as they are, and <see cref="PinnedRevision"/> does not move
+        /// (the persisted subset is the whole workspace either way).</summary>
+        public bool Collapse()
+        {
+            if (_parked is not null) return false;
+            _parked = new List<WorkspaceTab>(_tabs);
+            var active = Active;
+            _tabs.Clear();
+            _tabs.Add(active);
+            return true;
+        }
+
+        /// <summary>Put every parked tab back, in its order, around the active tab (a structure with tabs became active). The active tab
+        /// stays active and keeps the route it has now. False when the workspace was not collapsed. Never a route intent.</summary>
+        public bool Expand()
+        {
+            if (_parked is null) return false;
+            var whole = WholeWorkspace();
+            _parked = null;
+            _tabs.Clear();
+            _tabs.AddRange(whole);   // no pin or selection moved while collapsed, so the last-selected pin stands as it is
+            return true;
+        }
+
+        /// <summary>The workspace as a structure with tabs would show it: the parked tabs with the live active tab at its place (pins kept
+        /// a prefix), or the live list when nothing is parked.</summary>
+        List<WorkspaceTab> WholeWorkspace()
+        {
+            if (_parked is not { } parked) return _tabs;
+            var live = _tabs[0];
+            var whole = new List<WorkspaceTab>(parked.Count + 1);
+            bool placed = false;
+            for (int i = 0; i < parked.Count; i++)
+            {
+                if (parked[i].Id == live.Id) { whole.Add(live); placed = true; }
+                else whole.Add(parked[i]);
+            }
+            if (!placed) whole.Add(live);
+            // Pins are always the leading block: a stable partition, in case the live tab's pin differs from its parked copy.
+            var ordered = new List<WorkspaceTab>(whole.Count);
+            foreach (var t in whole) if (t.Pinned) ordered.Add(t);
+            foreach (var t in whole) if (!t.Pinned) ordered.Add(t);
+            return ordered;
+        }
         public int Count => _tabs.Count;
         public int ActiveId { get; private set; }
         public int ActiveIndex => IndexOf(ActiveId);
@@ -605,6 +677,8 @@ public static partial class Shell
         /// <see cref="TabNavIntent.Push"/>: the route is a new place, so it belongs on the back stack.</summary>
         public TabNavResult Open(Route route, bool pinned = false)
         {
+            // Collapsed: there is no tab to open, so the route opens IN PLACE on the active tab (still a real navigation).
+            if (_parked is not null) return new TabNavResult(TabNavIntent.Push, route, ActiveIndex);
             var tab = new WorkspaceTab(_nextId++, route, pinned);
             int at = pinned ? PinnedBoundary() : _tabs.Count;
             _tabs.Insert(at, tab);
@@ -635,8 +709,11 @@ public static partial class Shell
         {
             get
             {
-                int index = ActiveIndex;
-                return index >= 0 && _tabs[index].Pinned ? index : -1;   // pins are a prefix: the index IS the pinned index
+                // Collapsed: the index in the whole workspace, which is what the next launch restores.
+                var tabs = WholeWorkspace();
+                int index = -1;
+                for (int i = 0; i < tabs.Count; i++) if (tabs[i].Id == ActiveId) { index = i; break; }
+                return index >= 0 && tabs[index].Pinned ? index : -1;   // pins are a prefix: the index IS the pinned index
             }
         }
 
@@ -646,6 +723,7 @@ public static partial class Shell
         /// (−1 = the session's tab was session-only, or the pins changed since), leaving the pinned default selected.</summary>
         public bool TrySelectPinned(int pinnedIndex)
         {
+            if (_parked is not null) return false;   // a cold restore runs before any structure collapses the workspace
             if ((uint)pinnedIndex >= (uint)PinnedBoundary()) return false;
             ActiveId = _tabs[pinnedIndex].Id;
             return true;
@@ -656,7 +734,7 @@ public static partial class Shell
         /// changes nothing the user is looking at, so it is <see cref="TabNavIntent.None"/>.</summary>
         public TabNavResult Close(int index)
         {
-            if (_tabs.Count <= 1 || (uint)index >= (uint)_tabs.Count) return None();
+            if (_parked is not null || _tabs.Count <= 1 || (uint)index >= (uint)_tabs.Count) return None();
             var closing = _tabs[index];
             bool wasActive = closing.Id == ActiveId;
             _tabs.RemoveAt(index);
@@ -679,6 +757,7 @@ public static partial class Shell
         /// is; when it went, the tab now at its old index (clamped) takes over.</summary>
         public TabNavResult CloseWhere(Func<WorkspaceTab, bool> remove)
         {
+            if (_parked is not null) return None();   // collapsed: the parked tabs are kept, and the one live tab is never closed
             int oldIndex = ActiveIndex;
             bool activeGone = false;
             for (int i = _tabs.Count - 1; i >= 0; i--)
@@ -711,7 +790,7 @@ public static partial class Shell
         public TabNavResult SetPinned(int id, bool pinned)
         {
             int index = IndexOf(id);
-            if (index < 0 || _tabs[index].Pinned == pinned) return None();
+            if (_parked is not null || index < 0 || _tabs[index].Pinned == pinned) return None();
             var tab = _tabs[index] with { Pinned = pinned };
             _tabs.RemoveAt(index);
             _tabs.Insert(PinnedBoundary(), tab);
@@ -749,6 +828,7 @@ public static partial class Shell
         /// one that was last selected. No pins → a single Home tab. Returns the active tab's route.</summary>
         public Route RestorePinned(in WorkspaceTabsSnapshot snapshot)
         {
+            _parked = null;   // a restore replaces the whole workspace; the active structure collapses it again if it has no tabs
             _tabs.Clear();
             for (int i = 0; i < snapshot.Tabs.Length; i++)
             {
@@ -773,9 +853,10 @@ public static partial class Shell
         {
             var pins = new List<PersistedTab>();
             int selected = -1;
-            for (int i = 0; i < _tabs.Count; i++)
+            var tabs = WholeWorkspace();   // collapsed: the parked pins are persisted too (owner Q4)
+            for (int i = 0; i < tabs.Count; i++)
             {
-                var tab = _tabs[i];
+                var tab = tabs[i];
                 if (!tab.Pinned) continue;
                 if (tab.Id == LastSelectedPinnedId) selected = pins.Count;
                 pins.Add(new PersistedTab(NameOf(tab.Route), ArgOf(tab.Route)));
@@ -843,6 +924,18 @@ public static partial class Shell
             else if (IndexOf(LastSelectedPinnedId) < 0) LastSelectedPinnedId = FirstPinnedId();
             if (LastSelectedPinnedId != before) PinnedRevision++;
         }
+    }
+
+    /// <summary>THE TABS CAPABILITY (P5 ZK, owner Q4): a structure without tabs collapses the workspace to its active tab (the others
+    /// parked and still persisted), one with tabs puts them back. The frame runs it from an effect over the active capabilities, so it
+    /// lands inside the theme transaction that changed them (a switch, or an option that turns tabs off in place). Nothing navigates:
+    /// the page on screen stays. Returns whether the workspace changed.</summary>
+    internal static bool FollowTabsCapability(bool tabs)
+    {
+        if (!(tabs ? Tabs.Expand() : Tabs.Collapse())) return false;
+        SelectedTab.Value = Tabs.ActiveIndex;
+        TabsVersion.Value++;
+        return true;
     }
 
     /// <summary>WHEN the strip relabels. A navigation commits <c>Motion</c>, <c>Current</c> and the tab's route in ONE
