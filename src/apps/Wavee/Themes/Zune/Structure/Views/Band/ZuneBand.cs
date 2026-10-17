@@ -165,8 +165,6 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.Row1Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row1H, Shrink = 0f, MinWidth = 0f,
             Gap = rec.RowGap,
-            // The inset (16 / 24 / 48 / 64) moves the row on a crossing: it slides (parent-relative, so a resize that crosses nothing moves nothing).
-            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = row1Kids.ToArray(),
         };
 
@@ -175,13 +173,30 @@ internal sealed class ZuneBand : Component
         _views.Begin();
         if (hasRow2) kids.Add(Row2(views, actions, title, rec, type, OnTabKey));
 
+        // THE INSET (16 / 24 / 48 / 64) is a leading spacer, not the root's padding (ZT1): a crossing eases its WIDTH (a reflow, a size
+        // channel), so the rows ride the re-solve. A position FLIP of the rows would be snapped by the engine's reflow-shove rule whenever the
+        // page beside the band reflows or reveals on the same crossing (it snaps every position FLIP under a common ancestor of a live reflow).
         return new BoxEl
         {
             Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
             Height = rec.HeightWith(row2),
-            Padding = new Edges4(rec.Inset, 0f, 0f, 0f),
             Animate = Design.Reduced ? null : ZuneBandRules.HeightMotion,
-            Children = kids.ToArray(),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Width = rec.Inset, Shrink = 0f, HitTestVisible = false,
+                            Animate = Design.Reduced ? null : ZuneBandTiers.InsetMotion,
+                        },
+                        new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = kids.ToArray() },
+                    ],
+                },
+            ],
         };
     }
 
@@ -386,7 +401,6 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f,
             Gap = rec.Row2Gap, Padding = new Edges4(0f, 0f, rec.Row2End, 0f),
-            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = kids.ToArray(),
         };
     }

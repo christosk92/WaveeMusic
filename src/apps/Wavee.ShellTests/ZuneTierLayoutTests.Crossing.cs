@@ -140,7 +140,9 @@ public sealed partial class ZuneTierLayoutTests
         }
     }, fromW, fromH);
 
-    /// <summary>The part is the same live node; if it moved or resized in its parent it, or a box that carries it, holds animation tracks.</summary>
+    /// <summary>The part is the same live node; if it moved or resized in its parent it, a box that carries it, or the child it hugs (a slot or
+    /// host whose one child is the part that animates: the band slot over the band's height reflow, the search host over the pill's width
+    /// reflow), holds animation tracks.</summary>
     static void AssertKeptGliding(Shell.HeadlessShell shell, FramePart p, string what)
     {
         var scene = shell.Host.Scene;
@@ -154,6 +156,14 @@ public sealed partial class ZuneTierLayoutTests
         bool glides = false;
         for (var n = p.Node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
             if (shell.Host.Animation.HasTracks(n)) { glides = true; break; }
+        // A hugging wrapper: walk down its single-child chain (component hosts included) to the box that carries the motion.
+        for (var n = p.Node; !glides && !n.IsNull && scene.IsLive(n);)
+        {
+            var only = scene.FirstChild(n);
+            if (only.IsNull || !scene.NextSibling(only).IsNull) break;
+            n = only;
+            if (shell.Host.Animation.HasTracks(n)) glides = true;
+        }
         Assert.True(glides, $"{what}: {p.Name} snapped into its new box ({p.Local} -> {now}) instead of gliding");
     }
 }

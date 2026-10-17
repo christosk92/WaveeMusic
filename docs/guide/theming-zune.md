@@ -505,7 +505,7 @@ Z-Shell-Short, Z-Part-TitleBar, Z-Part-Band and Z-Sizes-Breakpoints. The records
 - **Short (below 700 tall).** The band collapses to row 1 on the first scroll down at every width, Huge and Huge 4K included. ShortFloor is
   126 (330 less 48, 84 and 72).
 - **Crossings.** They commit on the first frame that is not resized and move: the title bar's height eases (48 <-> 56), the band's height,
-  rows and pivots slide, the pill's width eases (220 / 320 / 400), the trail, the bell, the pins and the actions fade in and out, and the
+  lead inset ease (a reflow the rows ride), the pivots slide, the pill's width eases (220 / 320 / 400), the trail, the bell, the pins and the actions fade in and out, and the
   magnifier and the pill cross-fade. The pivot run, row 2's run and the identity's host are one element type at every tier, so a crossing
   keeps their nodes.
 - **The core's allocator.** `ZunePolicies.FramePolicy` sets `ZuneFrameTiers.Chrome`: the icon budget at Compact and Small, the field budget

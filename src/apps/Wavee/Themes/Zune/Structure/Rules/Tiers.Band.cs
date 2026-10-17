@@ -10,6 +10,7 @@
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`). Public, so `Wavee.Tests` pins them.
 
+using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -43,6 +44,13 @@ public static class ZuneBandTiers
         // Z-Part-Band 4k: `font-size: 40px; line-height: 48px` on the pivot run, `font-size: 15px; line-height: 20px` on row 2.
         new(WidthTier.Huge4K, PivotSize: 40f, PivotLine: 48f, SubSize: 15f, SubLine: 20f),
     ];
+
+    /// <summary>The band's lead inset across a crossing (16 / 24 / 48 / 64): its spacer's width eases over the pivot slide's 250 ms, a reflow
+    /// on the width axis, so the rows ride the re-solve (a size channel: the engine's reflow-shove rule, which snaps position FLIPs beside a
+    /// reflowing page, leaves it running). Null under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition InsetMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
     /// <summary>The band's type for window tier <paramref name="window"/>.</summary>
     public static ZuneBandType Type(WidthTier window) => s_types[Math.Clamp((int)window, 0, s_types.Length - 1)];
