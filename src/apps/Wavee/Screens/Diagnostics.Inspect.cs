@@ -81,7 +81,9 @@ public static partial class Diagnostics
         {
             ProfileDir = profileDir;
             _ownsProfile = ownsProfile;
-            _thread = new Thread(Loop) { Name = "wavee-inspect-ui", IsBackground = true };
+            // The scene recorder recurses per scene depth: the windowed app's 32 MB stack, not the 1 MB default (on 1 MB it ran out at depth
+            // 32 and painted only the chrome).
+            _thread = new Thread(Loop, FluentGpu.Hosting.OffscreenSurface.UiThreadStackBytes) { Name = "wavee-inspect-ui", IsBackground = true };
             _thread.SetApartmentState(ApartmentState.STA);
             _thread.Start();
         }
