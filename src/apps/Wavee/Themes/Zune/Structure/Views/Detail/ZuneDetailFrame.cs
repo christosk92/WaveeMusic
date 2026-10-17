@@ -18,7 +18,10 @@
 //     WINDOW tier (`DetailTierLayout.AsideDocked`); Zune lays it out by the CONTENT tier, so where a docked panel leaves the page Small the frame
 //     folds the aside and provides `Detail.AsideDocked = false` around the page: the album's "more by", artist and fans return to the band under
 //     the rows instead of vanishing. The slot is in the row at every tier (width 0 where none docks) and eases its width, so a crossing never
-//     re-parents the list.
+//     re-parents the list. An aside that holds the insights ALONE (Liked Songs) takes the record's insights width (320 / 420 / 440, `InsightsW`);
+//     one with a body takes the record's aside. The insights rest open from Huge (the tier policy's `InsightsRestOpen`);
+//   · a SHORT window (under 700 tall) folds the panorama band; the identity column leads with the title (`RailTitle`), and the HEAD arm, which has no
+//     column, states the title over its meta.
 //
 // THE ART WASH is the material's: the frame places the core's tint claim and tone plane (Zune's material draws them as the wash, `ZuneMaterial`).
 // MOTION: a mode crossing cross-fades the arms (keyed Exit / Enter); the panorama band and the aside ease their sizes; the entrance of the page's
@@ -93,8 +96,12 @@ internal static class ZuneDetailFrame
             arm = Page(p, gutter, band, [
                 new BoxEl
                 {
+                    // A short window folds the panorama and this arm has no identity column to lead with the title, so the head states it (one line,
+                    // the heading voice as written: a name), over the meta.
                     Key = Z.HeadKey, Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, lay.RailGap),
-                    Children = [K.Meta(head.Spec.Identity, float.NaN, lay)],
+                    Children = lay.RailTitle
+                        ? [K.NamedHeading(head.Spec.Identity.Title) with { Key = "head:title" }, new BoxEl { Key = "head:meta", Direction = 1, MinWidth = 0f, Children = [K.Meta(head.Spec.Identity, float.NaN, lay)] }]
+                        : [new BoxEl { Key = "head:meta", Direction = 1, MinWidth = 0f, Children = [K.Meta(head.Spec.Identity, float.NaN, lay)] }],
                 },
                 new BoxEl
                 {
@@ -118,7 +125,7 @@ internal static class ZuneDetailFrame
                 {
                     // The record's width (eased across a crossing); the resist cue the core binds is kept (paint-bound).
                     Key = Z.RailKey, Direction = 1, Width = lay.RailW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-                    Opacity = tc.RailOpacity, Animate = Z.SlotReveal,
+                    Opacity = tc.RailOpacity, Animate = Z.ColumnReflow,
                     Enter = Z.ArmFade, Exit = Z.ArmFade, Transition = Z.ArmFadeMotion,
                     Children = [ctx.View(ViewKeys.DetailRail, tc.Rail! with { RailWidth = lay.RailW })],
                 };
@@ -232,12 +239,14 @@ internal static class ZuneDetailFrame
     static Element AsideSlot(DetailFrameProps p, ZuneDetailLayout lay, bool dock)
     {
         if (!dock || p.Aside is not { } aside)
-            return new BoxEl { Key = Z.AsideKey, Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.SlotReveal };
+            return new BoxEl { Key = Z.AsideKey, Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.ColumnReflow };
         var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
         var kids = new List<Element>(2);
         if (aside.Body is { } body) kids.Add(Ctx.Provide(InAside, true, body));
-        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!, lay.AsideW));
-        float slotW = lay.ColumnGap + lay.AsideW;
+        // An aside that holds the insights ALONE takes the bento's own width (320 / 420 / 440); one that holds a body takes the record's column.
+        float asideW = aside.Body is null && lay.InsightsW > 0f ? lay.InsightsW : lay.AsideW;
+        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!, asideW));
+        float slotW = lay.ColumnGap + asideW;
         Prop<float> width = slotW;
         if (aside.Body is null && insights is { } only)
         {
@@ -247,7 +256,7 @@ internal static class ZuneDetailFrame
         return new BoxEl
         {
             Key = Z.AsideKey, Direction = 1, Width = width, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-            Padding = new Edges4(lay.ColumnGap, 0f, 0f, 0f), Animate = Z.SlotReveal,
+            Padding = new Edges4(lay.ColumnGap, 0f, 0f, 0f), Animate = Z.ColumnReflow,
             Children =
             [
                 Ui.ScrollView(new BoxEl

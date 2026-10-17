@@ -15,7 +15,16 @@
 //     artist page) in the tertiary ink; the playing row trades its number for the accent bars.
 //   · THE POLICIES Zune publishes for the lists (`ZunePolicies.Lists.cs`): ONE row skin (Modern: the two-line row, artists in the subline),
 //     track artwork on (an album's rows carry none: the core's album lane set has no thumb), and the detail table's records per window
-//     tier at the density's rows (Standard rows; ZT5 owns the finer tier design).
+//     tier at the density's rows (ZT5, Z-Sizes-Breakpoints "track rows"):
+//
+//       tier      lanes (each only where the list column's table ladder, `ZuneDetailRules.Table`, admits it)        insights        rail rest
+//       Compact   the Compact row: art or number, title over "artist · time", the heart and a 40 "..." (no header)   sheet           -
+//       Small     # · art · title/artist · time · "..."; the Album lane near the top of the tier ("album from 900")  sheet           -
+//       Standard  + album, added, plays                                                                              aside, closed   240
+//       Huge      the same                                                                                           aside, open     320
+//       Huge 4K   the same (the wide twin past the third pane's rung)                                                aside, open     400
+//
+//     The lane WIDTHS are the core's (`Track.TracksFor`); the boards' lane widths (56 / 110 / 48 / 64 / 48 at Huge) are within a few DIP of them.
 //
 // Public, so `Wavee.Tests` pins the rules (the assembly has no InternalsVisibleTo).
 
@@ -318,22 +327,37 @@ public static class ZuneListRules
         new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, ListIndex: false),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
-    /// <summary>Small (Z-Album-Small: # · title · time · "..."): no Album and no Plays lane, the Date lane only on a quiet list; the density's rows.</summary>
+    /// <summary>Small (Z-Album-Small: # · title · time · "...", Z-Sizes-Breakpoints "album from 900"): the Album lane may show once the list column's
+    /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
+    /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false),
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
     /// page docks its ASIDE from Standard (Z-Album's 260 "more by" column; the frame folds it again where the CONTENT tier is narrower, a docked
     /// panel's page), and the identity column rests at the board's 240 (the core's list seed reads it; Zune draws no grip).</summary>
-    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with { AsideDocked = true, RailRest = 240f };
+    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with { AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW };
 
-    /// <summary>Huge and Huge 4K (Z-Album-Huge, -Huge4K): Standard's, the identity column resting at 320 (Z6a1).</summary>
-    public static DetailTierLayout Huge { get; } = Standard with { RailRest = 320f };
+    /// <summary>Huge (Z-Album-Huge, Z-Liked-Huge, Z-Playlist-*-Huge): Standard's, the identity column resting at 320 (Z6a1), and the insights REST OPEN
+    /// as a column of the page (ZT5: Z-Sizes-Breakpoints "liked songs: huge: insights column", Z-Liked-Huge draws the 420 column open). The pane is the
+    /// aside's section (Zune docks it there from Standard, `AsideDocked`), so it is never a sheet over the list here; the reader's own choice wins from
+    /// the first toggle (the core's `Rest`).</summary>
+    public static DetailTierLayout Huge { get; } = Standard with { RailRest = ZuneDetailRules.Huge.RailW, InsightsRestOpen = true };
 
-    /// <summary>The detail tiers Zune publishes (the table's part is Z3's; the aside and the rail rest are Z6a1's; ZT5 tunes the tiers).</summary>
+    /// <summary>Huge 4K (Z-Album-Huge4K), the wide twin the core reads past the third pane's rung (<see cref="ZuneTiers.PaneThirdRung"/>, a window of
+    /// 3200): Huge's table and aside, the identity column resting at the board's 400 (the core's list seed reads it for its page-width estimate; Zune
+    /// draws the record's width).</summary>
+    public static DetailTierLayout Huge4K { get; } = Huge with { RailRest = ZuneDetailRules.Huge4K.RailW };
+
+    /// <summary>The detail tiers Zune publishes: the table's form and lane caps per window tier, the aside and the insights' rest, and the identity
+    /// column's resting width (Z3, Z6a1, ZT5). The finer tier numbers (the rail, the aside, the rings) are the frame's own records
+    /// (<see cref="ZuneDetailTiers"/>), read by the CONTENT tier.</summary>
     public static DetailTierPolicy DetailTiers { get; } = new(Compact, Small, Standard, Huge,
-        RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6);
+        RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6)
+    {
+        HugeWide = Huge4K, HugeWideRung = ZuneTiers.PaneThirdRung,
+    };
 
     /// <summary>A row's height in a window tier's table record at a density: the density's row at every tier (no floor: "Standard rows").</summary>
     public static float TableRowFor(WidthTier window, ZuneDensity density)

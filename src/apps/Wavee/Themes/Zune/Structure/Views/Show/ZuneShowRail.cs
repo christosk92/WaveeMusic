@@ -14,6 +14,11 @@
 // that reads the facts it is DRAWN IN (`TierContext.DrawnIn`), so a crossing re-skins the rings alone (36 → 40 at Compact, the words at Standard).
 // Conflicts with the board: the disabled new-episode bell the stand-in draws has no ring (the board draws none); the "..." ring is the frame's
 // menu, the "following" word of row 2 is the page's action.
+//
+// ONE HOME PER VERB (ZT5, audit A4). The band's row 2 carries "follow" from Small up (the window's band, `ZuneDetailTiers.PrimaryInHero`), so the
+// rail draws no second follow: the primary leaves its follow ring (the ghost play stays: a show's own primary is never a band verb) and the save
+// ring leaves the satellites. At Compact the band carries no action and the rail keeps both (Z-Show-Compact: "following" among the rings). The
+// boards draw both (Z-Show: a rail heart beside the band's "following"); the owner's no-duplicates directive wins and the conflict is listed.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -91,7 +96,9 @@ internal static partial class ZuneShow
         public override Element Render()
         {
             var a = UseProps<ShowPrimaryArgs>();
-            var lay = RingLayoutOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            var lay = RingLayoutOf(tiers);
+            bool followInBand = !ZuneDetailTiers.PrimaryInHero(in tiers);
             Element PlayRing(ShowReaderRules.Primary which)
             {
                 switch (which)
@@ -108,14 +115,16 @@ internal static partial class ZuneShow
                 }
             }
             if (a.Primary != ShowReaderRules.Primary.Follow) return PlayRing(a.Primary);
+            // The follow ring and the ghost play, in the same row either way (the ghost keeps its node when the band takes the follow over).
             return new BoxEl
             {
                 Direction = 0, Wrap = true, Gap = lay.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children =
-                [
-                    RingEl("show-follow", Icons.Add, Loc.Get(Strings.Artist.Follow), Loc.Get(Strings.Artist.Follow), null, filled: false, a.Follow, lay),
-                    PlayRing(a.Ghost),
-                ],
+                Children = followInBand
+                    ? [PlayRing(a.Ghost)]
+                    : [
+                        RingEl("show-follow", Icons.Add, Loc.Get(Strings.Artist.Follow), Loc.Get(Strings.Artist.Follow), null, filled: false, a.Follow, lay),
+                        PlayRing(a.Ghost),
+                    ],
             };
         }
     }
@@ -166,11 +175,35 @@ internal static partial class ZuneShow
 
     /// <summary>The rating line: ★ 4.8 · "12,431 ratings" (· "yours 5★") — a button that opens the rate flyout, whose stars are DISABLED with their
     /// reason until the write lands.</summary>
-    static Element Rating(ShowRatingArgs a)
+    static Element Rating(ShowRatingArgs a) => Embed.Comp(a, static () => new RatingHost()) with { Key = "show:rating" };
+
+    /// <summary>The rating line's host: it reads the tier it is DRAWN in (a template here has no view context) so the button is a 40 target at Compact,
+    /// and keeps the newest args (the average and the count move while the page is open).</summary>
+    sealed class RatingHost : Component, IPropsHost
+    {
+        ShowRatingArgs? _latest;
+        readonly Signal<ShowRatingArgs?> _props = new(null);
+
+        public void ApplyProps(object props)
+        {
+            _latest = (ShowRatingArgs)props;
+            _props.Value = _latest;
+        }
+
+        public override Element Render()
+        {
+            _ = _props.Value;
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            bool compact = tiers.Policy is not null && tiers.Window == WidthTier.Compact;
+            return RatingRow(_latest!, compact ? ZuneListRules.CompactTarget : RatingMinHeight);
+        }
+    }
+
+    static Element RatingRow(ShowRatingArgs a, float minHeight)
     {
         var button = new BoxEl
         {
-            Direction = 0, Gap = RatingGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, MinHeight = RatingMinHeight,
+            Direction = 0, Gap = RatingGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, MinHeight = minHeight,
             HoverFill = Tok.FillSubtleSecondary, Corners = R.Shape.All(ShapeRole.Control),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = a.Toggle, OnRealized = a.Realized,
@@ -269,14 +302,14 @@ internal static partial class ZuneShow
 
     // ══ THE SATELLITES ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    enum SatKind : byte { Save, Trailer, Share, More }
+    enum SatKind : byte { Trailer, Share, More }
 
     sealed record SatProps(SatKind Kind, string Uri, string Name, Action? Click, Func<ContextMenuModel?>? Menu);
 
     static Element Sat(SatKind kind, string uri, string name, Action? click, Func<ContextMenuModel?>? menu)
         => Embed.Comp(new SatProps(kind, uri, name, click, menu), static () => new SatHost());
 
-    /// <summary>One satellite ring, drawn in the tier it is drawn in: the save ring (the heart), the trailer, share ("..." is the frame's menu).</summary>
+    /// <summary>One satellite ring, drawn in the tier it is drawn in: the trailer, share and "..." (the heart is <see cref="HeartHost"/>'s).</summary>
     sealed class SatHost : Component
     {
         public override Element Render()
@@ -285,8 +318,6 @@ internal static partial class ZuneShow
             var lay = RingLayoutOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
             switch (p.Kind)
             {
-                case SatKind.Save:
-                    return K.SaveRing(p.Uri, p.Name, lay.SaveWord, s_accent, lay);
                 case SatKind.Trailer:
                     return K.Ring("trailer", Icons.TvMonitor, Loc.Get(Strings.Podcast.Trailer), false, null, p.Click, lay);
                 case SatKind.Share:
@@ -297,11 +328,32 @@ internal static partial class ZuneShow
         }
     }
 
-    /// <summary>The CTA's satellites: save (hidden while follow is the primary) · trailer (when the show names one) · share · "...". A FIXED array
-    /// per slot set; what comes and goes binds its presence.</summary>
+    sealed record HeartProps(string Uri, string Name, Prop<bool> Shown);
+
+    /// <summary>The heart satellite: the save ring, present while the core says so (<see cref="ShowSatellitesArgs.HeartShown"/>: not while follow is the
+    /// primary) AND the band does not carry "follow" (one home per verb). Its own component, so the presence it binds is one flag read in the tier it
+    /// is drawn in.</summary>
+    sealed class HeartHost : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<HeartProps>();
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            var lay = RingLayoutOf(tiers);
+            bool inBand = !ZuneDetailTiers.PrimaryInHero(in tiers);
+            return new BoxEl
+            {
+                Direction = 0, Shrink = 0f, Visible = inBand ? (Prop<bool>)false : p.Shown,
+                Children = [K.SaveRing(p.Uri, p.Name, lay.SaveWord, s_accent, lay)],
+            };
+        }
+    }
+
+    /// <summary>The CTA's satellites: save (hidden while follow is the primary, and where the band carries follow) · trailer (when the show names one) ·
+    /// share · "...". A FIXED array per slot set; what comes and goes binds its presence.</summary>
     static Element[] Satellites(ShowSatellitesArgs a) =>
     [
-        new BoxEl { Key = "sat:heart", Visible = a.HeartShown, Children = [Sat(SatKind.Save, a.Uri, a.Name, null, null)] },
+        Embed.Comp(new HeartProps(a.Uri, a.Name, a.HeartShown), static () => new HeartHost()) with { Key = "sat:heart" },
         new BoxEl { Key = "sat:trailer", Visible = a.TrailerShown, Children = [Sat(SatKind.Trailer, a.Uri, a.Name, a.PlayTrailer, null)] },
         Sat(SatKind.Share, a.Uri, a.Name, a.Share, null) with { Key = "sat:share" },
         Sat(SatKind.More, a.Uri, a.Name, null, a.More) with { Key = "sat:more" },

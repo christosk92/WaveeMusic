@@ -663,7 +663,51 @@ nodes, the daylist gliding).
 
 ## ZT5: detail tiers
 
-_Not built yet._
+Album, playlist, Liked Songs, show and episode at every width tier and on a short window, against `Z-Album*`, `Z-Playlist-*`, `Z-Liked*`, `Z-Show*`, `Z-Episode*` and
+`Z-Sizes-Breakpoints` (there is no `Z-Part-TrackTable` board). The frame, the panorama and the page column are Z6a1's and T2/T3's; ZT5 finishes the ladders' tier
+records, the table, the insights and the show and episode pages, and hardens every page from 300 to 3840 wide and at 330 tall.
+
+**One body.** `ZuneListRules.DetailTiers` is the single `DetailPolicyFor` body (`ZunePolicies.Lists.cs`); the three ladders (`detail.mode`, `detail.table`,
+`detail.height`) are declared by `LaddersDetail` (`Rules\Tiers.Detail.cs`, numbers in `ZuneDetailRules`).
+
+| | Compact | Small | Standard | Huge | Huge 4K |
+|---|---|---|---|---|---|
+| Arm (page mode ladder) | vertical (hero or show header) | two-column | two-column | two-column | two-column |
+| Track table | Compact row: art or number, title over "artist · time", heart, 40 "..." (no header, no list "#") | # · art · title · time · "..."; the Album lane where the table ladder admits it ("album from 900") | + album, added, plays | the same | the same (the wide twin) |
+| Identity column (rest) | - | 160 | 240 | 320 | 400 |
+| Aside | - | - (its sections return under the rows) | 260, docks by the window tier | 400 | 440 |
+| Insights | sheet over the list (never wider than the page) | sheet (320 to 400) | the aside's section, closed until asked (320 wide alone) | the aside's section, rests OPEN (420) | the same (440) |
+
+The Huge 4K row is `ZuneListRules.Huge4K`, the `HugeWide` twin the core reads past the third pane's rung (`pane.third`, a window of 3200). Row heights follow the
+user's density at every tier (P5 decision 3); the boards' lane widths are the core's `Track.TracksFor` (within a few DIP of the boards).
+
+**Panorama step by kind** (`ZunePlaylistTiers.Panorama`): an album's is the record's (64/72, 120/130 at Standard, 150/160); a playlist's, a show's and an
+episode's are 64/72 up to Standard and 150/160 at Huge; Liked Songs' 40/48, 64/72, 120/130. An episode at Standard sets its title at 40/48 over two lines
+(Z-Episode wraps it): `ZuneDetailLayout.PanoramaLines`, and the band hugs the title (its reserved height a floor).
+
+**Show and episode.** They stand in the same frame as the album (the page column, the panorama, the identity column, the aside slot). The vertical arm's
+fixed show header now opens with the panorama (Z-Show-Compact), the 120 cover beside the meta, the ledger, then the ring row. One home per verb: the band's
+row 2 carries "follow" from Small up, so the rail's follow ring and heart leave (the show's own primary, resume or the ghost play, stays); Compact keeps them.
+The rating line is a 40 target at Compact.
+
+**The short window (under 700 tall, 330 at the least).** The two-column arm folds the panorama band (flow-revealed: the columns ride it) and the identity
+column leads with the title; Liked Songs' head states the title over the meta; a show's or an episode's fixed vertical header folds to the name over the ring
+row (about 96 tall), so a 126-tall page keeps room for its list.
+
+**Crossings.** The identity column, the aside and the docked insights ease their WIDTH with a reflow (`ZuneDetailRules.ColumnReflow`: the list beside them
+yields smoothly; the earlier clip-window reveal laid the neighbours out at the final size at once); the panorama band eases its height with a flow reveal
+(`PanoramaFold`). Nothing is keyed on a tier.
+
+**The drawer.** The waveform strip (191 wide, fixed) leaves the version row where the content tier is Compact and fades in from Small (`WaveHost`).
+
+**Compact targets.** Rings 40, the hero's artist line 40 tall (`ZuneDetailRules.HitHeight`), the "show all" link of a stack 40, the rating line 40, the insights
+toggle and close 40.
+
+**Row 2 (Z6b1 item 3, not done).** The playlist's "recommended" and "collaborators" views and its "invite" action need a core seam; see the lane report.
+
+**Tests.** `Wavee.Tests\Theming\ZuneDetailTiersTests.cs` (the table form, the aside, the insights' rest and widths, the wide twin, the panorama step by kind, the
+short fold, the Compact minimum); `Wavee.ShellTests\ZuneTierLayoutTests.Detail.cs` (each page at every harness size: the arm, the band, the columns and the
+page column's x; the album across 1008, 1920, 3200 and the 700 height, both ways: the same nodes, the columns gliding).
 
 ## ZT6: artist and people tiers
 
