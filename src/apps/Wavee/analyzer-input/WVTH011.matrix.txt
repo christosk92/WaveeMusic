@@ -1,4 +1,11 @@
 # WVTH011 input: the S3 probe matrix of structure parameters (themes plan 2.4, 5.3). One line per hidden structure option:
 #   <optionId> = <value1>, <value2>[, ...]
 # The probe renders each parameter with these values under every style; the analyzer requires at least two distinct values
-# for every option declared with Visibility = OptionVisibility.Hidden. No structure parameter exists yet.
+# for every option declared with Visibility = OptionVisibility.Hidden. Values are the option's values: false/true, enum member
+# names, numbers.
+# Zune.Structure (P5 Z0, technical plan 6.3): Zune's defaults first, then the value Panorama sets.
+collapseBand = true, false
+pivotOverflow = EdgeFadeScroll, MoreMenu
+seekTimes = InFace, AtSliderEnds
+panelMode = InlineWhenRoom, AlwaysOverlay
+maxDockedPanes = 3, 2
