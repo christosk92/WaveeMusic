@@ -14,11 +14,6 @@
 // PURE AND MEMOIZED. `Definition` is a function of (accent, use-windows-accent, big numerals, and the OS ramp when it is followed) and returns
 // the SAME instance for the same inputs, so an unchanged pick is not a change (`Tok.Use` adopts the reference) and the composition's identity
 // rule holds. Density is not an input of the definition: it moves only the metrics.
-//
-// KNOWN CORE GAP (reported, not fixed here): the app's appearance layer pushes the OS accent with `Tok.SetAccent` at boot and on every OS
-// change, and an override wins over `ThemeDefinition.Accent`; so while it is set the engine controls draw the OS accent and only the roles
-// (`R.Ink`, `R.Layer`) carry the swatch. A core lane must feed the OS ramp to `ThemeHost.OsAccent` and clear the override for a style that
-// owns its accent.
 
 using System.Collections.Immutable;
 using FluentGpu.Dsl;
