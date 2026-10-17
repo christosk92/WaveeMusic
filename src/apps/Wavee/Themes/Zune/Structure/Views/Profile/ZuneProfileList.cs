@@ -57,11 +57,12 @@ internal static partial class ZuneProfileList
             Pending: props.Pending, Failed: props.Failed, Content: cache.Content!, ShimmerSource: cache.Shimmer!,
             OnFailed: cache.FailedPanel!, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
             Group: null, SmoothResize: false);
-        Element body = new BoxEl
+        // The page column (A1): capped at 2400 + the gutters and centred, so the list shares the band's x at every width.
+        Element body = ZuneFrameRules.PageRow(new BoxEl
         {
-            Key = Z.ListBodyKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, MaxWidth = R.Space.PageMaxW,
+            Key = Z.ListBodyKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
             AlignSelf = FlexAlign.Stretch,
-            Padding = new Edges4(lay.Gutter, 0f, lay.Gutter, Z.ListBottom),
+            Padding = new Edges4(0f, 0f, 0f, Z.ListBottom),
             Children =
             [
                 // The measured box is INSIDE the gutters: its width is the list's, not the page's.
@@ -71,7 +72,7 @@ internal static partial class ZuneProfileList
                     OnBoundsChanged = props.OnBodyBounds, Children = [region],
                 },
             ],
-        };
+        }, lay.Gutter);
         return new BoxEl
         {
             Key = Z.ListPageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -131,13 +132,14 @@ internal static partial class ZuneProfileList
                 Children = [name with { HoverColor = Tok.TextPrimary }],
             }
             : new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = [name] };
-        return new BoxEl
+        // The page column (A1), as the list under it.
+        return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = Z.ListHeadKey, Direction = 0, Gap = Z.ListHeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
-            MaxWidth = R.Space.PageMaxW, AlignSelf = FlexAlign.Stretch,
-            Padding = new Edges4(lay.Gutter, H.PageTop, lay.Gutter, Z.ListHeadBottom),
+            AlignSelf = FlexAlign.Stretch,
+            Padding = new Edges4(0f, H.PageTop, 0f, Z.ListHeadBottom),
             Children = [K.HeadingText(head.Title), who],
-        };
+        }, lay.Gutter);
     }
 
     // ══ THE REGION'S FACES ═══════════════════════════════════════════════════════════════════════════════════════════

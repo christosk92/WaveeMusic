@@ -58,13 +58,14 @@ internal static class ZuneHomePage
             Children = [region, ZuneHomeStatus.Layer(props.FacetRow)],
         };
 
-        Element column = new BoxEl
+        // The page column (A1): capped at 2400 + the gutters and centred, so the content shares the band's x at every width.
+        Element column = ZuneFrameRules.PageRow(new BoxEl
         {
-            Key = H.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = R.Space.PageMaxW,
+            Key = H.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
             AlignItems = FlexAlign.Stretch,
-            Padding = new Edges4(lay.Gutter, H.PageTop, lay.Gutter, H.PageBottom),
+            Padding = new Edges4(0f, H.PageTop, 0f, H.PageBottom),
             Children = [content],
-        };
+        }, lay.Gutter);
 
         // Keyed per PUBLISHED facet: each facet keeps its own offset under its own ScrollKey, and the handle feeds the Refreshing swap's
         // at-top test (FacetSwitch.Landed).

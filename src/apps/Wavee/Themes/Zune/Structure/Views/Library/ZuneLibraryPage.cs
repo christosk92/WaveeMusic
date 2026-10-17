@@ -80,14 +80,14 @@ internal static partial class ZuneLibraryPage
                 ],
             };
         }
-        float gutter = cache.Layout.Gutter;
-        // The page publishes no shell material: the library is the app's accent-neutral browser.
-        return new BoxEl
+        // The page publishes no shell material: the library is the app's accent-neutral browser. The page column (A1): capped at 2400 + the
+        // gutters and centred, so the page shares the band's x at every width.
+        return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = LR.PageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            MaxWidth = R.Space.PageMaxW + gutter + gutter, Padding = new Edges4(gutter, LR.PageTop, gutter, 0f),
+            Padding = new Edges4(0f, LR.PageTop, 0f, 0f),
             OnBoundsChanged = cache.OnBounds, Children = [inner],
-        };
+        }, cache.Layout.Gutter);
     }
 
     // ══ THE PER-INSTANCE CACHE ═══════════════════════════════════════════════════════════════════════════════════════

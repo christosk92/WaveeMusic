@@ -102,15 +102,16 @@ internal static partial class ZuneSettings
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = new Edges4(lay.Gutter, Z.TitleBodyGap, lay.Gutter, 0f), AlignItems = FlexAlign.Stretch,
+            Padding = new Edges4(0f, Z.TitleBodyGap, 0f, 0f), AlignItems = FlexAlign.Stretch,
             Children = [Sections(k, props, tab), lane],
         };
 
-        return new BoxEl
+        // The page column (A1): capped at 2400 + the gutters and centred, so the title and the body share the band's x at every width.
+        return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = "zs:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Children = [PanoramaTitle(lay), body],
-        };
+        }, lay.Gutter);
     }
 
     // ── the title ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -125,7 +126,8 @@ internal static partial class ZuneSettings
         return new BoxEl
         {
             Key = TitleKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = lay.TitleH, ClipToBounds = true, Animate = ZuneMotion.TitleScale,
-            Padding = new Edges4(MathF.Max(0f, lay.Gutter - Z.PanoramaBleed), 0f, lay.Gutter, 0f),
+            // The page column pads the gutter; the panorama bleeds left of it by its optical inset (never past the column's edge).
+            Margin = new Edges4(-MathF.Min(lay.Gutter, Z.PanoramaBleed), 0f, 0f, 0f),
             Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
         };
     }

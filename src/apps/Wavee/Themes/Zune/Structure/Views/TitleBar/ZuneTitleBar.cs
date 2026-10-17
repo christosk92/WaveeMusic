@@ -5,10 +5,12 @@
 //
 //     [wordmark · Back · the trail]  [drag band]  [the search · the account · the bell]  [drag strip]  [min/max/close]
 //
-//   · LEAD (the bar's tabs island, the row's elastic lane): the wordmark in the secondary ink, Back (40 x 40; its history menu opens on
-//     right-click or touch-hold where the capabilities offer it), and the trail from the page's chrome (`ZuneFrameContext.PageChrome`): the
-//     crumbs in the tertiary ink with the current page in the secondary one, never at Compact. The lead starts on the page's gutter
-//     (16 / 24 / 48 / 48 / 64). When the row is short the trail gives way first, then the wordmark; Back never does.
+//   · LEAD (the bar's tabs island, the row's elastic lane): the wordmark in the secondary ink (from Small up, never truncated: Compact leads
+//     with Back, the T1 audit's A9), Back (40 x 40; its history menu opens on right-click or touch-hold where the capabilities offer it), and
+//     the trail from the page's chrome (`ZuneFrameContext.PageChrome`): the crumbs in the tertiary ink with the current page in the secondary
+//     one, never at Compact. The lead starts on the page's gutter (16 / 24 / 48 / 48 / 64). When the row is short the trail gives way; the
+//     wordmark and Back never do. At Compact, while the omnibar holds a query (the Search route) or has the focus, the search is the FIELD
+//     filling the lead beside Back instead of the magnifier (Z-Search-Compact: "the field takes the title bar"), so the query stays visible.
 //   · TRAILING: the search (the pill from Standard up, 220 / 320 / 400, growing while focused; the magnifier below), the account (the core's
 //     chip host; "Connecting" as a caption; "Sign in" / "Reconnect" as the accent button) and, on the pill tiers, the bell with the accent dot.
 //   · NOT HERE, by Zune's capabilities (`ThemeFactsContext`): no pane toggle (NavTree false; the engine part is keyed so a test can hold it
@@ -58,11 +60,12 @@ internal static class ZuneTitleBar
             PaneToggleEnabledSignal = props.PaneToggleEnabled, PaneToggleToolTip = props.PaneToggleTip,
             Tabs = () => LeadIsland(props, tiers, chrome, facts),
             // The trail is part of the lead island's shape: a navigation re-renders the bar and re-pushes its regions.
-            TabsVersion = () => HashCode.Combine(props.TabsVersion(), chrome?.Value),
+            // The Compact field's place (lead or trailing) is part of both islands' shapes: its flip re-renders the bar.
+            TabsVersion = () => HashCode.Combine(props.TabsVersion(), chrome?.Value, FieldInLead(props, tiers())),
             TabsElasticLane = true,
             Trailing = () => TrailingIsland(props, tiers),
             // The tier is part of every island's shape (pill or magnifier, the bell, the gaps): a crossing re-renders the bar.
-            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window),
+            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers())),
             RowSpacing = () => ZuneFrameRules.Spacing(tiers().Window),
             BarHeight = Prop.Of(() => ZuneTiers.FrameOf(tiers()).TitleBarH),
             Parts = parts,
@@ -80,25 +83,59 @@ internal static class ZuneTitleBar
 
     // ── the lead island ──────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The search is the field in the lead island (Compact, a query or the focus, the flyout closed). Subscribing (the versions
+    /// read it).</summary>
+    private static bool FieldInLead(ShellTitleBarProps props, in TierFacts tiers)
+    {
+        var model = props.Search.Model;
+        return ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBarOf(tiers), props.Search.TextCell().Value, model.FlyoutOpen.Value,
+            model.SearchFocused.Value);
+    }
+
+    /// <summary>The same, peeked (the islands are built under the versions, which subscribed the bar).</summary>
+    private static bool PeekFieldInLead(ShellTitleBarProps props, ZuneTitleBarLayout rec)
+    {
+        var model = props.Search.Model;
+        return ZuneFrameRules.FieldInLead(rec, props.Search.TextCell().Peek(), model.FlyoutOpen.Peek(), model.SearchFocused.Peek());
+    }
+
     private static Element LeadIsland(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts)
     {
         var t = tiers();
         var rec = ZuneFrameRules.TitleBarOf(t);
-        var kids = new List<Element>(3)
-        {
-            R.Type.Wordmark(Loc.Get(Strings.Theme.Zune.Frame.Wordmark)) with
+        bool field = PeekFieldInLead(props, rec);
+        var kids = new List<Element>(3);
+        // The wordmark never truncates (A9): it is drawn whole where the tier has room for it, and not at all at Compact. Across the 640
+        // crossing its host's width eases with a fade, so Back and the trail ride the re-solve.
+        if (rec.Wordmark)
+            kids.Add(new BoxEl
             {
-                Key = ZuneFrameRules.WordmarkKey, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-            },
-            Embed.Comp(() => new BackButton(props, facts)) with { Key = ZuneFrameRules.BackKey },
-        };
+                Key = ZuneFrameRules.WordmarkKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
+                Animate = Design.Reduced ? null : ZuneFrameTiers.WordmarkMotion,
+                Children =
+                [
+                    R.Type.Wordmark(Loc.Get(Strings.Theme.Zune.Frame.Wordmark)) with
+                    {
+                        Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+                    },
+                ],
+            });
+        kids.Add(Embed.Comp(() => new BackButton(props, facts)) with { Key = ZuneFrameRules.BackKey });
+        if (field)
+            kids.Add(new BoxEl
+            {
+                // The field fills the lead (the omnibar's other mount: the magnifier leaves the trailing island on the same frame).
+                Key = "zune-search-field-host", Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field })],
+            });
         // The tabs version subscribed the bar to the chrome: a peek here.
-        if (rec.Crumbs && chrome?.Peek() is { } page && page.Crumbs.Count >= ZuneFrameRules.CrumbMinDepth)
+        else if (rec.Crumbs && chrome?.Peek() is { } page && page.Crumbs.Count >= ZuneFrameRules.CrumbMinDepth)
             kids.Add(Trail(page.Crumbs, rec));
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Gap, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            // The island hugs its parts (the rest of the elastic lane stays the window's drag band), and fills the lane while it holds the field.
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Gap, Grow = field ? 1f : 0f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
             Height = ZuneTiers.FrameOf(t).TitleBarH,
             Children = kids.ToArray(),
         };
@@ -145,10 +182,11 @@ internal static class ZuneTitleBar
         var t = tiers();
         var rec = ZuneFrameRules.TitleBarOf(t);
         var l = props.Layout();
-        var kids = new List<Element>(3)
-        {
-            // The pill and the magnifier are two mounts of one omnibar over one model: a crossing swaps them with the shared cross-fade.
-            rec.Pill
+        var kids = new List<Element>(3);
+        // The pill and the magnifier are two mounts of one omnibar over one model: a crossing swaps them with the shared cross-fade. At
+        // Compact the field may stand in the lead island instead (`FieldInLead`): the magnifier then leaves this island.
+        if (!PeekFieldInLead(props, rec))
+            kids.Add(rec.Pill
                 ? new BoxEl
                 {
                     Key = "zune-search-pill-host", Direction = 0, AlignItems = FlexAlign.Center,
@@ -160,9 +198,8 @@ internal static class ZuneTitleBar
                     Key = "zune-search-icon-host", Direction = 0, AlignItems = FlexAlign.Center,
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                     Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Icon })],
-                },
-            Account(props, l.Chip, rec),
-        };
+                });
+        kids.Add(Account(props, l.Chip, rec));
         // The bell comes and goes at the 1008 crossing (the pill tiers): its keyed host fades, never pops (ZT1).
         if (rec.BellInRow)
             kids.Add(new BoxEl

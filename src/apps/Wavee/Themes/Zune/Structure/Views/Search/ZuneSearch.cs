@@ -83,13 +83,16 @@ internal static class ZuneSearch
             // always fits the new row: a widening has the room, and a narrowing commits only 24 below the edge, where the wider pill sat a frame ago.
             bool expanded = model.FieldExpanded;
             float width = expanded ? rec.PillW + ZuneFrameRules.PillFocusGrow : rec.PillW;
+            // Off the pill tiers the field is the title bar's (Compact, Z-Search-Compact: it fills the lead island beside Back), no rest width.
+            bool fill = !rec.Pill;
 
             // A COLUMN, so the box is STRETCHED to this slot's width (a fill-mode box in a row latches its query button's width).
             return new BoxEl
             {
-                Key = ZuneFrameRules.PillKey, Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width, Animate = Design.Reduced ? null : ZuneFrameRules.PillWidthMotion,
-                OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
+                Key = ZuneFrameRules.PillKey, Direction = 1, Shrink = fill ? 1f : 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
+                Width = fill ? float.NaN : width, Grow = fill ? 1f : 0f, MinWidth = 0f,
+                Animate = Design.Reduced || fill ? null : ZuneFrameRules.PillWidthMotion,
+                OnBoundsChanged = r => model.ReportFieldWidth(r.W, fill ? r.W : width),
                 Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
             };
         }

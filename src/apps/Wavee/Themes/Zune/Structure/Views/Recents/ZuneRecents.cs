@@ -87,13 +87,14 @@ internal static class ZuneRecents
                 p.OwnerDemand,
             ],
         };
-        Element page = new BoxEl
+        // The page column (A1): capped at 2400 + the gutters and centred, so the page shares the band's x at every width.
+        Element page = ZuneFrameRules.PageRow(new BoxEl
         {
-            Key = Z.PageKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, MaxWidth = R.Space.PageMaxW, AlignSelf = FlexAlign.Stretch,
+            Key = Z.PageKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
             AlignItems = FlexAlign.Stretch, Focusable = true, OnKeyDown = p.OnKeyDown,
-            Padding = new Edges4(layout.Gutter, H.PageTop, layout.Gutter, 0f),
+            Padding = new Edges4(0f, H.PageTop, 0f, 0f),
             Children = [column, Aside(host, layout, p.ShapeEpoch)],
-        };
+        }, layout.Gutter);
         // The page PROVIDES its accent: the equalizer, the # cell and the save button read "this page's accent" through the context.
         return Ctx.Provide(Design.AccentCtx.Slot, p.PageAccent, page);
     }

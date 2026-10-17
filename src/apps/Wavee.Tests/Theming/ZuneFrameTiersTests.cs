@@ -11,6 +11,7 @@
 //   · the core at Huge 4K: the tiers resolve, the nav pane band, the budgets, the panel, overlay, detail and stage records all map it, and
 //     Classic's chrome policy is unchanged.
 
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Wavee.Themes.Zune;
@@ -243,5 +244,135 @@ public sealed class ZuneFrameTiersTests
         Assert.Same(zune.Stage.MetricsFor(WidthTier.Huge), zune.Stage.MetricsFor(WidthTier.Huge4K));
         _ = zune.Panel.For(WidthTier.Huge4K);   // never out of range, whatever the structure declares
         Assert.Empty(zune.Chrome.Validate());
+    }
+
+    // ── the page column and the margins (the T1 audit: A1, A2, A7, A9) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_page_column_caps_at_2400_between_the_gutters_and_centres_in_a_row()
+    {
+        Assert.Equal(2400f, ZuneFrameRules.PageCap);
+        var page = new BoxEl { Key = "page", Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, Padding = new Edges4(5f, 10f, 7f, 20f) };
+        // T2's member: the cap, the gutters, centred on the cross axis (it collapses alone; pages stand in PageRow).
+        var bare = ZuneFrameRules.PageColumn(page, 48f);
+        Assert.Equal(2400f + 2f * 48f, bare.MaxWidth);
+        Assert.Equal(FlexAlign.Center, bare.AlignSelf);
+        Assert.Equal(new Edges4(48f, 10f, 48f, 20f), bare.Padding);
+        var wrapper = ZuneFrameRules.PageRow(page, 48f);
+        // The row takes the page's place in its parent and centres it; the page keeps its key, fills the row up to its cap.
+        Assert.Null(wrapper.Key);
+        Assert.Equal(0, wrapper.Direction);
+        Assert.Equal(FlexJustify.Center, wrapper.Justify);
+        Assert.Equal(1f, wrapper.Grow);
+        Assert.Equal(0f, wrapper.MinHeight);
+        var column = Assert.IsType<BoxEl>(Assert.Single(wrapper.Children));
+        Assert.Equal("page", column.Key);
+        Assert.Equal(2400f + 2f * 48f, column.MaxWidth);
+        Assert.Equal(new Edges4(48f, 10f, 48f, 20f), column.Padding);   // the gutter either side, the page's own top and bottom kept
+        Assert.Equal(1f, column.Grow);
+        Assert.Equal(0f, column.Basis);
+        Assert.Equal(0f, column.MinWidth);
+        Assert.Equal(1, column.Direction);
+        Assert.Equal(FlexAlign.Stretch, column.AlignSelf);   // stretched in the row, never its content's width
+
+        // The lead every title, the band and the page share: the gutter, then centred past the cap.
+        Assert.Equal(48f, ZuneFrameRules.ColumnLead(1440f, 48f));
+        Assert.Equal(80f, ZuneFrameRules.ColumnLead(2560f, 48f));
+        Assert.Equal(720f, ZuneFrameRules.ColumnLead(3840f, 64f));
+        Assert.Equal(48f, ZuneFrameRules.ColumnLead(2496f, 48f));   // the cap's own edge: 2400 + 2 x 48
+    }
+
+    [Fact]
+    public void The_bands_trailing_inset_and_the_bars_right_inset_end_on_the_page_edge()
+    {
+        foreach (var tier in AllTiers)
+        {
+            float gutter = ZuneTiers.Frame(tier).Gutter;
+            var band = ZuneBandRules.Band(tier);
+            Assert.Equal(gutter, band.Inset);
+            // Row 2's actions and the pins end on the page's right content edge; Compact's rows run to the window's edge under their fade.
+            Assert.Equal(tier == WidthTier.Compact ? 0f : gutter, band.Row2End);
+        }
+
+        // The bar: the cover on the gutter, the last tool's GLYPH on the gutter (the gutter less the target's air): 12 / 36 / 36 / 52.
+        (ZuneBarLevel Level, WidthTier Home, float Right)[] levels =
+        [
+            (ZuneBarLevel.Narrow, WidthTier.Small, 12f), (ZuneBarLevel.Medium, WidthTier.Small, 12f), (ZuneBarLevel.Full, WidthTier.Standard, 36f),
+            (ZuneBarLevel.Wide, WidthTier.Huge, 36f), (ZuneBarLevel.Big, WidthTier.Huge4K, 52f),
+        ];
+        foreach (var (level, home, right) in levels)
+        {
+            var look = ZunePlayerTiers.Look(level);
+            var insets = ZunePlayerTiers.RowInsets(home, look);
+            float gutter = ZuneTiers.Frame(home).Gutter;
+            Assert.Equal(gutter, insets.Left);
+            Assert.Equal(right, insets.Right);
+            Assert.Equal(look.PadLeft, insets.Left);
+            Assert.Equal(look.PadRight, insets.Right);
+            Assert.Equal(gutter, insets.Right + (look.Button - look.Glyph) / 2f);
+        }
+        // The medium level at Standard draws the window's gutter, not its home tier's.
+        Assert.Equal(48f, ZunePlayerTiers.RowInsets(WidthTier.Standard, ZunePlayerTiers.Look(ZuneBarLevel.Medium)).Left);
+    }
+
+    [Fact]
+    public void The_bar_stacks_the_times_under_a_36_disc_then_sets_them_beside_from_full()
+    {
+        foreach (var level in new[] { ZuneBarLevel.Narrow, ZuneBarLevel.Medium })
+        {
+            var look = ZunePlayerTiers.Look(level);
+            Assert.False(look.TimesBeside);
+            Assert.Equal(36f, look.Disc);
+            Assert.Equal(4f, look.TimesGap);
+            // 8 of air above and below the stacked cluster in the 72.
+            Assert.Equal(8f, (ZuneTiers.BarReserveH - (look.Disc + look.TimesGap + ZuneTransportLayout.TimeLine)) / 2f);
+        }
+        foreach (var level in new[] { ZuneBarLevel.Full, ZuneBarLevel.Wide, ZuneBarLevel.Big })
+            Assert.True(ZunePlayerTiers.Look(level).TimesBeside);
+        Assert.False(ZunePlayerTiers.Look(ZuneBarLevel.Mini).TimesBeside);
+        Assert.Equal(40f, ZuneTransportLayout.TimeSlotW);
+        Assert.Equal(16f, ZuneTransportLayout.TimeSideGap);
+        // The slot's margin tops the transport's own gap up to 16, on the side that faces the buttons.
+        Assert.Equal(new Edges4(0f, 0f, 0f, 0f), ZuneTransportLayout.TimeSideMargin(16f, remaining: false));
+        Assert.Equal(new Edges4(4f, 0f, 0f, 0f), ZuneTransportLayout.TimeSideMargin(12f, remaining: true));
+        Assert.Equal(new Edges4(0f, 0f, 4f, 0f), ZuneTransportLayout.TimeSideMargin(12f, remaining: false));
+    }
+
+    [Fact]
+    public void The_band_fades_its_rows_over_16_percent_of_its_width_at_compact_and_small()
+    {
+        var compact = ZuneBandRules.Band(WidthTier.Compact);
+        var small = ZuneBandRules.Band(WidthTier.Small);
+        Assert.Equal(48f, ZuneBandRules.EdgeFade(compact, 300f));    // the floor (16 % of 300 is 48)
+        Assert.Equal(64f, ZuneBandRules.EdgeFade(compact, 400f));    // the board's 84 % mask at 400
+        Assert.Equal(48f, ZuneBandRules.EdgeFade(compact, 200f));    // never under 48
+        Assert.Equal(128f, ZuneBandRules.EdgeFade(small, 800f));
+        Assert.Equal(0f, ZuneBandRules.EdgeFade(small, 802f) % ZuneBandRules.EdgeFadeStep);   // stepped, so a resize re-renders per step
+        foreach (var tier in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(ZuneBandRules.EdgeFadeBand, ZuneBandRules.EdgeFade(ZuneBandRules.Band(tier), 2560f));
+    }
+
+    [Fact]
+    public void The_wordmark_is_drawn_whole_from_small_and_compact_shows_the_query_field_on_search()
+    {
+        foreach (var tier in AllTiers)
+            Assert.Equal(tier != WidthTier.Compact, ZuneFrameRules.TitleBar(tier).Wordmark);
+
+        // Compact (Z-Search-Compact): the field takes the title bar while there is a query or the focus, never over an open flyout.
+        var compact = ZuneFrameRules.TitleBar(WidthTier.Compact);
+        Assert.Equal(40f, compact.PillH);
+        Assert.Equal(20f, compact.PillRadius);
+        Assert.True(ZuneFrameRules.FieldInLead(compact, "m83", flyoutOpen: false, focused: false));
+        Assert.True(ZuneFrameRules.FieldInLead(compact, "", flyoutOpen: false, focused: true));
+        Assert.False(ZuneFrameRules.FieldInLead(compact, "", flyoutOpen: false, focused: false));
+        Assert.False(ZuneFrameRules.FieldInLead(compact, "m83", flyoutOpen: true, focused: true));
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.False(ZuneFrameRules.FieldInLead(ZuneFrameRules.TitleBar(tier), "m83", flyoutOpen: false, focused: true));
+
+        // The account's name: 160 on the pill tiers (and the field budget charges it), the core's cap elsewhere.
+        Assert.Equal(76f, ZuneFrameRules.AccountNameCap(ZuneFrameRules.TitleBar(WidthTier.Small), 76f));
+        foreach (var tier in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(160f, ZuneFrameRules.AccountNameCap(ZuneFrameRules.TitleBar(tier), 76f));
+        Assert.Equal(160f + ZuneFrameRules.AccountNameChrome, ZuneFrameTiers.FieldBudget.ProfileNameW);
     }
 }

@@ -30,6 +30,8 @@ internal static class ZuneProfileChip
         var layout = ZuneOverlayTiers.Of(ctx.Tier());
         if (props.Drawer) return DrawerRow(props);
         float avatar = ZuneOverlayRules.ChipAvatar;
+        // The name's cap: the title bar's on the pill tiers (160, the T1 audit's A9; Zune's field budget charges the same), else the core's.
+        float nameCap = ZuneFrameRules.AccountNameCap(ZuneFrameRules.TitleBarOf(ctx.Tier()), props.NameCap);
 
         // The skeleton chip until the account's identity is KNOWN.
         Element picture = props.Known
@@ -39,8 +41,8 @@ internal static class ZuneProfileChip
         Element[] children = !props.ShowName || props.Presenting
             ? [picture]
             : props.Known
-                ? [picture, R.Type.DenseMeta(props.Name) with { Color = Tok.TextPrimary, MaxWidth = props.NameCap, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
-                : [picture, ZuneOverlayParts.Skeleton(props.NameCap, ZuneOverlayRules.ChipNameBarHeight)];
+                ? [picture, R.Type.DenseMeta(props.Name) with { Color = Tok.TextPrimary, MaxWidth = nameCap, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
+                : [picture, ZuneOverlayParts.Skeleton(nameCap, ZuneOverlayRules.ChipNameBarHeight)];
 
         return new BoxEl
         {

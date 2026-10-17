@@ -42,6 +42,14 @@ public static class ZuneFrameTiers
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Both);
 
+    /// <summary>The wordmark across the 640 crossing (drawn from Small up, A9): its host's WIDTH eases over the pivot slide (a reflow from its
+    /// leading edge, the word clipped) while it fades, so Back and the trail ride the re-solve instead of jumping by the word's width. Null
+    /// under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition WordmarkMotion = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
     /// <summary>A field floor no window reaches: the icon budget's search can never be laid out as a field.</summary>
     public const float NeverAField = 100000f;
 
@@ -53,6 +61,9 @@ public static class ZuneFrameTiers
     public static ChromeBudget FieldBudget { get; } = ChromeBudget.Default with
     {
         SearchMinW = 220f, SearchMaxW = 400f, SearchFocusGrowW = 120f,
+        // The account's name is charged at the chip's cap on the pill tiers (160 + the chip's 14, A9), so the row the allocator solves is
+        // the row Zune draws.
+        ProfileNameW = ZuneFrameRules.AccountNameMaxW + ZuneFrameRules.AccountNameChrome,
     };
 
     /// <summary>Zune's title-row policy: the icon budget at Compact and Small, the field budget from Standard up.</summary>

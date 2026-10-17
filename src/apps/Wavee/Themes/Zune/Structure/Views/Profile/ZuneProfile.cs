@@ -113,14 +113,15 @@ internal static class ZuneProfile
             OnFailed: latch.FailedPanel, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
             Group: null, SmoothResize: false);
 
-        Element column = new BoxEl
+        // The page column (A1): capped at 2400 + the gutters and centred, so the content shares the band's x at every width.
+        Element column = ZuneFrameRules.PageRow(new BoxEl
         {
-            Key = Z.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = R.Space.PageMaxW,
+            Key = Z.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
             AlignItems = FlexAlign.Stretch,
-            Padding = new Edges4(lay.Gutter, H.PageTop, lay.Gutter, Z.PageBottom),
+            Padding = new Edges4(0f, H.PageTop, 0f, Z.PageBottom),
             // Keyed CHILD: a scope switch remounts the sections, whose anchors re-register after the reset.
             Children = [new BoxEl { Key = Z.BodyPrefix + p.ScopeKey, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [region] }],
-        };
+        }, lay.Gutter);
 
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, MinWidth = 0f, Children = [column] }) with
         {
@@ -137,9 +138,9 @@ internal static class ZuneProfile
             }));
     }
 
-    /// <summary>The page's measure inside its gutters: the width capped at the style's page column.</summary>
+    /// <summary>The page's measure inside its gutters: the width less the gutters, capped at the page column's 2400 (A1).</summary>
     internal static float InnerWidth(ProfilePageProps p, ZuneProfileLayout lay)
-        => MathF.Max(1f, MathF.Min(p.Width, R.Space.PageMaxW) - 2f * lay.Gutter);
+        => MathF.Max(1f, MathF.Min(p.Width - 2f * lay.Gutter, ZuneFrameRules.PageCap));
 
     // ── the loaded page ──────────────────────────────────────────────────────────────────────────────────────────────
 

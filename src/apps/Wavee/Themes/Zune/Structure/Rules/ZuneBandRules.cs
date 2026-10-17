@@ -7,14 +7,19 @@
 //   THE BAND (Z-Part-Band), per WINDOW tier (`ZuneBandLayout`):
 //     tier       inset  row 1  row 2  under  pivot gap  pins  pin art  row-2 gap  row-2 end  title+actions  collapses  narrow
 //     Compact    16     44     40     8      24         no    -        22         0          no             yes        rotate + fade
-//     Small      24     44     32     8      24         no    -        20         32         yes            yes        fade
-//     Standard   48     44     32     8      24         yes   32       20         32         yes            yes        -
-//     Huge       48     44     32     8      24         yes   32       20         32         yes            no         -
-//     Huge 4K    64     64     40     8      32         yes   40       20         32         yes            no         -
+//     Small      24     44     32     8      24         no    -        20         24         yes            yes        fade
+//     Standard   48     44     32     8      24         yes   32       20         48         yes            yes        -
+//     Huge       48     44     32     8      24         yes   32       20         48         yes            no         -
+//     Huge 4K    64     64     40     8      32         yes   40       20         64         yes            no         -
 //   The band is row 1 + row 2 + the 8 under them: 84 at Standard (92 at Compact, 112 at Huge 4K); collapsed it keeps row 1 and the 8:
 //   52 (72 at Huge 4K). The inset is the frame's gutter (`ZuneFrameLayout.Gutter`), so the first pivot stands on the page's x.
+//   THE PAGE COLUMN (the T1 audit's A1, A2): the rows sit in the pages' column (`ZuneFrameRules.PageRow`): a leading inset (the gutter),
+//   the rows capped at 2400 (`ZuneFrameRules.PageCap`) and a trailing inset (`Row2End`), the three centred, so the first pivot stands at
+//   max(gutter, (W - 2400) / 2) (48 at 1440, 80 at 2560, 720 at 3840) and the pins and row 2's last action end where the page's content
+//   ends (the trailing inset is the gutter from Small up; Compact's rows run to the window's edge under their fade). Both insets ease on a
+//   crossing (size channels), and once the cap holds the two ease together, so the rows never move.
 //   PINS (decision 4): Standard and Huge show them, Small and Compact do not, and the `bandPins` option can hide them everywhere; up to
-//   six (`ShellCapabilities.MaxBandPins`, the core's cap), 8 apart, after the "pinned" word, 16 from the band's right end, each over a
+//   six (`ShellCapabilities.MaxBandPins`, the core's cap), 8 apart, after the "pinned" word, ending on the page's right edge, each over a
 //   4-dip playing dot (accent while the pin is the playing context).
 //   ROW 2: the page's views (Library's kinds, Browse's bands, a page's in-page tabs), 20 apart; a detail page (no lit pivot) leads with
 //   its title and a hairline, and its current view takes the accent underline instead of the weight; then the page's actions at the end:
@@ -54,7 +59,8 @@ namespace Wavee.Themes.Zune;
 /// <param name="Pins">The pins show in this tier (P5 decision 4; the `bandPins` option can still hide them).</param>
 /// <param name="PinArt">A pin's art edge.</param>
 /// <param name="Row2Gap">The gap between row 2's words.</param>
-/// <param name="Row2End">Row 2's inset at the band's right end.</param>
+/// <param name="Row2End">The rows' trailing inset (the pins and row 2's last action end on it): the frame's gutter from Small up (24 / 48 /
+/// 48 / 64, the page's right content edge; A2), 0 at Compact, where row 1 and row 2 scroll to the window's edge under their fade.</param>
 /// <param name="TitleAndActions">Row 2 leads with a detail page's title and ends with its actions.</param>
 /// <param name="Collapses">The band folds row 2 away while the page scrolls down.</param>
 /// <param name="Rotate">The current pivot leads row 1 (the run rotates; Compact).</param>
@@ -103,13 +109,13 @@ public static class ZuneBandRules
         new(WidthTier.Compact, Inset: 16f, Row1H: 44f, Row2H: 40f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
             Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true),
         new(WidthTier.Small, Inset: 24f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
-            Row2Gap: 20f, Row2End: 32f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: true, Narrow: true),
+            Row2Gap: 20f, Row2End: 24f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: true, Narrow: true),
         new(WidthTier.Standard, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,
-            Row2Gap: 20f, Row2End: 32f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: false, Narrow: false),
+            Row2Gap: 20f, Row2End: 48f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: false, Narrow: false),
         new(WidthTier.Huge, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,
-            Row2Gap: 20f, Row2End: 32f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
+            Row2Gap: 20f, Row2End: 48f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
         new(WidthTier.Huge4K, Inset: 64f, Row1H: 64f, Row2H: 40f, UnderH: 8f, PivotGap: 32f, RowGap: 24f, Pins: true, PinArt: 40f,
-            Row2Gap: 20f, Row2End: 32f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
+            Row2Gap: 20f, Row2End: 64f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
     ];
 
     /// <summary>The band's record for window tier <paramref name="window"/>.</summary>
@@ -173,14 +179,24 @@ public static class ZuneBandRules
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
-    /// <summary>The edge fade of a row that overflows (Compact and Small, and the pivot run under EdgeFadeScroll).</summary>
+    /// <summary>The edge fade of a row that overflows where the tier does not fade (the pivot run under EdgeFadeScroll at Standard and up).</summary>
     public const float EdgeFadeBand = 32f;
+
+    /// <summary>The fade tiers' edge fade (Compact and Small, rows 1 and 2; the T1 audit's A7): the board masks the row from 84 % of its width
+    /// to transparent, so the fade is 16 % of the band's width, never under 48 (32 was invisible on row 1 at 400). Rounded to 4 DIP so a
+    /// live resize re-renders the band every 4 DIP of fade, not every frame.</summary>
+    public const float EdgeFadeMin = 48f, EdgeFadeShare = 0.16f, EdgeFadeStep = 4f;
+
+    /// <summary>The edge fade of row 1 and row 2 in <paramref name="band"/>'s tier for a band <paramref name="bandWidth"/> wide: max(48, 16 %
+    /// of the width) where the tier fades, else <see cref="EdgeFadeBand"/>.</summary>
+    public static float EdgeFade(ZuneBandLayout band, float bandWidth)
+        => band.Fade ? MathF.Max(EdgeFadeMin, MathF.Round(EdgeFadeShare * bandWidth / EdgeFadeStep) * EdgeFadeStep) : EdgeFadeBand;
 
     /// <summary>The "pinned" word: 4 before the first pin.</summary>
     public static readonly Edges4 PinnedWordMargin = new(0f, 0f, 4f, 0f);
 
-    /// <summary>The pins: 8 apart, 16 from the band's right end.</summary>
-    public const float PinGap = 8f, PinsEnd = 16f;
+    /// <summary>The pins: 8 apart (they end on the rows' trailing inset, <see cref="ZuneBandLayout.Row2End"/>).</summary>
+    public const float PinGap = 8f;
 
     /// <summary>The playing dot under a pin: 4 across, 2 under the art.</summary>
     public const float PinDot = 4f, PinDotGap = 2f;

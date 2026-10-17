@@ -40,6 +40,10 @@ public sealed partial class ZuneTierLayoutTests
         if (!bar.Crumbs) Assert.True(shell.Find(ZuneFrameRules.CrumbsKey).IsNull, $"{size}: no trail at Compact");
         Assert.True(shell.Find(ZuneFrameRules.PaneToggleKey).IsNull, $"{size}: no pane toggle");
         Assert.False(shell.Find("zune-account-host").IsNull, $"{size}: the identity's host");
+        // The wordmark (A9): drawn whole from Small up, never at Compact, where Back leads on the gutter.
+        Until(shell, () => bar.Wordmark == !shell.Find(ZuneFrameRules.WordmarkKey).IsNull,
+            $"{size}: the wordmark {(bar.Wordmark ? "drawn" : "gone")} (a crossing's exit fade settles first)");
+        if (!bar.Wordmark) Assert.Equal(frame.Gutter, scene.AbsoluteRect(Node(shell, ZuneFrameRules.BackKey)).X, 1f);
 
         // The core's allocation answers the form Zune draws.
         Assert.Equal(bar.Pill ? Shell.MergedSearchMode.Field : Shell.MergedSearchMode.Icon, Shell.ChromeLayout.Peek().SearchMode);
@@ -105,5 +109,64 @@ public sealed partial class ZuneTierLayoutTests
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
             shell.RunFrames(30);
         }
+    }, width, height);
+
+    // ── the page column (the T1 audit: A1, A2) ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>ONE column: the band's first pivot, the page's content and row 2's leading edge start at max(gutter, (W - 2400) / 2) (48 at
+    /// 1440, 80 at 2560, 720 at 3840); the page's content and row 2's last action end on its mirror. The play bar is window chrome: its
+    /// cover and its last glyph sit on the frame's gutter, which is the column's edge until the cap holds (at 1440 all three right edges
+    /// agree).</summary>
+    [Theory]
+    [InlineData(1440f, 960f, true)]
+    [InlineData(2560f, 1440f, false)]
+    [InlineData(3840f, 2160f, false)]
+    public void The_band_the_page_and_the_bar_share_one_column(float width, float height, bool barOnColumn) => Mounted(shell =>
+    {
+        Until(shell, () => shell.FindPrefix(Home.ReadyKeyPrefix).Count > 0, "Home on screen");
+        shell.RunFrames(60);
+        var scene = shell.Host.Scene;
+        float gutter = ZuneTiers.FrameOf(Tiers).Gutter;
+        var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));
+        float lead = ZuneFrameRules.ColumnLead(content.W, gutter);
+        float left = content.X + lead, right = content.X + content.W - lead;
+
+        // The band's lead x is the page's content x.
+        Assert.Equal(left, scene.AbsoluteRect(Node(shell, ZuneBandRules.PivotKeyPrefix + "home")).X, 1f);
+        var column = scene.AbsoluteRect(Node(shell, ZuneHomeRules.ColumnKey));
+        Assert.Equal(left, column.X + gutter, 1f);
+        Assert.Equal(right, column.X + column.W - gutter, 1f);
+        Assert.True(column.W - 2f * gutter <= ZuneFrameRules.PageCap + 0.5f, $"{width}: the page's content is {column.W - 2f * gutter}, over the cap");
+
+        // The bar: the last tool's glyph on the frame's gutter (A2), the page's right edge until the cap holds.
+        Play(PlayerTrack, fromMs: 20_000);
+        UntilBackground(shell, () => !shell.Find(ZunePlayerLayout.RightKey).IsNull, "the bar's tools");
+        shell.RunFrames(40);
+        var rec = ZunePlayerTiers.BarOf(Tiers);
+        var look = ZunePlayerTiers.Look(ExpectedLevel(width, rec));
+        var tools = scene.AbsoluteRect(Node(shell, ZunePlayerLayout.RightKey));
+        float lastGlyph = tools.X + tools.W - (look.Button - look.Glyph) / 2f;
+        Assert.Equal(width - gutter, lastGlyph, 1f);
+        Assert.Equal(gutter, scene.AbsoluteRect(Node(shell, ZunePlayerLayout.LeftKey)).X, 1f);
+        if (barOnColumn) Assert.Equal(right, lastGlyph, 1f);
+
+        // Row 2 on a detail page (al2: its title, views and play / shuffle): it leads on the column and its last action ends on its edge.
+        Shell.GoTo(Shell.For(EntityUri.Parse("spotify:album:al2"), "Album"));
+        UntilBackground(shell, () => !shell.Find(ZuneBandRules.ActionKeyPrefix + "play").IsNull, "the album's actions in the band");
+        shell.RunFrames(60);
+        var row2 = scene.AbsoluteRect(Node(shell, ZuneBandRules.Row2Key));
+        Assert.Equal(left, row2.X, 1f);
+        float actionsEnd = 0f;
+        foreach (var (node, _) in shell.FindPrefix(ZuneBandRules.ActionKeyPrefix))
+        {
+            var r = scene.AbsoluteRect(node);
+            if (r.W > 0f) actionsEnd = MathF.Max(actionsEnd, r.X + r.W);
+        }
+        Assert.Equal(right, actionsEnd, 1f);
+        Assert.Equal(right, row2.X + row2.W, 1f);
+        if (barOnColumn) Assert.Equal(lastGlyph, actionsEnd, 1f);
+
+        Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+        shell.RunFrames(30);
     }, width, height);
 }
