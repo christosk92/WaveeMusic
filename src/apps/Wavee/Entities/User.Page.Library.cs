@@ -217,7 +217,7 @@ public readonly partial struct User
     // ══ 2. THE PAGE ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     [CoreHost]
-    sealed class LibraryPage : Component
+    sealed partial class LibraryPage : Component
     {
         const float SearchDebounceMs = 180f;
         // The list row's TRUTHFUL outer extent — the 56 / 40 plate the prototype draws PLUS the bound chrome's 2+2
@@ -236,6 +236,8 @@ public readonly partial struct User
         internal readonly Signal<int> Sort, View, Size;
         internal readonly Signal<bool> Desc;
         internal readonly Signal<string> SelectedKey, AlbumKey;
+        /// <summary>The albums page's picked artist group (see <c>User.Page.Library.Groups.cs</c>); "" = every artist, always "" for the other kinds.</summary>
+        internal readonly Signal<string> GroupKey;
         internal readonly Signal<string> Filter = new("");   // NOT persisted
         /// <summary>The artists reader's scope (0 in your library · 1 all releases) and its OWN sort (`Artist.ReaderSort`,
         /// persisted through the existing `library.<kind>.album.sort`; the old discography's 0..4 clamp in the reader).
@@ -376,6 +378,7 @@ public readonly partial struct User
         /// <summary>The toolbar's count, as ONE bound property allocated once: a row landing re-fires this thunk and
         /// rewrites one text node instead of re-rendering the toolbar.</summary>
         readonly Prop<string> _countText;
+        readonly Prop<int> _count;
         LibraryNavigatorProps? _navigator;
         readonly Func<LibraryNavMountPlan> _resolveMount;
         readonly Func<IReadOnlyList<LibraryHitRow>> _artistHitRows, _albumHitRows, _artistAlbumHitRows;
@@ -454,10 +457,13 @@ public readonly partial struct User
             Size = new(saved.Size);
             SelectedKey = new(saved.SelectedKey);
             AlbumKey = new(saved.AlbumKey);
+            GroupKey = new(_entity == EntityKind.Album ? Platform.Settings.Get(Platform.Keys.LibraryGroup(_kind)) : "");
+            _groupSaved = GroupKey.Peek();
             Scope = new(saved.Scope);
             RSort = new(saved.AlbumSort);
 
             _computeShape = ComputeShape;
+            _computeGroups = ComputeGroups;
             _cellBaseOf = () =>
             {
                 float floor = ShellPolicy.Tracked.LibraryTiers.CardCellMinFor(Theming.ThemeHost.Facts.Value.Tiers.Content);
@@ -494,6 +500,7 @@ public readonly partial struct User
             _contentType = ContentTypeOf;
             _watchLetters = WatchLetters;
             _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
+            _count = Prop.Of(() => _shape is { } shape ? shape.Value.Count : 0);
             _resolveMount = ResolveMount;
             _artistHitRows = ArtistHitRows;
             _albumHitRows = AlbumHitRows;
@@ -604,8 +611,9 @@ public readonly partial struct User
             UseEffect(_syncLoad, DepKey.From(shape.Count, (shape.Answered ? 1 : 0) | (raw.Length > 0 ? 2 : 0)
                                                           | (shape.TitlesKnown ? 4 : 0) | (_anyTitleFailed ? 8 : 0)));
             UseEffect(_syncNav, listKey + "|" + shape.OrderKey + "|" + sel + "|" + (fullSearch ? "s" : "b"));
+            _groupSet = UseComputed(_computeGroups);
             UseEffect(_saveState, sortCode + "|" + Desc.Value + "|" + view + "|" + size + "|" + sel + "|" + albumKey + "|"
-                                  + Scope.Value + "|" + RSort.Value);
+                                  + Scope.Value + "|" + RSort.Value + "|" + GroupKey.Value);
             UseEffect(_resetDepth, DepKey.From(collapsed));
             UseLayoutEffect(_applyNavPlace, DepKey.From(collapsed));
             UseLayoutEffect(_holdNavPlace);   // auto-tracked: re-lands the place as the arriving navigator lays out (subscribed only while one lands)
@@ -640,11 +648,12 @@ public readonly partial struct User
                 RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
                 SetPageWidth = _setPageWidth, Kinds = _kinds, PickDepth = _pickDepth,
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
-                CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText,
+                CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText, Count = _count,
                 Pane = () => PaneFor(selectedSlot),
                 SavedEpisodes = () => Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch },
                 SkelGroup = _skelGroup, Navigator = _navigator,
                 Search = fullSearch ? SearchPropsOf() : null,
+                Groups = !collapsed && GroupingOn ? GroupsProps() : null,
             });
         }
 
@@ -658,6 +667,7 @@ public readonly partial struct User
             _ = relation.Changed.Value;
             _ = Entities.TableFor(_entity)!.Changed.Value;
             if (_entity == EntityKind.Album) { _ = scope.Edges.AlbumArtists.Changed.Value; _ = scope.Artists.Changed.Value; }
+            string groupKey = GroupingOn ? GroupKey.Value : "";   // the structure's ask AND a split page (tracked: a crossing re-filters)
             if (IsArtists)
             {
                 // The Artists SET and both of its counts are reads over five relations plus the albums' track counts, so
@@ -687,6 +697,7 @@ public readonly partial struct User
             // Audiobooks/Podcasts split the SAME SavedShows edge client-side (A2 plan §3.6): Podcasts applies the
             // inverse of Audiobooks' own predicate, so a show can never appear on neither or both lists.
             if (IsShowEntity) source = SplitShowKind(source);
+            if (groupKey.Length > 0) source = NarrowToGroup(source, groupKey);
             Grow(source.Length);
             int n = LibraryRows.Filter(_entity, source, filter, _filtered);
             long[]? played = null;
@@ -1119,6 +1130,7 @@ public readonly partial struct User
             LibraryViewPrefs.Save(_kind, new LibraryViewState(
                 LeftW.Peek(), MidW.Peek(), Sort.Peek(), Desc.Peek(), View.Peek(), Size.Peek(),
                 SelectedKey.Peek(), AlbumKey.Peek(), Scope.Peek(), RSort.Peek()), IsArtists);
+            SaveGroup();
         }
 
         // ── the letters: the sticky overlay, the jump strip (W2) ─────────────────────────────────────────────────────

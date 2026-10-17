@@ -59,6 +59,20 @@ public static class ZuneLibraryRules
     /// <summary>The words' type is the dense meta voice (13); the count follows it.</summary>
     public const float ChevronGlyph = 10f, WordChevronGap = 4f, SaveGlyph = 16f;
 
+    // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
+
+    /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>
+    public const string GroupsKey = "lib:groups";
+
+    /// <summary>The group rows: a row's height, the letter lane and its inset, the count lane's inset, the picked artist's weight.</summary>
+    public const float GroupRowH = 34f, GroupLetterLane = 28f, GroupLetterPad = 2f, GroupCountPad = 4f;
+
+    /// <summary>The picked artist's name weight (semibold).</summary>
+    public const ushort GroupPickedWeight = 600, GroupRestWeight = 400;
+
+    /// <summary>The middle column's heading: its slot height (the 26 light name's line) and the gaps.</summary>
+    public const float GroupHeadingH = 40f, GroupHeadingGap = 12f, GroupHeadingPadBottom = 8f;
+
     // ── the navigator ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A list row's art, the corner of a square one is the cover role's, the gap between art and words, the row's side padding.</summary>
@@ -229,6 +243,18 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The find field's width: the boards draw 120 at Small, 160 at Standard and 220 at Huge (a bottom-rule field, no plate).</summary>
     public float FindW { get; init; } = ZuneLibraryRules.FindW;
 
+    /// <summary>The "all artists" column of the albums page (the board's 220 / 200 / 280), its head row and its count lane.</summary>
+    public float GroupW { get; init; } = 220f;
+
+    /// <inheritdoc cref="GroupW"/>
+    public float GroupHeadH { get; init; } = 36f;
+
+    /// <inheritdoc cref="GroupW"/>
+    public float GroupCountLane { get; init; } = 24f;
+
+    /// <summary>The album pane draws beside the groups (Small's board is the artists and the albums alone).</summary>
+    public bool GroupPane { get; init; } = true;
+
     /// <summary>The navigator's and the pane's flex shares of the width the page has left (the navigator rests at 0, the pane at <see cref="PaneW"/>). 1 / 0 is the
     /// fixed-pane form (Compact, Small, Standard); Huge shares 2 / 1 so both columns fill the 2400 column.</summary>
     public float NavGrow { get; init; } = 1f;
@@ -313,7 +339,7 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
@@ -327,7 +353,7 @@ public static class ZuneLibraryTiers
     private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
         sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
     {
-        FindW = 220f, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
     };
 
     /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>
@@ -341,7 +367,7 @@ public static class ZuneLibraryTiers
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
     public static LibraryTierPolicy Policy { get; } = new()
     {
-        SmallCardCellMin = 96f,
+        SmallCardCellMin = 96f, GroupAlbumsByArtist = true,
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 

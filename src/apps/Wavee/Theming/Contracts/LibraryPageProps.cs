@@ -107,10 +107,17 @@ public sealed record LibraryPageProps
     /// <summary>The toolbar's count as ONE bound text: a row landing re-fires this property and nothing else.</summary>
     public required Prop<string> CountText { get; init; }
 
+    /// <summary>The same count as a number (a bound read), for a structure that words it through a plural ("1 album", "18 albums"). Contract addition after 1.22.</summary>
+    public Prop<int> Count { get; init; }
+
     // ── slots the core mounts ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The selected row's pane: the album pane, the show pane or the artists' reader, mounted without a key so a selection re-skins it in place.</summary>
     public required Func<Element> Pane { get; init; }
+
+    /// <summary>The albums' artist grouping (null unless the structure asked for it through <see cref="Wavee.Theming.LibraryTierPolicy.GroupAlbumsByArtist"/>, this is the albums
+    /// page and the page is split): the structure draws the "all artists" column from it, and the navigator already shows only the picked artist's albums.</summary>
+    public LibraryGroupsProps? Groups { get; init; }
 
     /// <summary>The Your Episodes page, keyed by the scope epoch.</summary>
     public required Func<Element> SavedEpisodes { get; init; }
@@ -201,3 +208,15 @@ public sealed record LibrarySearchProps
 
 /// <summary>One kind chip of the one-column library head: the kind's page title, whether it is the page on screen and the verb that opens it.</summary>
 public sealed record LibraryKindChip(string Title, bool Selected, Action Open);
+
+/// <summary>The albums page's artist groups: what the structure's "all artists" column draws and the one verb that picks. <see cref="Read"/> is a reactive read (call it from the
+/// view's own render: it follows the library, the artists' names and the pick); <see cref="Pick"/> takes a <see cref="LibraryGroupRow.Key"/>, or "" for every artist.</summary>
+public sealed record LibraryGroupsProps(Func<LibraryGroupSet> Read, Action<string> Pick);
+
+/// <summary>One read of the groups: the artists with a saved album (a-z), the picked one's key ("" = every artist; a pick the library no longer holds reads as ""), its name and its
+/// album count (the whole library's count when none is picked).</summary>
+public sealed record LibraryGroupSet(IReadOnlyList<LibraryGroupRow> Rows, string Selected, string SelectedName, int SelectedAlbums, int TotalAlbums);
+
+/// <summary>An artist of the groups column: the route key, the name, how many of the library's albums are billed first to them, and the letter that heads their run ("" when the
+/// previous row shares it; "#" for a name that does not start with a letter).</summary>
+public readonly record struct LibraryGroupRow(string Key, string Name, int Albums, string Letter);
