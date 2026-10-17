@@ -190,9 +190,9 @@ internal sealed class ZuneBand : Component
         // the cap holds (Huge, Huge 4K) the insets are equal, so as they ease together the rows stay put.
         return new BoxEl
         {
-            Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f,
             Height = rec.HeightWith(row2),
-            Animate = Design.Reduced ? null : ZuneBandRules.HeightMotion,
+            // The height change is eased by the frame's band slot (ZuneFrame.PageColumn), which clips this root's foot as it goes.
             Children =
             [
                 new BoxEl
@@ -430,12 +430,34 @@ internal sealed class ZuneBand : Component
 
         var kids = new List<Element>(2) { viewsRun };
         if (actions.Count > 0) kids.Add(Actions(actions));
+        // The row's words are the page's: when the page swaps (the chrome moves to the incoming page as its enter starts, Shell.PageChromeChannel.
+        // PublishCurrent) the set of views and actions changes, and the old row fades out where it stands as the new one fades in, in step with
+        // the page's own enter, instead of the words popping. The slot is a ZStack keyed by the row's own makeup (never by its title, which a
+        // loading page republishes in place), so the row keeps its height and nothing relayouts.
         return new BoxEl
         {
-            Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f,
-            Gap = rec.Row2Gap,
-            Children = kids.ToArray(),
+            Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f, ZStack = true,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = ZuneBandRules.Row2Key + ":" + RowSignature(views, actions), Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center,
+                    Height = rec.Row2H, MinWidth = 0f, Gap = rec.Row2Gap,
+                    Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                    Children = kids.ToArray(),
+                },
+            ],
         };
+    }
+
+    /// <summary>What makes one row 2 a different row from another: the ids of its views and of its actions, in order.</summary>
+    static string RowSignature(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions)
+    {
+        var sb = new System.Text.StringBuilder(48);
+        for (int i = 0; i < views.Count; i++) sb.Append(views[i].Id).Append(',');
+        sb.Append('|');
+        for (int i = 0; i < actions.Count; i++) sb.Append(actions[i].Id).Append(',');
+        return sb.ToString();
     }
 
     /// <summary>One view of row 2: a tab; the current one is the weight (or, in the tab style, the accent underline).</summary>
