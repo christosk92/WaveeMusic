@@ -98,7 +98,7 @@ internal static class ZuneSearchPage
         {
             SearchBodyKind.Pending => Shimmer(m.Facet, lay),
             SearchBodyKind.Empty => Empty(m.Facet, ctx.Query),
-            SearchBodyKind.All => All(m, props, lay),
+            SearchBodyKind.All => All(m, props, lay, firstW),
             SearchBodyKind.Genres => m.Genres.Count == 0 ? new BoxEl() : ZuneBrowseDirectory.LinkGrid(m.Genres, lay.GenreCols, "search-genres", lay.GenreRowH),
             SearchBodyKind.Songs => Grid(m.Rows, ctx, lay),
             SearchBodyKind.FacetGrid => FacetGrid(m.Row, ctx, firstW),
@@ -108,7 +108,7 @@ internal static class ZuneSearchPage
 
     // ══ ALL ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element All(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay)
+    static Element All(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay, float firstW)
     {
         var ctx = m.Hits;
         var kids = new List<Element>(4);
@@ -150,13 +150,7 @@ internal static class ZuneSearchPage
 
         if (m.Rail.Count > 0) kids.Add(Rail(m.Rail, props.SelectPlaylists, ctx, lay));
 
-        Element genres = Genres(m, props, lay), related = Related(m, props, lay);
-        bool runs = lay.RunsBeside;
-        kids.Add(new BoxEl
-        {
-            Key = "zune-search-runs", Direction = (byte)(runs ? 0 : 1), Gap = runs ? S.RunsGap : lay.ZoneGap,
-            MinWidth = 0f, AlignItems = FlexAlign.Start, Children = [genres, related],
-        });
+        kids.Add(Runs(m, props, lay, firstW));
         return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
@@ -239,7 +233,7 @@ internal static class ZuneSearchPage
     // ── rows ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The search row at the tier's art and floor.</summary>
-    static SurfaceShape RowShape(ZuneSearchLayout lay) => Shape.Row(lay.BestArt) with { MinHeight = lay.BestRowH };
+    static SurfaceShape RowShape(ZuneSearchLayout lay) => Shape.Row(lay.BestArt) with { MinHeight = lay.BestRowH, PadX = S.HitPadX, ArtGap = S.HitArtGap };
 
     /// <summary>THE search row (the shared row over <see cref="Search.HitData"/>); the large one keeps the large shape. Keyed by the hit, so a list
     /// that reorders carries each row's hover and menu with it.</summary>
@@ -247,7 +241,45 @@ internal static class ZuneSearchPage
     {
         if (hit.IsNone) return new BoxEl();
         var shape = large ? SearchHitRules.ShapeOf(large: true, artHidden: false) : RowShape(lay);
-        return Controls.Surface(Search.HitData(hit, flags, large, in ctx, hideTrackArt: false), shape) with { Key = "hit:" + Search.KeyOf(hit) };
+        var data = Search.HitData(hit, flags, large, in ctx, hideTrackArt: false);
+        if (!large) data = KindTrailing(data, hit, flags);
+        return Controls.Surface(data, shape) with { Key = "hit:" + Search.KeyOf(hit) };
+    }
+
+    /// <summary>The board's row: the subtitle is the detail alone, and the trailing cell is the kind word at the right edge, giving way to the save or
+    /// follow control while the row is hovered (one cell, so the row never changes size).</summary>
+    static Controls.CardData KindTrailing(Controls.CardData data, EntityRef hit, SearchHitFlags flags)
+    {
+        string kind = Search.KindWordOf(hit.Kind, flags);
+        string full = Search.SubtitleOf(hit, flags);
+        string prefix = kind + TextJoin.Sep;
+        string detail = full.StartsWith(prefix, StringComparison.Ordinal) ? full[prefix.Length..] : "";
+        Element word = R.Type.MicroMeta(kind) with
+        {
+            Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
+        var cell = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Shrink = 0f, Opacity = 1f, HoverOpacity = detailless(data.Trailing) ? 1f : 0f,
+                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing, HitTestVisible = false,
+                Children = [word],
+            },
+        };
+        if (data.Trailing is { } control)
+            cell.Add(new BoxEl
+            {
+                Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Opacity = 0f, HoverOpacity = 1f,
+                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+                Children = [control],
+            });
+        return data with
+        {
+            Subtitle = detail.Length == 0 ? null : R.Type.TrackMeta(detail) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            Trailing = new BoxEl { ZStack = true, Shrink = 0f, MinWidth = S.KindCellW, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, Children = cell.ToArray() },
+        };
+        static bool detailless(Element? trailing) => trailing is null;
     }
 
     /// <summary>Hit rows in the tier's columns (best matches, the songs): ONE keyed grid whose column count is a live prop.</summary>
@@ -279,13 +311,13 @@ internal static class ZuneSearchPage
             cardAt: (item, i, cardW) => Controls.Surface(Search.CardDataOf(item.Ref, ctx.Origin), Shape.Shelf(), cardW),
             onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),
             cardHeight: s_cardHeight,
-            header: K.Heading(Loc.Get(Strings.Search.Playlists), null, K.Link("zune-search-playlists-all", Loc.Get(Strings.Home.SeeAll), select, lay.LinkTarget)),
+            header: K.Heading(Loc.Get(Strings.Search.Playlists), null, K.Link("zune-search-playlists-all", Loc.Get(Strings.Home.SeeAll), select, lay.LinkTarget)) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons,
             // Standard: the fixed 154 card; elsewhere the shelf FITS up to the tier's columns (live props of ONE shelf).
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             snap: ShelfSnap.Page, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, _) => Search.KeyOf(item.Ref))
             with { Key = S.RailKey };
@@ -326,7 +358,30 @@ internal static class ZuneSearchPage
 
     // ── genres and related searches ──────────────────────────────────────────────────────────────────────────────────────
 
-    static Element Genres(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay)
+    /// <summary>Genres · related searches. BESIDE (the board: related 48 after the genres words) the genres hug their words on one line and related takes
+    /// the rest, wrapping; stacked (Compact, Small, or a page too narrow for both) each is a wrapping run. The engine's wrapping box always fills its
+    /// line, so "hugging" is the words' estimated width (<see cref="ZuneSearchRules.WordCharW"/> per character), asked of the page's measured width.</summary>
+    static Element Runs(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay, float firstW)
+        => Responsive.Of("zune-search:runs", w =>
+        {
+            bool beside = lay.RunsBeside;
+            if (beside && m.GenreState == SearchSection.Ready && m.Genres.Count > 0)
+            {
+                float est = 0f;
+                for (int i = 0; i < m.Genres.Count; i++) est += m.Genres[i].Title.Length * S.WordCharW + S.WordGap;
+                beside = est - S.WordGap + S.RunsGap + S.RelatedMinW <= w;
+            }
+            Element genres = Genres(m, props, lay, wrap: !beside), related = Related(m, props, lay, wrap: true);
+            if (beside)
+                related = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [related] };
+            return new BoxEl
+            {
+                Key = "zune-search-runs", Direction = (byte)(beside ? 0 : 1), Gap = beside ? S.RunsGap : lay.ZoneGap,
+                MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Start, Children = [genres, related],
+            };
+        }, fallback: firstW, grow: 0f);
+
+    static Element Genres(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay, bool wrap)
     {
         switch (m.GenreState)
         {
@@ -334,7 +389,7 @@ internal static class ZuneSearchPage
                 if (m.Genres.Count == 0) return new BoxEl();
                 var words = new Element[m.Genres.Count];
                 for (int i = 0; i < words.Length; i++) words[i] = Word("genre:" + m.Genres[i].Uri, m.Genres[i].Title, cased: false, primary: true, m.Genres[i].Open, lay.LinkTarget);
-                return Run(S.GenresKey, Loc.Get(Strings.Search.Genres), words);
+                return Run(S.GenresKey, Loc.Get(Strings.Search.Genres), words, wrap);
             case SearchSection.Failed:
                 return Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: props.RetryAll);
             case SearchSection.Concluded:
@@ -344,12 +399,12 @@ internal static class ZuneSearchPage
                 for (int i = 0; i < seeds.Length; i++)
                     seeds[i] = Word("genre-seed:" + i.ToString(CultureInfo.InvariantCulture), Loc.Get(Strings.Search.Genres), cased: false, primary: true, static () => { }, lay.LinkTarget);
                 return new SkelRegionEl(
-                    Pending: s_true, Failed: s_false, Content: () => Run(S.GenresKey, Loc.Get(Strings.Search.Genres), seeds), ShimmerSource: null, OnFailed: null,
+                    Pending: s_true, Failed: s_false, Content: () => Run(S.GenresKey, Loc.Get(Strings.Search.Genres), seeds, wrap), ShimmerSource: null, OnFailed: null,
                     Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         }
     }
 
-    static Element Related(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay)
+    static Element Related(SearchBodyModel m, SearchPageProps props, ZuneSearchLayout lay, bool wrap)
     {
         switch (m.RelatedState)
         {
@@ -361,7 +416,7 @@ internal static class ZuneSearchPage
                     string q = m.Related[i];
                     words[i] = Word("rel:" + q, q, cased: true, primary: false, () => Search.OpenRelated(q), lay.LinkTarget);
                 }
-                return Run(S.RelatedKey, Loc.Get(Strings.Search.RelatedSearches), words);
+                return Run(S.RelatedKey, Loc.Get(Strings.Search.RelatedSearches), words, wrap);
             case SearchSection.Failed:
                 return Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: props.RetryAll);
             default:
@@ -370,9 +425,9 @@ internal static class ZuneSearchPage
     }
 
     /// <summary>A heading over an inline run of words that wraps.</summary>
-    static Element Run(string key, string heading, Element[] words)
-        => K.Section(K.Heading(heading, null, null), new BoxEl { Direction = 0, Wrap = true, Gap = S.WordGap, MinWidth = 0f, Children = words })
-            with { Key = key, Shrink = 1f };
+    static Element Run(string key, string heading, Element[] words, bool wrap)
+        => K.Section(K.Heading(heading, null, null), new BoxEl { Direction = 0, Wrap = wrap, Gap = S.WordGap, MinWidth = 0f, Children = words })
+            with { Key = key, Shrink = wrap ? 1f : 0f };
 
     /// <summary>One word of a run: the 15 voice, a link (a genre is a name and keeps its casing; a related query is lowercased by the case role).</summary>
     static Element Word(string key, string text, bool cased, bool primary, Action go, float target) => new BoxEl
