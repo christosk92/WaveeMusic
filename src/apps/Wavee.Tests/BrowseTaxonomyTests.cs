@@ -235,3 +235,223 @@ public class BrowseTaxonomyTests
         Assert.Equal(BrowseGroup.More, BrowseTaxonomy.GroupOf("spotify:page:0jq5daqbmkfec4wftonrpw"));   // never by a case fold
     }
 }
+
+// ── the bands as a route argument and as page-chrome row 2 (P5 ZC1) ──────────────────────────────────────────────────
+
+/// <summary>
+/// Browse's bands (top, for you, genres, charts, concerts) are sibling ROUTES, not page state: the Browse route carries `foryou` or `genres` in
+/// its arg, Charts is the Charts category page and Concerts the hub. These pin the id to route to id round trip, the codec (the arg folds, a hostile
+/// one is the plain directory, a band switch is a new place but the same keep-alive slot), the lit rule, the row-2 views, the directory filter,
+/// and that Classic's band order is unchanged.
+/// </summary>
+[Collection(EntitiesCollection.Name)]
+public class BrowseBandRouteTests
+{
+    const string PopGenre = "spotify:genre:0JQ5DAqbMKFEC4WFtoNRpw";         // Genres (by the genre spelling of the page uri)
+    const string PopPage = "spotify:page:0JQ5DAqbMKFEC4WFtoNRpw";
+    const string MadeForYou = "spotify:page:0JQ5DAt0tbjZptfcdMSKl3";        // ForYou
+    const string Music = "spotify:page:0JQ5DAqbMKFSi39LMRT0Cy";             // Top
+    const string Focus = "spotify:page:0JQ5DAqbMKFCbimwdOYlsl";             // Mood & activity
+
+    static Shell.Route Category(string uri) => BrowseTiles.PageRoute(uri, "x");
+
+    [Fact]
+    public void Classics_band_order_is_unchanged()
+        => Assert.Equal(
+            new[] { BrowseGroup.Top, BrowseGroup.Charts, BrowseGroup.ForYou, BrowseGroup.Genres, BrowseGroup.MoodActivity, BrowseGroup.More },
+            BrowseTaxonomy.BandOrder.ToArray());
+
+    [Fact]
+    public void Row_2_is_top_for_you_genres_charts_concerts()
+        => Assert.Equal(new[] { "top", "foryou", "genres", "charts", "concerts" }, BrowseBands.All.ToArray());
+
+    [Theory]
+    [InlineData("foryou", "foryou")]
+    [InlineData("genres", "genres")]
+    [InlineData(" ForYou ", "foryou")]
+    [InlineData("GENRES", "genres")]
+    [InlineData("top", "")]
+    [InlineData("charts", "")]
+    [InlineData("concerts", "")]
+    [InlineData("", "")]
+    [InlineData("nonsense", "")]
+    [InlineData("spotify:page:abc", "")]
+    public void Canonical_keeps_the_two_filtering_bands_and_folds_everything_else_to_the_plain_directory(string arg, string expected)
+        => Assert.Equal(expected, BrowseBands.Canonical(arg));
+
+    [Theory]
+    [InlineData("foryou")]
+    [InlineData("genres")]
+    public void A_filtering_band_round_trips_through_the_route_key_and_arg(string band)
+    {
+        var route = BrowseBands.RouteOf(band);
+
+        Assert.Equal(Shell.RouteKind.Browse, route.Kind);
+        Assert.Equal("browse", Shell.NameOf(route));
+        Assert.Equal(band, Shell.ArgOf(route));
+        Assert.Equal(route, Shell.Parse(Shell.NameOf(route), Shell.ArgOf(route)));
+        Assert.Equal(band, BrowseBands.BandOf(route));
+    }
+
+    [Fact]
+    public void Top_is_the_plain_directory_with_no_arg()
+    {
+        var route = BrowseBands.RouteOf("top");
+
+        Assert.Equal(Shell.RouteKind.Browse, route.Kind);
+        Assert.Null(Shell.ArgOf(route));
+        Assert.Equal(route, Shell.Parse("browse"));
+        Assert.Equal("top", BrowseBands.BandOf(route));
+    }
+
+    [Fact]
+    public void Charts_is_the_charts_category_page_and_concerts_is_the_hub()
+    {
+        var charts = BrowseBands.RouteOf("charts");
+        Assert.Equal(Shell.RouteKind.BrowseCategory, charts.Kind);
+        Assert.Equal(ChartPages.Charts, charts.Subject.Text);
+        Assert.Equal("charts", BrowseBands.BandOf(charts));
+
+        var concerts = BrowseBands.RouteOf("concerts");
+        Assert.Equal(Shell.RouteKind.Concerts, concerts.Kind);
+        Assert.Equal("concerts", BrowseBands.BandOf(concerts));
+
+        Assert.True(BrowseBands.RouteOf("bogus").IsNone);
+    }
+
+    [Theory]
+    [InlineData("nonsense")]
+    [InlineData("charts")]
+    [InlineData("concerts")]
+    [InlineData("top")]
+    [InlineData("")]
+    public void A_stray_arg_on_the_browse_key_parses_to_the_plain_directory(string arg)
+    {
+        var route = Shell.Parse("browse", arg);
+
+        Assert.Equal(Shell.RouteKind.Browse, route.Kind);
+        Assert.True(route.Arg.IsEmpty);
+        Assert.Null(Shell.ArgOf(route));
+    }
+
+    [Fact]
+    public void The_arg_parses_case_insensitively_to_its_canonical_spelling()
+        => Assert.Equal("genres", Shell.ArgOf(Shell.Parse("browse", " GeNres ")));
+
+    [Fact]
+    public void A_deep_link_carries_the_band()
+    {
+        var verb = Shell.DeepLink("wavee://open?route=browse&arg=genres");
+
+        Assert.Equal(Shell.DeepLinkKind.Open, verb.Kind);
+        Assert.Equal(BrowseBands.RouteOf("genres"), verb.Route);
+
+        var junk = Shell.DeepLink("wavee://open?route=browse&arg=junk");
+        Assert.Equal(Shell.RouteKind.Browse, junk.Route.Kind);
+        Assert.True(junk.Route.Arg.IsEmpty);
+    }
+
+    [Fact]
+    public void A_band_switch_is_a_new_place_in_the_same_keep_alive_slot_and_never_a_title()
+    {
+        var all = new Shell.Route(Shell.RouteKind.Browse);
+        var genres = BrowseBands.RouteOf("genres");
+
+        Assert.True(Shell.Row(Shell.RouteKind.Browse).PlaceByArg);
+        Assert.False(Shell.Row(Shell.RouteKind.Browse).KeyedByArg);
+        Assert.False(Shell.SameSlot(all, genres));                                   // history, Back and the tab's stored route see a new place
+        Assert.Equal(Shell.SlotKey(all), Shell.SlotKey(genres));                     // ...but the mounted directory is reused
+        Assert.True(Shell.SameSlot(genres, BrowseBands.RouteOf("genres")));
+        Assert.Equal(Shell.Dest(all).Title, Shell.Dest(genres).Title);               // the tab and history word is "Browse", never "genres"
+    }
+
+    // ── the lit rule ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(ChartPages.Charts, "charts")]
+    [InlineData(ChartPages.PodcastCharts, "charts")]
+    [InlineData(PopGenre, "genres")]
+    [InlineData(PopPage, "genres")]
+    [InlineData(MadeForYou, "foryou")]
+    [InlineData(Music, "top")]
+    [InlineData(Focus, "top")]                                                        // Mood & activity stays in the whole directory
+    [InlineData("spotify:page:brandNewCategoryNobodyCuratedYet", "top")]              // More, and anything unmapped
+    public void A_category_page_lights_the_band_of_its_taxonomy_group(string uri, string band)
+        => Assert.Equal(band, BrowseBands.BandOf(Category(uri)));
+
+    [Theory]
+    [InlineData(Shell.RouteKind.Home)]
+    [InlineData(Shell.RouteKind.Search)]
+    [InlineData(Shell.RouteKind.Album)]
+    [InlineData(Shell.RouteKind.Concert)]
+    [InlineData(Shell.RouteKind.ArtistConcerts)]
+    [InlineData(Shell.RouteKind.BrowseSection)]
+    public void Other_routes_light_no_band(Shell.RouteKind kind)
+    {
+        Assert.Null(BrowseBands.BandOf(new Shell.Route(kind)));
+        Assert.False(BrowseBands.IsChromeKind(kind));
+        Assert.Empty(BrowseBands.ChromeViews(new Shell.Route(kind)));
+    }
+
+    [Fact]
+    public void Browse_the_category_pages_and_the_concerts_hub_keep_the_browse_destination_lit_in_the_band()
+    {
+        Assert.Equal(Shell.BandRules.Browse, Shell.BandRules.IndexOf(Shell.RouteKind.Browse));
+        Assert.Equal(Shell.BandRules.Browse, Shell.BandRules.IndexOf(Shell.RouteKind.BrowseCategory));
+        Assert.Equal(Shell.BandRules.Browse, Shell.BandRules.IndexOf(Shell.RouteKind.Concerts));
+    }
+
+    // ── row 2 ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("top")]
+    [InlineData("foryou")]
+    [InlineData("genres")]
+    [InlineData("charts")]
+    [InlineData("concerts")]
+    public void Every_browse_family_route_answers_the_five_bands_in_order_with_its_own_lit(string band)
+    {
+        var views = BrowseBands.ChromeViews(BrowseBands.RouteOf(band));
+
+        Assert.Equal(new[] { "top", "foryou", "genres", "charts", "concerts" }, views.Select(v => v.Id).ToArray());
+        var lit = Assert.Single(views, v => v.Current);
+        Assert.Equal(band, lit.Id);
+        Assert.All(views, v => Assert.False(string.IsNullOrEmpty(v.Label)));
+        Assert.All(views, v => Assert.Null(v.Count));
+    }
+
+    [Fact]
+    public void The_verbs_are_cached_so_an_equal_row_compares_equal()
+    {
+        var a = BrowseBands.ChromeViews(new Shell.Route(Shell.RouteKind.Browse));
+        var b = BrowseBands.ChromeViews(new Shell.Route(Shell.RouteKind.Concerts));
+
+        for (int i = 0; i < a.Count; i++) Assert.Same(a[i].Go, b[i].Go);
+    }
+
+    // ── the directory filter ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_directory_filter_keeps_everything_for_the_whole_directory_and_one_group_for_a_filtering_band()
+    {
+        var groups = BrowseTaxonomy.Grouped(new[]
+        {
+            new BrowseCategory(Music, "Music", null),
+            new BrowseCategory(MadeForYou, "Made For You", null),
+            new BrowseCategory(PopPage, "Pop", null),
+            new BrowseCategory(ChartPages.Charts, "Charts", null),
+            new BrowseCategory(Focus, "Focus", null),
+        });
+
+        Assert.Same(groups, BrowseBands.Filter(groups, ""));                         // the host's memo keeps its reference
+
+        var forYou = Assert.Single(BrowseBands.Filter(groups, "foryou"));
+        Assert.Equal(BrowseGroup.ForYou, forYou.Group);
+        Assert.Equal("Made For You", Assert.Single(forYou.Items).Title);
+
+        var genres = Assert.Single(BrowseBands.Filter(groups, "genres"));
+        Assert.Equal(BrowseGroup.Genres, genres.Group);
+
+        Assert.Empty(BrowseBands.Filter(BrowseTaxonomy.Grouped(new[] { new BrowseCategory(Music, "Music", null) }), "genres"));
+    }
+}

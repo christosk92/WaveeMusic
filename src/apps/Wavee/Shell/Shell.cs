@@ -146,7 +146,9 @@ public static partial class Shell
     static readonly RouteRow[] s_routes =
     [
         new(RouteKind.Home,                "home",                 false, Strings.Nav.Home,             Icons.Home,        false, true,  false, PlaceByArg: true),
-        new(RouteKind.Browse,              "browse",               false, Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false),
+        // Browse's Arg is its BAND (`foryou` | `genres`, `BrowseBands.Canonical`; none = the whole directory): a place (a band switch is
+        // history and a tab's stored route) but not a keep-alive slot (the mounted directory re-reads its props), as Home's facet.
+        new(RouteKind.Browse,              "browse",               false, Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false, PlaceByArg: true),
         new(RouteKind.Search,              "search",               false, Strings.Nav.Search,           Icons.Search,      false, false, true, PlaceByArg: true),
         new(RouteKind.LibraryAlbums,       "albums",               false, Strings.Nav.Albums,           Icons.Album,       false, false, false),
         new(RouteKind.LibraryArtists,      "artists",              false, Strings.Nav.Artists,          Icons.Contact,     false, false, false),
@@ -360,6 +362,7 @@ public static partial class Shell
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
         or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
+        or RouteKind.Browse   // Browse's arg is a band id (BrowseBands), never a title
         or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
@@ -392,7 +395,9 @@ public static partial class Shell
             if (row.Key.Length == 0) continue;
             if (!row.IsPrefix)
             {
-                if (name.SequenceEqual(row.Key)) return new Route(row.Kind, default, Intern(arg), tab);
+                if (name.SequenceEqual(row.Key))
+                    // Browse's arg is its band: a stray or hostile one folds to the plain directory (it is UNTRUSTED from a deep link).
+                    return new Route(row.Kind, default, Intern(row.Kind == RouteKind.Browse ? BrowseBands.Canonical(arg).AsSpan() : arg), tab);
                 continue;
             }
             if (name.Length <= row.Key.Length || !name.StartsWith(row.Key, StringComparison.Ordinal)) continue;

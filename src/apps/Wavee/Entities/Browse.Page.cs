@@ -80,10 +80,15 @@ public readonly partial struct Browse
 {
     // ══ 1. THE DIRECTORY PAGE ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The <c>browse</c> route's page (RouteKind.Browse). No props: the directory is one row per scope.</summary>
+    /// <summary>The <c>browse</c> route's page (RouteKind.Browse). The directory is one row per scope; the only prop is the route's band (ZC1:
+    /// <see cref="BrowseBands.Canonical"/>, "" for the whole directory). The slot is the same for every band (<c>KeyedByArg</c> is false), so a
+    /// band switch re-pushes the props to the mounted page rather than remounting it.</summary>
     // MOUNT POINT (Home.InstallPages — contract §7)
     public static Element DirectoryPageFor(in Shell.Route route)
-        => Embed.Comp(static () => new DirectoryPage()) with { Key = "browse-directory" };
+        => Embed.Comp(new DirectoryProps(BrowseBands.Canonical(Entities.Strings.Resolve(route.Arg))), static () => new DirectoryPage())
+            with { Key = "browse-directory" };
+
+    sealed record DirectoryProps(string Band);
 
     /// <summary>The origin a drill out of the directory hands over: the IA root itself, which is what keeps the trail at
     /// <c>Browse › X</c> rather than <c>Browse › Browse › X</c>.</summary>
@@ -99,6 +104,7 @@ public readonly partial struct Browse
         Browse _dir;
         bool _demanded;
         long _dataKey = long.MinValue;
+        string _band = "";
         IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> _groups = s_noGroups;
 
         readonly Action _demand, _retry;
@@ -111,6 +117,12 @@ public readonly partial struct Browse
 
         public override Element Render()
         {
+            string band = UseProps<DirectoryProps>().Band;
+            if (!string.Equals(_band, band, StringComparison.Ordinal))
+            {
+                _band = band;
+                _dataKey = long.MinValue;                         // the band is part of what the memoized group list holds
+            }
             uint epoch = Entities.ScopeEpoch.Value;              // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             _ = scope.Browses.Changed.Value;
@@ -137,13 +149,14 @@ public readonly partial struct Browse
                 {
                     _dataKey = key;
                     var categories = CategoriesOf(edges.BrowseDirectory.Targets(d.Slot));
-                    _groups = categories.Length == 0 ? s_noGroups : BrowseTaxonomy.Grouped(categories);
+                    _groups = categories.Length == 0 ? s_noGroups : BrowseBands.Filter(BrowseTaxonomy.Grouped(categories), _band);
                 }
             }
 
             return Slots.View(ViewKeys.BrowseDirectory, new BrowseDirectoryProps
             {
-                ScrollKey = UseContext(Shell.PageScrollScope) + "browse",
+                // One offset per band: a filtered directory is a different page height, and the whole directory's key is unchanged.
+                ScrollKey = UseContext(Shell.PageScrollScope) + (band.Length == 0 ? "browse" : "browse:" + band),
                 Load = load,
                 Groups = load == BrowseLoad.Ready ? _groups : null,
                 Retry = _retry,
