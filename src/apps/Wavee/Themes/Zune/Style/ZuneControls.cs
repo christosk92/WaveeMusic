@@ -24,8 +24,8 @@
 //
 // What the table cannot say yet (engine gaps, reported): the switch's track and knob are always round (`ToggleSwitch` has no corner knob,
 // so the 40 x 20 RECTANGLE is a rounded 40 x 20); the focused search pill's white ring (`TextFieldStyle` has no focused border colour); the
-// focus ring's 4 corner (the engine draws it concentric with the control). The context menu's round-verb strip and header presenters are the
-// overlays lane's (Z8a): Zune's entry only drops the header divider and sets the 320 menu width.
+// focus ring's 4 corner (the engine draws it concentric with the control). The context menu's header and round-verb strip are presenter parts drawn by
+// the overlays lane (`ZuneContextMenu`, Z8a): the track menu entry hands them to the engine.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -206,8 +206,12 @@ public static class ZuneControls
         SeparatorMargin = new Edges4(16f, 5f, 16f, 5f),
     };
 
-    /// <summary>The track menu: 320 wide with no divider under its header (Z-Overlays); the round-verb strip presenter is the overlays lane's.</summary>
-    public static ContextMenu.Style TrackMenu() => ContextMenu.FluentStyle() with { HeaderDivider = false, MinWidth = 320f };
+    /// <summary>The track menu: 320 wide with no divider under its header (Z-Overlays); the header (a 40 tile, the title over the subtitle) and the strip of round verbs (the
+    /// play disc and rings) are the overlays lane's presenters (`ZuneContextMenu`).</summary>
+    public static ContextMenu.Style TrackMenu() => ContextMenu.FluentStyle() with
+    {
+        HeaderDivider = false, MinWidth = 320f, Header = ZuneContextMenu.Header, PrimaryStrip = ZuneContextMenu.Strip,
+    };
 
     /// <summary>The dialog: a square plate on the dialog ground (#1f1f1f on dark), no ring, the dialog shadow, 24 in, a 26/300 title 14 above
     /// the body, the commands as words 20 apart, starting at the leading edge, the primary first (it is the accent disc).</summary>

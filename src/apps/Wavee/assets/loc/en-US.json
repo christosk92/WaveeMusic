@@ -2793,7 +2793,11 @@
       "detail": {},
       "artist": {},
       "collection": {},
-      "overlays": {},
+      "overlays": {
+        "$comment": "Z8a: the overlays (the offline strip's notice). Words are written as people say them; the style's case roles lower them.",
+        "offlineNotice": "You're offline · cached content still works; playback and edits resume when you're back",
+        "offlineNoticeShort": "You're offline · cached music still plays"
+      },
       "screens": {
         "$comment": "Z8b: the screens (Settings preview, setup). Words are written as people say them; the style's case roles lower them.",
         "previewLabel": "Preview",
