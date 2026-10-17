@@ -2769,7 +2769,12 @@
         "searchPlaceholder": "search",
         "closePanel": "Close"
       },
-      "band": {},
+      "band": {
+        "$comment": "Z2b: the band's words (cased by the style's roles). library is the library pivot's word (the core's destination says Your Library; the boards say library); pinned leads the pins; playPin is a pin's play disc tool tip ({name} is the pin's own name, never re-cased).",
+        "library": "Library",
+        "pinned": "Pinned",
+        "playPin": "Play {name}"
+      },
       "lists": {},
       "player": {},
       "stage": {
