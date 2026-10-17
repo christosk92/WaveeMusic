@@ -60,7 +60,12 @@ public static partial class Crash
         string ExceptionType, string ExceptionMessage, long[] Rvas, long ModuleBase, long ModuleSize,
         string DebugId,               // RSDS GUID-age from the PE debug directory (PeDebugId.TryRead)
         int ExitCode, bool HasDump, long DumpBytes,
-        uint ExceptionCode = 0, string FaultModule = "", long FaultOffset = 0);
+        uint ExceptionCode = 0, string FaultModule = "", long FaultOffset = 0,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ParentPid = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ReporterPid = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? DumpLocalCreated = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? DumpIncluded = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DumpOmissionReason = null);
 
     /// <summary><c>send.json</c> beside <c>summary.json</c> — the per-bundle send state. Written by the uploader
     /// (WP-C); read by <c>Crash.Host.Bundles()</c> (WP-B) so the Reports list (WP-E) never has to ask the network.</summary>

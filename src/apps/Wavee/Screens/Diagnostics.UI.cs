@@ -75,7 +75,7 @@ public static partial class Diagnostics
             || Platform.Settings.Get(Platform.Keys.LastRunVersion) != Platform.Version.LastRunKey;
         Crash.Host.BeginGuiRun(Platform.Settings, versionChanged);
 
-        Shell.RouteNoted += static route => NavigationFrameWatch.NoteRoute(route);
+        Shell.RouteNoted += static route => { NavigationFrameWatch.NoteRoute(route); Crash.Host.NoteContextChanged(); };
         NavigationFrameWatch.Attach();
 
         Platform.Network.Install(Playback.ToUi);

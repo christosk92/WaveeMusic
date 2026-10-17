@@ -230,6 +230,7 @@ public static partial class Shell
         Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
         LoadDocuments();
 
+        Exception? loopFailure = null;
         try
         {
             Log.Event(WaveeLogLevel.Info, "app", "boot.window", "", null, Log.SinceStartMs);
@@ -292,31 +293,46 @@ public static partial class Shell
         }
         catch (Exception ex)
         {
+            loopFailure = ex;
             Log.Critical("app", "Fatal error in the app loop", ex);
             Log.Flush();
             throw;
         }
         finally
         {
-            // The icon FIRST (tray plan §7.6). It normally left already, on the UI thread, with the close that ended the
-            // loop; this is the belt for a loop that ended any other way.
-            Tray.Host.Shutdown();
-            // The deck's last word goes into the session document BEFORE its flush writes it (G-078).
-            CaptureDeckForExit();
-            // The shell's unmount cleanup never runs on shutdown (the host does not unmount the tree), so a pending
-            // debounced save would be LOST. These three are the only documents that can be mid-debounce.
-            Session.Flush();
-            History.Store.Flush();
-            PlayLog.Flush();
-            Notify.HostShutdown();
-            Playback.Os.Shutdown();
-            Diagnostics.Evidence.DrainForExit();   // a bundle mid-write finishes (bounded 1.5 s)
-            AiLyrics.Shutdown();      // stops the model download (partials stay) and the NPU worker within 2 s
-            s_fetchWake?.Dispose();
-            s_audioWarm?.Dispose();
-            s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
-            s_gate?.Dispose();
-            s_gate = null;
+            Crash.CleanupDiagnostics.Run(loopFailure, static () =>
+            {
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.ShellCleanup);
+                // The icon FIRST (tray plan §7.6). It normally left already, on the UI thread, with the close that ended the
+                // loop; this is the belt for a loop that ended any other way.
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Tray);
+                Tray.Host.Shutdown();
+                // The deck's last word goes into the session document BEFORE its flush writes it (G-078).
+                CaptureDeckForExit();
+                // The shell's unmount cleanup never runs on shutdown (the host does not unmount the tree), so a pending
+                // debounced save would be LOST. These three are the only documents that can be mid-debounce.
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.SessionFlush);
+                Session.Flush();
+                History.Store.Flush();
+                PlayLog.Flush();
+                Notify.HostShutdown();
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.OsPlayback);
+                Playback.Os.Shutdown();
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Evidence);
+                Diagnostics.Evidence.DrainForExit();   // a bundle mid-write finishes (bounded 1.5 s)
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.AiLyrics);
+                AiLyrics.Shutdown();      // stops the model download (partials stay) and the NPU worker within 2 s
+                s_fetchWake?.Dispose();
+                s_audioWarm?.Dispose();
+                s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
+                s_gate?.Dispose();
+                s_gate = null;
+                Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.ShellDone);
+            }, static ex =>
+            {
+                Log.Error("app", "shutdown.cleanup.secondary", ex);
+                Log.Flush();
+            });
         }
     }
 

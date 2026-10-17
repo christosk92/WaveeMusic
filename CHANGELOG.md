@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.5] - unreleased
+## [0.3.6] - unreleased
 
 ### Changed
 
@@ -264,33 +264,6 @@ versions separately under `v*` and is not tracked in this file.)
 - **The developer-only "Page motion" setting is gone.** Settings > Appearance no longer offers it (it only showed in
   developer mode). Pages always animate with the standard fade-through that everyone already had; a value stored by an
   older build is ignored.
-- **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
-  discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
-  motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or
-  end, a second click reverses it mid-way, and several sidebar sections can open or close at once instead of the
-  earlier one snapping shut.
-- **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
-  bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
-  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
-  Settings › Appearance or from the sidebar's right-click menu: Classic (Home, Pinned, Collections, Playlists, and optional
-  Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
-  Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
-  toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
-  in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
-  current sidebar carries over.
-- **About 900 MB less memory when on-device lyrics sync is not working.** The NPU models it loads for a song are
-  released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
-  and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
-  half, while its audio downloads.
-- **Filter is a button of its own on song lists.** Album, playlist and Liked Songs pages show a labelled Filter
-  button with a count of the filters that are on. It opens one card with a dropdown per filter, switches for liked and
-  playable songs, an "X of N songs" heading and Reset, and the card follows filters you change elsewhere. On a narrow
-  window the button first drops its label, then moves into ⋯ as "Filter…".
-- **Every filter chip looks the same.** Chips on Liked Songs, Concerts, the sidebar's Library and notifications are
-  now the standard Windows toggle chip; a lit sidebar chip says "Clear filter" when you point at it.
-- **A tidier sidebar.** Covers, glyphs and section titles start on one line, a cover no longer touches the selection
-  bar, the "+" sits beside its section's chevron, and a count or pin mark ends at the row's edge instead of leaving a
-  gap; pointing at the row swaps it for the row's ⋯ button.
 - **The sidebar can show its playlists as plain text rows, and a pin is a button.** A new "Show covers" switch in Settings >
   Appearance > Wavee Classic options > Sidebar (on by default, Classic layout only) turns the playlist, album and pin rows
   into compact 36-high text rows when you switch it off: no cover, the name 16 from the edge, a folder icon on folders with
@@ -298,8 +271,6 @@ versions separately under `v*` and is not tracked in this file.)
   that unpins it in one click (it stays visible when you point at the row; only the count gives way to the ⋯ button, in
   the same spot), and "Pin to sidebar" / "Unpin from sidebar" is a top-level item of a playlist's or folder's right-click
   menu instead of sitting inside "Organize".
-- **Less space between a page's side column and its songs.** The gap beside a resizable album or playlist column is
-  half as wide, the same as everywhere else; the column still resizes from that edge.
 - **Auto zoom is smaller on some large monitors, and it applies at once.** With Zoom on Auto, a window at least 1920
   wide (before zoom) is no longer zoomed so far that the page gets narrower than 1920: there is more room and the text
   is a little smaller. On a 1440p-class monitor at 100 % (2560 × 1440) and a 4K monitor at 150 % Auto
@@ -316,14 +287,6 @@ versions separately under `v*` and is not tracked in this file.)
 - **Player style is hidden until it changes Now playing.** The gear above the Now playing art, the art's "Player style…"
   menu, the Settings > Appearance > Now playing section and the command palette's two player-style commands are only
   offered in developer mode, where the styles actually show; elsewhere Now playing shows the cover, as it already did. (#199)
-
-### Removed
-
-- **The Custom sidebar layout and its full-page customizer.** Its sections are mapped onto the closest Classic or
-  Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
-  is now in the sidebar's Edit mode.
-- **The Settings bar at the bottom of the sidebar.** Settings is in the profile menu and the command palette, and the
-  sidebar's options are on its right-click menu.
 
 ### Fixed
 
@@ -383,6 +346,60 @@ versions separately under `v*` and is not tracked in this file.)
   cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
   Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout
   at once, instead of showing a default-width layout for one frame and then snapping to the real one.
+- **No zoom jump right after Wavee starts.** With Zoom on Auto, a zoom saved on another window or monitor used to be
+  replaced by the right one half a second after the first frame, so the whole app visibly resized. The first frame
+  now opens at the zoom Auto picks for the window.
+
+## [0.3.5] - 2026-10-13
+
+### Changed
+
+- **More useful crash reports.** Exit reports retain the failing app's process, session and GPU context, and their
+  log excerpt follows that process. The crash dashboard explains when a local dump was omitted from an upload;
+  recovery and shutdown checkpoints help diagnose remaining crashes. Existing consent settings still apply. (#209)
+- **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
+  discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
+  motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or
+  end, a second click reverses it mid-way, and several sidebar sections can open or close at once instead of the
+  earlier one snapping shut.
+- **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
+  bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
+  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
+  Settings › Appearance or from the sidebar's right-click menu: Classic (Home, Pinned, Collections, Playlists, and optional
+  Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
+  Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
+  toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
+  in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
+  current sidebar carries over.
+- **About 900 MB less memory when on-device lyrics sync is not working.** The NPU models it loads for a song are
+  released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
+  and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
+  half, while its audio downloads.
+- **Filter is a button of its own on song lists.** Album, playlist and Liked Songs pages show a labelled Filter
+  button with a count of the filters that are on. It opens one card with a dropdown per filter, switches for liked and
+  playable songs, an "X of N songs" heading and Reset, and the card follows filters you change elsewhere. On a narrow
+  window the button first drops its label, then moves into ⋯ as "Filter…".
+- **Every filter chip looks the same.** Chips on Liked Songs, Concerts, the sidebar's Library and notifications are
+  now the standard Windows toggle chip; a lit sidebar chip says "Clear filter" when you point at it.
+- **A tidier sidebar.** Covers, glyphs and section titles start on one line, a cover no longer touches the selection
+  bar, the "+" sits beside its section's chevron, and a count or pin mark ends at the row's edge instead of leaving a
+  gap; pointing at the row swaps it for the row's ⋯ button.
+- **Less space between a page's side column and its songs.** The gap beside a resizable album or playlist column is
+  half as wide, the same as everywhere else; the column still resizes from that edge.
+
+### Removed
+
+- **The Custom sidebar layout and its full-page customizer.** Its sections are mapped onto the closest Classic or
+  Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
+  is now in the sidebar's Edit mode.
+- **The Settings bar at the bottom of the sidebar.** Settings is in the profile menu and the command palette, and the
+  sidebar's options are on its right-click menu.
+
+### Fixed
+
+- **Resizing after graphics recovery can no longer strand the rendering thread.** Closing after a removed graphics
+  device also skips its invalid fence drain while healthy devices still finish their queued work. These correct
+  reproduced engine defects; the reported AMD, NVIDIA and unknown-module access violations remain under investigation. (#209)
 - **Album covers, avatars and headers load sharp.** Images that Spotify describes only by their maximum width used to
   load the smallest (64 px) version.
 - **The now-playing equalizer keeps moving after you navigate back to a page,** and a paused one no longer restarts
@@ -400,9 +417,6 @@ versions separately under `v*` and is not tracked in this file.)
 - **Pointing at a sidebar section header no longer lights up its ⋯ button.**
 - **Artist names on narrow album and playlist pages stay readable** instead of collapsing to "…".
 - **Search suggestions keep their height while you type** instead of shrinking to a bar on every keystroke.
-- **No zoom jump right after Wavee starts.** With Zoom on Auto, a zoom saved on another window or monitor used to be
-  replaced by the right one half a second after the first frame, so the whole app visibly resized. The first frame
-  now opens at the zoom Auto picks for the window.
 
 - **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
   collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts

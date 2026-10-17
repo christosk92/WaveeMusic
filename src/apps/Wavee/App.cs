@@ -281,24 +281,39 @@ public static class App
         Shell.Run();                     // window + engine loop; never returns until exit
         // The loop is gone — no more beats reach the crash handler from here on, and the exit tail below can run for
         // up to 10 minutes (Update.Host.ApplyOnExit); without this the watchdog would eventually read that as a hang.
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.LoopReturned);
         Crash.Host.NoteExiting();
         Platform.UiThreadId = null;      // the loop and its SettingsChanged subscribers are gone: the exit tail writes settings from Main
 
         // The exit tail (G-012), after the loop and while the log is still alive: layout write, telemetry batch, audio,
         // video, the graph store, the stream caches, then the platform (whose log sink flushes last).
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Library);
         Spotify.Library.Shutdown();      // its watches and settle timers, and the pin store's hook, before the sidebar's layout write
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Sidebar);
         Sidebar.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Telemetry);
         Spotify.Telemetry.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Audio);
         Playback.Audio.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.AudioKeys);
         Spotify.Audio.KeyStore.Shutdown();   // after the pump stopped asking: drain the queued key writes, checkpoint, close
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Video);
         Playback.Video.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Modules);
         Modules.Shutdown();              // the module processes and their channels, after playback stopped reading them
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Store);
         Store.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.DiskCache);
         (Spotify.Audio.DiskCache.Shared as IDisposable)?.Dispose();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Fetcher);
         Spotify.Audio.Fetcher.Shared.Dispose();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.UpdateApply);
         Update.Host.ApplyOnExit();       // a staged update applies on the way out (the policy is Notify.ShutdownUpdatePolicy's), then the timers stop
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.UpdateStop);
         Update.Host.Shutdown();
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Diagnostics);
         Diagnostics.Shutdown();          // the last frame/memory lines, the clean run marker, the cost subscriptions
+        Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Platform);
         Platform.Shutdown();             // the log's file sink writes on a pool thread: without this the exit tail never reaches wavee-yyyyMMdd.log
         return 0;
     }

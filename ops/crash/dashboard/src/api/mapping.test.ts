@@ -61,6 +61,16 @@ const wireReport: WireReportRow = {
 };
 
 describe("mapReport", () => {
+  it("retains optional collection facts without overriding server attachment state", () => {
+    const collection = { parentPid: 123, reporterPid: 456, localDumpCreated: true, localDumpBytes: 999,
+      dumpIncluded: true, dumpOmissionReason: "consent" as const };
+    const app = mapReport({ ...wireReport, has_dump: 0, dump_bytes: 0, collection });
+    expect(app.collection).toEqual(collection);
+    expect(app.hasDump).toBe(false);
+    expect(app.dumpBytes).toBe(0);
+    expect(mapReport(wireReport).collection).toBeUndefined();
+  });
+
   it("converts snake_case wire fields and booleans, and parses frames_json", () => {
     const app = mapReport(wireReport);
     expect(app.installId).toBe("install-1");

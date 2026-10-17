@@ -71,6 +71,21 @@ public static partial class Crash
         /// never from a stored bit — honest without a second write.</summary>
         public const long MaxDumpBytes = 25L << 20;
 
+        /// <summary>Record a successful local capture before applying the retention cap. Created bytes remain known
+        /// even if the file is deleted; an uploader can then distinguish that deletion from a missing artifact.</summary>
+        public static bool FinalizeDumpCapture(string dir)
+        {
+            long bytes = new FileInfo(Path.Combine(dir, Files.DumpName)).Length;
+            EnforceDumpCap(dir);
+            bool retained = File.Exists(Path.Combine(dir, Files.DumpName));
+            UpdateSummary(dir, s => s with
+            {
+                DumpLocalCreated = true, HasDump = retained, DumpBytes = bytes,
+                DumpOmissionReason = !retained && bytes > MaxDumpBytes ? "size-cap" : null,
+            });
+            return retained;
+        }
+
         /// <summary>Creates <c>&lt;logFolder&gt;\crash\&lt;stamp&gt;-&lt;kind&gt;\</c> and returns it. The caller
         /// writes into it next; this method's only job is the folder existing.</summary>
         public static string Create(string logFolder, Kind kind, DateTimeOffset local)
@@ -124,10 +139,11 @@ public static partial class Crash
         /// pending lines) rather than failing the bundle. A caller that has the queue snapshots it BEFORE this call
         /// (<c>Log.PendingFileLines()</c> as the argument): a line the writer lands in between is then in both and
         /// deduped, never in neither.</summary>
-        public static void WriteTail(string dir, string? logPath, int maxLines, Feedback.RedactionRules rules, string[]? pending = null)
+        public static void WriteTail(string dir, string? logPath, int maxLines, Feedback.RedactionRules rules, string[]? pending = null, int? parentPid = null, string? sessionId = null)
         {
             Directory.CreateDirectory(dir);
             var lines = new Queue<string>(Math.Max(1, maxLines));
+            var filter = parentPid is > 0 ? new ParentTailFilter(parentPid.Value, sessionId) : null;
             if (!string.IsNullOrEmpty(logPath) && logPath != "-")
             {
                 try
@@ -138,12 +154,18 @@ public static partial class Crash
                         using var reader = new StreamReader(fs);
                         while (reader.ReadLine() is { } line)
                         {
+                            if (maxLines <= 0 || (filter is not null && !filter.Keep(line))) continue;
                             if (lines.Count == maxLines) lines.Dequeue();
                             lines.Enqueue(line);
                         }
                     }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            if (pending is { Length: > 0 } && parentPid is > 0)
+            {
+                var pendingFilter = new ParentTailFilter(parentPid.Value, sessionId);
+                pending = pending.Where(pendingFilter.Keep).ToArray();
             }
             string[] tail = pending is { Length: > 0 } ? TailAssembler.Merge(lines.ToArray(), pending, maxLines) : lines.ToArray();
             var sb = new StringBuilder(tail.Length * 96);

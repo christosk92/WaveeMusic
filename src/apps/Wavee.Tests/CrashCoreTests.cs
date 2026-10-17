@@ -96,6 +96,11 @@ public class CrashJsonTests
         Assert.Equal(0u, back.ExceptionCode);
         Assert.Equal("", back.FaultModule);
         Assert.Equal(0, back.FaultOffset);
+        Assert.Null(back.ParentPid);
+        Assert.Null(back.ReporterPid);
+        Assert.Null(back.DumpLocalCreated);
+        Assert.Null(back.DumpIncluded);
+        Assert.Null(back.DumpOmissionReason);
     }
 
     [Fact]

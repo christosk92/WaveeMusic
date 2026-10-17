@@ -233,6 +233,8 @@ export function FactsPanel({ report }: { report: AppReport }) {
     { label: "Last route", value: report.lastRoute },
     { label: "Exit code", value: `0x${report.exitCode.toString(16)}` },
     { label: "Session id", value: report.sessionId, mono: true },
+    { label: "Parent PID", value: report.collection?.parentPid?.toString() ?? "Unknown", mono: true },
+    { label: "Reporter PID", value: report.collection?.reporterPid?.toString() ?? "Unknown", mono: true },
     { label: "Debug id", value: report.debugId ?? "—", mono: !!report.debugId },
   ];
   const rows: [Fact, Fact | undefined][] = [];
@@ -374,10 +376,30 @@ export function LogViewer({ id, report, part }: { id: string; report: AppReport;
 
 export function MemorySnapshotPanel({ report }: { report: AppReport }) {
   const styles = useStyles();
+  const collection = report.collection;
+  const localDump = collection?.localDumpCreated === true
+    ? `Created${collection.localDumpBytes != null && collection.localDumpBytes > 0 ? ` (${formatBytes(collection.localDumpBytes)})` : ""}`
+    : collection?.localDumpCreated === false ? "Not created" : "Unknown";
+  const omissionReasons = {
+    consent: "Memory snapshot upload was not enabled.",
+    missing: "The local dump file was missing.",
+    "read-failed": "The local dump could not be read.",
+    "size-cap": "The dump exceeded the upload size limit.",
+  };
+  const dumpFacts = (
+    <>
+      <Caption1>Local dump: {localDump}</Caption1>
+      <Caption1>Uploaded dump: {report.hasDump ? `Available (${formatBytes(report.dumpBytes)})` : "Unavailable"}</Caption1>
+    </>
+  );
   if (!report.hasDump) {
     return (
       <Panel title="Memory snapshot" span={4}>
-        <Caption1>No dump in this report.</Caption1>
+        <div className={styles.panelStack}>
+          {dumpFacts}
+          <Caption1>{collection?.dumpOmissionReason
+            ? omissionReasons[collection.dumpOmissionReason] : "Dump omission reason: Unknown"}</Caption1>
+        </div>
       </Panel>
     );
   }
@@ -397,7 +419,7 @@ export function MemorySnapshotPanel({ report }: { report: AppReport }) {
   return (
     <Panel title="Memory snapshot" span={4} footer={downloadButton}>
       <div className={styles.panelStack}>
-        <Text>{formatBytes(report.dumpBytes)}</Text>
+        {dumpFacts}
         <Text font="monospace" size={200} className={styles.mono}>
           {cdbOneLiner(report)}
         </Text>

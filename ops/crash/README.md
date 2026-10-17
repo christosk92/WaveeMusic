@@ -453,3 +453,13 @@ each one. Since migration 0001 an issue row also carries `regressed_at`, `regres
 `fault_offset` and `fp_version`; `GET /v1/issues/:fp`'s `frames` falls back to the issue's
 `last_frames_json` once every report has been purged. `has_dump`/`dump_bytes` are derived from the `dump`
 part actually received, never from the summary's own claim.
+
+Report detail additionally returns `report.collection`, read from the existing R2 summary without a
+D1 migration: `parentPid`, `reporterPid`, `localDumpCreated`/`localDumpBytes` (the summary's
+`dumpLocalCreated`/`dumpBytes`), the client claim `dumpIncluded`, and `dumpOmissionReason` (`consent`,
+`missing`, `read-failed`, or `size-cap`). Missing or invalid facts are `null`, including on older
+reports. Legacy `hasDump: true` establishes local creation; `hasDump: false` alone leaves creation
+unknown because local retention may have removed the file. Only `report.has_dump`/`dump_bytes`
+determine uploaded attachment availability; a client
+claim never enables the dashboard's download button. Deploy the Worker and dashboard before the
+new client to expose these details; older clients and existing summaries remain supported.

@@ -4,7 +4,7 @@ import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
 import { accessHeader, installAccessFetchStub } from "./access.js";
 import { BASE, ingest, makeEnv, makeSummary, putSymmap } from "./helpers.js";
-import type { Env } from "../src/types.js";
+import type { CollectionFacts, Env, ReportRow } from "../src/types.js";
 
 /** A real, verifiable Access JWT header — signed in `beforeAll`. */
 let ACCESS: Record<string, string>;
@@ -202,6 +202,54 @@ describe("GET /v1/issues/:fp — extended fields", () => {
 });
 
 describe("GET /v1/reports/:id — extended fields", () => {
+  it("separates local dump and process facts from actual received attachment state", async () => {
+    const env = makeEnv();
+    const s = makeSummary({ parentPid: 123, reporterPid: 456, hasDump: true, dumpBytes: 999,
+      dumpIncluded: true, dumpOmissionReason: "consent" });
+    await ingest(env, s); // Client claims attachment, but sends none.
+    const body = await (await get(`/v1/reports/${s.reportId}`, env)).json() as {
+      report: ReportRow & { collection: CollectionFacts };
+    };
+    expect(body.report.has_dump).toBe(0);
+    expect(body.report.dump_bytes).toBe(0);
+    expect(body.report.collection).toEqual({ parentPid: 123, reporterPid: 456,
+      localDumpCreated: true, localDumpBytes: 999, dumpIncluded: true, dumpOmissionReason: "consent" });
+
+    const attached = makeSummary({ hasDump: false, dumpLocalCreated: false, dumpBytes: 0,
+      dumpIncluded: false, dumpOmissionReason: "missing" });
+    await ingest(env, attached, { dump: new Uint8Array([1, 2, 3]) });
+    const actual = await (await get(`/v1/reports/${attached.reportId}`, env)).json() as {
+      report: ReportRow & { collection: CollectionFacts };
+    };
+    expect(actual.report.has_dump).toBe(1);
+    expect(actual.report.dump_bytes).toBe(3);
+    expect(actual.report.collection.localDumpCreated).toBe(false);
+  });
+
+  it("keeps older client identity and omission reason unknown", async () => {
+    const env = makeEnv();
+    const s = makeSummary({ hasDump: true, dumpBytes: 42 });
+    await ingest(env, s);
+    const body = await (await get(`/v1/reports/${s.reportId}`, env)).json() as {
+      report: { collection: CollectionFacts };
+    };
+    expect(body.report.collection).toEqual({ parentPid: null, reporterPid: null,
+      localDumpCreated: true, localDumpBytes: 42, dumpIncluded: null, dumpOmissionReason: null });
+  });
+
+  it.each(["missing", "malformed"])("still serves report detail with %s R2 summary", async (state) => {
+    const env = makeEnv();
+    const s = makeSummary();
+    await ingest(env, s);
+    const key = `reports/${s.quad}/${s.reportId}/summary.json`;
+    if (state === "missing") await env.BUCKET.delete(key);
+    else await env.BUCKET.put(key, "not-json");
+    const response = await get(`/v1/reports/${s.reportId}`, env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { report: { collection: CollectionFacts } };
+    expect(Object.values(body.report.collection)).toEqual([null, null, null, null, null, null]);
+  });
+
   it("includes this_install (reports_30d, first_seen_quad) and debug_id", async () => {
     const env = makeEnv();
     const installId = crypto.randomUUID();
