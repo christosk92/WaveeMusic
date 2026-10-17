@@ -273,7 +273,7 @@ internal static partial class ClassicSettings
         Element text = hasSub
             ? new BoxEl
             {
-                Direction = inline ? 0 : 1, Gap = inline ? ClassicSettingsRules.SectionInlineGap : Spacing.XXS,
+                Direction = (byte)(inline ? 0 : 1), Gap = inline ? ClassicSettingsRules.SectionInlineGap : Spacing.XXS,
                 AlignItems = inline ? FlexAlign.End : FlexAlign.Stretch, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children =
                 [

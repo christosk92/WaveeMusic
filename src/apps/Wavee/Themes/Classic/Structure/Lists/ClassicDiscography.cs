@@ -280,7 +280,7 @@ internal static class ClassicDiscography
         float open = large ? ClassicArtistTiers.CompactTarget : Rules.HeadOpen;
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = layout.DrawerHead,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = large ? ClassicArtistTiers.DrawerHeadRowCompact : ClassicArtistTiers.DrawerHeadRow,
             Children =
             [
                 Controls.Named(Controls.PlayFab(a.PlayAlbum, Icons.Play, play), Loc.Get(Strings.Detail.Play)),

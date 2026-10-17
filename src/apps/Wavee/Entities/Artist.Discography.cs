@@ -706,6 +706,7 @@ public readonly partial struct Artist
         readonly Action _demandTracks;
         readonly Action _retry;
         DrawerVerdict _verdict;                                  // the CACHED verdict DrawerHeight reads (ch 08 §9 trap)
+        global::Wavee.Theming.TierFacts _tiers;                  // the tiers the grid was last drawn in (DrawerFor runs outside the render)
         string _expandedUri = "";
         int _expandedUriSlot;
         /// <summary>The structure's discography templates, resolved once per host; the cells and the drawer draw from it through their props.</summary>
@@ -747,7 +748,8 @@ public readonly partial struct Artist
             if (style is null) return new BoxEl();
             // The structure's grid configuration (TC6: its metrics follow the window tier, read tracked) rides the grid as LIVE props (LazyGridFit), so a
             // tier whose grid differs re-fits the SAME grid: its realized cells, the open drawer and the page's scroll survive the crossing.
-            var m = style.Metrics(facts.Value.Tiers);
+            _tiers = facts.Value.Tiers;
+            var m = style.Metrics(_tiers);
 
             // A key on this component's ROOT would be inert: the keyed grid is the root column's one child.
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Embed.Comp(new LazyGridFit(m.MinColumn, m.Gap, m.CardChrome + m.RowGap), () => new LazyGrid(
@@ -847,7 +849,7 @@ public readonly partial struct Artist
             var al = new Album(album);
             // The structure's drawer geometry for the tier on screen (its columns, pitch and head), read here, inside the grid's render: a tier crossing
             // re-renders the grid, so an open drawer re-flows to the new tier's columns instead of keeping the old ones.
-            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns, style.Metrics().Drawer);
+            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns, style.Metrics(_tiers).Drawer);
 
             var panel = Embed.Comp(new DrawerProps(al, _verdict, p.Accent, _retry, style), static () => new DrawerPanel())
                 with { Key = "drawer:" + _expandedUri };
