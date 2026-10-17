@@ -113,7 +113,7 @@ public sealed class ZuneArtistRulesTests
         var shortLay = ZuneArtistTiers.Of(Window(width, 330f));
         Assert.Equal(regular.Tier, shortLay.Tier);
         Assert.True(shortLay.HeroH <= regular.HeroH, "the hero gives height back");
-        Assert.Equal(ZuneArtistRules.ShortHeroH, shortLay.HeroH);
+        Assert.Equal(ZuneArtistTiers.ShortHeroH, shortLay.HeroH);
         Assert.True(shortLay.CompactName, "the 64 voice");
         Assert.Equal(0f, shortLay.NameSize);
         Assert.True(shortLay.BodyTop <= regular.BodyTop && shortLay.ZoneGap <= regular.ZoneGap);
@@ -133,7 +133,7 @@ public sealed class ZuneArtistRulesTests
         Assert.Same(ZuneArtistTiers.For(WidthTier.Standard), ZuneArtistTiers.Of(default));
         Assert.Same(ZuneArtistTiers.For(WidthTier.Huge4K), ZuneArtistTiers.Of(Window(3840f, 2160f)));
         // The 700 line: 699 folds, 700 does not.
-        Assert.Equal(ZuneArtistRules.ShortHeroH, ZuneArtistTiers.Of(Window(1440f, 699f)).HeroH);
+        Assert.Equal(ZuneArtistTiers.ShortHeroH, ZuneArtistTiers.Of(Window(1440f, 699f)).HeroH);
         Assert.Same(ZuneArtistTiers.For(WidthTier.Standard), ZuneArtistTiers.Of(Window(1440f, 700f)));
     }
 

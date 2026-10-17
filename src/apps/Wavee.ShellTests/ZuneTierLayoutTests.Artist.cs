@@ -89,7 +89,7 @@ public sealed partial class ZuneTierLayoutTests
         Assert.Equal(lay.ChartRows, ShellPolicy.Now.ArtistTiers.ChartRows(tiers));
         Assert.Equal(ZuneArtistRules.SectionAir, ShellPolicy.Now.ArtistTiers.BandClearance(tiers));
         // The Short rung folds the hero.
-        if (tiers.Height == HeightTier.Short) Assert.Equal(ZuneArtistRules.ShortHeroH, lay.HeroH);
+        if (tiers.Height == HeightTier.Short) Assert.Equal(ZuneArtistTiers.ShortHeroH, lay.HeroH);
 
         var content = ArtistRectOf(shell, ZuneFrameLayout.ContentKey);
         var hero = ArtistRectOf(shell, ZuneArtistRules.HeroKey);

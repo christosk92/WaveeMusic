@@ -222,7 +222,7 @@ internal static class ZuneHomeDaylist
             },
             new BoxEl
             {
-                Key = "zune-daylist-copy", Direction = end ? 0 : 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                 Justify = end ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
                 Gap = end ? lay.DaylistPad : H.DaylistCopyGap, Padding = new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
                 Children = copyKids,
