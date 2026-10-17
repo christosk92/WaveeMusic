@@ -11,7 +11,8 @@
 //
 // THE TIERS (Z-Dialogs-Compact / -Small / -Huge; `Rules\ZuneSetupRules.cs`). The body is laid out by the record of the window tier the dialog OPENED in and the width its card left
 // it (`ZuneDialogShape`, frozen in a ref: the card is sized once, at open, so a body that re-measured would outgrow it): Compact (fields 40 tall, the preview folds behind a 40 row),
-// Small and Standard (the preview always under the form), Huge (a second pane: the form, a rule, the live report).
+// Small (the 752 card: a second pane, the form, a rule, the live report; a card too narrow for the pane keeps the report under the form), Standard and Huge (the report always
+// under the form: the Huge board draws the same 548 card).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

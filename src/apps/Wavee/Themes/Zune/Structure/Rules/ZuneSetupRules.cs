@@ -5,15 +5,17 @@
 // crash prompt (`ZuneDialogRules`, `ZuneDialogTiers`). Data, not decisions (WVTH003 allows literals only in `Rules\**`). A view reads its family's record
 // (`Of(ctx.Tier())`) and never compares a width with a number (WVTH013).
 //
-// SETUP (per WINDOW tier, `Z-Setup`, `-Compact`, `-Small`, `-Huge`): the plate is 762 x 490 with a 192 accent column at Standard and Huge, 720 x 480 with a 176 column at Small, and at
-// Compact a sheet that fills the window under the title row with a 120 accent strip across its top and a stacked footer.
+// SETUP (per WINDOW tier, `Z-Setup`, `-Compact`, `-Small`, `-Huge`): the plate is 762 x 490 with a 192 accent column at Standard and Huge, 720 x 480 with a 160 column (20 in, a 72 QR,
+// a 180 progress line, 24 / 22 / 24 / 18 around the page) at Small, and at Compact a sheet that fills the window under the title row with a 120 accent strip across its top and a
+// stacked footer.
 //
-// RELEASE NOTES (per CONTENT tier for the page, per WINDOW tier for the overlays; `Z-ReleaseNotes` and its tiers): the rail (208, 280 at Huge) at Standard and up, a picker under the
-// title below; the highlights in three columns, two (Small) or one (Compact); the title the panorama or its compact step. The viewer and the after-update plate (no board draws them,
-// owner Q18) fit the window less 16 a side; Compact stacks the plate and every control is 40.
+// RELEASE NOTES (per CONTENT tier for the page, per WINDOW tier for the overlays; `Z-ReleaseNotes` and its tiers): the rail at Small and up (160 beside a 32 gap at Small and Huge,
+// 208 beside a 64 gap at Standard), a picker under the title at Compact; the highlights in three columns (one at Compact); the title the panorama or its compact step. The viewer and
+// the after-update plate (no board draws them, owner Q18) fit the window less 16 a side; Compact stacks the plate and every control is 40.
 //
 // DIALOGS (per WINDOW tier, `Z-Dialogs`, `-Compact`, `-Small`, `-Huge`): the report and the crash prompt: Compact fills the window less 16 with the preview folded behind a 40 row, Small
-// and Standard the 548 card with the preview under the form, Huge a two-pane 1040 card.
+// the 752 two-pane card (the form and a 300 preview pane; a card the window leaves too narrow for the pane falls back to the preview under the form), Standard and Huge the 548 card
+// with the preview under the form (the Huge board draws nothing wider).
 //
 // Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
 
@@ -109,8 +111,13 @@ public static class ZuneSetupTiers
             ContentPadding = new Edges4(16f, 20f, 16f, 0f), FooterPadding = new Edges4(16f, 12f, 16f, 16f),
             FooterStacked = true, ProgressColumn = 0f, Target = 40f, QrSize = 96f, CardBasis = 280f,
         },
-        // Small (Z-Setup-Small): 720 x 480 with a 176 accent column.
-        Plate(WidthTier.Small, 720f, 480f, 176f),
+        // Small (Z-Setup-Small): 720 x 480 with a 160 accent column (20 in, the numeral at 12 / 4), a 72 QR, a 180 progress line, 24 / 22 / 24 / 18 around the page.
+        Plate(WidthTier.Small, 720f, 480f, 160f) with
+        {
+            NumeralMargin = new Edges4(12f, 4f, 0f, 0f), AccentPadding = Edges4.All(20f),
+            ContentPadding = new Edges4(24f, 22f, 24f, 0f), FooterPadding = new Edges4(24f, 12f, 24f, 18f),
+            ProgressColumn = 180f, QrSize = 72f,
+        },
         // Standard (Z-Setup): 762 x 490 with a 192 accent column.
         Plate(WidthTier.Standard, 762f, 490f, 192f),
         // Huge (Z-Setup-Huge) and Huge 4K: the same plate; it never stretches.
@@ -205,7 +212,7 @@ public sealed record ZuneReleaseNotesLayout
     public required float RailWidth { get; init; }
     public required float FrameGap { get; init; }
 
-    /// <summary>The picker's height (Compact 40, Small 32); 0 for the rail.</summary>
+    /// <summary>The picker's height (Compact 40); 0 for the rail.</summary>
     public required float PickerHeight { get; init; }
 
     /// <summary>The least hit target of every control on the page (Compact 40).</summary>
@@ -268,13 +275,13 @@ public static class ZuneReleaseNotesTiers
     [
         // Compact (Z-ReleaseNotes-Compact): a 40 picker under the title, one column of panels, controls 40.
         Page(WidthTier.Compact, compactTitle: true, rail: false, railW: 0f, frameGap: 0f, pickerH: 40f, target: 40f, bodyMaxW: float.NaN, bodyGap: 12f, columns: 1, highlightGap: 12f),
-        // Small (Z-ReleaseNotes-Small): a 32 picker, two columns of panels.
-        Page(WidthTier.Small, compactTitle: true, rail: false, railW: 0f, frameGap: 0f, pickerH: 32f, target: 0f, bodyMaxW: float.NaN, bodyGap: 16f, columns: 2, highlightGap: 12f),
+        // Small (Z-ReleaseNotes-Small): the 160 rail 32 from the body (no picker), three panels 12 apart.
+        Page(WidthTier.Small, compactTitle: true, rail: true, railW: 160f, frameGap: 32f, pickerH: 0f, target: 0f, bodyMaxW: float.NaN, bodyGap: 12f, columns: 3, highlightGap: 12f),
         // Standard (Z-ReleaseNotes): the 208 rail 64 from the body, three panels.
         Page(WidthTier.Standard, compactTitle: false, rail: true, railW: 208f, frameGap: 64f, pickerH: 0f, target: 0f, bodyMaxW: float.NaN, bodyGap: 16f, columns: 3, highlightGap: 16f),
-        // Huge (Z-ReleaseNotes-Huge): a 280 rail, the body capped at 1600 and left-aligned.
-        Page(WidthTier.Huge, compactTitle: false, rail: true, railW: 280f, frameGap: 64f, pickerH: 0f, target: 0f, bodyMaxW: 1600f, bodyGap: 20f, columns: 3, highlightGap: 16f),
-        Page(WidthTier.Huge4K, compactTitle: false, rail: true, railW: 280f, frameGap: 64f, pickerH: 0f, target: 0f, bodyMaxW: 1600f, bodyGap: 20f, columns: 3, highlightGap: 16f),
+        // Huge (Z-ReleaseNotes-Huge): the 160 rail 32 from a body capped at the board's two 760 columns and their gap (1552), left-aligned.
+        Page(WidthTier.Huge, compactTitle: false, rail: true, railW: 160f, frameGap: 32f, pickerH: 0f, target: 0f, bodyMaxW: 1552f, bodyGap: 20f, columns: 3, highlightGap: 16f),
+        Page(WidthTier.Huge4K, compactTitle: false, rail: true, railW: 160f, frameGap: 32f, pickerH: 0f, target: 0f, bodyMaxW: 1552f, bodyGap: 20f, columns: 3, highlightGap: 16f),
     ];
 
     /// <summary>The page record of content tier <paramref name="content"/>.</summary>
@@ -438,13 +445,13 @@ public static class ZuneReleaseNotesRules
 /// <summary>How the report preview sits in a form dialog.</summary>
 public enum ZuneReportPreview : byte
 {
-    /// <summary>Under the form, always shown (Small, Standard).</summary>
+    /// <summary>Under the form, always shown (Standard, Huge).</summary>
     Inline,
 
     /// <summary>Behind a 40-DIP row that expands it (Compact).</summary>
     Collapsed,
 
-    /// <summary>In a second pane beside the form, always shown (Huge).</summary>
+    /// <summary>In a second pane beside the form, always shown (Small: the 752 card).</summary>
     Pane,
 }
 
@@ -487,12 +494,14 @@ public static class ZuneDialogTiers
     [
         // Compact (Z-Dialogs-Compact): the card fills the window less 16; a 40 field, the preview behind its 40 row.
         new(WidthTier.Compact, ZuneReportPreview.Collapsed, Target: 40f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 40f, PreviewHeight: 220f, FormPaneWidth: 0f),
-        // Small and Standard (Z-Dialogs): the tuned 548 card.
-        new(WidthTier.Small, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
+        // Small (Z-Dialogs-Small): the 752 card, the form beside a 300 preview pane (the board's flexible form column is what the 704 body leaves it, 355).
+        new(WidthTier.Small, ZuneReportPreview.Pane, Target: 0f, NominalBodyWidth: ZuneDialogRules.SmallBodyWidth, TextFieldHeight: 32f, PreviewHeight: 300f,
+            FormPaneWidth: ZuneDialogRules.SmallBodyWidth - ZuneDialogRules.SmallPaneWidth - 2f * ZuneDialogRules.PaneGap - ZuneDialogRules.DividerWidth),
+        // Standard (Z-Dialogs): the tuned 548 card.
         new(WidthTier.Standard, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
-        // Huge (Z-Dialogs-Huge) and Huge 4K: the form pane and the preview pane beside it.
-        new(WidthTier.Huge, ZuneReportPreview.Pane, Target: 0f, NominalBodyWidth: ZuneDialogRules.HugeCardWidth - 48f, TextFieldHeight: 32f, PreviewHeight: 380f, FormPaneWidth: 472f),
-        new(WidthTier.Huge4K, ZuneReportPreview.Pane, Target: 0f, NominalBodyWidth: ZuneDialogRules.HugeCardWidth - 48f, TextFieldHeight: 32f, PreviewHeight: 380f, FormPaneWidth: 472f),
+        // Huge (Z-Dialogs-Huge) and Huge 4K: the same 548 card; a dialog never stretches.
+        new(WidthTier.Huge, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
+        new(WidthTier.Huge4K, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
     ];
 
     /// <summary>The record of <paramref name="window"/>.</summary>
@@ -508,7 +517,17 @@ public static class ZuneDialogTiers
     {
         var layout = Of(facts);
         float window = viewportWidth > 0f ? viewportWidth : facts.ViewportWidth;
-        return new ZuneDialogShape(layout, window > 0f ? OverlayFit.Layout.Dialog.FormBodyWidth(layout.NominalBodyWidth, window) : layout.NominalBodyWidth);
+        float body = window > 0f ? OverlayFit.Layout.Dialog.FormBodyWidth(layout.NominalBodyWidth, window) : layout.NominalBodyWidth;
+        return Shape(layout, body);
+    }
+
+    /// <summary>The shape of <paramref name="layout"/> in a card whose text region is <paramref name="body"/> wide: a two-pane body the card leaves too narrow for its preview pane (a
+    /// 640 window's 592 card) keeps the preview under the form instead, so neither column is squeezed.</summary>
+    public static ZuneDialogShape Shape(ZuneDialogLayout layout, float body)
+    {
+        if (layout.TwoPane && body < layout.FormPaneWidth + 2f * ZuneDialogRules.PaneGap + ZuneDialogRules.DividerWidth + ZuneDialogRules.PaneMinWidth)
+            layout = layout with { Preview = ZuneReportPreview.Inline, FormPaneWidth = 0f, PreviewHeight = ZuneDialogRules.InlinePreviewHeight };
+        return new ZuneDialogShape(layout, body);
     }
 }
 
@@ -518,11 +537,15 @@ public static class ZuneDialogRules
     /// <summary>The monospace face for the report.</summary>
     public const string Mono = "Cascadia Code";
 
-    /// <summary>The Huge two-pane card (1040 wide) and the stock card's body (548 less its 24 padding either side).</summary>
-    public const float HugeCardWidth = 1040f, StockBodyWidth = 548f - 48f;
+    /// <summary>The Small two-pane card (752 wide: the 800 window less 24 a side), the margin it keeps, its text region (less the engine's 24 padding either side), the preview
+    /// pane the board draws (300) and the stock card's body (548 less 24 either side).</summary>
+    public const float SmallCardWidth = 752f, SmallInset = 24f, SmallBodyWidth = 752f - 48f, SmallPaneWidth = 300f, StockBodyWidth = 548f - 48f;
 
     /// <summary>The gap either side of the divider in a two-pane body, and the divider's own width.</summary>
     public const float PaneGap = 24f, DividerWidth = 1f;
+
+    /// <summary>The preview pane is never narrower than this; a card too narrow for it keeps the preview under the form, at the height the stock card gives it.</summary>
+    public const float PaneMinWidth = 240f, InlinePreviewHeight = 220f;
 
     /// <summary>The kind switch's items at Compact are at least this wide before they wrap, and the gap between them.</summary>
     public const float KindMinWidth = 64f, KindGap = 2f;

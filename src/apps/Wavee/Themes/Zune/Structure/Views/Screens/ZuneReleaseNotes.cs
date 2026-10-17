@@ -5,14 +5,14 @@
 // (208: "releases", a word per version with its tags). `ReleaseNotes.PageHost` (a `[CoreHost]`) owns the load and its cancellation, the last-seen read BEFORE the mark-seen
 // write, the issue-state republish and the "only the latest" state, and hands this view the state, the view model and the verbs; the view draws them.
 //
-// EVERY TIER. The page reads its record, `ZuneReleaseNotesTiers.Of(ctx.Tier())` (Rules\ZuneSetupRules.cs): the rail at Standard and up, a picker under the title at Compact and
-// Small; the highlights in three columns, two or one; the title the panorama or its compact step. The first frame is already in the final tier; the rail and the picker swap
+// EVERY TIER. The page reads its record, `ZuneReleaseNotesTiers.Of(ctx.Tier())` (Rules\ZuneSetupRules.cs): the rail at Small and up (160, 208 at Standard), a picker under the title
+// at Compact; the highlights in three columns (one at Compact); the title the panorama or its compact step. The first frame is already in the final tier; the rail and the picker swap
 // with the shared fade and the rest reflows (`ZuneMotion`).
 //
-//   Frame ── head (key `zrn:head`): the title, [Compact, Small: the picker slot, its height reserved while loading]
+//   Frame ── head (key `zrn:head`): the title, [Compact: the picker slot, its height reserved while loading]
 //          └ row ── body column ── [stacked] since line
 //                │               └ ScrollView "whatsnew:<ver>" → Hero · Highlights (panel x ≤ 3) · per release [heading] · notices · groups · as-of
-//                └ ReleaseRail (Flow.For keyed by version)          absent while loading / empty / offline, and at Compact / Small
+//                └ ReleaseRail (Flow.For keyed by version)          absent while loading / empty / offline, and at Compact
 //
 // The page is a DOCUMENT, not a virtualized list: at most three highlights, eight plus the expansion of rows per group, about twenty rail rows; posters are resolved in the loader
 // and nothing here touches the disk or the network.
@@ -102,7 +102,7 @@ internal static partial class ZuneReleaseNotes
         return Frame(
             new BoxEl
             {
-                Key = "zrn:body", Direction = 1, Gap = Spacing.M, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, MaxWidth = layout.BodyMaxW,
+                Key = "zrn:body", Direction = 1, Gap = Spacing.M, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, MaxWidth = layout.BodyMaxW, Animate = ZuneMotion.ColumnCollapse,
                 Children = column.ToArray(),
             },
             rail, picker, layout);
@@ -125,7 +125,7 @@ internal static partial class ZuneReleaseNotes
     /// direction and wrap are the record's, so a crossing moves the SAME picker (its open list, its focus) instead of remounting it.</summary>
     static Element Frame(Element body, Element? rail, Element? picker, ZuneReleaseNotesLayout layout)
     {
-        bool switcher = !layout.HasRail;   // Compact and Small switch releases with a picker
+        bool switcher = !layout.HasRail;   // Compact switches releases with a picker
         string text = Loc.Get(Strings.WhatsNew.Title);
         TextEl title = layout.CompactTitle ? R.Type.PanoramaCompact(text) : R.Type.Panorama(text);
         var head = new List<Element>(2)
@@ -225,7 +225,7 @@ internal static partial class ZuneReleaseNotes
         return new BoxEl { Key = "zrn:hero", Direction = 1, Gap = Spacing.S, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = kids.ToArray() };
     }
 
-    // ══ THE RELEASE PICKER (Compact and Small) ═══════════════════════════════════════════════════════════════════════
+    // ══ THE RELEASE PICKER (Compact) ═══════════════════════════════════════════════════════════════════════
 
     /// <summary>What the picker is drawn from: the releases (newest first), the one on screen, the verb that opens another and the tier's hit target.</summary>
     sealed record PickerArgs(IReadOnlyList<ReleaseNotesIndexEntry> Rows, string Selected, Action<string> Open, float Target);

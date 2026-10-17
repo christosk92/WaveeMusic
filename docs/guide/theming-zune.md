@@ -586,4 +586,32 @@ _Not built yet._
 
 ## ZT8: screens, overlays, dialogs and states tiers
 
-_Not built yet._
+Settings, setup, release notes, the overlays and the two form dialogs, tuned per tier against their -Compact, -Small and -Huge boards (`Z-Settings-*`, `Z-Theme-Options-*`, `Z-Setup-*`,
+`Z-ReleaseNotes-*`, `Z-Overlays-*`, `Z-Dialogs-*`). Numbers only moved in the records (`ZuneSettingsTiers`, `ZuneSetupTiers`, `ZuneReleaseNotesTiers`, `ZuneDialogTiers`,
+`ZuneOverlayTiers`); no key, no node identity and no verb changed.
+
+**Settings** (content tier). Compact: the 64/72 title, a wrapping row of 40-tall section words, rows stacked, the short choices the board's wrapping 40-tall chips (buttons in a
+wrapping row, the picked one on the accent: the segmented control is one row and clips), the picker 2-up (88 tall, name and line), 40 swatches. Small: the 180 list of 30-tall 18/24
+words, the 520 column, rows `140 | rest` that wrap the control under the label when the column is too narrow (a 640 window leaves 380), the picker 4-up (68 tall, the name alone,
+12 apart), 28 swatches. Huge and Huge 4K: the 150/160 panorama, a 260 list of 52-tall 24/32 words 40 from the 760 column, rows `220 | rest`, the picker 4-up (120 tall), 36 swatches.
+The section list's box (`ColumnCollapse`) and the column resize on a size channel; the words keep their nodes.
+
+**Setup** (window tier). Small: 720 x 480, a 160 accent column (20 in, the numeral at 12 / 4), a 72 QR, a 180 progress line, 24 / 22 / 24 / 18 around the page. Compact, Standard and
+Huge were already the boards'; Huge 4K is Huge's (the plate never stretches).
+
+**Release notes** (content tier). The rail is on at Small too (160, 32 from the body, three panels 12 apart: Z-ReleaseNotes-Small draws no picker); Huge's rail is 160 (the board's) 32
+from a body capped at the two 760 columns and their gap (1552). Compact keeps the 40 picker. The body resizes on a size channel when the rail comes or goes.
+
+**Overlays and dialogs** (window tier). `OverlayPolicy.Small` (a contract addition, optional) splits Small from Standard for the core hosts, so the report and crash dialogs are the
+752 two-pane card at Small (Z-Dialogs-Small: the form, a rule, the live report in a 300 pane; a card the window leaves too narrow for the pane keeps the report under the form) and the 548
+plate at Standard AND Huge (Z-Dialogs-Huge draws nothing wider: the 1040 card Z8b copied from Classic is gone). Huge 4K has its own overlay record: the chrome row a panel and a sheet keep
+clear is the frame's 56, not Huge's 48 (ZT1).
+
+**States.** The Compact offline strip (40, the short notice, a 40 retry word) and vacancy (the quiet title, stacked 40 targets) were already the Compact board's. The page states
+(loading skeletons, empty libraries and playlists, the offline artist) belong to the pages' own lanes (Z9, ZT5-ZT7).
+
+**Conflicts with the boards (the plan and the owner win).** Settings at Compact is a drill-in on the boards (a master list of 60-tall rows with a hint and a chevron, a section page with
+a back link and the section's name as its 64/72 title); the core page state is one always-open tab (`TabCell`), so Compact keeps the 40-tall row above the open section. Dialogs at
+Compact are a full-bleed sheet from the title bar to the window's foot on the board; the core fit (`OverlayFit.Fit`) centres a card inside `EdgeY`, so the card fills the window less
+16. The offline strip is amber and 40 tall on Z-Overlays-Compact and grey and 56 on Z-State-Error-Compact; Z-Overlays-Compact is followed. The theme-options boards say 110 / 240
+for the label column where the Appearance boards say 140 / 220; the page's own value is used for both.

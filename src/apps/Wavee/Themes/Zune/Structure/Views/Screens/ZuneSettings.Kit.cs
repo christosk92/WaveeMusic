@@ -79,7 +79,7 @@ internal abstract class ZuneScreenComponent : CommonTierComponent
 /// <param name="Labels">The choices' words, in order.</param>
 /// <param name="Current">The selected index NOW (read each render: the document is the truth).</param>
 /// <param name="Pick">The writer: called with the index picked.</param>
-/// <param name="Chips">The choices are short enough to sit as a row of chips (the tier may still fold them into a combo).</param>
+/// <param name="Chips">The choices are short enough to sit as a row of chips (a row of chips; at a hit-target tier a wrapping row of buttons that tall).</param>
 /// <param name="Enabled">Whether the control is live (read each render).</param>
 /// <param name="Descriptions">A combo's per-item descriptions, or null.</param>
 /// <param name="ItemEnabled">A combo's per-item enablement, or null.</param>
@@ -125,12 +125,12 @@ internal sealed class ZuneKit
         var controls = new BoxEl
         {
             Key = key + ":control", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinWidth = 0f,
-            Grow = 1f, Shrink = 1f, Basis = stack ? float.NaN : 0f, AlignSelf = FlexAlign.Stretch,
+            Grow = 1f, Shrink = 1f, Basis = stack || Lay.RowsWrap ? float.NaN : 0f, AlignSelf = FlexAlign.Stretch,
             Children = control is null ? [] : [control],
         };
         return new BoxEl
         {
-            Key = key, Direction = (byte)(stack ? 1 : 0), Gap = stack ? Z.RowStackGap : Z.RowColumnGap,
+            Key = key, Direction = (byte)(stack ? 1 : 0), Wrap = Lay.RowsWrap && !stack, Gap = stack ? Z.RowStackGap : Z.RowColumnGap,
             AlignItems = stack ? FlexAlign.Stretch : FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = Lay.Target,
             Opacity = enabled ? 1f : Z.DisabledOpacity,
             Children = [labels, controls],
@@ -192,7 +192,7 @@ internal sealed class ZuneKit
         return CheckBox.Create(label, isChecked, onChange, style: style, isEnabled: enabled, parts: parts);
     }
 
-    /// <summary>A choice cell: chips where the choices are short and the tier has the room, else the ruled combo.</summary>
+    /// <summary>A choice cell: chips where the choices are short, else the ruled combo.</summary>
     public Element Choice(string id, ZuneChoice choice)
         => Embed.Comp(() => new ChoiceCell(choice)) with { Key = choice.KeyFor(id) };
 
@@ -295,7 +295,25 @@ internal sealed class ZuneKit
             UseEffect(() => _selected.SetIfChanged(current), DepKey.From(current));
             bool enabled = choice.Enabled?.Invoke() ?? true;
 
-            if (choice.Chips && lay.ChipsStay)
+            if (choice.Chips && lay.Touch)
+            {
+                // Compact (Z-Settings-Appearance-Compact): the board's chips WRAP, each a 40-tall button, the picked one on the accent. The segmented control is one row and clips
+                // four words in a 368 column, so a hit-target tier draws the same choice as buttons in a wrapping row.
+                var chips = new Element[choice.Labels.Count];
+                for (int i = 0; i < chips.Length; i++)
+                {
+                    int at = i;
+                    chips[i] = Button.Create(choice.Labels[i], () => choice.Pick(at), at == current ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Large, isEnabled: enabled)
+                        with { Key = "zs:chip:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), MinWidth = lay.Target };
+                }
+                return new BoxEl
+                {
+                    Direction = 0, Wrap = true, Gap = Z.ChipGap, MinWidth = 0f, MinHeight = lay.Target, AlignItems = FlexAlign.Center, Opacity = enabled ? 1f : Z.DisabledOpacity,
+                    Children = chips,
+                };
+            }
+
+            if (choice.Chips)
             {
                 var items = new SegmentedItem[choice.Labels.Count];
                 for (int i = 0; i < items.Length; i++) items[i] = new SegmentedItem(choice.Labels[i]);
