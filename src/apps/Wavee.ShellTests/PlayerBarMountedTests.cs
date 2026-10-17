@@ -124,6 +124,8 @@ public sealed class PlayerBarMountedTests(ShellHost host)
         => host.Mounted(shell =>
         {
             shell.RunFrames(10);
+            // the bar's level settles on the dock's measured width (a previous fact may leave the window at another size): wait for the Wide row
+            Until(shell, () => !shell.Find("queue").IsNull && shell.Find("expand").IsNull, "the Wide level's row", maxFrames: 120);
             var scene = shell.Host.Scene;
 
             var row = Node(shell, "player-row");

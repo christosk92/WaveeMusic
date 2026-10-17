@@ -281,6 +281,7 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
             double paneOffset = Math.Min(pane.MaxOffset, 120.0);
             pane.ScrollTo(paneOffset, ScrollMove.Immediate);
             shell.RunFrames(5);
+            paneOffset = pane.LastShown;   // where the pane actually rests (its range can still settle by a DIP or two after the open)
 
             // ── into the one column: the page falls under 600 ──
             Resized(shell, 400f, 560f);
