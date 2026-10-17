@@ -36,6 +36,12 @@ internal static class ZuneDetailKit
     /// <summary>The position-only FLIP a keyed row takes when a row above it arrives or leaves.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
 
+    /// <summary>A row at the END of a column whose own height grows when a fact lands late (the release panel's released date, its "other
+    /// versions"): it FLIPs when pushed and eases its height open (a reflow clipped from the bottom, anchored at its top), so the rows under it
+    /// glide instead of snapping and nothing above it moves.</summary>
+    public static readonly LayoutTransition GrowShove = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>A keyed row present from the first frame: it only ever gets pushed.</summary>
     public static BoxEl Row(string key, Element child) => new() { Key = key, Direction = 1, MinWidth = 0f, Layout = Shove, Children = [child] };
 
@@ -377,22 +383,39 @@ internal static class ZuneDetailKit
     /// may wrap breaks only between its " · " runs (<see cref="ZuneDetailRules.Glued"/>), so no run leaves an orphan word ("12" / "min") on the next line.</summary>
     public static Element Meta(Detail.Identity id, float width, ZuneDetailLayout lay, int lines = 1)
     {
+        // The row's height is RESERVED for every line the meta may take (loading bar, one-line meta and wrapped meta alike): when "· 41 min"
+        // lands the line wraps inside its own slot and nothing under it (the rings, released, label, copyright, other versions) moves.
+        float reserve = lay.MetaLine * Math.Max(1, lines);
         if (MetaText(id) is { } meta)
         {
             string text = lines > 1 ? Z.Glued(meta) : meta;
-            return R.Type.DenseMeta(text) with
+            return new BoxEl
             {
-                Size = lay.MetaSize, LineHeight = lay.MetaLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
-                Width = width, MinWidth = 0f, MaxLines = lines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
+                Width = width, Height = reserve, Direction = 1, Shrink = 0f, MinWidth = 0f,
+                Children =
+                [
+                    R.Type.DenseMeta(text) with
+                    {
+                        Size = lay.MetaSize, LineHeight = lay.MetaLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
+                        Width = width, MinWidth = 0f, MaxLines = lines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
+                    },
+                ],
             };
         }
         return new BoxEl
         {
-            Width = width, Height = lay.MetaLine, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
+            Width = width, Height = reserve, Direction = 1, Shrink = 0f, MinWidth = 0f,
             Children =
             [
-                new SkelRegionEl(Pending: s_true, Failed: s_false, Content: s_metaShimmer, ShimmerSource: null, OnFailed: null,
-                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+                new BoxEl
+                {
+                    Height = lay.MetaLine, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
+                    Children =
+                    [
+                        new SkelRegionEl(Pending: s_true, Failed: s_false, Content: s_metaShimmer, ShimmerSource: null, OnFailed: null,
+                            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+                    ],
+                },
             ],
         };
     }

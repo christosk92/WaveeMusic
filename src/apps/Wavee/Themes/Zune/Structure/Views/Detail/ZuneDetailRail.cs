@@ -88,7 +88,7 @@ internal static class ZuneDetailRail
         if (slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)));
         if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
         if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-            kids.Add(new BoxEl { Key = "rail:release", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, Z.NotesTop - lay.RailGap, 0f, 0f), Children = [release(false)] });
+            kids.Add(new BoxEl { Key = "rail:release", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = K.GrowShove, Enter = K.FadeUp, Margin = new Edges4(0f, Z.NotesTop - lay.RailGap, 0f, 0f), Children = [release(false)] });
         if (p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } description) kids.Add(K.LateRow("rail:desc", description));
 
         return new BoxEl
@@ -132,7 +132,7 @@ internal static class ZuneDetailRail
             var lay = p.Layout;
             return new BoxEl
             {
-                Direction = 0, Width = p.Width, Height = lay.MetaLine, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Direction = 0, Width = p.Width, Height = lay.MetaLine * Math.Max(1, lay.MetaLines), Gap = Spacing.XS, AlignItems = FlexAlign.Start, MinWidth = 0f,
                 Children =
                 [
                     R.Type.DenseMeta(filtered.Count) with
@@ -231,7 +231,7 @@ internal static class ZuneDetailRail
         {
             if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("hdr:prerelease", pre()));
             if (spec.Config.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-                kids.Add(new BoxEl { Key = "hdr:release", Direction = 1, MinWidth = 0f, Children = [release(false)] });
+                kids.Add(new BoxEl { Key = "hdr:release", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = K.GrowShove, Enter = K.FadeUp, Children = [release(false)] });
         }
         return new BoxEl
         {
