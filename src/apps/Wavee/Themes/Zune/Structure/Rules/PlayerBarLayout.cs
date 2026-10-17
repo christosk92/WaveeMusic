@@ -84,8 +84,6 @@ public static class ZunePlayerLayout
     /// <summary>A step word's inset (the board's 0 6), the speed word's width (48).</summary>
     public const float StepPadX = 6f, SpeedW = 48f;
 
-    /// <summary>The gap between the transport row and the times under it (the board's 2).</summary>
-    public const float TimesGap = 2f;
 
     // ── the tools ────────────────────────────────────────────────────────────────────────────────────────────────────
 
