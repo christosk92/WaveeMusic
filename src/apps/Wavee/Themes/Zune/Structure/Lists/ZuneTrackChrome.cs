@@ -121,6 +121,7 @@ internal static class ZuneTrackChrome
     static Element GroupHeader(Func<Track.DateGroupHead?> head, float padX)
     {
         var meta = R.Type.TrackMeta("");
+        var group = R.Type.Heading("");
         return new BoxEl
         {
             Direction = 0, Height = ZuneListRules.GroupHeadHeight, AlignItems = FlexAlign.End, Gap = ZuneListRules.GroupHeadGap,
@@ -128,9 +129,11 @@ internal static class ZuneTrackChrome
             Padding = new Edges4(padX, 0f, padX, ZuneListRules.GroupHeadPadBottom),
             Children =
             [
+                // The group's name in the heading voice's light face at 22 (Z-Liked "this week 26"), its count beside it in the meta voice.
                 new TextEl(Prop.Of(() => head()?.Label ?? ""))
                 {
-                    Size = meta.Size, LineHeight = meta.LineHeight, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Shrink = 0f,
+                    FontFamily = group.FontFamily, Size = ZuneListRules.GroupHeadSize, LineHeight = ZuneListRules.GroupHeadLine, Weight = group.ResolvedWeight,
+                    Color = Tok.TextPrimary, MaxLines = 1, Shrink = 0f,
                 },
                 new TextEl(Prop.Of(() => head()?.Count ?? ""))
                 {

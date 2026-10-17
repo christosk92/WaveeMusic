@@ -90,7 +90,7 @@ internal static class ZuneTrackTable
         var cells = new Element[Track.CellCount(in set)];
         int i = 0;
 
-        if (!set.IndexHidden) cells[i++] = NumberCell(r);
+        if (!set.IndexHidden) cells[i++] = NumberCell(r, set.HoverActions);
         if (set.Heart) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Quiet), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(Artwork(r, artSize), CellKey.Art);
         cells[i++] = TitleCell(r, in set);
@@ -103,7 +103,7 @@ internal static class ZuneTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(PlaysCell(r), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(r), CellKey.Tempo);
         if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Quiet), CellKey.HeartTrailing);
-        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r), CellKey.Duration);
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r, set.HoverActions), CellKey.Duration);
         // The Compact row's "..." is a 40 target shown on every row (Z-State-Rows-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
             ? Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused, box: ZuneListRules.CompactTarget, atRest: true)
@@ -125,14 +125,14 @@ internal static class ZuneTrackTable
     /// <summary>Two shapes under one keyed ZStack cell, swapped by <c>Flow.Show</c> on the rare withheld flip: the reveal shape (the rest layer
     /// fades out, the transport fades in on row hover) and the rest-only shape. A ZStack hands its child the whole lane, so every layer
     /// centres in the lane the header's "#" sits over.</summary>
-    static Element NumberCell(BoundRow r)
+    static Element NumberCell(BoundRow r, bool leading)
     {
         Element reveal = new BoxEl
         {
             ZStack = true, MinWidth = 0f, ClipToBounds = true, Grow = 1f, AlignSelf = FlexAlign.Stretch,
             Children =
             [
-                RestLayer(r, hoverFade: true),
+                RestLayer(r, hoverFade: true, leading),
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Center,
@@ -167,7 +167,7 @@ internal static class ZuneTrackTable
         Element restOnly = new BoxEl
         {
             ZStack = true, MinWidth = 0f, ClipToBounds = true, Grow = 1f, AlignSelf = FlexAlign.Stretch,
-            Children = [RestLayer(r, hoverFade: false)],
+            Children = [RestLayer(r, hoverFade: false, leading)],
         };
         return new BoxEl
         {
@@ -192,7 +192,7 @@ internal static class ZuneTrackTable
 
     /// <summary>The rest layer: the number (with the chart mark) as a <c>Visible</c> flip (Zune shows the number for the album's top track too:
     /// no star), the accent bars and the buffering ring as real mounts.</summary>
-    static Element RestLayer(BoundRow r, bool hoverFade)
+    static Element RestLayer(BoundRow r, bool hoverFade, bool leading)
     {
         var numeral = R.Type.Numeral("");
         Element number = new BoxEl
@@ -216,7 +216,9 @@ internal static class ZuneTrackTable
         };
         return new BoxEl
         {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            // The boards set an album's number at the lane's start (Z-Album: 4 in), not centred.
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = leading ? FlexJustify.Start : FlexJustify.Center,
+            Padding = leading ? new Edges4(ZuneListRules.NumberInset, 0f, 0f, 0f) : default,
             HoverOpacity = hoverFade ? 0f : float.NaN,
             Children =
             [
@@ -507,7 +509,7 @@ internal static class ZuneTrackTable
 
     /// <summary>The time, or for a withheld row its short reason at the reason rung with the long reason as its tooltip (a real mount on the
     /// rare withheld flip, so a playable row carries no tooltip host). Z-State-Rows: "unavailable · 45% ink, says why in the time column".</summary>
-    static Element DurationCell(BoundRow r)
+    static Element DurationCell(BoundRow r, bool hoverActions)
     {
         Func<bool> withheld = () =>
         {
@@ -521,13 +523,35 @@ internal static class ZuneTrackTable
             Size = ZuneListRules.ReasonSize, LineHeight = R.Type.DenseMeta("").LineHeight,
             Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
-        return new BoxEl
+        var time = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f,
             Children =
             [
-                clock,
+                hoverActions ? new BoxEl { Direction = 0, Shrink = 0f, Opacity = 1f, HoverOpacity = 0f, Children = [clock] } : clock,
                 Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix)))),
+            ],
+        };
+        if (!hoverActions) return time;
+        // The heart and the "..." take the time's place on row hover and focus (Z-Album, Z-Liked): no lane of their own, no reserve.
+        return new BoxEl
+        {
+            ZStack = true, Width = Track.Lane.DurationHover, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+            Children =
+            [
+                time with { Width = Track.Lane.DurationHover, AlignSelf = FlexAlign.Stretch },
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
+                    Opacity = Prop.Of(() => r.Focused ? 1f : 0f), HoverOpacity = 1f,
+                    Children =
+                    [
+                        // The versions chevron (a row with versions) leads the cluster: it has no lane of its own here.
+                        new BoxEl { Width = Spacing.XXL, Direction = 0, Shrink = 0f, Children = [ExpandCell(r)] },
+                        new BoxEl { Width = RowMetrics.HeartCol, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Heart(r)] },
+                        new BoxEl { Width = ZuneListRules.HoverMoreBox, Direction = 0, Children = [Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused)] },
+                    ],
+                },
             ],
         };
     }
