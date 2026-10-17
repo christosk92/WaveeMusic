@@ -311,6 +311,7 @@ public sealed partial class ZuneTierLayoutTests
 
             ArtistChrome()!.Views[0].Go();
             shell.RunFrames(120);   // the glide settles
+            viewport = scene.AbsoluteRect(scroll[0].Node);   // the viewport's own top after the glide: the page's top moved 32 under the click (see the report)
 
             // Some section holder stands at the viewport's top plus the clearance; the 56 of a band inside the viewport would put it 40 lower.
             float best = float.MaxValue;
