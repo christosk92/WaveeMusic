@@ -309,7 +309,8 @@ versions separately under `v*` and is not tracked in this file.)
   point where Charts turns from a row of cards you page through into a list of tiles (or back) used to swap them in one frame and shove the
   sections below; the two now cross-fade while the sections below slide to their new place. Search's Best matches kept the row size it opened
   with: in a narrow window its rows now become the narrow 60-tall rows with smaller covers (and grow back to 64 when widened) without being
-  rebuilt, and the list resizes smoothly.
+  rebuilt, and the list resizes smoothly. Its pages also follow the new width (three rows in one column, two by two, three by three) instead of
+  keeping the grid it opened with.
 - **Resizing the window past a size step no longer rebuilds parts of the page.** Crossing 528, 1008 or 1920 wide (or the page widths 600,
   880 and 1600) used to throw away Home's shelves, the "See all" grid, Browse and Search shelves and grids, the Recents tabs, the Settings
   tab strip and number boxes, the What's new picker, cards and sections, the log list and the artist page's shelves, chart and albums, and
