@@ -117,10 +117,25 @@ public sealed partial class ZuneTierLayoutTests
         Assert.Equal(s.Width, bar.W, 0.5f);
 
         var disc = scene.AbsoluteRect(Node(shell, ZunePlayerLayout.DiscKey));
+        var inBar = new HashSet<NodeHandle>(Subtree(scene, Node(shell, ZunePlayerLayout.BarKey)));
+        RectF InBar(string key) => scene.AbsoluteRect(shell.FindPrefix(key).Single(f => f.Key == key && inBar.Contains(f.Node)).Node);
+
+        // The rhythm (ZT2): the seek line lies on the top edge, so the row is the whole bar; the cover and the disc are centred in it.
+        float barFoot = bar.Y + bar.H;
+        Assert.Equal(bar.H, scene.AbsoluteRect(Node(shell, ZunePlayerLayout.RowKey)).H, 0.5f);
+        var art = InBar("art");
+        Assert.True(MathF.Abs((art.Y - bar.Y) - (barFoot - art.Y - art.H)) <= 1f, $"{size}: the cover sits {art.Y - bar.Y} / {barFoot - art.Y - art.H}");
+
+        // The margins (ZT2): the cover starts on the frame's gutter (the mini bar's 16 at Compact).
+        var leftCol = scene.AbsoluteRect(Node(shell, ZunePlayerLayout.LeftKey));
+        var lookNow = rec.Form == ZuneBarForm.Mini ? ZunePlayerTiers.Look(ZuneBarLevel.Mini) : null;
         if (rec.Form == ZuneBarForm.Mini)
         {
             Assert.Equal(ZuneBarLevel.Mini, rec.MaxLevel);
+            Assert.Equal(ZunePlayerTiers.RowInsets(s.Window, lookNow!).Left, leftCol.X, 0.5f);
+            Assert.Equal(ZuneTiers.FrameOf(tiers).Gutter, leftCol.X, 0.5f);
             Assert.True(disc.W >= 40f - 0.5f && disc.H >= 40f - 0.5f, $"{size}: the mini bar's disc is {disc.W} x {disc.H}, under 40 x 40");
+            Assert.True(MathF.Abs((disc.Y - bar.Y) - (barFoot - disc.Y - disc.H)) <= 1f, $"{size}: the mini disc is off centre");
             return;
         }
 
@@ -133,6 +148,21 @@ public sealed partial class ZuneTierLayoutTests
         if (!s.Resized) Assert.Equal(ExpectedLevel(s.Width, rec), look!.Level);
         Assert.Equal(look!.Disc, disc.W, 0.5f);                                    // 40, 48 at Huge 4K
         Assert.Equal(disc.W, disc.H, 0.5f);
+
+        // Left on the frame's gutter, the last tool's glyph on the gutter at the right.
+        var insets = ZunePlayerTiers.RowInsets(s.Window, look);
+        Assert.Equal(ZuneTiers.FrameOf(tiers).Gutter, insets.Left);
+        Assert.Equal(insets.Left, leftCol.X, 0.5f);
+        var tools = scene.AbsoluteRect(Node(shell, ZunePlayerLayout.RightKey));
+        Assert.Equal(s.Width - insets.Right, tools.X + tools.W, 0.5f);
+        Assert.Equal(ZuneTiers.FrameOf(tiers).Gutter, s.Width - (tools.X + tools.W) + (look.Button - look.Glyph) / 2f, 1f);
+
+        // The transport cluster: the times the look's gap under the disc row, the whole cluster centred with even air.
+        var times = InBar("times");
+        Assert.Equal(look.TimesGap, times.Y - (disc.Y + disc.H), 0.75f);
+        float top = disc.Y - bar.Y, bottom = barFoot - (times.Y + times.H);
+        Assert.True(MathF.Abs(top - bottom) <= 1f, $"{size}: the transport cluster has {top} above and {bottom} below");
+        Assert.True(bottom >= 6f - 0.5f, $"{size}: the times sit {bottom} from the bar's foot");
     });
 
     /// <summary>The level a window <paramref name="width"/> wide reaches fresh: the highest whose start it passes, clamped to the tier's range.</summary>

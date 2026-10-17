@@ -67,6 +67,9 @@ internal static partial class ZunePlayerBar
         bool mini = tier.Form == ZuneBarForm.Mini;
         bool ends = !mini && ZuneOptions.Times() == SeekTimes.AtSliderEnds;
         float seekRowH = ends ? ZunePlayerTiers.SeekEndsRowH : ZunePlayerTiers.SeekLineH;
+        // The row's insets: the frame's gutter on the left, the last tool's glyph on the gutter on the right (ZT2's margin audit).
+        var insets = ZunePlayerTiers.RowInsets(tier.Tier, look);
+        bool reduced = ctx.Reduced;
 
         // ── hooks (positional, stable order, every form) ──
         var titleLinkHover = rc.UseSignal(false);
@@ -165,7 +168,7 @@ internal static partial class ZunePlayerBar
             row = new BoxEl
             {
                 Key = RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = look.RowGap,
-                Padding = new Edges4(look.PadLeft, 0f, look.PadRight, 0f), Animate = L.MoveMotion,
+                Animate = L.MoveMotion,
                 Children = [left, transportRow],
             };
         }
@@ -176,7 +179,7 @@ internal static partial class ZunePlayerBar
             var centre = new BoxEl
             {
                 Key = "centre", Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Gap = L.TimesGap, Animate = L.MoveMotion,
+                Gap = look.TimesGap, Animate = L.MoveMotion,
                 // A drop on the transport is PLAY NEXT: a front-insert, never an immediate playback change.
                 DropTarget = Drop.Target<DragPayload>(Drag.Resource,
                     accepts: static p => p.CanCopyTracks,
@@ -201,10 +204,18 @@ internal static partial class ZunePlayerBar
             row = new BoxEl
             {
                 Key = RowKey, Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = look.RowGap,
-                Padding = new Edges4(look.PadLeft, 0f, look.PadRight, 0f), Animate = L.MoveMotion,
+                Animate = L.MoveMotion,
                 Children = [left, centre, right],
             };
         }
+
+        // The insets are boxes either side of the row, not its padding: a crossing that changes the gutter (24 -> 48 at 1008, 48 -> 64 at
+        // 3200) eases their widths through real layout and the whole row rides them (a size channel; padding would snap the row's contents).
+        row = new BoxEl
+        {
+            Key = "row-frame", Direction = 0, Grow = 1f,
+            Children = [Inset("inset-left", insets.Left, reduced), row, Inset("inset-right", insets.Right, reduced)],
+        };
 
         // ── the seek row (a layer over the bar's top edge) ────────────────────────────────────────────────────────────
         Element line = mini
@@ -228,18 +239,24 @@ internal static partial class ZunePlayerBar
         var seekRow = new BoxEl
         {
             Key = SeekRowKey, Height = seekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
-            Padding = ends ? new Edges4(look.PadLeft, 0f, look.PadRight, 0f) : default,
+            Padding = ends ? insets : default,
             Gap = ends ? look.TransportGap : 0f, Animate = L.MoveMotion,
             Children = seekKids.ToArray(),
         };
 
-        var layers = new List<Element>(3)
-        {
-            new BoxEl
+        // The 2-px seek line lies ON the bar's top edge (the board's absolute line), so the transport row is the whole bar and its cluster is
+        // centred with even air above and below (6 / 6 in the 72, 9 / 9 in the 88); the 16-tall row with the times at its ends (AtSliderEnds)
+        // takes its own room instead.
+        Element body = ends
+            ? new BoxEl
             {
                 Key = "body", Grow = 1f, Direction = 1,
                 Children = [new BoxEl { Key = "seek-room", Height = seekRowH, Shrink = 0f, Animate = L.MoveMotion, HitTestVisible = false }, row],
-            },
+            }
+            : new BoxEl { Key = "body", Grow = 1f, Direction = 1, Children = [row] };
+        var layers = new List<Element>(3)
+        {
+            body,
             new BoxEl { Key = "seek-layer", Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [seekRow] },
         };
         // A load past the core's sweep delay: the line becomes a sweep (the rail fades under it, keeping its scrub state).
@@ -253,7 +270,6 @@ internal static partial class ZunePlayerBar
         // The slot (72, 88 at Huge 4K) and the bar in it (the mini 64 at Compact) change height on a crossing: both ease through real layout (a
         // size channel), so the page above yields frame by frame and the bar's top edge rises with no position slide (ZT2; the engine's
         // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing).
-        bool reduced = ctx.Reduced;
         return new BoxEl
         {
             Direction = 1, Justify = FlexJustify.End, Height = tier.SlotH, Shrink = 0f, IsolateLayout = true,
@@ -273,6 +289,12 @@ internal static partial class ZunePlayerBar
             ],
         };
     }
+
+    /// <summary>One of the row's insets: a fixed width that eases through real layout when the tier changes it.</summary>
+    static Element Inset(string key, float width, bool reduced) => new BoxEl
+    {
+        Key = key, Width = width, Shrink = 0f, HitTestVisible = false, Animate = reduced ? null : ZunePlayerTiers.InsetMotion,
+    };
 
     /// <summary>"playing on …" (the accent, above the title), the title (a link to the album or the show) and the artists.</summary>
     static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)

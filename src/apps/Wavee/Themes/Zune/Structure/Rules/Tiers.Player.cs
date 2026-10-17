@@ -24,6 +24,13 @@
 // layout (`SlotMotion`, `BarMotion`: size channels), so the page above and the bar's foot ride the re-solve; a position slide would be snapped
 // by the engine's reflow-shove rule, as the title bar reflows on the same crossing (ZT1's lesson).
 //
+// THE BAR'S MARGINS AND RHYTHM (ZT2, the owner's review "check margins professionally"). Vertically: the 2-px seek line lies on the bar's top
+// edge (it takes no room), and the transport cluster (the 40 disc row, 4, the 16 times; 48, 6, 16 at Huge 4K) is centred in the whole bar:
+// 6 / 6 of air in the 72, 9 / 9 in the 88; the 48 cover sits 12 / 12 (the mini 44 in the 64: 10 / 10). Horizontally: the row's left inset is
+// the frame's gutter per window tier (16 / 24 / 48 / 48 / 64: the cover lines up with the band and the page titles), its right inset puts the
+// last tool's glyph on the same gutter (`RowInsets`); the identity column keeps the board's 12 between cover and words, the transport its
+// 12 / 16 between buttons, the tools the board's 2 (each target carries its own air). The insets are boxes that ease on a crossing.
+//
 // THE PANEL PER WINDOW TIER is `Tiers.Panel.cs` (`ZunePanelTiers`).
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
@@ -90,9 +97,11 @@ public sealed record ZunePlayerBarTier(WidthTier Tier, ZuneBarForm Form, ZuneBar
 /// <param name="FromSize">The accent "playing on" line above the title: 11/14, 13/18 at Huge 4K.</param>
 /// <param name="FromLine">Its line height.</param>
 /// <param name="VolumeW">The inline volume line: 96, 128 from wide.</param>
+/// <param name="TimesGap">Between the transport row and the times under it: 4, 6 at Huge 4K (ZT2, the owner's review: the board's 2 read as
+/// jammed under the disc). The cluster (40 + 4 + 16, 48 + 6 + 16) is centred in the whole bar, 6 / 6 of air in the 72, 9 / 9 in the 88.</param>
 public sealed record ZuneBarLook(ZuneBarLevel Level, float IdW, float Art, float RowGap, float PadLeft, float PadRight, float Button, float Glyph,
     float Disc, float DiscGlyph, float TransportGap, float WordSize, float TitleSize, float TitleLine, float SubSize, float SubLine,
-    float FromSize, float FromLine, float VolumeW);
+    float FromSize, float FromLine, float VolumeW, float TimesGap);
 
 /// <summary>Zune's play bar and panel per tier (public so the tests pin them).</summary>
 public static class ZunePlayerTiers
@@ -111,18 +120,30 @@ public static class ZunePlayerTiers
     private static readonly ZuneBarLook[] s_looks =
     [
         new(ZuneBarLevel.Mini, IdW: 0f, Art: 44f, RowGap: 12f, PadLeft: 16f, PadRight: 8f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 4f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 16f, FromSize: 11f, FromLine: 14f, VolumeW: 96f),
+            TransportGap: 4f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 16f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
         new(ZuneBarLevel.Narrow, IdW: 200f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f),
+            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
         new(ZuneBarLevel.Medium, IdW: 260f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f),
+            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
         new(ZuneBarLevel.Full, IdW: 320f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f),
+            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
         new(ZuneBarLevel.Wide, IdW: 420f, Art: 48f, RowGap: 32f, PadLeft: 48f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 128f),
+            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 128f, TimesGap: 4f),
         new(ZuneBarLevel.Big, IdW: 520f, Art: 64f, RowGap: 32f, PadLeft: 64f, PadRight: 12f, Button: 44f, Glyph: 19f, Disc: 48f, DiscGlyph: 24f,
-            TransportGap: 16f, WordSize: 15f, TitleSize: 17f, TitleLine: 22f, SubSize: 15f, SubLine: 20f, FromSize: 13f, FromLine: 18f, VolumeW: 128f),
+            TransportGap: 16f, WordSize: 15f, TitleSize: 17f, TitleLine: 22f, SubSize: 15f, SubLine: 20f, FromSize: 13f, FromLine: 18f, VolumeW: 128f, TimesGap: 6f),
     ];
+
+    /// <summary>The transport row's insets in window tier <paramref name="window"/> at <paramref name="look"/> (ZT2's margin audit): the
+    /// left inset is the frame's gutter (16 / 24 / 48 / 48 / 64), so the cover lines up with the band and every page title above it; the
+    /// right inset puts the last tool's GLYPH on the same gutter (the gutter less the target's own air, (button - glyph) / 2: 12 at Small,
+    /// 36 at Standard and Huge, 52 at Huge 4K). The mini bar keeps the board's 16 / 8 (its gutter is 16; its last target is the 40 next).
+    /// The board's 24 at Standard is the conflict this settles (the owner: the bar's gutter is the frame's).</summary>
+    public static Edges4 RowInsets(WidthTier window, ZuneBarLook look)
+    {
+        if (look.Level == ZuneBarLevel.Mini) return new Edges4(look.PadLeft, 0f, look.PadRight, 0f);
+        float gutter = ZuneTiers.Frame(window).Gutter;
+        return new Edges4(gutter, 0f, MathF.Round(MathF.Max(0f, gutter - (look.Button - look.Glyph) / 2f)), 0f);
+    }
 
     /// <summary>The look of <paramref name="level"/>.</summary>
     public static ZuneBarLook Look(ZuneBarLevel level) => s_looks[Math.Clamp((int)level, 0, s_looks.Length - 1)];
@@ -206,6 +227,12 @@ public static class ZunePlayerTiers
     /// <summary>The bar inside its slot across a crossing (the mini 64 ↔ 72 at 640, 72 ↔ 88 at 3200): the same reflow, so its top edge rises
     /// and falls with no position slide. Null under reduced motion at the call site.</summary>
     public static readonly LayoutTransition BarMotion = SlotMotion;
+
+    /// <summary>A row inset across a crossing that moves the gutter (24 ↔ 48 at 1008, 48 ↔ 64 at 3200): the pivot slide's 250 ms, a reflow on
+    /// the width axis, so the identity, the transport and the tools ride the re-solve with no position slide. Null under reduced motion.</summary>
+    public static readonly LayoutTransition InsetMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
     /// <summary>The panel's one width (`ZunePanelTiers.PanelW`; the bar's tests and the panel's share it).</summary>
     public const float PanelW = ZunePanelTiers.PanelW;
