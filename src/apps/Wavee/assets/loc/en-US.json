@@ -2827,6 +2827,7 @@
         "library": {
           "sort": "Sort",
           "view": "View",
+          "findIn": "find in {kind}",
           "sizeSmall": "Small",
           "sizeMedium": "Medium",
           "sizeLarge": "Large"

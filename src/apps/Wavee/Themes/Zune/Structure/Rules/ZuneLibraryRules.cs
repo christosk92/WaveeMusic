@@ -54,7 +54,7 @@ public static class ZuneLibraryRules
     public const float ShortPageTop = 4f, ShortBodyGap = 8f, ShortHeadGap = 4f, ShortPaneBottom = 4f;
 
     /// <summary>The head: its height, the gap between its words and the gap between its groups, the find field's width.</summary>
-    public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
+    public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindGap = 8f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
 
     /// <summary>The words' type is the dense meta voice (13); the count follows it.</summary>
     public const float ChevronGlyph = 10f, WordChevronGap = 4f, SaveGlyph = 16f;
@@ -65,7 +65,7 @@ public static class ZuneLibraryRules
     public const float RowArt = 40f, RowGap = 12f, RowPadX = 8f;
 
     /// <summary>A grid card: the name under the cover (13) and the count line (12), the gap between cover and name.</summary>
-    public const float CardNameGap = 6f, CardDecodePx = 256f, CardPadSelected = 2f, CardRing = 2f;
+    public const float CardNameGap = 6f, CardDecodePx = 256f, CardRing = 2f;
 
     /// <summary>The loading state's shimmer rows and cards.</summary>
     public const int NavSkelRows = 8, NavSkelCards = 24;
@@ -226,6 +226,9 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The navigator GRID's widest (NaN: the grid takes what the pane leaves; its cells fill the column, so no cap is needed).</summary>
     public float GridNavMaxW { get; init; } = float.NaN;
 
+    /// <summary>The find field's width: the boards draw 120 at Small, 160 at Standard and 220 at Huge (a bottom-rule field, no plate).</summary>
+    public float FindW { get; init; } = ZuneLibraryRules.FindW;
+
     /// <summary>The navigator's and the pane's flex shares of the width the page has left (the navigator rests at 0, the pane at <see cref="PaneW"/>). 1 / 0 is the
     /// fixed-pane form (Compact, Small, Standard); Huge shares 2 / 1 so both columns fill the 2400 column.</summary>
     public float NavGrow { get; init; } = 1f;
@@ -310,7 +313,7 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
@@ -324,7 +327,7 @@ public static class ZuneLibraryTiers
     private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
         sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
     {
-        NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+        FindW = 220f, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
     };
 
     /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>
