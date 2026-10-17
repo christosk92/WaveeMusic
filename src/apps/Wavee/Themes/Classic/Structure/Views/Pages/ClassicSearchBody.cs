@@ -20,7 +20,7 @@
 // blank grid cell is the same host on `CardData.Seed`. A shelf's cards sit in a bound slot, so the SHELF owns their click: the rail and Best matches pass `onInvoke`.
 //
 // Every factory is a static function over the model's handles, run by the region's own content binding, so a hydrating row REBINDS. The three key families that
-// survive are the facet body (the page), the column-count keys on the Responsive grids ("search-genres-grid:<cols>", "search-facet-grid:<cols>") and — not a data key
+// survive are the facet body (the page), the grids and shelves (one key at every tier: "search-genres-grid", "search-facet-grid", "search:rail", "search:best-matches") and — not a data key
 // — the per-uri Save / Follow embeds, whose props freeze by design (Controls.cs §4).
 
 using System.Globalization;
@@ -361,26 +361,68 @@ internal static class ClassicSearchBody
 
     /// <summary>The hits after the Top Result as a width-fitted N×N PagedShelf of hit rows with chevrons and pips.
     /// <paramref name="colsFor"/> is the page's hysteretic column count (<see cref="Search.ColsFor"/> over the host's own fields).
-    /// The shelf sits in a wrapper box: a Key on PagedShelf's component root is ignored (§9 traps).</summary>
+    /// The shelf sits in a wrapper box: a Key on PagedShelf's component root is ignored (§9 traps).
+    /// <para>A crossing re-fits the SAME shelf and the SAME rows (plan 3.3; one key at every tier): the column cap and the row height
+    /// (<see cref="ClassicSearchLayout.BestMatchRowH"/>: Compact's 60, the tuned 64) are live props of the mounted shelf, and each row is a
+    /// <see cref="BestMatchRowHost"/> that draws at the tier it is drawn in (Compact's 44 art in a 60 row, the tuned 48 in 64). The wrapper reflows
+    /// (position and size, its size revealed), so the shelf's new height glides. The shelf's ROWS PER PAGE (<see cref="Search.RowsFor"/>) stay its
+    /// mount's: PagedShelf freezes them (an engine gap).</para></summary>
     static Element BestMatches(IReadOnlyList<Search.HitItem> items, Func<float, int> colsFor, Search.HitContext ctx, ClassicSearchLayout layout, float firstW)
     {
         if (items.Count == 0) return new BoxEl();
-        return Stretch(Responsive.Of("search:best-matches", w =>
+        var rowH = BestMatchHeight(layout.BestMatchRowH);
+        return Stretch(Responsive.Of(ClassicSearchTiers.BestMatchesKey, w =>
         {
             int cols = colsFor(w);
             int rows = Search.RowsFor(cols);
             int maxCols = Search.MaxColumns(cols, rows, items.Count);
             return PagedShelf.Create(items,
-                cardAt: (item, i, _) => HitRow(item.Ref, item.Flags, large: false, in ctx, layout),
+                cardAt: (item, i, _) => BestMatchRow(item, ctx, layout),
                 onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),   // the slot owns the click; the row inside is click-less
-                cardHeight: static _ => Search.BestMatchRowH,
+                cardHeight: rowH,
                 header: TickHeader(Loc.Get(Strings.Search.BestMatches)),
                 pager: ShelfPager.Chevrons | ShelfPager.Pips,
                 minCardW: Search.BestMatchCellMin, maxCardW: 9999f, gap: Search.BestMatchGap, rows: rows, maxColumns: maxCols,
                 snap: ShelfSnap.Page, cardWidthAgnostic: true, edgeFade: ClassicSearchRules.BestMatchEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
                 keyOf: static (item, _) => Search.KeyOf(item.Ref));
-        }, fallback: firstW));
+        }, fallback: firstW)) with { Layout = ClassicTierMotion.Reflow };
+    }
+
+    static readonly Func<float, float> s_bestMatchHeight = static _ => Search.BestMatchRowH;
+    static readonly Dictionary<float, Func<float, float>> s_bestMatchHeights = new();
+
+    /// <summary>The shelf's row extent for a row height, one cached delegate per height: the shelf takes its card height as a live prop, and a fresh
+    /// closure per render would read as a new height function on every push.</summary>
+    static Func<float, float> BestMatchHeight(float rowH)
+    {
+        if (rowH == Search.BestMatchRowH) return s_bestMatchHeight;
+        if (!s_bestMatchHeights.TryGetValue(rowH, out var height))
+            s_bestMatchHeights[rowH] = height = _ => rowH;
+        return height;
+    }
+
+    /// <summary>One Best matches row: a <see cref="BestMatchRowHost"/> (it reads the tier it is drawn in). Its skeleton is the row at the template's record.</summary>
+    static Element BestMatchRow(Search.HitItem item, Search.HitContext ctx, ClassicSearchLayout layout)
+        => Embed.Comp(new BestMatchRowProps(item, ctx), static () => new BestMatchRowHost())
+            with { SkeletonProxy = () => HitRow(item.Ref, item.Flags, large: false, in ctx, layout) };
+
+    /// <summary>A Best matches row's props: the hit (its version re-renders a hydrated row) and the hit context, both by value.</summary>
+    sealed record BestMatchRowProps(Search.HitItem Item, Search.HitContext Ctx);
+
+    /// <summary>A Best matches row that follows a tier crossing. A shelf re-renders a card only when its ITEM changes, so a row built from the template's
+    /// record would keep the tier it mounted in; this host reads the facts its root provides (<c>TierContext.DrawnIn</c>: the read subscribes it, so a
+    /// crossing re-renders it), never the process's, and draws <see cref="HitRow"/> at that tier's record: the SAME surface node (keyed by its hit),
+    /// re-formed in place.</summary>
+    sealed class BestMatchRowHost : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<BestMatchRowProps>();
+            var tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
+            var ctx = p.Ctx;
+            return HitRow(p.Item.Ref, p.Item.Flags, large: false, in ctx, ClassicSearchTiers.Of(tiers));
+        }
     }
 
     /// <summary>The All tab's playlist rail: 148-188 DIP grid cards with a chevron header that SWITCHES to the Playlists

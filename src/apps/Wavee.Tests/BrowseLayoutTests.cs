@@ -72,6 +72,15 @@ public class BrowseLayoutTests
     }
 
     [Fact]
+    public void Charts_TheTwoFormsAreKeyedApart()
+    {
+        // The paged deck and the stack are different trees: the crossing between them cross-fades two distinctly keyed forms (plan 3.3).
+        Assert.NotEqual(ClassicBrowseTiers.ChartsDeckKey, ClassicBrowseTiers.ChartsStackKey);
+        Assert.True(ClassicTierMotion.SwapFade.Active);
+        Assert.Equal(0f, ClassicTierMotion.SwapFade.Opacity);
+    }
+
+    [Fact]
     public void CompactTargets_AreAtLeast40()
     {
         var c = ClassicBrowseTiers.For(WidthTier.Compact);

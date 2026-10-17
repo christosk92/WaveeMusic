@@ -86,6 +86,9 @@ public sealed record ClassicSearchLayout
     /// <summary>A hit row's shape at the tier: Compact's 44 art in a 60 row; the media row's own elsewhere (and always for the large lead row).</summary>
     public SurfaceShape RowShape(SurfaceShape shape) => RowArt > 0f && !shape.IsLargeRow ? shape with { ArtEdge = RowArt, MinHeight = RowMinH } : shape;
 
+    /// <summary>A Best matches row's height in its shelf: the tier's row floor (Compact's 60, <c>C-Search-Compact</c>), else the tuned 64.</summary>
+    public float BestMatchRowH => RowMinH > 0f ? RowMinH : Search.BestMatchRowH;
+
     /// <summary>The Albums / Playlists grid's columns at <paramref name="width"/>: the core rule's floor-fit held to the tier's cap.</summary>
     public int FacetGridColumns(float width) => FacetGrid.Columns(width, Search.FacetGridGap);
 }
@@ -137,6 +140,9 @@ public static class ClassicSearchTiers
             FacetGrid = new ClassicGridBand(Search.FacetGridMinCol, 10),
         },
     };
+
+    /// <summary>The Best matches shelf's key: ONE at every tier, so a crossing re-fits the same shelf and its rows (the mounted crossing tests read it).</summary>
+    public const string BestMatchesKey = "search:best-matches";
 
     /// <summary>Huge's top-result card: 700 wide and 300 tall (<c>C-Search-Huge</c>), Best matches filling the rest of its row.</summary>
     public const float HugeHeroW = 700f, HugeHeroH = 300f;
