@@ -35,9 +35,14 @@ public static class ZuneTheme
         Preview: new ThemePreview("themes/zune-light.png", "themes/zune-dark.png"),
         DescriptionKey: Strings.Theme.Zune.Description);
 
-    /// <summary>Builds the composition. <c>App.BootCore</c> installs it next to Classic.</summary>
-    public static ThemeComposition Create() => new(
-        Manifest,
-        new ZuneStructure(standIn: static views => new ClassicStructure().Register(views)),
-        ZuneStyle.Create());
+    /// <summary>Builds the composition. <c>App.BootCore</c> installs it next to Classic. It also hands the `--inspect` lint Zune's edge
+    /// guide (where the gutter and the page column sit per tier: <see cref="ZuneLintGuide"/>), registered once per id.</summary>
+    public static ThemeComposition Create()
+    {
+        ThemeInspection.RegisterLintGuide(Id, new ZuneLintGuide());
+        return new(
+            Manifest,
+            new ZuneStructure(standIn: static views => new ClassicStructure().Register(views)),
+            ZuneStyle.Create());
+    }
 }

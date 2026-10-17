@@ -5,6 +5,7 @@ and prints the one reply line it gets back. Standard library only; runs under `p
 
     python -I tools/inspect.py -c "mount w=400 h=860 theme=zune" -c "tiers" -c "dump root=zune-band keysOnly=true"
     python -I tools/inspect.py -f audit.jsonl --pretty
+    python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py                      # interactive: type commands, Ctrl+Z / Ctrl+D to end
 
 Commands are the server's own grammar: a JSON object {"cmd","args","id"} or a text line `verb key=value ...`.
@@ -92,9 +93,44 @@ class Server:
             self.proc.kill()
 
 
-def show(reply, pretty):
+def findings_text(reply):
+    """A `lint` reply, or the lint inside a `crossing` reply, as text lines (None when the reply carries no findings)."""
+    obj = json.loads(reply)
+    lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
+    if not isinstance(lint.get("findings"), list):
+        return None
+    lines = []
+    if obj.get("cmd") == "crossing":
+        counts = obj.get("counts", {})
+        lines.append("crossing %sx%s -> %sx%s: committed=%s remounted=%s vanished=%s snapped=%s jumped=%s" % (
+            obj["from"]["w"], obj["from"]["h"], obj["to"]["w"], obj["to"]["h"], obj.get("committed"),
+            counts.get("remounted"), counts.get("vanished"), counts.get("snapped"), counts.get("jumped")))
+        for kind in ("remounted", "vanished"):
+            for item in obj.get(kind, []):
+                lines.append("  %-9s %s" % (kind, item["key"]))
+        for kind in ("snapped", "jumped"):
+            for item in obj.get(kind, []):
+                lines.append("  %-9s %s  d=(%s, %s, %s, %s)" % (kind, item["key"], item["dx"], item["dy"], item["dw"], item["dh"]))
+    summary = lint.get("summary", {})
+    lines.append("lint %s %s %sx%s: %s error, %s warn, %s info over %s nodes%s" % (
+        lint.get("theme", ""), lint.get("tier", ""), lint.get("size", {}).get("w"), lint.get("size", {}).get("h"),
+        summary.get("error", 0), summary.get("warn", 0), summary.get("info", 0), summary.get("nodes", 0),
+        "" if lint.get("guide", True) else " (no theme guide: gutter and right-edge not checked)"))
+    for f in lint["findings"]:
+        keys = ", ".join(f.get("keys", []))
+        lines.append("[%-5s] %s: %s%s" % (f["severity"], f["rule"], f["message"], "  <" + keys + ">" if keys else ""))
+    return "\n".join(lines)
+
+
+def show(reply, pretty, findings=False):
     if reply is None:
         return
+    if findings:
+        text = findings_text(reply)
+        if text is not None:
+            print(text)
+            sys.stdout.flush()
+            return
     if pretty:
         print(json.dumps(json.loads(reply), indent=2, ensure_ascii=False))
     else:
@@ -111,6 +147,7 @@ def main():
     ap.add_argument("-c", "--command", action="append", default=[], help="a command line; repeatable")
     ap.add_argument("-f", "--file", help="a file of command lines (JSON lines or text lines)")
     ap.add_argument("--pretty", action="store_true", help="indent the replies")
+    ap.add_argument("--findings", action="store_true", help="print a lint (or a crossing's lint) reply as one text line per finding")
     ap.add_argument("--fail-fast", action="store_true", help="stop at the first ok:false reply (exit 2)")
     args = ap.parse_args()
 
@@ -125,7 +162,7 @@ def main():
         source = lines if (lines or args.file) else sys.stdin
         for line in source:
             reply = server.send(line)
-            show(reply, args.pretty)
+            show(reply, args.pretty, args.findings)
             if reply and args.fail_fast and not json.loads(reply).get("ok", False):
                 code = 2
                 break
