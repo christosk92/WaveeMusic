@@ -212,7 +212,9 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
 }
 
 /// <summary>Zune's library ladder and records.</summary>
-public static class ZuneLibraryTiers
+/// <summary>The library's layout ladder, apart from its records: <see cref="ZuneTiers.Policy"/> reads it while it is being built, and the
+/// records read <see cref="ZuneTiers.Frame"/>, so the ladder must not live in a class whose initializer reads ZuneTiers (a type-initializer cycle).</summary>
+public static class ZuneLibraryLadders
 {
     /// <summary>The split layout begins here, of the page's own width.</summary>
     public const float SplitFrom = 640f;
@@ -225,6 +227,21 @@ public static class ZuneLibraryTiers
 
     /// <summary>The ladders this family adds to <see cref="ZuneTiers.Policy"/>: the core host resolves them by id.</summary>
     public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(new NamedLadder(LibraryLadders.Layout, Layout));
+}
+
+public static class ZuneLibraryTiers
+{
+    /// <inheritdoc cref="ZuneLibraryLadders.SplitFrom"/>
+    public const float SplitFrom = ZuneLibraryLadders.SplitFrom;
+
+    /// <inheritdoc cref="ZuneLibraryLadders.SplitHold"/>
+    public const float SplitHold = ZuneLibraryLadders.SplitHold;
+
+    /// <inheritdoc cref="ZuneLibraryLadders.Layout"/>
+    public static TierLadder Layout => ZuneLibraryLadders.Layout;
+
+    /// <inheritdoc cref="ZuneLibraryLadders.Ladders"/>
+    public static ImmutableArray<NamedLadder> Ladders => ZuneLibraryLadders.Ladders;
 
     private static ZuneLibraryLayout Make(WidthTier tier, float headH, float headGap, float colGap, float paneW, float readerNavW, float navMin,
         bool sortMenu, float rightMin, LibraryGridGaps gaps, float cardCellMin) => new()

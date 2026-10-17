@@ -11,5 +11,5 @@ namespace Wavee.Themes.Zune;
 
 public static partial class ZuneTiers
 {
-    static partial void LaddersCollection(ImmutableArray<NamedLadder>.Builder ladders) => ladders.AddRange(ZuneLibraryTiers.Ladders);
+    static partial void LaddersCollection(ImmutableArray<NamedLadder>.Builder ladders) => ladders.AddRange(ZuneLibraryLadders.Ladders);
 }
