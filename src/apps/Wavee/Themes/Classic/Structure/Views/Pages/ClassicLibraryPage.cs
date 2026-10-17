@@ -114,7 +114,7 @@ internal static partial class ClassicLibraryPage
             NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount. The grid's cell floor is the tier record's (the host's
             // mount floor for the same tier: 96 at Small), read off the cache's current record.
-            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin);
+            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps);
         }
 
         /// <summary>The page's measured bounds, reported to the host: its layout ladder (`ClassicLibraryTiers.Layout`) over this width decides the one-column drill-in, in the

@@ -85,7 +85,7 @@ internal static class ClassicRecents
             {
                 Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
                 // No dock reserve (§9.1 #10): the shell clips above the player bar; Spacing.L is breathing room.
-                Padding = new Edges4(gutter, 0f, gutter, Spacing.L),
+                Padding = new Edges4(gutter, 0f, layout.FlushRail ? 0f : gutter, Spacing.L),
                 // The FLIP on a pivot switch. Reduced motion is a VALUE: no transition at all.
                 Layout = Design.Reduced ? null : BodyFlip,
                 Children = [body],
@@ -160,7 +160,7 @@ internal static class ClassicRecents
         };
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.XS,
+            Direction = 1, Gap = layout.HeadGap,
             Padding = new Edges4(gutter, layout.HeadTop, gutter, layout.HeadBottom),
             // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
             Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,

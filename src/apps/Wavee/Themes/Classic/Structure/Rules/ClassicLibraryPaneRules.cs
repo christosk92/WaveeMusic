@@ -34,6 +34,9 @@ public static class ClassicLibraryPaneRules
     /// <summary>The Small header (C-Library-Small): a 96 cover bottom-aligned in a 120 band, 16 from the words, 10 over the command row (the board's flex gap).</summary>
     public const float SmallCover = 96f, SmallBand = 120f, SmallHeaderGap = 16f, SmallHeaderPadBottom = 10f;
 
+    /// <summary>The Small pane's left inset (C-Library-Small: the section pads 8 on the left, beside the 16 divider column) and its title's rung (24 / 30 semibold).</summary>
+    public const float SmallInsetLeft = 8f, SmallTitleSize = 24f, SmallTitleLine = 30f;
+
     /// <summary>The Small header's STATED height: the 120 band under the pane inset and over the 10 of air = 146.</summary>
     public static float SmallPaneHeaderHeight => SmallBand + ClassicTiers.PaneInset + SmallHeaderPadBottom;
 

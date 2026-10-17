@@ -6,7 +6,7 @@
 //   tier      masthead (top / bottom)   Overview      kind pivots                       rows                                              rail     calendar gap
 //   Compact   12 / 0                    40 button     tabs 40 tall, 8 pad, gap 4        stacked: kind + time under the sub line, 40       none     16
 //                                                                                       chevron, no hover "..." (child rows 44)
-//   Small     16 / 8                    24 button     the tuned strip (gap 20)          the tuned row (chip, time, chevron)               44       24
+//   Small     16 / 12 (head gap 2)      24 button     the tuned strip (gap 20)          the tuned row (chip, time, chevron)               44       24
 //   Standard  24 / 16                   24 button     the tuned strip                   the tuned row                                     44       36 (the old PageWide)
 //   Huge      24 / 16                   32 toggle     the tuned strip                   the tuned row                                     44       16
 //
@@ -14,6 +14,9 @@
 // 48 right of it (`OverviewGap`) as a 660 aside (`OverviewAside`: two plated 322 month cards 16 apart) with its own "Overview" head and the heat key. The masthead's Overview
 // button becomes the aside's toggle (pressed while it shows); a day in it brings the list to that day. The aside is in the page's row at every tier, width 0 below Huge,
 // so a crossing eases it and the column beside it is never re-parented. The semantic zoom's calendar stays the zoomed-out view (a day header still zooms out to it).
+//
+// SMALL (C-Recents-Small) also has a 2 gap between the title row and the summary, a fixed 44 time lane (right-aligned), a 28 chevron button with a 12 glyph and the day
+// rail FLUSH against the list (no gap, no right pad on the body, 4 from the card's edge; the calendar keeps the gutter itself).
 //
 // The page gutter is the page's own (`ClassicTiers.PageOf`: 16 / 32 / 36 / 36). Not built (reported): the Compact row's day rail (Compact has none).
 //
@@ -35,6 +38,22 @@ public sealed record ClassicRecentsLayout
 
     /// <summary>See <see cref="HeadTop"/>.</summary>
     public required float HeadBottom { get; init; }
+
+    /// <summary>The gap between the masthead's rows (the title row and the summary line): the tuned 4, C-Recents-Small's 2.</summary>
+    public float HeadGap { get; init; } = 4f;
+
+    /// <summary>The played-at stamp's fixed lane, right-aligned (C-Recents-Small: 44); NaN: the stamp sizes to its text (the tuned row).</summary>
+    public float WhenLane { get; init; } = float.NaN;
+
+    /// <summary>The expand chevron is the page's own button (<see cref="ChevronLane"/> square, Compact's 40 and Small's 28) instead of the shared track-row cell.</summary>
+    public bool ChevronOwn { get; init; }
+
+    /// <summary>The own chevron's glyph: 14 at Compact, 12 at Small (C-Recents-Small).</summary>
+    public float ChevronGlyph { get; init; } = ClassicRecentsRules.ChevronGlyph;
+
+    /// <summary>The day rail stands FLUSH against the list and 4 from the card's edge (C-Recents-Small): the body keeps no right pad (the calendar adds its own), the list and the
+    /// rail have no gap and the rail takes <see cref="ClassicRecentsRules.RailMarginRight"/>. Elsewhere the tuned body pad and a 12 gap.</summary>
+    public bool FlushRail { get; init; }
 
     /// <summary>The Overview button's height: 40 at Compact, the Small control's 24, Huge's 32.</summary>
     public required float OverviewH { get; init; }
@@ -82,13 +101,14 @@ public static class ClassicRecentsTiers
     static readonly ClassicRecentsLayout s_compact = new()
     {
         Tier = WidthTier.Compact, HeadTop = 12f, HeadBottom = 0f, OverviewH = 40f, PivotH = 40f, PivotGap = 4f, PivotPadX = 8f,
-        Stacked = true, ChevronLane = 40f, ChildRowH = 44f, Rail = false, CalendarGap = 16f,
+        Stacked = true, ChevronLane = 40f, ChildRowH = 44f, Rail = false, CalendarGap = 16f, ChevronOwn = true,
     };
 
     static readonly ClassicRecentsLayout s_small = new()
     {
-        Tier = WidthTier.Small, HeadTop = 16f, HeadBottom = 8f, OverviewH = 24f, PivotH = 0f, PivotGap = 20f, PivotPadX = 0f,
-        Stacked = false, ChevronLane = 24f, ChildRowH = 40f, Rail = true, CalendarGap = 24f,
+        Tier = WidthTier.Small, HeadTop = 16f, HeadBottom = 12f, OverviewH = 24f, PivotH = 0f, PivotGap = 20f, PivotPadX = 0f,
+        Stacked = false, ChevronLane = 28f, ChildRowH = 40f, Rail = true, CalendarGap = 24f,
+        HeadGap = 2f, WhenLane = 44f, ChevronOwn = true, ChevronGlyph = 12f, FlushRail = true,
     };
 
     static readonly ClassicRecentsLayout s_standard = new()

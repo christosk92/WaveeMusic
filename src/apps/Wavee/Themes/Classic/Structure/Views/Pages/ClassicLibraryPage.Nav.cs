@@ -17,6 +17,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -33,11 +34,12 @@ internal static partial class ClassicLibraryPage
     /// <summary>The navigator's shimmer (tuned Classic X2), in the persisted view's own shape so the content lands where the bars stood. A list: the bound
     /// row's geometry — the plate (56, or 40 compact) at the 60 / 44 pitch, the 40 art at the row's corner and the title and subtitle lines on their
     /// rungs (the stock list-item shape stood 66 apart and drifted 6 DIP a row). A grid: the bound cards at the fitted grid's own cells (it used to draw
-    /// rows over a grid). <paramref name="fullBase"/> is the full grid's size-S floor of the tier (the record's <c>CardCellMin</c>, the host's mount floor).</summary>
-    internal static Element NavShimmer(int view, int size, EntityKind entity, float fullBase = LibraryNavMount.CardCellMinFull)
+    /// rows over a grid). <paramref name="fullBase"/> is the full grid's size-S floor of the tier (the record's <c>CardCellMin</c>, the host's mount floor) and
+    /// <paramref name="gaps"/> its gaps (the record's <c>GridGaps</c>, the host's mount gaps).</summary>
+    internal static Element NavShimmer(int view, int size, EntityKind entity, float fullBase = LibraryNavMount.CardCellMinFull, LibraryGridGaps? gaps = null)
     {
         bool compact = User.IsCompactView(view);
-        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist);
+        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist, gaps ?? LibraryGridGaps.Core);
         var rows = new Element[ClassicLibraryRules.NavSkelRows];
         for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact) with { Key = "navskel:" + i };
         return new BoxEl { Key = "navskel", Direction = 1, Children = rows };
@@ -77,14 +79,14 @@ internal static partial class ClassicLibraryPage
     /// <summary>The grid view's shimmer: <see cref="NavCard"/>'s shape at the fitted grid's cells — an auto-fill grid at the mount's cell minimum and gap
     /// (the column count and the cell width are <see cref="RepeatLayout.GridFit"/>'s formula, <c>GridEl.AutoFillColumnCount</c>), inside the list's
     /// <see cref="NavGridPad"/>, each card the fill-width square cover in its padding (16 round, 8 square) and, outside the compact grid, the title line.</summary>
-    static Element NavGridShimmer(bool compact, float cellMin, bool circular)
+    static Element NavGridShimmer(bool compact, float cellMin, bool circular, LibraryGridGaps gaps)
     {
         var cards = new Element[ClassicLibraryRules.NavSkelCards];
         for (int i = 0; i < cards.Length; i++) cards[i] = NavShimmerCard(compact, circular) with { Key = "navskel:" + i };
         return new BoxEl
         {
             Key = "navskel", Direction = 1, Padding = NavGridPad,
-            Children = [new GridEl { MinColWidth = cellMin, ColGap = LibraryNavMount.GridGap, RowGap = LibraryNavMount.GridGap, Children = cards }],
+            Children = [new GridEl { MinColWidth = cellMin, ColGap = gaps.Column, RowGap = gaps.Row, Children = cards }],
         };
     }
 

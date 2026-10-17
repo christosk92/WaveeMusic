@@ -34,6 +34,24 @@ internal static partial class ClassicLibraryPage
         Element picker = layout.Single ? c.PickerCompact ??= CompactPicker(p, layout)
             : sortButton ? c.PickerSort ??= CompactPicker(p, layout)
             : c.Picker ??= WidePicker(p, layout);
+        // The sort button (Small) and the word rail (Standard, Huge) are different trees in ONE slot: a crossing between them swaps under the shared tier cross-fade (the entering
+        // form fades in, the leaving one fades out as an orphan beside it) in a slot that RESERVES the row's height, so the head and the list under it never jump while the two overlap.
+        // Only the kinds that can show either form swap (the artists' list and Podcasts keep one form at every tier).
+        bool swaps = !p.IsPodcasts && p.Entity != EntityKind.Artist;
+        picker = new BoxEl
+        {
+            Key = "lib:picker", Direction = 1, MinWidth = 0f, MinHeight = layout.ControlH, Layout = ClassicTierMotion.Shove,
+            Children =
+            [
+                swaps
+                    ? picker with
+                    {
+                        Key = layout.Single || sortButton ? "lib:picker:sort" : "lib:picker:rail",
+                        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    }
+                    : picker,
+            ],
+        };
         Element? filter = p.SavedEpisodesMode
             ? null
             : AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: p.Filter(), queryIcon: Icons.Search, grow: 1f,
@@ -60,9 +78,10 @@ internal static partial class ClassicLibraryPage
         };
         var rows = new List<Element>(4);
         if (layout.KindChips) rows.Add(KindChips(p, layout));
-        rows.Add(titleRow);
+        // The head's rows glide when a crossing changes their gap (10 at Small, 8 at Standard) instead of snapping.
+        rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
-        if (filter is not null) rows.Add(filter);
+        if (filter is not null) rows.Add(filter with { Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",

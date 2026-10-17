@@ -220,6 +220,25 @@ public sealed partial class TierLayoutTests
                 var r = scene.AbsoluteRect(n);
                 if (r.W > 0f && r.H > 0f) Assert.True(r.H >= 40f - 0.5f, $"a Compact pivot tab is {r.W} x {r.H}, under 40 tall");
             }
+
+        // C-Recents-Small: the day rail stands FLUSH against the list column and 4 from the card's edge; the played-at stamp's lane is the record's 44 (rows that are on screen).
+        var railCol = shell.Find("recents-rail-col");
+        var listCol = shell.Find("recents-list-col");
+        if (layout.FlushRail && !railCol.IsNull && !listCol.IsNull)
+        {
+            var rail = scene.AbsoluteRect(railCol);
+            var list = scene.AbsoluteRect(listCol);
+            Assert.True(MathF.Abs(list.X + list.W - rail.X) <= 0.5f, $"{size}: the Recents rail is not flush against the list ({list} / {rail})");
+            Assert.True(MathF.Abs(card.X + card.W - (rail.X + rail.W) - ClassicRecentsRules.RailMarginRight) <= 0.5f, $"{size}: the Recents rail is not 4 from the card's edge ({rail} in {card})");
+        }
+        else if (!railCol.IsNull && !listCol.IsNull)
+        {
+            var rail = scene.AbsoluteRect(railCol);
+            var list = scene.AbsoluteRect(listCol);
+            Assert.True(rail.X - (list.X + list.W) >= 12f - 0.5f, $"{size}: the Recents rail sits closer than 12 to the list ({list} / {rail})");
+        }
+        foreach (var (lane, _) in shell.FindPrefix("when-lane"))
+            Assert.True(MathF.Abs(scene.AbsoluteRect(lane).W - layout.WhenLane) <= 0.5f, $"{size}: a played-at lane is {scene.AbsoluteRect(lane).W}, not {layout.WhenLane}");
     });
 
     // ── Local files ──────────────────────────────────────────────────────────────────────────────────────────────────

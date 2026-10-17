@@ -46,8 +46,15 @@ versions separately under `v*` and is not tracked in this file.)
   click on a day scrolls the list to that day. Under 528 wide, a podcast or audiobook's Follow/Play button, heart and "⋯" are 40 × 40.
 
 - **The library sorts with one button on a medium window.** From 528 to 1007 wide, the albums list shows Sort as a single button with the
-  current word and a menu instead of the row of sort words (Artists and Podcasts keep their words). The album and show page beside it has a
-  96-wide cover in a shorter header, and the rows of the list's header sit a little further apart.
+  current word and a menu instead of the row of sort words (Artists and Podcasts keep their words); when the window grows or shrinks across
+  that step, the button and the row of words fade into each other without the list jumping. The album and show page beside it has a 96-wide
+  cover in a shorter header with a 24-point title and a smaller left margin, and the rows of the list's header sit a little further apart.
+  The covers of the library's grid are spaced as each design draws them: 16 across and 12 down on medium windows, 8 and 16 on Huge ones,
+  12 and 16 on narrow ones.
+
+- **Recents on a medium window matches its design.** From 528 to 1007 wide, the title and the summary line sit closer together, the time
+  of each row has its own aligned column, the arrow that opens a row is a 28-point button, and the day scrollbar sits against the list and
+  close to the window's edge.
 
 - **An empty playlist asks you to add songs on every window size.** Medium, standard and Huge windows now show "Nothing here yet", the line
   under it and the field that searches for songs to add, the way a narrow window does, with the Recommended songs below. The room the message

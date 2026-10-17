@@ -37,7 +37,7 @@ internal static class ClassicLibraryPaneKit
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
+        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
         Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
@@ -53,7 +53,7 @@ internal static class ClassicLibraryPaneKit
                 Children =
                 [
                     R.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
-                    R.Type.PageHero(title) with
+                    TitleOf(title, layout) with
                     {
                         Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
                         BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -71,6 +71,13 @@ internal static class ClassicLibraryPaneKit
         ],
     }.Interactive(Interaction.Subtle);
 
+    /// <summary>The pane title: the page-hero rung, or the record's own size and line where it states them (C-Library-Small: 24 / 30).</summary>
+    static TextEl TitleOf(string title, ClassicLibraryLayout layout)
+    {
+        var hero = R.Type.PageHero(title);
+        return float.IsFinite(layout.PaneTitleSize) && float.IsFinite(layout.PaneTitleLine) ? hero with { Size = layout.PaneTitleSize, LineHeight = layout.PaneTitleLine } : hero;
+    }
+
     /// <summary><see cref="PaneHeader"/>'s loading twin, for the album pane AND the show pane (both render <see cref="PaneHeader"/>, rung for rung): the cover square and four stand-in
     /// bars — eyebrow, title, attribution, meta — each centred in its real line's slot at the real 3-DIP gap (tuned Classic X2: the three bars at an 8 gap stood 33 DIP below the
     /// words and the meta had none), in the SAME stated <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real
@@ -79,7 +86,7 @@ internal static class ClassicLibraryPaneKit
     public static BoxEl HeaderSkeleton(ClassicLibraryLayout layout) => new()
     {
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
+        Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
         Children =
         [
             new BoxEl { Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
@@ -111,7 +118,7 @@ internal static class ClassicLibraryPaneKit
     /// the edge. Now the spacer gives way first, then the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip (<c>Controls.TrimTip</c>). The
     /// tooltip wraps the LABEL, in a column slot of its own, rather than the whole link: that slot is exactly the text's box, so the trim test compares like with like (around the link it
     /// would measure a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only be sized as a COLUMN child (the engine's rule 11).</para></summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f)
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f, float insetLeft = float.NaN)
     {
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
         TextEl label = R.Type.DenseMeta(openLabel) with
@@ -122,7 +129,7 @@ internal static class ClassicLibraryPaneKit
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLibraryPaneRules.CommandsGap, Shrink = 0f,
-            Padding = new Edges4(ClassicTiers.PaneInset, Spacing.M, ClassicTiers.PaneInset, Spacing.S),
+            Padding = new Edges4(float.IsNaN(insetLeft) ? ClassicTiers.PaneInset : insetLeft, Spacing.M, ClassicTiers.PaneInset, Spacing.S),
             Children =
             [
                 box > 0f ? Controls.PlayButton(Tok.AccentDefault, play) with { MinHeight = box } : Controls.PlayButton(Tok.AccentDefault, play),

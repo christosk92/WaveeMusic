@@ -38,13 +38,17 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
         var layout = ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers);
         Element zoomedIn = new BoxEl
         {
-            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = layout.Rail ? Spacing.M : 0f, AlignItems = FlexAlign.Stretch,
+            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = layout.Rail && !layout.FlushRail ? Spacing.M : 0f, AlignItems = FlexAlign.Stretch,
             Children = layout.Rail
                 ?
                 [
                     new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] },
                     // The HStack item is a stretch COLUMN around the rail: Grow on the rail's own root would steal width.
-                    new BoxEl { Key = "recents-rail-col", Animate = s_rail, Direction = 1, AlignSelf = FlexAlign.Stretch, MinHeight = 0f, Children = [rail] },
+                    new BoxEl
+                    {
+                        Key = "recents-rail-col", Animate = s_rail, Direction = 1, AlignSelf = FlexAlign.Stretch, MinHeight = 0f,
+                        Margin = new Edges4(0f, 0f, layout.FlushRail ? ClassicRecentsRules.RailMarginRight : 0f, 0f), Children = [rail],
+                    },
                 ]
                 : [new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] }],
         };

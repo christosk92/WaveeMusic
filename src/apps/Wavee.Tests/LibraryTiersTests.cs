@@ -186,7 +186,7 @@ public class LibraryTiersTests
             var record = ClassicRecentsTiers.For(content);
             Assert.False(record.Stacked);
             Assert.True(record.Rail);
-            Assert.Equal(24f, record.ChevronLane);
+            Assert.Equal(content == WidthTier.Small ? 28f : 24f, record.ChevronLane);   // C-Recents-Small's 28 chevron button
             Assert.Equal(40f, record.ChildRowH);
             Assert.Equal(20f, record.PivotGap);
             Assert.Equal(0f, record.PivotH);
@@ -194,6 +194,37 @@ public class LibraryTiersTests
         Assert.Equal(24f, ClassicRecentsTiers.For(WidthTier.Standard).HeadTop);
         Assert.Equal(16f, ClassicRecentsTiers.For(WidthTier.Small).HeadTop);
         Assert.Equal(32f, ClassicRecentsTiers.For(WidthTier.Huge).OverviewH);
+    }
+
+    [Fact]
+    public void The_small_recents_record_is_the_small_board()
+    {
+        // C-Recents-Small: 16 over the masthead, its rows 2 apart, 12 from the summary to the pivots (the board's 2 gap + 10 margin), a 44 time lane, a 28 chevron button with a
+        // 12 glyph, and the day rail flush against the list.
+        var small = ClassicRecentsTiers.For(WidthTier.Small);
+        Assert.Equal(16f, small.HeadTop);
+        Assert.Equal(12f, small.HeadBottom);
+        Assert.Equal(2f, small.HeadGap);
+        Assert.Equal(44f, small.WhenLane);
+        Assert.Equal(28f, small.ChevronLane);
+        Assert.Equal(12f, small.ChevronGlyph);
+        Assert.True(small.ChevronOwn);
+        Assert.True(small.FlushRail);
+        Assert.Equal(4f, ClassicRecentsRules.RailMarginRight);
+        // The tuned tiers keep their masthead gap, a time lane that sizes to its text, the shared chevron cell and the 12 gap with the body's pad.
+        foreach (var content in new[] { WidthTier.Standard, WidthTier.Huge })
+        {
+            var record = ClassicRecentsTiers.For(content);
+            Assert.Equal(4f, record.HeadGap);
+            Assert.True(float.IsNaN(record.WhenLane));
+            Assert.False(record.ChevronOwn);
+            Assert.False(record.FlushRail);
+        }
+        // Compact draws its own 40 chevron at 14 and keeps the rail away (it has none).
+        var compact = ClassicRecentsTiers.For(WidthTier.Compact);
+        Assert.True(compact.ChevronOwn);
+        Assert.Equal(14f, compact.ChevronGlyph);
+        Assert.False(compact.FlushRail);
     }
 
     [Fact]
@@ -275,6 +306,15 @@ public class LibraryTiersTests
         Assert.Equal(10f, small.PaneHeaderPadBottom);
         // The stated height is the 120 band under the 16 pane inset and over the 10 of air; the cover (96) sits bottom-aligned inside the band.
         Assert.Equal(146f, small.PaneHeaderHeight);
+        // C-Library-Small: the section pads 8 on the left (beside the 16 divider column) and the title is 24 / 30; every other record keeps the 16 and the page-hero rung.
+        Assert.Equal(8f, small.PaneInsetLeft);
+        Assert.Equal(24f, small.PaneTitleSize);
+        Assert.Equal(30f, small.PaneTitleLine);
+        foreach (var other in new[] { ClassicLibraryTiers.For(WidthTier.Compact, single: false), ClassicLibraryTiers.For(WidthTier.Standard, single: false), ClassicLibraryTiers.For(WidthTier.Huge, single: false) })
+        {
+            Assert.Equal(ClassicTiers.PaneInset, other.PaneInsetLeft);
+            Assert.True(float.IsNaN(other.PaneTitleSize) && float.IsNaN(other.PaneTitleLine));
+        }
         Assert.Equal(120f, small.PaneHeaderHeight - ClassicTiers.PaneInset - small.PaneHeaderPadBottom);
         Assert.True(small.PaneHeaderHeight - ClassicTiers.PaneInset - small.PaneHeaderPadBottom >= small.PaneCover, "the cover fits the band");
         // The tuned header is Standard's and the Compact drill-in's pane leaf (the Compact board does not redraw it): 128 / 156 / 18 / 12.
@@ -291,6 +331,59 @@ public class LibraryTiersTests
             var record = ClassicLibraryTiers.For(content, single: false);
             Assert.True(record.PaneHeaderHeight - ClassicTiers.PaneInset - record.PaneHeaderPadBottom >= record.PaneCover, $"{content}: the cover overruns its band");
         }
+    }
+
+    // ── the navigator grid's gaps per tier (the boards' `gap: row column`) ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_grid_gaps_are_the_boards_row_and_column_gaps_per_tier()
+    {
+        // C-Library 8 8 (Standard), C-Library-Compact 16 12, C-Library-Small 12 16, C-Library-Huge 16 8: CSS `gap: row column`.
+        Assert.Equal(new LibraryGridGaps(Column: 8f, Row: 8f), ClassicLibraryTiers.For(WidthTier.Standard, single: false).GridGaps);
+        Assert.Equal(new LibraryGridGaps(Column: 12f, Row: 16f), ClassicLibraryTiers.For(WidthTier.Compact, single: true).GridGaps);
+        Assert.Equal(new LibraryGridGaps(Column: 16f, Row: 12f), ClassicLibraryTiers.For(WidthTier.Small, single: false).GridGaps);
+        Assert.Equal(new LibraryGridGaps(Column: 8f, Row: 16f), ClassicLibraryTiers.For(WidthTier.Huge, single: false).GridGaps);
+        Assert.Same(ClassicLibraryTiers.For(WidthTier.Huge, false), ClassicLibraryTiers.For(WidthTier.Huge4K, false));
+        // The split page in a Compact content tier (a hold) draws the host's Compact gaps, so its shimmer lands where the grid does.
+        Assert.Equal(ClassicLibraryTiers.For(WidthTier.Compact, single: true).GridGaps, ClassicLibraryTiers.For(WidthTier.Compact, single: false).GridGaps);
+    }
+
+    [Fact]
+    public void The_policy_the_host_reads_says_the_same_gaps_and_the_core_fills_the_rest()
+    {
+        var policy = ClassicLibraryTiers.Policy;
+        foreach (var (content, single) in new[] { (WidthTier.Compact, true), (WidthTier.Small, false), (WidthTier.Standard, false), (WidthTier.Huge, false) })
+            Assert.Equal(ClassicLibraryTiers.For(content, single).GridGaps, policy.GridGapsFor(content));
+        Assert.Equal(policy.GridGapsFor(WidthTier.Huge), policy.GridGapsFor(WidthTier.Huge4K));
+        // A structure that says nothing (or something unusable) gets the core's 8 and 8 at every tier.
+        foreach (var content in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+        {
+            Assert.Equal(new LibraryGridGaps(LibraryNavMount.GridGap, LibraryNavMount.GridGap), LibraryTierPolicy.Default.GridGapsFor(content));
+            Assert.Equal(LibraryGridGaps.Core, new LibraryTierPolicy { SmallGridGaps = new LibraryGridGaps(-1f, float.NaN), StandardGridGaps = new LibraryGridGaps(float.NaN, 4f) }.GridGapsFor(content));
+        }
+    }
+
+    [Fact]
+    public void The_gaps_move_the_mounts_gaps_never_its_key()
+    {
+        var core = LibraryNavMount.For("albums", 3, 1, alphabetical: false, lettersKey: 0);
+        Assert.Equal(LibraryNavMount.GridGap, core.Gap);
+        Assert.Equal(LibraryNavMount.GridGap, core.RowGap);
+        var small = LibraryNavMount.For("albums", 3, 1, alphabetical: false, lettersKey: 0, fullBase: ClassicLibraryTiers.SmallCardCellMin, gaps: ClassicLibraryTiers.Policy.GridGapsFor(WidthTier.Small));
+        Assert.Equal(core.Key, small.Key);                // a crossing never remounts the navigator: the gaps re-fit the mounted grid
+        Assert.Equal(16f, small.Gap);
+        Assert.Equal(12f, small.RowGap);
+        Assert.NotEqual(core.CellMin, small.CellMin);
+        // An unusable gap reads as the core's.
+        Assert.Equal(LibraryNavMount.GridGap, LibraryNavMount.For("albums", 3, 1, false, 0, gaps: new LibraryGridGaps(float.NaN, 4f)).Gap);
+    }
+
+    [Fact]
+    public void Small_two_96_cells_still_fit_the_240_navigator_with_the_16_column_gap()
+    {
+        float inner = ClassicLibraryTiers.SmallNavWidth - 2f * 8f;   // the grid's (8, 8, 8, 0) wrapper
+        float gap = ClassicLibraryTiers.For(WidthTier.Small, single: false).GridGaps.Column;
+        Assert.Equal(2, System.Math.Max(1, (int)((inner + gap) / (ClassicLibraryTiers.SmallCardCellMin + gap))));   // the engine's floor-fit formula
     }
 
     [Fact]
