@@ -97,6 +97,16 @@ public static class App
         // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
         // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
         // Zune is Developer-only: with Developer mode off a stored "zune" resolves to Classic (and is kept for when it is on again).
+        // A `--screenshot` run's `--theme <id>` selects that theme for the run (a review capture of a Developer-only theme such as Zune in a --fake
+        // profile): Developer mode on and the id stored in the run's settings, which --fake keeps in memory. Ignored without --screenshot, so the
+        // owner's launches never see it.
+        string[] argv = Environment.GetCommandLineArgs();
+        int themeAt = Array.IndexOf(argv, "--theme");
+        if (themeAt >= 0 && themeAt + 1 < argv.Length && Array.IndexOf(argv, "--screenshot") >= 0)
+        {
+            Platform.Developer.Enabled.Value = true;
+            Platform.Settings.Set(new SettingKey<string>("theme.id", Wavee.Themes.Classic.ClassicTheme.Id), argv[themeAt + 1]);
+        }
         Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create());
         if (!Platform.Args.Fake)
         {
