@@ -361,7 +361,8 @@ internal static class ZuneTrackChrome
             return new BoxEl
             {
                 Direction = 1, Height = DetailLayout.ToolbarRowHeight, MinWidth = 0f, ClipToBounds = true,
-                Padding = new Edges4(DetailLayout.ToolbarSurfacePadX, padY, DetailLayout.ToolbarSurfacePadX, padY),
+                // No left inset (A5): the bar's first glyph stands at the list's x with the heading and the header's hairline.
+                Padding = new Edges4(0f, padY, DetailLayout.ToolbarSurfacePadX, padY),
                 Fill = tinted ? Prop.Of(static () => R.Ink.AccentAction with { A = ZuneListRules.SelectionTint }) : (Prop<ColorF>)ColorF.Transparent,
                 Children =
                 [
@@ -403,7 +404,14 @@ internal static class ZuneTrackChrome
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
                 Children =
                 [
-                    new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
+                    new BoxEl
+                    {
+                        Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
+                        // The first command's own left pad (and the page bar's inset) are drawn outside the list's x, so its glyph lands on it.
+                        Margin = new Edges4(ZuneListRules.BarLeadShift(left.Length > 0 && left[0].Key is { } k0 && k0.StartsWith(ZuneListRules.PageLeadKeyPrefix, StringComparison.Ordinal),
+                                                                         RowMetrics.RowInset - DetailLayout.ToolbarSurfacePadX), 0f, 0f, 0f),
+                        Children = left,
+                    },
                     middle is null
                         ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
                         : new BoxEl

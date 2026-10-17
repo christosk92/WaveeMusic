@@ -84,7 +84,7 @@ internal static class ZuneHomeZones
             pager: ShelfPager.Chevrons,
             // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
             // (one node at every tier: these are live props of the shelf).
-            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
+            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,

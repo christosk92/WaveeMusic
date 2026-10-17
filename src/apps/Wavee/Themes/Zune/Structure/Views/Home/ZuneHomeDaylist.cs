@@ -56,10 +56,10 @@ internal static class ZuneHomeDaylist
         Element[] rings =
         [
             K.Ring("zune-daylist-play", pauses ? Icons.Pause : Icons.Play, Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), lay.RingLabels,
-                   primary: true, () => HomeCardNav.Play(in c), lay.RingSize),
+                   primary: true, () => HomeCardNav.Play(in c), lay.RingSize, lay.RingTarget),
             // Shuffle STARTS the daylist shuffled; it never toggles.
             K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), lay.RingLabels, primary: false,
-                   () => HomeVerbs.ShuffleContext(c.Uri), lay.RingSize),
+                   () => HomeVerbs.ShuffleContext(c.Uri), lay.RingSize, lay.RingTarget),
             SaveRing(uri, title, lay),
             MoreRing(lay),
         ];
@@ -79,10 +79,10 @@ internal static class ZuneHomeDaylist
         bool words = lay.RingLabels;
         Element[] rings =
         [
-            K.Ring("zune-daylist-play", Icons.Play, Loc.Get(Strings.Home.Play), words, primary: true, static () => { }, lay.RingSize),
-            K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), words, primary: false, static () => { }, lay.RingSize),
-            K.Ring("zune-daylist-save", Icons.Heart, Loc.Get(Strings.Home.Save), words, primary: false, static () => { }, lay.RingSize),
-            K.Ring("zune-daylist-more", Icons.More, Loc.Get(Strings.Home.More), showLabel: false, primary: false, static () => { }, lay.RingSize),
+            K.Ring("zune-daylist-play", Icons.Play, Loc.Get(Strings.Home.Play), words, primary: true, static () => { }, lay.RingSize, lay.RingTarget),
+            K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
+            K.Ring("zune-daylist-save", Icons.Heart, Loc.Get(Strings.Home.Save), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
+            K.Ring("zune-daylist-more", Icons.More, Loc.Get(Strings.Home.More), showLabel: false, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
         ];
         var current = DaypartRules.OfHour(DateTime.Now.Hour);
         Element clock = Clock(StaticLine(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))), (int)current, null, lay.ClockBarW);
@@ -107,17 +107,29 @@ internal static class ZuneHomeDaylist
         return new BoxEl
         {
             Key = "zune-daylist-save", Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f, BlocksDragArm = true,
+            Justify = lay.RingTarget > 0f ? FlexJustify.Center : FlexJustify.Start, MinWidth = lay.RingTarget, MinHeight = lay.RingTarget,
             Children = kids.ToArray(),
         };
     }
 
     /// <summary>The "…" ring: a stand-alone icon action that re-enters the context funnel, so the plate's attached menu opens anchored at it.</summary>
     static Element MoreRing(ZuneHomeLayout lay)
-        => Controls.Named(K.RingDisc(Icons.More, primary: false, lay.RingSize) with
+    {
+        var disc = K.RingDisc(Icons.More, primary: false, lay.RingSize) with
         {
-            Key = "zune-daylist-more", BlocksDragArm = true,
+            BlocksDragArm = true,
             Children = [Controls.IconAction(Icons.More, null, requestsContext: true, size: lay.RingSize - 2f * H.RingStroke)],
-        }, Loc.Get(Strings.Home.More));
+        };
+        // Where the tier draws the disc inside a larger target the key stays on the target (the node the tests and the pointer find).
+        Element ring = lay.RingTarget > lay.RingSize
+            ? new BoxEl
+            {
+                Key = "zune-daylist-more", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f, BlocksDragArm = true,
+                MinWidth = lay.RingTarget, MinHeight = lay.RingTarget, Children = [disc],
+            }
+            : disc with { Key = "zune-daylist-more" };
+        return Controls.Named(ring, Loc.Get(Strings.Home.More));
+    }
 
     /// <summary>The title in the tier's role (the quickplay head, the heading, the daylist title or the hero), on its lines. Its box scales from the
     /// left edge when the role changes across a crossing (the panorama's recipe).</summary>
@@ -131,6 +143,7 @@ internal static class ZuneHomeDaylist
             _ => R.Type.HeroTitle(title),
         };
         bool one = lay.DaylistTitleLines <= 1;
+        if (lay.DaylistTitleSize > 0f) text = text with { Size = lay.DaylistTitleSize, LineHeight = lay.DaylistTitleLine };
         return new BoxEl
         {
             Key = "zune-daylist-title", Direction = 1, MinWidth = 0f, Animate = Design.Reduced ? null : ZuneMotion.TitleScale,
@@ -201,7 +214,11 @@ internal static class ZuneHomeDaylist
 
         return new BoxEl
         {
-            Key = H.DaylistKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = lay.DaylistH, ClipToBounds = true,
+            Key = H.DaylistKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+            Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
+            // The strip's own height (176 / 112 / 56 across the tiers and the height rung) glides on a SIZE channel, so it holds a track on the crossing frame
+            // whatever the chapter around it does (a position-only slide would snap beside a live reflow).
+            Layout = H.ChapterResize,
             Fill = Prop.Of(static () => Tok.FillCardDefault), Corners = R.Shape.All(ShapeRole.Card),
             Children = kids.ToArray(),
         };

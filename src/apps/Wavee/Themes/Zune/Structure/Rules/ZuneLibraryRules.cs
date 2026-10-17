@@ -42,6 +42,9 @@ public static class ZuneLibraryRules
     /// <summary>The page's top under the band, and the gap from the head to the body.</summary>
     public const float PageTop = 8f, HeadBodyGap = 16f;
 
+    /// <summary>The navigator's cap at Huge and 4K (the list or the grid of covers): a 2400 page is never one 1960-wide list.</summary>
+    public const float NavCap = 960f;
+
     /// <summary>The head: its height, the gap between its words and the gap between its groups, the find field's width.</summary>
     public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
 
@@ -209,6 +212,13 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The full grid's size-S cell floor (NaN: the core's 116).</summary>
     public required float CardCellMin { get; init; }
 
+    /// <summary>The navigator's widest (NaN: it takes what the pane leaves). Huge caps it at 960 so a 2400 page is not one 1960-wide list of tiny rows.</summary>
+    public float NavMaxW { get; init; } = float.NaN;
+
+    /// <summary>The pane's "open album" word shows (the pane's commands row has room for it); at Small the pane is 300 and the word would shrink to
+    /// "o...", so the verb stays in the "..." menu instead.</summary>
+    public bool OpenWord { get; init; } = true;
+
 }
 
 /// <summary>Zune's library ladder and records.</summary>
@@ -257,16 +267,16 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f),
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
         // Huge (Z-Library-*-Huge): wider columns, the pane 440, the list 260, 48 apart.
         Make(WidthTier.Huge, headH: 28f, headGap: 8f, colGap: 48f, paneW: 440f, readerNavW: 260f, navMin: 320f, sortMenu: false, rightMin: 440f,
-            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN),
+            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with { NavMaxW = ZuneLibraryRules.NavCap },
         // Huge 4K: Huge's (pages cap at 2400, decision 2).
         Make(WidthTier.Huge4K, headH: 28f, headGap: 8f, colGap: 48f, paneW: 440f, readerNavW: 260f, navMin: 320f, sortMenu: false, rightMin: 440f,
-            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN),
+            new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with { NavMaxW = ZuneLibraryRules.NavCap },
     ];
 
     /// <summary>The policy the structure publishes for the core host (`ThemePolicies.LibraryTiers`): the grid's gaps per content tier and Small's cell floor. The

@@ -220,7 +220,7 @@ internal static class ZuneDetailFrame
                 new BoxEl
                 {
                     Key = Z.SongsHeadingKey, Direction = 0, AlignItems = FlexAlign.Center, Height = Z.HeadingRowH, Shrink = 0f, MinWidth = 0f,
-                    Padding = new Edges4(Z.SectionInset, 0f, Z.SectionInset, 0f),
+                    Padding = new Edges4(Z.SongsHeadingInset, 0f, Z.SongsHeadingInset, 0f),
                     Children = [K.Heading(Loc.Get(Strings.Theme.Zune.Detail.Songs))],
                 },
                 host,

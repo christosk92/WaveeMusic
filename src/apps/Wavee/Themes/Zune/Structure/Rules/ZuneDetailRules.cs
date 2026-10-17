@@ -145,6 +145,9 @@ public static class ZuneDetailRules
     /// <summary>The "songs" heading row over the list (Z-Album: 40), and the list's inset under it (the rows' own 8 already stand in).</summary>
     public const float HeadingRowH = 40f;
 
+    /// <summary>The "songs" heading's side inset (A5): none, so the heading, the bar's first glyph and the header's hairline share the list's x.</summary>
+    public const float SongsHeadingInset = 0f;
+
     /// <summary>The identity column's cover decode bucket (the shelf's: a warm texture on arrival) and its saturation.</summary>
     public const int CoverDecodePx = 512;
 

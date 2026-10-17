@@ -129,6 +129,39 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
         }, W, H);
 
     [Fact]
+    public void A_shelfs_art_stands_at_its_headings_x_and_see_all_never_glues_to_the_title()
+        => ZuneHost.Mounted(host, shell =>
+        {
+            shell.RunFrames(10);
+            try
+            {
+                GoHome(shell);
+                UntilBackground(shell, () => shell.FindPrefix("zune-shelf-card:").Count > 0 && shell.FindPrefix("see-all:").Count > 0,
+                    "a cover shelf and a 'see all' word in the fake feed");
+                shell.RunFrames(30);
+                var scene = shell.Host.Scene;
+                var column = scene.AbsoluteRect(Node(shell, ZuneHomeRules.ColumnKey));
+
+                // A5: no plate padding, so the first card (its art) stands on the heading's x, which is the column's.
+                var card = scene.AbsoluteRect(shell.FindPrefix("zune-shelf-card:")[0].Node);
+                Assert.True(MathF.Abs(card.X - column.X) <= 0.5f, $"the shelf art is at {card.X}, its heading at {column.X}");
+
+                // A6: the tools stand at least 14 right of the title group (the heading row is [words, tools]).
+                foreach (var (link, key) in shell.FindPrefix("see-all:"))
+                {
+                    var tools = scene.Parent(link);
+                    var row = scene.Parent(tools);
+                    var words = scene.FirstChild(row);
+                    Assert.False(words.IsNull, key + ": the heading row has its words");
+                    var w = scene.AbsoluteRect(words);
+                    var t = scene.AbsoluteRect(link);
+                    Assert.True(t.X >= w.X + w.W + ZuneHomeRules.HeadToolsGap - 0.5f, $"{key}: 'see all' at {t.X} is under {ZuneHomeRules.HeadToolsGap} from the title group's end {w.X + w.W}");
+                }
+            }
+            finally { GoHome(shell); }
+        }, W, H);
+
+    [Fact]
     public void The_bands_row_two_is_homes_facets_with_the_current_lit_and_a_click_switches_the_facet()
         => ZuneHost.Mounted(host, shell =>
         {

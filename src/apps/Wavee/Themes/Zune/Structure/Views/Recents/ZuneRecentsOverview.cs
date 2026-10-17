@@ -51,21 +51,27 @@ internal sealed class ZuneRecentsOverview(IRecentsHost host) : Component
         };
         int shown = Math.Min(layout.AsideMonths, calendar.Months.Length);
         for (int i = 0; i < shown; i++)
+        {
+            // A month with nothing played collapses to its line ("october · nothing played"): no blank grid reserves the room.
+            bool played = calendar.Months[i].TotalPlays > 0;
             kids.Add(new BoxEl
             {
                 Key = Z.MonthPrefix + FormatCache.Int(calendar.Months[i].Year) + ":" + FormatCache.Int(calendar.Months[i].Month),
                 Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    ZuneRecentsCalendarParts.MonthLine(calendar.Months[i], host.Culture),
-                    ZuneRecentsCalendarParts.MonthGrid(host, shape, i, layout.CellH, layout.GridGap, weekdays: false, numerals: false),
-                ],
+                Children = played
+                    ? [
+                        ZuneRecentsCalendarParts.MonthLine(calendar.Months[i], host.Culture),
+                        ZuneRecentsCalendarParts.MonthGrid(host, shape, i, layout.CellH, layout.GridGap, weekdays: false, numerals: false),
+                    ]
+                    : [ZuneRecentsCalendarParts.MonthLine(calendar.Months[i], host.Culture)],
             });
+        }
         if (calendar.Months.Length > 0)
         {
             kids.Add(new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                // Wraps where the key and the word do not share the aside's width (Small's 220): "jump to today" drops under the key whole.
+                Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
                 Children = [ZuneRecentsCalendarParts.Legend(), new BoxEl { Grow = 1f, MinWidth = 0f }, ZuneRecentsCalendarParts.JumpToday(host)],
             });
             if (ZuneRecentsCalendarParts.Busiest(calendar.Months[0], host.Culture) is { } busiest)
@@ -242,7 +248,7 @@ internal static class ZuneRecentsCalendarParts
     /// <summary>"jump to today": a link word that brings the list (or the zoomed-out calendar) to today.</summary>
     internal static Element JumpToday(IRecentsHost host) => new BoxEl
     {
-        Key = "zune-recents-today", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, MinHeight = Controls.IconButtonSize,
+        Key = "zune-recents-today", Direction = 0, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, MinHeight = Controls.IconButtonSize,
         Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false,
         OnClick = () => host.JumpIn(host.Today, 0),
         Children =
@@ -250,6 +256,7 @@ internal static class ZuneRecentsCalendarParts
             R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Collection.Recents.JumpToToday)) with
             {
                 Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         ],
     };

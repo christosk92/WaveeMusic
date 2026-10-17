@@ -44,6 +44,9 @@ internal static class ZuneSurface
     {
         var plate = PlateOf(s.Plate);
         var corners = R.Shape.All(ShapeRole.Tile);
+        // A shelf card's plate is a wash over its ART (the stack body draws it, A5): the shell keeps no whole-card plate unless the kind rests on a fill.
+        bool artWash = IsShelfBody(content) && !PlateRules.Of(s.Plate).HasRootFill;
+        Element[] kids = artWash ? [content] : [PlateBox(in plate, corners), content];
         return new BoxEl
         {
             ZStack = true, Grow = s.IsRow ? 0f : 1f, MinWidth = 0f,
@@ -54,20 +57,23 @@ internal static class ZuneSurface
             Role = mode.Role, Focusable = mode.OwnsFocus,
             FocusVisualMargin = s.IsRow ? Design.FocusInsetRow : Design.FocusInsetBordered,
             Cursor = SurfaceRules.Cursor(in mode),
-            Children =
-            [
-                new BoxEl
-                {
-                    Grow = 1f, HitTestVisible = false, Corners = corners,
-                    Opacity = plate.RestOpacity, HoverOpacity = 1f,
-                    HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                    PressDurationMs = MotionTok.ControlFaster.DurationMs, PressEasing = MotionTok.ControlFaster.Easing,
-                    Fill = plate.Fill, HoverFill = plate.Hover, PressedFill = plate.Pressed,
-                },
-                content,
-            ],
+            Children = kids,
         };
     }
+
+    /// <summary>The plate reveal: a non-hit-testable box whose opacity and fill follow the shell's hover and press.</summary>
+    static BoxEl PlateBox(in (ColorF Fill, ColorF Hover, ColorF Pressed, float RestOpacity, bool Dashed) plate, CornerRadius4 corners) => new()
+    {
+        Grow = 1f, HitTestVisible = false, Corners = corners,
+        Opacity = plate.RestOpacity, HoverOpacity = 1f,
+        HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+        PressDurationMs = MotionTok.ControlFaster.DurationMs, PressEasing = MotionTok.ControlFaster.Easing,
+        Fill = plate.Fill, HoverFill = plate.Hover, PressedFill = plate.Pressed,
+    };
+
+    // The host wraps the body in one non-keyed box (`within`); a shelf stack body is that box's only child and carries ShelfBodyKey.
+    static bool IsShelfBody(Element content)
+        => content is BoxEl { Children: { Length: 1 } kids } && kids[0] is BoxEl { Key: ZuneListRules.ShelfBodyKey };
 
     /// <summary>The selected skin: the 2-DIP accent border (<paramref name="accent"/> read now; null is the style's accent) over the accent wash.
     /// A static border (no shape selects a tile, so no static ↔ bound flip on a reused node).</summary>
@@ -110,17 +116,28 @@ internal static class ZuneSurface
             };
         }
 
-        float inner = SurfaceParts.InnerOf(width);
+        // A SHELF card (A5): no plate padding, so the art is the card's whole width and stands at the heading's x; the caption 6 under it, the
+        // hover a wash over the art alone. The host's `labels` were laid for the padded inner width, so the block is built here at the full one;
+        // the slack under it keeps the card exactly as tall as the core's estimate and seed face.
+        float coverH = SurfaceGeometry.CoverHeight(width, d.CoverAspect);
         bool square = d.CoverAspect == 1f;
-        float coverH = SurfaceGeometry.CoverHeight(inner, d.CoverAspect);
         Element art = d.CoverOverride
-            ?? Controls.Artwork(d.CoverUrl, inner, coverH, circular ? inner / 2f : R.Shape.Cover,
+            ?? Controls.Artwork(d.CoverUrl, width, coverH, circular ? width / 2f : R.Shape.Cover,
                                 decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx);
+        if (!PlateRules.Of(s.Plate).HasRootFill)
+        {
+            var plate = PlateOf(s.Plate);
+            art = new BoxEl
+            {
+                ZStack = true, Width = width, Height = coverH, Shrink = 0f,
+                Children = [art, PlateBox(in plate, CornerRadius4.All(circular ? width / 2f : R.Shape.Cover)) with { Grow = 0f, Width = width, Height = coverH }],
+            };
+        }
         return new BoxEl
         {
-            Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f,
-            Padding = Edges4.All(SurfaceGeometry.ShelfPlatePad),
-            Children = [Controls.CardCover(art, inner, coverH, circular, fab, corner), labels ?? Labels(d, in s, inner)],
+            Direction = 1, Gap = ZuneListRules.ShelfCaptionGap, Grow = 1f, Key = ZuneListRules.ShelfBodyKey,
+            Padding = new Edges4(0f, 0f, 0f, ZuneListRules.ShelfSlack(width, d.CoverAspect)),
+            Children = [Controls.CardCover(art, width, coverH, circular, fab, corner), Labels(d, in s, width)],
         };
     }
 

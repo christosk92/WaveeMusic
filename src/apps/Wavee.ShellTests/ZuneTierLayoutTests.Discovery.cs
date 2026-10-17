@@ -103,7 +103,9 @@ public sealed partial class ZuneTierLayoutTests
 
         // The daylist: the record's height, art, clock, rings.
         var daylist = scene.AbsoluteRect(Node(shell, ZuneHomeRules.DaylistKey));
-        Assert.Equal(lay.DaylistH, daylist.H, 1f);
+        // The strip is the record's height, or (Compact) its floor, which a wrapped title or wrapped rings may grow.
+        if (lay.DaylistGrows) Assert.True(daylist.H >= lay.DaylistH - 1f, $"{sizeName}: the daylist is {daylist.H}, under its floor {lay.DaylistH}");
+        else Assert.Equal(lay.DaylistH, daylist.H, 1f);
         Assert.Equal(lay.DaylistArtW, scene.AbsoluteRect(Node(shell, "zune-daylist-art")).W, 1f);
         Assert.Equal(lay.ClockW, scene.AbsoluteRect(Node(shell, "zune-daylist-clock")).W, 1f);
         Assert.Equal(lay.PlayAtEnd, !shell.Find("zune-daylist-end").IsNull);
@@ -114,7 +116,9 @@ public sealed partial class ZuneTierLayoutTests
         Assert.Equal(lay.DaylistRings >= 4, !shell.Find("zune-daylist-more").IsNull);
         // The play ring is the record's disc (its word beside it makes it wider, never taller).
         var play = scene.AbsoluteRect(Node(shell, "zune-daylist-play"));
-        Assert.Equal(lay.RingSize, play.H, 1f);
+        // The ring is its disc, or (Compact: a 36 disc) the larger hit box around it.
+        Assert.Equal(MathF.Max(lay.RingSize, lay.RingTarget), play.H, 1f);
+        Assert.True(play.W >= lay.RingTarget - 0.5f, $"{sizeName}: the play ring is {play.W} wide, under its {lay.RingTarget} target");
         if (lay.DaylistForm == ZuneDaylistForm.OneRow) Assert.Equal(56f, daylist.H, 1f);
 
         // The quickplay strip: the pins capped by the record (one tile at its art), no new group where the tier has none, the history in its arm.
@@ -151,7 +155,7 @@ public sealed partial class ZuneTierLayoutTests
         }
 
         if (tiers.Window == WidthTier.Compact)
-            AssertTargets(shell, sizeName, "see-all:", "zune-home-history-link", "zune-home-customize-link", ZuneHomeRules.PinTilePrefix, "zune-daylist-play",
+            AssertTargets(shell, sizeName, "see-all:", "zune-home-history-link", "zune-home-customize-link", ZuneHomeRules.PinTilePrefix, "zune-daylist-play", "zune-daylist-shuffle", "zune-daylist-save", "zune-daylist-more",
                 "zune-chart:", "zune-tile:", "zune-release:", "zune-history:", "zune-cluster-row:");
     }
 

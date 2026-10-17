@@ -45,8 +45,14 @@ public static class ZuneRecentsRules
     /// <summary>The list's foot (the shell clips above the player bar; this is breathing room).</summary>
     public const float PageBottom = 16f;
 
-    /// <summary>A day heading: the gap between its label, its hairline and its count; the hairline's height.</summary>
-    public const float DayGap = 16f, DayRule = 1f;
+    /// <summary>A day heading: the gap between its label, its hairline and its count; the hairline's height; the hairline's floor (it never collapses
+    /// beside a long label or count, so every heading wears the one form: label, rule, count).</summary>
+    public const float DayGap = 16f, DayRule = 1f, DayRuleMin = 24f;
+
+    /// <summary>The distance from a row's trailing edge to its chevron glyph's right edge, which a day heading's count aligns to: the row's pad, then
+    /// (where the played-at stamp is not stacked) the "..." lane and the gap before it, then the chevron lane's air around its glyph.</summary>
+    public static float CountInset(bool stacked, float chevronLane, float moreLane, float gap)
+        => SurfaceGeometry.RowPad + (stacked ? 0f : moreLane + gap) + (chevronLane - ChevronGlyph) / 2f;
 
     // ── the row ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 

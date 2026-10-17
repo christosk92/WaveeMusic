@@ -70,10 +70,19 @@ internal static class ZuneDiscoveryKit
     /// <summary>A section's heading row: the heading, its subtitle (when the tier shows it), then the link at the end.</summary>
     public static Element Heading(string title, string? subtitle, Element? tools, bool cased = true)
     {
-        var kids = new List<Element>(4) { cased ? HeadingText(title) : HeadingText(title) with { Case = TextCase.AsWritten } };
-        if (subtitle is { Length: > 0 }) kids.Add(Caption(subtitle) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
-        kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-        if (tools is not null) kids.Add(tools);
+        var words = new List<Element>(2) { cased ? HeadingText(title) : HeadingText(title) with { Case = TextCase.AsWritten } };
+        if (subtitle is { Length: > 0 }) words.Add(Caption(subtitle) with { Margin = new Edges4(H.HeadInlineGap, 0f, 0f, 0f) });
+        // The title group takes the row's room and yields it (Grow 1, Shrink 1, MinWidth 0), the tools keep their own size 14 after it: "see all"
+        // never glues onto the subtitle, and a narrow row ellipsises the words before it moves the link (A6).
+        var kids = new List<Element>(2)
+        {
+            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = words.ToArray() },
+        };
+        if (tools is not null)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = new Edges4(H.HeadToolsGap, 0f, 0f, 0f), Children = [tools],
+            });
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
@@ -101,7 +110,8 @@ internal static class ZuneDiscoveryKit
     };
 
     /// <summary>A ring action: the disc and its lowercase word (none for a glyph-only action, which is named for assistive tech instead).</summary>
-    public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize)
+    public static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action onClick, float size = H.RingSize,
+                               float target = 0f)
     {
         var kids = new List<Element>(2) { RingDisc(glyph, primary, size) };
         if (showLabel)
@@ -109,6 +119,8 @@ internal static class ZuneDiscoveryKit
         Element box = new BoxEl
         {
             Key = key, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f,
+            // The hit box (Compact: a 36 disc in a 40 target) is the clickable node; the disc is centred in it.
+            Justify = target > 0f ? FlexJustify.Center : FlexJustify.Start, MinWidth = target, MinHeight = target,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
             OnClick = onClick, Children = kids.ToArray(),
         };
@@ -121,8 +133,18 @@ internal static class ZuneDiscoveryKit
     public static Element Plate(string key, string name, uint? colour, string? art, float height, Action open, bool big = false, bool hero = false)
     {
         bool hasColour = colour is { } c && c != 0u;
+        bool hasArt = !hasColour && art is { Length: > 0 };
         var layers = new List<Element>(3);
-        if (!hasColour && art is { Length: > 0 }) layers.Add(Controls.CoverFill(art, 0f, (int)(height * 2f)));
+        if (hasArt)
+        {
+            layers.Add(Controls.CoverFill(art, 0f, (int)(height * 2f)));
+            // The bottom scrim (0 -> 45 % black over the lower half) keeps the on-media label readable on light art and in the light theme.
+            layers.Add(new BoxEl
+            {
+                Direction = 1, Justify = FlexJustify.End, HitTestVisible = false,
+                Children = [new BoxEl { Height = height * H.PlateScrimShare, Shrink = 0f, HitTestVisible = false, Gradient = H.PlateScrim }],
+            });
+        }
         layers.Add(new BoxEl
         {
             Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, Padding = new Edges4(H.TilePadX, H.TilePadY, H.TilePadX, H.TilePadY),
@@ -139,7 +161,7 @@ internal static class ZuneDiscoveryKit
         {
             Key = key, Height = height, MinWidth = 0f, ZStack = true, ClipToBounds = true,
             Corners = R.Shape.All(ShapeRole.Tile),
-            Fill = hasColour ? ColorScience.ToColor(colour!.Value) : Prop.Of(static () => Tok.AccentDefault),
+            Fill = hasColour ? ColorScience.ToColor(colour!.Value) : hasArt ? Prop.Of(static () => R.Layer.FloatingPane) : Prop.Of(static () => Tok.AccentDefault),
             Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = open,
             Children = layers.ToArray(),
         }.Interactive(Interaction.Tile);

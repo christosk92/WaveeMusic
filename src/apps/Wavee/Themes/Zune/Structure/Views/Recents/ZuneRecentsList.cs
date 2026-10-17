@@ -177,6 +177,8 @@ internal static class ZuneRecentsDays
         return new BoxEl
         {
             Direction = 0, Height = RecentsLayout.DateHeaderHeight, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Z.DayGap,
+            // The count's right edge is the rows' chevron glyph's, not the list's edge (the audit's 1044 vs 985).
+            Padding = new Edges4(0f, 0f, Z.CountInset(layout.Stacked, layout.ChevronLane, Controls.IconButtonSize, Spacing.S), 0f),
             Role = overlay ? AutomationRole.None : AutomationRole.Button, Focusable = !overlay, Cursor = CursorId.Hand, OnClick = onClick,
             Children =
             [
@@ -186,7 +188,7 @@ internal static class ZuneRecentsDays
                 },
                 new BoxEl
                 {
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Z.DayRule, AlignSelf = FlexAlign.Center,
+                    Grow = 1f, Basis = 0f, MinWidth = Z.DayRuleMin, Height = Z.DayRule, AlignSelf = FlexAlign.Center,
                     Fill = Tok.StrokeDividerDefault, HitTestVisible = false,
                 },
                 R.Type.DenseMeta(n > 0 ? host.CountLabel(n) : "") with

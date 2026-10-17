@@ -146,6 +146,13 @@ public static class ZuneListRules
     /// <summary>A labelled command's horizontal padding.</summary>
     public static readonly Edges4 CommandPad = new(8f, 0f, 8f, 0f);
 
+    /// <summary>The key prefix the core gives the page bar's lead command (the round play disc, which has no pad of its own).</summary>
+    public const string PageLeadKeyPrefix = "cmd:page-lead:";
+
+    /// <summary>The bar's left group shift (A5) so the FIRST glyph stands at the list's x: a padded command pulls back by its own left pad, the
+    /// page bar's lead disc by the inset the core adds to line it up with a card's words (<paramref name="pageBarInset"/>, 2).</summary>
+    public static float BarLeadShift(bool pageLead, float pageBarInset) => pageLead ? -pageBarInset : -CommandPad.Left;
+
     /// <summary>The disclosure chevron after a flyout command.</summary>
     public const float CommandChevron = 8f;
 
@@ -279,6 +286,25 @@ public static class ZuneListRules
 
     /// <summary>The Outline plate's dash.</summary>
     public const float SurfaceDash = 3f;
+
+    /// <summary>A SHELF card (A5): no plate padding (the art stands at the heading's x, at the card's whole width), the art 6 over its caption
+    /// lines, and its hover a wash over the art alone.</summary>
+    public const float ShelfCaptionGap = 6f;
+
+    /// <summary>The node key the shelf stack body carries, so the shell knows it wears the art wash instead of the whole-card plate.</summary>
+    public const string ShelfBodyKey = "zune-surface-shelf";
+
+    /// <summary>The empty air a shelf card keeps UNDER its labels so it is exactly as tall as the core's estimate and seed face
+    /// (<c>SurfaceGeometry.ShelfHeight</c>: 4 gutter + 8 pad + cover(w - 16) + 8 gap + labels + 8 pad). The live card has no pad and a 6 gap,
+    /// so its cover is taller by 16 / aspect and its chrome shorter by 18; the difference is this slack (2 for a square cover, 9 for a 16:9 one;
+    /// never negative). A hydrating card never re-measures its row.</summary>
+    public static float ShelfSlack(float width, float aspect)
+    {
+        float pad = SurfaceGeometry.ShelfPlatePad;
+        float estimated = SurfaceGeometry.CoverHeight(width - 2f * pad, aspect);
+        float live = SurfaceGeometry.CoverHeight(width, aspect);
+        return MathF.Max(0f, 3f * pad - ShelfCaptionGap + estimated - live);
+    }
 
     // ── the policies ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
