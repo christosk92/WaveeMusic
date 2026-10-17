@@ -187,6 +187,9 @@ public sealed record ClassicArtistLayout
     /// <summary>The artist's next concert sits under the pick, beside the chart (C-Artist-Huge4K).</summary>
     public bool UpcomingBesidePick { get; init; }
 
+    /// <summary>The pick beside the chart stands under its own "Artist pick" accent header, as the chart does under "Top tracks" (C-Artist-Huge, C-Artist-Huge4K).</summary>
+    public bool PickHeading { get; init; }
+
     /// <summary>The widest the magazine grows: the page measure (<c>R.Space.PageMaxW</c>, 1600) up to Standard, Huge's own 2400 fill rule.</summary>
     public float PageMaxWidth => Tier >= WidthTier.Huge ? ClassicArtistTiers.HugePageMax : R.Space.PageMaxW;
 
@@ -466,7 +469,7 @@ public static class ClassicArtistTiers
     public static ClassicArtistLayout Huge { get; } = Small with
     {
         Tier = WidthTier.Huge, ChartColumns = 3, ChartShare = 3f, Shelf = new ClassicShelfBand(150f, 9999f, 10, FixedCardW: 0f, Gap: 12f, Pager: true),
-        SectionRow = true, DrawerColumns = 4,
+        SectionRow = true, DrawerColumns = 4, PickHeading = true,
     };
 
     /// <summary>Huge 4K (C-Artist-Huge4K), past the Huge 4K rung: four chart columns of four at 4 : 1, the artist's next concert under the pick.</summary>

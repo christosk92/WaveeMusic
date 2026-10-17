@@ -139,6 +139,5 @@ public static class ClassicPlaylistLayout
     /// <summary>What the header keeps over and under a Compact 40 command (C-Playlist-Compact: a 48 header).</summary>
     public const float RecsHeaderPadY = 8f;
 
-    /// <summary>An empty playlist's lead (C-Empty-Compact): 12 between its message, its field and the header; the message 16 over and 4 under.</summary>
-    public const float LeadGap = 12f, LeadMessagePadTop = 16f, LeadMessagePadBottom = 4f;
+    // The empty playlist's lead (C-Empty-Compact, C-Empty) is `ClassicEmptyLead` (Tiers.Detail.cs): the record per tier.
 }

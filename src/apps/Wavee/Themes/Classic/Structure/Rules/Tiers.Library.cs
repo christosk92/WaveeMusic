@@ -12,8 +12,8 @@
 //   tier      columns                         head pad           rows of the head                          targets
 //   Compact   ONE column, drill-in            16 / top 12        kind chips, title, sort button + view     40 (chips, sort, view cells, filter)
 //                                                                 cells, filter; rows 12 apart
-//   Small     split, the navigator at its     12 / top 16        title, word rail + view, filter           the stock 32 / 28
-//             remembered width (grip 240-560)
+//   Small     split, the navigator at its     12 / top 16        title, sort button + view, filter         the stock 32 / 28
+//             remembered width (grip 240-560)                       (the artists' list keeps its words), rows 10 apart
 //   Standard  split (the tuned design)        12 / top 16        as Small                                  the stock 32 / 28
 //   Huge      split                           16 / top 24        as Small                                  the stock 32 / 28
 //
@@ -34,8 +34,9 @@
 // in your library" leaves the bottom of the rows for a 300 ASIDE 32 right of them (`AlsoByAside`, `AlsoByAsideGap`): two columns of 140 covers, 16 / 20 apart. Below
 // Huge the aside is width 0 (it stays in the pane's row, so a crossing eases it) and the strip is the rows' trailing band again.
 //
-// THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Small and Standard (C-Library), and 200 with a
-// 160 cover 24 from the words at Huge (C-Library-Huge).
+// THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Standard (C-Library), 146 with a 96 cover in a 120
+// band 16 from the words and 10 over the command row at Small (C-Library-Small; the Compact drill-in's pane leaf keeps the 156), and 200 with a 160 cover 24 from the words
+// at Huge (C-Library-Huge).
 //
 // Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo).
 
@@ -90,6 +91,13 @@ public sealed record ClassicLibraryLayout
     /// <summary>The gap between the pane cover and its words (18; C-Library-Huge 24).</summary>
     public float PaneHeaderGap { get; init; } = ClassicLibraryPaneRules.HeaderGap;
 
+    /// <summary>The air under the pane header's cover (12; C-Library-Small 10, the board's gap over the command row).</summary>
+    public float PaneHeaderPadBottom { get; init; } = ClassicLibraryPaneRules.HeaderPadBottom;
+
+    /// <summary>The navigator's sort is ONE button with its menu (the active word and a chevron) instead of the word rail: the Compact head and C-Library-Small's. The artists' list
+    /// (its rail is the board's) and Podcasts' mode words keep their rails.</summary>
+    public bool SortButton { get; init; }
+
     /// <summary>The navigator column carries its own faint tint over the card (C-Library-Huge, C-LibraryList-Huge); the tuned pages leave it on the card's own.</summary>
     public bool NavTinted { get; init; }
 
@@ -125,13 +133,25 @@ public static class ClassicLibraryTiers
     static readonly ClassicLibraryLayout s_compact = new()
     {
         Tier = WidthTier.Compact, HeadPad = new Edges4(16f, 12f, 16f, 8f), HeadGap = 12f, ControlH = 40f, ViewCell = 40f, ChipH = 40f, RightMin = 0f,
+        SortButton = true,
     };
 
-    /// <summary>Small's head is the tuned head (C-Library-Small draws 12 sides, 16 over it); its pane keeps 300 beside the navigator, whose grid starts at 96.</summary>
+    /// <summary>Small's head (C-Library-Small): 12 sides, 16 over it and the rows 10 apart, the sort a button (32) beside the view cells (28); its pane keeps 300 beside the navigator,
+    /// whose grid starts at 96, and draws the board's 96 cover in a 120 band (16 from the words, 10 over the command row).</summary>
     static readonly ClassicLibraryLayout s_small = new()
     {
-        Tier = WidthTier.Small, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 300f,
-        CardCellMin = SmallCardCellMin,
+        Tier = WidthTier.Small, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 10f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 300f,
+        CardCellMin = SmallCardCellMin, SortButton = true,
+        PaneCover = ClassicLibraryPaneRules.SmallCover, PaneHeaderHeight = ClassicLibraryPaneRules.SmallPaneHeaderHeight,
+        PaneHeaderGap = ClassicLibraryPaneRules.SmallHeaderGap, PaneHeaderPadBottom = ClassicLibraryPaneRules.SmallHeaderPadBottom,
+    };
+
+    /// <summary>A split page in a Compact content tier (the ladders' holds differ by a frame) and the Compact drill-in's pane leaf (it asks for the split record): Small's head with
+    /// the tuned 128 pane header, which the Compact board does not redraw.</summary>
+    static readonly ClassicLibraryLayout s_compactLeaf = s_small with
+    {
+        PaneCover = ClassicLibraryPaneRules.PaneCover, PaneHeaderHeight = ClassicLibraryPaneRules.PaneHeaderHeight,
+        PaneHeaderGap = ClassicLibraryPaneRules.HeaderGap, PaneHeaderPadBottom = ClassicLibraryPaneRules.HeaderPadBottom,
     };
 
     /// <summary>Standard: the tuned design.</summary>
@@ -182,7 +202,8 @@ public static class ClassicLibraryTiers
         if (single) return s_compact;
         return (WidthTier)Math.Min((int)content, (int)WidthTier.Huge) switch
         {
-            WidthTier.Compact or WidthTier.Small => s_small,
+            WidthTier.Compact => s_compactLeaf,
+            WidthTier.Small => s_small,
             WidthTier.Standard => s_standard,
             _ => s_huge,
         };

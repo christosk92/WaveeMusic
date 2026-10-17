@@ -31,13 +31,13 @@ internal static class ClassicLibraryPaneKit
     /// + 20 attribution + 16 meta + three 3-DIP gaps = 97. A second 36-DIP title line would put the column at 133 and push the whole tracklist down, so the title ellipsizes on its one line.
     /// The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it never reflows.</para>
     /// <para><paramref name="layout"/> is the library tier's record: its cover, stated height and gap (C-Library-Huge: a 160 cover in a 200 band, 24 from the words;
-    /// 128 / 156 / 18 below Huge). A tier crossing eases the band's height (and the cover's edge) instead of snapping the rows under it.</para></summary>
+    /// 128 / 156 / 18 at Standard; C-Library-Small: a 96 cover in a 120 band, 146 stated, 16 from the words). A tier crossing eases the band's height (and the cover's edge) instead of snapping the rows under it.</para></summary>
     public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta, ClassicLibraryLayout layout) => new BoxEl
     {
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
+        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
         Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
@@ -79,7 +79,7 @@ internal static class ClassicLibraryPaneKit
     public static BoxEl HeaderSkeleton(ClassicLibraryLayout layout) => new()
     {
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
-        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
+        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, layout.PaneHeaderPadBottom),
         Children =
         [
             new BoxEl { Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },

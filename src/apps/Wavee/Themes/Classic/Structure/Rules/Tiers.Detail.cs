@@ -24,7 +24,9 @@
 //     lane, no column header and no chevron lane, the duration in the Modern subline); the list bar's commands and the hero's actions 40 x 40, the
 //     sort word leading the bar and the view tools as glyphs, Filter as the funnel alone; a list's Modern row without its "#" lane (an album keeps its
 //     track numbers); the selection bar tinted with the accent (C-MultiSelect-Compact); an empty playlist's Recommended songs led by "Nothing here yet"
-//     and a field that finds songs (C-Empty-Compact), the section's commands 40.
+//     (20/28) and a 40 field that finds songs (C-Empty-Compact), the section's commands 40.
+//   · Every other tier leads an empty playlist's Recommended songs the same way at the C-Empty board's size: the 28/36 message (24 over, 8 under), a 32 field,
+//     the blocks 14 apart. The lead stands in a box whose height the record reserves, so a crossing eases it and never jumps the rows under it.
 //   · Small: the two-column arm (mode 1's 224 rail at 800); no Album and no Plays lane, and the Date lane only on a quiet list (C-TrackList small); Sort as
 //     its glyph; the rail padded 16 / 12 with its rows 10 apart and the Play row breaking after Play (C-Album-Small, C-Playlist-Small, C-Liked-Small).
 //   · Standard: the tuned design (P3b), unchanged.
@@ -170,7 +172,7 @@ public static class ClassicDetailTiers
         Core = new DetailTierLayout(
             new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, RowModern, RowClassic, RowArt, ListIndex: false),
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: CompactActionExtra),
-        Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true, FilterGlyph = true, EmptyLead = true,
+        Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true, FilterGlyph = true, Lead = ClassicEmptyLead.Compact,
     };
 
     /// <summary>Small (C-Album-Small, C-Playlist-Small, C-TrackList small).</summary>
@@ -345,9 +347,9 @@ public sealed record ClassicDetailTier
     /// C-Liked-Compact).</summary>
     public bool FilterGlyph { get; init; }
 
-    /// <summary>An empty playlist's Recommended songs are led by "Nothing here yet", its line and a field that finds songs to add (C-Empty-Compact), and the
-    /// section's commands are the Compact 40 targets.</summary>
-    public bool EmptyLead { get; init; }
+    /// <summary>An empty playlist's Recommended songs are led by "Nothing here yet", its line and a field that finds songs to add: at Compact the 20/28 message
+    /// over a 40 field (C-Empty-Compact), at Small, Standard and Huge the 28/36 message over a 32 field (C-Empty). The lead's height is reserved by the record.</summary>
+    public ClassicEmptyLead Lead { get; init; } = ClassicEmptyLead.Roomy;
 
     /// <summary>The rail's padding, row gap and CTA break (C-Album-Small: 16 / 12, gap 10, the Play row breaking after Play).</summary>
     public ClassicDetailRail Rail { get; init; } = ClassicDetailRail.Standard;
@@ -365,4 +367,49 @@ public sealed record ClassicDetailTier
     /// rule, the 2400 the Huge boards fill to (C-Breakpoints: "Huge grids to 2400"), so a Huge page is laid out rather than a Standard page
     /// centred in dead margins.</summary>
     public float PageMaxWidth => Tier >= WidthTier.Huge ? ClassicDetailTiers.HugePageMax : R.Space.PageMaxW;
+}
+
+/// <summary>An empty playlist's lead (the Recommended songs section's head while the playlist has no songs): the centred message, its line and the field that finds songs to
+/// add. One record per layout: Compact (C-Empty-Compact) and the roomy one every other tier draws (C-Empty). <see cref="Height"/> is what the lead RESERVES, so the
+/// section never jumps when the message wraps, the string lands or a crossing swaps the record.</summary>
+public sealed record ClassicEmptyLead
+{
+    /// <summary>The message line's second line (12/16) and the gap between the two lines.</summary>
+    public const float CaptionLine = 16f, MessageGap = 4f;
+
+    /// <summary>The air over the message and under its line.</summary>
+    public required float MessagePadTop { get; init; }
+
+    /// <summary>See <see cref="MessagePadTop"/>.</summary>
+    public required float MessagePadBottom { get; init; }
+
+    /// <summary>The gap between the message, the field and the header, and the air under the field.</summary>
+    public required float BlockGap { get; init; }
+
+    /// <summary>The find field's height: the 40 target at Compact, the stock 32 elsewhere.</summary>
+    public required float FieldH { get; init; }
+
+    /// <summary>The message's line height (the Compact 20/28 message, the roomy 28/36 one).</summary>
+    public required float TitleLine { get; init; }
+
+    /// <summary>The message is the page-hero rung (28/36 semibold) instead of the subtitle's 20/28.</summary>
+    public required bool LargeTitle { get; init; }
+
+    /// <summary>The message block: its air, the title's line, the gap and the second line.</summary>
+    public float MessageHeight => MessagePadTop + TitleLine + MessageGap + CaptionLine + MessagePadBottom;
+
+    /// <summary>The lead's reserved height: the message, the field and the block gaps between and around them.</summary>
+    public float Height => MessageHeight + BlockGap + FieldH + BlockGap;
+
+    /// <summary>C-Empty-Compact: 16 over and 4 under the 20/28 message, a 40 field, 12 between the blocks.</summary>
+    public static ClassicEmptyLead Compact { get; } = new()
+    {
+        MessagePadTop = 16f, MessagePadBottom = 4f, BlockGap = 12f, FieldH = ClassicDetailTiers.CompactTarget, TitleLine = 28f, LargeTitle = false,
+    };
+
+    /// <summary>C-Empty (Small, Standard, Huge): 24 over and 8 under the 28/36 message, a 32 field, 14 between the blocks.</summary>
+    public static ClassicEmptyLead Roomy { get; } = new()
+    {
+        MessagePadTop = 24f, MessagePadBottom = 8f, BlockGap = 14f, FieldH = ClassicDetailTiers.Target, TitleLine = 36f, LargeTitle = true,
+    };
 }

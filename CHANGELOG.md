@@ -45,6 +45,17 @@ versions separately under `v*` and is not tracked in this file.)
   songs instead of under them. Recents shows its Overview calendar beside an 1100-wide list; the Overview button shows or hides it, and a
   click on a day scrolls the list to that day. Under 528 wide, a podcast or audiobook's Follow/Play button, heart and "⋯" are 40 × 40.
 
+- **The library sorts with one button on a medium window.** From 528 to 1007 wide, the albums list shows Sort as a single button with the
+  current word and a menu instead of the row of sort words (Artists and Podcasts keep their words). The album and show page beside it has a
+  96-wide cover in a shorter header, and the rows of the list's header sit a little further apart.
+
+- **An empty playlist asks you to add songs on every window size.** Medium, standard and Huge windows now show "Nothing here yet", the line
+  under it and the field that searches for songs to add, the way a narrow window does, with the Recommended songs below. The room the message
+  takes is held while you resize, so the page doesn't jump.
+
+- **The artist's pick has a heading on Huge windows.** From 1920 wide the pick beside Top tracks stands under an "Artist pick" heading, like
+  Top tracks does.
+
 - **Huge windows use their room on album, playlist and library pages.** From 1920 wide an album page has a right-hand column with About this
   release, the artist (a large photo, monthly listeners, the bio), Fans also like in rows of four and More by; they leave the left column and the
   space under the songs, and the songs keep their margin instead of running to the window's edge. On a 4K window the column is 640 wide and the

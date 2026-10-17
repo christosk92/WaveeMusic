@@ -329,7 +329,7 @@ public sealed class ClassicDetailTiersTests
         var c = ClassicDetailTiers.Compact;
         Assert.False(c.Core.Table.ListIndex);   // C-TrackList compact: a playlist's / Liked's Modern row has no "#"
         Assert.True(c.FilterGlyph);
-        Assert.True(c.EmptyLead);
+        Assert.Same(ClassicEmptyLead.Compact, c.Lead);
         Assert.False(c.SortGlyph);              // the Compact bar LEADS with the sort word
         Assert.Same(ClassicDetailRail.Standard, c.Rail);   // the Compact page is the vertical arm: no rail
         foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge })
@@ -337,8 +337,40 @@ public sealed class ClassicDetailTiersTests
             var r = ClassicDetailTiers.For(tier);
             Assert.True(r.Core.Table.ListIndex);
             Assert.False(r.FilterGlyph);
-            Assert.False(r.EmptyLead);
+            Assert.Same(ClassicEmptyLead.Roomy, r.Lead);   // C-Empty draws the lead at the other tiers too
         }
+    }
+
+    [Fact]
+    public void The_empty_playlists_lead_is_the_boards_at_every_tier_and_reserves_its_height()
+    {
+        // C-Empty-Compact: 16 over and 4 under the 20/28 message (+ its 16 line, 4 apart), a 40 field, the blocks 12 apart.
+        var c = ClassicEmptyLead.Compact;
+        Assert.False(c.LargeTitle);
+        Assert.Equal(16f, c.MessagePadTop);
+        Assert.Equal(4f, c.MessagePadBottom);
+        Assert.Equal(28f, c.TitleLine);
+        Assert.Equal(40f, c.FieldH);
+        Assert.Equal(12f, c.BlockGap);
+        Assert.Equal(68f, c.MessageHeight);   // 16 + 28 + 4 + 16 + 4
+        Assert.Equal(132f, c.Height);          // 68 + 12 + 40 + 12
+        // C-Empty (Small, Standard, Huge): 24 over and 8 under the 28/36 message, a 32 field, the blocks 14 apart.
+        var r = ClassicEmptyLead.Roomy;
+        Assert.True(r.LargeTitle);
+        Assert.Equal(24f, r.MessagePadTop);
+        Assert.Equal(8f, r.MessagePadBottom);
+        Assert.Equal(36f, r.TitleLine);
+        Assert.Equal(32f, r.FieldH);
+        Assert.Equal(14f, r.BlockGap);
+        Assert.Equal(88f, r.MessageHeight);   // 24 + 36 + 4 + 16 + 8
+        Assert.Equal(148f, r.Height);          // 88 + 14 + 32 + 14
+        // Only Compact has the 40 field (a target); every other tier is the stock 32.
+        Assert.Equal(ClassicDetailTiers.CompactTarget, c.FieldH);
+        Assert.Equal(ClassicDetailTiers.Target, r.FieldH);
+        // Huge 4K reads Huge's record, so it draws the roomy lead too.
+        Assert.Same(ClassicEmptyLead.Roomy, ClassicDetailTiers.For(WidthTier.Huge4K).Lead);
+        // The two reserved heights differ by 16: a crossing eases that and nothing else.
+        Assert.Equal(16f, r.Height - c.Height);
     }
 
     [Fact]
