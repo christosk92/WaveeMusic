@@ -352,7 +352,30 @@ _Not built yet._
 
 ## Z6a2: the artist page
 
-_Not built yet._
+Boards `Z-Artist` (Standard, the target) and `Z-Artist-Compact` / `-Small` / `-Huge` / `-Huge4K` for the other tiers' records (ZT6 tunes them). Files: `Themes\Zune\Structure\ZuneStructure.Artist.cs` (the registrar), `Views\Artist\ZuneArtistPage.cs`, `ZuneArtistHero.cs`, `ZuneArtistSections.cs`, `ZuneArtistBanners.cs`, `ZuneArtistLightbox.cs`, `ZuneDiscographyPage.cs`, `ZuneDiscography.cs`, `Rules\ZuneArtistRules.cs` (numbers, node keys, `ZuneArtistTiers`, the tier policy) and `Rules\ZunePolicies.Artist.cs`.
+
+| Key | Zune's template |
+|---|---|
+| `Pages.Artist` | `zune.artist.page` |
+| `Artist.Lightbox` | `zune.artist.lightbox` |
+| `Pages.Discography` | `zune.discography.page` |
+| `StyleKeys.Discography` | `ZuneDiscography.Style` |
+
+**The hero is a panorama title, not a photograph.** 340 tall at Standard over the cover's blend wash (`Palette.ArtistBlendWash`, Zune's `ArtistBlend` leaf): the "verified artist" eyebrow, the name in the panorama voice (120/130 at the light 200; the 64 compact voice below 640; 150 at Huge), standing 8 left of the gutter so its glyph edge lines up with the eyebrow, and the caption ("#3 in the world" in the accent, monthly listeners, followers). `panoramaFit` decides how the name meets the window edge, as a live prop of one text node: Bleed lets it run off the hero's edge, Fit trims it with an ellipsis. A name keeps its own casing; the eyebrow and the caption are label words lowercased by the case role.
+
+**The artist's photograph is the material's.** The core host (`Artist.PageHost`) publishes the page's chrome through the `PageChromeSink`: the pivot (one `PageView` per destination, the spy's answer current), play, shuffle and follow as the page's actions, and the hero image (the latched art identity) as `Backdrop.Bleed`, which Z2b's material paints behind the band under the artwork-wash and mix backgrounds. The host rebuilds the row only when the pivot, the lit tab, the follow state, the photograph or the name changed. Classic reads none of it.
+
+**Actions follow the board's tier.** Standard: the band's row 2 carries them. Compact: a 40 row under the hero. Small: the hero's bottom right. Huge: a row of rings with their lowercase words under the caption. The follow pill is a 2-dip outline in the primary ink, the accent while following.
+
+**The body.** Sections are 28 apart on the frame's gutter, capped at the page measure (1600; Huge 2400) on the page's left edge. Popular is the chart (Z3's style; the policy sets its columns and rows per tier) beside a rail (300; 360 at Huge; under the chart where there is no room) holding the upcoming release, the latest release (a 96 art row) and the artist pick (a 64 art row), all Zune surface rows. Upcoming and Latest release ride the rail whenever Popular stands (their own section holders are not drawn); without Popular, Latest release is a section. Albums, singles and compilations are a heading row ("albums", "N releases", "discography" at its end, opening the standalone page) over the core's grid. Appears on, music videos, playlists, concerts, merch, the gallery and fans also like are shelves of 154 covers 16 apart. The tour is a flat row. "about" is the biography (links in the accent), the external links, the cities as 4-dip bars and the profile facts as light numerals, beside the text at Standard and up.
+
+**Production motion is kept.** One visual swap (overview, measured width and the chart settled) as a soft reveal over the derived shimmer, the chart's inner region in no group; the host's measure, readiness and entrance gates are untouched. The photograph's own fade is the material's.
+
+**The discography (undesigned; built from Zune's parts, Q18).** The style draws the grid's cells with Zune's surface (square, a wash on hover, a disclosure cue on the meta line, the selected skin when open), the drawer as a flat floating-pane panel with a filled caret, a play ring, the cover, the title and an open ring in its head, Zune's own eager row for the tracks, the selection as a 12 % accent wash and "show all N tracks" as an accent word. The standalone page is the artist crumb, a 40/48 light title and the release-type words as a sub-pivot row (the current one in 600 under a 2-dip accent line), over the same grid at a 24 reveal inset. The lightbox keeps Classic's mechanics (pager, pan/zoom, auto-hiding chrome, filmstrip) in Zune's parts: an outlined export pill and a close ring.
+
+**Tiers.** `ZuneArtistTiers` has a record per content tier (hero height, the name's voice, where the actions stand, the chart's columns, the rail, the drawer's columns, pitch and head). Huge 4K is Huge's (decision 2). Every size is sane from 300 up; ZT6 tunes Compact, Small, Huge and Huge 4K against their boards.
+
+**Tests.** `Wavee.ShellTests\ZuneArtistMountedTests.cs`: Zune registers the family; the fake artist `ar0` renders Zune's page at the record's hero height with the popular band and the facets; the bleed and the row 2 are published; the discography page mounts its column and words.
 
 ## Z6b1: the playlist and Liked Songs
 

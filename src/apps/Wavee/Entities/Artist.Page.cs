@@ -36,6 +36,14 @@
 // resolves `Detail.BandLayout.ActiveSection` into the pivot's `active` signal, so a scroll step re-renders the pivot only
 // when the answer changes.
 //
+// ── ROW 2 AND THE BLEED (P5 Z6a2, contract 1.26) ─────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the pivot, the page's actions and the artist's photograph as the FRAME's row 2 and backdrop, so the host
+// also publishes them through the page's `PageChromeSink`: one `PageView` per pivot destination (the spy's answer current, `Go` the section click),
+// play · shuffle · follow as the page's actions, and the hero image (the LATCHED art identity) as `Backdrop.Bleed`. Rebuilt only when the pivot, the
+// lit tab, the follow state, the photograph or the name changed, and published from effects (a publication is a signal write). Classic draws its own
+// band and reads none of it.
+//
 // The host reads no token and builds no element (WVTH008): the few token reads its decisions need (the accent ladder's
 // default, the theme epoch, the decode scale, reduced motion) are the static helpers at the end of this file.
 
@@ -171,8 +179,19 @@ public readonly partial struct Artist
         readonly Action _watchScroll;
         readonly Func<long> _stampFn;
 
+        // ── row 2 and the bleed (P5 Z6a2): the sink, what the last publication was built from, and the effects ──
+        readonly Action _publishChromeNow, _trackChrome;
+        PageChromeSink _sink = PageChromeSink.None;
+        PageChromeRow? _chromeRow;
+        long _chromeSig = long.MinValue;
+        string? _chromeBleed;
+        string _chromeUri = "", _chromeName = "";
+        bool _chromeReady;
+
         public PageHost()
         {
+            _publishChromeNow = PublishChrome;
+            _trackChrome = PublishChrome;
             for (int i = 0; i < ArtistSections.Count; i++)
             {
                 int index = i;
@@ -267,6 +286,7 @@ public readonly partial struct Artist
             }
 
             _overlay = UseContext(Overlay.Service);
+            _sink = UseContext(PageChromeSink.Context);
             var shellSlot = UseContext(ShellMaterial.Slot);
             float scale = UseContext(Viewport.Scale);
             var a = _artist;
@@ -371,6 +391,15 @@ public readonly partial struct Artist
             if (_bodyReady) PlanSections(a, out sections, out pivot, out fans, out relatedCount);
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
             UseSignalEffect(_watchScroll);
+
+            // Row 2 and the bleed (P5 Z6a2): what the frame may draw of this page. The structural half publishes after a render that changed it; the
+            // tracked half (the lit tab, the follow state) republishes without one.
+            _chromeUri = a.IsValid ? a.Uri.Text : "";
+            _chromeName = a.IsValid ? a.Name : "";
+            _chromeBleed = _ready ? _heroUrl : null;
+            _chromeReady = _bodyReady;
+            UseEffect(_publishChromeNow, DepKey.From(_pivotHash, (int)scopeEpoch, HashCode.Combine(_chromeBleed, _chromeName), _bodyReady ? 1 : 0));
+            UseSignalEffect(_trackChrome);
 
             // The accent and the band's engaged edge are read here, as the page always read them (only for a body that is composed): this render wakes on
             // the grading and on the sentinel's flip. The derived skeleton peeks at the accent instead (`AccentPeek`).
@@ -569,6 +598,46 @@ public readonly partial struct Artist
                 WaveeLogField.Of("vh", (double)viewportHeight),
                 WaveeLogField.Of("atEnd", atEnd));
         }
+
+        // ── 2.3b row 2 and the bleed ─────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Build and publish this page's row 2 (the pivot, play · shuffle · follow) and its backdrop (the hero image), when what they are
+        /// built from changed. Reads the spy's answer and the follow state, so the signal effect that runs it wakes on either.</summary>
+        void PublishChrome()
+        {
+            if (_chromeUri.Length == 0) return;
+            var lib = Controls.Library;
+            bool following = lib is not null && lib.IsSaved(_chromeUri);
+            int active = _active.Value;
+            int count = _chromeReady ? _pivotCount : 0;
+            long sig = HashCode.Combine(_chromeUri, _pivotHash, count, active, following, _chromeBleed, _chromeName)
+                       + (_chromeReady ? 1L << 40 : 0L);
+            if (sig == _chromeSig && _chromeRow is not null) return;
+            _chromeSig = sig;
+
+            var views = new PageView[count];
+            for (int i = 0; i < count; i++)
+            {
+                var section = _pivot[i];
+                views[i] = new PageView(ArtistSections.Key(section), PivotLabel(section), Current: i == active, _sectionClicks[(int)section]);
+            }
+            var actions = new List<PageAction>(3)
+            {
+                new(PlayActionId, Loc.Get(Strings.Artist.Play), _play, PageActionKind.Play, Enabled: _chromeReady),
+                new(ShuffleActionId, Loc.Get(Strings.Detail.Shuffle), _shuffle, PageActionKind.Shuffle, Enabled: _chromeReady),
+            };
+            if (lib is not null)
+            {
+                string uri = _chromeUri, name = _chromeName;
+                actions.Add(new PageAction(FollowActionId, Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
+                    () => lib.ToggleSaved(uri, name), PageActionKind.Word, Enabled: _chromeReady));
+            }
+            _chromeRow = new PageChromeRow(views, actions, _chromeBleed is { Length: > 0 } bleed ? new PageBackdrop(Bleed: bleed) : null);
+            _sink.Publish(_chromeRow);
+        }
+
+        /// <summary>The row-2 actions' ids (node keys, never the localized words).</summary>
+        public const string PlayActionId = "play", ShuffleActionId = "shuffle", FollowActionId = "follow";
 
         // ── 2.4 demand, colour, verbs ───────────────────────────────────────────────────────────────────────────────
 

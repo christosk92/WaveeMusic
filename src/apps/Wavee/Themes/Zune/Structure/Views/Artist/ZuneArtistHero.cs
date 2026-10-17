@@ -1,0 +1,261 @@
+// ── Themes/Zune/Structure/Views/Artist/ZuneArtistHero.cs — Zune's artist hero (themes plan 6.3; P5 Z6a2) ──────────────────────────────
+//
+// Board Z-Artist (and -Compact / -Small / -Huge for the tier records). The hero is a PANORAMA TITLE over the cover's blend wash: no photograph of
+// its own (the artist's header is the material's bleed behind the band, published through the page chrome by the core host), no veil, no
+// collapse (the band is the frame's). From the top: the "verified artist" eyebrow, the flexible air, the name (the panorama voice, 120/130 at the
+// light 200; the 64 compact voice below 640; 150 at Huge) standing `NameNudge` left of the gutter so its glyph edge lines up with the copy, the
+// caption ("#3 in the world" in the accent · monthly listeners · followers) and, at Huge, the actions row.
+//
+// THE NAME. The `panoramaFit` option decides how it meets the window edge: Bleed lets it run off the hero's edge (the hero clips it), Fit trims it
+// with an ellipsis. It is ONE text node whose trim is a live prop, never two keyed arms. A name keeps its own casing (never lowercased); the
+// eyebrow and the caption's words are labels, lowercased by the case role.
+//
+// THE ACTIONS stand where the tier record says (`ZuneArtistLayout.Actions`): the band's row 2 at Standard (the core host publishes them),
+// a row under the caption at Huge (rings with their lowercase words), at the hero's bottom right at Small, a 40 row under the hero at
+// Compact (`ZuneArtistPage` places that one). The follow pill is a 2-dip outline (the accent while following).
+//
+// The hero is built for the live page AND for the derived shimmer (a null `p` is the skeleton arm: the actions are never skeleton content).
+
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
+using FluentGpu.Signals;
+using Rules = Wavee.Themes.Zune.ZuneArtistRules;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+
+namespace Wavee.Themes.Zune;
+
+/// <summary>Zune's artist hero and its action parts.</summary>
+internal static class ZuneArtistHero
+{
+    /// <summary>The hero's verbs (all null on the skeleton arm).</summary>
+    internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
+
+    /// <summary>The hero: eyebrow, name, caption and (Huge) the actions row; the Small corner actions ride a layer over it.</summary>
+    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, PanoramaFit fit, ColorF accent, in Acts acts)
+    {
+        float gutter = lay.Gutter;
+        bool shimmer = acts.Play is null;
+
+        BoxEl eyebrow = text.Verified
+            ? Inset(Lines(Run(Loc.Get(Strings.Artist.Verified), Tok.TextSecondary), shimmer))
+            : new BoxEl();
+        eyebrow = eyebrow with { Key = Rules.EyebrowKey };
+
+        TextEl name = lay.CompactName ? R.Type.PanoramaCompact(text.Name) : R.Type.Panorama(text.Name);
+        if (lay.NameSize > 0f) name = name with { Size = lay.NameSize, LineHeight = lay.NameLine, CharSpacing = lay.NameTracking };
+        name = name with
+        {
+            Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+            // Bleed runs off the hero's edge (the hero clips it); Fit trims it. A live prop of the same node.
+            Trim = fit == PanoramaFit.Fit ? TextTrim.CharacterEllipsis : TextTrim.None,
+        };
+        Element nameBox = new BoxEl
+        {
+            Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Rules.NameCaptionGap),
+            Animate = ZuneMotion.TitleScale, Children = [Lines(name, shimmer)],
+        };
+
+        var kids = new List<Element>(5) { eyebrow, new BoxEl { Grow = 1f, MinHeight = 0f }, nameBox, Inset(Caption(in text, accent, shimmer)) };
+        if (lay.Actions == ZuneArtistActions.HeroRow && !shimmer)
+            kids.Add(Inset(new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
+                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                Children = [Actions(text.Name, uri, lay, acts, labels: true, radio: true)],
+            }));
+
+        Element column = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Padding = new Edges4(gutter - Rules.NameNudge, lay.EyebrowTop, gutter, lay.CaptionBottom),
+            Children = kids.ToArray(),
+        };
+
+        var layers = new List<Element>(2) { column };
+        if (lay.Actions == ZuneArtistActions.HeroCorner && !shimmer)
+            layers.Add(new BoxEl
+            {
+                Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, HitTestPassThrough = true,
+                Padding = new Edges4(0f, 0f, gutter, Rules.CornerInsetY),
+                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                Children = [Actions(text.Name, uri, lay, acts, labels: false, radio: false)],
+            });
+
+        return new BoxEl
+        {
+            Key = Rules.HeroKey, Height = lay.HeroH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
+            Layout = ZuneMotion.ColumnCollapse, Children = layers.ToArray(),
+        };
+    }
+
+    /// <summary>The Compact row under the hero: play · shuffle · follow, the more ring at the end (40 targets).</summary>
+    public static Element BelowRow(string name, string uri, ZuneArtistLayout lay, in Acts acts)
+        => new BoxEl
+        {
+            Key = Rules.ActionsKey + ":below", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center,
+            Padding = new Edges4(lay.Gutter, Rules.BelowRowTop, lay.Gutter, 0f),
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+            Children = [Actions(name, uri, lay, acts, labels: false, radio: false, spread: true)],
+        };
+
+    /// <summary>Nudges a part to the gutter (the hero's column starts `NameNudge` to its left for the name's sake).</summary>
+    static BoxEl Inset(Element e) => new()
+    {
+        Direction = 1, MinWidth = 0f, Margin = new Edges4(Rules.NameNudge, 0f, 0f, 0f), Children = [e],
+    };
+
+    /// <summary>"#N in the world" (accent) · monthly listeners · followers; a zero stat drops its run.</summary>
+    static Element Caption(in Artist.HeroText text, ColorF accent, bool shimmer)
+    {
+        int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
+        var runs = new Element[count];
+        int k = 0;
+        if (text.Rank > 0)
+            runs[k++] = Lines(Run(Strings.Artist.WorldRank(text.Rank.ToString(System.Globalization.CultureInfo.CurrentCulture)), accent), shimmer);
+        if (text.Monthly > 0)
+            runs[k++] = Lines(Run(Detail.Text.CompactCount(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly), Tok.TextSecondary), shimmer);
+        if (text.Followers > 0)
+            runs[k++] = Lines(Run(Detail.Text.CompactCount(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers), Tok.TextSecondary), shimmer);
+        return new BoxEl
+        {
+            Key = Rules.CaptionKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Rules.HeadInlineGap, MinWidth = 0f, Wrap = true,
+            Children = runs,
+        };
+    }
+
+    static TextEl Run(string text, Prop<ColorF> color) => R.Type.DenseMeta(text) with
+    {
+        Color = color, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+    };
+
+    /// <summary>A text run as the loaded hero lays it out, for the skeleton arm: one line box of the run's own line height, so the deriver's
+    /// bar stands where the words will. The live arm is the run itself.</summary>
+    static Element Lines(TextEl run, bool shimmer)
+    {
+        if (!shimmer || !(run.LineHeight > 0f)) return run;
+        return new BoxEl
+        {
+            Height = run.LineHeight, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap }],
+        };
+    }
+
+    // ══ the actions ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The 36 ring (the 40 target at Compact) with its lowercase word beside it where <paramref name="showLabel"/>.</summary>
+    static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action? onClick, float target)
+    {
+        Element ring = K.Ring(key, glyph, label, showLabel, primary, onClick ?? s_noop);
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = target, MinWidth = showLabel ? 0f : target,
+            Shrink = 0f, Children = [ring],
+        };
+    }
+
+    static readonly Action s_noop = static () => { };
+
+    /// <summary>Play · shuffle · follow (· radio) · more. <paramref name="spread"/> parks the more ring at the end of the row (the Compact row).</summary>
+    static Element Actions(string name, string uri, ZuneArtistLayout lay, in Acts acts, bool labels, bool radio, bool spread = false)
+    {
+        float target = lay.Target;
+        var kids = new List<Element>(7)
+        {
+            Ring("play", Icons.Play, Loc.Get(Strings.Artist.Play), labels, primary: true, acts.Play, target),
+            Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), labels, primary: false, acts.Shuffle, target),
+            Embed.Comp(() => new FollowPill { Uri = uri, Name = name, Height = target }) with { Key = "zune-artist-follow:" + uri },
+        };
+        if (radio) kids.Add(Ring("radio", Icons.RadioTower, Loc.Get(Strings.Artist.ArtistRadio), labels, primary: false, acts.Radio, target));
+        if (spread) kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
+        if (acts.Menu is { } menu) kids.Add(Embed.Comp(new MoreProps(target, menu), static () => new MoreRing()) with { Key = "zune-artist-more:" + uri });
+        return new BoxEl
+        {
+            Key = Rules.ActionsKey, Direction = 0, Gap = Rules.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Grow = spread ? 1f : 0f, Children = kids.ToArray(),
+        }.Skeletonized(false);
+    }
+
+    sealed record MoreProps(float Size, Func<ContextMenuModel?> Menu)
+    {
+        public bool Equals(MoreProps? o) => o is not null && Size == o.Size;
+        public override int GetHashCode() => Size.GetHashCode();
+    }
+
+    static readonly ContextMenuOptions s_moreMenu = new()
+    {
+        PointerPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+        KeyboardPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+    };
+
+    /// <summary>The more ring: the artist's menu, built at open from the newest factory.</summary>
+    sealed class MoreRing : Component, IPropsHost
+    {
+        MoreProps? _latest;
+        readonly Signal<MoreProps?> _props = new(null);
+        readonly Func<ContextMenuModel?> _menu;
+
+        public MoreRing() => _menu = () => _latest?.Menu();
+
+        public void ApplyProps(object props)
+        {
+            _latest = (MoreProps)props;
+            _props.Value = _latest;
+        }
+
+        public override Element Render()
+        {
+            _ = _props.Value;
+            var p = _latest!;
+            var overlay = UseContext(Overlay.Service);
+            BoxEl ring = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = p.Size, MinWidth = p.Size, Shrink = 0f,
+                Children = [K.RingDisc(Icons.More, primary: false)],
+                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
+            };
+            if (!Controls.IsNullOverlay(overlay)) ring = ContextSheets.Attach(ring, overlay, _menu, s_moreMenu);
+            return ToolTip.Wrap(ring, Loc.Get(Strings.Common.More));
+        }
+    }
+
+    /// <summary>The follow pill: a 2-dip outline, the word in the same ink (lowercase), the accent while following. Keyed on the uri by its caller
+    /// (the uri freezes at mount).</summary>
+    internal sealed class FollowPill : Component
+    {
+        public required string Uri { get; init; }
+        public string? Name { get; init; }
+        public float Height { get; init; }
+
+        public override Element Render()
+        {
+            var lib = Controls.Library;
+            if (lib is null) return new BoxEl();
+            bool on = lib.IsSaved(Uri);
+            string uri = Uri;
+            string? name = Name;
+            Prop<ColorF> ink = on ? Prop.Of(static () => R.Ink.AccentAction) : Tok.TextPrimary;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f,
+                Height = Height, Padding = new Edges4(Rules.PillPadX, 0f, Rules.PillPadX, 0f), Corners = CornerRadius4.All(Radii.Full),
+                BorderWidth = Rules.PillBorder, BorderColor = ink,
+                HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
+                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
+                OnClick = () => lib.ToggleSaved(uri, name),
+                Children =
+                [
+                    R.Type.TrackTitle(Loc.Get(on ? Strings.Artist.Following : Strings.Artist.Follow)) with
+                    {
+                        Color = ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            };
+        }
+    }
+}

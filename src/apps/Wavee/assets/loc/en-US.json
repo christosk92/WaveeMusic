@@ -2806,7 +2806,11 @@
         "category": "Category"
       },
       "detail": {},
-      "artist": {},
+      "artist": {
+        "$comment": "Z6a2: the artist page, its lightbox and the discography. Written as people say them; the style's case roles lower them. Names are never re-cased.",
+        "discography": "Discography",
+        "about": "About"
+      },
       "collection": {},
       "overlays": {
         "$comment": "Z8a: the overlays (the offline strip's notice). Words are written as people say them; the style's case roles lower them.",
