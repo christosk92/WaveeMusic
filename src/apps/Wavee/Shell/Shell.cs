@@ -1114,6 +1114,11 @@ public static partial class Shell
         /// <summary>The window tier docks two panels side by side (Classic Huge: the primary panel and the queue beside it, D3).</summary>
         public static readonly Signal<bool> SecondPaneAllowed = new(false);
 
+        /// <summary>The panes the window tier docks beside the primary (the rule's <c>Arrangement</c>, contract 1.29): Classic Huge's queue
+        /// right of the primary, Zune Huge's linked queue left of it, Zune Huge 4K's queue and friends either side. Read through
+        /// <see cref="SecondPaneAllowed"/> (<c>PanelHost.Panes</c>): where the tier docks one pane there are none.</summary>
+        public static readonly Signal<Theming.PanelArrangement> PanelPanes = new(Theming.PanelArrangement.QueueBeside);
+
         /// <summary>The least width a docked panel keeps in the window tier at this window width (Classic Huge: 380, growing to 420 at
         /// 3840); 0 where the tier has no floor. The committed <see cref="RailWidth"/> never presents below it.</summary>
         public static readonly FloatSignal PanelFloor = new(0f);
@@ -1786,6 +1791,36 @@ public static partial class Shell
 
         /// <summary>The second pane's width: the tier's floor (both Huge panes are the board's width), never under the panel default.</summary>
         public static float SecondWidth(float floor) => MathF.Max(floor, RailDefaultW);
+
+        /// <summary>Docked pane <paramref name="index"/> of <paramref name="panes"/> (0 the second pane, 1 the third; none where the tier
+        /// docks one) is on screen (contract 1.29). A LINKED pane is open while the panel is (the primary steps aside to the fallback body
+        /// instead of showing it twice); an INDEPENDENT pane (Classic's queue) while the queue is open beside the primary and the primary is
+        /// not already showing it, exactly <see cref="SecondOpen"/>.</summary>
+        public static bool PaneOpen(in Theming.PanelArrangement panes, int index, bool queueBeside, bool railOpen, RailMode mode)
+        {
+            if (panes.At(index) is not { } pane) return false;
+            if (panes.Linked) return railOpen;
+            return queueBeside && !(railOpen && (byte)mode == (byte)pane.Mode);
+        }
+
+        /// <summary>The least width a docked panel keeps for a tier floor of <paramref name="floor"/>: inside the shell's baseline bounds
+        /// (200-500), NOT the active policy's (Zune's 340-only panel docks at its 360 floor at Huge); 0 where there is no floor.</summary>
+        public static float FloorWidth(float floor) => floor > 0f && float.IsFinite(floor) ? Math.Clamp(floor, RailMinW, RailMaxW) : 0f;
+
+        /// <summary>Everything the docked panes take from the content row in a window <paramref name="viewportWidth"/> wide under
+        /// <paramref name="rule"/>: the primary while it is open and docked (at its width brought up to the floor) and each docked pane of the
+        /// rule's arrangement that is open, each with its gap (contract 1.29; what <c>WindowTiers.PanelsReserved</c> estimates the content
+        /// width from).</summary>
+        public static float PanelsReserved(Theming.PanelTierRule rule, float viewportWidth, bool railOpen, RailMode mode, float railWidth,
+            bool queueBeside)
+        {
+            float floor = rule.FloorFor(viewportWidth);
+            var panes = rule.Arrangement;
+            float total = RailGapWidth(railOpen, rule.Docks) + RailReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, FloorWidth(floor)));
+            for (int i = 0; i < panes.Count; i++)
+                total += SecondOffset(PaneOpen(in panes, i, queueBeside, railOpen, mode), SecondWidth(floor));
+            return total;
+        }
 
         /// <summary>F243: the width a rail splitter drag COMMITS to <c>Ui.RailWidth</c> (and the settings) on release: the
         /// preview width through the one rail clamp, or null when there is nothing to commit (a non-finite preview, or the

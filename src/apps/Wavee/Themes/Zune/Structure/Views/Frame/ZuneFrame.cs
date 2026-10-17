@@ -6,7 +6,7 @@
 //   THE FRAME, TOP DOWN (one column the window's height):
 //
 //     title bar (48, 56 at Huge 4K)                                         `shell.titlebar`      Shell.TitleBar
-//     body = ZStack[ row[ page column · panel reservation · second reservation ] · narrow drawer · panel layer ]
+//     body = ZStack[ row[ page column · panel reservation · one reservation per docked pane ] · narrow drawer · panel layer ]
 //            page column = [ band slot (Shell.NavPane, Z2b) · page ]        `shell.content.card`
 //     play bar                                                              `shell.playerbar`     Player.Bar
 //
@@ -22,8 +22,15 @@
 //   bound spacers from its placement: DOCKED it is flush right, the body's full height, as wide as the committed width, and the row reserves
 //   that width (`RailReservedWidth`, 0 while closed or floating), so the page column narrows with no vertical jump (both FLIP on one 300 ms
 //   transition); FLOATING it is 340 wide, flush right, from under the band as it stands now (the band slot's measured foot, ZT1) down to the play bar, the page
-//   keeping its width; a SHEET is the body's whole box. At Huge the second pane (the queue) docks right of it with its own reservation.
-//   There is no seam: Zune's panel has no drag handle (Z-Frame-Panel), and no gap: it meets the page.
+//   keeping its width; a SHEET is the body's whole box. There is no seam: Zune's panel has no drag handle (Z-Frame-Panel), and no gap: it
+//   meets the page.
+//
+//   THE DOCKED PANES (ZT2, Z-Frame-Huge, Z-Frame-Huge4K). Where the tier docks more, each pane of the core's arrangement
+//   (`ShellFrameProps.DockedPanes`) has its own host, keyed by its index (never by tier), with its own row reservation: Huge docks the queue
+//   left of the primary (queue | lyrics · friends, 720), Huge 4K adds friends right of it (queue | lyrics | friends, 1080). Every host sits
+//   flush right with a spacer after it as wide as what docks right of it (no gaps). On a crossing every move is a SIZE channel (ZT1's
+//   lesson): a host eases its width (`ZunePanelTiers.HostMotion`), its spacer eases through real layout (`ShiftMotion`) and the host rides
+//   it, and the floating panel's top spacer eases its height (`TopMotion`); the page column's own FLIP eases its right edge with them.
 //
 //   THE CHROME COLLAPSES under full-screen video and the fullscreen stage (bound Visible, still mounted), as Classic's does.
 //
@@ -101,8 +108,6 @@ internal static class ZuneFrame
             ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f });
     }
 
-    private static readonly Func<float> s_zero = static () => 0f;
-
     /// <summary>The title bar's slot (`shell.titlebar`): the record's height (48, 56 at Huge 4K), easing across the 3200 crossing so the band
     /// and the page under it follow frame by frame (ZT1). The engine bar inside sets its own height from the same record.</summary>
     private static Element TitleBarSlot(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, bool reduced) => new BoxEl
@@ -116,31 +121,34 @@ internal static class ZuneFrame
 
     /// <summary>The body: the page row with the reservations, the narrow drawer's core host, and the panel layer over the row. The ONE region
     /// that yields when the window is shorter than the column; it collapses (bound Visible) under full-screen video and the fullscreen stage.</summary>
-    private static Element Body(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH) => new BoxEl
+    private static Element Body(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH)
     {
-        ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
-        Visible = Prop.Of(props.ChromeMounted),
-        OnRealized = props.OnContentRegionRealized,
-        OnBoundsChanged = props.OnContentRegionBounds,
-        Children =
-        [
-            new BoxEl
-            {
+        var panes = props.DockedPanes ?? s_noPanes;
+        var row = new List<Element>(3 + panes.Count)
+        {
+            // Zune has no sidebar: the core's sidebar-column probe still gets a node, zero wide.
+            new BoxEl { Width = 0f, Shrink = 0f, HitTestVisible = false, OnRealized = props.OnSidebarColumnRealized },
+            PageColumn(props, in ctx, bandH),
+            Reservation(props.RailReservedWidth),
+        };
+        foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth));
+        return new BoxEl
+        {
+            ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+            Visible = Prop.Of(props.ChromeMounted),
+            OnRealized = props.OnContentRegionRealized,
+            OnBoundsChanged = props.OnContentRegionBounds,
+            Children =
+            [
                 // The row never moves on a dock: the page column FLIPs relative to it.
-                MorphId = ZuneFrameRules.ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true,
-                Children =
-                [
-                    // Zune has no sidebar: the core's sidebar-column probe still gets a node, zero wide.
-                    new BoxEl { Width = 0f, Shrink = 0f, HitTestVisible = false, OnRealized = props.OnSidebarColumnRealized },
-                    PageColumn(props, in ctx, bandH),
-                    Reservation(props.RailReservedWidth),
-                    Reservation(props.SecondReservedWidth ?? s_zero),
-                ],
-            },
-            props.NarrowDrawer(),
-            PanelLayer(props, in ctx, tiers, bandH),
-        ],
-    };
+                new BoxEl { MorphId = ZuneFrameRules.ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true, Children = row.ToArray() },
+                props.NarrowDrawer(),
+                PanelLayer(props, in ctx, tiers, bandH, panes),
+            ],
+        };
+    }
+
+    private static readonly IReadOnlyList<DockedPaneProps> s_noPanes = [];
 
     /// <summary>The page column (`shell.content.card`): the band slot over the page. Flat: the ground shows through (no card, no stroke).</summary>
     private static Element PageColumn(ShellFrameProps props, in ViewContext ctx, Signal<float> bandH) => new BoxEl
@@ -178,16 +186,18 @@ internal static class ZuneFrame
 
     // ── the panel layer ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The panels over the page row: the sheet's scrim, the primary panel's host and the second pane's host.</summary>
-    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH)
+    /// <summary>The panels over the page row: the sheet's scrim, the primary panel's host and one host per docked pane.</summary>
+    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH,
+        IReadOnlyList<DockedPaneProps> panes)
     {
         Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
-        var kids = new List<Element>(3)
+        bool reduced = ctx.Reduced;
+        var kids = new List<Element>(2 + panes.Count)
         {
             Embed.Comp(props.Panel, static () => new ZunePanelScrim()),
-            PrimaryHost(props, in ctx, tiers, placement, bandH),
+            PrimaryHost(props, in ctx, tiers, placement, bandH, panes, reduced),
         };
-        if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx));
+        foreach (var pane in panes) kids.Add(PaneHost(props, pane, panes, in ctx, reduced));
         return new BoxEl
         {
             Grow = 1f, ZStack = true, HitTestPassThrough = true,
@@ -197,12 +207,33 @@ internal static class ZuneFrame
 
     private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
 
-    /// <summary>The primary panel's host, placed by bound spacers: docked flush right at the body's full height (left of the second pane when
-    /// it is open), floating 340 wide from under the band as the band stands now (its slot's measured height: 84, 52 collapsed or without a
-    /// row 2, 112 / 72 at Huge 4K; the record's full height until the slot is first laid out), a sheet the body's whole box. Its width is the
-    /// placement's; it FLIPs when a crossing moves it. The panel's own template runs the open/close slide.</summary>
+    /// <summary>What docks right of <paramref name="pane"/> (null: the primary panel), read live: right of the primary, every open pane on its
+    /// right (<see cref="PaneSide.After"/>); right of a pane after it, the open panes after it farther out (a higher index); right of a pane
+    /// before it, the primary's reservation, every open pane after it, and the open panes before it nearer the primary (a lower index). The
+    /// panes on each side sit nearest the primary first.</summary>
+    private static float RightOf(ShellFrameProps props, IReadOnlyList<DockedPaneProps> panes, DockedPaneProps? pane)
+    {
+        bool before = pane is not null && pane.Side() == PaneSide.Before;
+        float right = before ? props.RailReservedWidth() : 0f;
+        foreach (var other in panes)
+        {
+            if (ReferenceEquals(other, pane)) continue;
+            bool after = other.Side() == PaneSide.After;
+            bool counts = pane is null ? after
+                : before ? after || other.Index < pane.Index
+                : after && other.Index > pane.Index;
+            if (counts) right += other.ReservedWidth();
+        }
+        return right;
+    }
+
+    /// <summary>The primary panel's host, placed by bound spacers: docked flush right at the body's full height (left of the panes docked after
+    /// it), floating 340 wide from under the band as the band stands now (its slot's measured height: 84, 52 collapsed or without a row 2,
+    /// 112 / 72 at Huge 4K; the record's full height until the slot is first laid out), a sheet the body's whole box. Its width is the
+    /// placement's (the committed width docked: 340, the 360 floor where panes dock beside it). A crossing moves it by size channels only: its
+    /// width eases, and the spacers above it and right of it ease through real layout. The panel's own template runs the open/close slide.</summary>
     private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement,
-        Signal<float> bandH)
+        Signal<float> bandH, IReadOnlyList<DockedPaneProps> panes, bool reduced)
     {
         float Top()
         {
@@ -210,9 +241,7 @@ internal static class ZuneFrame
             float measured = bandH.Value;
             return float.IsFinite(measured) ? measured : ZuneTiers.FrameOf(tiers()).BandH;
         }
-        float Right() => placement() == PanelPlacement.Dock
-            ? (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f)
-            : 0f;
+        float Right() => placement() == PanelPlacement.Dock ? RightOf(props, panes, null) : 0f;
         float WidthNow() => placement() switch
         {
             PanelPlacement.Sheet => props.Viewport.Value.Width,
@@ -224,7 +253,7 @@ internal static class ZuneFrame
             Direction = 1, Grow = 1f, HitTestPassThrough = true,
             Children =
             [
-                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Top) },
+                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Top), Animate = reduced ? null : ZunePanelTiers.TopMotion },
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.End, HitTestPassThrough = true,
@@ -235,7 +264,7 @@ internal static class ZuneFrame
                             Key = ZuneFrameRules.PanelHostKey,
                             Direction = 1, Shrink = 0f, ClipToBounds = true, HitTestPassThrough = true,
                             Width = Prop.Of(WidthNow),
-                            Animate = ZuneFrameRules.PanelHostAnim,
+                            Animate = reduced ? null : ZunePanelTiers.HostMotion,
                             Children =
                             [
                                 new BoxEl
@@ -246,25 +275,34 @@ internal static class ZuneFrame
                                 },
                             ],
                         },
-                        new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right) },
+                        new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right), Animate = reduced ? null : ZunePanelTiers.ShiftMotion },
                     ],
                 },
             ],
         };
     }
 
-    /// <summary>The second docked pane's host (Huge): the queue, flush right at the body's full height. Its panel body owns its slide.</summary>
-    private static Element SecondHost(ShellFrameProps props, PanelProps second, in ViewContext ctx) => new BoxEl
+    /// <summary>A docked pane's host (Huge's queue; Huge 4K's queue and friends): flush right at the body's full height, as wide as the pane,
+    /// with a spacer after it as wide as what docks right of it (both easing on a crossing). Keyed by the pane's index, so a crossing that adds
+    /// or drops another pane keeps its node. Its panel body owns its slide.</summary>
+    private static Element PaneHost(ShellFrameProps props, DockedPaneProps pane, IReadOnlyList<DockedPaneProps> panes, in ViewContext ctx,
+        bool reduced) => new BoxEl
     {
         Direction = 0, Grow = 1f, Justify = FlexJustify.End, HitTestPassThrough = true,
         Children =
         [
             new BoxEl
             {
-                Key = ZuneFrameRules.SecondPanelHostKey,
+                Key = ZunePanelTiers.PaneHostKey(pane.Index),
                 Direction = 1, Shrink = 0f, ClipToBounds = true, HitTestPassThrough = true, IsolateLayout = true,
-                Width = Prop.Of(props.SecondPanelWidth ?? s_zero),
-                Children = [ctx.View(ViewKeys.ShellPanel, second)],
+                Width = Prop.Of(pane.Width),
+                Animate = reduced ? null : ZunePanelTiers.HostMotion,
+                Children = [ctx.View(ViewKeys.ShellPanel, pane.Panel)],
+            },
+            new BoxEl
+            {
+                Shrink = 0f, HitTestVisible = false, Width = Prop.Of(() => RightOf(props, panes, pane)),
+                Animate = reduced ? null : ZunePanelTiers.ShiftMotion,
             },
         ],
     };

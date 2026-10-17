@@ -10,7 +10,10 @@
 //   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case): queue · lyrics ·
 //             now playing · friends (where the capabilities offer the friends panel) and video while the video body is up; the current one
 //             in the primary ink, the rest tertiary. A word shows its body in the same panel (`PanelProps.ShowMode`); a pane that offers none
-//             (the second docked pane, always the queue) draws its one word. The close glyph (40 x 40) ends the row.
+//             (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word. The close glyph (40 x 40) ends the row.
+//   docked    (ZT2, Z-Part-Panel "docked2" / "docked3") where panes dock beside the primary, the primary's head leaves out the bodies they
+//             show (`PanelView.Beside`: lyrics · now playing · friends at Huge, lyrics · now playing at Huge 4K), and a LINKED pane draws no
+//             close (it closes with the panel; the board draws none on the docked columns, the primary keeps its one, as inline).
 //   bodies    queue (the core host of `Queue.Panel`), lyrics (`Panel.LyricsHeader` over the core host of `Lyrics.View`), now playing (the
 //             hero `Player.NowPlayingHero`, or the docked video, then "up next" over `Panel.NextUp`), friends (`Panel.Friends`), video (the
 //             playing track's title and line, then "up next"). The bodies are the player lane's views (Z4a): this frame gives them the full
@@ -55,8 +58,8 @@ internal static class ZunePanel
         _ => Loc.Get(Strings.Player.NowPlaying),
     };
 
-    /// <summary>The pivot head: the words, then the close glyph.</summary>
-    internal static Element Head(PanelProps props, PanelMode body, bool friends)
+    /// <summary>The pivot head: the words (but the bodies the linked panes beside it show), then the close glyph (none on a linked pane).</summary>
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends)
     {
         var words = new List<Element>(5);
         if (props.ShowMode is { } show)
@@ -64,26 +67,28 @@ internal static class ZunePanel
             foreach (var mode in PivotOrder)
             {
                 if (mode == PanelMode.Friends && !friends) continue;
+                if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
                 words.Add(Pivot(mode, mode == body, show));
             }
             if (body == PanelMode.Video) words.Add(Pivot(PanelMode.Video, current: true, show));
         }
         else words.Add(Pivot(body, current: true, show: null));
 
+        var row = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap, Height = ZuneFrameRules.PanelHeadH,
+                Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
+                Children = words.ToArray(),
+            },
+        };
+        if (!view.Linked) row.Add(Close(props.Close));
         return new BoxEl
         {
             Key = ZuneFrameRules.PanelHeadKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
             Padding = ZuneFrameRules.PanelHeadPadding,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.PanelPivotGap, Height = ZuneFrameRules.PanelHeadH,
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-                    Children = words.ToArray(),
-                },
-                Close(props.Close),
-            ],
+            Children = row.ToArray(),
         };
     }
 
@@ -263,7 +268,7 @@ internal sealed class ZunePanelFrame : Component
         // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
         // of the hero instead.
         if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, body, friends));
+        column.Add(ZunePanel.Head(props, view, body, friends));
         column.Add(bodySlot);
 
         return new BoxEl

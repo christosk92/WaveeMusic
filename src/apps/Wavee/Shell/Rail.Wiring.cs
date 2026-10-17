@@ -46,7 +46,12 @@ internal static class RailWiring
     /// and the playing id, and the active policy (tracked: a theme switch re-resolves the panel in place).</summary>
     internal static PanelView ReadPanel()
     {
-        var panel = Shell.PanelHost.Shared.State();
+        var host = Shell.PanelHost.Shared;
+        var panel = host.State();
+        // The panes docked beside it (contract 1.29): where they are LINKED, the primary steps aside to the arrangement's fallback rather
+        // than show a body a pane beside it already shows, and its pivot head leaves their bodies out.
+        var panes = host.Panes();
+        bool linked = panes.Linked && panes.Count > 0;
         var state = Video.State.Surface.Value;
         var resolved = Video.PlacementCore.Resolve(state);
 
@@ -55,6 +60,7 @@ internal static class RailWiring
         bool stageHosts = stagePlayable.Length > 0
             && Video.DockedHosting.HostFor(resolved, stagePlayable, Playback.CurrentId.Value.Text) == Video.DockedHost.PageStage;
         bool docked = resolved == Video.SurfacePlacement.Docked;
+        var body = ModeOf(Rail.VideoCoupling.BodyModeFor(panel.Mode, stageHosts));
 
         return new PanelView
         {
@@ -63,28 +69,41 @@ internal static class RailWiring
             Floats = panel.Floats,
             Placement = panel.Placement,
             FullHeight = ShellPolicy.Tracked.Panel.FullHeight,
-            Body = ModeOf(Rail.VideoCoupling.BodyModeFor(panel.Mode, stageHosts)),
+            Body = linked ? panes.Presented(body) : body,
             DockedHere = docked && !stageHosts,
             Pinned = Rail.VideoCoupling.PinnedFor(stageHosts, docked, Video.PlacementCore.Allows(state.Available, Video.SurfacePlacement.Docked)),
+            Beside = linked ? panes.Modes : default,
         };
     }
 
-    /// <summary>The decided view of the SECOND docked pane (TC2, D3): always the queue, docked, with no docked video card; open while the
-    /// queue is open beside the primary panel at a tier that docks two.</summary>
-    internal static PanelView ReadQueuePane()
+    /// <summary>The window tier's arrangement where it docks a pane at <paramref name="index"/> (0 the second pane, 1 the third), else the
+    /// widest tier's that does (so a pane sliding out on a crossing keeps its body, side and link). Tracked.</summary>
+    internal static Theming.PanelArrangement ArrangementFor(int index)
+    {
+        var panes = Shell.PanelHost.Shared.Panes();
+        return panes.At(index) is not null ? panes : ShellPolicy.Tracked.Panel.ArrangementAt(index);
+    }
+
+    /// <summary>The docked pane at <paramref name="index"/> of <see cref="ArrangementFor"/>.</summary>
+    internal static Theming.DockedPane PaneAt(int index) => ArrangementFor(index).At(index) ?? new Theming.DockedPane(PanelMode.Queue);
+
+    /// <summary>The decided view of docked pane <paramref name="index"/> (TC2, D3; contract 1.29): its one body (Classic's queue; Zune's
+    /// queue, then friends at Huge 4K), docked, with no docked video card; open per <see cref="Shell.FrameRules.PaneOpen"/>.</summary>
+    internal static PanelView ReadDockedPane(int index)
     {
         var host = Shell.PanelHost.Shared;
         return new PanelView
         {
-            Open = host.SecondOpen(),
-            Width = host.SecondWidth(),
+            Open = host.PaneOpen(index),
+            Width = host.PaneWidth(),
             Floats = false,
             Placement = PanelPlacement.Dock,
             FullHeight = ShellPolicy.Tracked.Panel.FullHeight,
-            Body = PanelMode.Queue,
+            Body = PaneAt(index).Mode,
             DockedHere = false,
             Pinned = PanelPinned.Art,
             UnmountWhenClosed = true,
+            Linked = ArrangementFor(index).Linked,
         };
     }
 
@@ -390,17 +409,37 @@ internal static class RailWiring
         VideoTitle = s_videoTitle,
     };
 
-    /// <summary>The props the frame mounts the SECOND pane with (the queue beside the primary panel): the primary's builders, its own
-    /// read, its own close, and no docked video card (the one card lives in the primary panel).</summary>
-    public static readonly PanelProps QueuePane = Panel with
+    /// <summary>The props the frame mounts docked pane <paramref name="index"/> with (contract 1.29): the primary's builders, its own read,
+    /// its own close, and no docked video card (the one card lives in the primary panel).</summary>
+    static PanelProps BuildPaneProps(int index) => Panel with
     {
-        Read = static () => ReadQueuePane(),
-        InlineAndOpen = static () => Shell.PanelHost.Shared.SecondOpen(),
+        Read = () => ReadDockedPane(index),
+        InlineAndOpen = () => Shell.PanelHost.Shared.PaneOpen(index),
         BodyHeightChanged = static _ => { },
         Close = static () => Shell.PanelHost.Shared.CloseQueuePane(),
         ShowMode = null,
         DockedCard = static () => Shell.NoDockedCard(),
         Transport = null,
         VideoTitle = null,
+    };
+
+    /// <summary>The SECOND pane's props (Classic's queue beside the primary; Zune's queue), built once.</summary>
+    public static readonly PanelProps SecondPane = BuildPaneProps(0);
+
+    /// <summary>The THIRD pane's props (Zune Huge 4K's friends), built once.</summary>
+    public static readonly PanelProps ThirdPane = BuildPaneProps(1);
+
+    /// <summary>Every docked pane the frame may place (contract 1.29), in pane order, built once: its open state, width, reservation and side
+    /// read from the panel host and the window tier's arrangement.</summary>
+    public static readonly IReadOnlyList<DockedPaneProps> DockedPanes = [DockedPane(0, SecondPane), DockedPane(1, ThirdPane)];
+
+    static DockedPaneProps DockedPane(int index, PanelProps panel) => new()
+    {
+        Index = index,
+        Open = () => Shell.PanelHost.Shared.PaneOpen(index),
+        Width = static () => Shell.PanelHost.Shared.PaneWidth(),
+        ReservedWidth = () => Shell.FrameRules.SecondReservedWidth(Shell.PanelHost.Shared.PaneOpen(index), Shell.PanelHost.Shared.PaneWidth()),
+        Side = () => PaneAt(index).Side,
+        Panel = panel,
     };
 }

@@ -515,7 +515,21 @@ Z-Shell-Short, Z-Part-TitleBar, Z-Part-Band and Z-Sizes-Breakpoints. The records
 
 ## ZT2: player and panel tiers
 
-_Not built yet._
+- **The bar per tier** (`Rules\Tiers.Player.cs`, unchanged levels from Z4a): the mini 64 at the foot of the reserved 72 at Compact; narrow
+  (640) and medium (760) at Small; medium and full (1240) at Standard; wide (1920) at Huge in the 72; big (3200) at Huge 4K in an 88 slot
+  with the 48 disc. The slot's and the bar's heights ease through real layout on a crossing (`SlotMotion`, `BarMotion`: size channels), so
+  72 <-> 88 at 3200 and 64 <-> 72 at 640 never snap.
+- **The panel per tier** (`Rules\Tiers.Panel.cs`, `ZunePanelTiers`; Z-Part-Panel, Z-Frame-Huge, Z-Frame-Huge4K): a full-width sheet at
+  Compact, a 340 overlay at Small, inline 340 at Standard, docked 720 at Huge (queue | lyrics · friends) and 1080 at Huge 4K
+  (queue | lyrics | friends), each docked column the board's 360 (the rule's floor). The panes are LINKED (core contract 1.29): they open and close with the
+  panel, the primary steps aside to lyrics when it would show the queue or friends, its pivot head leaves the docked bodies out, and a docked
+  pane draws no close. `maxDockedPanes` caps the columns (2: queue | lyrics · friends at Huge 4K too; 1: the 340 panel everywhere);
+  `panelMode` AlwaysOverlay floats it at every desktop tier.
+- **The frame** (`ZuneFrame`) places one host per docked pane, keyed by pane index (`zune-panel-host-2`, `zune-panel-host-3`), each flush
+  right with a spacer after it as wide as what docks right of it. A crossing moves every host by size channels only: its width
+  (`HostMotion`), its spacer (`ShiftMotion`, a reflow) and the floating panel's top spacer (`TopMotion`, a reflow).
+- **Gaps.** The wide bar's "playing from" line has no source fact in `PlayerBarProps` (the sheet's `PanelTransportProps.Source` is the
+  panel's), and the board's friends tool at wide and 4K has no `PlayerBarSlots` member: both need a core seam.
 
 ## ZT3: stage tiers
 

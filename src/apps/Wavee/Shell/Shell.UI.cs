@@ -156,12 +156,15 @@ public static partial class Shell
     /// committed window tier (never a fit test of pane + panel + content), so a crossing docks, undocks or adds the second pane on the
     /// crossing frame, where the reservation's change FLIPs the content card and the panels. The floor moves the committed width only when
     /// it changes (a crossing into or out of Huge, a Huge window resized), and a crossing to a one-panel tier folds a lone second pane into
-    /// the panel.</summary>
+    /// the panel. The tier's pane ARRANGEMENT (contract 1.29) goes out with them: which bodies dock beside the primary and on which side,
+    /// capped by the rule's MaxDocked (the structure clamps that by its own option, Zune's `maxDockedPanes`).</summary>
     static void PublishPanelTier(Theming.PanelTierRule rule, float viewportWidth)
     {
         float floor = rule.FloorFor(viewportWidth);
+        var panes = rule.Arrangement;
         Ui.PanelPlacement.SetIfChanged(rule.Placement);
         Ui.RailFits.SetIfChanged(rule.Docks);
+        if (panes.Count > 0) Ui.PanelPanes.SetIfChanged(panes);   // kept through a one-pane tier: nothing reads it there, and the next docking tier's lands with it
         Ui.SecondPaneAllowed.SetIfChanged(rule.DocksTwo);
         if (Ui.PanelFloor.Peek() != floor)
         {
@@ -604,7 +607,8 @@ public static partial class Shell
             SecondPanelWidth = static () => PanelHost.Shared.SecondWidth(),
             SecondGapWidth = static () => FrameRules.SecondGapWidth(PanelHost.Shared.SecondOpen()),
             SecondReservedWidth = static () => FrameRules.SecondReservedWidth(PanelHost.Shared.SecondOpen(), PanelHost.Shared.SecondWidth()),
-            SecondPanel = RailWiring.QueuePane,
+            SecondPanel = RailWiring.SecondPane,
+            DockedPanes = RailWiring.DockedPanes,
             Chords = s_chords,
             OnKeyDown = OnShellKey,
             FileDrop = _fileDrop,

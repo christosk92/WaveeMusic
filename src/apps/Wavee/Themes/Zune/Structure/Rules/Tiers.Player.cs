@@ -20,10 +20,11 @@
 // THE BAR'S SLOT. The frame reserves the desktop bar's 72 at every tier (`ZuneTiers.BarReserveH`), so the mini bar (64) sits at the foot
 // of the same slot and a 640 crossing moves nothing above it; Huge 4K's slot is 88 and its crossing animates the slot's height.
 //
-// THE PANEL PER WINDOW TIER (Z2a's hand-off, boards Z-Part-Panel, Z-Frame-Panel, Z-Frame-Panel-Small / -Compact): 340 wide, never
-// resized (Min = Max), the full content height; docked inline from Standard (1008), floating at Small, a bottom sheet at Compact. Huge
-// and Huge 4K dock the queue beside it (the core's second pane; ZT2 brings the board's third pane and its 360 columns). `panelMode`
-// AlwaysOverlay floats it at every desktop tier, and `maxDockedPanes` caps the docked count.
+// THE BAR ACROSS A CROSSING (ZT2). The slot's height (72 ↔ 88 at 3200) and the bar's inside it (the mini 64 ↔ 72 at 640) ease through real
+// layout (`SlotMotion`, `BarMotion`: size channels), so the page above and the bar's foot ride the re-solve; a position slide would be snapped
+// by the engine's reflow-shove rule, as the title bar reflows on the same crossing (ZT1's lesson).
+//
+// THE PANEL PER WINDOW TIER is `Tiers.Panel.cs` (`ZunePanelTiers`).
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
 
@@ -92,11 +93,6 @@ public sealed record ZunePlayerBarTier(WidthTier Tier, ZuneBarForm Form, ZuneBar
 public sealed record ZuneBarLook(ZuneBarLevel Level, float IdW, float Art, float RowGap, float PadLeft, float PadRight, float Button, float Glyph,
     float Disc, float DiscGlyph, float TransportGap, float WordSize, float TitleSize, float TitleLine, float SubSize, float SubLine,
     float FromSize, float FromLine, float VolumeW);
-
-/// <summary>The panel's record for one window tier.</summary>
-/// <param name="Tier">The window tier.</param>
-/// <param name="Rule">The placement the core lays the panel out by.</param>
-public sealed record ZunePanelTier(WidthTier Tier, PanelTierRule Rule);
 
 /// <summary>Zune's play bar and panel per tier (public so the tests pin them).</summary>
 public static class ZunePlayerTiers
@@ -199,28 +195,18 @@ public static class ZunePlayerTiers
 
     private static PlayerBarWindowRule Rule(ZunePlayerBarTier bar) => new((int)bar.MinLevel, (int)bar.MaxLevel);
 
-    // ── the panel ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── the bar across a crossing ─────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The panel's one width (Z-Part-Panel inline and floating): never resized.</summary>
-    public const float PanelW = 340f;
+    /// <summary>The bar's slot across the 3200 crossing (72 ↔ 88): the pivot slide's 250 ms on the smooth-out curve, a reflow on the height
+    /// axis (the title bar's own motion, ZT1), so the page above yields frame by frame. Null under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition SlotMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Height);
 
-    /// <summary>The panel's rule per window tier for <paramref name="mode"/> and a cap of <paramref name="maxDocked"/> panes (Compact first).</summary>
-    public static ImmutableArray<PanelTierRule> PanelRules(ZunePanelMode mode, int maxDocked)
-    {
-        int docked = Math.Clamp(maxDocked, 1, 2);
-        var dock = new PanelTierRule(PanelPlacement.Dock);
-        var dockPair = new PanelTierRule(PanelPlacement.Dock, MaxDocked: docked);
-        var floating = new PanelTierRule(PanelPlacement.Float);
-        var sheet = new PanelTierRule(PanelPlacement.Sheet);
-        return mode == ZunePanelMode.AlwaysOverlay
-            ? ImmutableArray.Create(sheet, floating, floating, floating, floating)
-            : ImmutableArray.Create(sheet, floating, dock, dockPair, dockPair);
-    }
+    /// <summary>The bar inside its slot across a crossing (the mini 64 ↔ 72 at 640, 72 ↔ 88 at 3200): the same reflow, so its top edge rises
+    /// and falls with no position slide. Null under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition BarMotion = SlotMotion;
 
-    /// <summary>The panel's record of window tier <paramref name="window"/> under the defaults (inline when there is room, two docked panes).</summary>
-    public static ZunePanelTier Panel(WidthTier window)
-    {
-        var rules = PanelRules(ZunePanelMode.InlineWhenRoom, 2);
-        return new ZunePanelTier(window, rules[Math.Clamp((int)window, 0, rules.Length - 1)]);
-    }
+    /// <summary>The panel's one width (`ZunePanelTiers.PanelW`; the bar's tests and the panel's share it).</summary>
+    public const float PanelW = ZunePanelTiers.PanelW;
 }
