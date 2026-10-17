@@ -56,7 +56,7 @@ internal static class ZuneHomeZones
     static Element Heading(Zone zone, ZuneHomeLayout lay, string? fallbackTitle = null)
     {
         var seeAll = HomeVerbs.SeeAll(zone);
-        Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, Loc.Get(Strings.Home.SeeAll), seeAll);
+        Element? tools = seeAll is null ? null : K.Link("see-all:" + zone.Key, Loc.Get(Strings.Home.SeeAll), seeAll, lay.LinkTarget);
         return K.Heading(zone.Title ?? fallbackTitle ?? "", lay.Subtitles ? zone.Subtitle : null, tools);
     }
 
@@ -82,7 +82,10 @@ internal static class ZuneHomeZones
             cardHeight: s_coverHeight,
             header: Heading(zone, lay),
             pager: ShelfPager.Chevrons,
-            minCardW: H.ShelfCardW, maxCardW: H.ShelfCardW, fixedCardW: H.ShelfCardW, gap: H.ShelfGap, headerGap: H.HeadGap,
+            // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
+            // (one node at every tier: these are live props of the shelf).
+            minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
+            maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,
@@ -109,7 +112,7 @@ internal static class ZuneHomeZones
             cardHeight: s_wideHeight,
             header: Heading(zone, lay),
             pager: ShelfPager.Chevrons,
-            minCardW: H.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
+            minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,
@@ -137,14 +140,13 @@ internal static class ZuneHomeZones
         var tz = TimeZoneInfo.Local;
         var culture = CultureInfo.CurrentCulture;
         var rows = new Element[n];
-        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], i, nowMs, tz, culture);
+        var shape = Shape.Row(lay.ReleaseArt) with { MinHeight = lay.ReleaseRowH };
+        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], i, nowMs, tz, culture, shape, lay.ReleaseWhenW);
         return K.Section(Heading(zone, lay, Loc.Get(Strings.Home.Zone.FromArtistsYouFollow)),
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows });
     }
 
-    static readonly SurfaceShape s_releaseRow = Shape.Row(H.ReleaseArt) with { MinHeight = H.ReleaseRowH };
-
-    static Element ReleaseRow(HomeCard c, int index, long nowMs, TimeZoneInfo tz, CultureInfo culture)
+    static Element ReleaseRow(HomeCard c, int index, long nowMs, TimeZoneInfo tz, CultureInfo culture, SurfaceShape shape, float whenW)
     {
         string type = ReleaseListRules.TypeLabel(c.Kind);
         string sub = HomeCards.PlainText(c.Subtitle);
@@ -153,15 +155,16 @@ internal static class ZuneHomeZones
         var data = new Controls.CardData(c.Uri, c.Title, line.Length > 0 ? K.Caption(line, cased: false) with { Color = Tok.TextSecondary } : null,
             c.ImageUrl, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
         {
-            Trailing = when.Length > 0
-                ? new BoxEl { Width = H.ReleaseWhenW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [K.Caption(when)] }
+            // Compact has no "when" lane (the board gives the row's end to its "…").
+            Trailing = when.Length > 0 && whenW > 0f
+                ? new BoxEl { Width = whenW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [K.Caption(when)] }
                 : null,
             Menu = HomeCardNav.MenuOf(in c),
         };
         return new BoxEl
         {
             Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + c.Uri,
-            Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, s_releaseRow)],
+            Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)],
         };
     }
 
@@ -173,7 +176,8 @@ internal static class ZuneHomeZones
         var clusters = zone.Clusters;
         int n = clusters is null ? 0 : Math.Min(clusters.Count, H.ClusterMax);
         var cells = new Element[n];
-        for (int i = 0; i < n; i++) cells[i] = Cluster(clusters![i], i);
+        var rowShape = Shape.Row(lay.ClusterArt) with { MinHeight = lay.ClusterRowH };
+        for (int i = 0; i < n; i++) cells[i] = Cluster(clusters![i], i, lay, rowShape);
         Element grid = new GridEl
         {
             Key = "zune-home-clusters:" + zone.Key, MinColWidth = H.ClusterMinCol, MaxColumns = lay.ClusterCols,
@@ -182,14 +186,12 @@ internal static class ZuneHomeZones
         return K.Section(K.Heading(zone.Title ?? "", lay.Subtitles ? zone.Subtitle : null, null), grid);
     }
 
-    static readonly SurfaceShape s_clusterRow = Shape.Row(H.ClusterArt) with { MinHeight = H.ClusterRowH };
-
-    static Element Cluster(ZoneCluster cluster, int index)
+    static Element Cluster(ZoneCluster cluster, int index, ZuneHomeLayout lay, SurfaceShape rowShape)
     {
         string title = cluster.Over is { Length: > 0 } over ? over + " " + cluster.Name : cluster.Name;
         BoxEl head = new BoxEl
         {
-            Height = H.ClusterTitleH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Height = lay.ClusterTitleH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Children = [R.Type.DenseTitle(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
         };
         if (cluster.Header is { } h)
@@ -211,7 +213,7 @@ internal static class ZuneHomeZones
             kids[i + 1] = new BoxEl
             {
                 Key = c.IsBlank ? "zune-cluster-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-cluster-row:" + c.Uri,
-                Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, s_clusterRow)],
+                Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, rowShape)],
             };
         }
         return new BoxEl
@@ -233,7 +235,7 @@ internal static class ZuneHomeZones
         {
             var c = items[i];
             tiles[i] = K.Plate(c.IsBlank ? "zune-tile-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-tile:" + c.Uri,
-                c.Title, c.Accent, c.ImageUrl, H.TileH, () => HomeCardNav.Open(in c));
+                c.Title, c.Accent, c.ImageUrl, lay.TileH, () => HomeCardNav.Open(in c), lay.TileBig);
         }
         Element grid = new GridEl
         {
@@ -243,8 +245,8 @@ internal static class ZuneHomeZones
         bool beside = lay.ChartsBeside;
         return new BoxEl
         {
-            Direction = (byte)(beside ? 0 : 1), Gap = beside ? H.PairGap : lay.ZoneGap, MinWidth = 0f,
-            AlignItems = beside ? FlexAlign.Start : FlexAlign.Stretch, Layout = ZuneMotion.ColumnCollapse,
+            Direction = (byte)(beside ? 0 : 1), Gap = beside ? lay.PairGap : lay.ZoneGap, MinWidth = 0f,
+            AlignItems = beside ? FlexAlign.Start : FlexAlign.Stretch,
             Children =
             [
                 K.Section(Heading(zone, lay), grid) with
@@ -254,38 +256,36 @@ internal static class ZuneHomeZones
                 new BoxEl
                 {
                     Key = H.ChartsKey, Direction = 1, MinWidth = 0f, Grow = beside ? H.ChartsShare : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN,
-                    Children = [Embed.Comp(static () => new ChartsBlockView()) with { Key = "zune-home-charts-host", SkeletonProxy = s_chartsProxy }],
+                    Children = [Embed.Comp(static () => new ChartsBlockView()) with { Key = "zune-home-charts-host", SkeletonProxy = () => ChartsTree(ChartTilesModel.Fallback, lay) }],
                 },
             ],
         };
     }
 
-    static readonly Func<Element> s_chartsProxy = static () => ChartsTree(ChartTilesModel.Fallback, subtitle: true);
-
     /// <summary>The registered template of <see cref="ViewKeys.HomeCharts"/>: the numbered list (Z-Home "charts": 40 rows, the 22 light rank).</summary>
-    public static Element ChartsTemplate(HomeChartsProps props, in ViewContext ctx) => ChartsTree(props.Model, ZuneHomeTiers.Of(ctx.Tier()).Subtitles);
+    public static Element ChartsTemplate(HomeChartsProps props, in ViewContext ctx) => ChartsTree(props.Model, ZuneHomeTiers.Of(ctx.Tier()));
 
-    internal static Element ChartsTree(ChartTilesModel m, bool subtitle)
+    internal static Element ChartsTree(ChartTilesModel m, ZuneHomeLayout lay)
     {
         Element[] rows =
         [
-            ChartRow("charts", 1, Loc.Get(Strings.Home.Charts), Loc.Get(Strings.Home.UpdatedDaily), ChartTileTarget.Fallback),
-            ChartRow("top50", 2, m.Top50.IsFallback ? ChartTilePick.Top50Prefix : m.Top50.Title, Loc.Get(Strings.Home.ChartsCaption.Top50Global), m.Top50),
-            ChartRow("viral50", 3, m.Viral50.IsFallback ? ChartTilePick.Viral50Prefix : m.Viral50.Title, Loc.Get(Strings.Home.ChartsCaption.Viral50Country), m.Viral50),
+            ChartRow("charts", 1, Loc.Get(Strings.Home.Charts), Loc.Get(Strings.Home.UpdatedDaily), ChartTileTarget.Fallback, lay),
+            ChartRow("top50", 2, m.Top50.IsFallback ? ChartTilePick.Top50Prefix : m.Top50.Title, Loc.Get(Strings.Home.ChartsCaption.Top50Global), m.Top50, lay),
+            ChartRow("viral50", 3, m.Viral50.IsFallback ? ChartTilePick.Viral50Prefix : m.Viral50.Title, Loc.Get(Strings.Home.ChartsCaption.Viral50Country), m.Viral50, lay),
         ];
-        return K.Section(K.Heading(Loc.Get(Strings.Home.Charts), subtitle ? Loc.Get(Strings.Home.UpdatedDaily) : null, null),
+        return K.Section(K.Heading(Loc.Get(Strings.Home.Charts), lay.Subtitles ? Loc.Get(Strings.Home.UpdatedDaily) : null, null),
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows });
     }
 
-    static Element ChartRow(string key, int rank, string title, string caption, ChartTileTarget target) => new BoxEl
+    static Element ChartRow(string key, int rank, string title, string caption, ChartTileTarget target, ZuneHomeLayout lay) => new BoxEl
     {
-        Key = "zune-chart:" + key, Height = H.ChartRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChartGap, MinWidth = 0f,
+        Key = "zune-chart:" + key, Height = lay.ChartRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.ChartGap, MinWidth = 0f,
         Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => HomeVerbs.OpenChart(target),
         Children =
         [
             new BoxEl
             {
-                Width = H.ChartRankW, Shrink = 0f, Direction = 0,
+                Width = lay.ChartRankW, Shrink = 0f, Direction = 0,
                 Children = [R.Type.Numeral(rank.ToString(CultureInfo.InvariantCulture)) with { Color = Tok.TextTertiary, MaxLines = 1 }],
             },
             R.Type.TrackTitle(title) with { Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },

@@ -12,9 +12,9 @@
 //
 //   THE COLUMN (`ZuneHomePlan.Rows`): on All the quickplay strip first (pins · history · new: `Home.Quickplay` through its core host, with the
 //   Recents zone as its history), then the zones in the planner's order, 28 apart; two neighbours that pair (the release list and the
-//   clusters, the new and continue episodes) share a row 1 : 1 where the tier has room (`PairBeside`), and stack where it has not (the same
+//   clusters, the new and continue episodes) share a row 1 : 1 where the tier has room (`PairBeside`, `PairGap` apart), and stack where it has not (the same
 //   two nodes: only the row's direction is a live prop). Every zone is a chapter keyed by its zone: the entrance row rides its inner box
-//   (`Design.Entrance.Row`, production motion), and a tier crossing reflows it (`ZuneMotion.ColumnCollapse`). On All "customize home" closes the page.
+//   (`Design.Entrance.Row`, production motion), and a tier crossing reflows it (`H.ChapterResize`). On All "customize home" closes the page.
 //   THE BODIES are the `Home.Zone.<Kind>` slots (`ZuneHomeZones`: a body draws its own heading row), the daylist and the history their core hosts
 //   (`DaylistCard`, `RecentGrid`). Each slot and host carries a SkeletonProxy that is the SAME static builder its template runs.
 //   THE FACET SWAP is the production one: the content is one keyed subtree per published facet that fades out and in, over ONE dim host whose
@@ -131,7 +131,7 @@ internal static class ZuneHomePage
             kids.Add(new BoxEl
             {
                 Key = H.CustomizeKey, Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(rows.Length),
-                Children = [K.Link("zune-home-customize-link", Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize)],
+                Children = [K.Link("zune-home-customize-link", Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize, lay.LinkTarget)],
             });
         return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
@@ -153,25 +153,26 @@ internal static class ZuneHomePage
         return new BoxEl
         {
             Key = H.PairPrefix + a.Key + "+" + b.Key,
-            Direction = (byte)(beside ? 0 : 1), Gap = beside ? H.PairGap : lay.ZoneGap, MinWidth = 0f,
+            Direction = (byte)(beside ? 0 : 1), Gap = beside ? lay.PairGap : lay.ZoneGap, MinWidth = 0f,
             AlignItems = beside ? FlexAlign.Start : FlexAlign.Stretch,
-            Layout = ZuneMotion.ColumnCollapse,
+            Layout = H.ChapterResize,
             Children =
             [
-                Chapter(a, overlay, lay, index) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
-                Chapter(b, overlay, lay, index) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                Chapter(a, overlay, lay, index, reveal: false) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                Chapter(b, overlay, lay, index, reveal: false) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
             ],
         };
     }
 
-    /// <summary>One zone's chapter: the keyed box (a crossing reflows it) carrying its entrance on an inner box, around the zone's body.</summary>
-    static BoxEl Chapter(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay, int index)
-        => Box(H.ZonePrefix + zone.Key, Body(zone, overlay, lay), index);
+    /// <summary>One zone's chapter: the keyed box (its height resizes by `H.ChapterResize` on a crossing) carrying its entrance on an inner box, around the
+    /// zone's body. A chapter in a pair does not reveal itself: the pair does (two nested flow reveals would count a height change twice).</summary>
+    static BoxEl Chapter(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay, int index, bool reveal = true)
+        => Box(H.ZonePrefix + zone.Key, Body(zone, overlay, lay), index, reveal);
 
-    static BoxEl Box(string key, Element body, int index) => new()
+    static BoxEl Box(string key, Element body, int index, bool reveal = true) => new()
     {
         Key = key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-        Layout = ZuneMotion.ColumnCollapse,
+        Layout = reveal ? H.ChapterResize : null,
         Children =
         [
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Animate = Design.Entrance.Row(index), Children = [body] },
