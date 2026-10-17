@@ -104,8 +104,7 @@ public static class App
         int themeAt = Array.IndexOf(argv, "--theme");
         if (themeAt >= 0 && themeAt + 1 < argv.Length && Array.IndexOf(argv, "--screenshot") >= 0)
         {
-            Platform.Developer.Enabled.Value = true;
-            Platform.Settings.Set(new SettingKey<string>("theme.id", Wavee.Themes.Classic.ClassicTheme.Id), argv[themeAt + 1]);
+            Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);
         }
         Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create());
         if (!Platform.Args.Fake)

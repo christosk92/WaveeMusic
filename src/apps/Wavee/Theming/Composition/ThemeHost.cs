@@ -130,6 +130,14 @@ public static class ThemeHost
     /// <c>RequestForwarder</c> is what <c>ctx.OptionRequests</c> sets through, and lands in <see cref="Apply"/>.</summary>
     public static OptionStore Options => s_store?.Store ?? s_noOptions;
 
+    /// <summary>Selects <paramref name="themeId"/> for this run before <see cref="Install"/>: Developer mode on (a Developer-only theme such as Zune
+    /// resolves) and the id in this run's settings. For review captures (`--screenshot --theme zune`) in a --fake profile, whose settings live in memory.</summary>
+    public static void SelectForRun(string themeId)
+    {
+        Platform.Developer.Enabled.Value = true;
+        Platform.Settings.Set(IdKey, themeId);
+    }
+
     /// <summary>Installs the compositions and activates the stored one (<c>theme.id</c>; an unknown or unavailable id
     /// activates Classic). App.cs only. A second call replaces the installed set, which tests use; production calls once.</summary>
     public static void Install(params ThemeComposition[] themes)
