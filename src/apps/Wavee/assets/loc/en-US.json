@@ -2776,7 +2776,15 @@
         "playPin": "Play {name}"
       },
       "lists": {},
-      "player": {},
+      "player": {
+        "$comment": "Z4a: the play bar's and the panel bodies' words (cased by the style's roles: Zune writes them lowercase). Names follow these words in their own casing.",
+        "devices": "Devices",
+        "playingOn": "Playing on",
+        "playOn": "Play on",
+        "playingFrom": "Playing from",
+        "nextUpFrom": "Next up from",
+        "translate": "Translate"
+      },
       "stage": {
         "$comment": "Z4b: the fullscreen stage's word actions (lowercased by the case roles). The stage's other words are stage.*.",
         "options": "Options",

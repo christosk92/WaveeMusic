@@ -191,7 +191,55 @@ option cell, so nothing under Zune reads `style.density` as Classic's `RowDensit
 
 ## Z4a: the player
 
-_Not built yet._
+`ZuneStructure.Player.cs` registers `Player.Bar`, `.SeekRail`, `.SeekChapters`, `.ChapterTip`, `.SeekReadout`, `.TimeLabel`, `.DevicePicker`,
+`.OnMediaTransport`, `.NowPlayingHero`, `.DeckStyleFlyout`, `.LyricsPeek`, `Panel.Friends`, `Panel.LyricsHeader`, `Panel.NextUp` and
+`Queue.Panel` as `zune.player.*` / `zune.panel.*` / `zune.queue.panel` (views in `Structure\Views\Player\*`, `Views\Panel\*` but the panel's
+frame, `Views\Queue\ZuneQueuePanel.cs`). Every number is in `Rules\PlayerBarLayout.cs`; the levels and the per-tier records in
+`Rules\Tiers.Player.cs`; the policies in `Rules\ZunePolicies.Player.cs`.
+
+**The play bar** (Z-PlayBar, Z-Part-PlayBar, Z-PlayBar-Small / -Huge / -Compact, Z-Light-PlayBar): flat and square on the player-bar layer, a
+2-px seek line along its top edge (full width; its 12 hit box reaches 5 either side, the 12 round accent thumb on hover) over the transport
+row: the identity column (art · "playing on …" in the accent · title · artists · heart), the transport centred (previous · the round accent
+disc · next, or −10 · disc · +10 · the speed word for an episode; the times under it) and the tools as words and glyphs (shuffle · repeat ·
+mute · the volume line · lyrics · video ▾ · queue · devices · full screen · "…"). A level that drops a tool puts it in "…" (the core's
+overflow). The `seekTimes` parameter at AtSliderEnds makes the seek row 16 tall with the times at its two ends.
+
+| level | from | window tier | identity column | art | disc | tools |
+|---|---|---|---|---|---|---|
+| mini | 0 | Compact | (the door grows) | 44 | 40 | the disc and next (+10) |
+| narrow | 640 | Small | 200 | 48 | 40 | mute · devices · "…" |
+| medium | 760 | Small, Standard | 260 + heart | 48 | 40 | mute · lyrics · devices · "…" |
+| full | 1240 | Standard | 320 + heart | 48 | 40 | all, both times |
+| wide | 1920 | Huge | 420, 32 apart, 48 in | 48 | 40 | all |
+| big | 3200 | Huge 4K | 520, 64 in, 44 targets, title 17 | 64 | 48 | all, words 15 |
+
+The core walks the six levels with a 24 hold on narrowing and clamps them to the window tier (`PlayerBarPolicy.Windows`). The bar keeps the
+frame's reserved 72 at every tier (88 at Huge 4K): the mini bar (64) sits at the foot of the same slot, so a 640 crossing moves nothing above it.
+One element tree for every level and both forms: the art, the meta, the disc and each tool keep their keys and FLIP on a crossing; a tool
+lights or dims by opacity; a line or a time that comes or goes fades. No key names a level or a form.
+
+**The transport pieces** are shared with the stage's plate (Z4b) and the strip over a video: the seek rail (also the DVR edge, the breathing
+live line, the mini bar's inert hairline), the chapter ticks hanging from the line, the tip and the readout on square raised plates, the time
+labels (12/16, slot 40; the live slot's words lowercase).
+
+**The panel's bodies** (Z-Part-Panel, Queue; the frame and the pivot head are Z2a's):
+
+- `Panel.LyricsHeader`: no title and no close (the pivot head has them); the meta row under the pivots: "translate" (the second line),
+  the AI sparkle, "full screen", the developer inspector. 28 tall, 40 at Compact.
+- `Queue.Panel`: the mode words (shuffle · repeat · autoplay), "playing from …", the 72 now-playing row in the accent, the lane's headers at the
+  foot of their 32 ("next in queue" · "clear", "next up from …", "autoplay"), the rows (the shared surface at the 36 art with the ✕), "show next".
+  The lane's slot extents are exact (`ZuneQueueRules.RowExtent`, `Header`, `MoreExtent`).
+- `Panel.Friends`: the 40 round avatar, the name, the track in the accent while live, the context, the time or the accent equalizer.
+- `Player.NowPlayingHero` (no board): the cover (or, in developer mode, the deck) at the column's width, the title, the artists and album as
+  links, the heart, the lyrics peek; `Player.DeckStyleFlyout` lists the presets and options as words.
+- `Panel.NextUp`: the shared surface at the 36 art and 52 floor. `Player.LyricsPeek`: two 28 lines on a 2-px square accent spine.
+- `Player.DevicePicker` (Z-PlayBar-Huge's "play on"): 340 wide, 52 device rows with the accent dot on the one in use.
+
+**The panel's policy**: 340 wide and never resized (Min = Max), the full content height; a sheet at Compact, floating at Small, inline from
+Standard, the queue docked beside it from Huge; `panelMode` AlwaysOverlay floats it at every desktop tier, `maxDockedPanes` caps the docked
+count (the core docks at most 2 until ZT2).
+
+Loc: `theme.zune.player.{devices,playingOn,playOn,playingFrom,nextUpFrom,translate}`. Tests: `Wavee.ShellTests\ZunePlayerMountedTests.cs`.
 
 ## Z4b: the stage frame, Card and LargeArt
 
