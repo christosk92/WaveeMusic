@@ -24,12 +24,18 @@
 // layout (`SlotMotion`, `BarMotion`: size channels), so the page above and the bar's foot ride the re-solve; a position slide would be snapped
 // by the engine's reflow-shove rule, as the title bar reflows on the same crossing (ZT1's lesson).
 //
-// THE BAR'S MARGINS AND RHYTHM (ZT2, the owner's review "check margins professionally"). Vertically: the 2-px seek line lies on the bar's top
-// edge (it takes no room), and the transport cluster (the 40 disc row, 4, the 16 times; 48, 6, 16 at Huge 4K) is centred in the whole bar:
-// 6 / 6 of air in the 72, 9 / 9 in the 88; the 48 cover sits 12 / 12 (the mini 44 in the 64: 10 / 10). Horizontally: the row's left inset is
-// the frame's gutter per window tier (16 / 24 / 48 / 48 / 64: the cover lines up with the band and the page titles), its right inset puts the
-// last tool's glyph on the same gutter (`RowInsets`); the identity column keeps the board's 12 between cover and words, the transport its
-// 12 / 16 between buttons, the tools the board's 2 (each target carries its own air). The insets are boxes that ease on a crossing.
+// THE BAR'S MARGINS AND RHYTHM (ZT2 and T1, the owner's review "check margins professionally"). Vertically: the 2-px seek line lies on the
+// bar's top edge (it takes no room), and the transport cluster is centred in the whole bar:
+//   narrow, medium   the times UNDER the transport: the 36 disc row, 4, the 16 times = 56, 8 / 8 of air in the 72 (the 40 prev / next
+//                    targets overhang the 36 row by 2 each way);
+//   full, wide, big  the times BESIDE it (`TimesBeside`): elapsed in a 40 slot 16 left of previous, remaining in a 40 slot 16 right of next,
+//                    so the cluster is the disc row alone and the disc is centred: 16 / 16 in the 72, 20 / 20 in the 88.
+// The 48 cover sits 12 / 12 (the mini 44 in the 64: 10 / 10). A level change moves the times between the two places as a fade, the row
+// they leave and the slots they enter easing their size (size channels). Horizontally: the row's left inset is the frame's gutter per window
+// tier (16 / 24 / 48 / 48 / 64: the cover lines up with the band and the page column), its right inset puts the last tool's glyph on the same
+// gutter, the page's right content edge (`RowInsets`: 12 / 36 / 36 / 52, the T1 audit's A2); the identity column keeps the board's 12
+// between cover and words, the transport its 12 / 16 between buttons, the tools the board's 2 (each target carries its own air). The insets
+// are boxes that ease on a crossing.
 //
 // THE PANEL PER WINDOW TIER is `Tiers.Panel.cs` (`ZunePanelTiers`).
 //
@@ -82,11 +88,13 @@ public sealed record ZunePlayerBarTier(WidthTier Tier, ZuneBarForm Form, ZuneBar
 /// <param name="IdW">The identity column (art · title · heart); 0 for the mini bar, whose door grows.</param>
 /// <param name="Art">The cover: 44 mini, 48, 64 at Huge 4K.</param>
 /// <param name="RowGap">Between the identity column, the transport and the tools: 12 mini, 24, 32 wide.</param>
-/// <param name="PadLeft">The row's left inset: 16 mini, 24, 48 wide, 64 at Huge 4K.</param>
-/// <param name="PadRight">The row's right inset: 8 mini, else 12.</param>
+/// <param name="PadLeft">The row's left inset at the level's home tier: the frame's gutter (16 mini, 24 narrow and medium, 48 full and
+/// wide, 64 big). The bar draws the WINDOW tier's gutter (`RowInsets`: medium at Standard is 48).</param>
+/// <param name="PadRight">The row's right inset at the level's home tier: the gutter less the last target's air, (button - glyph) / 2, so
+/// its glyph ends on the page's right edge (8 mini, 12 narrow and medium, 36 full and wide, 52 big; A2).</param>
 /// <param name="Button">A glyph target: 40, 44 at Huge 4K.</param>
 /// <param name="Glyph">A glyph: 16, 19 at Huge 4K.</param>
-/// <param name="Disc">The accent play disc: 40, 48 at Huge 4K.</param>
+/// <param name="Disc">The accent play disc: 36 narrow and medium (the stacked cluster's 8 / 8 of air), 40 mini, full and wide, 48 big.</param>
 /// <param name="DiscGlyph">The disc's glyph box before the solid scale: 20, 24 at Huge 4K.</param>
 /// <param name="TransportGap">Between the transport's buttons: 4 mini, 12 narrow and medium, 16 from full.</param>
 /// <param name="WordSize">The tool words (lyrics, queue, devices, the podcast steps): 13, 15 at Huge 4K.</param>
@@ -97,11 +105,13 @@ public sealed record ZunePlayerBarTier(WidthTier Tier, ZuneBarForm Form, ZuneBar
 /// <param name="FromSize">The accent "playing on" line above the title: 11/14, 13/18 at Huge 4K.</param>
 /// <param name="FromLine">Its line height.</param>
 /// <param name="VolumeW">The inline volume line: 96, 128 from wide.</param>
-/// <param name="TimesGap">Between the transport row and the times under it: 4, 6 at Huge 4K (ZT2, the owner's review: the board's 2 read as
-/// jammed under the disc). The cluster (40 + 4 + 16, 48 + 6 + 16) is centred in the whole bar, 6 / 6 of air in the 72, 9 / 9 in the 88.</param>
+/// <param name="TimesGap">Between the transport row and the times under it (narrow, medium): 4, so the cluster (36 + 4 + 16) has 8 / 8 of
+/// air in the 72 (ZT2's review: the board's 2 read as jammed under the disc).</param>
+/// <param name="TimesBeside">The times stand beside the transport (full, wide, big): elapsed 16 left of previous, remaining 16 right of
+/// next, each in a 40 slot (`ZuneTransportLayout.TimeSlotW`, `TimeSideGap`), and the disc is centred in the bar.</param>
 public sealed record ZuneBarLook(ZuneBarLevel Level, float IdW, float Art, float RowGap, float PadLeft, float PadRight, float Button, float Glyph,
     float Disc, float DiscGlyph, float TransportGap, float WordSize, float TitleSize, float TitleLine, float SubSize, float SubLine,
-    float FromSize, float FromLine, float VolumeW, float TimesGap);
+    float FromSize, float FromLine, float VolumeW, float TimesGap, bool TimesBeside);
 
 /// <summary>Zune's play bar and panel per tier (public so the tests pin them).</summary>
 public static class ZunePlayerTiers
@@ -120,24 +130,32 @@ public static class ZunePlayerTiers
     private static readonly ZuneBarLook[] s_looks =
     [
         new(ZuneBarLevel.Mini, IdW: 0f, Art: 44f, RowGap: 12f, PadLeft: 16f, PadRight: 8f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 4f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 16f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
-        new(ZuneBarLevel.Narrow, IdW: 200f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
-        new(ZuneBarLevel.Medium, IdW: 260f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
-        new(ZuneBarLevel.Full, IdW: 320f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f),
-        new(ZuneBarLevel.Wide, IdW: 420f, Art: 48f, RowGap: 32f, PadLeft: 48f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
-            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 128f, TimesGap: 4f),
-        new(ZuneBarLevel.Big, IdW: 520f, Art: 64f, RowGap: 32f, PadLeft: 64f, PadRight: 12f, Button: 44f, Glyph: 19f, Disc: 48f, DiscGlyph: 24f,
-            TransportGap: 16f, WordSize: 15f, TitleSize: 17f, TitleLine: 22f, SubSize: 15f, SubLine: 20f, FromSize: 13f, FromLine: 18f, VolumeW: 128f, TimesGap: 6f),
+            TransportGap: 4f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 16f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f,
+            TimesBeside: false),
+        new(ZuneBarLevel.Narrow, IdW: 200f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 36f, DiscGlyph: 20f,
+            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f,
+            TimesBeside: false),
+        new(ZuneBarLevel.Medium, IdW: 260f, Art: 48f, RowGap: 24f, PadLeft: 24f, PadRight: 12f, Button: 40f, Glyph: 16f, Disc: 36f, DiscGlyph: 20f,
+            TransportGap: 12f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f,
+            TimesBeside: false),
+        new(ZuneBarLevel.Full, IdW: 320f, Art: 48f, RowGap: 24f, PadLeft: 48f, PadRight: 36f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
+            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 96f, TimesGap: 4f,
+            TimesBeside: true),
+        new(ZuneBarLevel.Wide, IdW: 420f, Art: 48f, RowGap: 32f, PadLeft: 48f, PadRight: 36f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
+            TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 128f, TimesGap: 4f,
+            TimesBeside: true),
+        new(ZuneBarLevel.Big, IdW: 520f, Art: 64f, RowGap: 32f, PadLeft: 64f, PadRight: 52f, Button: 44f, Glyph: 19f, Disc: 48f, DiscGlyph: 24f,
+            TransportGap: 16f, WordSize: 15f, TitleSize: 17f, TitleLine: 22f, SubSize: 15f, SubLine: 20f, FromSize: 13f, FromLine: 18f, VolumeW: 128f, TimesGap: 6f,
+            TimesBeside: true),
     ];
 
-    /// <summary>The transport row's insets in window tier <paramref name="window"/> at <paramref name="look"/> (ZT2's margin audit): the
-    /// left inset is the frame's gutter (16 / 24 / 48 / 48 / 64), so the cover lines up with the band and every page title above it; the
-    /// right inset puts the last tool's GLYPH on the same gutter (the gutter less the target's own air, (button - glyph) / 2: 12 at Small,
-    /// 36 at Standard and Huge, 52 at Huge 4K). The mini bar keeps the board's 16 / 8 (its gutter is 16; its last target is the 40 next).
-    /// The board's 24 at Standard is the conflict this settles (the owner: the bar's gutter is the frame's).</summary>
+    /// <summary>The transport row's insets in window tier <paramref name="window"/> at <paramref name="look"/> (ZT2's margin audit, T1's A2):
+    /// the left inset is the frame's gutter (16 / 24 / 48 / 48 / 64), so the cover lines up with the band and every page title above it; the
+    /// right inset puts the last tool's GLYPH on the same gutter, the page's right content edge (the gutter less the target's own air,
+    /// (button - glyph) / 2: 12 at Small, 36 at Standard and Huge, 52 at Huge 4K: each level's <see cref="ZuneBarLook.PadRight"/> at its
+    /// home tier). The WINDOW tier's gutter, not the level's: the medium level spans Small and Standard. The mini bar keeps the board's 16 / 8
+    /// (its gutter is 16; its last target is the 40 next). The board's 24 at Standard is the conflict this settles (the owner: the bar's
+    /// gutter is the frame's).</summary>
     public static Edges4 RowInsets(WidthTier window, ZuneBarLook look)
     {
         if (look.Level == ZuneBarLevel.Mini) return new Edges4(look.PadLeft, 0f, look.PadRight, 0f);

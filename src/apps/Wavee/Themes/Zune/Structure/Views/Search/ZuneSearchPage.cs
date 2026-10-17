@@ -62,22 +62,23 @@ internal static class ZuneSearchPage
         string facetId = ((int)facet).ToString(CultureInfo.InvariantCulture);
 
         Element body = Search.IsGridFacet(facet)
-            ? new BoxEl
+            // Both bodies stand in the page column (A1): capped at 2400 + the gutters and centred, on the band's x at every width.
+            ? ZuneFrameRules.PageRow(new BoxEl
             {
                 Key = "facet-body:" + facetId, Animate = motion,
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(lay.Gutter, H.PageTop, lay.Gutter, 0f),
+                Padding = new Edges4(0f, H.PageTop, 0f, 0f),
                 Children = [region],
-            }
-            : Ui.ScrollView(new BoxEl
+            }, lay.Gutter)
+            : Ui.ScrollView(ZuneFrameRules.PageRow(new BoxEl
             {
-                Direction = 1, MinWidth = 0f, MaxWidth = R.Space.PageMaxW, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(lay.Gutter, H.PageTop, lay.Gutter, H.PageBottom),
+                Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                Padding = new Edges4(0f, H.PageTop, 0f, H.PageBottom),
                 Children =
                 [
                     new BoxEl { Key = "facet-body:" + facetId, Animate = motion, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [region] },
                 ],
-            }) with
+            }, lay.Gutter)) with
             {
                 Grow = 1f, MinWidth = 0f, MinHeight = 0f, ScrollKey = props.ScrollKey,
             };

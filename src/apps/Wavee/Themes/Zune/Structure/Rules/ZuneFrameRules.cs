@@ -13,6 +13,12 @@
 //     Huge 4K    the pill          yes      12    400 x 40 r20  15           yes
 //   Every button is 40 x 40 (the Compact target floor holds at every tier); the notification dot is 6, 9 in from the button's top right.
 //   The pill grows while it is focused (plan 6.3, the #205-era list): +120 at every pill tier, eased (an assumption: no board says how much).
+//   The wordmark is drawn whole from Small up and never at Compact (the T1 audit's A9); at Compact the search is the field filling the lead
+//   beside Back while the omnibar holds a query or the focus (Z-Search-Compact); the account's name is capped at 160 on the pill tiers.
+//
+//   THE PAGE COLUMN (the T1 audit's A1; P5 decision 2): every page's content is capped at 2400 between the gutters and centred
+//   (`PageRow` around `PageColumn`), and the band's rows sit in the same column, so the band's first pivot, every title and the page's content start at
+//   max(gutter, (W - 2400) / 2) and end on its mirror. The title bar and the play bar are window chrome: they keep the plain gutter.
 //
 //   THE PANEL (Z-Part-Panel, Z-Frame-Panel, Z-Frame-Narrow): the head is the pivot row (26/32/300 words, 18 apart, in a 44 row, 6 under it),
 //   inset 24 left and 20 right, 12 from the top; the close is a 40 x 40 glyph; a floating panel is 340 wide, flush right, under the band.
@@ -41,8 +47,14 @@ namespace Wavee.Themes.Zune;
 /// <param name="LargeCrumbs">The trail is set in the body voice (15) instead of the meta voice (13): Huge 4K.</param>
 /// <param name="DragStrip">The drag strip before the caption buttons.</param>
 /// <param name="FlyoutW">The magnifier's flyout width (the window less the gutters when narrower).</param>
+/// <param name="Wordmark">The wordmark leads the row (every tier but Compact, where Back leads on the gutter: the T1 audit's A9, the
+/// wordmark never truncates, so where it has no room it is not drawn).</param>
+/// <param name="QueryField">While the omnibar holds a query (the core's rule: the omnibar IS the search page's query, so this is the Search
+/// route with a query) the search is the FIELD, filling the lead island beside Back, instead of the magnifier (Compact: Z-Search-Compact,
+/// "the field takes the title bar").</param>
+/// <param name="AccountNameW">The account chip's name at most this wide (Standard, Huge, Huge 4K: 160); 0 keeps the core's name budget.</param>
 public sealed record ZuneTitleBarLayout(WidthTier Tier, bool Pill, bool Crumbs, bool BellInRow, float Gap, float PillW, float PillH,
-    float PillRadius, bool LargeCrumbs, float DragStrip, float FlyoutW) : ITierLayoutRecord
+    float PillRadius, bool LargeCrumbs, float DragStrip, float FlyoutW, bool Wordmark, bool QueryField, float AccountNameW) : ITierLayoutRecord
 {
     /// <inheritdoc />
     public ImmutableArray<TierRegion> Regions => ImmutableArray<TierRegion>.Empty;
@@ -106,19 +118,36 @@ public static class ZuneFrameRules
     public static readonly LayoutTransition PillWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
 
+    /// <summary>The account chip's name cap on the pill tiers (the T1 audit's A9: "Wavee List..." truncated under the core's 76).</summary>
+    public const float AccountNameMaxW = 160f;
+
+    /// <summary>What the core's name budget charges beyond the name itself (`ProfileRules.NameCap`: the chip's 8 gap and 6 extra pad).</summary>
+    public const float AccountNameChrome = 14f;
+
+    // Compact's field is the board's 40 tall, r20 (Z-Search-Compact): the touch tier's field, in the title bar or the magnifier's flyout.
     private static readonly ZuneTitleBarLayout[] s_titleBars =
     [
-        new(WidthTier.Compact, Pill: false, Crumbs: false, BellInRow: false, Gap: 4f, PillW: 0f, PillH: 32f, PillRadius: 16f,
-            LargeCrumbs: false, DragStrip: 8f, FlyoutW: 360f),
+        new(WidthTier.Compact, Pill: false, Crumbs: false, BellInRow: false, Gap: 4f, PillW: 0f, PillH: 40f, PillRadius: 20f,
+            LargeCrumbs: false, DragStrip: 8f, FlyoutW: 360f, Wordmark: false, QueryField: true, AccountNameW: 0f),
         new(WidthTier.Small, Pill: false, Crumbs: true, BellInRow: false, Gap: 12f, PillW: 0f, PillH: 32f, PillRadius: 16f,
-            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 400f),
+            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 400f, Wordmark: true, QueryField: false, AccountNameW: 0f),
         new(WidthTier.Standard, Pill: true, Crumbs: true, BellInRow: true, Gap: 12f, PillW: 220f, PillH: 32f, PillRadius: 16f,
-            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 400f),
+            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 400f, Wordmark: true, QueryField: false, AccountNameW: AccountNameMaxW),
         new(WidthTier.Huge, Pill: true, Crumbs: true, BellInRow: true, Gap: 12f, PillW: 320f, PillH: 32f, PillRadius: 16f,
-            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 480f),
+            LargeCrumbs: false, DragStrip: 16f, FlyoutW: 480f, Wordmark: true, QueryField: false, AccountNameW: AccountNameMaxW),
         new(WidthTier.Huge4K, Pill: true, Crumbs: true, BellInRow: true, Gap: 12f, PillW: 400f, PillH: 40f, PillRadius: 20f,
-            LargeCrumbs: true, DragStrip: 24f, FlyoutW: 560f),
+            LargeCrumbs: true, DragStrip: 24f, FlyoutW: 560f, Wordmark: true, QueryField: false, AccountNameW: AccountNameMaxW),
     ];
+
+    /// <summary>The search is the field filling the lead island (<see cref="ZuneTitleBarLayout.QueryField"/>): the tier draws it there, its
+    /// flyout is closed (typing in the magnifier's flyout keeps the magnifier, its anchor, until the flyout closes on the search), and the
+    /// omnibar holds a query (<paramref name="query"/> non-empty: the Search route) or the field has the focus (clearing the query while
+    /// typing in it never takes the field away under the caret).</summary>
+    public static bool FieldInLead(ZuneTitleBarLayout rec, string query, bool flyoutOpen, bool focused)
+        => rec.QueryField && !flyoutOpen && (query.Length > 0 || focused);
+
+    /// <summary>The account name's cap in <paramref name="rec"/>'s tier: the record's, else the core's <paramref name="coreCap"/>.</summary>
+    public static float AccountNameCap(ZuneTitleBarLayout rec, float coreCap) => rec.AccountNameW > 0f ? rec.AccountNameW : coreCap;
 
     /// <summary>The title bar's record for window tier <paramref name="window"/>.</summary>
     public static ZuneTitleBarLayout TitleBar(WidthTier window) => s_titleBars[Math.Clamp((int)window, 0, s_titleBars.Length - 1)];
@@ -221,6 +250,39 @@ public static class ZuneFrameRules
 
     /// <summary>The offline lane's inset: the page <paramref name="gutter"/> either side, 16 from the top, nothing below.</summary>
     public static Edges4 OfflineLanePadding(float gutter) => new(gutter, 16f, gutter, 0f);
+
+    // ── the page column (the T1 audit's A1: ONE column for every page and the band) ──────────────────────────────────────
+
+    /// <summary>The widest a page's content grows (P5 decision 2): 2400, centred in the content column once the window passes it.</summary>
+    public const float PageCap = 2400f;
+
+    /// <summary>The page column (lane T2's member, kept identical): <paramref name="page"/> capped at <see cref="PageCap"/> + 2 x
+    /// <paramref name="gutter"/>, centred, padded by the gutter either side (its own top and bottom padding kept). ON ITS OWN IT COLLAPSES in
+    /// this engine (a centred cross-axis child takes its MEASURED width, so the page shrinks to its content): a page stands in it through a
+    /// centring row, <see cref="PageRow"/> (or the detail kit's `CentredPage`).</summary>
+    public static BoxEl PageColumn(BoxEl page, float gutter) => page with
+    {
+        MaxWidth = PageCap + 2f * gutter, AlignSelf = FlexAlign.Center, Padding = page.Padding with { Left = gutter, Right = gutter },
+    };
+
+    /// <summary>A page in the page column: <see cref="PageColumn"/> inside a centring row, so its content runs from x = max(gutter,
+    /// (W - 2400) / 2) to the mirror of it in a content column W wide, the x the band's lead inset and every page title share (the band's rows
+    /// sit in the same column). The row (<see cref="FlexJustify.Center"/>) takes the page's place in its parent (its grow, shrink, basis, min
+    /// height and margin; stretched across a column parent); the page keeps its key, its motion and every handler, grows from basis 0 up to its
+    /// cap (never to its content's width: a short page, a skeleton or a vacancy keeps the column's width) and is stretched to the row's height.</summary>
+    public static BoxEl PageRow(BoxEl page, float gutter) => new()
+    {
+        Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch,
+        Grow = page.Grow, Shrink = page.Shrink, Basis = page.Basis, MinWidth = 0f, MinHeight = page.MinHeight, Margin = page.Margin,
+        Children =
+        [
+            PageColumn(page, gutter) with { AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Margin = default },
+        ],
+    };
+
+    /// <summary>Where content starts in the page column of a content column <paramref name="width"/> wide: max(gutter, (W - 2400) / 2), the
+    /// x of the band's first pivot, every page title and the page content's left edge (48 at 1440, 80 at 2560, 720 at 3840).</summary>
+    public static float ColumnLead(float width, float gutter) => MathF.Max(gutter, (width - PageCap) / 2f);
 
     // ── the frame ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

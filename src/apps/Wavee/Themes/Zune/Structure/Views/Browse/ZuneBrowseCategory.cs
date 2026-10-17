@@ -89,12 +89,13 @@ internal static class ZuneBrowseCategory
         };
     }
 
-    /// <summary>The sections' column on the gutter, 28 under the banner, 28 apart.</summary>
-    static BoxEl Sections(ZuneBrowseLayout lay, Element[] kids) => new()
+    /// <summary>The sections' column on the gutter, 28 under the banner, 28 apart: the page column (A1, capped at 2400 + the gutters and
+    /// centred, so the sections share the band's x at every width).</summary>
+    static BoxEl Sections(ZuneBrowseLayout lay, Element[] kids) => ZuneFrameRules.PageRow(new BoxEl
     {
-        Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, MaxWidth = R.Space.PageMaxW, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(lay.Gutter, lay.CategoryTop, lay.Gutter, B.CategoryBottom), Children = kids,
-    };
+        Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Padding = new Edges4(0f, lay.CategoryTop, 0f, B.CategoryBottom), Children = kids,
+    }, lay.Gutter);
 
     /// <summary>A page that scrolls as one: the banner over <paramref name="content"/> and "explore all".</summary>
     static Element Scrolled(BrowseCategoryProps p, ZuneBrowseLayout lay, Element content)
@@ -231,16 +232,17 @@ internal static class ZuneBrowseCategory
             Children =
             [
                 Banner(p.Title, lay),
-                new BoxEl
+                // The page column (A1), as the shelves' sections.
+                ZuneFrameRules.PageRow(new BoxEl
                 {
                     Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = lay.CategoryGap,
-                    Padding = new Edges4(lay.Gutter, lay.CategoryTop, lay.Gutter, 0f),
+                    Padding = new Edges4(0f, lay.CategoryTop, 0f, 0f),
                     Children =
                     [
                         new BoxEl { Direction = 1, Gap = lay.CategoryGap, MinWidth = 0f, Children = pinned.ToArray() },
                         new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [grid] },
                     ],
-                },
+                }, lay.Gutter),
             ],
         };
     }

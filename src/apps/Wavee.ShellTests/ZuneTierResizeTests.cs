@@ -142,7 +142,10 @@ public sealed class ZuneTierResizeTests(ShellHost host)
             Assert.Equal(WidthTier.Huge4K, tiers.Window);
             Assert.Equal(112f, harness.AbsoluteBounds(harness.Node(ZuneBandRules.BandKey)).H, 0.5f);
             Assert.Equal(64f, harness.AbsoluteBounds(harness.Node(ZuneBandRules.Row1Key)).H, 0.5f);
-            Assert.Equal(ZuneTiers.Frame(WidthTier.Huge4K).Gutter, harness.AbsoluteBounds(harness.Node(ZuneBandRules.PivotKeyPrefix + "home")).X, 1f);
+            // The first pivot stands on the page column's lead (T1's A1): the 2400 column centred in the band, 720 in at 3840.
+            var bandRect = harness.AbsoluteBounds(harness.Node(ZuneBandRules.BandKey));
+            Assert.Equal(bandRect.X + ZuneFrameRules.ColumnLead(bandRect.W, ZuneTiers.Frame(WidthTier.Huge4K).Gutter),
+                harness.AbsoluteBounds(harness.Node(ZuneBandRules.PivotKeyPrefix + "home")).X, 1f);
 
             // The pivot words are set at the board's 40: the word's own text node is at least the 48 line tall.
             var pivot = harness.Node(ZuneBandRules.PivotKeyPrefix + "home");

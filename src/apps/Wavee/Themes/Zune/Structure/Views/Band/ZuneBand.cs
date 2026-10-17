@@ -14,6 +14,10 @@
 //   ROW 2  the page's views (Library's kinds, Browse's bands, a page's in-page tabs), the current one lit (the weight; on a detail page,
 //          which lights no pivot, the page's title and a hairline lead and the current view takes the accent underline), then the page's
 //          actions (the play disc, the shuffle ring, word pills). Hidden when the page has none.
+//   COLUMN the rows sit in the pages' column (the T1 audit's A1, A2): a leading inset (the gutter), the rows capped at 2400 and a trailing
+//          inset (the record's `Row2End`), centred together, so the first pivot stands on the page content's x at every width and the pins and
+//          the last action end on its right edge. The insets are spacers whose widths ease on a crossing (size channels, never a slide).
+//   FADE   at Compact and Small rows 1 and 2 scroll under an edge fade of max(48, 16 % of the band's width) (A7, the board's 84 % mask).
 //   HEIGHT row 1 + row 2 + 8 (84 at Standard), row 1 + 8 (52) with no row 2 or collapsed: the root's height eases between them (a reflow
 //          on the height axis, so the page under it follows frame by frame, never a jump); the rows keep their full height and are clipped
 //          from the bottom. COLLAPSE (`collapseBand`, the tiers that collapse): row 2 folds while the page last scrolled down.
@@ -73,8 +77,14 @@ internal sealed class ZuneBand : Component
         var chromeSig = UseContext(ZuneFrameContext.PageChrome) ?? band.Chrome;
         // Navigation rate: the memo flips only when the page's last direction crosses down / not down.
         var scrolledDown = UseComputed(() => _scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
+        // The fade tiers' edge fade follows the band's width (A7; at Compact and Small the panel floats, so the band spans the window). A memo
+        // in 4-DIP steps: a live resize re-renders the band per step of fade, and never at the tiers that do not fade.
+        var viewport = UseContextSignal(Viewport.Size);
+        var factsSignal = facts;
+        var fade = UseComputed(() => ZuneBandRules.EdgeFade(ZuneBandRules.BandOf(factsSignal.Value.Tiers), viewport.Value.Width));
 
         var chrome = chromeSig.Value;
+        float edgeFade = fade.Value;
         var destinations = band.Destinations();
         int current = band.Current();
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
@@ -154,7 +164,7 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.PivotRunKey, Horizontal = true, Content = run, Height = rec.Row1H,
             Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-            AutoEdgeFade = overflow == PivotOverflow.EdgeFadeScroll || rec.Fade, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand,
+            AutoEdgeFade = overflow == PivotOverflow.EdgeFadeScroll || rec.Fade, AutoEdgeFadeBand = edgeFade,
             SuppressScrollBar = true,
         };
 
@@ -171,11 +181,13 @@ internal sealed class ZuneBand : Component
         // ── row 2 (laid out at its full height whenever the page has one: the root's height clips it while it folds) ───────────
         var kids = new List<Element>(2) { row1 };
         _views.Begin();
-        if (hasRow2) kids.Add(Row2(views, actions, title, rec, type, OnTabKey));
+        if (hasRow2) kids.Add(Row2(views, actions, title, rec, type, edgeFade, OnTabKey));
 
-        // THE INSET (16 / 24 / 48 / 64) is a leading spacer, not the root's padding (ZT1): a crossing eases its WIDTH (a reflow, a size
-        // channel), so the rows ride the re-solve. A position FLIP of the rows would be snapped by the engine's reflow-shove rule whenever the
-        // page beside the band reflows or reveals on the same crossing (it snaps every position FLIP under a common ancestor of a live reflow).
+        // THE INSETS (lead 16 / 24 / 48 / 48 / 64, trailing 0 / 24 / 48 / 48 / 64) are spacers, not the root's padding (ZT1): a crossing eases
+        // their WIDTHS (a reflow, a size channel), so the rows ride the re-solve. A position FLIP of the rows would be snapped by the engine's
+        // reflow-shove rule whenever the page beside the band reflows or reveals on the same crossing. THE COLUMN (A1): the rows grow up to the
+        // page cap between the two insets and the three are centred, so the rows' x is the page content's, max(gutter, (W - 2400) / 2); where
+        // the cap holds (Huge, Huge 4K) the insets are equal, so as they ease together the rows stay put.
         return new BoxEl
         {
             Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
@@ -185,20 +197,28 @@ internal sealed class ZuneBand : Component
             [
                 new BoxEl
                 {
-                    Direction = 0, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                    Direction = 0, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Start, Justify = FlexJustify.Center,
                     Children =
                     [
+                        Inset(rec.Inset),
                         new BoxEl
                         {
-                            Width = rec.Inset, Shrink = 0f, HitTestVisible = false,
-                            Animate = Design.Reduced ? null : ZuneBandTiers.InsetMotion,
+                            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = ZuneFrameRules.PageCap,
+                            Children = kids.ToArray(),
                         },
-                        new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = kids.ToArray() },
+                        Inset(rec.Row2End),
                     ],
                 },
             ],
         };
     }
+
+    /// <summary>One of the band's insets: a fixed width that eases through real layout when the tier changes it (a size channel).</summary>
+    static Element Inset(float width) => new BoxEl
+    {
+        Width = width, Shrink = 0f, HitTestVisible = false,
+        Animate = Design.Reduced ? null : ZuneBandTiers.InsetMotion,
+    };
 
     // ── row 1's parts ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -275,7 +295,6 @@ internal sealed class ZuneBand : Component
             Key = ZuneBandRules.PinsKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = ZuneBandRules.PinGap, Shrink = 0f,
             // The pins come and go with the tier (Standard and Huge show them): they fade, never pop.
             Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-            Padding = new Edges4(0f, 0f, ZuneBandRules.PinsEnd, 0f),
             Children = kids,
         };
     }
@@ -348,7 +367,7 @@ internal sealed class ZuneBand : Component
 
     /// <summary>Row 2: a detail page's title and hairline, the views (a tab list), then the actions at the end.</summary>
     Element Row2(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions, string? title, ZuneBandLayout rec, ZuneBandType type,
-        Action<BandTabRow, int, KeyEventArgs> key)
+        float edgeFade, Action<BandTabRow, int, KeyEventArgs> key)
     {
         bool tabStyle = title is not null;
         var run = new List<Element>(views.Count + 2);
@@ -362,7 +381,8 @@ internal sealed class ZuneBand : Component
                 [
                     SubText(R.Type.SubPivot(title), type) with
                     {
-                        Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight, Color = Tok.TextPrimary,
+                        // The entity's name in its own casing (A10: names are never re-cased), ellipsised at 360.
+                        Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight, Color = Tok.TextPrimary, Case = TextCase.AsWritten,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
                     },
                 ],
@@ -392,7 +412,7 @@ internal sealed class ZuneBand : Component
         viewsRun = new ScrollEl
         {
             Horizontal = true, Content = viewsRun, Height = rec.Row2H, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-            AutoEdgeFade = rec.Fade, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
+            AutoEdgeFade = rec.Fade, AutoEdgeFadeBand = edgeFade, SuppressScrollBar = true,
         };
 
         var kids = new List<Element>(2) { viewsRun };
@@ -400,7 +420,7 @@ internal sealed class ZuneBand : Component
         return new BoxEl
         {
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f,
-            Gap = rec.Row2Gap, Padding = new Edges4(0f, 0f, rec.Row2End, 0f),
+            Gap = rec.Row2Gap,
             Children = kids.ToArray(),
         };
     }
