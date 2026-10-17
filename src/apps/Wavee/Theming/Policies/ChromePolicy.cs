@@ -139,10 +139,16 @@ public sealed record ChromePolicy(ChromeBudget Budget)
     /// <summary>The row's budget while the window is Huge or Huge 4K; null keeps <see cref="Budget"/>.</summary>
     public ChromeBudget? Huge { get; init; }
 
-    /// <summary>The budget the row is allocated by in window tier <paramref name="window"/>.</summary>
+    /// <summary>The row's budget while the window is Small; null keeps <see cref="Budget"/> (Classic: Small and Standard share it). A structure
+    /// whose title bar draws another search form at Small than at Standard (Zune's magnifier below 1008) sets it, so the allocator's form flips
+    /// on the crossing frame. Appended (P5 ZT1).</summary>
+    public ChromeBudget? Small { get; init; }
+
+    /// <summary>The budget the row is allocated by in window tier <paramref name="window"/> (Huge 4K reads Huge's).</summary>
     public ChromeBudget BudgetFor(WidthTier window) => window switch
     {
         WidthTier.Compact => Compact ?? Budget,
+        WidthTier.Small => Small ?? Budget,
         WidthTier.Huge or WidthTier.Huge4K => Huge ?? Budget,
         _ => Budget,
     };
@@ -156,6 +162,7 @@ public sealed record ChromePolicy(ChromeBudget Budget)
         if (Budget is null) return new[] { "Chrome.Budget is missing" };
         var problems = new List<string>(Budget.Validate());
         if (Compact is { } compact) foreach (string p in compact.Validate()) problems.Add("Compact: " + p);
+        if (Small is { } small) foreach (string p in small.Validate()) problems.Add("Small: " + p);
         if (Huge is { } huge) foreach (string p in huge.Validate()) problems.Add("Huge: " + p);
         return problems;
     }

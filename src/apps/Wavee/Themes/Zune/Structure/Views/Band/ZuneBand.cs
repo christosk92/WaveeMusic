@@ -64,7 +64,9 @@ internal sealed class ZuneBand : Component
         var band = props.Band!;
         _scroll = band.Scroll;
         var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
-        var rec = ZuneBandRules.BandOf(facts.Value.Tiers);
+        var tiers = facts.Value.Tiers;
+        var rec = ZuneBandRules.BandOf(tiers);
+        var type = ZuneBandTiers.TypeOf(tiers);
         var hooks = UseContext(InputHooks.Current);
         var overlay = UseContext(Overlay.Service);
         // The frame provides the core's chrome signal; a band mounted alone reads the band record's own.
@@ -78,7 +80,8 @@ internal sealed class ZuneBand : Component
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
         var pins = pinsShown ? band.Pins() : s_noPins;
         var overflow = ZuneOptions.Overflow();
-        bool collapsed = rec.Collapses && ZuneOptions.CollapseBand() && scrolledDown.Value;
+        // The record's tiers collapse, and a Short window at any width (Z-Shell-Short, ZT1).
+        bool collapsed = ZuneBandTiers.Collapses(rec, tiers) && ZuneOptions.CollapseBand() && scrolledDown.Value;
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
@@ -127,8 +130,8 @@ internal sealed class ZuneBand : Component
             int shown = ZuneBandRules.TabStop(destinations.Count, current);
             var rest = new List<BandDestination>(6);
             foreach (var d in band.Hub()) if (!string.Equals(d.Id, destinations[shown].Id, StringComparison.Ordinal)) rest.Add(d);
-            words.Add(Pivot(destinations[shown], lit: shown == current, tabStop: true, slot: 0, rec, OnTabKey));
-            words.Add(MoreWord(() => OpenMore(rest), slot: 1, OnTabKey));
+            words.Add(Pivot(destinations[shown], lit: shown == current, tabStop: true, slot: 0, rec, type, OnTabKey));
+            words.Add(MoreWord(() => OpenMore(rest), slot: 1, rec, type, OnTabKey));
         }
         else
         {
@@ -136,7 +139,7 @@ internal sealed class ZuneBand : Component
             for (int i = 0; i < order.Length; i++)
             {
                 int index = order[i];
-                words.Add(Pivot(destinations[index], lit: index == current, tabStop: index == stop, slot: i, rec, OnTabKey));
+                words.Add(Pivot(destinations[index], lit: index == current, tabStop: index == stop, slot: i, rec, type, OnTabKey));
             }
         }
 
@@ -145,18 +148,15 @@ internal sealed class ZuneBand : Component
             Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.PivotGap, Height = rec.Row1H, Shrink = 0f,
             Children = words.ToArray(),
         };
-        Element pivotRun = overflow == PivotOverflow.EdgeFadeScroll || rec.Fade
-            ? new ScrollEl
-            {
-                Key = ZuneBandRules.PivotRunKey, Horizontal = true, Content = run, Height = rec.Row1H,
-                Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand,
-                SuppressScrollBar = true,
-            }
-            : new BoxEl
-            {
-                Key = ZuneBandRules.PivotRunKey, Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-                Height = rec.Row1H, Children = [run],
-            };
+        // ONE element type at every tier (ZT1): a crossing that turns the fade on or off keeps the run's node and the pivots in it (a
+        // ScrollEl / BoxEl swap under one key would remount them). Where nothing overflows the scroller is inert; the fade is the tier's.
+        Element pivotRun = new ScrollEl
+        {
+            Key = ZuneBandRules.PivotRunKey, Horizontal = true, Content = run, Height = rec.Row1H,
+            Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+            AutoEdgeFade = overflow == PivotOverflow.EdgeFadeScroll || rec.Fade, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand,
+            SuppressScrollBar = true,
+        };
 
         var row1Kids = new List<Element>(2) { pivotRun };
         if (pins.Count > 0) row1Kids.Add(Pins(pins, rec));
@@ -165,13 +165,15 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.Row1Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row1H, Shrink = 0f, MinWidth = 0f,
             Gap = rec.RowGap,
+            // The inset (16 / 24 / 48 / 64) moves the row on a crossing: it slides (parent-relative, so a resize that crosses nothing moves nothing).
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = row1Kids.ToArray(),
         };
 
         // ── row 2 (laid out at its full height whenever the page has one: the root's height clips it while it folds) ───────────
         var kids = new List<Element>(2) { row1 };
         _views.Begin();
-        if (hasRow2) kids.Add(Row2(views, actions, title, rec, OnTabKey));
+        if (hasRow2) kids.Add(Row2(views, actions, title, rec, type, OnTabKey));
 
         return new BoxEl
         {
@@ -186,10 +188,11 @@ internal sealed class ZuneBand : Component
     // ── row 1's parts ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>One pivot word: a tab (the lit one is the row's tab stop), a click goes to its destination.</summary>
-    Element Pivot(BandDestination d, bool lit, bool tabStop, int slot, ZuneBandLayout rec, Action<BandTabRow, int, KeyEventArgs> key)
+    Element Pivot(BandDestination d, bool lit, bool tabStop, int slot, ZuneBandLayout rec, ZuneBandType type,
+        Action<BandTabRow, int, KeyEventArgs> key)
     {
         // The library pivot says "library" (Z-Part-Band), not the core's "Your Library"; the other words are the core's.
-        var text = R.Type.Pivot(string.Equals(d.Id, LibraryId, StringComparison.Ordinal) ? Loc.Get(Strings.Theme.Zune.Band.Library) : d.Label);
+        var text = PivotText(R.Type.Pivot(string.Equals(d.Id, LibraryId, StringComparison.Ordinal) ? Loc.Get(Strings.Theme.Zune.Band.Library) : d.Label), type);
         text = lit
             ? text with { Weight = (ushort)R.Type.FacetTitleStyle.SelectedWeight, Color = Tok.TextPrimary }
             : text with { Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary };
@@ -201,8 +204,9 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.PivotKeyPrefix + d.Id, Shrink = 0f, Height = rec.Row1H, Direction = 0, AlignItems = FlexAlign.Center,
             Role = AutomationRole.Tab, Focusable = true, TabStop = tabStop, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            // The lit pivot moves to the front at Compact: the words slide to their new places (the pivot slide), never jump.
-            Animate = rec.Rotate && !Design.Reduced ? ZuneMotion.PivotSlide : null,
+            // The lit pivot moves to the front at Compact, and a crossing changes the gap and (at Huge 4K) the size: the words slide to their
+            // new places (the pivot slide, parent-relative), never jump.
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             OnClick = d.Go,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => nodes.Realized(id, h),
@@ -211,26 +215,35 @@ internal sealed class ZuneBand : Component
     }
 
     /// <summary>The "more" word (MoreMenu at Compact and Small): opens the other destinations as a menu.</summary>
-    Element MoreWord(Action open, int slot, Action<BandTabRow, int, KeyEventArgs> key)
+    Element MoreWord(Action open, int slot, ZuneBandLayout rec, ZuneBandType type, Action<BandTabRow, int, KeyEventArgs> key)
     {
         var nodes = _pivots;
         nodes.Add(ZuneBandRules.MoreKey);
         return new BoxEl
         {
-            Key = ZuneBandRules.MoreKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            // Row 1's height, like a pivot: the Compact target floor (40) holds.
+            Key = ZuneBandRules.MoreKey, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row1H,
             Role = AutomationRole.Button, Focusable = true, TabStop = false, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = open,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => { _moreAnchor = h; nodes.Realized(ZuneBandRules.MoreKey, h); },
             Children =
             [
-                R.Type.Pivot(Loc.Get(Strings.Common.More)) with
+                PivotText(R.Type.Pivot(Loc.Get(Strings.Common.More)), type) with
                 {
                     Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
                 },
             ],
         };
     }
+
+    /// <summary>The pivot voice at the tier's size (Huge 4K's 40 / 48; the role's own elsewhere).</summary>
+    static TextEl PivotText(TextEl text, ZuneBandType type)
+        => type.PivotIsRole ? text : text with { Size = type.PivotSize, LineHeight = type.PivotLine };
+
+    /// <summary>Row 2's voice at the tier's size (Huge 4K's 15 / 20; the role's own elsewhere).</summary>
+    static TextEl SubText(TextEl text, ZuneBandType type)
+        => type.SubIsRole ? text : text with { Size = type.SubSize, LineHeight = type.SubLine };
 
     /// <summary>"pinned", then the pins (at most the core's cap, six).</summary>
     static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec)
@@ -245,6 +258,8 @@ internal sealed class ZuneBand : Component
         return new BoxEl
         {
             Key = ZuneBandRules.PinsKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = ZuneBandRules.PinGap, Shrink = 0f,
+            // The pins come and go with the tier (Standard and Huge show them): they fade, never pop.
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
             Padding = new Edges4(0f, 0f, ZuneBandRules.PinsEnd, 0f),
             Children = kids,
         };
@@ -317,7 +332,7 @@ internal sealed class ZuneBand : Component
     // ── row 2 ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Row 2: a detail page's title and hairline, the views (a tab list), then the actions at the end.</summary>
-    Element Row2(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions, string? title, ZuneBandLayout rec,
+    Element Row2(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions, string? title, ZuneBandLayout rec, ZuneBandType type,
         Action<BandTabRow, int, KeyEventArgs> key)
     {
         bool tabStyle = title is not null;
@@ -330,7 +345,7 @@ internal sealed class ZuneBand : Component
                 MaxWidth = ZuneBandRules.TitleMaxW, Shrink = 1f, MinWidth = 0f,
                 Children =
                 [
-                    R.Type.SubPivot(title) with
+                    SubText(R.Type.SubPivot(title), type) with
                     {
                         Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight, Color = Tok.TextPrimary,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
@@ -350,7 +365,7 @@ internal sealed class ZuneBand : Component
         for (int i = 0; i < views.Count; i++)
         {
             nodes.Add(views[i].Id);
-            run.Add(View(views[i], tabStyle, i == stop, i, rec, nodes, key));
+            run.Add(View(views[i], tabStyle, i == stop, i, rec, type, nodes, key));
         }
 
         Element viewsRun = new BoxEl
@@ -358,13 +373,12 @@ internal sealed class ZuneBand : Component
             Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Row2Gap, Height = rec.Row2H, Shrink = 0f,
             Children = run.ToArray(),
         };
-        viewsRun = rec.Fade
-            ? new ScrollEl
-            {
-                Horizontal = true, Content = viewsRun, Height = rec.Row2H, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
-            }
-            : new BoxEl { Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true, Height = rec.Row2H, Children = [viewsRun] };
+        // One element type at every tier (ZT1), as row 1's run: a crossing keeps the views' nodes.
+        viewsRun = new ScrollEl
+        {
+            Horizontal = true, Content = viewsRun, Height = rec.Row2H, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+            AutoEdgeFade = rec.Fade, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
+        };
 
         var kids = new List<Element>(2) { viewsRun };
         if (actions.Count > 0) kids.Add(Actions(actions));
@@ -372,15 +386,16 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f,
             Gap = rec.Row2Gap, Padding = new Edges4(0f, 0f, rec.Row2End, 0f),
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = kids.ToArray(),
         };
     }
 
     /// <summary>One view of row 2: a tab; the current one is the weight (or, in the tab style, the accent underline).</summary>
-    static Element View(PageView v, bool tabStyle, bool tabStop, int slot, ZuneBandLayout rec, BandTabRow nodes,
+    static Element View(PageView v, bool tabStyle, bool tabStop, int slot, ZuneBandLayout rec, ZuneBandType type, BandTabRow nodes,
         Action<BandTabRow, int, KeyEventArgs> key)
     {
-        var text = R.Type.SubPivot(v.Label) with
+        var text = SubText(R.Type.SubPivot(v.Label), type) with
         {
             Color = v.Current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary,
             Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
@@ -411,7 +426,12 @@ internal sealed class ZuneBand : Component
     {
         var kids = new Element[actions.Count];
         for (int i = 0; i < actions.Count; i++) kids[i] = ActionButton(actions[i]);
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids };
+        // Compact draws no actions: crossing 640 they fade, never pop.
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneBandRules.ActionGap, Shrink = 0f, Children = kids,
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+        };
     }
 
     static Element ActionButton(PageAction a)

@@ -79,23 +79,16 @@ internal static class ZuneSearch
                 if (!editor.IsNull) hooks.FocusNode?.Invoke(editor, true);
             }, DepKey.From(ticket));
 
-            // Only the focus flip animates; a rest-width change without one (a crossing) snaps, so the old width never overruns the row.
+            // The focus flip AND a crossing (220 / 320 / 400) ease the width (ZT1: a crossing never jumps). Within the pill tiers the old width
+            // always fits the new row: a widening has the room, and a narrowing commits only 24 below the edge, where the wider pill sat a frame ago.
             bool expanded = model.FieldExpanded;
             float width = expanded ? rec.PillW + ZuneFrameRules.PillFocusGrow : rec.PillW;
-            var lastExpanded = UseRef(expanded);
-            bool flipped = lastExpanded.Value != expanded;
-            lastExpanded.Value = expanded;
-            var lastWidth = UseRef(width);
-            var motion = UseRef<LayoutTransition?>(null);
-            if (flipped) motion.Value = Design.Reduced ? null : ZuneFrameRules.PillWidthMotion;
-            else if (lastWidth.Value != width) motion.Value = null;
-            lastWidth.Value = width;
 
             // A COLUMN, so the box is STRETCHED to this slot's width (a fill-mode box in a row latches its query button's width).
             return new BoxEl
             {
                 Key = ZuneFrameRules.PillKey, Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width, Animate = motion.Value,
+                Width = width, Animate = Design.Reduced ? null : ZuneFrameRules.PillWidthMotion,
                 OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
                 Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
             };

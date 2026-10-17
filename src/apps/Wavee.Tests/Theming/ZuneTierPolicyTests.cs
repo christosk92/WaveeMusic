@@ -134,19 +134,20 @@ public sealed class ZuneTierPolicyTests
     // ── the frame's records ──────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(WidthTier.Compact, 16f, 48f, 92f, 64f)]
-    [InlineData(WidthTier.Small, 24f, 48f, 84f, 72f)]
-    [InlineData(WidthTier.Standard, 48f, 48f, 84f, 72f)]
-    [InlineData(WidthTier.Huge, 48f, 48f, 84f, 72f)]
-    [InlineData(WidthTier.Huge4K, 64f, 56f, 84f, 88f)]
-    public void The_frame_record_per_window_tier_is_the_boards(WidthTier tier, float gutter, float titleBar, float band, float bar)
+    [InlineData(WidthTier.Compact, 16f, 48f, 92f, 52f, 64f)]
+    [InlineData(WidthTier.Small, 24f, 48f, 84f, 52f, 72f)]
+    [InlineData(WidthTier.Standard, 48f, 48f, 84f, 52f, 72f)]
+    [InlineData(WidthTier.Huge, 48f, 48f, 84f, 52f, 72f)]
+    [InlineData(WidthTier.Huge4K, 64f, 56f, 112f, 72f, 88f)]
+    public void The_frame_record_per_window_tier_is_the_boards(WidthTier tier, float gutter, float titleBar, float band, float collapsed, float bar)
     {
         var frame = ZuneTiers.Frame(tier);
         Assert.Equal(tier, frame.Tier);
         Assert.Equal(gutter, frame.Gutter);
         Assert.Equal(titleBar, frame.TitleBarH);
+        // ZT1: the band's heights are the band record's (Z-Part-Band 4k: row 1 64 + row 2 40 + 8; collapsed 64 + 8).
         Assert.Equal(band, frame.BandH);
-        Assert.Equal(52f, frame.BandCollapsedH);
+        Assert.Equal(collapsed, frame.BandCollapsedH);
         Assert.Equal(bar, frame.BarH);
         Assert.Same(frame, ZuneTiers.FrameOf(WindowTiers.Resolve(Policy, tier switch
         {

@@ -131,6 +131,8 @@ internal static class ZuneTitleBar
         {
             Key = ZuneFrameRules.CrumbsKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.CrumbGap,
             Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = kids,
+            // The trail comes and goes at the 640 crossing (never at Compact): it fades, never pops (ZT1).
+            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
         };
     }
 
@@ -161,7 +163,15 @@ internal static class ZuneTitleBar
                 },
             Account(props, l.Chip, rec),
         };
-        if (rec.BellInRow) kids.Add(Embed.Comp(() => new Bell(props)) with { Key = ZuneFrameRules.BellKey });
+        // The bell comes and goes at the 1008 crossing (the pill tiers): its keyed host fades, never pops (ZT1).
+        if (rec.BellInRow)
+            kids.Add(new BoxEl
+            {
+                Key = ZuneFrameRules.BellKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
+                Children = [Embed.Comp(() => new Bell(props))],
+            });
         return new BoxEl
         {
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = rec.Gap, Height = ZuneTiers.FrameOf(t).TitleBarH,
@@ -187,9 +197,21 @@ internal static class ZuneTitleBar
                 Key = ZuneFrameRules.SignInKey, MinWidth = ZuneFrameRules.Button, MinHeight = ZuneFrameRules.Button,
             },
         };
-        // The board's extra 8 after the pill; the magnifier tiers sit the account at the row's own gap.
-        return rec.Pill ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Margin = ZuneFrameRules.AccountMargin, Children = [el] } : el;
+        // The board's extra 8 after the pill; the magnifier tiers sit the account at the row's own gap. ONE keyed host at every tier (ZT1), so
+        // the 1008 crossing keeps the identity chip's node (a bare chip at Small and a wrapped one at Standard would remount it).
+        return new BoxEl
+        {
+            Key = AccountHostKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Margin = rec.Pill ? ZuneFrameRules.AccountMargin : default,
+            // The search before it changes width on a crossing (and while the pill grows on focus): the identity slides with it, parent-relative,
+            // so a resize that crosses nothing moves nothing.
+            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
+            Children = [el],
+        };
     }
+
+    /// <summary>The identity's host in the trailing island (kept at every tier).</summary>
+    internal const string AccountHostKey = "zune-account-host";
 
     // ── the components ───────────────────────────────────────────────────────────────────────────────────────────────────
 

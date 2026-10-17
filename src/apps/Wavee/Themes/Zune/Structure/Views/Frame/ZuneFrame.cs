@@ -21,7 +21,7 @@
 //   THE PANEL (Z-Frame-Panel inline, Z-Frame-Narrow floating). The panel layer lies over the page row and places the primary panel's host by
 //   bound spacers from its placement: DOCKED it is flush right, the body's full height, as wide as the committed width, and the row reserves
 //   that width (`RailReservedWidth`, 0 while closed or floating), so the page column narrows with no vertical jump (both FLIP on one 300 ms
-//   transition); FLOATING it is 340 wide, flush right, from under the band (the frame record's band height) down to the play bar, the page
+//   transition); FLOATING it is 340 wide, flush right, from under the band as it stands now (the band slot's measured foot, ZT1) down to the play bar, the page
 //   keeping its width; a SHEET is the body's whole box. At Huge the second pane (the queue) docks right of it with its own reservation.
 //   There is no seam: Zune's panel has no drag handle (Z-Frame-Panel), and no gap: it meets the page.
 //
@@ -56,6 +56,9 @@ internal static class ZuneFrame
     public static Element Template(ShellFrameProps props, in ViewContext ctx)
     {
         var tiers = ctx.TierReader();
+        // The band slot's laid-out height (what the band draws now: 84 or 52, easing between them), for the floating panel's top.
+        var bandH = ctx.Hooks.UseSignal(float.NaN);
+        bool reduced = ctx.Reduced;
         var column = new BoxEl
         {
             // Window-tall, bound: the body yields instead of shoving the play bar off the bottom.
@@ -64,8 +67,8 @@ internal static class ZuneFrame
             Children =
             [
                 .. props.Chords,
-                ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Key = ZuneFrameLayout.TitleBarKey, Visible = Prop.Of(props.ChromeMounted) },
-                Body(props, in ctx, tiers),
+                TitleBarSlot(props, in ctx, tiers, reduced),
+                Body(props, in ctx, tiers, bandH),
                 ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ZuneFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
@@ -100,9 +103,20 @@ internal static class ZuneFrame
 
     private static readonly Func<float> s_zero = static () => 0f;
 
+    /// <summary>The title bar's slot (`shell.titlebar`): the record's height (48, 56 at Huge 4K), easing across the 3200 crossing so the band
+    /// and the page under it follow frame by frame (ZT1). The engine bar inside sets its own height from the same record.</summary>
+    private static Element TitleBarSlot(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, bool reduced) => new BoxEl
+    {
+        Key = ZuneFrameLayout.TitleBarKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+        Height = Prop.Of(() => ZuneTiers.FrameOf(tiers()).TitleBarH),
+        Animate = reduced ? null : ZuneFrameTiers.TitleBarHeightMotion,
+        Visible = Prop.Of(props.ChromeMounted),
+        Children = [ctx.View(ViewKeys.ShellTitleBar, props.TitleBar)],
+    };
+
     /// <summary>The body: the page row with the reservations, the narrow drawer's core host, and the panel layer over the row. The ONE region
     /// that yields when the window is shorter than the column; it collapses (bound Visible) under full-screen video and the fullscreen stage.</summary>
-    private static Element Body(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers) => new BoxEl
+    private static Element Body(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH) => new BoxEl
     {
         ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
         Visible = Prop.Of(props.ChromeMounted),
@@ -118,18 +132,18 @@ internal static class ZuneFrame
                 [
                     // Zune has no sidebar: the core's sidebar-column probe still gets a node, zero wide.
                     new BoxEl { Width = 0f, Shrink = 0f, HitTestVisible = false, OnRealized = props.OnSidebarColumnRealized },
-                    PageColumn(props, in ctx),
+                    PageColumn(props, in ctx, bandH),
                     Reservation(props.RailReservedWidth),
                     Reservation(props.SecondReservedWidth ?? s_zero),
                 ],
             },
             props.NarrowDrawer(),
-            PanelLayer(props, in ctx, tiers),
+            PanelLayer(props, in ctx, tiers, bandH),
         ],
     };
 
     /// <summary>The page column (`shell.content.card`): the band slot over the page. Flat: the ground shows through (no card, no stroke).</summary>
-    private static Element PageColumn(ShellFrameProps props, in ViewContext ctx) => new BoxEl
+    private static Element PageColumn(ShellFrameProps props, in ViewContext ctx, Signal<float> bandH) => new BoxEl
     {
         Key = ZuneFrameLayout.ContentKey,
         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -140,6 +154,8 @@ internal static class ZuneFrame
             new BoxEl
             {
                 Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
+                OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
                 Children = [ctx.View(ViewKeys.ShellNavPane, props.NavPane)],
             },
             new BoxEl
@@ -163,13 +179,13 @@ internal static class ZuneFrame
     // ── the panel layer ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The panels over the page row: the sheet's scrim, the primary panel's host and the second pane's host.</summary>
-    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers)
+    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Signal<float> bandH)
     {
         Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
         var kids = new List<Element>(3)
         {
             Embed.Comp(props.Panel, static () => new ZunePanelScrim()),
-            PrimaryHost(props, in ctx, tiers, placement),
+            PrimaryHost(props, in ctx, tiers, placement, bandH),
         };
         if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx));
         return new BoxEl
@@ -182,11 +198,18 @@ internal static class ZuneFrame
     private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
 
     /// <summary>The primary panel's host, placed by bound spacers: docked flush right at the body's full height (left of the second pane when
-    /// it is open), floating 340 wide from under the band, a sheet the body's whole box. Its width is the placement's; it FLIPs when a
-    /// crossing moves it. The panel's own template runs the open/close slide.</summary>
-    private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement)
+    /// it is open), floating 340 wide from under the band as the band stands now (its slot's measured height: 84, 52 collapsed or without a
+    /// row 2, 112 / 72 at Huge 4K; the record's full height until the slot is first laid out), a sheet the body's whole box. Its width is the
+    /// placement's; it FLIPs when a crossing moves it. The panel's own template runs the open/close slide.</summary>
+    private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement,
+        Signal<float> bandH)
     {
-        float Top() => placement() == PanelPlacement.Float ? ZuneTiers.FrameOf(tiers()).BandH : 0f;
+        float Top()
+        {
+            if (placement() != PanelPlacement.Float) return 0f;
+            float measured = bandH.Value;
+            return float.IsFinite(measured) ? measured : ZuneTiers.FrameOf(tiers()).BandH;
+        }
         float Right() => placement() == PanelPlacement.Dock
             ? (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f)
             : 0f;

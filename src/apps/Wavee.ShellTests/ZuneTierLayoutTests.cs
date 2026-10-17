@@ -145,6 +145,9 @@ public sealed partial class ZuneTierLayoutTests(ShellHost host)
 
     static TierFacts Tiers => ThemeHost.Facts.Peek().Tiers;
 
+    /// <summary>The app under Zune at <paramref name="width"/> x <paramref name="height"/> (the partial files' door to the host).</summary>
+    internal void Mounted(Action<Shell.HeadlessShell> body, float width, float height) => ZuneHost.Mounted(host, body, width, height);
+
     /// <summary>Mount the app under Zune at <paramref name="sizeName"/> (resizing into it from its <c>From</c> size when it has one), show
     /// <paramref name="page"/>, run every frame assertion, then <paramref name="more"/> (the page's own record checks).</summary>
     internal void AssertPage(TierPage page, string sizeName, Action<Shell.HeadlessShell, TierFacts>? more = null)

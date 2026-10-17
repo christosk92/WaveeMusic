@@ -430,7 +430,30 @@ _Not built yet._
 
 ## ZT1: frame tiers
 
-_Not built yet._
+The frame, the title bar, the search and the band at every window tier, from Z-Frame-Compact / -Small / -Huge / -Huge4K / -Narrow,
+Z-Shell-Short, Z-Part-TitleBar, Z-Part-Band and Z-Sizes-Breakpoints. The records are `Rules\Tiers.cs` (`ZuneFrameLayout`),
+`Rules\Tiers.Frame.cs` (`ZuneFrameTiers`) and `Rules\Tiers.Band.cs` (`ZuneBandTiers`).
+
+| tier | title bar | search | trail | band (row 2 / collapsed) | band type | collapses |
+|---|---|---|---|---|---|---|
+| Compact 300-639 | 48, 40 targets | magnifier | no | 92 / 52, pivots rotate (lit first), row 2 40 | role | first scroll down |
+| Small 640-1007 | 48 | magnifier | yes | 84 / 52, rows under a fade, no pins | role | first scroll down |
+| Standard 1008-1919 | 48 | pill 220 | yes | 84 / 52, pins | role | first scroll down |
+| Huge 1920-3199 | 48 | pill 320 | yes | 84 / 52, pins | role | never (Regular height) |
+| Huge 4K from 3200 | 56 | pill 400 x 40 | yes, 15 | 112 / 72, pins 40 | pivots 40/48, row 2 15/20 | never (Regular height) |
+
+- **One band height source.** `ZuneFrameLayout.BandH` / `BandCollapsedH` are read from the band's record, and the floating panel hangs
+  from the band slot's measured foot (84, 52 collapsed or without row 2, easing between), not from a constant.
+- **Short (below 700 tall).** The band collapses to row 1 on the first scroll down at every width, Huge and Huge 4K included. ShortFloor is
+  126 (330 less 48, 84 and 72).
+- **Crossings.** They commit on the first frame that is not resized and move: the title bar's height eases (48 <-> 56), the band's height,
+  rows and pivots slide, the pill's width eases (220 / 320 / 400), the trail, the bell, the pins and the actions fade in and out, and the
+  magnifier and the pill cross-fade. The pivot run, row 2's run and the identity's host are one element type at every tier, so a crossing
+  keeps their nodes.
+- **The core's allocator.** `ZunePolicies.FramePolicy` sets `ZuneFrameTiers.Chrome`: the icon budget at Compact and Small, the field budget
+  from Standard up (`ChromePolicy.Small` is new). The allocator's search form flips on the crossing frame, so a focused search keeps its focus
+  across the pill / magnifier swap.
+- **Clip region.** From Standard up the frame declares the docked panel (`frame.panel`, 340): a resized frame clips it, never squeezes it.
 
 ## ZT2: player and panel tiers
 

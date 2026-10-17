@@ -14,8 +14,11 @@
 //
 // THE RECORDS. A view reads `ctx.Tier()` and one of the records below; it never compares a width (WVTH013).
 //   · `ZuneFrameLayout` per WINDOW tier: the gutter every band inset and page title share (16 / 24 / 48 / 48 / 64), the title bar
-//     (48, 56 at Huge 4K), the band (row 1 + row 2: 92 at Compact where row 2 is the 40-tall touch row, 84 elsewhere; 52 collapsed)
-//     and the play bar (mini 64 at Compact, 72 on the desktop tiers, 88 at Huge 4K).
+//     (48, 56 at Huge 4K), the band (read from the band's own record, `ZuneBandRules.Band`: 92 at Compact where row 2 is the 40-tall touch
+//     row, 84 at Small / Standard / Huge, 112 at Huge 4K; collapsed 52, 72 at Huge 4K), the play bar (mini 64 at Compact, 72 on the desktop
+//     tiers, 88 at Huge 4K) and the frame's clip region (the docked panel, Standard and up).
+//   · The frame's finer records (the title bar's height motion, the band's type at Huge 4K, the Short collapse, the chrome budgets the core
+//     allocates the title row by) are `Tiers.Frame.cs` and `Tiers.Band.cs` (ZT1).
 //
 // FAMILY HOOKS. A later lane adds its finer ladders and rungs in its own `Rules\Tiers.<Family>.cs`, implementing the partial methods
 // below (`LaddersPlayer`, `RungsDetail`, ...). They run inside `Policy`'s initializer, so an implementation must not read a static of
@@ -154,30 +157,36 @@ public static partial class ZuneTiers
 
     // ── the frame's records (per window tier) ────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The band's row 1 (the pivots and pins): what a collapsed band keeps.</summary>
-    public const float PivotRowH = 52f;
-
     /// <summary>The page reserves the desktop play bar's height at every tier, so the mini 64 ↔ 72 cross-fade moves nothing below it.</summary>
     public const float BarReserveH = 72f;
 
+    /// <summary>The frame's clip region at the docking tiers (ZT1): the docked panel keeps its 340 on a resized frame that narrows the window
+    /// under the old tier's layout; the body clips it instead of squeezing it (the panel host never shrinks, `ZuneFrame`).</summary>
+    public const string PanelRegionId = "frame.panel";
+
+    private static readonly ImmutableArray<TierRegion> s_docked = [new TierRegion(PanelRegionId, MinWidth: ZuneFrameRules.PanelFloatW)];
+
+    // The band's two heights are the band's own record (`ZuneBandRules.Band`, Z-Part-Band): ONE source, so the frame (the floating panel's
+    // fallback top, the Short floor) never disagrees with what the band draws (ZT1: Z0's record said 84 at Huge 4K where the band draws 112).
     private static readonly ZuneFrameLayout[] s_frames =
     [
-        // Compact (Z-Frame-Compact): gutter 16, the 48 title bar with 40 icons, the band's row 2 is the 40-tall touch row, the mini bar 64.
-        new(WidthTier.Compact, Gutter: 16f, TitleBarH: 48f, BandH: PivotRowH + 40f, BandCollapsedH: PivotRowH, BarH: 64f,
-            ImmutableArray<TierRegion>.Empty),
-        // Small (Z-Frame-Small): gutter 24, row 2 is 32 under a fade, the bar 72.
-        new(WidthTier.Small, Gutter: 24f, TitleBarH: 48f, BandH: PivotRowH + 32f, BandCollapsedH: PivotRowH, BarH: 72f,
-            ImmutableArray<TierRegion>.Empty),
-        // Standard (Z-Frame-Home): gutter 48, band 84, bar 72.
-        new(WidthTier.Standard, Gutter: 48f, TitleBarH: 48f, BandH: PivotRowH + 32f, BandCollapsedH: PivotRowH, BarH: 72f,
-            ImmutableArray<TierRegion>.Empty),
-        // Huge (Z-Frame-Huge): gutter 48, band 84 (never collapses: there is room), bar 72.
-        new(WidthTier.Huge, Gutter: 48f, TitleBarH: 48f, BandH: PivotRowH + 32f, BandCollapsedH: PivotRowH, BarH: 72f,
-            ImmutableArray<TierRegion>.Empty),
-        // Huge 4K (Z-Frame-Huge4K): gutter 64, the 56 title bar, band 84, bar 88.
-        new(WidthTier.Huge4K, Gutter: 64f, TitleBarH: 56f, BandH: PivotRowH + 32f, BandCollapsedH: PivotRowH, BarH: 88f,
-            ImmutableArray<TierRegion>.Empty),
+        // Compact (Z-Frame-Compact): gutter 16, the 48 title bar with 40 icons, the band 92 (row 2 is the 40-tall touch row), the mini bar 64.
+        Record(WidthTier.Compact, gutter: 16f, titleBarH: 48f, barH: 64f, ImmutableArray<TierRegion>.Empty),
+        // Small (Z-Frame-Small): gutter 24, the band 84 (row 2 is 32 under a fade), the bar 72; the panel floats, nothing docks.
+        Record(WidthTier.Small, gutter: 24f, titleBarH: 48f, barH: 72f, ImmutableArray<TierRegion>.Empty),
+        // Standard (Z-Frame-Home): gutter 48, the band 84, the bar 72; the panel docks.
+        Record(WidthTier.Standard, gutter: 48f, titleBarH: 48f, barH: 72f, s_docked),
+        // Huge (Z-Frame-Huge): gutter 48, the band 84 (never collapses at a Regular height: there is room), the bar 72.
+        Record(WidthTier.Huge, gutter: 48f, titleBarH: 48f, barH: 72f, s_docked),
+        // Huge 4K (Z-Frame-Huge4K): gutter 64, the 56 title bar (the engine's `TitleBarOptions.Height`), the band 112 / 72, the bar 88.
+        Record(WidthTier.Huge4K, gutter: 64f, titleBarH: 56f, barH: 88f, s_docked),
     ];
+
+    private static ZuneFrameLayout Record(WidthTier tier, float gutter, float titleBarH, float barH, ImmutableArray<TierRegion> regions)
+    {
+        var band = ZuneBandRules.Band(tier);
+        return new ZuneFrameLayout(tier, gutter, titleBarH, band.ExpandedH, band.CollapsedH, barH, regions);
+    }
 
     /// <summary>The frame's record for window tier <paramref name="window"/>.</summary>
     public static ZuneFrameLayout Frame(WidthTier window) => s_frames[Math.Clamp((int)window, 0, s_frames.Length - 1)];
@@ -190,10 +199,13 @@ public static partial class ZuneTiers
 /// <param name="Tier">The window tier.</param>
 /// <param name="Gutter">The gutter the band's inset and every page title share: 16 / 24 / 48 / 48 / 64.</param>
 /// <param name="TitleBarH">The title bar's height: 48, 56 at Huge 4K.</param>
-/// <param name="BandH">The band's height with both rows: 92 at Compact (row 2 is the touch row), 84 elsewhere.</param>
-/// <param name="BandCollapsedH">The band's height collapsed to row 1 on scroll: 52.</param>
+/// <param name="BandH">The band's height with both rows (the band record's <see cref="ZuneBandLayout.ExpandedH"/>): 92 at Compact (row 2
+/// is the touch row), 84 at Small, Standard and Huge, 112 at Huge 4K.</param>
+/// <param name="BandCollapsedH">The band's height with row 1 alone, collapsed on scroll or with no row 2 (<see cref="ZuneBandLayout.CollapsedH"/>):
+/// 52, 72 at Huge 4K.</param>
 /// <param name="BarH">The play bar's height: mini 64 at Compact, 72 on the desktop tiers, 88 at Huge 4K.</param>
-/// <param name="Regions">The regions a resized frame may clip, each with its floor (the frame lane, Z2a, declares them).</param>
+/// <param name="Regions">The regions a resized frame may clip, each with its floor: the docked panel (<see cref="ZuneTiers.PanelRegionId"/>,
+/// 340) at the docking tiers, Standard and up; none at Compact and Small, where the panel floats or is a sheet.</param>
 public sealed record ZuneFrameLayout(WidthTier Tier, float Gutter, float TitleBarH, float BandH, float BandCollapsedH, float BarH,
     ImmutableArray<TierRegion> Regions) : ITierLayoutRecord
 {
