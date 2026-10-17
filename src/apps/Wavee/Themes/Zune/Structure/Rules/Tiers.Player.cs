@@ -33,7 +33,7 @@
 // The 48 cover sits 12 / 12 (the mini 44 in the 64: 10 / 10). A level change moves the times between the two places as a fade, the row
 // they leave and the slots they enter easing their size (size channels). Horizontally: the row's left inset is the frame's gutter per window
 // tier (16 / 24 / 48 / 48 / 64: the cover lines up with the band and the page column), its right inset puts the last tool's glyph on the same
-// gutter, the page's right content edge (`RowInsets`: 12 / 36 / 36 / 52, the T1 audit's A2); the identity column keeps the board's 12
+// gutter, the page's right content edge (`RowInsets`: 12 / 36 / 36 / 51.5, the T1 audit's A2); the identity column keeps the board's 12
 // between cover and words, the transport its 12 / 16 between buttons, the tools the board's 2 (each target carries its own air). The insets
 // are boxes that ease on a crossing.
 //
@@ -91,7 +91,7 @@ public sealed record ZunePlayerBarTier(WidthTier Tier, ZuneBarForm Form, ZuneBar
 /// <param name="PadLeft">The row's left inset at the level's home tier: the frame's gutter (16 mini, 24 narrow and medium, 48 full and
 /// wide, 64 big). The bar draws the WINDOW tier's gutter (`RowInsets`: medium at Standard is 48).</param>
 /// <param name="PadRight">The row's right inset at the level's home tier: the gutter less the last target's air, (button - glyph) / 2, so
-/// its glyph ends on the page's right edge (8 mini, 12 narrow and medium, 36 full and wide, 52 big; A2).</param>
+/// its glyph ends on the page's right edge (8 mini, 12 narrow and medium, 36 full and wide, 51.5 big; A2).</param>
 /// <param name="Button">A glyph target: 40, 44 at Huge 4K.</param>
 /// <param name="Glyph">A glyph: 16, 19 at Huge 4K.</param>
 /// <param name="Disc">The accent play disc: 36 narrow and medium (the stacked cluster's 8 / 8 of air), 40 mini, full and wide, 48 big.</param>
@@ -144,7 +144,7 @@ public static class ZunePlayerTiers
         new(ZuneBarLevel.Wide, IdW: 420f, Art: 48f, RowGap: 32f, PadLeft: 48f, PadRight: 36f, Button: 40f, Glyph: 16f, Disc: 40f, DiscGlyph: 20f,
             TransportGap: 16f, WordSize: 13f, TitleSize: 15f, TitleLine: 20f, SubSize: 13f, SubLine: 18f, FromSize: 11f, FromLine: 14f, VolumeW: 128f, TimesGap: 4f,
             TimesBeside: true),
-        new(ZuneBarLevel.Big, IdW: 520f, Art: 64f, RowGap: 32f, PadLeft: 64f, PadRight: 52f, Button: 44f, Glyph: 19f, Disc: 48f, DiscGlyph: 24f,
+        new(ZuneBarLevel.Big, IdW: 520f, Art: 64f, RowGap: 32f, PadLeft: 64f, PadRight: 51.5f, Button: 44f, Glyph: 19f, Disc: 48f, DiscGlyph: 24f,
             TransportGap: 16f, WordSize: 15f, TitleSize: 17f, TitleLine: 22f, SubSize: 15f, SubLine: 20f, FromSize: 13f, FromLine: 18f, VolumeW: 128f, TimesGap: 6f,
             TimesBeside: true),
     ];
@@ -160,7 +160,7 @@ public static class ZunePlayerTiers
     {
         if (look.Level == ZuneBarLevel.Mini) return new Edges4(look.PadLeft, 0f, look.PadRight, 0f);
         float gutter = ZuneTiers.Frame(window).Gutter;
-        return new Edges4(gutter, 0f, MathF.Round(MathF.Max(0f, gutter - (look.Button - look.Glyph) / 2f)), 0f);
+        return new Edges4(gutter, 0f, MathF.Max(0f, gutter - (look.Button - look.Glyph) / 2f), 0f);
     }
 
     /// <summary>The look of <paramref name="level"/>.</summary>

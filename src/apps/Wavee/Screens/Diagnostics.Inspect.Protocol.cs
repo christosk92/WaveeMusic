@@ -219,7 +219,7 @@ public static partial class Diagnostics
             line = line.Trim();
             if (!line.IsEmpty && line[0] == '﻿') line = line[1..].TrimStart();
             if (line.IsEmpty || line[0] == '#') return true;
-            return line[0] == '{' ? TryParseJson(line, out cmd, out error) : TryParseText(line, out cmd, out error);
+            return line[0] is '{' or '[' ? TryParseJson(line, out cmd, out error) : TryParseText(line, out cmd, out error);
         }
 
         static bool TryParseJson(ReadOnlySpan<char> line, out Command cmd, out string error)

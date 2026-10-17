@@ -393,7 +393,7 @@ public sealed class ZuneStageGeometryTests
         // the lyrics' TEXT starts on the gutter (Compact: 16, not 28 + 22 = 50); the queue's and the artist pane's edge is the gutter itself
         var lyrics = ZuneStageGeometry.PlatePane(in layout, in look, record, Stage.PaneKind.Lyrics);
         Assert.Equal(record.Gutter, lyrics.X + ZuneStageGeometry.LyricsLead(in layout), 0.01f);
-        Assert.Equal(layout.PaneX + layout.PaneW, lyrics.Right, 0.01f);   // the right edge is the allocator's
+        Assert.Equal(record.LyricsPaneMaxW > 0f ? MathF.Min(layout.PaneX + layout.PaneW, lyrics.X + record.LyricsPaneMaxW) : layout.PaneX + layout.PaneW, lyrics.Right, 0.01f);   // the allocator's right edge, or the tier's reading cap (Huge: 900)
         var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), record, Stage.PaneKind.Queue);
         Assert.Equal(record.Gutter, queue.X, 0.01f);
         Assert.Equal(lyrics.Y, queue.Y, 0.01f);

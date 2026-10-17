@@ -147,7 +147,8 @@ public sealed class ZunePlaylistLikedMountedTests(ShellHost host)
             var band = scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
             var editor = scene.AbsoluteRect(Node(shell, ZunePlaylistRules.EditorReadKey));
             // The rename is reachable where the title is (Z6b1 must-fix): the read arm stands inside the panorama band, not only in a folded column.
-            Assert.True(editor.X >= band.X - 0.5f && editor.Y >= band.Y - 0.5f && editor.X + editor.W <= band.X + band.W + 0.5f
+            Assert.True(editor.X >= band.X - 0.5f && editor.Y >= band.Y + ZuneDetailRules.Standard.PanoramaNudgeY - 0.5f &&   // lifted by the tier's optical nudge, as the title is
+                        editor.X + editor.W <= band.X + band.W + 0.5f
                         && editor.Y + editor.H <= band.Y + band.H + 0.5f, $"the editor ({editor}) stands in the panorama band ({band})");
             Assert.True(editor.W > 0f && editor.H > 0f, "the editor is laid out");
         }, W, H);

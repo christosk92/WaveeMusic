@@ -298,7 +298,7 @@ public sealed class ZuneFrameTiersTests
         (ZuneBarLevel Level, WidthTier Home, float Right)[] levels =
         [
             (ZuneBarLevel.Narrow, WidthTier.Small, 12f), (ZuneBarLevel.Medium, WidthTier.Small, 12f), (ZuneBarLevel.Full, WidthTier.Standard, 36f),
-            (ZuneBarLevel.Wide, WidthTier.Huge, 36f), (ZuneBarLevel.Big, WidthTier.Huge4K, 52f),
+            (ZuneBarLevel.Wide, WidthTier.Huge, 36f), (ZuneBarLevel.Big, WidthTier.Huge4K, 51.5f),
         ];
         foreach (var (level, home, right) in levels)
         {
