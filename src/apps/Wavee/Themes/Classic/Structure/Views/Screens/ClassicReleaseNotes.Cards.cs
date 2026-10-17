@@ -23,7 +23,7 @@ internal static partial class ClassicReleaseNotes
     /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish. The record sets the form: one row of
     /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).
     /// <para>A tier crossing never rebuilds a card it keeps (plan 3.3): the row cards of Compact and Small are ONE grid whose track count is the form's, so
-    /// 528 moves the same cards into their new cells (a position FLIP); the poster strip and the row cards are different trees (1008), so the two families
+    /// 528 moves the same cards into their new cells (a position and size FLIP, <see cref="ClassicTierMotion.Reflow"/>); the poster strip and the row cards are different trees (1008), so the two families
     /// are keyed apart and cross-fade.</para></summary>
     static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, ClassicReleaseNotesLayout layout)
     {
@@ -39,7 +39,9 @@ internal static partial class ClassicReleaseNotes
                 : RowCard(highlights[i], () => open(idx), openStore, layout, inRow: form == ClassicReleaseHighlightForm.Grid2);
             cards[i] = form == ClassicReleaseHighlightForm.Strip
                 ? card with { Key = "hl:" + SlideId(highlights[i], i) }
-                : card with { Key = "hl:" + SlideId(highlights[i], i), Layout = ClassicTierMotion.Shove };   // a re-fit moves the same row card
+                // A re-fit (528: one track <-> two) moves the same row card into its new cell AND resizes it (the first card keeps its origin and only
+                // changes width): the card glides on both, its size revealed, as the section cells do. Position-only (Shove) snapped the width.
+                : card with { Key = "hl:" + SlideId(highlights[i], i), Layout = ClassicTierMotion.Reflow };
         }
         Element heading = layout.HighlightsHeading
             ? new TextEl(Loc.Get(Strings.WhatsNew.Highlights)) { Size = K.HeadingSize, LineHeight = K.HeadingLine, Weight = 600, Color = Tok.TextPrimary }

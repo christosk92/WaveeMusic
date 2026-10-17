@@ -233,6 +233,18 @@ public readonly partial struct User
         /// arm's list to bring to its top (<see cref="ApplyNavPlace"/>; a grid of another width shows that item in a different column, so a pixel offset
         /// would land on another row), and a crossing into the one column drawing the navigator rung on its own frame (the reset effect writes it after).</summary>
         int _navArm = -1, _navPlace = -1;
+        /// <summary>The item the last arm swap put at the navigator's top (-1: none, or the user has scrolled since). A round trip carries IT while it still
+        /// sits on the band's top row: a grid of another width shows it on another row than the one its row-mates go to (a three-column Compact grid shows
+        /// item 1 at its top at offset 0, the one-column split grid shows it a row down), so neither "the top" nor the first item of the top row is the place.</summary>
+        int _navKept = -1;
+        /// <summary>The <c>Playback.FrameNowMs</c> the place hold ends at (0: the place has not landed yet), and the signal the swap bumps so the hold
+        /// effect (<see cref="HoldNavPlace"/>) subscribes to the arriving navigator's extents only while a place is landing.</summary>
+        long _navHoldUntil;
+        readonly Signal<int> _navLanding = new(0);
+        /// <summary>How long the arriving navigator keeps the captured item at its top after it first lands: the arriving grid lays out and re-fits its
+        /// columns to the pane's width (the navigator's resting width follows the tier in an effect after the swap) over the first frames, each re-fit
+        /// moving the item's row. A user scroll ends it at once.</summary>
+        const int NavPlaceHoldMs = 1500;
         bool _depthReset;
         /// <summary><c>SyncNav</c>'s own memory of what it last saw, to tell a REMOUNT (<see cref="LibraryNavMount.Key"/>
         /// moved: the fresh ItemsView starts with nothing highlighted) from an in-place REORDER (only `OrderKey` moved:
@@ -310,7 +322,7 @@ public readonly partial struct User
         readonly Func<bool> _isSearching;
         readonly Func<string> _filterText;
         readonly Func<uint> _runSearch;
-        readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum, _applyNavPlace;
+        readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum, _applyNavPlace, _holdNavPlace;
         readonly Action _onNavSel, _commitLeft, _commitMid, _restLeft;
         /// <summary>The user has set the navigator's width (contract 1.21): no tier re-rests it from here on.</summary>
         bool _leftCustomized;
@@ -429,6 +441,7 @@ public readonly partial struct User
             _saveState = SaveState;
             _resetDepth = () => { _depthReset = false; if (Collapsed) _depth.Value = 0; };
             _applyNavPlace = ApplyNavPlace;
+            _holdNavPlace = HoldNavPlace;
             _pageSeed = PageSeed;
             _autoTop = AutoSelectTop;
             _autoAlbum = AutoSelectAlbum;
@@ -539,7 +552,7 @@ public readonly partial struct User
             int navArm = collapsed ? 1 : 0;
             if (_navArm >= 0 && _navArm != navArm)
             {
-                _navPlace = FirstVisibleNav();
+                _navPlace = _navKept = FirstVisibleNav();
                 _depthReset = collapsed;
             }
             _navArm = navArm;
@@ -559,6 +572,7 @@ public readonly partial struct User
                                   + Scope.Value + "|" + RSort.Value);
             UseEffect(_resetDepth, DepKey.From(collapsed));
             UseLayoutEffect(_applyNavPlace, DepKey.From(collapsed));
+            UseLayoutEffect(_holdNavPlace);   // auto-tracked: re-lands the place as the arriving navigator lays out (subscribed only while one lands)
             UseEffect(_autoTop, DepKey.From((int)hitsGeneration, fullSearch ? 1 : 0));
             UseEffect(_autoAlbum, DepKey.From((int)hitsGeneration, sArtist));
 
@@ -916,8 +930,17 @@ public readonly partial struct User
             var scene = Context.Scene;
             var vp = _navCtl.Viewport;
             if (scene is null || vp.IsNull || !scene.IsLive(vp) || !scene.TryGetScroll(vp, out var sc)) return -1;
-            if (sc.OffsetY <= 0.5f || sc.ViewportH <= 1f) return -1;
+            if (sc.ViewportH <= 1f) return -1;
             float inset = float.IsFinite(sc.ItemClipTopInset) ? MathF.Max(0f, sc.ItemClipTopInset) : 0f;
+            // A round trip: the item the last swap put at the top still sits on the band's top row (the user has not scrolled since), so it is the place,
+            // even at offset 0 (see `_navKept`).
+            if (_navKept >= 0 && _navKept < sc.ItemCount && sc.Layout is { } layout)
+            {
+                var kept = layout.ItemRect(_navKept, sc.ContentW > 0f ? sc.ContentW : sc.ViewportW);
+                float band = sc.OffsetY + inset + 1f;
+                if (kept.Y <= band && kept.Y + kept.H > band) return _navKept;
+            }
+            if (sc.OffsetY <= 0.5f) return -1;
             // Probes a little under the band's edge, across the row (a grid's gutters and row gaps hold no item).
             for (float dy = 1f; dy <= 33f; dy += 8f)
             {
@@ -930,13 +953,46 @@ public readonly partial struct User
 
         /// <summary>Layout effect on the arm (after layout, before paint): the arriving arm's navigator brings the item that topped the leaving one to the top of
         /// its visible band, unanimated (the arms cross-fade over it). The pixel offset the shared ScrollKey restored is only right for a list of the same
-        /// row height; a grid re-flows its columns with the width.</summary>
+        /// row height; a grid re-flows its columns with the width. The place then HOLDS (<see cref="HoldNavPlace"/>) while the arriving grid lays out.</summary>
         void ApplyNavPlace()
         {
+            _navHoldUntil = 0;
+            if (_navPlace < 0) return;
+            LandNavPlace();
+            if (_navPlace >= 0) _navLanding.Value = _navLanding.Peek() + 1;   // the hold follows the arriving navigator's extents from here
+        }
+
+        /// <summary>Auto-tracked layout effect: while a place is landing, re-land it whenever the navigator's content or viewport extent moves (the arriving
+        /// grid's first layout, a column re-fit as the pane settles at the tier's width); a user scroll ends it. Subscribes to the scroll only while landing.</summary>
+        void HoldNavPlace()
+        {
+            _ = _navLanding.Value;
+            if (_navPlace < 0) return;
+            _ = _navHandle.ExtentSignal.Value;
+            _ = _navHandle.ViewportSignal.Value;
+            if (_navHandle.Motion.Value.UserDriven) { _navPlace = -1; return; }   // the user scrolls: the place is theirs now
+            LandNavPlace();
+        }
+
+        /// <summary>Put <see cref="_navPlace"/> at the top of the navigator's visible band, from the LIVE layout at the cross extent the list lays its items
+        /// out at (the padding-subtracted content width: the controller's bring-into-view reads the viewport's width, which for a padded grid can fit one
+        /// more column than the grid draws and so names another row). Waits while the arriving list is not laid out; ends after <see cref="NavPlaceHoldMs"/>.</summary>
+        void LandNavPlace()
+        {
             int item = _navPlace;
-            _navPlace = -1;
-            if (item < 0 || _navCtl.Viewport.IsNull) return;
-            _navCtl.StartBringItemIntoView(item, 0f);
+            var scene = Context.Scene;
+            if (scene is null) { _navPlace = -1; return; }
+            var vp = _navCtl.Viewport;
+            if (vp.IsNull || !scene.IsLive(vp) || !scene.TryGetScroll(vp, out var sc) || sc.Layout is not { } layout
+                || item >= sc.ItemCount || sc.ViewportH <= 1f || scene.ScrollHandleFor(vp) is not { } handle) return;   // not laid out yet
+            long now = Playback.FrameNowMs();
+            if (_navHoldUntil == 0) _navHoldUntil = now + NavPlaceHoldMs;
+            else if (now > _navHoldUntil) { _navPlace = -1; return; }
+            float inset = float.IsFinite(sc.ItemClipTopInset) ? MathF.Max(0f, sc.ItemClipTopInset) : 0f;
+            double target = Math.Max(0.0, layout.ItemRect(item, sc.ContentW > 0f ? sc.ContentW : sc.ViewportW).Y - inset);
+            _navKept = item;
+            // A ScrollKey restore still latched would land later and move the item: replace it too.
+            if (handle.RestorePending || Math.Abs(handle.OffsetNow - target) > 0.5) handle.ScrollTo(target, ScrollMove.Immediate);
         }
 
         /// <summary><paramref name="alignmentRatio"/> is the WinUI `StartBringItemIntoView` alignment: <c>NaN</c> is
@@ -1049,6 +1105,7 @@ public readonly partial struct User
         {
             float offsetY = (float)_navHandle.Offset.Value;
             _ = _navHandle.ExtentSignal.Value;   // a measured-extent correction re-projects too
+            if (_navKept >= 0 && _navHandle.Motion.Peek().UserDriven) _navKept = -1;   // the user moved: the next swap reads the place afresh
             long key = ProjectLetters(offsetY);
             if (key == _lettersKey) return;
             _lettersKey = key;

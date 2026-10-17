@@ -485,7 +485,7 @@ public sealed partial class TierLayoutTests
             var shell = harness.Shell;
             var before = ClassicReleaseNotesTiers.Of(harness.Facts.Peek().Tiers);
             // What only has to SURVIVE (it declares no FLIP: its cells carry the motion), and what must also GLIDE when it moves (the section cells, the
-            // picker's slot, the row cards: each a position FLIP).
+            // picker's slot, the row cards: the cells and the row cards FLIP position and size, the slot position).
             var kept0 = new List<Part> { PartOf(shell, "rn:head"), PartOf(shell, "rn:title"), PartOf(shell, "secgrid:0.3.0") };
             kept0.AddRange(PartsOf(shell, "sec:0.3.0:"));
             var parts0 = PartsOf(shell, "secw:");

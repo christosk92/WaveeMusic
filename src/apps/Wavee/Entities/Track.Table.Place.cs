@@ -20,8 +20,8 @@
 // the keyboard-current row when focus is inside the list, and the find text, filters, multi-select and the open find box.
 // The arriving table takes it at mount (the same route and context only), opens with that view state in its first render
 // (so the list key it mounts under is already the final one), skips the warm reveal ramp (the rows are not new), and, in a
-// layout effect once its list has laid out, brings the same row to the top of its visible band, focuses the same row and
-// re-selects the same rows. The two arms then cross-fade with the same rows in the same order at the top of both.
+// layout effect once its list has laid out, brings the same row to the top of its visible band (and holds it there while the
+// hero and the rows above it measure), focuses the same row and re-selects the same rows. The two arms then cross-fade with the same rows in the same order at the top of both.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -87,12 +87,30 @@ public readonly partial struct Track
         /// <summary>The band the rows scroll under in this arm: the vertical arm's sticky inset, 0 where the chrome sits above the viewport.</summary>
         float _placeBand;
         Func<PlaceState?>? _capturePlace;
+        /// <summary>The place's focus and selection have landed (once; the row is HELD at the band's top until the layout settles).</summary>
+        bool _placeSelected;
+        /// <summary>The <c>Playback.FrameNowMs</c> the row hold ends at (0: the row has not landed yet). See <see cref="ApplyPlace"/>.</summary>
+        long _placeHoldUntil;
+
+        /// <summary>How long the arriving list keeps the captured row at the top of its band after it first lands: the hero and the chrome
+        /// (the vertical arm's prefix items) and the rows above the target measure over the first frames after mount, and each measure
+        /// moves the row. Long enough for the arm cross-fade and every first measure; a user scroll ends it at once.</summary>
+        const int PlaceHoldMs = 1500;
+
+        void EndPlace()
+        {
+            _pendingPlace = null;
+            _placeSelected = false;
+            _placeHoldUntil = 0;
+        }
 
         /// <summary>ApplyProps, at mount only: take the place the leaving arm's table left, and open with its view state, so the first render
         /// already builds the list under its final key (the find text and the filters are in the two-column list's key).</summary>
         void TakePlace(TableArgs args)
         {
             if (args.Place is not { } place) return;
+            _placeSelected = false;
+            _placeHoldUntil = 0;
             _pendingPlace = place.Take(args.ScrollKey, args.Source.Context.Id);
             if (_pendingPlace is not { } s) return;
             // No subscriber exists yet (the first render has not run), so these writes notify nothing.
@@ -201,44 +219,92 @@ public readonly partial struct Track
         }
 
         /// <summary>Auto-tracked layout effect (after layout, before paint): once the arriving list has laid out with its rows, put the user back
-        /// where they were. Re-runs as the column's measured width or the row count moves, until it lands once.</summary>
+        /// where they were, and HOLD the row there while the layout settles.
+        /// <para>One shot was not enough (ArmSwapPlaceTests, the vertical arm): on the mount commit this effect runs BEFORE the layout effect that
+        /// writes the vertical list's item count (`_verticalItemCount`), so the list still counted only its hero and chrome; the controller's
+        /// bring-into-view (which reads the list's render-time count) dropped the request, the place was spent, and the shared ScrollKey's pixel
+        /// offset (another row in this arm) landed instead. And the hero, the chrome and the rows above the target measure over the frames after
+        /// mount, each measure moving the row. So the row is placed from the LIVE layout (`ScrollState.Layout`, the geometry the list draws
+        /// with), waits while the list's own count does not reach it yet, and is re-placed on every re-run (the count, the hero's measure, the
+        /// content extent) until <see cref="PlaceHoldMs"/> after it first lands, or until the user scrolls.</para></summary>
         void ApplyPlace()
         {
+            // The re-run triggers: the column's measured width, the row count, the list's own item count, the hero's measure.
             _ = _colW.Value;
             _ = _visible.Value;
+            _ = _listCount.Value;
+            _ = _verticalItemCount.Value;
+            _ = _heroH.Value;
             if (_pendingPlace is not { } s || !_viewLoaded) return;
             var scene = Context.Scene;
-            if (scene is null) { _pendingPlace = null; return; }
+            // No scene, or the user typed in the find box since (another list, whose rows are not the captured ones).
+            if (scene is null || !string.Equals(_query.Peek(), s.Query, StringComparison.Ordinal)) { EndPlace(); return; }
             var vp = _listCtl.Viewport;
             int count = _rowItems?.Count.Peek() ?? 0;
-            if (vp.IsNull || !scene.IsLive(vp) || count <= 0 || _selection.ItemCount <= 0) return;   // the list has not laid out its rows yet
-            _pendingPlace = null;
+            if (vp.IsNull || !scene.IsLive(vp) || count <= 0) return;   // the list has not laid out its rows yet
             int start = TrackStart;
+            // Re-run as the list's content measures and grows: its item count catching up with the rows (the selection model and the row wait on
+            // it below), the hero, the rows above the target.
+            if (scene.ScrollHandleFor(vp) is { } list)
+            {
+                _ = list.ExtentSignal.Value;
+                _ = list.ViewportSignal.Value;
+            }
 
-            // 1. The same first visible row, at the top of this arm's visible band; a list that rested at its top (or above its first row: the
+            // 1. Once the list's selection model counts every row (it trims a selection to its count): the keyboard-current row focused
+            //    again (only when focus was in the list; its arrow-key selection rule runs, so the selection is put back after it), then the
+            //    same rows selected and the same anchor for a shift-click.
+            if (!_placeSelected && _selection.ItemCount >= start + count)
+            {
+                _placeSelected = true;
+                if (s.Focused >= 0 && s.Focused < count) _listCtl.FocusItem(s.Focused + start);
+                _selection.ClearSelection();
+                foreach (var (a, b) in s.Ranges)
+                {
+                    if (a >= count) continue;
+                    _selection.SelectRange(a + start, Math.Min(b, count - 1) + start);
+                }
+                _selection.AnchorIndex = s.Anchor >= 0 && s.Anchor < count ? s.Anchor + start : -1;
+            }
+
+            // 2. The same first visible row, at the top of this arm's visible band; a list that rested at its top (or above its first row: the
             //    hero) opens at its top. Either way this replaces the pixel offset the shared ScrollKey restored, which means another row here.
+            if (!PlaceTarget(scene, vp, s, count, start, out var handle, out double target)) return;   // the geometry is not there yet
+            if (handle.Motion.Value.UserDriven) { EndPlace(); return; }   // the user scrolls: the place is theirs now
+            _ = handle.ExtentSignal.Value;                                 // the album's outer scroller: its content measures too
+            _ = handle.ViewportSignal.Value;
+            long now = Playback.FrameNowMs();                              // the app's monotonic clock (D22)
+            if (_placeHoldUntil == 0) _placeHoldUntil = now + PlaceHoldMs;
+            else if (now > _placeHoldUntil && _placeSelected) { EndPlace(); return; }
+            // A ScrollKey restore still latched (its offset past the extent at mount) would land later and move the row: replace it too.
+            if (handle.RestorePending || Math.Abs(handle.OffsetNow - target) > 0.5) handle.ScrollTo(target, ScrollMove.Immediate);
+        }
+
+        /// <summary>Where the captured row puts the scroller this arm scrolls, from the live layout: the list's own viewport (a playlist,
+        /// Liked: the row's laid-out start under the band the list clips its items at) or the album's outer scroller (the list's top in its
+        /// content and the fixed row height). False while that geometry does not exist yet (no scroll state, no handle, the list's own item
+        /// count short of the row).</summary>
+        bool PlaceTarget(SceneStore scene, NodeHandle vp, PlaceState s, int count, int start, out ScrollHandle handle, out double target)
+        {
+            handle = null!;
+            target = 0.0;
             if (!Cfg.HasTrailing)
             {
-                if (s.Row >= 0) _listCtl.StartBringItemIntoView(Math.Min(s.Row, count - 1) + start, 0f);
-                else scene.ScrollHandleFor(vp)?.ScrollTo(0.0, ScrollMove.Immediate);
+                if (!scene.TryGetScroll(vp, out var sc) || sc.Layout is not { } layout || scene.ScrollHandleFor(vp) is not { } own) return false;
+                handle = own;
+                if (s.Row < 0) return true;
+                int index = Math.Min(s.Row, count - 1) + start;
+                if (index >= sc.ItemCount) return false;   // the list's own count has not caught up with its rows yet
+                float cross = sc.ContentW > 0f ? sc.ContentW : sc.ViewportW;
+                float inset = float.IsFinite(sc.ItemClipTopInset) ? MathF.Max(0f, sc.ItemClipTopInset) : 0f;
+                target = Math.Max(0.0, layout.ItemRect(index, cross).Y - inset);
+                return true;
             }
-            else if (TrailGeometry(scene, out var outer, out float listTop))
-            {
-                float rowH = _shape?.Peek().RowH ?? 0f;
-                float target = s.Row >= 0 ? MathF.Max(0f, listTop + Math.Min(s.Row, count - 1) * rowH - _placeBand) : 0f;
-                scene.ScrollHandleFor(outer)?.ScrollTo(target, ScrollMove.Immediate);
-            }
-            // 2. The keyboard-current row, focused again (only when focus was in the list). Its arrow-key selection rule runs, so the
-            //    selection is put back after it.
-            if (s.Focused >= 0 && s.Focused < count) _listCtl.FocusItem(s.Focused + start);
-            // 3. The same rows selected, the same anchor for a shift-click.
-            _selection.ClearSelection();
-            foreach (var (a, b) in s.Ranges)
-            {
-                if (a >= count) continue;
-                _selection.SelectRange(a + start, Math.Min(b, count - 1) + start);
-            }
-            _selection.AnchorIndex = s.Anchor >= 0 && s.Anchor < count ? s.Anchor + start : -1;
+            if (!TrailGeometry(scene, out var outer, out float listTop) || scene.ScrollHandleFor(outer) is not { } trail) return false;
+            handle = trail;
+            float rowH = _shape?.Peek().RowH ?? 0f;
+            target = s.Row >= 0 ? MathF.Max(0f, listTop + Math.Min(s.Row, count - 1) * rowH - _placeBand) : 0.0;
+            return true;
         }
     }
 }
