@@ -2797,7 +2797,14 @@
         "videoFullScreen": "Video · full screen",
         "videoMiniPlayerWord": "Mini player"
       },
-      "discovery": {},
+      "discovery": {
+        "$comment": "Z5: Home's quickplay heads (pins, history, new), the pins' edit word, the Browse category banner's kind word. Written as people say them; the style's case roles lower them.",
+        "pins": "Pins",
+        "history": "History",
+        "new": "New",
+        "edit": "Edit",
+        "category": "Category"
+      },
       "detail": {},
       "artist": {},
       "collection": {},
