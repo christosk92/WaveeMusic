@@ -7,7 +7,7 @@
 // included, so the core publishes one more thing here: THE CURRENT PAGE'S CHROME, as a signal, for whatever route is on screen.
 //
 //   · ROUTE-LEVEL ROW 2 (`RouteViews`): a family whose row 2 is a set of sibling routes answers it from the route alone, so the band
-//     shows it on the navigation's first frame, before the page mounts. The Library kinds are the first (`User.LibraryChromeViews`).
+//     shows it on the navigation's first frame, before the page mounts. The Library kinds are the first (`User.LibraryChromeViews`), Browse's bands the second (`BrowseBands.ChromeViews`).
 //   · IN-PAGE ROW 2 (`Publish`, through the `PageChromeSink` the content host provides around every page): a page's core host or its
 //     theme template publishes its in-page tabs, its actions and its backdrop under its route. LRU 16, as the masthead publications.
 //   · THE MERGE (`ChromeOf`): the title and trail are the masthead's for its family and the destination's title elsewhere; the views
@@ -105,7 +105,8 @@ public static partial class Shell
 
         /// <summary>The views a route family answers from the route alone (empty for every other route). Pure but for the verbs.</summary>
         public static IReadOnlyList<PageView> RouteViews(in Route route)
-            => User.IsLibraryChromeKind(route.Kind) ? User.LibraryChromeViews(route.Kind) : [];
+            => User.IsLibraryChromeKind(route.Kind) ? User.LibraryChromeViews(route.Kind)
+             : BrowseBands.IsChromeKind(route.Kind) ? BrowseBands.ChromeViews(route) : [];
 
         /// <summary>Bumped when a page's publication changes.</summary>
         public static readonly Signal<int> Version = new(0);

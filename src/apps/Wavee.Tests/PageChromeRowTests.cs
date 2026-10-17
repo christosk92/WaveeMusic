@@ -45,7 +45,6 @@ public class PageChromeRowTests
 
     [Theory]
     [InlineData(Shell.RouteKind.Home)]
-    [InlineData(Shell.RouteKind.Browse)]
     [InlineData(Shell.RouteKind.Recents)]
     [InlineData(Shell.RouteKind.Settings)]
     [InlineData(Shell.RouteKind.Search)]
