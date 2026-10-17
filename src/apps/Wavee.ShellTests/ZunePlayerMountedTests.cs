@@ -154,7 +154,7 @@ public sealed class ZunePlayerMountedTests(ShellHost host)
             Assert.Equal(bar.W, seek.W, 0.5f);                                     // ... full width
             var row = Rect(shell, ZunePlayerLayout.RowKey);
             Assert.Equal(bar.Y + bar.H, row.Y + row.H, 0.5f);
-            Assert.Equal(bar.H - ZunePlayerTiers.SeekLineH, row.H, 0.5f);          // the transport row is the rest (70)
+            Assert.Equal(bar.H, row.H, 0.5f);                                       // the line lies on the top edge: the row is the whole 72 (ZT2)
 
             var disc = Rect(shell, ZunePlayerLayout.DiscKey);
             Assert.Equal(look.Disc, disc.W, 0.5f);
@@ -163,7 +163,7 @@ public sealed class ZunePlayerMountedTests(ShellHost host)
 
             var left = Rect(shell, ZunePlayerLayout.LeftKey);
             Assert.Equal(look.IdW, left.W, 0.5f);                                  // 1440 is the full level: the 320 identity column
-            Assert.Equal(look.PadLeft, left.X, 0.5f);
+            Assert.Equal(ZunePlayerTiers.RowInsets(WidthTier.Standard, look).Left, left.X, 0.5f);   // the frame's gutter (48, ZT2)
             var right = Rect(shell, ZunePlayerLayout.RightKey);
             Assert.True(left.X + left.W <= disc.X && disc.X + disc.W <= right.X, "identity · transport · tools, in that order, never overlapping");
             Assert.True(right.X + right.W <= W + 0.5f, "the tools stay in the window");

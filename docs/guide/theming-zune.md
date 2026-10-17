@@ -551,6 +551,11 @@ Z-Shell-Short, Z-Part-TitleBar, Z-Part-Band and Z-Sizes-Breakpoints. The records
   (640) and medium (760) at Small; medium and full (1240) at Standard; wide (1920) at Huge in the 72; big (3200) at Huge 4K in an 88 slot
   with the 48 disc. The slot's and the bar's heights ease through real layout on a crossing (`SlotMotion`, `BarMotion`: size channels), so
   72 <-> 88 at 3200 and 64 <-> 72 at 640 never snap.
+- **The bar's margins and rhythm** (the owner's review): the 2-px seek line lies on the top edge and takes no room; the transport cluster
+  (40 disc row, 4, 16 times; 48, 6, 16 at Huge 4K) is centred in the whole bar, 6 / 6 of air in the 72 and 9 / 9 in the 88, the 48 cover
+  12 / 12. The row's left inset is the frame's gutter (16 / 24 / 48 / 48 / 64), its right inset puts the last tool's glyph on the gutter
+  (`ZunePlayerTiers.RowInsets`: 12 at Small, 36 at Standard and Huge, 52 at Huge 4K; the mini bar keeps 16 / 8). The insets are boxes that
+  ease on a crossing (`InsetMotion`). Board conflicts, the owner's call: the board's 2 under the disc, and its 24 / 12 insets at Standard and up.
 - **The panel per tier** (`Rules\Tiers.Panel.cs`, `ZunePanelTiers`; Z-Part-Panel, Z-Frame-Huge, Z-Frame-Huge4K): a full-width sheet at
   Compact, a 340 overlay at Small, inline 340 at Standard, docked 720 at Huge (queue | lyrics · friends) and 1080 at Huge 4K
   (queue | lyrics | friends), each docked column the board's 360 (the rule's floor). The panes are LINKED (core contract 1.29): they open and close with the
