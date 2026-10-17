@@ -144,8 +144,11 @@ public static class ZuneDetailRules
     /// body starts at least 8 below the descender (64: 88, 120: 158, 150: 196, Liked's 40: 58).</summary>
     public const float PanoramaDescent = 0.25f, PanoramaAir = 8f;
 
-    /// <summary>See <see cref="PanoramaDescent"/>.</summary>
-    public static float PanoramaHFor(float size) => MathF.Ceiling(size + PanoramaDescent * size + PanoramaAir);
+    /// <summary>The panorama band's height for a <c>size</c>-DIP title: the boards' own (Z-Album-Small 80 under a 64/72 title, Z-Album 140 under 120/130
+    /// nudged up 6, Z-Album-Huge 176 under 150/160 nudged up 8). The title sits on its EXACT line (block line stacking), so its descender stays inside
+    /// the band's gap under the line (8 / 16 / 24: at least the descender's quarter of the size plus air); a wrapped title adds that gap under its last
+    /// line (<see cref="ZuneDetailLayout.PanoramaGap"/>), so a descender is never clipped.</summary>
+    public static float PanoramaHFor(float size) => size <= 64f ? 80f : size <= 120f ? 140f : 176f;
 
     /// <summary>The slots' size ease (the album's trailing sections when a tier swaps their arrangement): clip-window reveal.</summary>
     public static readonly LayoutTransition SlotReveal = new(TransitionChannels.Size,
@@ -168,6 +171,9 @@ public static class ZuneDetailRules
 
     /// <summary>The arm cross-fade's timing.</summary>
     public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
+
+    /// <summary>A Small (or narrower) page keeps its panorama in a short window down to this height (Z-Album-Small, 800 x 600); lower it folds.</summary>
+    public const float SmallPanoramaMinH = 480f;
 
     /// <summary>The panorama's opacity (the boards' 0.92: the title sits a breath back from the ink).</summary>
     public const float PanoramaOpacity = 0.92f;
@@ -372,7 +378,7 @@ public static class ZuneDetailRules
     /// <summary>Compact (Z-Album-Compact): the vertical arm's numbers.</summary>
     public static ZuneDetailLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, PanoramaH = 88f, PanoramaLarge = false, PanoramaNudgeX = -6f, PanoramaNudgeY = 0f,
+        Tier = WidthTier.Compact, PanoramaH = 80f, PanoramaGap = 4f, PanoramaLarge = false, PanoramaNudgeX = -6f, PanoramaNudgeY = 4f,
         RailW = 0f, ColumnGap = 16f, AsideW = 0f, RailGap = 8f, RingSize = 40f, RingGlyph = 14f, RingLabelGap = 10f, ActionsGap = 16f,
         PlayWord = true, SaveWord = true, ShareRing = true, MoreRing = true, ShuffleRing = false, PrimaryInHero = true, MetaLines = 2,
         ArtistSize = 18f, ArtistLine = 24f, MetaSize = 13f, MetaLine = 18f, NotesSize = 12f, NotesLine = 18f, LabelSize = 14f,
@@ -390,7 +396,7 @@ public static class ZuneDetailRules
     /// <summary>Standard (Z-Album): the panorama 120/130 (the role's own), the 240 identity column, the 260 aside, 48 apart.</summary>
     public static ZuneDetailLayout Standard { get; } = Small with
     {
-        Tier = WidthTier.Standard, PanoramaH = 158f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = -6f,
+        Tier = WidthTier.Standard, PanoramaH = 140f, PanoramaGap = 8f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = 2f,
         RailW = 240f, ColumnGap = 48f, AsideW = 260f, RailGap = 12f, ActionsGap = 18f, PlayWord = true, ShareRing = true, ArtistBand = 120f,
         MetaLines = 1, InsightsW = 320f,
     };
@@ -398,14 +404,14 @@ public static class ZuneDetailRules
     /// <summary>Huge (Z-Album-Huge): the panorama 150/160, the 320 identity column, the 400 aside with its 140 artist band and "more by" as a grid.</summary>
     public static ZuneDetailLayout Huge { get; } = Standard with
     {
-        Tier = WidthTier.Huge, PanoramaH = 196f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = -8f,
+        Tier = WidthTier.Huge, PanoramaH = 176f, PanoramaGap = 12f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = 4f,
         RailW = 320f, AsideW = 400f, SaveWord = true, ArtistBand = 140f, MoreByGrid = true, InsightsW = 420f,
     };
 
     /// <summary>Huge 4K (Z-Album-Huge4K): 400 identity, 440 aside, 64 apart, the 40 rings with shuffle, the 20/28 and 15/20 text.</summary>
     public static ZuneDetailLayout Huge4K { get; } = Huge with
     {
-        Tier = WidthTier.Huge4K, PanoramaH = 196f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
+        Tier = WidthTier.Huge4K, PanoramaH = 176f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
         RingSize = 40f, RingGlyph = 14f, RingLabelGap = 12f, ActionsGap = 20f, ShuffleRing = true,
         ArtistSize = 20f, ArtistLine = 28f, MetaSize = 15f, MetaLine = 20f, NotesSize = 13f, NotesLine = 20f, LabelSize = 15f,
         ArtistBand = 180f, Target = 40f, InsightsW = 440f,
@@ -420,6 +426,9 @@ public sealed record ZuneDetailLayout : ITierLayoutRecord
 
     /// <summary>The panorama band's reserved height: the title's line and its air over the columns (0: folded, a short window).</summary>
     public required float PanoramaH { get; init; }
+
+    /// <summary>The air under the title's last line (8 at 64/72, 16 at 120/130, 24 at 150/160): the descender's room, and the board's gap to the columns.</summary>
+    public required float PanoramaGap { get; init; }
 
     /// <summary>The panorama voice (120/130) rather than the compact one (64/72).</summary>
     public required bool PanoramaLarge { get; init; }
@@ -559,7 +568,12 @@ public static class ZuneDetailTiers
     public static ZuneDetailLayout Of(in TierFacts facts)
     {
         if (facts.Policy is null) return ZuneDetailRules.Standard;
-        if (facts.Height == HeightTier.Short) return s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)];
+        if (facts.Height == HeightTier.Short)
+        {
+            // Z-Album-Small is 800 x 600 (short) and keeps its 64/72 panorama: a Small page folds it only where the window is too low to carry it.
+            if (facts.Content <= WidthTier.Small && facts.ViewportHeight >= ZuneDetailRules.SmallPanoramaMinH) return ZuneDetailRules.Small;
+            return s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)];
+        }
         return For(facts.Content == WidthTier.Compact ? WidthTier.Small : facts.Content);
     }
 

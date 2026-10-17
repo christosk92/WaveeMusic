@@ -120,11 +120,11 @@ public sealed class ZunePlaylistLikedMountedTests(ShellHost host)
             var lay = ZuneDetailTiers.For(tier);
             float step = lay.PanoramaSize > 0f ? lay.PanoramaSize : lay.PanoramaLarge ? 120f : 64f;      // the role's 120 where the record carries none
             Assert.Equal(size, step);
-            Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, $"{tier}: the band clears its descender ({lay.PanoramaH})");
+            Assert.True(lay.PanoramaH >= size * 1.2f - 0.5f && lay.PanoramaGap > 0f, $"{tier}: the band clears its descender ({lay.PanoramaH})");
             Assert.True(lay.PanoramaWraps, $"{tier}: a long title wraps and the band hugs it");
             Assert.Equal(2, lay.PanoramaLines);
         }
-        Assert.Equal(158f, ZuneDetailRules.Standard.PanoramaH);   // Liked Songs at Standard: the 120 band, not 88
+        Assert.Equal(140f, ZuneDetailRules.Standard.PanoramaH);   // Liked Songs at Standard: the 120 band, not 88
     }
 
     // ── the playlist ─────────────────────────────────────────────────────────────────────────────────────────────────────

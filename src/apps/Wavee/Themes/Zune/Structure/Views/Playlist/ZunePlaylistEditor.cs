@@ -133,7 +133,8 @@ internal static partial class ZunePlaylist
             // A title is a name (as written); the placeholder is a word the theme writes (lowercased by the heading case role).
             run = title with
             {
-                Size = p.Size, LineHeight = float.IsNaN(p.LineHeight) ? title.LineHeight : p.LineHeight, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Size = p.Size, LineHeight = float.IsNaN(p.LineHeight) ? title.LineHeight : p.LineHeight,
+                LineStacking = float.IsNaN(p.LineHeight) ? title.LineStacking : LineStacking.BlockLineHeight, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Wrap = TextWrap.WrapWholeWords, MaxLines = Detail.VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
                 Color = blank ? Tok.TextTertiary : Tok.TextPrimary, Case = blank ? R.Case.For(LabelKind.Heading) : TextCase.AsWritten,
             };
