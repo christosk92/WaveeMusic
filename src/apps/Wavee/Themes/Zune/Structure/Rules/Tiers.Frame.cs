@@ -30,6 +30,18 @@ public static class ZuneFrameTiers
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>The title bar's trailing island across a crossing (the search form, the bell and the gap change its width): its width eases
+    /// over the pivot slide, a reflow anchored on its trailing edge (the island stands at the bar's right end), so the identity and the bell
+    /// ride the re-solve instead of a position slide the engine's reflow-shove rule could snap. Null under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition TrailingIslandMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Width);
+
+    /// <summary>The identity's host when its chip changes size across a crossing (32 <-> 40 at 640): a reflow of its own box on both axes.</summary>
+    public static readonly LayoutTransition AccountSizeMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Both);
+
     /// <summary>A field floor no window reaches: the icon budget's search can never be laid out as a field.</summary>
     public const float NeverAField = 100000f;
 

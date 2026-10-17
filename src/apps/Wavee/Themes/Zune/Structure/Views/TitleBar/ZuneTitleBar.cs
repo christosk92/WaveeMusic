@@ -169,12 +169,15 @@ internal static class ZuneTitleBar
             {
                 Key = ZuneFrameRules.BellKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
                 Children = [Embed.Comp(() => new Bell(props))],
             });
         return new BoxEl
         {
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = rec.Gap, Height = ZuneTiers.FrameOf(t).TitleBarH,
+            // A crossing changes what the island holds (the magnifier <-> the pill, the bell, the gap): its WIDTH eases (a reflow, a size
+            // channel, its right edge riding), so the identity and the bell ride the re-solve. A position slide of theirs would be snapped by
+            // the engine's reflow-shove rule whenever the page reflows on the same crossing (ZT1).
+            Animate = Design.Reduced ? null : ZuneFrameTiers.TrailingIslandMotion,
             Children = kids.ToArray(),
         };
     }
@@ -203,9 +206,9 @@ internal static class ZuneTitleBar
         {
             Key = AccountHostKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
             Margin = rec.Pill ? ZuneFrameRules.AccountMargin : default,
-            // The search before it changes width on a crossing (and while the pill grows on focus): the identity slides with it, parent-relative,
-            // so a resize that crosses nothing moves nothing.
-            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
+            // The identity's own box changes height with the chip's form per tier (32 <-> 40 at 640): a size reflow, never a snap. Its place
+            // rides the island's width reflow above.
+            Animate = Design.Reduced ? null : ZuneFrameTiers.AccountSizeMotion,
             Children = [el],
         };
     }
