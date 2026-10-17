@@ -37,10 +37,10 @@ public class ShellRouteTableTests
         // destination in the app.
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
-        // 15 exact (14 + LibraryAudiobooks, A2 plan §3.6; SidebarCustomize deleted in P3) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
+        // 16 exact (14 + LibraryAudiobooks, A2 plan §3.6, + LibraryPlaylists, Z7; SidebarCustomize deleted in P3) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
         // + User + ProfileList (profile pages, #161) + ConnectDiagnostics + CaptureDiagnostics
         // (realtime-capture-implementation.md unit 6) + Logs (privacy-diagnostics-tab-implementation.md D6) + NotFound
-        Assert.Equal(35, Shell.RouteKindCount);
+        Assert.Equal(36, Shell.RouteKindCount);
     }
 
     [Fact]
@@ -236,6 +236,7 @@ public class ShellRouteCodecTests
     [InlineData("artists", Shell.RouteKind.LibraryArtists)]
     [InlineData("podcasts", Shell.RouteKind.LibraryPodcasts)]
     [InlineData("audiobooks", Shell.RouteKind.LibraryAudiobooks)]
+    [InlineData("playlists", Shell.RouteKind.LibraryPlaylists)]
     [InlineData("liked", Shell.RouteKind.Liked)]
     [InlineData("local", Shell.RouteKind.Local)]
     [InlineData("history", Shell.RouteKind.History)]

@@ -51,7 +51,7 @@ public static partial class Shell
     public enum RouteKind : byte
     {
         // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12; SidebarCustomize deleted with the customizer (sidebar rework P3)
-        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, Liked, Local,
+        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, LibraryPlaylists, Liked, Local,
         History, Recents, Settings, PlaybackDiagnostics, WhatsNew, HomeCustomize,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
@@ -157,6 +157,9 @@ public static partial class Shell
         // (User.Page.Library.cs's LibraryAudiobookFilter), so it needs its own row for exactly the ch 18 §7 reason
         // every other kind does (a fall-through here would read "Your Library" in the tab strip and history).
         new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.Microphone,  false, false, false),
+        // The playlists list (Z7): the user's playlists and folders as a page of their own, for a structure without a nav tree (Zune's band
+        // row 2 reaches it). Core-drawn (`User.LibraryPlaylists`); Classic never links to it.
+        new(RouteKind.LibraryPlaylists,    "playlists",            false, Strings.Sidebar.Playlists,    Icons.MusicNote,   false, false, false),
         new(RouteKind.Liked,               "liked",                false, Strings.Nav.LikedSongs,       Icons.Heart,       false, true,  false),
         new(RouteKind.Local,               "local",                false, Strings.Nav.LocalFiles,       Icons.Folder,      false, true,  false),
         new(RouteKind.History,             "history",              false, Strings.Nav.History.Title,    Icons.Clock,       false, false, false),
@@ -259,7 +262,7 @@ public static partial class Shell
     //
     // Navigation is UI-thread only (C1): a plain bool is the whole guard, no lock and no Interlocked — PageFor never
     // re-enters itself for the same kind mid-install.
-    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled, s_profileGroupInstalled;
+    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled, s_profileGroupInstalled, s_libraryPlaylistsInstalled;
 
     static void InstallLazyGroupFor(RouteKind kind)
     {
@@ -292,6 +295,12 @@ public static partial class Shell
                 s_profileGroupInstalled = true;
                 Profile.InstallPages();
                 break;
+            // The library's playlists list (Z7) is its own group of one: a core page, nothing else installs with it.
+            case RouteKind.LibraryPlaylists:
+                if (s_libraryPlaylistsInstalled) return;
+                s_libraryPlaylistsInstalled = true;
+                User.InstallLibraryPlaylists();
+                break;
         }
     }
 
@@ -306,7 +315,7 @@ public static partial class Shell
     public static void RestorePagesForTests(PageFactory?[] snapshot)
     {
         Array.Copy(snapshot, s_pages, s_pages.Length);
-        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = s_profileGroupInstalled = false;
+        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = s_profileGroupInstalled = s_libraryPlaylistsInstalled = false;
     }
 
     /// <summary>Is there a page behind this route? Developer-gated kinds answer false unless
@@ -1573,7 +1582,7 @@ public static partial class Shell
             // page — its own kind, so the chips and the row label stay truthful.
             RouteKind.Show => "show",
             RouteKind.LibraryAlbums or RouteKind.LibraryArtists or RouteKind.Liked
-                or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks or RouteKind.Local => "library",
+                or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks or RouteKind.LibraryPlaylists or RouteKind.Local => "library",
             RouteKind.Search => "search",
             RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.BrowseSection => "browse",
             _ => "page",

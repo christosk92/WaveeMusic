@@ -364,7 +364,19 @@ _Not built yet._
 
 ## Z7: the collection
 
-_Not built yet._
+Library, Recents and the profile (`ZuneStructure.Collection.cs`; boards `Z-Library-{Albums,Artists,Playlists,Podcasts,Audiobooks}`, `Z-Recents`, `Z-Profile`, each with its Compact / Small / Huge twin).
+
+**Keys.** Own: `Pages.Library`, `Library.AlbumPane`, `Library.ShowPane`, `Library.ArtistReader`, `Library.SavedEpisodes` (`Views\Library\`), `Pages.Recents` (`Views\Recents\`), `Pages.User` and `Pages.ProfileList` (`Views\Profile\`; the list has no board, owner Q18). Common: Module. Local files renders through the playlist page.
+
+**The playlists route (core).** `RouteKind.LibraryPlaylists` (`playlists`) is a new exact route. Its page is `User.LibraryPlaylists` (`Entities\User.Page.Playlists.cs`): the rootlist tree the sidebar plans from (`Sidebar.Model.Rootlist`: playlists and folders, folder expansion persisted), the sidebar's covers and subtitles, the create-playlist and new-folder verbs. It is core-drawn with the style's roles (no view key, so Classic needed no change), pumps the nav model itself (the pane that normally does is not mounted under Zune), and is the second view of the library's row 2 (`User.LibraryChromeViews`: liked, playlists, albums, artists, podcasts, audiobooks). Under Classic nothing links to it, but navigating there draws the list. It is registered through its own lazy group (`Shell.InstallLazyGroupFor`).
+
+**The library page.** The kinds are the band's row 2, so the page draws no title. Under the band, on the gutter, 8 down: a head of words (sort: the kind's words, a re-tap flips the direction; view: grid and list and a "..." menu of the four views and the S/M/L steps; the find field; the count), 16 over the body. Albums, Podcasts, Audiobooks: the navigator (a grid of covers or a list) takes the width, the pane is 380 beside it, 40 apart. Artists: a 220 list, then the reader (the band, the pinned sub-rail of scope and sort words, a block per release, the cover spine). A typed filter swaps both for the search columns. Compact folds the columns into the breadcrumb drill-in (the library layout ladder `library.layout`: split from 640 of the page's own width, held 24 either way). There are no grips: the columns have the tier record's widths (`ZuneLibraryTiers`). A crossing between the arms keeps the user's place through the host's `ApplyNavPlace` hand-over; the arms cross-fade.
+
+**What the core fixes.** The navigator's row pitch (a 56 plate in a 60 pitch, 40 in 44), the letters' arithmetic and the reader's block extents (`Artist.ReaderShape`) stay the host's, so the artists' list rows stand 44 apart (the board's 34), and the reader keeps its geometry (re-voiced: rings for the verbs, words for the rails).
+
+**Recents.** The band's row 2 carries the pivots (all, music, podcasts, artists) and the "overview" word (published by `Recents.PageView`); the page is the day-grouped list with the accordion and the 300 overview column beside it from Standard. **Profile.** The page's sections and the people list's facets are the band's row 2 (published by the profile hosts); the page is the hero, then shelves and ranked top-artist rows.
+
+**Loc.** `theme.zune.collection.{library,recents}`. **Tests.** `ZuneCollectionMountedTests*` (mounted at 1440 x 960), `LibraryPlaylistsRouteTests`, `ZuneProfileRulesTests`, the updated `PageChromeRowTests` and route-count facts.
 
 ## Z8a: the overlays and the dialogs
 

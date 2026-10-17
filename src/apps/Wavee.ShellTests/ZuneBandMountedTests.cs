@@ -221,10 +221,10 @@ public sealed class ZuneBandMountedTests(ShellHost host)
                 Assert.Equal(Shell.BandRules.Library, band.Current());
                 Until(shell, () => MathF.Abs(BandH(shell) - standard.ExpandedH) < 0.5f, "the band at its full height with row 2");
 
-                // Home publishes its facets as row 2 (Z5); Recents publishes none.
-                Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));
-                Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on Recents");
-                Until(shell, () => MathF.Abs(BandH(shell) - standard.CollapsedH) < 0.5f, "the band is row 1 alone on Recents");
+                // Home publishes its facets as row 2 (Z5) and Recents its pivots (Z7); the history page publishes none.
+                Shell.GoTo(new Shell.Route(Shell.RouteKind.History));
+                Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on History");
+                Until(shell, () => MathF.Abs(BandH(shell) - standard.CollapsedH) < 0.5f, "the band is row 1 alone on History");
                 Assert.Empty(shell.FindPrefix(ZuneBandRules.ViewKeyPrefix));
             }
             finally

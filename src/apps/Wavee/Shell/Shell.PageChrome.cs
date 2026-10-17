@@ -43,7 +43,7 @@ public static partial class Shell
             RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.BrowseSection
                 or RouteKind.Concerts or RouteKind.ArtistConcerts or RouteKind.Concert => Browse,
             RouteKind.Liked or RouteKind.LibraryAlbums or RouteKind.LibraryArtists or RouteKind.LibraryPodcasts
-                or RouteKind.LibraryAudiobooks or RouteKind.Local => Library,
+                or RouteKind.LibraryAudiobooks or RouteKind.LibraryPlaylists or RouteKind.Local => Library,
             RouteKind.Recents => Recents,
             _ => -1,
         };

@@ -117,6 +117,14 @@ public static partial class Profile
         readonly Func<long> _stampFn;
         readonly ProfileHeroActs _acts;
 
+        // ── row 2 (P5 Z7): the sections as the band's views, "open account" and "share" as its actions ──
+        // A band-style structure (Zune) draws them; Classic reads none of it. The effect runs on the pivot's epoch (the plan changed), the lit section
+        // (the spy answered) and the count of sections the last render planned (0 for an unavailable or failed page: the row is withdrawn).
+        PageChromeSink _sink = PageChromeSink.None;
+        int _chromeCount;
+        bool _chromePublished;
+        readonly Action _syncChrome, _withdrawChrome;
+
         public PageHost()
         {
             // The Follow primary / the band's Follow word write through this seam (Show / Playlist page precedent).
@@ -169,6 +177,13 @@ public static partial class Profile
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
+            _syncChrome = SyncChrome;
+            _withdrawChrome = () =>
+            {
+                if (!_chromePublished) return;
+                _chromePublished = false;
+                _sink.Publish(null);
+            };
             _heroSeed = () => Detail.Breakpoints.EstimatePageWidth((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
             _acts = new ProfileHeroActs(
                 Share: () => Episode.CopyLink(_user.IsValid ? Actions.WebLinkOf(_user.Uri) : ""),
@@ -220,6 +235,9 @@ public static partial class Profile
             UseEffect(_publishAccent);
             UseEffect(_republishAccent, DepKey.From(ThemeEpoch()));    // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);
+            _sink = UseContext(PageChromeSink.Context);
+            UseSignalEffect(_syncChrome);
+            UseEffect(() => _withdrawChrome, DepKey.Empty);   // the row leaves with the page
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
             // THE HERO'S SUB-TIER AND METRICS (TC6): the artist hero's ladder over the page's own width, seeded before the first measure from the content
@@ -248,7 +266,8 @@ public static partial class Profile
             bool unavailable = _header == ProfileLoad.Unavailable;
             bool composed = !unavailable && _bodyReady;
             ProfileSectionSlot[] sections = composed ? PlanSections(u) : [];
-            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));
+            _chromeCount = composed ? _pivotCount : 0;
+            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch, _chromeCount));
             UseSignalEffect(_watchScroll);
 
             // The accent and the band's engaged edge are read here, as the page always read them (only for a body that is composed): this render wakes on
@@ -290,6 +309,45 @@ public static partial class Profile
                 ScrollToTop = _scrollToTop,
                 Sections = sections,
             });
+        }
+
+        // ── row 2 ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The pivot's short word for a section (the band's view label).</summary>
+        static string PivotKeyOf(ProfileSection s) => s switch
+        {
+            ProfileSection.TopArtists => Strings.Person.Pivot.TopArtists,
+            ProfileSection.Playlists => Strings.Person.Pivot.Playlists,
+            ProfileSection.RecentArtists => Strings.Person.Pivot.Artists,
+            ProfileSection.Following => Strings.Person.Pivot.Following,
+            _ => Strings.Person.Pivot.Followers,
+        };
+
+        /// <summary>Publishes row 2 through the page's sink: one view per planned section (the one the spy lit is current; a view scrolls to its section),
+        /// then the actions. Runs as a signal effect, so the lit view follows the scroll; withdraws when the page holds no sections.</summary>
+        void SyncChrome()
+        {
+            int active = _active.Value;
+            _ = _pivotEpoch.Value;
+            int n = _chromeCount;
+            var sink = _sink;
+            if (n <= 0 || !_user.IsValid)
+            {
+                if (_chromePublished) { _chromePublished = false; sink.Publish(null); }
+                return;
+            }
+            int lit = active >= 0 && active < n ? active : 0;
+            var views = new PageView[n];
+            for (int i = 0; i < n; i++)
+            {
+                var s = _plan[i];
+                views[i] = new PageView(ProfileSections.Key(s), Loc.Get(PivotKeyOf(s)), i == lit, _sectionClicks[(int)s]);
+            }
+            var actions = new List<PageAction>(2);
+            if (_own) actions.Add(new PageAction("open-account", Loc.Get(Strings.Person.OpenAccount), ProfileVerbs.OpenAccount));
+            actions.Add(new PageAction("share", Loc.Get(Strings.Menu.Share), _acts.Share));
+            _chromePublished = true;
+            sink.Publish(new PageChromeRow(views, actions));
         }
 
         // ── the section plan ─────────────────────────────────────────────────────────────────────────────────────────

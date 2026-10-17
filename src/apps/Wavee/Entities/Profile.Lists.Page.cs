@@ -126,8 +126,19 @@ public static partial class ProfileLists
         readonly Func<int> _visibleCount;
         readonly Func<int, ProfileEntry> _visibleAt;
 
+        // ── row 2 (P5 Z7): the two facets as the band's views (Classic reads none of it) ──
+        readonly Action _publishChrome;
+        readonly Action[] _facetGo = new Action[2];
+        PageChromeSink _sink = PageChromeSink.None;
+        PageChromeRow? _chromeRow;
+        long _chromeSig = long.MinValue;
+        int _chromeVersion;
+
         public PageHost()
         {
+            _publishChrome = () => _sink.Publish(_chromeRow);
+            _facetGo[0] = () => PickFacet(0);
+            _facetGo[1] = () => PickFacet(1);
             // The per-artist Follow toggle writes through this seam (Show / Playlist page precedent).
             Controls.Library ??= User.LibrarySeam;
 
@@ -201,6 +212,10 @@ public static partial class ProfileLists
             _listArm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.ProfileList), TierSource.Measured(_bodyW, _bodySeed));
             UseSignalEffect(_sync);
             UseSignalEffect(_watchLetters);
+            _sink = UseContext(PageChromeSink.Context);
+            UpdateChrome(parsed, u, facet);
+            UseEffect(_publishChrome, DepKey.From(_chromeVersion));
+            UseEffect(() => () => _sink.Publish(null), DepKey.Empty);   // the row leaves with the page
 
             // The structure draws the page (T10c2): this host keeps every decision and hands the view the values and verbs it draws.
             return global::FluentGpu.Theming.Slots.View(ViewKeys.ProfileListPage, new ProfileListProps
@@ -232,6 +247,26 @@ public static partial class ProfileLists
             var profile = valid ? ProfileRoute.For(u) : Shell.Route.None;
             return new ProfileListHead(name, title, facet, labels,
                 profile.IsNone ? null : () => Shell.GoTo(profile), _pickFacet);
+        }
+
+        /// <summary>Rebuild row 2 when what it shows changed: Following and Followers (each with its count once the profile's social fields have landed), the
+        /// current facet lit; none for a route that did not parse.</summary>
+        void UpdateChrome(bool parsed, User u, ProfileFacet facet)
+        {
+            bool valid = parsed && u.IsValid;
+            bool social = valid && u.Knows(UserFields.Social);
+            int following = social ? u.Following : -1, followers = social ? u.Followers : -1;
+            long sig = valid ? HashCode.Combine((int)facet, following, followers) : -1L;
+            if (sig == _chromeSig && (_chromeRow is not null || !valid)) return;
+            _chromeSig = sig;
+            _chromeVersion++;
+            if (!valid) { _chromeRow = null; return; }
+            PageView[] views =
+            [
+                new PageView("following", Loc.Get(Strings.Person.Pivot.Following), facet == ProfileFacet.Following, _facetGo[0], following > 0 ? following : null),
+                new PageView("followers", Loc.Get(Strings.Person.Pivot.Followers), facet == ProfileFacet.Followers, _facetGo[1], followers > 0 ? followers : null),
+            ];
+            _chromeRow = new PageChromeRow(views, []);
         }
 
         /// <summary>A facet word was picked: the ROUTE, not the control, is the truth, so this navigates (and a pick of the current facet does nothing).</summary>
