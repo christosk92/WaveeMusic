@@ -171,7 +171,7 @@ public sealed class ShellCapabilitiesMountedTests(ShellHost host)
                 shell.RunFrames(30);
                 var chrome = band.Chrome.Peek();
                 Assert.NotNull(chrome);
-                Assert.Equal(5, chrome!.Views.Count);
+                Assert.Equal(6, chrome!.Views.Count);   // liked, playlists (P5 Z7), albums, artists, podcasts, audiobooks
                 Assert.Equal(Shell.NameOf(new Shell.Route(Shell.RouteKind.LibraryArtists)), chrome.CurrentView?.Id);
                 Assert.Equal(Shell.BandRules.Library, band.Current());
 
