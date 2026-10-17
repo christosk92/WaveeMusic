@@ -22,6 +22,12 @@
 //
 // The page never asks "am I fake": it demands the liked edge, the row bundle and the curated chip set through Fetch on
 // mount, and --fake answers them because the seed already committed them.
+//
+// ── ROW 2 (P5 Z6b1, contract 1.26) ───────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the page's actions in its band's row 2, so the page publishes Play and Shuffle through the `PageChromeSink` the
+// content host provides around the page (the album's pattern, Album.Page.cs). It publishes no VIEWS: the library route's own row (liked, playlists, albums,
+// artists, podcasts, audiobooks) stands. Classic draws its own head and reads none of it.
 
 using System.Runtime.InteropServices;
 using FluentGpu.Controls;
@@ -77,8 +83,14 @@ public readonly partial struct User
         readonly Func<Element?> _chipBar;
         readonly Func<Element?> _lensHeader;
 
+        // ── row 2 (P5 Z6b1): the page's actions (see the file header) ──
+        Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
+        readonly Action _publishChrome, _playChrome;
+
         public LikedPage()
         {
+            _publishChrome = PublishChrome;
+            _playChrome = () => { if (_subject.IsValid) Actions.Services.Play?.Invoke(_subject); };
             _demandModel = DemandModel;
             _demandRows = DemandRows;
             _lensActive = () => LensActive(_lens, DetailKind.Liked);
@@ -127,6 +139,10 @@ public readonly partial struct User
             var chips = UseComputed(_computeChips);
             _chips = chips;
             var lensOn = UseComputed(_lensActive);
+
+            // Row 2 (P5 Z6b1): Play and Shuffle, once per account per scope. Hooks before any early return.
+            _sink = UseContext(Contracts.PageChromeSink.Context);
+            UseEffect(_publishChrome, DepKey.From(_me.Slot, (int)scopeEpoch));
 
             if (!_me.IsValid || _source is null) return Controls.Vacancy(Controls.VacancyVoice.Empty);
 
@@ -244,6 +260,20 @@ public readonly partial struct User
             var names = new string[set.Count];
             for (int i = 0; i < names.Length; i++) names[i] = set.Titles[i];
             return new LikedChipModel(names, set.EvidencedCount);
+        }
+
+        // ── row 2 ──
+
+        /// <summary>Publishes Play and Shuffle (no views: the library route's row stands).</summary>
+        void PublishChrome()
+        {
+            if (!_me.IsValid) return;
+            var actions = new List<Contracts.PageAction>(2)
+            {
+                new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), Shuffle, Contracts.PageActionKind.Shuffle),
+            };
+            _sink.Publish(new Contracts.PageChromeRow([], actions));
         }
 
         // ── the page verbs ──
