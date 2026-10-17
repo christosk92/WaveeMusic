@@ -29,7 +29,8 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 using Rules = Wavee.Themes.Zune.ZuneArtistRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using FluentGpu.Theming;
 
 namespace Wavee.Themes.Zune;
 

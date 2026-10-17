@@ -185,13 +185,13 @@ internal static class ZuneStageRoot
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
-            Children = [Embed.Comp(new ZuneStageUpNextColumn.Props(v.Stage, v.Layers.UpNext), static () => new ZuneStageUpNextColumn())],
+            Children = [Embed.Comp(new ZuneStageUpNextFrame.Props(v.Stage, v.Layers.UpNext), static () => new ZuneStageUpNextFrame())],
         };
 }
 
 /// <summary>The Up next column's flat floating pane: the core's rect moved in by the tier's gutter (the core budgets it at the plate's 0
 /// inset) and down by the tier's head. A component: the rect needs the window tier.</summary>
-internal sealed class ZuneStageUpNextColumn : Component
+internal sealed class ZuneStageUpNextFrame : Component
 {
     public sealed record Props(Stage.StageCtx Stage, Func<Element>? Build);
 
