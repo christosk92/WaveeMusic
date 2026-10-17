@@ -227,15 +227,15 @@ public sealed class ZuneScreensMountedTests(ShellHost host)
 
     [Fact]
     public void The_sign_in_door_mounts_its_body_and_its_footer()
-        => host.Run(() =>
-        {
-            foreach (var facet in new[] { Setup.SignInFacet.Idle, Setup.SignInFacet.Busy, Setup.SignInFacet.Failed })
-                foreach (var part in new[] { SetupDialogPart.Body, SetupDialogPart.Footer })
-                {
-                    var props = new SetupSignInDoorProps { Part = part, Host = new FixtureSignIn(facet) };
-                    ViewHarness.With(host, ViewKeys.SetupSignInDoor, props, harness => harness.RunFrames(10), UnderZune());
-                }
-        });
+    {
+        // ViewHarness.With runs on the UI thread itself: wrapping it in host.Run deadlocked (Run waits for the loop it is running on).
+        foreach (var facet in new[] { Setup.SignInFacet.Idle, Setup.SignInFacet.Busy, Setup.SignInFacet.Failed })
+            foreach (var part in new[] { SetupDialogPart.Body, SetupDialogPart.Footer })
+            {
+                var props = new SetupSignInDoorProps { Part = part, Host = new FixtureSignIn(facet) };
+                ViewHarness.With(host, ViewKeys.SetupSignInDoor, props, harness => harness.RunFrames(10), UnderZune());
+            }
+    }
 
     // ── release notes ────────────────────────────────────────────────────────────────────────────────────────────────────
 
