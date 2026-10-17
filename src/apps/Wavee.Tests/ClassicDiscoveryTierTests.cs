@@ -298,6 +298,16 @@ public class ClassicDiscoveryTierTests
         else Assert.Equal(Search.BestMatchRowH, l.BestMatchRowH);
     }
 
+    [Theory]
+    [InlineData(1, 3)]   // never a one-cell pager
+    [InlineData(2, 2)]
+    [InlineData(3, 3)]
+    public void Search_BestMatches_RowsPerPageFollowTheColumns_AtEveryTier(int columns, int rows)
+    {
+        foreach (var tier in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge })
+            Assert.Equal(rows, SearchOf(tier).BestMatchRowsFor(columns));
+    }
+
     [Fact]
     public void Search_Huge_PutsTheTopResultBesideBestMatches()
     {

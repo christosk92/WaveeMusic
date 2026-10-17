@@ -362,11 +362,11 @@ internal static class ClassicSearchBody
     /// <summary>The hits after the Top Result as a width-fitted N×N PagedShelf of hit rows with chevrons and pips.
     /// <paramref name="colsFor"/> is the page's hysteretic column count (<see cref="Search.ColsFor"/> over the host's own fields).
     /// The shelf sits in a wrapper box: a Key on PagedShelf's component root is ignored (§9 traps).
-    /// <para>A crossing re-fits the SAME shelf and the SAME rows (plan 3.3; one key at every tier): the column cap and the row height
-    /// (<see cref="ClassicSearchLayout.BestMatchRowH"/>: Compact's 60, the tuned 64) are live props of the mounted shelf, and each row is a
-    /// <see cref="BestMatchRowHost"/> that draws at the tier it is drawn in (Compact's 44 art in a 60 row, the tuned 48 in 64). The wrapper reflows
-    /// (position and size, its size revealed), so the shelf's new height glides. The shelf's ROWS PER PAGE (<see cref="Search.RowsFor"/>) stay its
-    /// mount's: PagedShelf freezes them (an engine gap).</para></summary>
+    /// <para>A crossing re-fits the SAME shelf and the SAME rows (plan 3.3; one key at every tier): the column cap, the rows per page
+    /// (<see cref="ClassicSearchLayout.BestMatchRowsFor"/>: three at one column, two at two, three at three) and the row height
+    /// (<see cref="ClassicSearchLayout.BestMatchRowH"/>: Compact's 60, the tuned 64) are live props of the mounted shelf (a re-paged shelf keeps the page
+    /// holding its first item), and each row is a <see cref="BestMatchRowHost"/> that draws at the tier it is drawn in (Compact's 44 art in a 60 row, the
+    /// tuned 48 in 64). The wrapper reflows (position and size, its size revealed), so the shelf's new height glides.</para></summary>
     static Element BestMatches(IReadOnlyList<Search.HitItem> items, Func<float, int> colsFor, Search.HitContext ctx, ClassicSearchLayout layout, float firstW)
     {
         if (items.Count == 0) return new BoxEl();
@@ -374,7 +374,7 @@ internal static class ClassicSearchBody
         return Stretch(Responsive.Of(ClassicSearchTiers.BestMatchesKey, w =>
         {
             int cols = colsFor(w);
-            int rows = Search.RowsFor(cols);
+            int rows = layout.BestMatchRowsFor(cols);   // live: a crossing re-pages the mounted shelf
             int maxCols = Search.MaxColumns(cols, rows, items.Count);
             return PagedShelf.Create(items,
                 cardAt: (item, i, _) => BestMatchRow(item, ctx, layout),

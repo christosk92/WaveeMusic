@@ -2101,7 +2101,8 @@ Charts band does between its paged deck (Standard, Huge) and its stack (Compact,
 `.ChartsStackKey` and cross-fade, and every Browse band is a keyed reflowing box with its entrance on an inner box (Home's chapter shape). A card a
 shelf builds is re-rendered only when its ITEM changes, so a card whose form follows the tier is a component that reads the facts it is drawn in:
 Search's Best matches rows are `BestMatchRowHost`s (the row form of `ClassicSearchTiers.Of`, the shelf's live row height
-`ClassicSearchLayout.BestMatchRowH`). PagedShelf's `rows` stays mount configuration, so Best matches keeps the rows per page it mounted with.
+`ClassicSearchLayout.BestMatchRowH`) and its rows per page (`ClassicSearchLayout.BestMatchRowsFor`) are live props of the one mounted shelf
+(PagedShelf takes its row count live between multi-row counts and keeps the page holding its first item).
 `Wavee.ShellTests\TierLayoutTests.Crossing.cs` mounts each page, scrolls and focuses it, crosses 528 and 1008 (and 1920 for Home) both
 ways and asserts the same nodes, the kept offset and focus, and tracks on the crossing frame.
 

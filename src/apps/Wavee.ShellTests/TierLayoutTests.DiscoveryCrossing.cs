@@ -147,6 +147,33 @@ public sealed partial class TierLayoutTests
         }
     }
 
+    /// <summary>The page grid the shelf shows: the columns that lie whole inside its viewport, and the rows in the first of them. A page holds
+    /// <c>columns x rows</c> items laid out column by column, so the first column of the page is full unless the list runs out first.</summary>
+    static (int Columns, int Rows, int Shown) BestMatchGrid(Shell.HeadlessShell shell, NodeHandle shelf)
+    {
+        var scene = shell.Host.Scene;
+        var viewport = ScrollUnder(shell, shelf);
+        Assert.False(viewport.IsNull, "Best matches has a viewport");
+        var vr = scene.AbsoluteRect(viewport);
+        var under = new HashSet<NodeHandle>(Subtree(scene, shelf));
+        var shown = shell.FindPrefix("hit:").Where(r => under.Contains(r.Node)).Select(r => scene.AbsoluteRect(r.Node))
+            .Where(r => r.W > 0f && r.X >= vr.X - 0.5f && r.X + r.W <= vr.X + vr.W + 0.5f).ToList();
+        if (shown.Count == 0) return (0, 0, 0);
+        int columns = shown.Select(static r => MathF.Round(r.X)).Distinct().Count();
+        float left = shown.Min(static r => r.X);
+        return (columns, shown.Count(r => r.X < left + 0.5f), shown.Count);
+    }
+
+    /// <summary>The rows per page follow the record for the column count on screen (three at one column, two at two, three at three).</summary>
+    static void AssertBestMatchPaging(Shell.HeadlessShell shell, NodeHandle shelf, ClassicSearchLayout layout, string what)
+    {
+        var (columns, rows, shown) = BestMatchGrid(shell, shelf);
+        Assert.True(columns > 0, $"{what}: Best matches shows no whole column");
+        int want = layout.BestMatchRowsFor(columns);
+        if (shown < columns * want && rows < want) return;   // a short list: the page is not full, its first column may hold fewer
+        Assert.True(rows == want, $"{what}: Best matches pages {rows} rows at {columns} columns, the record says {want}");
+    }
+
     [Theory, MemberData(nameof(WindowCrossings))]
     public void A_crossing_re_forms_the_best_matches_rows_in_place(float from, float to)
     {
@@ -164,6 +191,7 @@ public sealed partial class TierLayoutTests
             Assert.NotEmpty(rows);
             var before = ClassicSearchTiers.Of(Tiers);
             AssertBestMatchRows(shell, rows, before, what + " (before)");
+            AssertBestMatchPaging(shell, shelfNode, before, what + " (before)");
 
             ResizedFrame(shell, to, narrowing);
             var parts = Restate(shell, [shelf, .. rows]);
@@ -178,6 +206,9 @@ public sealed partial class TierLayoutTests
             shell.RunFrames(60);
             foreach (var r in rows) Assert.True(shell.Host.Scene.IsLive(r.Node), $"{what}: {r.Name} was rebuilt after the crossing");
             AssertBestMatchRows(shell, rows, after, what + " (after)");
+            // The rows per page are a live prop: the SAME shelf re-pages to the record's count for its new column count (no remount).
+            Assert.True(shell.Find(ClassicSearchTiers.BestMatchesKey).Equals(shelfNode), $"{what}: the Best matches shelf was remounted");
+            AssertBestMatchPaging(shell, shelfNode, after, what + " (after)");
         });
     }
 }

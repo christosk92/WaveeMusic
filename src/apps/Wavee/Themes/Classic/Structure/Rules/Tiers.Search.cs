@@ -89,6 +89,10 @@ public sealed record ClassicSearchLayout
     /// <summary>A Best matches row's height in its shelf: the tier's row floor (Compact's 60, <c>C-Search-Compact</c>), else the tuned 64.</summary>
     public float BestMatchRowH => RowMinH > 0f ? RowMinH : Search.BestMatchRowH;
 
+    /// <summary>Best matches' rows per page at <paramref name="columns"/> columns: square (two at two, three at three), and three at one (never a one-cell
+    /// pager). The same at every tier; a live prop of the mounted shelf, so a crossing that changes the column count re-pages the same shelf.</summary>
+    public int BestMatchRowsFor(int columns) => Search.RowsFor(columns);
+
     /// <summary>The Albums / Playlists grid's columns at <paramref name="width"/>: the core rule's floor-fit held to the tier's cap.</summary>
     public int FacetGridColumns(float width) => FacetGrid.Columns(width, Search.FacetGridGap);
 }
