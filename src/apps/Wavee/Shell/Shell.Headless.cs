@@ -28,8 +28,10 @@ using FluentGpu.Hooks;
 using FluentGpu.Hosting;
 using FluentGpu.Pal;
 using FluentGpu.Pal.Headless;
+using FluentGpu.Rhi;
 using FluentGpu.Rhi.Headless;
 using FluentGpu.Scene;
+using FluentGpu.Text;
 using FluentGpu.Text.Headless;
 
 namespace Wavee;
@@ -45,11 +47,23 @@ public static partial class Shell
     /// <param name="Theme">The theme the host seeds instead of the OS theme (the GUI reads the registry).</param>
     public sealed record ShellHostOptions(string ProfileDir, ThemeKind Theme = ThemeKind.Dark);
 
+    /// <summary>The devices a NON-TEST mount runs on (the `--inspect` server, Diagnostics.Inspect.cs): the platform window the
+    /// host is built over (an offscreen surface's window, or a plain headless one), the headless model behind it (size, scale,
+    /// input queue), the GPU device (the host owns and disposes it), the font system (a real DirectWrite one: true wrap and
+    /// trim) and two hooks: <paramref name="Attach"/> runs once the host exists (an offscreen surface binds to it there) and
+    /// <paramref name="Release"/> after the host is disposed (the caller's font system and surface go then, in that order).
+    /// The shell tests never pass one: their mounts stay on the recording device and the deterministic headless font.</summary>
+    public sealed record HeadlessDevices(IPlatformWindow Window, HeadlessWindow Input, IGpuDevice Device, IFontSystem Fonts,
+        Action<AppHost>? Attach = null, Action? Release = null);
+
     /// <summary>The shell test host: boot once, then mount the real frame headlessly. UI THREAD = the booting thread.</summary>
     public static class Headless
     {
         static int s_uiThread;
         static HeadlessShell? s_mounted;
+
+        /// <summary>The shell currently mounted, or null (UI thread).</summary>
+        public static HeadlessShell? Mounted => s_mounted;
 
         /// <summary>Boot the app under <see cref="BootProfile.HeadlessFake"/>, on the calling thread, which becomes the UI
         /// thread of every mount. Once per process. The marks are the GUI's: `boot.platform`, `boot.entities`,
@@ -118,6 +132,19 @@ public static partial class Shell
             return shell;
         }
 
+        /// <summary>Mount the frame on <paramref name="devices"/> (an offscreen D3D12 surface with DirectWrite, or a headless
+        /// window with DirectWrite) instead of the test devices. The window in <paramref name="devices"/> already carries its
+        /// size and scale. Dispose the handle before the next mount; it releases the devices after the host.</summary>
+        public static HeadlessShell Mount(HeadlessDevices devices, IFrameTimeSource? frameTime = null)
+        {
+            ArgumentNullException.ThrowIfNull(devices);
+            RequireUiThread();
+            if (s_mounted is not null) throw new InvalidOperationException("A headless shell is already mounted; dispose it first.");
+            var shell = new HeadlessShell(devices, frameTime ?? new FixedFrameTimeSource(16f));
+            s_mounted = shell;
+            return shell;
+        }
+
         /// <summary>Put the navigation back where a fresh session starts: Home, with no back or forward step and the omnibar
         /// empty. Between mounts only. The route is PROCESS state (a remount opens on the page the last root showed, which
         /// <c>RootScopeTests</c> pins), so the shell test host calls this between FACTS: a fact that starts on the page the
@@ -173,14 +200,32 @@ public static partial class Shell
         /// <summary>The headless window: its size, scale and input queue (<see cref="HeadlessWindow.QueueInput"/>).</summary>
         public HeadlessWindow Window { get; }
 
+        /// <summary>The text backend this mount measures with (the headless model unless <see cref="HeadlessDevices"/> supplied
+        /// another).</summary>
+        public IFontSystem Fonts { get; }
+
+        readonly Action? _release;
+
         internal HeadlessShell(float widthDip, float heightDip, float scale, IFrameTimeSource frameTime, Func<Element>? content = null)
+            : this(TestDevices(widthDip, heightDip, scale), frameTime, content) { }
+
+        static HeadlessDevices TestDevices(float widthDip, float heightDip, float scale)
+        {
+            var window = new HeadlessWindow(new WindowDesc("wavee-shell", new Size2(widthDip * scale, heightDip * scale), scale));
+            return new HeadlessDevices(window, window, new HeadlessGpuDevice(), new HeadlessFontSystem(Entities.Strings));
+        }
+
+        internal HeadlessShell(HeadlessDevices devices, IFrameTimeSource frameTime, Func<Element>? content = null)
         {
             _app = new HeadlessPlatformApp();
-            Window = new HeadlessWindow(new WindowDesc("wavee-shell", new Size2(widthDip * scale, heightDip * scale), scale));
-            Window.Show();
+            Window = devices.Input;
+            devices.Window.Show();
+            Fonts = devices.Fonts;
+            _release = devices.Release;
             var strings = Entities.Strings;
-            Host = new AppHost(_app, Window, new HeadlessGpuDevice(), new HeadlessFontSystem(strings), strings, new HeadlessRoot(content),
+            Host = new AppHost(_app, devices.Window, devices.Device, Fonts, strings, new HeadlessRoot(content),
                 frameTime: frameTime);
+            devices.Attach?.Invoke(Host);
             // Every cross-thread seam posts into THIS host, each post followed by the publish on the cadence — the GUI's
             // poster minus the early-post queue (the host exists before anything posts).
             _seams = PosterSeams.Capture();
@@ -262,6 +307,7 @@ public static partial class Shell
                 RootScope.EndMounted();   // belt: a mount never leaves a mounted scope behind, whatever the tree's cleanup did
                 _app.Dispose();
                 Headless.Unmounted(this);
+                _release?.Invoke();   // the caller's font system and offscreen surface, after the host that used them
             }
         }
     }

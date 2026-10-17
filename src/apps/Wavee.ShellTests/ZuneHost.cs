@@ -31,10 +31,7 @@ public static class ZuneHost
     /// <summary>Developer mode on, Classic and Zune installed, Zune active with its definition installed. UI thread.</summary>
     public static void Activate()
     {
-        Platform.Developer.Enabled.Value = true;
-        Platform.Settings.Set(new SettingKey<string>("theme.id", ClassicTheme.Id), ZuneTheme.Id);
-        ThemeHost.Install(ClassicTheme.Create(), ZuneTheme.Create());
-        Design.SeedPalette(Tok.Theme);
+        Diagnostics.InspectKit.ActivateTheme(ZuneTheme.Id);   // the app's own activation (Screens/Diagnostics.Inspect.Kit.cs)
     }
 
     /// <summary>Developer mode off, Classic alone and active. UI thread.</summary>
