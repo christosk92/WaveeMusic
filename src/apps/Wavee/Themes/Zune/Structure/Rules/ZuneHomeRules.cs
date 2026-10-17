@@ -44,6 +44,9 @@ public static class ZuneHomeRules
     /// <summary>A heading row: the gap to its subtitle, and the gap from the row to its body.</summary>
     public const float HeadInlineGap = 14f, HeadGap = 10f;
 
+    /// <summary>The air between a heading's title group and its tools (A6): the "see all" word never glues to the title or its subtitle.</summary>
+    public const float HeadToolsGap = 14f;
+
     /// <summary>The busy bar's height (a switch in flight), over the top of the content.</summary>
     public const float BusyH = 2f;
 
@@ -106,6 +109,18 @@ public static class ZuneHomeRules
 
     /// <summary>The Browse tiles: their plate, its insets, the gap between plates, the narrowest plate.</summary>
     public const float TileH = 88f, TilePadX = 12f, TilePadY = 10f, TileGap = 12f, TileMinCol = 120f;
+
+    /// <summary>A plate with art keeps its label readable on any art in either theme: the raised tone under the art, and a scrim over its lower
+    /// <see cref="PlateScrimShare"/> that goes from nothing to <see cref="PlateScrimAlpha"/> (45 %) black.</summary>
+    public const float PlateScrimShare = 0.5f;
+
+    /// <inheritdoc cref="PlateScrimShare"/>
+    public const byte PlateScrimAlpha = 115;
+
+    /// <summary>The plate's bottom scrim: black from 0 at the top of its band to 45 % at the foot.</summary>
+    public static readonly GradientSpec PlateScrim = FluentGpu.Dsl.Ui.GradientDown(
+        new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 0)),
+        new GradientStop(1f, ColorF.FromRgba(0, 0, 0, PlateScrimAlpha)));
 
     /// <summary>The Browse tiles beside the charts, 2 : 1.</summary>
     public const float TilesShare = 2f, ChartsShare = 1f;
@@ -245,6 +260,18 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <inheritdoc cref="DaylistRings"/>
     public float RingSize { get; init; } = ZuneHomeRules.RingSize;
 
+    /// <summary>The ring's hit box where it is larger than the disc (Compact: a 36 disc in a 40 target, the brief's Compact rule); 0 = the disc itself.</summary>
+    public float RingTarget { get; init; }
+
+    /// <summary>The daylist title's own size and line where the tier sets it between two roles (Compact 28/36, A-audit Home); 0 = the role's.</summary>
+    public float DaylistTitleSize { get; init; }
+
+    /// <inheritdoc cref="DaylistTitleSize"/>
+    public float DaylistTitleLine { get; init; }
+
+    /// <summary>The strip's height is a floor (<see cref="DaylistH"/>) and grows with its copy (Compact: a wrapped title or wrapped rings never clip).</summary>
+    public bool DaylistGrows { get; init; }
+
     /// <inheritdoc cref="DaylistRings"/>
     public float RingsGap { get; init; } = ZuneHomeRules.DaylistActionsGap;
 
@@ -268,6 +295,9 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
 
     /// <inheritdoc cref="ShelfCols"/>
     public float ShelfMinW { get; init; } = ZuneHomeRules.ShelfCardW;
+
+    /// <summary>The cover shelf's fixed card width where <see cref="ShelfCols"/> is 0: 154 (Standard), 220 at 4K (Z-Home-Huge4K "min 220").</summary>
+    public float ShelfCardW { get; init; } = ZuneHomeRules.ShelfCardW;
 
     /// <summary>The wide tiles' columns and the narrowest tile, the clusters' columns, the Browse tiles' columns, the Browse tiles' height, and their name
     /// in the big voice.</summary>
@@ -343,14 +373,16 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
-        // no new group; the daylist a 112 row (112 art, the title 22/28 over two lines, ONE 40 play ring at the end); one column of everything,
+        // no new group; the daylist a 168 floor (112 art, the title 28/36 over two lines, then four unlabelled 36 rings 16 apart, each in a 40 target
+        // 12 apart: 4 x 36 + 3 x 16 = 192; the strip grows where they wrap); one column of everything,
         // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 2,
-            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = 40f, PlayAtEnd = true,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 2,
+            DaylistTitleSize = 28f, DaylistTitleLine = 36f, DaylistGrows = true,
+            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
@@ -372,7 +404,8 @@ public static class ZuneHomeTiers
         // the daylist a 220 strip (440 art, the title 64/72, play shuffle and save, a 320 clock of 52 bars); the shelf eight across, the wide tiles
         // six, three cluster columns, the Browse tiles eight across at 120 with the big name; 64 rows (the "when" 96).
         Huge(WidthTier.Huge),
-        Huge(WidthTier.Huge4K),
+        // Huge 4K (Z-Home-Huge4K "min 220"): the same page, its cover shelf a row of fixed 220 cards (it was eight flexing to ~290 at the 2400 cap).
+        Huge(WidthTier.Huge4K) with { ShelfCols = 0, ShelfCardW = 220f },
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
@@ -384,6 +417,7 @@ public static class ZuneHomeTiers
         ZoneGap = Math.Min(r.ZoneGap, 14f), QuickGroupGap = Math.Min(r.QuickGroupGap, 14f), Subtitles = false,
         DaylistForm = ZuneDaylistForm.OneRow, DaylistH = 56f, DaylistArtW = 56f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 1,
         DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = ZuneHomeRules.RingSize, PlayAtEnd = true,
+        DaylistTitleSize = 0f, DaylistTitleLine = 0f, DaylistGrows = false,
     });
 
     /// <summary>The record for <paramref name="facts"/>: its content tier's, in its one-row daylist form where the window is too short for the

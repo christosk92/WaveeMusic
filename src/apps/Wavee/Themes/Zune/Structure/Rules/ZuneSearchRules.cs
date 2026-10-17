@@ -134,7 +134,7 @@ public static class ZuneSearchTiers
     // Huge's numbers (Z-Search-Huge); Huge 4K is the same (pages cap at 2400, decision 2).
     private static ZuneSearchLayout Huge(WidthTier tier) => Std(tier) with
     {
-        ZoneGap = 40f, TopW = 480f, HeroArt = 240f, HeroStacked = true, HeroNameHero = true,
+        ZoneGap = 40f, TopW = 560f, HeroArt = 240f, HeroStacked = true, HeroNameHero = true,
         BestCols = 3, BestRowH = 60f, BestArt = 48f, ShelfCols = 8, ShelfMinW = 140f, GenreCols = 8,
     };
 
@@ -156,7 +156,7 @@ public static class ZuneSearchTiers
         },
         // Standard (Z-Search): the tuned page (the defaults).
         Std(WidthTier.Standard),
-        // Huge (Z-Search-Huge): a 480 top-result column (a 240 art over the 64/72 name and its lines), three columns of 60 rows (48 art), eight-across shelf.
+        // Huge (Z-Search-Huge): a 560 top-result column (wide enough for the 64/72 name; it was 480 and truncated) (a 240 art over the 64/72 name and its lines), three columns of 60 rows (48 art), eight-across shelf.
         Huge(WidthTier.Huge),
         Huge(WidthTier.Huge4K),
     ];

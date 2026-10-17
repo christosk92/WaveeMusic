@@ -375,7 +375,8 @@ internal static class ZuneSearchPage
     /// <summary>One word of a run: the 15 voice, a link (a genre is a name and keeps its casing; a related query is lowercased by the case role).</summary>
     static Element Word(string key, string text, bool cased, bool primary, Action go, float target) => new BoxEl
     {
-        Key = key, Shrink = 0f, MinHeight = target, Direction = 0, AlignItems = FlexAlign.Center,
+        // A short word ("pop") is still a 40 x 40 target at Compact: the box is at least that wide as well as tall.
+        Key = key, Shrink = 0f, MinHeight = target, MinWidth = target, Direction = 0, AlignItems = FlexAlign.Center,
         Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = go,
         Children =
         [

@@ -139,7 +139,8 @@ internal static class ZuneRecentsRows
         else subtitle = captionText.Length > 0 ? Caption(captionText) : null;
         if (layout.Stacked)
         {
-            string stamp = kind is null ? when : when.Length > 0 ? kind + " · " + when : kind;
+            // Line 1 already says the kind (captionText leads with it where the lane is folded): line 2 is the date alone.
+            string stamp = when;
             var lines = new List<Element>(2);
             if (subtitle is not null) lines.Add(subtitle);
             if (stamp.Length > 0) lines.Add(Meta(stamp));

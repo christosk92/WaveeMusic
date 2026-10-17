@@ -75,12 +75,23 @@ public sealed partial class ZuneTierLayoutTests
 
         var huge = ZuneSettingsTiers.For(WidthTier.Huge);
         Assert.Equal(150f, huge.TitleSize);              // Z-Settings-Appearance-Huge: the 150 / 160 panorama
-        Assert.Equal(160f, huge.TitleH);
+        Assert.Equal(192f, huge.TitleH);                 // A3: the box holds the 160 line and the descender room (it clipped the g and y)
         Assert.Equal(260f, huge.ListW);
         Assert.Equal(52f, huge.ListItemH);
         Assert.Equal(760f, huge.ColumnW);
         Assert.Equal(220f, huge.LabelW);
         Assert.Equal(36f, huge.SwatchSize);
+
+        // A3: every tier's title box is at least 1.25 x its size (the panorama's descenders stay inside the clipped box).
+        foreach (var tier in AllTiers)
+        {
+            var r = ZuneSettingsTiers.For(tier);
+            float size = r.TitleSize > 0f ? r.TitleSize : r.CompactTitle ? 64f : 120f;
+            Assert.True(r.TitleH >= size * 1.25f, $"{tier}: the title box {r.TitleH} is under {size * 1.25f}");
+        }
+        Assert.Equal(156f, standard.TitleH);
+        Assert.Equal(84f, compact.TitleH);
+        Assert.Equal(16f, ZuneSettingsRules.TitleBodyGap);
 
         // Pages cap at 2400 at 4K (owner 6.2): the 4K record holds Huge's geometry under the frame's 64 gutter.
         var huge4k = ZuneSettingsTiers.For(WidthTier.Huge4K);
@@ -271,6 +282,14 @@ public sealed partial class ZuneTierLayoutTests
         var sections = At("zs:sections");
         if (lay.ListIsStrip) Assert.True(sections.W > 2f * ZuneSettingsRules.ListItemPadRightRow, $"{size}: the section row is {sections.W} wide");
         else Assert.Equal(lay.ListW, sections.W, 0.5f);
+        // A3 / B-Settings: the Compact section row is ONE line (a scrolling pivot row, never three wrapped lines): every word shares the first's top.
+        if (lay.ListIsStrip)
+        {
+            float firstTop = At("zs:link:" + Settings.TabSlugs[0]).Y;
+            foreach (string slug in Settings.TabSlugs)
+                Assert.True(MathF.Abs(At("zs:link:" + slug).Y - firstTop) < 0.5f, $"{size}: the '{slug}' word wrapped onto another line");
+            Assert.True(sections.H <= lay.ListItemH + 0.5f, $"{size}: the section row is {sections.H} tall, over one line ({lay.ListItemH})");
+        }
         foreach (string slug in Settings.TabSlugs)
         {
             var link = At("zs:link:" + slug);

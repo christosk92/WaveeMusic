@@ -97,6 +97,43 @@ public sealed class ZuneListRulesTests
     }
 
     [Fact]
+    public void A_shelf_card_has_no_plate_padding_and_keeps_the_estimators_height()
+    {
+        // A5: the art is the card's whole width at the heading's x, the caption 6 under it, and the slack under the labels makes up the core's
+        // estimate (cover(w - 16) + 24 of chrome) so a hydrating card never re-measures its row.
+        Assert.Equal(6f, ZuneListRules.ShelfCaptionGap);
+        Assert.Equal(2f, ZuneListRules.ShelfSlack(154f, 1f));
+        Assert.Equal(2f, ZuneListRules.ShelfSlack(220f, 1f));
+        Assert.True(ZuneListRules.ShelfSlack(240f, 16f / 9f) > 2f);
+        foreach (float w in new[] { 120f, 154f, 220f, 289f })
+        {
+            float estimate = SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
+            float live = SurfaceGeometry.ShelfGutterTop + w + ZuneListRules.ShelfCaptionGap + SurfaceGeometry.CardTitleLineH
+                         + SurfaceGeometry.CardLabelGap + SurfaceGeometry.CardCaptionLineH + ZuneListRules.ShelfSlack(w, 1f);
+            Assert.Equal(estimate, live, 0.01f);
+        }
+    }
+
+    [Fact]
+    public void A_day_headings_count_aligns_to_the_rows_chevron_glyph()
+    {
+        // B-Recents: the rows end in [when 64][chevron 32][... 32] 8 apart inside an 8 pad, so the chevron glyph (12) ends 8 + 32 + 8 + 10 in; the stacked Compact row
+        // has the 40 chevron lane alone, 8 + 14 in. The heading's rule never collapses below its floor.
+        Assert.Equal(58f, ZuneRecentsRules.CountInset(stacked: false, chevronLane: 32f, moreLane: 32f, gap: 8f));
+        Assert.Equal(22f, ZuneRecentsRules.CountInset(stacked: true, chevronLane: 40f, moreLane: 32f, gap: 8f));
+        Assert.True(ZuneRecentsRules.DayRuleMin > 0f);
+    }
+
+    [Fact]
+    public void The_command_bars_first_glyph_and_the_songs_heading_stand_on_the_lists_x()
+    {
+        // A5: a padded first command pulls back by its own left pad; the page bar's disc by the 2 the core adds to line it up with a card's words.
+        Assert.Equal(-ZuneListRules.CommandPad.Left, ZuneListRules.BarLeadShift(pageLead: false, pageBarInset: 2f));
+        Assert.Equal(-2f, ZuneListRules.BarLeadShift(pageLead: true, pageBarInset: 2f));
+        Assert.Equal(0f, ZuneDetailRules.SongsHeadingInset);
+    }
+
+    [Fact]
     public void The_compact_targets_and_the_unavailable_bar_follow_the_window_tier()
     {
         Assert.Equal(40f, ZuneListRules.CommandEdgeFor(WidthTier.Compact));

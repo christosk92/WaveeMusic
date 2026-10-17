@@ -9,10 +9,10 @@
 // 660 column, the 200 | rest rows, the 150 x 100 theme tiles); ZT8 tuned Compact, Small and Huge against the -Compact, -Small and -Huge boards:
 //
 //   tier       title               section list (word)                  column      rows             picker tiles (gap)                   swatch
-//   Compact    64/72               wrapping row of 40-tall 20/28        fill        control UNDER    2-up fluid, 120 x 88 + a line (16)   40
+//   Compact    64/72 (box 84)      scrolling row of 40-tall 20/28       fill        control UNDER    2-up fluid, 120 x 88 + a line (16)   40
 //   Small      64/72               180 column, 30-tall 18/24            520         140 | rest       4-up fluid, 118 x 68, name (12)      28
-//   Standard   120/130             220 column, 40-tall 20/28            660         200 | rest       150 x 100 + a line (16)              32
-//   Huge       150/160             260 column, 52-tall 24/32 (40 gap)   760         220 | rest       4-up fluid, 176 x 120 + a line (16)  36
+//   Standard   120/130 (box 156)   220 column, 40-tall 20/28            660         200 | rest       150 x 100 + a line (16)              32
+//   Huge       150/160 (box 192)   260 column, 52-tall 24/32 (40 gap)   760         220 | rest       4-up fluid, 176 x 120 + a line (16)  36
 //   Huge 4K    150/160             Huge's                               760         220 | rest       Huge's                               36
 //
 // A short choice is a row of chips at every tier: the engine's segmented control, and at Compact (the board's wrapping 40-tall chips) a wrapping row of buttons that tall.
@@ -160,12 +160,12 @@ public static class ZuneSettingsTiers
             pickerGrows: false, cardW: 150f, thumbH: 100f, pickerGap: 16f, pickerText: true, swatch: 32f),
         // Huge (Z-Settings-Appearance-Huge, Z-Theme-Options-Huge): the 150 / 160 panorama, a 260 list of 52-tall 24/32 words 40 from a 760 column, rows 220 | rest, the picker 4-up
         // (120 tall), the swatches 36.
-        Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleHHuge, titleH: ZuneSettingsRules.TitleHHuge,
+        Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleHHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
             pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
         // Huge 4K: Huge's (pages cap at 2400, owner 6.2; the page holds its 760 column and the frame's 64 gutter).
-        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleHHuge, titleH: ZuneSettingsRules.TitleHHuge,
+        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleHHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
             pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
@@ -218,11 +218,15 @@ public static class ZuneSettingsRules
 
     // ── the page ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The title box's height: the panorama's line (120/130) and its compact step's (64/72).</summary>
-    public const float TitleHPanorama = 130f, TitleHCompact = 72f;
+    /// <summary>The title box's height: the panorama's (120/130) and its compact step's (64/72) lines plus the room their descenders need
+    /// (size x 1.25 and a little: "settings" lost its g and its y in the 130 and 72 boxes, which clip). A 16 gap then parts the box from the body.</summary>
+    public const float TitleHPanorama = 156f, TitleHCompact = 84f, TitleBodyGap = 16f;
 
-    /// <summary>The Huge panorama (Z-Settings-Appearance-Huge: 150 over a 160 line), which the box reserves too.</summary>
-    public const float TitleSizeHuge = 150f, TitleHHuge = 160f;
+    /// <summary>The Huge panorama (Z-Settings-Appearance-Huge: 150 over a 160 line), whose box (192) reserves the descender room too.</summary>
+    public const float TitleSizeHuge = 150f, TitleLineHuge = 160f, TitleHHuge = 192f;
+
+    /// <summary>The compact section row's edge fade (the band's A7 minimum): the row scrolls, its end dissolves where more sections wait.</summary>
+    public const float NavFade = 48f;
 
     /// <summary>The panorama bleeds this far left of the gutter (the board draws it at 40 over a 48 gutter).</summary>
     public const float PanoramaBleed = 8f;

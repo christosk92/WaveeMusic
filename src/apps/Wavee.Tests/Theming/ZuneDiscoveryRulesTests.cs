@@ -133,8 +133,13 @@ public sealed class ZuneDiscoveryRulesTests
             Assert.Equal(gutter, ZuneSearchTiers.For(tier).Gutter);
         }
         // Plan "Zune specifics": Home at 4K is built from the Huge rules (the page caps at 2400, decision 2).
-        Assert.Equal(ZuneHomeTiers.For(WidthTier.Huge) with { Tier = WidthTier.Huge4K, Gutter = 0f },
+        // ... except the cover shelf: 4K holds fixed 220 cards ("min 220") where Huge fits eight across.
+        Assert.Equal(ZuneHomeTiers.For(WidthTier.Huge) with { Tier = WidthTier.Huge4K, Gutter = 0f, ShelfCols = 0, ShelfCardW = 220f },
                      ZuneHomeTiers.For(WidthTier.Huge4K) with { Gutter = 0f });
+        Assert.Equal(220f, ZuneHomeTiers.For(WidthTier.Huge4K).ShelfCardW);
+        Assert.Equal(0, ZuneHomeTiers.For(WidthTier.Huge4K).ShelfCols);
+        Assert.Equal(ZuneHomeRules.ShelfCardW, ZuneHomeTiers.For(WidthTier.Standard).ShelfCardW);
+        Assert.Equal(8, ZuneHomeTiers.For(WidthTier.Huge).ShelfCols);
         // A frame that resolved no tiers reads Standard's.
         Assert.Equal(WidthTier.Standard, ZuneHomeTiers.Of(TierFacts.Unknown).Tier);
     }
@@ -163,6 +168,8 @@ public sealed class ZuneDiscoveryRulesTests
             {
                 Assert.Equal(0f, home.ClockW);
                 Assert.True(home.DaylistArtW + home.RingSize + 2f * home.DaylistPad <= inner, $"{tier}: the daylist row overflows {inner}");
+            // A Compact ring is a 36 disc inside a 40 hit box (the brief's Compact target rule).
+            if (tier == WidthTier.Compact) Assert.True(MathF.Max(home.RingSize, home.RingTarget) >= 40f, $"{tier}: the daylist rings are under a 40 target");
             }
 
             var browse = ZuneBrowseTiers.For(tier);
@@ -188,12 +195,23 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(80f, c.PinTileW);
         Assert.Equal(0, c.QuickFresh);
         Assert.Equal(ZuneDaylistForm.Row, c.DaylistForm);
-        Assert.Equal(112f, c.DaylistH);
+        // Audit B-Home 400x860: four UNLABELLED 36 rings (4 x 36 + 3 x 16 = 192) in 40 hit boxes 12 apart, under a 28/36 title of up to two lines; the
+        // strip is a 168 floor that grows with its copy.
+        Assert.Equal(168f, c.DaylistH);
+        Assert.True(c.DaylistGrows);
         Assert.Equal(112f, c.DaylistArtW);
         Assert.Equal(0f, c.ClockW);
-        Assert.True(c.PlayAtEnd);
-        Assert.Equal(1, c.DaylistRings);
-        Assert.Equal(40f, c.RingSize);
+        Assert.False(c.PlayAtEnd);
+        Assert.Equal(4, c.DaylistRings);
+        Assert.False(c.RingLabels);
+        Assert.Equal(36f, c.RingSize);
+        Assert.Equal(40f, c.RingTarget);
+        Assert.Equal(16f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
+        Assert.Equal(28f, c.DaylistTitleSize);
+        Assert.Equal(36f, c.DaylistTitleLine);
+        Assert.Equal(2, c.DaylistTitleLines);
+        // The rings fit the copy beside the art at 400 (a narrower window wraps them and the strip grows).
+        Assert.True(4f * c.RingTarget + 3f * c.RingsGap <= 400f - 2f * c.Gutter - c.DaylistArtW - 2f * c.DaylistPad);
         Assert.False(c.PairBeside);
         Assert.False(c.ChartsBeside);
         Assert.Equal(2, c.ShelfCols);
@@ -264,7 +282,7 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(8, b.LinkCols);
         Assert.Equal(260f, b.BannerH);
         var q = ZuneSearchTiers.For(WidthTier.Huge);
-        Assert.Equal(480f, q.TopW);
+        Assert.Equal(560f, q.TopW);                      // wide enough for the 64/72 name (it truncated in 480)
         Assert.Equal(240f, q.HeroArt);
         Assert.True(q.HeroStacked);
         Assert.Equal(3, q.BestCols);
@@ -280,6 +298,8 @@ public sealed class ZuneDiscoveryRulesTests
         var short330 = ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 330f, 800f));
         Assert.Equal(ZuneDaylistForm.OneRow, short330.DaylistForm);
         Assert.Equal(56f, short330.DaylistH);
+        Assert.False(short330.DaylistGrows);
+        Assert.Equal(0f, short330.DaylistTitleSize);
         Assert.Equal(56f, short330.DaylistArtW);
         Assert.Equal(0f, short330.ClockW);
         Assert.True(short330.PlayAtEnd);

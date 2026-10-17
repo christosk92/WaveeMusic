@@ -102,7 +102,7 @@ internal static partial class ZuneSettings
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = new Edges4(lay.Gutter, 0f, lay.Gutter, 0f), AlignItems = FlexAlign.Stretch,
+            Padding = new Edges4(lay.Gutter, Z.TitleBodyGap, lay.Gutter, 0f), AlignItems = FlexAlign.Stretch,
             Children = [Sections(k, props, tab), lane],
         };
 
@@ -171,10 +171,21 @@ internal static partial class ZuneSettings
                 ],
             }.Interactive(Interaction.Subtle);
         }
+        // ONE scroller at every tier (the node never remounts on a crossing): the words are one line in a horizontal scroller whose end dissolves where more sections
+        // wait (Compact: seven words never wrap into three lines); beside the lane the column of words fits it and nothing scrolls, so nothing fades.
+        Element words = new BoxEl { Direction = (byte)(lay.ListIsStrip ? 0 : 1), Gap = lay.ListGap, MinWidth = lay.ListIsStrip ? 0f : lay.ListW, AlignItems = FlexAlign.Stretch, Children = items };
         return new BoxEl
         {
-            Key = SectionsKey, Direction = (byte)(lay.ListIsStrip ? 0 : 1), Wrap = lay.ListIsStrip, Gap = lay.ListGap,
-            Width = lay.ListIsStrip ? float.NaN : lay.ListW, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Animate = ZuneMotion.ColumnCollapse, Children = items,
+            Key = SectionsKey, Direction = 1, Width = lay.ListIsStrip ? float.NaN : lay.ListW, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            AlignItems = FlexAlign.Stretch, Animate = ZuneMotion.ColumnCollapse,
+            Children =
+            [
+                ScrollView(words, horizontal: true) with
+                {
+                    Key = "zs:sections:scroll", Grow = 0f, ContentSized = true, MinWidth = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = Z.NavFade,
+                    SuppressScrollBar = true, ScrollKey = "zs:sections",
+                },
+            ],
         };
     }
 }

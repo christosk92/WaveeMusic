@@ -12,6 +12,19 @@ namespace Wavee.Tests.Theming;
 
 public sealed class ZuneLibraryRulesTests
 {
+    [Fact]
+    public void The_pane_word_drops_at_small_and_the_navigator_is_capped_at_huge()
+    {
+        // B-Library: Small's 300 pane shrank "open album" to "o..."; the verb stays in the "..." menu there.
+        Assert.False(ZuneLibraryTiers.For(WidthTier.Small, single: false).OpenWord);
+        Assert.True(ZuneLibraryTiers.For(WidthTier.Standard, single: false).OpenWord);
+        Assert.True(ZuneLibraryTiers.For(WidthTier.Compact, single: true).OpenWord);
+        // ... and a 2400 page is never one 1960-wide list of tiny rows.
+        Assert.Equal(960f, ZuneLibraryTiers.For(WidthTier.Huge, single: false).NavMaxW);
+        Assert.Equal(960f, ZuneLibraryTiers.For(WidthTier.Huge4K, single: false).NavMaxW);
+        Assert.True(float.IsNaN(ZuneLibraryTiers.For(WidthTier.Standard, single: false).NavMaxW));
+    }
+
     static int Fresh(float width) => ZuneLibraryTiers.Layout.Resolve(width, -1);
 
     static int From(int previous, float width) => ZuneLibraryTiers.Layout.Resolve(width, previous);

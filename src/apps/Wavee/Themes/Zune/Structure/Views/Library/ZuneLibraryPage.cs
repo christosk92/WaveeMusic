@@ -149,7 +149,7 @@ internal static partial class ZuneLibraryPage
         {
             Key = LR.NavKey, Direction = 1,
             Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : 1f, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
-            MinWidth = artists ? l.ReaderNavW : l.NavMinW, Animate = Design.Reveal.Resize,
+            MinWidth = artists ? l.ReaderNavW : l.NavMinW, MaxWidth = artists ? float.NaN : l.NavMaxW, Animate = Design.Reveal.Resize,
             Children = [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
         };
     }
