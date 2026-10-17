@@ -61,8 +61,8 @@ public sealed partial class ZuneTierLayoutTests
 
     static NodeHandle StageRoot(Shell.HeadlessShell shell) => shell.Host.Scene.Parent(Node(shell, "stage:backdrop"));
 
-    /// <summary>The head: the first child of the chrome's top layer (content-tall: the record's head).</summary>
-    static RectF Head(Shell.HeadlessShell shell) => shell.Host.Scene.PresentedAbsoluteRect(shell.Host.Scene.FirstChild(Node(shell, "chrome:top")));
+    /// <summary>The head: the placed bar (`zune-stage-head`, the record's head tall).</summary>
+    static RectF Head(Shell.HeadlessShell shell) => shell.Host.Scene.PresentedAbsoluteRect(Node(shell, "zune-stage-head"));
 
     /// <summary>The allocator's plate height for the tiers in force (the stage's own metrics, as the core resolves them).</summary>
     static float PlateFor(float w, float h, in TierFacts tiers)
