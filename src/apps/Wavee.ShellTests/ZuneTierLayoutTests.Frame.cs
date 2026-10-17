@@ -90,9 +90,10 @@ public sealed partial class ZuneTierLayoutTests
             shell.RunFrames(40);
             Assert.Equal(Foot(), PanelTop(), 0.5f);
 
-            // A page without row 2: the band is row 1 alone (52), and the panel rises with it, never leaving a gap or hiding under the band.
-            Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));
-            Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on Recents");
+            // A page without row 2 (History: Home and Recents publish row 2 since rounds D and E): the band is row 1 alone (52), and the panel
+            // rises with it, never leaving a gap or hiding under the band.
+            Shell.GoTo(new Shell.Route(Shell.RouteKind.History));
+            Until(shell, () => shell.Find(ZuneBandRules.Row2Key).IsNull, "no row 2 on History");
             shell.RunFrames(40);
             var band = ZuneBandRules.BandOf(ThemeHost.Facts.Peek().Tiers);
             Assert.Equal(band.CollapsedH, scene.AbsoluteRect(Node(shell, ZuneBandRules.BandKey)).H, 0.5f);
