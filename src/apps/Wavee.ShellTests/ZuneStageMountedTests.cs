@@ -105,7 +105,10 @@ public sealed class ZuneStageMountedTests(ShellHost host)
                 Assert.Equal(ZuneStageTiers.Stage(WidthTier.Standard).Disc, disc.W, 0.5f);
                 Assert.Equal(disc.W, disc.H, 0.5f);
 
-                var top = Rect(shell, "chrome:top");
+                // "chrome:top" is the full-bleed layer carrying the bar's Enter/Exit (it spans the whole stage); the bar is its first child
+                var top = shell.Host.Scene.PresentedAbsoluteRect(shell.Host.Scene.FirstChild(Node(shell, "chrome:top")));
+                Assert.Equal(Stage.Layout.TopBarH, top.H, 0.5f);
+                Assert.Equal(0f, top.Y, 0.5f);
                 Assert.True(top.Y + top.H <= plate.Y, "the top bar and the plate never overlap");
             }
             finally { CloseStage(shell); }
