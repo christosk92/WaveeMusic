@@ -92,6 +92,7 @@ public sealed partial class ZuneCollectionMountedTests(ShellHost host)
                 Assert.True(shell.Find("lib:toolbar").IsNull, "Classic's library toolbar is not drawn under Zune");
 
                 // The page stands inside the content column, and the head and the navigator inside the page.
+                shell.RunFrames(60);   // the page's entrance slide (Shell.PageTransition) settles before the page's rect is read
                 var scene = shell.Host.Scene;
                 var page = scene.AbsoluteRect(Node(shell, ZuneLibraryRules.PageKey));
                 var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));
@@ -133,6 +134,7 @@ public sealed partial class ZuneCollectionMountedTests(ShellHost host)
                 GoLibrary(shell, Shell.RouteKind.LibraryAlbums);
                 UntilBackground(shell, () => !shell.Find(ZuneLibraryRules.CollapsedKey).IsNull, "the collapsed drill-in at 600 wide");
                 Assert.True(shell.Find(ZuneLibraryRules.WideKey).IsNull, "the wide arm is gone");
+                shell.RunFrames(60);   // the page's entrance slide (Shell.PageTransition) settles before the page's rect is read
                 var scene = shell.Host.Scene;
                 var page = scene.AbsoluteRect(Node(shell, ZuneLibraryRules.PageKey));
                 var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));

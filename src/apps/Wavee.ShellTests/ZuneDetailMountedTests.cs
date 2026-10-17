@@ -113,6 +113,7 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
             UntilBackground(shell, () => shell.FindPrefix(RowDropKey).Count > 0 && !shell.Find(ListHeaderKey).IsNull, "Zune's track table on al2");
 
             // The page stays inside the content card: no horizontal overflow of the frame.
+            shell.RunFrames(60);   // the page's entrance slide (Shell.PageTransition) settles before the page's rect is read
             var scene = shell.Host.Scene;
             var frame = scene.AbsoluteRect(Node(shell, ZuneDetailRules.FrameKey));
             var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));

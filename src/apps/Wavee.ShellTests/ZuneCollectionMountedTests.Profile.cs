@@ -40,6 +40,7 @@ public sealed partial class ZuneCollectionMountedTests
     /// <summary>The page fits the content column: no horizontal overflow.</summary>
     static void ProfileAssertInside(Shell.HeadlessShell shell, string key)
     {
+        shell.RunFrames(60);   // the page's entrance slide (Shell.PageTransition) settles before the page's rect is read
         var scene = shell.Host.Scene;
         var page = scene.AbsoluteRect(Node(shell, key));
         var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));

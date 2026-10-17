@@ -71,6 +71,7 @@ public sealed partial class ZuneCollectionMountedTests
                 Assert.True(shell.Find("recents:column").IsNull, "Classic's recents column is not drawn under Zune");
 
                 // The page stands on the frame's gutter, inside the window: no horizontal overflow.
+                shell.RunFrames(60);   // the page's entrance slide (Shell.PageTransition) settles before the page's rect is read
                 var scene = shell.Host.Scene;
                 var page = scene.AbsoluteRect(Node(shell, ZuneRecentsRules.PageKey));
                 var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));
