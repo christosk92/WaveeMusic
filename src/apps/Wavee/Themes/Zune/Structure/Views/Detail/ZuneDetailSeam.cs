@@ -13,7 +13,8 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using K = Wavee.Themes.Zune.ZuneDetailKit;
-using Z = Wavee.Themes.Zune.ZuneDetailRules;
+using Z = Wavee.Themes.Zune.ZuneDetailRules;
+using FluentGpu.Theming;
 
 namespace Wavee.Themes.Zune;
 
