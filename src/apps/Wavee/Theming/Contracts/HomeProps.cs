@@ -161,6 +161,28 @@ public sealed record HomeRecentsProps
 /// <summary>The props of <see cref="ViewKeys.HomeCharts"/>: where the Top 50 and Viral 50 tiles go.</summary>
 public sealed record HomeChartsProps(ChartTilesModel Model);
 
+/// <summary>The props of <see cref="ViewKeys.HomeQuickplay"/> (contract 1.28): what the quickplay strip shows. The host (`QuickplayHost`)
+/// hands the pins as the band's own tracked read (the user's order, capped by the structure's <c>MaxBandPins</c>), mounts the Recents zone's
+/// body through its core host (so the history reads Recents exactly as the Recently-played grid does, through
+/// <see cref="ViewKeys.HomeZoneRecentGrid"/>) and passes the release-list zone as it is.</summary>
+public sealed record HomeQuickplayProps
+{
+    /// <summary>The user's pins, in order (read tracked: a pin, an unpin or a move re-renders the strip).</summary>
+    public required Func<IReadOnlyList<BandPin>> Pins { get; init; }
+
+    /// <summary>Opens where the pins are edited; null where the structure offers no such place (the "edit" word is then not drawn).</summary>
+    public Action? EditPins { get; init; }
+
+    /// <summary>The history group: the Recents zone's body slot through its core host, or null when the facet has no Recents zone.</summary>
+    public Element? History { get; init; }
+
+    /// <summary>The "new" group's zone (the release list: "From artists you follow"), or null when the facet has none.</summary>
+    public Zone? Fresh { get; init; }
+
+    /// <summary>The overlay service the cards' menus open on.</summary>
+    public IOverlayService? Overlay { get; init; }
+}
+
 /// <summary>The props of <see cref="ViewKeys.HomeSection"/>. The host owns the demand, the table sync and the card source.</summary>
 public sealed record HomeSectionProps
 {

@@ -42,11 +42,20 @@
 // The page's own state as `SearchPageProps`, and the BODY as a `SearchBodyModel` the host builds each time the skeleton
 // region asks for its content (`Body`): the hits as `HitItem`s over the live handles, the fallback interleave, the rail,
 // the genre tiles and the related queries. The view draws them; nothing here builds an element.
+//
+// ── ROW 2 (P5 Z5, contract 1.26) ─────────────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the facet strip as its band's row 2, so the host also publishes it through the page's
+// `PageChromeSink`: one `PageView` per tab, the selected one current, `Go` the tab's own cached selector, `Count` the count the tab
+// wears (none for All and for 0). While the strip is skeletal the row is the lone All tab, so the band keeps its two rows from the
+// page's first frame; a vacant query withdraws it. The row is rebuilt (and published, from an effect) only when a tab, a count or the
+// selection changed. Classic draws its own strip and reads none of it.
 
 using System.Globalization;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
@@ -107,8 +116,16 @@ public readonly partial struct Search
         readonly Func<SearchBodyModel> _body;
         readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists, _selectArtists;
 
+        // ── row 2 (P5 Z5): the row last built, its signature, and the version the publishing effect is keyed on ──
+        readonly Action _publishChrome;
+        PageChromeSink _sink = PageChromeSink.None;
+        PageChromeRow? _chromeRow;
+        long _chromeSig = long.MinValue;
+        int _chromeVersion;
+
         public PageHost()
         {
+            _publishChrome = () => _sink.Publish(_chromeRow);
             for (int i = 0; i < _selectors.Length; i++)
             {
                 int index = i;
@@ -138,6 +155,7 @@ public readonly partial struct Search
             _ = _recheck.Value;
             var overlay = UseContext(Overlay.Service);
             string scrollScope = UseContext(Shell.PageScrollScope);
+            _sink = UseContext(PageChromeSink.Context);
 
             if (!ReferenceEquals(_scope, scope) || !string.Equals(_query, p.Query, StringComparison.Ordinal))
             {
@@ -175,20 +193,61 @@ public readonly partial struct Search
             _slideArmed = true;
 
             string scrollKey = scrollScope + "search:" + ((int)_facet).ToString(CultureInfo.InvariantCulture);
-            if (!_all.IsValid)
+            bool vacant = !_all.IsValid;
+            bool skeletal = true;
+            SearchTab[] tabs = Array.Empty<SearchTab>();
+            int selected = 0;
+            if (!vacant)
+            {
+                var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
+                // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
+                // answered once for this query (Search.ChipRowSkeletal). The view keys both rows so the swap is a mount, not an
+                // in-place patch.
+                _bodyAnswered |= BodyReadiness() != Readiness.Pending;
+                skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
+                tabs = skeletal ? Array.Empty<SearchTab>() : TabsOf(_all, _facets.AsSpan(0, _facetCount));
+                selected = Math.Min(chip, _facetCount - 1);
+            }
+
+            // Row 2 (P5 Z5): rebuilt when a tab, a count or the selection changed; published from the effect keyed on its version.
+            UpdateChrome(vacant, tabs, selected);
+            UseEffect(_publishChrome, DepKey.From(_chromeVersion));
+
+            if (vacant)
                 return Slots.View(ViewKeys.SearchPage, PropsOf(vacant: true, echo: "", chipsSkeletal: true, tabs: Array.Empty<SearchTab>(),
                                                               selected: 0, SearchSlide.None, scrollKey));
 
-            var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
-            // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
-            // answered once for this query (Search.ChipRowSkeletal). The view keys both rows so the swap is a mount, not an
-            // in-place patch.
-            _bodyAnswered |= BodyReadiness() != Readiness.Pending;
-            bool skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
-            SearchTab[] tabs = skeletal ? Array.Empty<SearchTab>() : TabsOf(_all, _facets.AsSpan(0, _facetCount));
-
-            return Slots.View(ViewKeys.SearchPage, PropsOf(vacant: false, _echo, skeletal, tabs, Math.Min(chip, _facetCount - 1),
+            return Slots.View(ViewKeys.SearchPage, PropsOf(vacant: false, _echo, skeletal, tabs, selected,
                                                           slide ? (forward ? SearchSlide.Forward : SearchSlide.Back) : SearchSlide.None, scrollKey));
+        }
+
+        /// <summary>The row-2 views' id of a facet (a node key, never the label).</summary>
+        public static string ChromeIdOf(SearchFacet facet) => facet.ToString().ToLowerInvariant();
+
+        /// <summary>Rebuild row 2 when what it shows changed: the lone All tab while the strip is skeletal, one view per tab otherwise (its count
+        /// beside it when it wears one), none for a vacant query.</summary>
+        void UpdateChrome(bool vacant, SearchTab[] tabs, int selected)
+        {
+            long sig = vacant ? -1L : 17L + selected;
+            for (int i = 0; i < tabs.Length; i++) sig = sig * 31L + ((long)tabs[i].Facet << 32) + tabs[i].Count;
+            if (sig == _chromeSig && (_chromeRow is not null || vacant)) return;
+            _chromeSig = sig;
+            _chromeVersion++;
+            if (vacant) { _chromeRow = null; return; }
+            PageView[] views;
+            if (tabs.Length == 0)
+                views = [new PageView(ChromeIdOf(SearchFacet.All), Loc.Get(FacetNameKey(SearchFacet.All)), Current: true, _selectors[0])];
+            else
+            {
+                views = new PageView[tabs.Length];
+                for (int i = 0; i < views.Length; i++)
+                {
+                    var tab = tabs[i];
+                    views[i] = new PageView(ChromeIdOf(tab.Facet), Loc.Get(FacetNameKey(tab.Facet)), Current: i == selected, _selectors[i],
+                                            tab.Count > 0 ? tab.Count : null);
+                }
+            }
+            _chromeRow = new PageChromeRow(views, []);
         }
 
         SearchPageProps PropsOf(bool vacant, string echo, bool chipsSkeletal, IReadOnlyList<SearchTab> tabs, int selected, SearchSlide slide, string scrollKey)

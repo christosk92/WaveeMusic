@@ -36,6 +36,11 @@ public static partial class ViewKeys
     /// <summary>The Browse tiles' Charts block (Charts, Top 50, Viral 50). Mounted by `ChartsBlockView`. Props: <see cref="HomeChartsProps"/>.</summary>
     public static readonly ViewKey<HomeChartsProps> HomeCharts = new("Home.Charts");
 
+    /// <summary>The quickplay strip at the head of Home (contract 1.28, P5 Z5): the user's pins, the listening history and what is new from
+    /// the artists they follow, side by side. Mounted by `QuickplayHost` where a structure places it (Zune's Home on the All facet); a
+    /// structure with no quickplay registers Nothing for it (Classic). Props: <see cref="HomeQuickplayProps"/>.</summary>
+    public static readonly ViewKey<HomeQuickplayProps> HomeQuickplay = new("Home.Quickplay");
+
     /// <summary>A cover shelf's body. Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneCoverShelf = new("Home.Zone.CoverShelf");
     /// <summary>A wide-tile shelf's body. Props: <see cref="HomeZoneProps"/>.</summary>

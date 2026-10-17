@@ -17,12 +17,23 @@
 //
 // ONE DOOR FOR THE DAYLIST CLOCK. The clock MODE (Settings > Appearance > Daylist clock) is a typed appearance pref;
 // `DaylistClock()` is the single read the daylist card's clock makes, so the card never reaches for the store.
+//
+// ROW 2 (P5 Z5, contract 1.26). A band-style structure (Zune) draws the facet words as its band's row 2 instead of the page's facet row,
+// so the host publishes them through the page-chrome channel: one `PageView` per word ("all" first), the target's word lit, Go running
+// the same select path a facet-row click does (the word's Following memory included); an action that toggles the lit word's Following
+// sub-chip when it has one; and the covers the shown facet leads with as the page's mix backdrop. It publishes from the selector-sync
+// effect (`SyncFacetIndex`, which already re-runs on the words and the switch), under the route on screen when that is this tab's Home,
+// else under the target's own route: Home's facet changes the route's ARGUMENT inside one mounted page, and the channel keys a
+// publication by the argument, so the sink the content host built at mount names the first facet's place, not the current one. The
+// row is rebuilt only when what it shows changed (an equal row is the same instance: the channel ignores it). Before the first model
+// lands the row is "all" alone, so the band holds its two rows from the first frame Home publishes. Classic draws no row 2 and reads none of it.
 
 using System.Diagnostics.CodeAnalysis;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.HomeUi;
 
@@ -41,6 +52,28 @@ public sealed class HomeHost
     readonly Dictionary<string, ZoneKind[]> _lastShape = new(StringComparer.Ordinal);     // per-facet shimmer shape
     readonly ScrollHandle _scroll;
     FacetRowProps? _rowProps;                             // built once: its delegates read Tab, never a render-time capture
+
+    // ── row 2 (P5 Z5): the last row published and what it was built from ──
+    readonly Dictionary<string, Action> _go = new(StringComparer.Ordinal);                 // one stable Go per word id
+    readonly Dictionary<string, IReadOnlyList<string>> _mix = new(StringComparer.Ordinal);  // per facet: the covers it leads with
+    PageChromeRow? _chromeRow;
+    FacetWord[] _chromeWords = [];
+    int _chromeLit = -1;
+    bool _chromeFollowing;
+    IReadOnlyList<string>? _chromeMix;
+    Action? _toggleFollowing;
+
+    /// <summary>The row-2 views' id of the synthetic "All" word (a node key, never the label).</summary>
+    public const string AllViewId = "all";
+
+    /// <summary>The id of the row-2 action that toggles the lit word's Following sub-chip.</summary>
+    public const string FollowingActionId = "following";
+
+    /// <summary>How many covers the shown facet hands the page's mix backdrop.</summary>
+    public const int MixCovers = 6;
+
+    /// <summary>The row 2 this host last published (null before the selector-sync effect first ran).</summary>
+    public PageChromeRow? ChromeRow => _chromeRow;
 
     /// <param name="scroll">The page's scroll handle: the landing edge reads its offset (a Refreshing swap only lands at the top).</param>
     public HomeHost(ScrollHandle scroll) => _scroll = scroll;
@@ -91,14 +124,109 @@ public sealed class HomeHost
         var kinds = new ZoneKind[m.Zones.Count];
         for (int i = 0; i < kinds.Length; i++) kinds[i] = m.Zones[i].Kind;
         _lastShape[m.Facet] = kinds;
+        _mix[m.Facet] = MixOf(m, _mix.TryGetValue(m.Facet, out var before) ? before : null);
     }
 
     /// <summary>The SelectorBar index follows the switch machine; it reads its own signal too, so a click the machine refused
-    /// (Unavailable / no-op) snaps the selection back on the next turn.</summary>
+    /// (Unavailable / no-op) snaps the selection back on the next turn. The same run publishes row 2 (P5 Z5, see the header).</summary>
     public void SyncFacetIndex()
     {
-        var (idx, _) = FacetPivot.Resolve(Words.Value, Switch.Value.Target);
+        var words = Words.Value;
+        var state = Switch.Value;
+        var (idx, _) = FacetPivot.Resolve(words, state.Target);
         if (FacetIndex.Value != idx) FacetIndex.Value = idx;
+        PublishChrome(words, state);
+    }
+
+    // ══ ROW 2 (P5 Z5) ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Publish the facet words as row 2 (see the header): rebuilt only when the words, the lit word, its Following state or the
+    /// shown facet's covers changed.</summary>
+    void PublishChrome(FacetWord[] words, FacetSwitchState state)
+    {
+        if (words.Length == 0) words = FacetPivot.Words(null, Loc.Get(Strings.Home.FacetAll));
+        var (lit, followingOn) = FacetPivot.Resolve(words, state.Target);
+        var mix = _mix.TryGetValue(state.Published, out var covers) ? covers : null;
+        if (_chromeRow is null || lit != _chromeLit || followingOn != _chromeFollowing || !ReferenceEquals(mix, _chromeMix)
+            || !SameWords(words, _chromeWords))
+        {
+            _chromeRow = ChromeRowOf(words, lit, followingOn, mix);
+            _chromeWords = words;
+            _chromeLit = lit;
+            _chromeFollowing = followingOn;
+            _chromeMix = mix;
+        }
+        var route = Shell.Current.Peek();
+        if (route.Kind != Shell.RouteKind.Home || route.Tab != Tab)
+            route = new Shell.Route(Shell.RouteKind.Home, Arg: Entities.Strings.Intern(FacetRoute.ArgOf(state.Target)), Tab: Tab);
+        Shell.PageChromeChannel.SinkFor(route).Publish(_chromeRow);
+    }
+
+    /// <summary>The row: a view per word (the lit one current), the Following toggle when the lit word has a sub-chip, the mix backdrop.</summary>
+    PageChromeRow ChromeRowOf(FacetWord[] words, int lit, bool followingOn, IReadOnlyList<string>? mix)
+    {
+        var views = new PageView[words.Length];
+        for (int i = 0; i < views.Length; i++)
+            views[i] = new PageView(words[i].Id.Length == 0 ? AllViewId : words[i].Id, words[i].Label, i == lit, GoOf(words[i].Id));
+        IReadOnlyList<PageAction> actions = (uint)lit < (uint)words.Length && words[lit] is { HasSub: true, SubId: not null }
+            // Off: the word for the sub-chip ("Following"); on: "All", the way back to the whole word.
+            ? [new PageAction(FollowingActionId, Loc.Get(followingOn ? Strings.Home.FacetAll : Strings.Home.Following),
+                              _toggleFollowing ??= ToggleFollowing)]
+            : [];
+        return new PageChromeRow(views, actions, mix is { Count: > 0 } ? new PageBackdrop(Bleed: null, mix) : null);
+    }
+
+    /// <summary>The word's one Go (cached per id, so an equal row holds equal verbs): the select path a facet-row click takes, carrying the
+    /// sub-chip when Following was last on for that word.</summary>
+    Action GoOf(string id)
+    {
+        if (!_go.TryGetValue(id, out var go))
+            _go[id] = go = () =>
+            {
+                foreach (var w in Words.Peek())
+                    if (w.Id == id) { Select(FacetPivot.Target(w, _followingMemory.TryGetValue(id, out bool on) && on), Tab); return; }
+                Select(id, Tab);   // "All" before the words landed, or a word the chips dropped: its own id
+            };
+        return go;
+    }
+
+    /// <summary>The Following action: the lit word's sub-chip on or off (the facet row's toggle).</summary>
+    void ToggleFollowing()
+    {
+        var words = Words.Peek();
+        var (lit, on) = FacetPivot.Resolve(words, Switch.Peek().Target);
+        if ((uint)lit < (uint)words.Length && words[lit].HasSub) Select(FacetPivot.Target(words[lit], !on), Tab);
+    }
+
+    static bool SameWords(FacetWord[] a, FacetWord[] b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (!a[i].Equals(b[i])) return false;
+        return true;
+    }
+
+    /// <summary>The first <see cref="MixCovers"/> covers of <paramref name="m"/>, zone by zone; <paramref name="before"/> again when they did not
+    /// change (so an equal row stays the same instance).</summary>
+    static IReadOnlyList<string> MixOf(ScreenModel m, IReadOnlyList<string>? before)
+    {
+        var covers = new List<string>(MixCovers);
+        foreach (var zone in m.Zones)
+        {
+            foreach (var card in zone.Items)
+            {
+                if (card.ImageUrl is { Length: > 0 } url && !covers.Contains(url)) covers.Add(url);
+                if (covers.Count == MixCovers) break;
+            }
+            if (covers.Count == MixCovers) break;
+        }
+        if (before is not null && before.Count == covers.Count)
+        {
+            bool same = true;
+            for (int i = 0; i < covers.Count && same; i++) same = string.Equals(before[i], covers[i], StringComparison.Ordinal);
+            if (same) return before;
+        }
+        return covers;
     }
 
     /// <summary>The landing edge: Loading/Refreshing -> Idle once the target's document is known (F13: no timer). A flight that

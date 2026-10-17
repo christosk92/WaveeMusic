@@ -231,7 +231,36 @@ _Not built yet._
 
 ## Z5: discovery
 
-_Not built yet._
+`Structure\ZuneStructure.Discovery.cs` registers Home, Browse and Search; each wins over Classic's stand-in key by key. The pictures are
+`Structure\Views\{Home,Browse,Search}\Zune*.cs` (the shared words and parts in `Views\Home\ZuneDiscoveryKit.cs`), every number
+`Rules\Zune{Home,Browse,Search}Rules.cs` (one record per CONTENT tier: `ZuneHomeTiers`, `ZuneBrowseTiers`, `ZuneSearchTiers`; ZT4 tunes the
+non-Standard rows). No discovery page draws a title or a facet row: the band is the head, and the page's views are its row 2.
+
+| Key | Zune's picture (boards) |
+|---|---|
+| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the quickplay strip leads; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
+| `Home.Quickplay` (new, contract 1.28) | pins (132 art, the band's own pins, the name in the accent while it plays) · history (`Home.Zone.RecentGrid`, through its core host) · new (the release list's first covers, its "see all"), 32 apart, wrapping. Mounted by the core host `QuickplayHost` (`Home\Quickplay.Host.cs`); Classic registers Nothing. |
+| `Home.Zone.RecentGrid` | The history group: the tier's 100 tiles, the playing one in the accent with "playing" as its line, "listening history" to Recents. |
+| `Home.Zone.<Kind>` (14) | A body draws its own heading row (26/32 light, subtitle, "see all"): shelves of 154 covers (`PagedShelf`, chevrons in the heading), the wide tiles the tier's columns of 16:9, the release list's 64 rows, the clusters' 28-title columns of 48 rows, the Browse tiles as flat 88 plates 2 : 1 beside the charts, the shared episode rows, the empty facet's vacancy. |
+| `Home.Charts` | A numbered list: 40 rows, the 22 light rank, the chart's caption. |
+| `Home.Daylist`, `Home.DaylistClock` | A 176 strip: the art 320, the copy (eyebrow, the 40/48 name, meta, the accent play disc and the outlined shuffle / save / "…" rings with their words), the clock column 260 (the bound count, five 40 bars with the current daypart 20 tall in the accent, the dayparts line). Stacked (art over copy over clock) at Compact and Small: the same three nodes. |
+| `Pages.HomeSection`, `Pages.BrowseSection` | Undrawn: the "N items" line over the bound grid (154 cells, 16 apart) on the gutter. |
+| `Pages.Browse`, `Browse.Charts` | Z-Browse: top (120 plates; undrawn, the board's row 2 held them), charts (the chart categories as two 120 plates) beside For you (a three-column list with the category's colour square), genres (a six-column list), mood & activity (six-across 96 plates), more (a list). The groups arrive filtered to the band's view (ZC1). `Browse.Charts` is the deck as a numbered list (registered; Zune's directory draws its chart categories as plates instead of mounting the deck). |
+| `Pages.BrowseCategory` | Z-Browse-Category: the accent banner (200) with the name as a panorama and its kind, then shelves of 154 covers and six-across tile plates; the flattened modes keep the banner over a grid that owns its scroll. |
+| `Pages.Search` | Z-Search: the facet body alone. All: top result (heading + kind, the tier's art beside the 40/48 name, its line, the matched words in the accent, the play ring and the hit's own control) beside best matches (two columns of 56 rows), the playlist shelf, genres and related searches as inline words. The other facets: the songs in columns, the Albums / Playlists virtual grid, the hit rows. |
+
+**Nothing:** `Home.FacetRow`. **Common:** `Pages.HomeCustomize`.
+
+**Row 2.** Home: the core host (`HomeHost.SyncFacetIndex`) publishes the facet words as `PageView`s ("all" first, the target's word lit, Go the
+facet row's select path with its Following memory), a "following" / "all" action where the lit word has a Following sub-chip, and the shown
+facet's first six covers as the page's mix backdrop; "all" alone before the words land, so the band keeps its two rows. It publishes under the
+route on screen (Home's facet changes the route's argument inside one mounted page, and the channel keys a publication by it). Search: the core
+host (`Search.PageHost`) publishes the facet strip with each facet's count (none for All and for 0); the lone All while the strip is skeletal;
+a vacant query withdraws it. Browse's row 2 is route level (ZC1).
+
+**Tests.** `Wavee.Tests\Theming\ZuneDiscoveryRulesTests.cs` (the plan, the records against the boards, every tier fitting its narrowest
+window, Huge 4K = Huge, the core row 2); `Wavee.ShellTests\ZuneDiscoveryMountedTests.cs` (mounted at 1440 x 960: the registry, Home's page and
+quickplay with pins, row 2's facets lit and switching, Browse filtering on a band switch, Search's row 2 with counts).
 
 ## Z6a1: the detail frame and the album
 
