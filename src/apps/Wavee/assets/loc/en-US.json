@@ -2748,6 +2748,20 @@
           "maxDockedPanes": "Docked panes"
         }
       },
+      "style": {
+        "group": { "colour": "colour" },
+        "accent": "accent",
+        "accentSub": "play, the playing row, selection",
+        "useWindowsAccent": "use the windows accent",
+        "useWindowsAccentSub": "follow the accent colour windows uses",
+        "density": "row size",
+        "densitySub": "every song list",
+        "densityCompact": "compact 44",
+        "densityStandard": "standard 52",
+        "densityComfortable": "comfortable 60",
+        "bigNumerals": "big light numbers",
+        "bigNumeralsSub": "albums, artists, the queue"
+      },
       "frame": {},
       "band": {},
       "lists": {},

@@ -1166,7 +1166,7 @@ public static partial class Spotify
             if (made.Choice.Ok)
             {
                 RememberChoice(in made);
-                NoteFileChosen(uri, quality, in made.Choice);
+                NoteFileChosen(uri, quality, made.Choice);
             }
             return made;
         }

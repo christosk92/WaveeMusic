@@ -127,7 +127,7 @@ public sealed class ZuneCatalogTests : IDisposable
     public void The_option_defaults_are_the_plans()
     {
         Assert.Equal(new ZuneParameters(ZuneBackground.ArtworkWash, PanoramaFit.Bleed, BandPins: true, CollapseBand: true,
-            PivotOverflow.EdgeFadeScroll, SeekTimes.InFace, PanelPlacement.InlineWhenRoom, MaxDockedPanes: 3), ZuneParameters.Default);
+            PivotOverflow.EdgeFadeScroll, SeekTimes.InFace, ZunePanelMode.InlineWhenRoom, MaxDockedPanes: 3), ZuneParameters.Default);
         Assert.Equal(ApplyMode.Live, ZuneStructure.Background.Apply);
         Assert.Equal(ApplyMode.Transaction, ZuneStructure.PanoramaFitOption.Apply);
         Assert.Equal(ApplyMode.Live, ZuneStructure.BandPins.Apply);
@@ -181,7 +181,7 @@ public sealed class ZuneCatalogTests : IDisposable
                     break;
                 case SelectOption<PivotOverflow> o: AssertEnumValues(o.Id, values, o.Default); break;
                 case SelectOption<SeekTimes> o: AssertEnumValues(o.Id, values, o.Default); break;
-                case SelectOption<PanelPlacement> o: AssertEnumValues(o.Id, values, o.Default); break;
+                case SelectOption<ZunePanelMode> o: AssertEnumValues(o.Id, values, o.Default); break;
                 default: Assert.Fail(option.Id + " is a " + option.GetType().Name + " the test does not know"); break;
             }
         }

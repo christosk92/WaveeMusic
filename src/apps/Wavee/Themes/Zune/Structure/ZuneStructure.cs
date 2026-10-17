@@ -16,13 +16,10 @@
 //
 // THE STAND-IN (until every key is Zune's, P5 Z9). A key no theme registers renders nothing (the engine's slot host) and a missing style
 // key throws (`ViewContext.StyleOf`), so a half-built Zune would be a blank, broken window. The composition (`ZuneTheme.Create`) therefore
-// hands the structure a STAND-IN registration, Classic's, and the structure registers that in place of its own: picking Zune in Developer
-// mode shows Classic's views under Zune's style, policies, tiers and capabilities (no tabs, no nav tree, no Forward). Classic's views run
-// under those capabilities already (the test-only ClassicBand theme). The engine cannot yet merge two registrations key by key
-// (`ViewRegistryBuilder.Add` throws on a duplicate and a registry cannot be read back), so the stand-in is all or nothing; once the engine
-// offers `ViewRegistryBuilder.AddMissing(ViewRegistry)`, `Register` becomes "Zune's own, then the stand-in for every key Zune lacks"
-// (see the P5 Z0 report and docs\guide\theming-zune.md, Z0). `new ZuneStructure()` (no stand-in) registers Zune's own views only: what
-// the Zune registry tests read.
+// hands the structure a STAND-IN registration, Classic's. `Register` registers Zune's own views first, then copies every key Zune does
+// not draw yet from the stand-in (`ViewRegistryBuilder.AddMissing`): picking Zune in Developer mode shows Zune's views where a family
+// has landed and Classic's elsewhere, all under Zune's style, policies, tiers and capabilities (no tabs, no nav tree, no Forward).
+// `new ZuneStructure()` (no stand-in) registers Zune's own views only: what the Zune registry tests read.
 //
 // OPTIONS (technical plan 6.3, the Z-Theme-Options board): `background` {ArtworkWash, Mix, None}, `panoramaFit` {Bleed, Fit} and
 // `bandPins`, stored as `theme.zune.structure.<id>`; the structure parameters (Hidden, never shown or stored; a composition such as
@@ -62,12 +59,14 @@ public sealed partial class ZuneStructure : IStructureLayer
     public void Register(ViewRegistryBuilder views)
     {
         ArgumentNullException.ThrowIfNull(views);
+        RegisterOwn(views);
         if (_standIn is { } standIn)
         {
-            standIn(views);
-            return;
+            // Every key Zune does not draw yet comes from the stand-in, key by key: Zune's own views always win.
+            var fallback = new ViewRegistryBuilder();
+            standIn(fallback);
+            views.AddMissing(fallback.Build());
         }
-        RegisterOwn(views);
     }
 
     /// <summary>Zune's own views: every family's registrar, the Common blocks, and Nothing for the keys Zune draws no picture for.</summary>
@@ -202,13 +201,13 @@ public sealed partial class ZuneStructure : IStructureLayer
 
     /// <summary>Structure parameter: the right panel docks inline when there is room, or is always an overlay (Panorama exposes it as a
     /// composition option).</summary>
-    public static SelectOption<PanelPlacement> PanelModeParameter { get; } = new SelectOption<PanelPlacement>(
+    public static SelectOption<ZunePanelMode> PanelModeParameter { get; } = new SelectOption<ZunePanelMode>(
         Id: "panelMode", TitleKey: Strings.Theme.Zune.Options.Parameter.PanelMode, DescriptionKey: null,
-        Group: Strings.Theme.Zune.Options.Group.Band, Default: PanelPlacement.InlineWhenRoom,
+        Group: Strings.Theme.Zune.Options.Group.Band, Default: ZunePanelMode.InlineWhenRoom,
         Choices:
         [
-            new SelectChoice<PanelPlacement>(PanelPlacement.InlineWhenRoom, Strings.Theme.Zune.Options.Parameter.InlineWhenRoom),
-            new SelectChoice<PanelPlacement>(PanelPlacement.AlwaysOverlay, Strings.Theme.Zune.Options.Parameter.AlwaysOverlay),
+            new SelectChoice<ZunePanelMode>(ZunePanelMode.InlineWhenRoom, Strings.Theme.Zune.Options.Parameter.InlineWhenRoom),
+            new SelectChoice<ZunePanelMode>(ZunePanelMode.AlwaysOverlay, Strings.Theme.Zune.Options.Parameter.AlwaysOverlay),
         ],
         Picker: PickerStyle.Combo) with { Visibility = OptionVisibility.Hidden };
 

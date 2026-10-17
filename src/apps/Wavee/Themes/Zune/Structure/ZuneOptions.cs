@@ -49,7 +49,7 @@ public enum SeekTimes
 
 /// <summary>How the right panel is placed (structure parameter `panelMode`). Named apart from the contract's <c>PanelMode</c> (which panel
 /// body is shown).</summary>
-public enum PanelPlacement
+public enum ZunePanelMode
 {
     /// <summary>Inline beside the page from the Standard edge, an overlay below it.</summary>
     InlineWhenRoom = 0,
@@ -60,7 +60,7 @@ public enum PanelPlacement
 /// <summary>Every structure value the Zune policies depend on: the three user options and the five structure parameters.</summary>
 public readonly record struct ZuneParameters(
     ZuneBackground Background, PanoramaFit PanoramaFit, bool BandPins,
-    bool CollapseBand, PivotOverflow PivotOverflow, SeekTimes SeekTimes, PanelPlacement PanelMode, int MaxDockedPanes)
+    bool CollapseBand, PivotOverflow PivotOverflow, SeekTimes SeekTimes, ZunePanelMode PanelMode, int MaxDockedPanes)
 {
     /// <summary>The declared defaults.</summary>
     public static ZuneParameters Default => From(OptionValues.Empty);
@@ -99,7 +99,7 @@ public static class ZuneOptions
     public static SeekTimes Times() => ThemeHost.Options.Get(ZuneStructure.SeekTimesParameter.Key);
 
     /// <summary>How the right panel is placed (the `panelMode` parameter).</summary>
-    public static PanelPlacement Panel() => ThemeHost.Options.Get(ZuneStructure.PanelModeParameter.Key);
+    public static ZunePanelMode Panel() => ThemeHost.Options.Get(ZuneStructure.PanelModeParameter.Key);
 
     /// <summary>How many panes the right panel may dock at once (the `maxDockedPanes` parameter, 1-3).</summary>
     public static int MaxDockedPanes() => (int)MathF.Round(ThemeHost.Options.Get(ZuneStructure.MaxDockedPanes.Key));
