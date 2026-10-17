@@ -71,7 +71,7 @@ internal static class ZuneHomeQuickplay
         if (fresh is not null) kids.Add(fresh);
         return new BoxEl
         {
-            Key = "zune-home-quick-strip", Direction = 0, Wrap = true, Gap = H.QuickGap, RowGap = H.QuickGap, MinWidth = 0f,
+            Key = "zune-home-quick-strip", Direction = 0, Wrap = true, Gap = H.QuickGap, MinWidth = 0f,
             AlignItems = FlexAlign.Start, Children = kids.ToArray(),
         };
     }

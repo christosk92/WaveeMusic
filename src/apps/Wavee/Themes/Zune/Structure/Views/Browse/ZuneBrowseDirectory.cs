@@ -30,7 +30,8 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using B = Wavee.Themes.Zune.ZuneBrowseRules;
 using H = Wavee.Themes.Zune.ZuneHomeRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
 

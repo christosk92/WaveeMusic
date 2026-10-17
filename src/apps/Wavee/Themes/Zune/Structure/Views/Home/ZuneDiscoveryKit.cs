@@ -12,7 +12,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
-using H = Wavee.Themes.Zune.ZuneHomeRules;
+using H = Wavee.Themes.Zune.ZuneHomeRules;
+using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
 

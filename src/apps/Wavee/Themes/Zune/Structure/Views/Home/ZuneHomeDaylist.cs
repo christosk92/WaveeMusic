@@ -24,7 +24,8 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using H = Wavee.Themes.Zune.ZuneHomeRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
 
@@ -127,7 +128,7 @@ internal static class ZuneHomeDaylist
                 },
                 new BoxEl
                 {
-                    Direction = 0, Wrap = true, Gap = H.DaylistActionsGap, RowGap = H.DaylistCopyGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Direction = 0, Wrap = true, Gap = H.DaylistActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                     Margin = new Edges4(0f, H.DaylistActionsTop, 0f, 0f), Children = actions,
                 },
             ],
