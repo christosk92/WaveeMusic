@@ -85,7 +85,8 @@ public sealed class ZuneListRulesTests
 
         var small = policies.DetailTiers.For(WidthTier.Small).Table;
         Assert.False(small.CompactRows);
-        Assert.False(small.AlbumColumn || small.PlaysColumn);
+        Assert.True(small.AlbumColumn);   // Z-Sizes-Breakpoints "album from 900": where the table ladder admits it
+        Assert.False(small.PlaysColumn);
 
         // Standard and Huge: every lane the width admits (an album's plays and time lanes, Z-Album).
         foreach (var tier in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })

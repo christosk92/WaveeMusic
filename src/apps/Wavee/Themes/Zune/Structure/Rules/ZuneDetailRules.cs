@@ -25,7 +25,16 @@
 //   Huge 4K   (Z-Album-Huge4K)   the panorama 150/160; 400 identity, 440 aside, 64 apart, the larger text and the 40 rings, shuffle in the rings.
 //
 // A SHORT window (Z-Sizes-Breakpoints: below 700 tall) keeps the page's rows: the two-column arm's panorama folds away (its band eases to 0)
-// and the identity column leads with the title in the heading voice instead. The vertical arm keeps its panorama (it scrolls away with the hero).
+// and the identity column leads with the title in the heading voice instead. The vertical arm keeps its panorama (it scrolls away with the hero);
+// a show's or an episode's vertical arm is a FIXED header, so it folds to the name over the ring row (`ShowPadTopShort`).
+//
+// THE INSIGHTS by tier (ZT5; the facts bento is the page's, Q18): a sheet over the list below Standard (320 to 400 wide, never wider than the page:
+// a 300 window is covered edge to edge); from Standard the aside's section when an aside docks (320 wide alone, 420 at Huge and 440 at 4K; the
+// aside docks by the window tier, the content tier folds it where a docked panel narrows the page); from Huge it rests OPEN (Z-Liked-Huge).
+//
+// THE PANORAMA STEP BY KIND (`ZunePlaylistTiers.Panorama`): an album's is the record's (64/72, 120/130 at Standard, 150/160); a playlist's, a show's and
+// an episode's are 64/72 up to Standard and 150/160 at Huge, Liked Songs' 40/48, 64/72, 120/130; an episode at Standard sets its title at 40/48 over
+// two lines (Z-Episode wraps it; `PanoramaLines`), the band hugging it.
 //
 // THE LADDERS the core resolves by id (`DetailLadders`, declared through `ZuneTiers.LaddersDetail`, Tiers.Detail.cs):
 //   mode    the page column: the vertical arm below 640, the two-column arms from it (820 and 1008 split the core's three rail modes, which
@@ -136,13 +145,21 @@ public static class ZuneDetailRules
     /// <summary>See <see cref="PanoramaDescent"/>.</summary>
     public static float PanoramaHFor(float size) => MathF.Ceiling(size + PanoramaDescent * size + PanoramaAir);
 
-    /// <summary>The slots' width ease (the aside and the identity column when a crossing moves them): real layout, the list yields.</summary>
+    /// <summary>The slots' size ease (the album's trailing sections when a tier swaps their arrangement): clip-window reveal.</summary>
     public static readonly LayoutTransition SlotReveal = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reveal);
 
-    /// <summary>The panorama band's height ease (a crossing to a short window folds it; the title scales with its size step).</summary>
+    /// <summary>The columns' WIDTH ease (the identity column, the aside and the docked insights when a crossing moves them): REAL layout on the width axis,
+    /// so the list beside them yields smoothly instead of jumping to its final width while the column's clip window eases (ZT5: `SizeMode.Reveal` lays the
+    /// neighbours out at the final size at once). The content stays anchored to the leading edge (a wipe); the width alone animates.</summary>
+    public static readonly LayoutTransition ColumnReflow = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>The panorama band's height ease (a crossing to a short window folds it; a wrapping title or the editor grows it): the layout lands once and
+    /// everything below RIDES the presented extent (ZT5: the flow reveal, as the chapters of the discovery pages do), so the columns under the band never
+    /// jump when it folds. The title scales with its size step on its own box (`ZuneMotion.TitleScale`).</summary>
     public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.Reveal);
+        TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
     /// <summary>A mode crossing's arm cross-fade (the vertical arm ↔ the two-column arm).</summary>
     public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);
@@ -217,6 +234,13 @@ public static class ZuneDetailRules
     /// <summary>The tags line under the meta (Z-Album-Compact: 12/16).</summary>
     public const float TagsLine = 16f;
 
+    /// <summary>The Compact touch minimum: a link or a command in a Compact window is at least this tall (a smaller visual inside a box of it is fine).</summary>
+    public const float CompactHit = 40f;
+
+    /// <summary>The hit height of a link whose visual is <paramref name="line"/> tall in a <paramref name="window"/>-tier window: the line, or the Compact
+    /// minimum.</summary>
+    public static float HitHeight(WidthTier window, float line) => window == WidthTier.Compact ? MathF.Max(line, CompactHit) : line;
+
     /// <summary>The vertical hero's height: the panorama band, the cover row, the action row and its air, the description when present, the bottom
     /// air and the toolbar block (the core's list bar row and its pads). The skeleton reserves exactly this, and the loaded hero lays out these blocks
     /// at these heights, so the swap is a dissolve.</summary>
@@ -247,8 +271,11 @@ public static class ZuneDetailRules
 
     // ── the show header (the vertical arm of a show or an episode) ──────────────────────────────────────────────────
 
-    /// <summary>The header's cover, its gap and its padding.</summary>
-    public const float ShowCover = 140f, ShowGap = 16f, ShowPadTop = 16f, ShowPadBottom = 8f, ShowRowsGap = 12f;
+    /// <summary>The header's cover (Z-Show-Compact: 120, 16 from the words), its padding and its rows' gap. THE SHORT FOLD (a window under 700 tall,
+    /// 330 at the least): the panorama band eases to 0, the cover row, the ledger and the facts leave, and the header is the show's name over the ring
+    /// row with 8 of air above and 8 between (about 96 tall), so the fixed header leaves the episodes the room a 126-tall page has.</summary>
+    public const float ShowCover = 120f, ShowGap = 16f, ShowPadTop = 16f, ShowPadBottom = 8f, ShowRowsGap = 12f,
+        ShowPadTopShort = 8f, ShowRowsGapShort = 8f;
 
     // ── the notice ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -322,9 +349,12 @@ public static class ZuneDetailRules
     /// <summary>The sheet's width (a third of the page, 320 to 400), its padding, the header row's gap and the close target (40).</summary>
     public const float SheetMinW = 320f, SheetMaxW = 400f, SheetFraction = 0.34f, SheetPad = 16f, SheetGap = 12f, SheetClose = 40f, SheetCloseGlyph = 12f;
 
-    /// <summary>The sheet's width for a <paramref name="pageWidth"/>-wide page (NaN: the minimum).</summary>
+    /// <summary>The sheet's width for a <paramref name="pageWidth"/>-wide page (NaN: the minimum). A page narrower than the minimum (a 300 window) is
+    /// covered edge to edge: the sheet never runs past the page, and its × stays on screen.</summary>
     public static float SheetWidthFor(float pageWidth)
-        => float.IsFinite(pageWidth) && pageWidth > 0f ? Math.Clamp(MathF.Floor(pageWidth * SheetFraction), SheetMinW, SheetMaxW) : SheetMinW;
+        => float.IsFinite(pageWidth) && pageWidth > 0f
+            ? MathF.Min(pageWidth, Math.Clamp(MathF.Floor(pageWidth * SheetFraction), SheetMinW, SheetMaxW))
+            : SheetMinW;
 
     /// <summary>The docked insights column (the head arm at Huge).</summary>
     public const float DockedInsightsW = 360f;
@@ -360,14 +390,14 @@ public static class ZuneDetailRules
     {
         Tier = WidthTier.Standard, PanoramaH = 158f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = -6f,
         RailW = 240f, ColumnGap = 48f, AsideW = 260f, RailGap = 12f, ActionsGap = 18f, PlayWord = true, ShareRing = true, ArtistBand = 120f,
-        MetaLines = 1,
+        MetaLines = 1, InsightsW = 320f,
     };
 
     /// <summary>Huge (Z-Album-Huge): the panorama 150/160, the 320 identity column, the 400 aside with its 140 artist band and "more by" as a grid.</summary>
     public static ZuneDetailLayout Huge { get; } = Standard with
     {
         Tier = WidthTier.Huge, PanoramaH = 196f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = -8f,
-        RailW = 320f, AsideW = 400f, SaveWord = true, ArtistBand = 140f, MoreByGrid = true,
+        RailW = 320f, AsideW = 400f, SaveWord = true, ArtistBand = 140f, MoreByGrid = true, InsightsW = 420f,
     };
 
     /// <summary>Huge 4K (Z-Album-Huge4K): 400 identity, 440 aside, 64 apart, the 40 rings with shuffle, the 20/28 and 15/20 text.</summary>
@@ -376,7 +406,7 @@ public static class ZuneDetailRules
         Tier = WidthTier.Huge4K, PanoramaH = 196f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
         RingSize = 40f, RingGlyph = 14f, RingLabelGap = 12f, ActionsGap = 20f, ShuffleRing = true,
         ArtistSize = 20f, ArtistLine = 28f, MetaSize = 15f, MetaLine = 20f, NotesSize = 13f, NotesLine = 20f, LabelSize = 15f,
-        ArtistBand = 180f, Target = 40f,
+        ArtistBand = 180f, Target = 40f, InsightsW = 440f,
     };
 }
 
@@ -482,6 +512,18 @@ public sealed record ZuneDetailLayout : ITierLayoutRecord
 
     /// <summary>The identity column leads with the title (a short window folded the panorama).</summary>
     public bool RailTitle { get; init; }
+
+    /// <summary>The lines the panorama's title may take (1: the board's bleeding or fitted word). An episode at Standard (Z-Episode: the 40/48
+    /// title WRAPS) takes 2: the band then hugs the title, its reserved height a floor, and the words break by whole words (never a truncation).</summary>
+    public int PanoramaLines { get; init; } = 1;
+
+    /// <summary>Does the panorama's title wrap by whole words (<see cref="PanoramaLines"/> over one)? A folded band never does.</summary>
+    public bool PanoramaWraps => PanoramaLines > 1 && PanoramaH > 0f;
+
+    /// <summary>The width of the aside column when it holds the insights alone (Liked Songs, a playlist without recommendations): 320 at Standard (the
+    /// sheet's minimum, so the bento keeps the width it was drawn for), 420 at Huge (Z-Liked-Huge), 440 at Huge 4K; 0 where no aside docks. With a
+    /// body in the aside the column is <see cref="AsideW"/>.</summary>
+    public float InsightsW { get; init; }
 
     /// <summary>None: every region of the page fits at every size its tier lays out (the list yields, the slots ease).</summary>
     public ImmutableArray<TierRegion> Regions => ImmutableArray<TierRegion>.Empty;

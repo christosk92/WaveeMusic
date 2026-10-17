@@ -41,7 +41,7 @@ internal static class ZuneAlbumRelease
         Element trigger = new BoxEl
         {
             Key = Z.ArtistLineKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.HeroIdentityGap, MinWidth = 0f, MaxWidth = s.Width,
-            Height = lay.ArtistLine, Shrink = 1f,
+            Height = Z.HitHeight(ctx.Tier().Window, lay.ArtistLine), Shrink = 1f,
             Role = !live ? AutomationRole.None : s.Menu ? AutomationRole.Button : AutomationRole.Hyperlink,
             Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
             OnClick = s.Click, OnKeyDown = s.OnKey, OnRealized = s.OnRealized,

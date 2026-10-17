@@ -112,8 +112,9 @@ internal static class ZuneDetailHero
                 [
                     K.LateRow("hero:artist", new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Height = lay.ArtistLine, MinWidth = 0f,
-                        Children = [slots.Attribution?.Invoke(inner - g.Cover - Z.HeroCoverGap) ?? K.Artists(id, inner - g.Cover - Z.HeroCoverGap, lay)],
+                        Direction = 0, AlignItems = FlexAlign.Center, Height = Z.HitHeight(tiers.Window, lay.ArtistLine), MinWidth = 0f,
+                        Children = [slots.Attribution?.Invoke(inner - g.Cover - Z.HeroCoverGap)
+                            ?? K.Artists(id, inner - g.Cover - Z.HeroCoverGap, lay, Z.HitHeight(tiers.Window, lay.ArtistLine))],
                     }),
                     K.LateRow("hero:meta", K.Meta(id, float.NaN, lay, lines: 2)),
                 ],

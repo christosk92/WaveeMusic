@@ -185,29 +185,38 @@ internal static class ZuneDetailRail
 
     // ── the show header ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the 140 cover beside the meta, the title (the heading voice as
-    /// written) and the attribution, then the ring row full width; the prerelease card and the release facts under it.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the panorama (the same rule as a playlist's, `ZunePlaylistTiers.Panorama`:
+    /// Z-Show-Compact, Z-Episode-Compact), the 120 cover beside the meta (the publisher or the show, the rating, the meta line), the ledger, then the ring row
+    /// full width; the prerelease card and the release facts under it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a
+    /// show's follow and save leave the row where the band's row 2 carries "follow". A SHORT window (under 700 tall, 330 at the least) folds the panorama
+    /// (eased), the cover row, the ledger and the facts: the fixed header is then the show's name in the heading voice over the ring row (a 126-tall page
+    /// keeps room for its list).</summary>
     public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
     {
+        var facts = ctx.Tier();
+        bool fold = facts.Policy is not null && facts.Height == HeightTier.Short;
         var lay = ZuneDetailTiers.Hero;
-        float gutter = ZuneTiers.FrameOf(ctx.Tier()).Gutter;
+        float gutter = ZuneTiers.FrameOf(facts).Gutter;
         var spec = p.Spec;
         var id = spec.Identity;
         var slots = spec.Slots;
-        var info = new List<Element>(6);
-        if (slots.Badges is { } badges) info.Add(K.LateRow("hdr:badges", badges()));
-        info.Add(K.Row("hdr:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? (R.Type.Heading(id.Title) with
-        {
-            Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = Z.RailTitleLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
-        })));
-        if (slots.Attribution is { } attribution) info.Add(K.LateRow("hdr:lead", attribution(float.NaN)));
-        else if (id.OwnerName is { Length: > 0 } owner) info.Add(K.LateRow("hdr:owner", K.ArtistText(owner, float.NaN, lay)));
-        if (slots.Rating is { } rating) info.Add(K.LateRow("hdr:rating", rating(float.NaN)));
-        info.Add(K.LateRow("hdr:meta", K.Meta(id, float.NaN, lay, lines: 2)));
+        var panorama = ZunePlaylistTiers.Panorama(fold ? lay with { PanoramaH = 0f, RailTitle = true } : lay, ZunePlaylistTiers.Compact, id.Kind);
 
-        var kids = new List<Element>(5)
+        var kids = new List<Element>(6);
+        if (fold)
+            kids.Add(K.LateRow("hdr:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? (R.Type.Heading(id.Title) with
+            {
+                Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+            })));
+        else
         {
-            new BoxEl
+            var info = new List<Element>(5);
+            if (slots.Badges is { } badges) info.Add(K.LateRow("hdr:badges", badges()));
+            if (slots.Attribution is { } attribution) info.Add(K.LateRow("hdr:lead", attribution(float.NaN)));
+            else if (id.OwnerName is { Length: > 0 } owner) info.Add(K.LateRow("hdr:owner", K.ArtistText(owner, float.NaN, lay)));
+            if (slots.Rating is { } rating) info.Add(K.LateRow("hdr:rating", rating(float.NaN)));
+            info.Add(K.LateRow("hdr:meta", K.Meta(id, float.NaN, lay, lines: 2)));
+            kids.Add(new BoxEl
             {
                 Key = "hdr:cover", Direction = 0, Gap = Z.ShowGap, AlignItems = FlexAlign.End, MinWidth = 0f,
                 Children =
@@ -215,18 +224,29 @@ internal static class ZuneDetailRail
                     K.Cover("hdr:cover-art", id, p.Actions, slots, Z.ShowCover),
                     new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap, Children = info.ToArray() },
                 ],
-            },
-        };
-        if (slots.Ledger is { } ledger) kids.Add(K.LateRow("hdr:ledger", ledger(float.NaN)));
+            });
+            if (slots.Ledger is { } ledger) kids.Add(K.LateRow("hdr:ledger", ledger(float.NaN)));
+        }
         kids.Add(K.Row("hdr:actions", K.Rings(Z.ActionsKey, id, spec.Config, p.Actions, slots, p.Accent, p.Play, lay, spring: true)));
-        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("hdr:prerelease", pre()));
-        if (spec.Config.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-            kids.Add(new BoxEl { Key = "hdr:release", Direction = 1, MinWidth = 0f, Children = [release(false)] });
+        if (!fold)
+        {
+            if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("hdr:prerelease", pre()));
+            if (spec.Config.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
+                kids.Add(new BoxEl { Key = "hdr:release", Direction = 1, MinWidth = 0f, Children = [release(false)] });
+        }
         return new BoxEl
         {
-            Key = Z.ShowHeaderKey, Direction = 1, Gap = Z.ShowRowsGap, Shrink = 0f, MinWidth = 0f,
-            Padding = new Edges4(gutter, Z.ShowPadTop, gutter, Z.ShowPadBottom),
-            Children = kids.ToArray(),
+            Key = Z.ShowHeaderKey, Direction = 1, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                K.PanoramaBand(id, slots, panorama, gutter),
+                new BoxEl
+                {
+                    Key = "hdr:body", Direction = 1, Gap = fold ? Z.ShowRowsGapShort : Z.ShowRowsGap, Shrink = 0f, MinWidth = 0f,
+                    Padding = new Edges4(gutter, fold ? Z.ShowPadTopShort : Z.ShowPadTop, gutter, Z.ShowPadBottom),
+                    Children = kids.ToArray(),
+                },
+            ],
         };
     }
 }

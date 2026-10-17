@@ -76,7 +76,7 @@ internal static class ZuneInsights
         return new BoxEl
         {
             Key = "insights:dock", Direction = 1, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-            Width = facts is null ? 0f : Prop.Of(() => open.Value ? w : 0f), Animate = Z.SlotReveal,
+            Width = facts is null ? 0f : Prop.Of(() => open.Value ? w : 0f), Animate = Z.ColumnReflow,
             Children =
             [
                 new BoxEl
