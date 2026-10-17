@@ -133,6 +133,37 @@ public readonly partial struct User
         return Embed.Comp(() => new LibraryPage(kind)) with { Key = "library:" + Shell.NameOf(route) };
     }
 
+    // ── the library's row 2 (P5 ZK, contract 1.26): route-level page-chrome views ────────────────────────────────────────
+    //
+    // A band-style structure draws the library's kinds as row 2 (Z-Library-*: liked · albums · artists · podcasts · audiobooks, the
+    // route on screen lit). They are sibling ROUTES, not page state, so they are answered from the route alone
+    // (`Shell.PageChromeChannel.RouteViews`) and stand on the navigation's first frame. Publish only: this page's own picture and its
+    // Compact kind chips (`KindChips`, Classic's order) are untouched. The board's "playlists" view has no library route (playlists live
+    // in the nav tree), so it is not here.
+
+    /// <summary>The library kinds, in row 2's order.</summary>
+    static readonly Shell.RouteKind[] s_chromeKinds =
+        [Shell.RouteKind.Liked, Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks];
+
+    /// <summary>One cached go-to verb per kind (an equal row compares its verbs by reference).</summary>
+    static readonly Action[] s_chromeGo = Array.ConvertAll(s_chromeKinds, static kind => (Action)(() => Shell.GoTo(new Shell.Route(kind))));
+
+    /// <summary>Is <paramref name="kind"/> one of the library's row-2 kinds?</summary>
+    public static bool IsLibraryChromeKind(Shell.RouteKind kind) => Array.IndexOf(s_chromeKinds, kind) >= 0;
+
+    /// <summary>Row 2 of a library route: every kind, <paramref name="current"/> lit. The ids are the routes' names (stable, never the
+    /// localised label).</summary>
+    public static IReadOnlyList<PageView> LibraryChromeViews(Shell.RouteKind current)
+    {
+        var views = new PageView[s_chromeKinds.Length];
+        for (int i = 0; i < views.Length; i++)
+        {
+            var route = new Shell.Route(s_chromeKinds[i]);
+            views[i] = new PageView(Shell.NameOf(route), Shell.Dest(route).Title, s_chromeKinds[i] == current, s_chromeGo[i]);
+        }
+        return views;
+    }
+
     /// <summary>What the navigator shows, as a VALUE: <paramref name="OrderKey"/> and <paramref name="LettersKey"/> are
     /// REFRESH facts now (a bound-source re-resolve, never a remount — library-stabilization-plan RC3), the other two
     /// REFRESH keys (<paramref name="FactsKey"/>, <paramref name="RowsKey"/>), the two counts (rows / FLAT items),
