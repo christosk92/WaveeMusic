@@ -28,6 +28,15 @@ public static class ClassicLibraryPaneRules
     /// <summary>The gap between the cover and the text column.</summary>
     public const float HeaderGap = 18f;
 
+    /// <summary>The air under the header's cover (the tuned header: <see cref="Spacing.M"/>, 12).</summary>
+    public static float HeaderPadBottom => Spacing.M;
+
+    /// <summary>The Small header (C-Library-Small): a 96 cover bottom-aligned in a 120 band, 16 from the words, 10 over the command row (the board's flex gap).</summary>
+    public const float SmallCover = 96f, SmallBand = 120f, SmallHeaderGap = 16f, SmallHeaderPadBottom = 10f;
+
+    /// <summary>The Small header's STATED height: the 120 band under the pane inset and over the 10 of air = 146.</summary>
+    public static float SmallPaneHeaderHeight => SmallBand + ClassicTiers.PaneInset + SmallHeaderPadBottom;
+
     /// <summary>Between the header's text lines.</summary>
     public const float PaneHeaderGap = 3f;
 

@@ -97,14 +97,14 @@ internal static partial class ClassicPlaylist
     // ══ 2. RECOMMENDED SONGS ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The registered template of <see cref="ViewKeys.PlaylistRecs"/>: the header over the rows, one slot each (keyed <c>rec:&lt;track slot&gt;</c>).
-    /// Where the tier record leads an EMPTY playlist's section (Compact, C-Empty-Compact) the lead stands over the header: "Nothing here yet", its line
-    /// and the field that finds songs to add; the section's commands are the tier's targets (40 at Compact).</summary>
+    /// An EMPTY playlist's section is led at every tier (C-Empty-Compact, C-Empty): "Nothing here yet", its line and the field that finds songs to add, sized by
+    /// the tier's <see cref="ClassicEmptyLead"/> record; the section's commands are the tier's targets (40 at Compact).</summary>
     public static Element RecsTemplate(PlaylistRecsProps p, in ViewContext ctx)
     {
         var tier = ClassicDetailTiers.Of(ctx.Tier());
         float edge = MathF.Max(ClassicPlaylistLayout.RecsButton, tier.Target);
         var kids = new List<Element>(p.Rows.Count + 2);
-        if (tier.EmptyLead && p.Lead is { } lead) kids.Add(EmptyLead(lead));
+        if (p.Lead is { } lead) kids.Add(EmptyLead(lead, tier.Lead));
         kids.Add(RecsHeader(p, edge));
         for (int i = 0; i < p.Rows.Count; i++)
             kids.Add(ctx.View(ViewKeys.PlaylistRecRow, p.Rows[i]) with { Key = "rec:" + p.Rows[i].Slot });
@@ -113,22 +113,25 @@ internal static partial class ClassicPlaylist
 
     static readonly string[] s_noSuggestions = [];
 
-    /// <summary>The empty playlist's lead (C-Empty-Compact): the centred 20/28 "Nothing here yet" over its line, 16 over and 4 under, then the 40 field that
-    /// looks for songs to add (its submit is the core's: Search for the query), 12 apart, at the rows' 16 gutter. It enters with the late rows' fade.</summary>
-    static Element EmptyLead(PlaylistRecsLead lead) => new BoxEl
+    /// <summary>The empty playlist's lead: the centred "Nothing here yet" (the record's 20/28 at Compact, 28/36 elsewhere) over its line, then the field that looks for
+    /// songs to add (its submit is the core's: Search for the query; 40 at Compact, 32 elsewhere), the blocks the record's gap apart, at the rows' 16 gutter. It enters with
+    /// the late rows' fade. The box RESERVES the record's height and eases a change of it (a tier crossing), so the rows under it never jump: the Compact lead (132) and
+    /// the roomy one (148) differ by 16, and a message that wraps grows the lead rather than clipping.</summary>
+    static Element EmptyLead(PlaylistRecsLead lead, ClassicEmptyLead layout) => new BoxEl
     {
-        Key = "rec:lead", Direction = 1, Gap = ClassicPlaylistLayout.LeadGap,
-        Padding = new Edges4(Spacing.L, 0f, Spacing.L, ClassicPlaylistLayout.LeadGap),
+        Key = "rec:lead", Direction = 1, Gap = layout.BlockGap, MinHeight = layout.Height, Animate = Design.Reveal.Resize,
+        Padding = new Edges4(Spacing.L, 0f, Spacing.L, layout.BlockGap),
         Enter = ClassicDetailKit.FadeUp,
         Children =
         [
             new BoxEl
             {
-                Key = "rec:lead:message", Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                Padding = new Edges4(0f, ClassicPlaylistLayout.LeadMessagePadTop, 0f, ClassicPlaylistLayout.LeadMessagePadBottom),
+                Key = "rec:lead:message", Direction = 1, AlignItems = FlexAlign.Center, Gap = ClassicEmptyLead.MessageGap,
+                Padding = new Edges4(0f, layout.MessagePadTop, 0f, layout.MessagePadBottom),
                 Children =
                 [
-                    Subtitle(Loc.Get(Strings.Detail.Empty.NoTracks)) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
+                    (layout.LargeTitle ? R.Type.PageHero(Loc.Get(Strings.Detail.Empty.NoTracks)) : Subtitle(Loc.Get(Strings.Detail.Empty.NoTracks)))
+                        with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
                     Caption(Loc.Get(Strings.Detail.Empty.FindSongs)) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
                 ],
             },
@@ -138,7 +141,7 @@ internal static partial class ClassicPlaylist
                 Children =
                 [
                     AutoSuggestBox.Create(s_noSuggestions, Loc.Get(Strings.Detail.Empty.SearchSongs), onQuerySubmitted: lead.Find, queryIcon: Icons.Search,
-                        minHeight: ClassicDetailTiers.CompactTarget, cornerRadius: Radii.Control, grow: 1f),
+                        minHeight: layout.FieldH, cornerRadius: Radii.Control, grow: 1f),
                 ],
             },
         ],
@@ -187,7 +190,7 @@ internal static partial class ClassicPlaylist
         var add = p.Add;
         var play = p.Play;
         // At Compact (C-Playlist-Compact, C-Empty-Compact) the "+" is a 40 target around its 28 ring and the row has no duration lane.
-        bool compact = ClassicDetailTiers.Of(ctx.Tier()).EmptyLead;
+        bool compact = ClassicDetailTiers.Of(ctx.Tier()).Tier == WidthTier.Compact;
         float box = compact ? ClassicDetailTiers.CompactTarget : ClassicPlaylistLayout.RecAddBox;
 
         Element addCell = p.Busy

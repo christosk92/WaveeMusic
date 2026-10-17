@@ -93,7 +93,7 @@ internal static partial class ClassicLibraryPage
     {
         public LibraryPageProps Props = null!;
         public ClassicLibraryLayout Layout = null!;
-        public Element? Picker, PickerCompact, LeftGrip, MidGrip, Sticky, Strip;
+        public Element? Picker, PickerCompact, PickerSort, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;
         public Func<Element>? NavNoMatch, NavShimmer;

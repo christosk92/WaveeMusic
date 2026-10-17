@@ -116,6 +116,24 @@ public sealed partial class TierLayoutTests
         // The discography: a strip of album cards at Compact, the inline grid elsewhere (never both).
         Assert.Empty(shell.FindPrefix(layout.DiscoStrip ? "disco-arm:grid" : "disco-arm:strip"));
 
+        // The pick's "Artist pick" heading (C-Artist-Huge, C-Artist-Huge4K): on the record's tiers alone and only in the rail arm (the pick beside the chart), standing over the
+        // card on its left edge; the card itself is one keyed node whatever the heading does. Skipped for an artist with no pick and while the body is pending.
+        var pickCard = shell.Find("featured:pick:card");
+        var pickHeading = shell.Find("featured:pick:heading");
+        if (!pickHeading.IsNull) Assert.True(layout.PickHeading, $"{size.Name}: an Artist pick heading below Huge");
+        if (!pickCard.IsNull)
+        {
+            bool rail = !shell.Find("featured:pick:rail").IsNull;
+            Assert.True(pickHeading.IsNull != (layout.PickHeading && rail), $"{size.Name}: the Artist pick heading is {(pickHeading.IsNull ? "missing" : "shown")} (record {layout.PickHeading}, rail arm {rail})");
+            if (!pickHeading.IsNull)
+            {
+                var heading = scene.AbsoluteRect(pickHeading);
+                var card = scene.AbsoluteRect(pickCard);
+                Assert.True(heading.Y + heading.H <= card.Y + 0.5f, $"{size.Name}: the Artist pick heading ({heading}) overlaps the card ({card})");
+                Assert.True(MathF.Abs(heading.X - card.X) <= 0.5f, $"{size.Name}: the Artist pick heading starts at {heading.X}, the card at {card.X}");
+            }
+        }
+
         // The hero: one arm once the page has settled, the record's for the page's own width.
         var page = shell.FindPrefix("artist-page:");
         Assert.True(page.Count >= 1, $"{size.Name}: the artist page is on screen");

@@ -151,6 +151,17 @@ public sealed partial class TierLayoutTests
             Assert.True(nav.X + nav.W <= pane.X + 0.5f, $"{size.Name}: the navigator overlaps the pane");
             Assert.True(pane.X + pane.W <= card.X + card.W + 0.5f, $"{size.Name}: the pane runs outside the card");
 
+            // C-Library-Small: the sort is ONE button at the stock 32 beside the view cells (the artists' list keeps its word rail, the board's). Every other split tier keeps the rail.
+            var sort = shell.Find("lib:sort");
+            Assert.Equal(layout.SortButton && kind != "artists", !sort.IsNull);
+            Assert.Equal(layout.Tier == WidthTier.Small, layout.SortButton);
+            if (!sort.IsNull)
+            {
+                var button = scene.AbsoluteRect(sort);
+                Assert.Equal(layout.ControlH, button.H, 0.5f);
+                Assert.True(button.X >= nav.X - 0.5f && button.X + button.W <= nav.X + nav.W + 0.5f, $"{size.Name}: the sort button runs outside the navigator ({button} in {nav})");
+            }
+
             // The album pane's "Also by" aside slot: 0 wide below Huge, at most the record's column at Huge (0 where the album has no other saved albums by its artist),
             // inside the pane, after the rows.
             var aside = shell.Find("pane:also-aside");

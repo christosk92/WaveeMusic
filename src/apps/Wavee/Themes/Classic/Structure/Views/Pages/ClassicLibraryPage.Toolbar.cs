@@ -20,7 +20,7 @@ internal static partial class ClassicLibraryPage
     static readonly string[] s_noSuggest = [];
 
     /// <summary>The master column's head (W1): the page title (PageHero, one line) with the live count beside it, the word rail + the view toggle, then the filter. At Compact
-    /// (<c>C-Library-Compact</c>) the kind chips stand over the title, the sort is a button with a menu and every control is 40 tall.</summary>
+    /// (<c>C-Library-Compact</c>) the kind chips stand over the title, the sort is a button with a menu and every control is 40 tall; at Small (<c>C-Library-Small</c>) the sort is that button too, at the stock 32.</summary>
     static Element Toolbar(LibraryPageProps p, PageCache c)
     {
         var layout = c.Layout;
@@ -28,7 +28,12 @@ internal static partial class ClassicLibraryPage
         // row Albums uses for its own words, not a wrapper of its own. Podcasts' mode words own their row: sharing it with the view toggle scrolled "Your Episodes" out of a narrow
         // column. The filter and the view toggle only browse SHOWS, so they share the next row and Your Episodes (which has neither) drops it. The Compact picker is its own cached
         // element (its controls are 40, not 32 / 28): the two never share a node.
-        Element picker = layout.Single ? c.PickerCompact ??= CompactPicker(p, layout) : c.Picker ??= WidePicker(p, layout);
+        // The sort is a button (with its own menu) at Compact and at Small (C-Library-Small), except for the artists' list and Podcasts' mode words, whose rails the boards keep. The
+        // Small button (32) is its own cached element: it never shares a node with the Compact one (40).
+        bool sortButton = layout.SortButton && !p.IsPodcasts && p.Entity != EntityKind.Artist;
+        Element picker = layout.Single ? c.PickerCompact ??= CompactPicker(p, layout)
+            : sortButton ? c.PickerSort ??= CompactPicker(p, layout)
+            : c.Picker ??= WidePicker(p, layout);
         Element? filter = p.SavedEpisodesMode
             ? null
             : AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: p.Filter(), queryIcon: Icons.Search, grow: 1f,
@@ -181,7 +186,7 @@ internal static partial class ClassicLibraryPage
 
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S - 2f, Shrink = 0f, Height = height,
+                Key = "lib:sort", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S - 2f, Shrink = 0f, Height = height,
                 Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Margin = new Edges4(-Spacing.S, 0f, 0f, 0f),
                 Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                 OnClick = Flyout, OnRealized = h => _anchor = h,

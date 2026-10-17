@@ -155,7 +155,7 @@ internal static class ClassicArtistSections
             Element tracks = Artist.Chart(a, accentSignal);
             if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
             Element featured = pick
-                ? ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
+                ? PickColumn(ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface), wide && layout.PickHeading, accent, wide)
                 : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
                     with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
             // The featured column keeps the pick as its first child at every tier, so the concert card coming or going on a crossing never remounts it.
@@ -176,6 +176,26 @@ internal static class ClassicArtistSections
             };
         }, fallback: MathF.Max(1f, p.Width - 2f * layout.ColumnInset(p.Width, p.Metrics.Gutter)));
     }
+
+    /// <summary>The pick as the featured column's first child: the card alone, or (Huge, <see cref="ClassicArtistLayout.PickHeading"/>: C-Artist-Huge, C-Artist-Huge4K) under an
+    /// "Artist pick" accent header like the chart's beside it, 12 apart. The wrapper is keyed on the arm and the card inside it on its own key at every tier, and the heading
+    /// is a keyed child that fades in and out, so a crossing between Standard and Huge neither remounts the card (its photo, its decode) nor snaps the heading in: the
+    /// column's height tween (<see cref="ClassicArtistTiers.HeroMotion"/>) eases the card down by the header's height.</summary>
+    static Element PickColumn(Element card, bool heading, ColorF accent, bool wide) => new BoxEl
+    {
+        Key = wide ? "featured:pick:rail" : "featured:pick:band", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
+        Children = heading
+            ?
+            [
+                Controls.AccentHeader(Loc.Get(Strings.Artist.ArtistPick), accent) with
+                {
+                    Key = "featured:pick:heading",
+                    Enter = ClassicArtistTiers.ArmFade, Exit = ClassicArtistTiers.ArmFade, Transition = ClassicArtistTiers.ArmFadeMotion,
+                },
+                card with { Key = "featured:pick:card" },
+            ]
+            : [card with { Key = "featured:pick:card" }],
+    };
 
     /// <summary>The artist's next concert under the pick (C-Artist-Huge4K): the date block, "Upcoming", the concert and its venue and city; a click opens the
     /// concert. Keyed on the concert; it fades in and out on a crossing while the featured column's height tweens.</summary>

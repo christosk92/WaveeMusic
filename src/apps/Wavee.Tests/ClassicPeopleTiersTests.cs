@@ -216,6 +216,11 @@ public class ClassicPeopleTiersTests
         Assert.True(ClassicArtistTiers.Huge.SectionRow);
         Assert.True(ClassicArtistTiers.Huge4K.SectionRow);
         Assert.Equal(56f, ClassicArtistTiers.SectionRowHeight);
+        // C-Artist-Huge, C-Artist-Huge4K: the pick stands under its own "Artist pick" accent header; no tier below Huge draws it.
+        foreach (var l in new[] { ClassicArtistTiers.Compact, ClassicArtistTiers.Small, ClassicArtistTiers.Standard })
+            Assert.False(l.PickHeading);
+        Assert.True(ClassicArtistTiers.Huge.PickHeading);
+        Assert.True(ClassicArtistTiers.Huge4K.PickHeading);
         Assert.True(ClassicArtistTiers.Compact.DiscoStrip);
         foreach (var l in new[] { ClassicArtistTiers.Small, ClassicArtistTiers.Standard, ClassicArtistTiers.Huge, ClassicArtistTiers.Huge4K })
             Assert.False(l.DiscoStrip);

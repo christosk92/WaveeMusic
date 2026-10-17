@@ -261,6 +261,52 @@ public class LibraryTiersTests
         Assert.Equal(ClassicLibraryPaneRules.PaneCover, standard.PaneCover);   // the tuned 128 / 156 / 18
         Assert.Equal(ClassicLibraryPaneRules.PaneHeaderHeight, standard.PaneHeaderHeight);
         Assert.Equal(ClassicLibraryPaneRules.HeaderGap, standard.PaneHeaderGap);
+        Assert.Equal(ClassicLibraryPaneRules.HeaderPadBottom, standard.PaneHeaderPadBottom);
+    }
+
+    // ── C-Library-Small: the sort button, the 120 pane band and the rows 10 apart ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_small_pane_header_is_the_boards_96_cover_in_a_120_band()
+    {
+        var small = ClassicLibraryTiers.For(WidthTier.Small, single: false);
+        Assert.Equal(96f, small.PaneCover);
+        Assert.Equal(16f, small.PaneHeaderGap);
+        Assert.Equal(10f, small.PaneHeaderPadBottom);
+        // The stated height is the 120 band under the 16 pane inset and over the 10 of air; the cover (96) sits bottom-aligned inside the band.
+        Assert.Equal(146f, small.PaneHeaderHeight);
+        Assert.Equal(120f, small.PaneHeaderHeight - ClassicTiers.PaneInset - small.PaneHeaderPadBottom);
+        Assert.True(small.PaneHeaderHeight - ClassicTiers.PaneInset - small.PaneHeaderPadBottom >= small.PaneCover, "the cover fits the band");
+        // The tuned header is Standard's and the Compact drill-in's pane leaf (the Compact board does not redraw it): 128 / 156 / 18 / 12.
+        foreach (var record in new[] { ClassicLibraryTiers.For(WidthTier.Standard, single: false), ClassicLibraryTiers.For(WidthTier.Compact, single: false) })
+        {
+            Assert.Equal(ClassicLibraryPaneRules.PaneCover, record.PaneCover);
+            Assert.Equal(ClassicLibraryPaneRules.PaneHeaderHeight, record.PaneHeaderHeight);
+            Assert.Equal(ClassicLibraryPaneRules.HeaderGap, record.PaneHeaderGap);
+            Assert.Equal(ClassicLibraryPaneRules.HeaderPadBottom, record.PaneHeaderPadBottom);
+        }
+        // Every header's content box holds its cover (the stated height less the inset and the air under it), at every tier the pane draws.
+        foreach (var content in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge })
+        {
+            var record = ClassicLibraryTiers.For(content, single: false);
+            Assert.True(record.PaneHeaderHeight - ClassicTiers.PaneInset - record.PaneHeaderPadBottom >= record.PaneCover, $"{content}: the cover overruns its band");
+        }
+    }
+
+    [Fact]
+    public void The_sort_is_a_button_at_compact_and_small_only()
+    {
+        Assert.True(ClassicLibraryTiers.For(WidthTier.Compact, single: true).SortButton);
+        Assert.True(ClassicLibraryTiers.For(WidthTier.Small, single: false).SortButton);
+        Assert.True(ClassicLibraryTiers.For(WidthTier.Compact, single: false).SortButton);   // the split page in a Compact content tier reads Small's head
+        Assert.False(ClassicLibraryTiers.For(WidthTier.Standard, single: false).SortButton);
+        Assert.False(ClassicLibraryTiers.For(WidthTier.Huge, single: false).SortButton);
+        // The Small button is the stock 32 beside the 28 view cells, the head's rows 10 apart (C-Library-Small), the Standard head's 8 untouched.
+        var small = ClassicLibraryTiers.For(WidthTier.Small, single: false);
+        Assert.Equal(32f, small.ControlH);
+        Assert.Equal(28f, small.ViewCell);
+        Assert.Equal(10f, small.HeadGap);
+        Assert.Equal(8f, ClassicLibraryTiers.For(WidthTier.Standard, single: false).HeadGap);
     }
 
     // ── Small's navigator and its grid floor (contract 1.22: C-Library-Small, C-LibraryList-Small) ──────────────────────────────────────

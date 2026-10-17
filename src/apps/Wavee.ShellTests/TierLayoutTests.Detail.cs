@@ -127,7 +127,7 @@ public sealed partial class TierLayoutTests
         if (list && !record.Core.Table.ListIndex && shell.FindPrefix(Track.CellKey.Title).Count > 0 && shell.FindPrefix(Track.CellKey.Duration).Count == 0)
             Assert.True(shell.FindPrefix(Track.CellKey.Num).Count == 0, $"{size.Name}: a Compact list row still lays out its # lane");
         if (arm == "vertical") Assert.True(shell.FindPrefix("vitem:recs").Count <= 1, $"{size.Name}: the hero arm carries more than one recommendations section");
-        if (!record.EmptyLead) return;
+        if (record.Tier != WidthTier.Compact) return;   // the 40 command targets are the Compact record's
         foreach (var (root, _) in shell.FindPrefix("rec:header"))
             foreach (var n in Subtree(scene, root))
             {
