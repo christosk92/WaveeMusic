@@ -138,7 +138,27 @@ _Not built yet._
 
 ## Z3: the lists
 
-_Not built yet._
+`Structure\ZuneStructure.Lists.cs` registers seven list STYLES (the core hosts build the lists from them, `ListStyleLookup`); each wins over
+Classic's stand-in key by key. The pictures are `Structure\Lists\Zune*.cs`, every number `Rules\ZuneListRules.cs`.
+
+| Style key | Zune's picture (boards) |
+|---|---|
+| `TrackTable` | One row skin in both slots (Z-State-Rows, Z-Album, Z-Liked): the "#" in the Numeral role (22·300), the accent bars on the playing row (key `zune.row.now`), title / subline / every lane in the accent on the playing row, no plate; rest bare (no zebra, border, corner or pill), hover the 5 % ink wash, selected the 12 % accent wash, a drop target the 2-DIP accent line (key `zune.row.drop`). The chrome: lowercased 12/16 header words (key `zune.list.header`), flat square commands, the round accent play disc and ringed shuffle as the page bar's lead, a square filter card, the unavailable bar on the panel fill. |
+| `EagerTrackRow` | The same cells over a bare hover container. |
+| `EpisodeRow` | Square cover (Cover 2), the accent disc, bar, rule, "new" and "left" (Zune's one accent, not the page tone); no hairlines. |
+| `Surface` | Tiles and plates radius 0, covers 2, people round; washes, never strokes; selected = 2-DIP accent border over the accent wash. |
+| `LyricsLines` | Line level only (no word wipe), the active line in the accent, the core's opacity ramp, the translation at 0.625 in 300. |
+| `ArtistChart` | 60-DIP touching rows, the rank in NumeralLarge (28·300), the 48 cover, the heading in the Heading role, square pager chevrons. |
+| `TrackDrawer` | Flat and square under its row, Zune's type, the self row on the wash. |
+
+Policies (`Rules\ZunePolicies.Lists.cs`): `ListPolicy` is fixed (Modern skin, artwork on: Zune has no row-style or hide-artwork option); the
+detail table's records per window tier use the density's rows everywhere ("Standard rows": Compact form at Compact, no Album / Plays lane at
+Small, every lane from Standard). The row height is the style's density (44 / 52 / 60), published as `StyleMetrics.TrackRows`; 4K keeps the
+user's density (P5 decision 3).
+
+Density: the "..." menu's "Row size" lists Zune's three densities and checks the PUBLISHED rung (`ThemeHost.Metrics`), never the style's
+option cell, so nothing under Zune reads `style.density` as Classic's `RowDensity`. The resync pill is the lyrics view's (Z4c), not the lines'.
+`Track.RowState.OnThisPc` is not drawn (Z9).
 
 ## Z4a: the player
 
