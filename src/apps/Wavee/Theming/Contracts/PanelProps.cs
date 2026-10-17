@@ -6,9 +6,12 @@
 // coupling, the seam's splitter (the frame places it) and the open/close bookkeeping. This record is what the template draws from: ONE
 // decided `PanelView` per read, plus the verbs a click asks for and the builders of the bodies the core hosts.
 //
-// TWO PANES (TC2, D3). Where the window tier docks two panels, the queue opens in a SECOND pane beside the primary one. The frame mounts
-// `Shell.Panel` a second time with the second pane's own props (`ShellFrameProps.SecondPanel`): its view is always the queue, docked, with
-// no docked video card.
+// DOCKED PANES (TC2, D3; contract 1.29, ZT2). Where the window tier docks more than one pane, the structure's arrangement
+// (`PanelTierRule.Panes`) names the body of each pane beside the primary and its side: Classic's queue right of the primary (opened on its
+// own), Zune's queue | lyrics · friends and queue | lyrics | friends (LINKED: the panes open and close with the panel). The frame mounts
+// `Shell.Panel` once more per docked pane with that pane's own props (`ShellFrameProps.SecondPanel`, `ShellFrameProps.DockedPanes`): its
+// view is its one body, docked, with no docked video card. A linked arrangement tells the primary which bodies the panes beside it show
+// (`PanelView.Beside`, its pivot head leaves them out) and tells each pane that it is linked (`PanelView.Linked`: no close of its own).
 //
 // WHAT THE VIEW SAYS. `Read` is called inside the template's render (the panel frame is a component of the theme), so the
 // subscriptions land on it: the panel's cells, the video surface's placement, the stage that may host the docked video, and the
@@ -47,6 +50,30 @@ public enum PanelPlacement : byte
 
     /// <summary>A bottom sheet over the page and the player bar.</summary>
     Sheet,
+}
+
+/// <summary>The side of the primary panel a docked pane sits on (contract 1.29).</summary>
+public enum PaneSide : byte
+{
+    /// <summary>Right of the primary (Classic's queue).</summary>
+    After,
+
+    /// <summary>Left of the primary (Zune's queue).</summary>
+    Before,
+}
+
+/// <summary>A set of panel bodies (contract 1.29): the bodies the linked panes beside a pane show.</summary>
+/// <param name="Bits">One bit per <see cref="PanelMode"/> value.</param>
+public readonly record struct PanelModeSet(byte Bits)
+{
+    /// <summary>The set holds <paramref name="mode"/>.</summary>
+    public bool Contains(PanelMode mode) => (Bits & (1 << (int)mode)) != 0;
+
+    /// <summary>The set with <paramref name="mode"/> added.</summary>
+    public PanelModeSet With(PanelMode mode) => new((byte)(Bits | (1 << (int)mode)));
+
+    /// <summary>The set holds nothing.</summary>
+    public bool IsEmpty => Bits == 0;
 }
 
 /// <summary>What occupies the now-playing arm's pinned slot: ONE slot, two possible occupants, never both.</summary>
@@ -91,6 +118,14 @@ public sealed record PanelView
 
     /// <summary>The now-playing arm's pinned slot.</summary>
     public PanelPinned Pinned { get; init; }
+
+    /// <summary>The bodies the linked panes docked beside this one show (contract 1.29): its pivot head leaves them out, as each is on
+    /// screen already. Empty where nothing linked docks beside it (Classic, and every tier that docks one pane).</summary>
+    public PanelModeSet Beside { get; init; }
+
+    /// <summary>This is a docked pane that opens and closes with the primary panel (contract 1.29, Zune's queue | lyrics · friends): it
+    /// draws no close of its own. False for the primary and for Classic's independent queue pane.</summary>
+    public bool Linked { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.ShellPanel"/>.</summary>

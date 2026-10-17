@@ -32,12 +32,13 @@ public static partial class Shell
     public readonly record struct PanelState(bool Open, RailMode Mode, float Width, bool Floats, DockedVideoState DockedVideo,
         Theming.Contracts.PanelPlacement Placement = Theming.Contracts.PanelPlacement.Dock);
 
-    /// <summary>The panel's cells. The shell's are <see cref="Ui"/>'s own signals (<see cref="Frame"/>). The last four are the window
-    /// tier's placement facts and the second docked pane (TC2); a unit fact that leaves them out gets private ones (one docked panel).</summary>
+    /// <summary>The panel's cells. The shell's are <see cref="Ui"/>'s own signals (<see cref="Frame"/>). The last five are the window
+    /// tier's placement facts and the docked panes (TC2, ZT2); a unit fact that leaves them out gets private ones (one docked panel, and
+    /// Classic's queue beside it where a fact allows two).</summary>
     public sealed class PanelCells(Signal<bool> open, Signal<RailMode> mode, FloatSignal width, FloatSignal dragWidth,
         FloatSignal dockedVideoHeight, Signal<bool> dockedVideoPinned, FloatSignal bodyHeight, Signal<bool> fits,
         Signal<bool>? queueBeside = null, Signal<bool>? secondAllowed = null, FloatSignal? floor = null,
-        Signal<Theming.Contracts.PanelPlacement>? placement = null)
+        Signal<Theming.Contracts.PanelPlacement>? placement = null, Signal<Theming.PanelArrangement>? panes = null)
     {
         public Signal<bool> Open { get; } = open;
         public Signal<RailMode> Mode { get; } = mode;
@@ -48,11 +49,16 @@ public static partial class Shell
         public FloatSignal BodyHeight { get; } = bodyHeight;
         public Signal<bool> Fits { get; } = fits;
 
-        /// <summary>The queue is open beside the primary panel (the second docked pane where the tier docks two).</summary>
+        /// <summary>The queue is open beside the primary panel (an INDEPENDENT docked pane, Classic's, where the tier docks two). A linked
+        /// arrangement never reads it: its panes open with the panel.</summary>
         public Signal<bool> QueueBeside { get; } = queueBeside ?? new Signal<bool>(false);
 
-        /// <summary>The window tier docks two panels.</summary>
+        /// <summary>The window tier docks two panels (or more).</summary>
         public Signal<bool> SecondAllowed { get; } = secondAllowed ?? new Signal<bool>(false);
+
+        /// <summary>The panes the window tier docks beside the primary, in order (contract 1.29); read only while
+        /// <see cref="SecondAllowed"/> holds.</summary>
+        public Signal<Theming.PanelArrangement> Panes { get; } = panes ?? new Signal<Theming.PanelArrangement>(Theming.PanelArrangement.QueueBeside);
 
         /// <summary>The least width a docked panel keeps in the window tier (0: none).</summary>
         public FloatSignal Floor { get; } = floor ?? new FloatSignal(0f);
@@ -63,7 +69,7 @@ public static partial class Shell
         /// <summary>The shell's panel: the very signals every reader binds.</summary>
         public static readonly PanelCells Frame = new(Ui.RailOpen, Ui.Mode, Ui.RailWidth, Ui.RailDragWidth,
             Ui.DockedVideoHeight, Ui.DockedVideoHeightPinned, Ui.RailBodyHeight, Ui.RailFits,
-            Ui.QueueBeside, Ui.SecondPaneAllowed, Ui.PanelFloor, Ui.PanelPlacement);
+            Ui.QueueBeside, Ui.SecondPaneAllowed, Ui.PanelFloor, Ui.PanelPlacement, Ui.PanelPanes);
 
         /// <summary>A private set at <see cref="Ui"/>'s defaults (closed, Lyrics, 340 wide, fits).</summary>
         public static PanelCells Fresh() => new(new Signal<bool>(false), new Signal<RailMode>(RailMode.Lyrics),
@@ -71,7 +77,7 @@ public static partial class Shell
             new Signal<bool>(false), new FloatSignal(0f), new Signal<bool>(true));
     }
 
-    /// <summary>The docked video card of a pane that hosts none (the second docked pane, TC2): zero size, never hit.</summary>
+    /// <summary>The docked video card of a pane that hosts none (a docked pane beside the primary, TC2): zero size, never hit.</summary>
     internal static FluentGpu.Dsl.Element NoDockedCard() => new FluentGpu.Dsl.BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
 
     // ══ THE PERSISTED SIZES ══════════════════════════════════════════════════════════════════════════════════════════
@@ -177,7 +183,8 @@ public static partial class Shell
         /// also forgets the queue beside it, so closing never uncovers a second panel.</summary>
         void Close();
 
-        /// <summary>Close the second docked pane (the queue beside the primary panel).</summary>
+        /// <summary>Close the docked pane beside the primary panel: Classic's queue pane on its own; a linked arrangement's panes close
+        /// with the panel, so their close closes the panel.</summary>
         void CloseQueuePane();
 
         /// <summary>Commit the width the seam preview holds: the layout, the docked video and the persisted width change here,
@@ -271,17 +278,43 @@ public static partial class Shell
             return new PanelState(open, mode, width, floats, docked, placement);
         }
 
-        /// <summary>The second docked pane is on screen (tracked): the queue beside the primary, at a tier that docks two, while the
-        /// primary is not already showing the queue.</summary>
-        public bool SecondOpen()
-            => FrameRules.SecondOpen(Cells.QueueBeside.Value, Cells.SecondAllowed.Value, Cells.Open.Value, Cells.Mode.Value);
+        /// <summary>The panes the window tier docks beside the primary (tracked, contract 1.29): none where it docks one.</summary>
+        public Theming.PanelArrangement Panes()
+        {
+            var panes = Cells.Panes.Value;
+            return Cells.SecondAllowed.Value ? panes : default;
+        }
+
+        /// <summary><see cref="Panes"/> without subscribing.</summary>
+        public Theming.PanelArrangement PanesNow() => Cells.SecondAllowed.Peek() ? Cells.Panes.Peek() : default;
+
+        /// <summary>Docked pane <paramref name="index"/> is on screen (tracked; 0 the second pane, 1 the third): see
+        /// <see cref="FrameRules.PaneOpen"/>.</summary>
+        public bool PaneOpen(int index)
+        {
+            var panes = Panes();
+            return FrameRules.PaneOpen(in panes, index, Cells.QueueBeside.Value, Cells.Open.Value, Cells.Mode.Value);
+        }
+
+        /// <summary><see cref="PaneOpen"/> without subscribing.</summary>
+        public bool PaneOpenNow(int index)
+        {
+            var panes = PanesNow();
+            return FrameRules.PaneOpen(in panes, index, Cells.QueueBeside.Peek(), Cells.Open.Peek(), Cells.Mode.Peek());
+        }
+
+        /// <summary>A docked pane's width (tracked): the tier's floor, never under the panel default.</summary>
+        public float PaneWidth() => FrameRules.SecondWidth(Cells.Floor.Value);
+
+        /// <summary>The second docked pane is on screen (tracked): Classic's queue beside the primary at a tier that docks two while the
+        /// primary is not already showing it; a linked arrangement's second pane while the panel is open.</summary>
+        public bool SecondOpen() => PaneOpen(0);
 
         /// <summary><see cref="SecondOpen"/> without subscribing.</summary>
-        public bool SecondOpenNow()
-            => FrameRules.SecondOpen(Cells.QueueBeside.Peek(), Cells.SecondAllowed.Peek(), Cells.Open.Peek(), Cells.Mode.Peek());
+        public bool SecondOpenNow() => PaneOpenNow(0);
 
         /// <summary>The second pane's width (tracked): the tier's floor.</summary>
-        public float SecondWidth() => FrameRules.SecondWidth(Cells.Floor.Value);
+        public float SecondWidth() => PaneWidth();
 
         // ── the persisted chrome state the frame's first layout must already have ──────────────────────────────────
 
@@ -314,17 +347,29 @@ public static partial class Shell
         /// <summary>The mode's door. Where ONE panel shows at a time: the mode on show closes it (and forgets the queue beside it),
         /// any other switches to it. Where TWO dock (D3), the queue lives in the second pane: its door opens or closes that pane (or
         /// the primary, while the primary itself shows the queue), and switching the primary away from the queue moves the queue into
-        /// the second pane instead of closing it.</summary>
+        /// the second pane instead of closing it. Where the panes are LINKED (contract 1.29, Zune), they open and close with the panel:
+        /// a door whose body is on screen (in the primary, after its step aside, or in a docked pane) closes the panel, any other shows its
+        /// body in the primary.</summary>
         public void Toggle(RailMode mode)
         {
             bool open = Cells.Open.Peek();
             var current = Cells.Mode.Peek();
-            if (!Cells.SecondAllowed.Peek())
+            var panes = PanesNow();
+            if (panes.Count == 0)
             {
                 if (open && current == mode) { Cells.Open.Value = false; Cells.QueueBeside.Value = false; return; }
                 SetMode(mode);
                 return;
             }
+            if (panes.Linked)
+            {
+                var asked = (Theming.Contracts.PanelMode)(byte)mode;
+                bool onScreen = panes.Holds(asked) || (byte)panes.Presented((Theming.Contracts.PanelMode)(byte)current) == (byte)mode;
+                if (open && onScreen) { Cells.Open.Value = false; return; }
+                SetMode(mode);
+                return;
+            }
+            // An independent pane: Classic's queue (the policy holds an independent pane to the queue).
             if (mode == RailMode.Queue)
             {
                 if (open && current == RailMode.Queue) { Cells.Open.Value = false; Cells.QueueBeside.Value = false; return; }
@@ -344,24 +389,36 @@ public static partial class Shell
             if (!Cells.SecondAllowed.Peek()) Cells.QueueBeside.Value = false;
         }
 
-        public void CloseQueuePane() => Cells.QueueBeside.Value = false;
+        public void CloseQueuePane()
+        {
+            if (PanesNow().Linked) { Close(); return; }   // a linked pane closes with the panel
+            Cells.QueueBeside.Value = false;
+        }
 
         /// <summary>A crossing to a tier that docks ONE panel while only the queue's second pane was open: the queue becomes the panel,
-        /// so the crossing never hides what the user had open. Nothing to do otherwise.</summary>
+        /// so the crossing never hides what the user had open. The same where the new tier LINKS its panes (a theme switch from Classic's
+        /// lone queue pane): the panel opens on the queue, and a linked arrangement shows it in its pane. Nothing to do otherwise.</summary>
         public void FoldSecondIntoPrimary()
         {
-            if (Cells.SecondAllowed.Peek() || Cells.Open.Peek() || !Cells.QueueBeside.Peek()) return;
-            Cells.Mode.Value = RailMode.Queue;
-            Cells.Open.Value = true;
+            if (!Cells.QueueBeside.Peek()) return;
+            bool linked = PanesNow().Linked;
+            if (Cells.SecondAllowed.Peek() && !linked) return;
+            if (!Cells.Open.Peek())
+            {
+                Cells.Mode.Value = RailMode.Queue;
+                Cells.Open.Value = true;
+            }
+            else if (!linked) return;
             Cells.QueueBeside.Value = false;
         }
 
         /// <summary>The window tier's floor moved (a crossing into or out of Huge, or a Huge window resized): the committed width is the
         /// stored preference brought up to <paramref name="floor"/> (never persisted), so every reader of the width (the reservation, the
-        /// docked video, the seam) sees the width on screen.</summary>
+        /// docked video, the seam) sees the width on screen. The floor is honoured above the policy's own bounds
+        /// (<see cref="FrameRules.FloorWidth"/>: Zune's 340-only panel docks at 360 at Huge).</summary>
         public void FitWidthToFloor(float floor)
         {
-            float target = MathF.Max(sizes.LoadWidth(), floor > 0f ? ClampRailWidth(floor) : 0f);
+            float target = MathF.Max(sizes.LoadWidth(), FrameRules.FloorWidth(floor));
             if (Cells.Width.Peek() != target) Cells.Width.Value = target;
             if (Cells.DragWidth.Peek() != target) Cells.DragWidth.Value = target;
         }
@@ -377,11 +434,12 @@ public static partial class Shell
         /// <summary>The panel's bounds changed (a theme switch gave it another policy): bring the committed width, and the width
         /// a seam preview parks at, inside <paramref name="policy"/>. Nothing is persisted: the stored preference stays what the
         /// user chose, and the next launch loads it through the bounds in force then. A width already inside the bounds is
-        /// untouched, so the call is free to run on every policy publication.</summary>
+        /// untouched, so the call is free to run on every policy publication. The window tier's floor still holds (a docked panel never
+        /// presents under it, whichever of the two publications lands first).</summary>
         public void FitWidthTo(Theming.PanelPolicy policy)
         {
             float committed = Cells.Width.Peek();
-            float fitted = policy.ClampWidth(committed);
+            float fitted = MathF.Max(policy.ClampWidth(committed), FrameRules.FloorWidth(Cells.Floor.Peek()));
             if (fitted != committed) Cells.Width.Value = fitted;
             if (Cells.DragWidth.Peek() != fitted) Cells.DragWidth.Value = fitted;
         }

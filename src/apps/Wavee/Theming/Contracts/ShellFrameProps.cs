@@ -96,6 +96,13 @@ public sealed record ShellFrameProps
     /// <summary>The second pane's props: the frame mounts <see cref="ViewKeys.ShellPanel"/> with them beside the primary panel.</summary>
     public PanelProps? SecondPanel { get; init; }
 
+    // ── every docked pane beside the primary (contract 1.29, ZT2) ────────────────────────────────────────────────────────
+
+    /// <summary>Every pane the structure's arrangement can dock beside the primary panel, in pane order (the second pane, then the third):
+    /// each one's open state, width, reservation, side and props. The members above are the first of them, as a frame that docks one pane
+    /// beside the primary reads it (Classic). Null where the core hands none.</summary>
+    public IReadOnlyList<DockedPaneProps>? DockedPanes { get; init; }
+
     // ── behaviour the host wires ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The shell chords: zero-size accelerator boxes the column mounts first.</summary>
@@ -182,4 +189,28 @@ public sealed record ShellFrameProps
 
     /// <summary>The frame-rate overlay: the props of <see cref="ViewKeys.ShellFps"/> (T4c).</summary>
     public required FpsProps Fps { get; init; }
+}
+
+/// <summary>One docked pane beside the primary panel (contract 1.29): what the frame binds to place it and the props it mounts
+/// <see cref="ViewKeys.ShellPanel"/> with. Built once, every member a bound read.</summary>
+public sealed record DockedPaneProps
+{
+    /// <summary>The pane's place in the arrangement: 0 the second pane, 1 the third. Stable, so the frame keys the pane's host by it and a
+    /// crossing that adds or drops another pane keeps this one's node.</summary>
+    public required int Index { get; init; }
+
+    /// <summary>Is the pane on screen (the tier docks it and it is open)?</summary>
+    public required Func<bool> Open { get; init; }
+
+    /// <summary>The pane's width (also while it is closed: its host keeps it, the pane slides out of it).</summary>
+    public required Func<float> Width { get; init; }
+
+    /// <summary>The pane's row reservation: its width while it is open, else 0.</summary>
+    public required Func<float> ReservedWidth { get; init; }
+
+    /// <summary>The side of the primary panel it sits on in the window tier (the widest tier's side where the tier docks it not).</summary>
+    public required Func<PaneSide> Side { get; init; }
+
+    /// <summary>The pane's props: its one body, docked, with no docked video card.</summary>
+    public required PanelProps Panel { get; init; }
 }

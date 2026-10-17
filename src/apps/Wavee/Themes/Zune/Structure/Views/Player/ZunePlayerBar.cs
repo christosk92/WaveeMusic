@@ -14,6 +14,9 @@
 // THE MINI BAR (Compact, Z-PlayBar-Compact): 64 at the foot of the reserved 72, the 2-px progress line, the identity as ONE door to now
 // playing (art 44 · title · artists), then the disc and next (+10 for an episode).
 //
+// PER TIER (ZT2, `Tiers.Player.cs`): the mini bar at Compact; narrow (640) and medium (760) at Small; medium and full (1240) at Standard;
+// wide (1920) at Huge in the 72; big (3200) at Huge 4K in an 88 slot. The slot's and the bar's heights ease through real layout on a crossing.
+//
 // One element tree for every level and both forms: the identity, the art, the disc and each tool keep their keys, so a level crossing FLIPs
 // them (MoveMotion) and a tool that lights or dims fades in place (FaceMotion); a line that comes or goes (the "playing on" line, a time)
 // enters and leaves with a fade. No key names a level or a form.
@@ -247,10 +250,14 @@ internal static partial class ZunePlayerBar
                 Children = [new BoxEl { Height = T.LineH, Shrink = 0f, ClipToBounds = true, Direction = 0, Children = [ProgressBar.Indeterminate(m.TopEdgeWidth)] }],
             });
 
+        // The slot (72, 88 at Huge 4K) and the bar in it (the mini 64 at Compact) change height on a crossing: both ease through real layout (a
+        // size channel), so the page above yields frame by frame and the bar's top edge rises with no position slide (ZT2; the engine's
+        // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing).
+        bool reduced = ctx.Reduced;
         return new BoxEl
         {
             Direction = 1, Justify = FlexJustify.End, Height = tier.SlotH, Shrink = 0f, IsolateLayout = true,
-            Animate = L.MoveMotion,
+            Animate = reduced ? null : ZunePlayerTiers.SlotMotion,
             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
             OnRealized = node => barNode.Value = node,
             OnClick = () => input.FocusNode?.Invoke(barNode.Value, true),
@@ -259,7 +266,8 @@ internal static partial class ZunePlayerBar
             [
                 new BoxEl
                 {
-                    Key = BarKey, Height = tier.BarH, Shrink = 0f, ZStack = true, Fill = R.Layer.PlayerBar, Animate = L.MoveMotion,
+                    Key = BarKey, Height = tier.BarH, Shrink = 0f, ZStack = true, Fill = R.Layer.PlayerBar,
+                    Animate = reduced ? null : ZunePlayerTiers.BarMotion,
                     Children = layers.ToArray(),
                 },
             ],

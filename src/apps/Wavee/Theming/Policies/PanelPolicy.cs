@@ -9,6 +9,14 @@
 // pane + panel + content: the core reads `For(tier)` on the committed window tier, so a crossing that docks or undocks the panel lands on
 // the crossing frame and animates (plan 3.3). A structure that declares no tier rules docks one panel in every tier.
 //
+// THE PANE ARRANGEMENT (contract 1.29, P5 ZT2). Where a tier docks more than one pane, the rule says WHICH bodies dock beside the
+// primary panel and in what order (`PanelTierRule.Panes`, a `PanelArrangement`): up to two docked panes, each a fixed body on one side of
+// the primary, either INDEPENDENT (Classic Huge: the queue right of the primary, opened and closed on its own through the remembered
+// "queue beside" flag) or LINKED (Zune Huge: queue | lyrics · friends; Zune Huge 4K: queue | lyrics | friends: the panes open and close
+// with the panel as one, and the primary steps aside to the arrangement's fallback body when it would show a docked pane's body).
+// `MaxDocked` caps the arrangement (a structure option such as Zune's `maxDockedPanes` lowers it); a docking rule with `MaxDocked` 2 and
+// no arrangement docks the queue beside the primary, exactly as before the arrangement existed.
+//
 // `Default` is the shell before themes: the bounds Wavee Classic declares, and no tier rules (one docked panel everywhere).
 
 using System.Collections.Immutable;
@@ -16,10 +24,59 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Theming;
 
+/// <summary>One docked pane beside the primary panel: the body it always shows and the side of the primary it sits on.</summary>
+/// <param name="Mode">The pane's one body.</param>
+/// <param name="Side">Right of the primary (<see cref="PaneSide.After"/>, Classic's queue) or left of it (<see cref="PaneSide.Before"/>,
+/// Zune's queue).</param>
+public readonly record struct DockedPane(PanelMode Mode, PaneSide Side = PaneSide.After);
+
+/// <summary>The panes a window tier docks beside the primary panel (contract 1.29).</summary>
+/// <param name="Second">The second pane (null: none).</param>
+/// <param name="Third">The third pane (null: none; never without a second).</param>
+/// <param name="Linked">The docked panes open and close with the primary panel as one (Zune), instead of on their own (Classic's queue,
+/// kept in the remembered "queue beside" flag).</param>
+/// <param name="Fallback">Where the panes are linked: the body the primary shows instead when its mode is a docked pane's (the body is never
+/// on screen twice). Never a docked pane's own body.</param>
+public readonly record struct PanelArrangement(DockedPane? Second = null, DockedPane? Third = null, bool Linked = false,
+    PanelMode Fallback = PanelMode.Lyrics)
+{
+    /// <summary>Classic's arrangement (D3): the queue, independent, right of the primary. What a docking rule with two panes and no
+    /// arrangement of its own docks.</summary>
+    public static PanelArrangement QueueBeside { get; } = new(new DockedPane(PanelMode.Queue));
+
+    /// <summary>How many panes dock beside the primary (0, 1 or 2).</summary>
+    public int Count => Second is null ? 0 : Third is null ? 1 : 2;
+
+    /// <summary>The pane at <paramref name="index"/> (0 the second pane, 1 the third), or null.</summary>
+    public DockedPane? At(int index) => index switch { 0 => Second, 1 => Third, _ => null };
+
+    /// <summary>A docked pane shows <paramref name="mode"/>.</summary>
+    public bool Holds(PanelMode mode) => (Second is { } s && s.Mode == mode) || (Third is { } t && t.Mode == mode);
+
+    /// <summary>The bodies the docked panes show.</summary>
+    public PanelModeSet Modes
+    {
+        get
+        {
+            var set = default(PanelModeSet);
+            if (Second is { } s) set = set.With(s.Mode);
+            if (Third is { } t) set = set.With(t.Mode);
+            return set;
+        }
+    }
+
+    /// <summary>The body the primary presents for its mode <paramref name="primary"/>: the fallback where the panes are linked and one of
+    /// them already shows it, else the mode itself.</summary>
+    public PanelMode Presented(PanelMode primary) => Linked && Holds(primary) ? Fallback : primary;
+
+    /// <summary>The arrangement with at most <paramref name="count"/> docked panes (the nearest kept: the second before the third).</summary>
+    public PanelArrangement Capped(int count) => count <= 0 ? default : count == 1 ? this with { Third = null } : this;
+}
+
 /// <summary>How the panel is placed in one window tier.</summary>
 /// <param name="Placement">Docked, floating or a sheet.</param>
-/// <param name="MaxDocked">How many panels dock side by side (1, or 2: the primary panel and the queue beside it). Only read where
-/// <paramref name="Placement"/> is <see cref="PanelPlacement.Dock"/>.</param>
+/// <param name="MaxDocked">How many panes dock side by side: 1, 2 or 3 (the primary panel and up to two panes of <see cref="PanelTierRule.Panes"/>).
+/// Only read where <paramref name="Placement"/> is <see cref="PanelPlacement.Dock"/>.</param>
 /// <param name="FloorW">The least width a docked panel keeps in this tier at <paramref name="FloorAt"/> and below (0: none, the user's
 /// width alone).</param>
 /// <param name="FloorAt">The window width up to which the floor is <paramref name="FloorW"/>.</param>
@@ -32,11 +89,23 @@ public readonly record struct PanelTierRule(
     /// <summary>One docked panel, no floor: the rule of a structure that declares none.</summary>
     public static readonly PanelTierRule Docked = new(PanelPlacement.Dock);
 
+    /// <summary>The panes this tier may dock beside the primary, in their order (contract 1.29). Default: none declared, which docks
+    /// Classic's queue beside the primary where <see cref="MaxDocked"/> is 2 or more.</summary>
+    public PanelArrangement Panes { get; init; }
+
     /// <summary>The panel docks beside the page.</summary>
     public bool Docks => Placement == PanelPlacement.Dock;
 
-    /// <summary>Two panels dock side by side.</summary>
-    public bool DocksTwo => Docks && MaxDocked >= 2;
+    /// <summary>The panes that dock beside the primary in this tier: <see cref="Panes"/> (Classic's queue where none is declared), capped by
+    /// <see cref="MaxDocked"/>; none where the tier does not dock or docks one.</summary>
+    public PanelArrangement Arrangement
+        => !Docks || MaxDocked < 2 ? default : (Panes.Count == 0 ? PanelArrangement.QueueBeside : Panes).Capped(MaxDocked - 1);
+
+    /// <summary>Two panes (or more) dock side by side.</summary>
+    public bool DocksTwo => Arrangement.Count >= 1;
+
+    /// <summary>Three panes dock side by side.</summary>
+    public bool DocksThree => Arrangement.Count >= 2;
 
     /// <summary>The least width a docked panel keeps in a window <paramref name="viewportWidth"/> wide: 0 where the rule has no floor or
     /// the panel does not dock; the floor, growing linearly from <see cref="FloorAt"/> to <see cref="FloorMaxAt"/>, rounded to whole DIP.</summary>
@@ -74,6 +143,19 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
 
     /// <summary>The rule of the tiers in <paramref name="facts"/>: Standard's where no frame resolved them.</summary>
     public PanelTierRule For(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Window);
+
+    /// <summary>The arrangement of the widest tier that docks a pane at <paramref name="index"/> (a pane keeps its body, side and link while
+    /// it slides out on a crossing to a tier without it); Classic's queue beside the primary where no tier docks one there.</summary>
+    public PanelArrangement ArrangementAt(int index)
+    {
+        if (!Tiers.IsDefaultOrEmpty)
+            for (int i = Tiers.Length - 1; i >= 0; i--)
+                if (Tiers[i].Arrangement.At(index) is not null) return Tiers[i].Arrangement;
+        return PanelArrangement.QueueBeside;
+    }
+
+    /// <summary>The docked pane at <paramref name="index"/> in <see cref="ArrangementAt"/>; Classic's queue where no tier docks one.</summary>
+    public DockedPane PaneAt(int index) => ArrangementAt(index).At(index) ?? new DockedPane(PanelMode.Queue);
 
     /// <summary>The one clamp of a panel width.</summary>
     public float ClampWidth(float width)
@@ -119,8 +201,12 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
             for (int i = 0; i < Tiers.Length; i++)
             {
                 var r = Tiers[i];
-                if (r.MaxDocked is < 1 or > 2) problems.Add($"Panel.Tiers[{i}].MaxDocked must be 1 or 2 (was {r.MaxDocked})");
-                // A floor above MaxWidth is not an error: the width clamp brings it inside the bounds.
+                int declared = r.Panes.Count == 0 ? 1 : r.Panes.Count;   // no arrangement: Classic's queue beside
+                if (r.MaxDocked is < 1 or > 3) problems.Add($"Panel.Tiers[{i}].MaxDocked must be 1, 2 or 3 (was {r.MaxDocked})");
+                else if (r.Docks && r.MaxDocked > 1 + declared)
+                    problems.Add($"Panel.Tiers[{i}].MaxDocked is {r.MaxDocked} but its arrangement docks at most {1 + declared} panes");
+                ValidatePanes(r.Panes, i, problems);
+                // A floor above MaxWidth is not an error: the docked width honours it (Zune docks its 340 panel at 360 at Huge, ZT2).
                 if (!float.IsFinite(r.FloorW) || r.FloorW < 0f || !float.IsFinite(r.FloorMaxW) || r.FloorMaxW < 0f)
                     problems.Add($"Panel.Tiers[{i}]'s floor must be zero or more and finite");
             }
@@ -132,5 +218,21 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
             || !float.IsFinite(pip.Margin) || pip.Margin < 0f)
             problems.Add("Panel.Pip.ReserveBottom, ReserveTop and Margin must be zero or more and finite");
         return problems;
+    }
+
+    /// <summary>An arrangement's problems: a third pane needs a second, a body docks once, the video never docks beside (its one card lives
+    /// in the primary), an independent pane is the queue (the one remembered "queue beside" flag holds it, so there is one), and a linked
+    /// arrangement's fallback is not a docked pane's body.</summary>
+    private static void ValidatePanes(PanelArrangement panes, int i, List<string> problems)
+    {
+        if (panes.Second is null && panes.Third is not null) problems.Add($"Panel.Tiers[{i}].Panes has a third pane but no second");
+        if (panes.Second is { } a && panes.Third is { } b && a.Mode == b.Mode)
+            problems.Add($"Panel.Tiers[{i}].Panes docks {a.Mode} twice");
+        if (panes.Holds(PanelMode.Video)) problems.Add($"Panel.Tiers[{i}].Panes docks the video beside the primary (its card lives in the primary)");
+        if (panes.Count == 0) return;
+        if (!panes.Linked && (panes.Count > 1 || panes.Second is not { Mode: PanelMode.Queue }))
+            problems.Add($"Panel.Tiers[{i}].Panes: an independent docked pane is the queue alone; link the panes to dock others");
+        if (panes.Linked && panes.Holds(panes.Fallback))
+            problems.Add($"Panel.Tiers[{i}].Panes' fallback {panes.Fallback} is a docked pane's body");
     }
 }
