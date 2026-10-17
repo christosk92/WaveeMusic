@@ -106,7 +106,31 @@ _Not built yet._
 
 ## Z2a: the frame
 
-_Not built yet._
+Boards: Z-Frame-Home, Z-Frame-Panel, Z-Frame-Narrow, Z-Part-TitleBar, Z-Part-Panel. Registrar: `Structure\ZuneStructure.Frame.cs`
+(`zune.shell.frame`, `.title-bar`, `.search`, `.search-suggestions`, `.command-palette`, `.history-menu`, `.file-drop`, `.drag-chip`,
+`.cover-scrim`, `.content-state`, `zune.page.head`, `zune.shell.panel`). Every number is in `Rules\ZuneFrameRules.cs`.
+
+- **The frame** (`Views\Frame\ZuneFrame.cs`): title bar / body / play bar in one window-tall column; the body is the page row (the page
+  column `shell.content.card` = the band slot over the page, then the docked panel's reservation and the second pane's) with the panel layer
+  over it. The band spans the page column only, so a docked panel runs the body's full height, title bar to play bar; the page column and
+  the panel host FLIP together (300 ms, smooth-out) when it docks or leaves. Floating: 340 wide, flush right, from under the band
+  (`ZuneFrameLayout.BandH`). No seam and no gap. The band slot hugs whatever `Shell.NavPane` draws (Z2b): nothing below depends on its
+  height, so an empty band (the stand-in) is safe. The frame provides the page chrome signal as `ZuneFrameContext.PageChrome` (the title
+  bar's trail reads it; the band may too).
+- **The title bar** (`Views\TitleBar\ZuneTitleBar.cs`, record `ZuneTitleBarLayout` per window tier): `[wordmark · Back · trail] … [search ·
+  account · bell] [captions]`, 48 tall (56 at Huge 4K), starting on the gutter. Search is the pill from Standard up (220 / 320 / 400, growing
+  by 120 while focused), the magnifier below; the trail from Small up; the bell (with the accent dot) on the pill tiers. Every button is
+  40 x 40. Back's history menu opens on right-click / touch-hold when `Capabilities.HistoryMenu`. The pane toggle follows
+  `Capabilities.NavTree` (false under Zune); no tabs, no Forward, no pin, no friends toggle. A tier crossing and a navigation re-render the
+  bar (they are folded into its content and tabs versions), so the non-client regions are re-pushed.
+- **Search** (`Views\Search\ZuneSearch.cs`): the pill sizes itself from the record, not from the allocator's field width; the popup body is
+  exactly the box's width and hangs from its left edge; square 36-tall rows, the accent wash on the selected row.
+- **Palette, frame bits, content states**: Zune's parts (no boards). `Page.Head` collapses to nothing when hoisted (a hero head, or a page
+  with row 2) and is one title (40/48/300) otherwise: the ancestors are the title bar's trail.
+- **The panel frame** (`Views\Panel\ZunePanelFrame.cs`): the pivot head (queue · lyrics · now playing · friends, 26/32/300 lowercase, the
+  current word in the primary ink) and ✕, over the body of the mode on show; the bodies are the player lane's keys and core hosts.
+
+Tests: `Wavee.ShellTests\ZuneFrameMountedTests.cs`.
 
 ## Z2b: the band and the material
 
