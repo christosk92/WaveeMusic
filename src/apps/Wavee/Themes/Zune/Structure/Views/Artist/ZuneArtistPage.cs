@@ -129,7 +129,8 @@ internal static class ZuneArtistPage
             {
                 Key = (slot.Anchor is null ? Rules.SectionPrefix : Rules.AnchorPrefix) + key, Direction = 1, MinWidth = 0f,
                 Layout = ZuneMotion.ColumnCollapse, OnRealized = slot.Anchor,
-                Children = [body with { Key = Rules.SectionPrefix + key }],
+                // The body keeps its own key (the popular band, the about band): the holder above carries the section's.
+                Children = [body],
             });
         }
 
