@@ -35,7 +35,7 @@
 // Huge the aside is width 0 (it stays in the pane's row, so a crossing eases it) and the strip is the rows' trailing band again.
 //
 // THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Standard (C-Library), 146 with a 96 cover in a 120
-// band 16 from the words and 10 over the command row at Small (C-Library-Small; the Compact drill-in's pane leaf keeps the 156), and 200 with a 160 cover 24 from the words
+// band 16 from the words and 10 over the command row at Small (C-Library-Small, with an 8 left inset and a 24/30 title; the Compact drill-in's pane leaf keeps the 156 and the 16), and 200 with a 160 cover 24 from the words
 // at Huge (C-Library-Huge).
 //
 // Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo).
@@ -91,6 +91,15 @@ public sealed record ClassicLibraryLayout
     /// <summary>The gap between the pane cover and its words (18; C-Library-Huge 24).</summary>
     public float PaneHeaderGap { get; init; } = ClassicLibraryPaneRules.HeaderGap;
 
+    /// <summary>The pane header's and command row's LEFT inset: <see cref="PaneInset"/> (16), C-Library-Small's 8.</summary>
+    public float PaneInsetLeft { get; init; } = ClassicTiers.PaneInset;
+
+    /// <summary>The pane title's size and line (NaN: the page-hero rung, 28 / 36; C-Library-Small 24 / 30). Both finite or neither.</summary>
+    public float PaneTitleSize { get; init; } = float.NaN;
+
+    /// <summary>See <see cref="PaneTitleSize"/>.</summary>
+    public float PaneTitleLine { get; init; } = float.NaN;
+
     /// <summary>The air under the pane header's cover (12; C-Library-Small 10, the board's gap over the command row).</summary>
     public float PaneHeaderPadBottom { get; init; } = ClassicLibraryPaneRules.HeaderPadBottom;
 
@@ -109,6 +118,10 @@ public sealed record ClassicLibraryLayout
 
     /// <summary>The full grid's size-S cell floor the navigator's shimmer lays its cards at: the host's mount floor for this tier (96 at Small, the core's 116 elsewhere).</summary>
     public float CardCellMin { get; init; } = LibraryNavMount.CardCellMinFull;
+
+    /// <summary>The navigator's card-grid gaps (column between the cells of a row, row between rows): the boards' `gap: row column` (C-Library 8 8, -Compact 16 12, -Small 12 16, -Huge 16 8).
+    /// The host reads them through <see cref="ClassicLibraryTiers.Policy"/> and re-fits the mounted grid live; the shimmer draws the same.</summary>
+    public LibraryGridGaps GridGaps { get; init; } = LibraryGridGaps.Core;
 
     /// <summary>The aside docks (<see cref="AlsoByAside"/> is not 0).</summary>
     public bool AlsoByDocked => AlsoByAside > 0f;
@@ -133,7 +146,7 @@ public static class ClassicLibraryTiers
     static readonly ClassicLibraryLayout s_compact = new()
     {
         Tier = WidthTier.Compact, HeadPad = new Edges4(16f, 12f, 16f, 8f), HeadGap = 12f, ControlH = 40f, ViewCell = 40f, ChipH = 40f, RightMin = 0f,
-        SortButton = true,
+        SortButton = true, GridGaps = new LibraryGridGaps(Column: 12f, Row: 16f),
     };
 
     /// <summary>Small's head (C-Library-Small): 12 sides, 16 over it and the rows 10 apart, the sort a button (32) beside the view cells (28); its pane keeps 300 beside the navigator,
@@ -141,23 +154,27 @@ public static class ClassicLibraryTiers
     static readonly ClassicLibraryLayout s_small = new()
     {
         Tier = WidthTier.Small, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 10f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 300f,
-        CardCellMin = SmallCardCellMin, SortButton = true,
+        CardCellMin = SmallCardCellMin, SortButton = true, GridGaps = new LibraryGridGaps(Column: 16f, Row: 12f),
         PaneCover = ClassicLibraryPaneRules.SmallCover, PaneHeaderHeight = ClassicLibraryPaneRules.SmallPaneHeaderHeight,
         PaneHeaderGap = ClassicLibraryPaneRules.SmallHeaderGap, PaneHeaderPadBottom = ClassicLibraryPaneRules.SmallHeaderPadBottom,
+        PaneInsetLeft = ClassicLibraryPaneRules.SmallInsetLeft, PaneTitleSize = ClassicLibraryPaneRules.SmallTitleSize, PaneTitleLine = ClassicLibraryPaneRules.SmallTitleLine,
     };
 
     /// <summary>A split page in a Compact content tier (the ladders' holds differ by a frame) and the Compact drill-in's pane leaf (it asks for the split record): Small's head with
     /// the tuned 128 pane header, which the Compact board does not redraw.</summary>
     static readonly ClassicLibraryLayout s_compactLeaf = s_small with
     {
+        GridGaps = s_compact.GridGaps,
         PaneCover = ClassicLibraryPaneRules.PaneCover, PaneHeaderHeight = ClassicLibraryPaneRules.PaneHeaderHeight,
         PaneHeaderGap = ClassicLibraryPaneRules.HeaderGap, PaneHeaderPadBottom = ClassicLibraryPaneRules.HeaderPadBottom,
+        PaneInsetLeft = ClassicTiers.PaneInset, PaneTitleSize = float.NaN, PaneTitleLine = float.NaN,
     };
 
     /// <summary>Standard: the tuned design.</summary>
     static readonly ClassicLibraryLayout s_standard = new()
     {
         Tier = WidthTier.Standard, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 360f,
+        GridGaps = new LibraryGridGaps(Column: 8f, Row: 8f),
     };
 
     /// <summary>Huge (C-Library-Huge): 24 over the head, 16 sides, the tinted navigator and the album pane's 300 "Also by" aside.</summary>
@@ -165,7 +182,7 @@ public static class ClassicLibraryTiers
     {
         Tier = WidthTier.Huge, HeadPad = new Edges4(16f, 24f, 16f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 480f,
         PaneCover = HugePaneCover, PaneHeaderHeight = HugePaneHeader, PaneHeaderGap = HugePaneGap,
-        NavTinted = true, AlsoByAside = HugeAlsoByAside, AlsoByAsideGap = HugeAlsoByGap,
+        NavTinted = true, AlsoByAside = HugeAlsoByAside, AlsoByAsideGap = HugeAlsoByGap, GridGaps = new LibraryGridGaps(Column: 8f, Row: 16f),
     };
 
     /// <summary>The Huge album pane's "Also by" aside (C-Library-Huge): 300 wide, 32 right of the rows.</summary>
@@ -189,6 +206,7 @@ public static class ClassicLibraryTiers
     {
         HugeNavWidth = HugeNavWidth, HugeReaderNavWidth = HugeReaderNavWidth,
         SmallNavWidth = SmallNavWidth, SmallReaderNavWidth = SmallNavWidth, SmallCardCellMin = SmallCardCellMin,
+        CompactGridGaps = s_compact.GridGaps, SmallGridGaps = s_small.GridGaps, StandardGridGaps = s_standard.GridGaps, HugeGridGaps = s_huge.GridGaps,
     };
 
     /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or split. A

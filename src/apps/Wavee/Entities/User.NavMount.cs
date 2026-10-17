@@ -48,7 +48,9 @@ public enum LibraryNavLayoutKind : byte { Extents, GridFit }
 /// <param name="CellMin">GridFit layouts only: the cell's minimum main-axis extent — the S/M/L ladder
 /// (<see cref="CardCellMinCompact"/>/<see cref="CardCellMinFull"/> plus one <see cref="CardCellStepCompact"/>/
 /// <see cref="CardCellStepFull"/> step per size).</param>
-/// <param name="Gap">The grid's fixed gap between cells (<see cref="GridGap"/>).</param>
+/// <param name="Gap">The grid's gap between the cells of a row (<see cref="GridGap"/>, or the structure's per-tier column gap: <c>LibraryTierPolicy.GridGapsFor</c>). Like
+/// <see cref="CellMin"/> it is live and never part of <see cref="Key"/>.</param>
+/// <param name="RowGap">The grid's gap between rows (<see cref="GridGap"/>, or the structure's per-tier row gap).</param>
 /// <param name="Lettered">The flat a–z projection (headers interleaved with rows) is live: a LIST view under
 /// alphabetical order. False in a grid — a grid has no headers, only the jump strip's first-card index.</param>
 /// <param name="Strip">The A–Z jump strip is present: any view under alphabetical order, grid included.</param>
@@ -64,6 +66,7 @@ public readonly record struct LibraryNavMount(
     float RowExtent,
     float CellMin,
     float Gap,
+    float RowGap,
     bool Lettered,
     bool Strip,
     bool GridPadding,
@@ -104,9 +107,11 @@ public readonly record struct LibraryNavMount(
     /// <see cref="LibraryLetters.Key"/>() from the CURRENT build, 0 when a–z is not the sort (its own folding: it never
     /// enters the key unless <paramref name="alphabetical"/> AND the view is not a grid). <paramref name="fullBase"/> is the full grid's size-S floor for the
     /// content tier (<see cref="CellMinFor"/>): it moves <see cref="CellMin"/> only, NEVER the key, so a tier crossing re-fits the mounted grid in place
-    /// (the page rebuilds the grid layout value, the list stays mounted with its scroll and selection).</summary>
-    public static LibraryNavMount For(string kind, int view, int size, bool alphabetical, ulong lettersKey, float fullBase = CardCellMinFull)
+    /// (the page rebuilds the grid layout value, the list stays mounted with its scroll and selection). <paramref name="gaps"/> is the same kind of fact: the content tier's grid
+    /// gaps (the core's 8 and 8 where null), live, never in the key.</summary>
+    public static LibraryNavMount For(string kind, int view, int size, bool alphabetical, ulong lettersKey, float fullBase = CardCellMinFull, Theming.LibraryGridGaps? gaps = null)
     {
+        var gridGaps = gaps is { IsValid: true } g ? g : Theming.LibraryGridGaps.Core;
         view = Math.Clamp(view, 0, 3); size = Math.Clamp(size, 0, 2);
         bool grid = User.IsGridView(view), compact = User.IsCompactView(view), lettered = alphabetical && !grid;
         // Order / facts / rows are NOT here: a bound list refreshes them in place. LettersKey is here ONLY while the
@@ -119,7 +124,7 @@ public readonly record struct LibraryNavMount(
             grid ? LibraryNavLayoutKind.GridFit : LibraryNavLayoutKind.Extents,
             compact ? User.NavRowCompactExtent : User.NavRowExtent,
             CellMinFor(view, size, fullBase),
-            GridGap,
+            gridGaps.Column, gridGaps.Row,
             lettered, alphabetical, grid,
             "lib:nav:" + kind + ":" + family);
     }

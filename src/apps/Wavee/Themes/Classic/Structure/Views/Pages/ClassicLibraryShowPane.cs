@@ -54,7 +54,7 @@ internal static class ClassicLibraryShowPane
             p.Meta, layout);
         Element commands = new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.M),
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(layout.PaneInsetLeft, Spacing.S, ClassicTiers.PaneInset, Spacing.M),
             Children =
             [
                 p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),

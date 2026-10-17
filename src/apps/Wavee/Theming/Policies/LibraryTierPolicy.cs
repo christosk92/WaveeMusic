@@ -34,6 +34,16 @@ public static class LibraryLadders
     static readonly TierLadder s_split = new([new TierEdge(-1f)]);
 }
 
+/// <summary>The gaps of the navigator's card grid: <see cref="Column"/> between the cells of a row, <see cref="Row"/> between rows (contract addition, after 1.22).</summary>
+public readonly record struct LibraryGridGaps(float Column, float Row)
+{
+    /// <summary>The core's grid: the same 8 both ways (<see cref="LibraryNavMount.GridGap"/>).</summary>
+    public static LibraryGridGaps Core => new(LibraryNavMount.GridGap, LibraryNavMount.GridGap);
+
+    /// <summary>True when both gaps are usable (finite, not negative).</summary>
+    public bool IsValid => float.IsFinite(Column) && Column >= 0f && float.IsFinite(Row) && Row >= 0f;
+}
+
 /// <summary>What a structure decides about the library navigator's width per content tier, while the user has never dragged it (contract 1.21).</summary>
 public sealed record LibraryTierPolicy
 {
@@ -52,6 +62,32 @@ public sealed record LibraryTierPolicy
     /// <summary>The full grid's cell minimum at size S in a Small content tier (the split page's narrow navigator): the navigator's card ladder starts here
     /// instead of the core's 116 (NaN: the core's ladder; contract 1.22). The S/M/L steps are the core's. A Compact page is one column wide and keeps the core's.</summary>
     public float SmallCardCellMin { get; init; } = float.NaN;
+
+    /// <summary>The navigator's card-grid gaps per content tier (null: the core's 8 and 8; contract addition after 1.22). They are LIVE: a crossing re-fits the mounted grid in place (the
+    /// mount key never carries them), keeping the anchor row.</summary>
+    public LibraryGridGaps? CompactGridGaps { get; init; }
+
+    /// <inheritdoc cref="CompactGridGaps"/>
+    public LibraryGridGaps? SmallGridGaps { get; init; }
+
+    /// <inheritdoc cref="CompactGridGaps"/>
+    public LibraryGridGaps? StandardGridGaps { get; init; }
+
+    /// <inheritdoc cref="CompactGridGaps"/>
+    public LibraryGridGaps? HugeGridGaps { get; init; }
+
+    /// <summary>The grid's gaps at <paramref name="content"/> (Huge 4K reads Huge's); the core's where the structure says nothing for the tier.</summary>
+    public LibraryGridGaps GridGapsFor(WidthTier content)
+    {
+        var gaps = content switch
+        {
+            WidthTier.Compact => CompactGridGaps,
+            WidthTier.Small => SmallGridGaps,
+            WidthTier.Standard => StandardGridGaps,
+            _ => HugeGridGaps,
+        };
+        return gaps is { IsValid: true } g ? g : LibraryGridGaps.Core;
+    }
 
     /// <summary>The page before tiers: the key's own default everywhere.</summary>
     public static LibraryTierPolicy Default { get; } = new();

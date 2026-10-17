@@ -45,6 +45,9 @@ public static class ClassicRecentsRules
     /// <summary>The chevron glyph inside its 40 lane.</summary>
     public const float ChevronGlyph = 14f;
 
+    /// <summary>The flush day rail's distance from the card's edge (C-Recents-Small: 4).</summary>
+    public const float RailMarginRight = 4f;
+
     /// <summary>The day rail's fade when a tier crossing adds or removes it, in milliseconds.</summary>
     public const float RailFadeMs = 160f;
 

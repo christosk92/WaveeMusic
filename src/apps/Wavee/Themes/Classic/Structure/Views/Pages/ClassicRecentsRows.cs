@@ -133,15 +133,24 @@ internal static class ClassicRecentsRows
         if (layout.Stacked)
         {
             // Compact (C-Recents-Compact): the kind and the played-at stamp fold under the sub line, and the trailing cluster is the chevron's 40 lane alone.
-            trail.Add(ChevronLane(canExpand, expanded, h.Toggle, layout.ChevronLane));
+            trail.Add(ChevronLane(canExpand, expanded, h.Toggle, layout.ChevronLane, layout.ChevronGlyph));
         }
         else
         {
             if (chip is not null) trail.Add(Controls.RowChip(chip) with { Key = "chip" });
-            if (when.Length > 0) trail.Add(Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 });
-            trail.Add(canExpand
-                ? Track.ExpandCell(expanded, h.Toggle) with { Key = "chevron" }
-                : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f });
+            if (when.Length > 0)
+            {
+                Element stamp = Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 };
+                // A fixed lane, the stamp at its right end (C-Recents-Small: 44), so every row's chevron lines up; the tuned row sizes it to its text.
+                trail.Add(float.IsFinite(layout.WhenLane)
+                    ? new BoxEl { Key = "when-lane", Direction = 0, Width = layout.WhenLane, Shrink = 0f, Justify = FlexJustify.End, Children = [stamp] }
+                    : stamp);
+            }
+            trail.Add(layout.ChevronOwn
+                ? ChevronLane(canExpand, expanded, h.Toggle, layout.ChevronLane, layout.ChevronGlyph)
+                : canExpand
+                    ? Track.ExpandCell(expanded, h.Toggle) with { Key = "chevron" }
+                    : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f });
             trail.Add(new BoxEl { Key = "more-lane", Width = Controls.IconButtonSize, Shrink = 0f });
         }
         Element? subtitle = !facts.Known ? Controls.PendingBar(ClassicRecentsRules.CardNameBar, ClassicRecentsRules.CardNameBarHeight) : saved ? SavedMeta(sub) : sub.Length > 0 ? SubText(sub) : null;
@@ -181,13 +190,13 @@ internal static class ClassicRecentsRows
 
     /// <summary>The Compact chevron's lane: a <paramref name="lane"/> x <paramref name="lane"/> target that toggles the drawer (a row with nothing to open keeps the lane empty, so the
     /// rows align).</summary>
-    static Element ChevronLane(bool canExpand, bool expanded, Action toggle, float lane) => !canExpand
+    static Element ChevronLane(bool canExpand, bool expanded, Action toggle, float lane, float glyph) => !canExpand
         ? new BoxEl { Key = "chevron", Width = lane, Height = lane, Shrink = 0f }
         : new BoxEl
         {
             Key = "chevron", Width = lane, Height = lane, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = toggle,
-            Children = [Icon(expanded ? Icons.ChevronUp : Icons.ChevronDown, ClassicRecentsRules.ChevronGlyph, Tok.TextSecondary)],
+            Children = [Icon(expanded ? Icons.ChevronUp : Icons.ChevronDown, glyph, Tok.TextSecondary)],
         }.Interactive(Interaction.Subtle);
 
     /// <summary>The Saved row's green meta line (W7): a 12 check and the sentence, both <c>SystemFillSuccess</c> at 600.</summary>

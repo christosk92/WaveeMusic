@@ -46,8 +46,10 @@ internal sealed class ClassicRecentsCalendar : Component
         var host = _host;
         var calendar = host.ShapeNow.Calendar;
         var facts = UseContext(ThemeFactsContext.Signal);   // the tiers this page is drawn in, as its template reads them
+        var tiers = facts is null ? TierFacts.Unknown : facts.Value.Tiers;
+        var layout = ClassicRecentsTiers.Of(tiers);
         Element grid = ItemsView.Create(calendar.Months.Length, _monthCard,
-            RepeatLayout.GridFit(RecentsLayout.CalGridW, ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers).CalendarGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
+            RepeatLayout.GridFit(RecentsLayout.CalGridW, layout.CalendarGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
             new ListOptions
             {
                 SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
@@ -57,6 +59,8 @@ internal sealed class ClassicRecentsCalendar : Component
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.L,
+            // The flush-rail layout's body keeps no right pad (the list and rail reach the card's edge), so the calendar keeps the page gutter itself.
+            Padding = new Edges4(0f, 0f, layout.FlushRail ? ClassicTiers.PageOf(tiers).Gutter : 0f, 0f),
             OnPointerExit = host.ResetCalendarDayAction,
             Children = [Embed.Comp(() => new ClassicRecentsCalendarBand(host)), grid],
         };

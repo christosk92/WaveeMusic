@@ -288,6 +288,8 @@ public readonly partial struct User
         /// <summary>The full grid's size-S cell floor for the content tier (the structure's `LibraryTierPolicy.CardCellMinFor`, contract 1.22; the core's 116 where
         /// it says nothing). Its own memo, so the shape re-mints only when the floor itself moves, never on every tier republish.</summary>
         Memo<float>? _cellBase;
+        /// <summary>The grid's gaps for the content tier (the structure's `LibraryTierPolicy.GridGapsFor`; the core's 8 and 8 where it says nothing). Its own memo, like the floor.</summary>
+        Memo<Theming.LibraryGridGaps>? _gridGaps;
         internal Memo<int>? SelectedSlot;   // NOT "Album": a member named like the type would shadow it
         Memo<bool>? _searchActive;
         IReadSignal<string>? _query;
@@ -318,6 +320,7 @@ public readonly partial struct User
 
         readonly Func<NavShape> _computeShape;
         readonly Func<float> _cellBaseOf;
+        readonly Func<Theming.LibraryGridGaps> _gridGapsOf;
         readonly Func<int> _resolveSelected;
         readonly Func<bool> _isSearching;
         readonly Func<string> _filterText;
@@ -429,6 +432,7 @@ public readonly partial struct User
                 float floor = ShellPolicy.Tracked.LibraryTiers.CardCellMinFor(Theming.ThemeHost.Facts.Value.Tiers.Content);
                 return float.IsFinite(floor) && floor > 0f ? floor : LibraryNavMount.CardCellMinFull;
             };
+            _gridGapsOf = () => ShellPolicy.Tracked.LibraryTiers.GridGapsFor(Theming.ThemeHost.Facts.Value.Tiers.Content);
             _resolveSelected = () => { _ = Entities.ScopeEpoch.Value; return SlotOfKey(_entity, SelectedKey.Value); };
             _isSearching = () => Filter.Value.AsSpan().Trim().Length > 0;
             _filterText = () => Filter.Value.Trim();
@@ -518,6 +522,7 @@ public readonly partial struct User
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
             _scrollScope = UseContext(Shell.PageScrollScope);
             _cellBase = UseComputed(_cellBaseOf);              // before the shape: the mint reads it
+            _gridGaps = UseComputed(_gridGapsOf);
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -687,12 +692,13 @@ public readonly partial struct User
             // pays the second mint: `Key` folds `lettersKey` in only while `lettered` is true.
             // The full grid's cell floor is the content tier's (contract 1.22): it moves CellMin, never the key, so a crossing re-fits the mounted grid in place.
             float cellBase = _cellBase?.Value ?? LibraryNavMount.CardCellMinFull;
-            var mount = LibraryNavMount.For(_kind, view, size, alpha, 0UL, cellBase);
+            var gaps = _gridGaps?.Value ?? Theming.LibraryGridGaps.Core;
+            var mount = LibraryNavMount.For(_kind, view, size, alpha, 0UL, cellBase, gaps);
             if (alpha) _letters.Build(display, mount.RowExtent);
             _lettersBuilt = alpha;
             _hasLetters = lettered;
             ulong lettersKey = lettered ? _letters.Key() : 0UL;
-            if (lettered) mount = LibraryNavMount.For(_kind, view, size, alpha, lettersKey, cellBase);
+            if (lettered) mount = LibraryNavMount.For(_kind, view, size, alpha, lettersKey, cellBase, gaps);
             _mountSpec = mount;
 
             ulong rowsKey = FillRowVersions(n, out bool titlesKnown, out bool anyTitleFailed);
@@ -1259,16 +1265,16 @@ public readonly partial struct User
                 {
                     _spec = spec;
                     _layout = spec.Layout == LibraryNavLayoutKind.GridFit
-                        ? RepeatLayout.GridFit(spec.CellMin, spec.Gap)
+                        ? RepeatLayout.GridFit(spec.CellMin, spec.Gap).WithRowGap(spec.RowGap)
                         : RepeatLayout.Extents(page._extentOf, spec.RowExtent);
                     _options = page.OptionsFor(spec);
                 }
-                else if (spec.Layout == LibraryNavLayoutKind.GridFit && _spec.CellMin != spec.CellMin)
+                else if (spec.Layout == LibraryNavLayoutKind.GridFit && (_spec.CellMin != spec.CellMin || _spec.Gap != spec.Gap || _spec.RowGap != spec.RowGap))
                 {
-                    // A content-tier crossing moved the grid's cell floor (contract 1.22) under the SAME key: a fresh GridFit VALUE (stateless: the ItemsView
-                    // re-memos its grid on the new floor) re-fits the mounted list in place; the options, the scroll and the selection stay.
+                    // A content-tier crossing moved the grid's cell floor (contract 1.22) or its gaps under the SAME key: a fresh GridFit VALUE (stateless: the ItemsView
+                    // re-fits its mounted grid to the new floor and gaps) re-fits the mounted list in place; the options, the scroll and the selection stay.
                     _spec = spec;
-                    _layout = RepeatLayout.GridFit(spec.CellMin, spec.Gap);
+                    _layout = RepeatLayout.GridFit(spec.CellMin, spec.Gap).WithRowGap(spec.RowGap);
                 }
                 return (_layout, _options!);
             }
