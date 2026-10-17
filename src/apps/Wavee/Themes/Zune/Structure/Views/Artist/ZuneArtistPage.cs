@@ -14,8 +14,8 @@
 //                  ├─ Content  ZStack [ the blend wash over the hero, Column [ hero · (Compact) the actions row · the magazine ] ]
 //                  └─ Shimmer  the SAME hero over a placeholder, the magazine's chart skeleton
 //
-// THE MAGAZINE is the sections in the plan's order (`ZuneArtistSections`), 28 apart on the frame's gutter, capped at the page measure (1600;
-// Huge 2400) on the page's left edge, the player dock's reserve under the last one. Each section's holder is keyed by what it is and carries the
+// THE MAGAZINE is the sections in the plan's order (`ZuneArtistSections`), 28 apart in the system page column (`ZuneFrameRules.PageColumn`: the
+// frame's gutter, 2400 cap, centred: the band's x, audit A1), the player dock's reserve under the last one. Each section's holder is keyed by what it is and carries the
 // pivot destination's anchor; a tier crossing reflows the holders (`ZuneMotion.ColumnCollapse`), nothing is keyed by a tier.
 //
 // PRODUCTION MOTION IS KEPT: ONE visual swap (overview + measured width + the chart settled, `BodyReady`) as a soft reveal over the derived shimmer,
@@ -155,15 +155,15 @@ internal static class ZuneArtistPage
         };
     }
 
-    /// <summary>The magazine: the sections on the frame's gutter, capped at the page measure on the page's left edge, 28 apart, the player dock's
+    /// <summary>The magazine: the sections in the system page column (the frame's gutter, the 2400 cap, centred), 28 apart, the player dock's
     /// reserve under the last one.</summary>
-    static Element Magazine(Element[] sections, ZuneArtistLayout lay) => new BoxEl
+    static Element Magazine(Element[] sections, ZuneArtistLayout lay) => ZuneDetailKit.CentredPage(new BoxEl
     {
-        Key = "zune-artist-magazine", Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, MaxWidth = lay.PageMax, Layout = ZuneMotion.ColumnCollapse,
+        Key = "zune-artist-magazine", Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, Layout = ZuneMotion.ColumnCollapse,
         AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(lay.Gutter, lay.BodyTop, lay.Gutter, R.Space.DockReserve + Rules.PageBottom),
+        Padding = new Edges4(0f, lay.BodyTop, 0f, R.Space.DockReserve + Rules.PageBottom),
         Children = sections,
-    };
+    }, lay.Gutter) with { Key = "zune-artist-magazine-column" };
 
     // ── the skeleton ─────────────────────────────────────────────────────────────────────────────────────────────────
 

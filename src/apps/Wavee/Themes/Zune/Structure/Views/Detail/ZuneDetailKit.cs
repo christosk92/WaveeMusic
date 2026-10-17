@@ -83,6 +83,17 @@ internal static class ZuneDetailKit
         Children = link is null ? [heading] : [heading, new BoxEl { Grow = 1f, MinWidth = 0f }, link],
     };
 
+    // ── the page column ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The system page column (<see cref="ZuneFrameRules.PageColumn"/>: the gutter each side, capped at 2400 plus the gutters) centred in a
+    /// row and grown to its cap, so the page x equals the band's (audit A1). The row is the centring host: inside it the column stretches to the row's
+    /// height (a list fills it) instead of hugging its content, which a centred child of a column would do.</summary>
+    public static BoxEl CentredPage(BoxEl page, float gutter) => new()
+    {
+        Direction = 0, MinWidth = 0f, Justify = FlexJustify.Center,
+        Children = [ZuneFrameRules.PageColumn(page, gutter) with { AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f }],
+    };
+
     // ── the panorama ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The page's title in the panorama voice (the record's step), one line: bleeding off the right edge (NoWrap, no trim: the band
@@ -100,22 +111,46 @@ internal static class ZuneDetailKit
     }
 
     /// <summary>The panorama's band: its reserved height (eased: a short window folds it), the title nudged onto the gutter's optical edge. Clipped,
-    /// so a bleeding title stops at the page's edge and a folded band hides it.</summary>
-    public static Element PanoramaBand(string title, ZuneDetailLayout lay, float gutter) => new BoxEl
+    /// so a bleeding title stops at the page's edge and a folded band hides it. <paramref name="gutter"/> is the inset the band adds itself (0 inside the
+    /// page column, which pads the gutter: the nudge then becomes a negative margin), <paramref name="bleed"/> how far a bleeding title runs past the
+    /// band's right edge (the column's gutter, so it still meets the page's edge).
+    ///
+    /// THE TITLE. An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama,
+    /// as under Classic). The editor takes the panorama's step and wraps by words; the band then HUGS it (its reserved height a floor, eased on the size
+    /// channel), so a two-line title or the edit arm's field and words push the body down instead of clipping. A folded band (a short window) draws the
+    /// plain title: the identity column leads with the editor there.</summary>
+    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, float bleed = 0f)
     {
-        Key = Z.PanoramaKey, Direction = 0, Height = lay.PanoramaH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-        Animate = Z.PanoramaFold, HitTestVisible = false,
-        Padding = new Edges4(MathF.Max(0f, gutter + lay.PanoramaNudgeX), 0f, ZuneOptions.Fit() == PanoramaFit.Fit ? gutter : 0f, 0f),
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, 0f), Animate = ZuneMotion.TitleScale,
-                Opacity = Z.PanoramaOpacity,
-                Children = [Panorama(title, lay)],
-            },
-        ],
-    };
+        bool fit = ZuneOptions.Fit() == PanoramaFit.Fit;
+        float lead = gutter + lay.PanoramaNudgeX;
+        bool editor = slots.Title is not null && lay.PanoramaH > 0f;
+        Element title;
+        if (slots.Title is { } edit && editor)
+        {
+            var voice = Panorama("", lay);
+            title = edit(voice.Size, voice.LineHeight);
+        }
+        else
+            title = Panorama(id.Title, lay);
+        return new BoxEl
+        {
+            Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            Height = editor ? float.NaN : lay.PanoramaH, MinHeight = editor ? lay.PanoramaH : 0f,
+            Animate = Z.PanoramaFold, HitTestVisible = editor,
+            // The editor wraps inside the page (it never bleeds: its words and its pencil must stay on screen).
+            Padding = new Edges4(MathF.Max(0f, lead), 0f, fit || editor ? gutter : 0f, 0f),
+            Margin = new Edges4(MathF.Min(0f, lead), 0f, fit || editor ? 0f : -bleed, 0f),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = editor ? 1f : 0f, Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, 0f),
+                    Animate = ZuneMotion.TitleScale, Opacity = Z.PanoramaOpacity,
+                    Children = [title],
+                },
+            ],
+        };
+    }
 
     // ── the rings ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -254,18 +289,21 @@ internal static class ZuneDetailKit
     public static Element Rings(string key, Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots,
         Func<ColorF> accent, Action play, ZuneDetailLayout lay, bool spring)
     {
+        // One home per verb (audit A4): from Small up the band's row 2 carries play, shuffle and saved, so the record leaves them out here. A page's
+        // own primary (a show's or an episode's) is not a band verb and stays.
         var kids = new List<Element>(6);
-        kids.Add(slots.Primary is { } primary ? primary(accent) : Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay));
+        if (slots.Primary is { } primary) kids.Add(primary(accent));
+        else if (lay.PrimaryInHero) kids.Add(Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay));
         if (slots.Satellites is { } satellites)
             kids.AddRange(satellites());
         else
         {
-            if (cfg.Heart != HeartMode.None)
+            if (lay.PrimaryInHero && cfg.Heart != HeartMode.None)
             {
                 var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
                 kids.Add(SaveRing(target.Text, id.Title, lay.SaveWord, accent, lay));
             }
-            if (lay.ShuffleRing && acts.Shuffle is { } shuffle)
+            if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is { } shuffle)
                 kids.Add(Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, null, shuffle, lay));
             if (spring) kids.Add(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f });
             if (lay.ShareRing && ShareActionFor(id) is { } share)
@@ -282,10 +320,10 @@ internal static class ZuneDetailKit
     /// <summary>How many rings <see cref="Rings"/> lays out for this page (the skeleton reserves exactly these discs).</summary>
     public static int RingCount(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, ZuneDetailLayout lay)
     {
-        if (slots.Satellites is { } satellites) return 1 + satellites().Length;
-        int n = 1;
-        if (cfg.Heart != HeartMode.None) n++;
-        if (lay.ShuffleRing && acts.Shuffle is not null) n++;
+        int n = slots.Primary is not null || lay.PrimaryInHero ? 1 : 0;
+        if (slots.Satellites is { } satellites) return n + satellites().Length;
+        if (lay.PrimaryInHero && cfg.Heart != HeartMode.None) n++;
+        if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is not null) n++;
         if (lay.ShareRing && id.ShareUrl is { Length: > 0 }) n++;
         if (lay.MoreRing && acts.More is not null) n++;
         return n;
@@ -328,15 +366,19 @@ internal static class ZuneDetailKit
     /// <summary>A line of data under a name (13/18, secondary, one line): a card's subtitle, a video's meta. Data, never re-cased.</summary>
     public static TextEl Sub(string text) => R.Type.TrackMeta(text) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
-    /// <summary>The meta line at the record's size, one line (or <paramref name="lines"/>), or its loading bar while the count is not known.</summary>
+    /// <summary>The meta line at the record's size, one line (or <paramref name="lines"/>), or its loading bar while the count is not known. A meta that
+    /// may wrap breaks only between its " · " runs (<see cref="ZuneDetailRules.Glued"/>), so no run leaves an orphan word ("12" / "min") on the next line.</summary>
     public static Element Meta(Detail.Identity id, float width, ZuneDetailLayout lay, int lines = 1)
     {
-        if (MetaText(id) is { } text)
+        if (MetaText(id) is { } meta)
+        {
+            string text = lines > 1 ? Z.Glued(meta) : meta;
             return R.Type.DenseMeta(text) with
             {
                 Size = lay.MetaSize, LineHeight = lay.MetaLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
                 Width = width, MinWidth = 0f, MaxLines = lines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             };
+        }
         return new BoxEl
         {
             Width = width, Height = lay.MetaLine, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,

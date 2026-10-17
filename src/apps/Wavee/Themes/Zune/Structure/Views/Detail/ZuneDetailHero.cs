@@ -56,9 +56,13 @@ internal static class ZuneDetailHero
         float w = columnWidth > 0f ? columnWidth : Z.HeroFallbackW;
         float gutter = ZuneTiers.FrameOf(tiers).Gutter;
         bool words = Z.HeroWords(w, gutter);
-        var lay = ZuneDetailTiers.Hero with { PlayWord = words, SaveWord = words };
-        float cover = Z.HeroCoverFor(w, gutter);
         var id = spec.Identity;
+        // One home per verb (audit A4): play and saved leave the ring row where the window's band carries them; a playlist's or Liked Songs'
+        // panorama takes its own step (audit A8), its band sized to it, and the skeleton reads the same geometry.
+        var lay = ZunePlaylistTiers.Panorama(
+            ZuneDetailTiers.Hero with { PlayWord = words, SaveWord = words, PrimaryInHero = ZuneDetailTiers.PrimaryInHero(in tiers) },
+            ZunePlaylistTiers.Compact, id.Kind);
+        float cover = Z.HeroCoverFor(w, gutter);
         bool description = (id.EditableMetadata && spec.Slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };
         return new Geometry(lay, w, gutter, cover, description, Z.HeroHeight(lay, cover, description, ToolbarBlock));
     }
@@ -133,7 +137,7 @@ internal static class ZuneDetailHero
                 Margin = new Edges4(0f, Z.HeroActionsTop, 0f, 0f), Padding = new Edges4(g.Gutter, 0f, g.Gutter, 0f),
                 Children = [K.Rings(Z.ActionsKey, id, spec.Config, spec.Actions, slots, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject), lay, spring: true)],
             };
-            var blocks = new List<Element>(6) { K.PanoramaBand(id.Title, lay, g.Gutter), coverRow, actions };
+            var blocks = new List<Element>(6) { K.PanoramaBand(id, slots, lay, g.Gutter), coverRow, actions };
             if (g.Description && K.Description(id, slots, inner, spec.Accent) is { } description)
                 blocks.Add(K.LateRow("hero:description", new BoxEl
                 {

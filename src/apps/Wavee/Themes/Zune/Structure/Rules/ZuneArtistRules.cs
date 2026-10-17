@@ -6,9 +6,12 @@
 //   THE HERO (Z-Artist): no photograph of its own (the artist's header is the material's BLEED, published to the band through the page chrome)
 //   and no veil: the cover's blend wash tints it. 340 tall at Standard, the "verified artist" eyebrow 36 down, the name a PANORAMA word (120/130
 //   at the light 200; 64 compact below 640; 150 at Huge) standing 8 left of the gutter so its glyph edge lines up, the caption under it
-//   ("#3 in the world" in the accent · monthly listeners · followers) 16 up from the foot. THE ACTIONS follow the board: Standard leaves them to
-//   the band's row 2; Compact puts a 40 row under the hero, Small stands them at the hero's bottom right, Huge in a row under the caption.
-//   THE BODY: 24 under the hero, Popular (the chart, its columns by tier) beside a rail (300; Huge 360) holding the upcoming release, the
+//   ("#3 in the world" in the accent · monthly listeners · followers) 16 up from the foot. The hero HUGS its copy above its record height, so a
+//   long caption pushes the body down instead of running under it. THE ACTIONS have one home per verb (audit A4, an owner directive over the
+//   boards): from Small up play, shuffle and follow live ONLY in the band's row 2; the hero keeps the verbs the band does not carry (radio,
+//   "...") as unlabelled rings, at the bottom right at Small and in a row under the caption at Huge; Compact (no band actions) puts all of them
+//   in a 40 row under the hero. THE PAGE is the system page column (`ZuneFrameRules.PageColumn`: the gutter, 2400 cap, centred, audit A1).
+//   THE BODY: 24 under the hero, Popular (the chart, its columns by tier, capped at 1200 at Huge) beside a rail (300; Huge 360) holding the upcoming release, the
 //   latest release (a 96 art row) and the artist pick (a 64 art row), 48 apart; then the sections 28 apart: the discography facets (a heading
 //   row with "discography" at its end over the grid), the shelves of 154 covers 16 apart, the tour, "about", the gallery, fans also like.
 //
@@ -22,17 +25,24 @@ using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>Where the hero's actions (play · shuffle · follow · radio · more) stand in a tier.</summary>
+/// <summary>Where the hero's primary actions (play · shuffle · follow) stand in a tier.</summary>
 public enum ZuneArtistActions : byte
 {
-    /// <summary>The band's row 2 carries them (Standard).</summary>
+    /// <summary>The band's row 2 carries them (Small and up: one home per verb, audit A4).</summary>
     Band,
-    /// <summary>A row under the hero's caption (Huge).</summary>
-    HeroRow,
-    /// <summary>At the hero's bottom right (Small).</summary>
-    HeroCorner,
-    /// <summary>A 40 row under the hero (Compact).</summary>
+    /// <summary>A 40 row under the hero, with radio and "..." (Compact: the band carries no actions).</summary>
     BelowHero,
+}
+
+/// <summary>Where the hero's secondary rings (radio · "...", the verbs the band does not carry) stand in a tier.</summary>
+public enum ZuneArtistSecondary : byte
+{
+    /// <summary>Nowhere in the hero (Compact: the row under the hero carries them; Standard: the tuned board draws none).</summary>
+    None,
+    /// <summary>At the hero's bottom right (Small).</summary>
+    Corner,
+    /// <summary>A row under the caption (Huge and Huge 4K).</summary>
+    Row,
 }
 
 /// <summary>What Zune's artist family lays out in one CONTENT tier.</summary>
@@ -74,8 +84,14 @@ public sealed record ZuneArtistLayout : ITierLayoutRecord
     /// <inheritdoc cref="NameSize"/>
     public required float NameTracking { get; init; }
 
-    /// <summary>Where the actions stand.</summary>
+    /// <summary>Where the primary actions stand.</summary>
     public required ZuneArtistActions Actions { get; init; }
+
+    /// <summary>Where the secondary rings stand.</summary>
+    public required ZuneArtistSecondary Secondary { get; init; }
+
+    /// <summary>The chart column's cap beside the rail (0: none). At Huge an uncapped chart spread "title" and "time" 1700 apart (audit B, Artist 2560).</summary>
+    public required float ChartMaxW { get; init; }
 
     /// <summary>The 36 ring (Standard and up) or the 40 Compact target.</summary>
     public required float Target { get; init; }
@@ -159,7 +175,7 @@ public static class ZuneArtistRules
     /// <summary>The gap between the name and the caption under it.</summary>
     public const float NameCaptionGap = 14f;
 
-    /// <summary>The gap between the caption and the actions row (Huge).</summary>
+    /// <summary>The gap between the caption and the secondary row (Huge).</summary>
     public const float ActionsTop = 14f;
 
     /// <summary>A hero action's gaps: between actions, and between a ring and its word.</summary>
@@ -168,7 +184,7 @@ public static class ZuneArtistRules
     /// <summary>The follow pill: its border, its horizontal padding and its height at the 36 ring (the band's own is 28).</summary>
     public const float PillBorder = 2f, PillPadX = 16f;
 
-    /// <summary>The corner actions' bottom and right inset (Small).</summary>
+    /// <summary>The corner rings' bottom inset (Small; the right inset is the gutter).</summary>
     public const float CornerInsetY = 30f;
 
     /// <summary>The widest the hero's copy grows (the name bleeds or fits by the panorama option, never by this).</summary>
@@ -191,8 +207,8 @@ public static class ZuneArtistRules
     /// <summary>The chart's one-column floor under the rail (the chart takes the rest).</summary>
     public const float ChartMinW = 280f;
 
-    /// <summary>The widest the Huge page grows (decision 2: pages cap at 2400, 4K included).</summary>
-    public const float HugePageMax = 2400f;
+    /// <summary>The chart column's cap at Huge and Huge 4K.</summary>
+    public const float HugeChartMaxW = 1200f;
 
     /// <summary>The standalone and inline grid's reveal inset (the drawer opens with its card this far under the page's top; the band is outside
     /// the page's viewport).</summary>
@@ -337,40 +353,51 @@ public static class ZuneArtistRules
 public static class ZuneArtistTiers
 {
     private static ZuneArtistLayout Make(WidthTier tier, float zoneGap, float bodyTop, float heroH, float eyebrowTop, float captionBottom, bool compactName,
-        float nameSize, float nameLine, float nameTracking, ZuneArtistActions actions, float target, int chartCols, bool railBeside, float railW,
-        float railGap, float latestArt, float pickArt, int drawerCols, float drawerPitch, float drawerHead, bool aboutBeside, float pageMax) => new()
+        float nameSize, float nameLine, float nameTracking, ZuneArtistActions actions, ZuneArtistSecondary secondary, float target, int chartCols,
+        float chartMaxW, bool railBeside, float railW, float railGap, float latestArt, float pickArt, int drawerCols, float drawerPitch, float drawerHead,
+        bool aboutBeside)
     {
-        Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, ZoneGap = zoneGap, BodyTop = bodyTop, HeroH = heroH, EyebrowTop = eyebrowTop,
-        CaptionBottom = captionBottom, CompactName = compactName, NameSize = nameSize, NameLine = nameLine, NameTracking = nameTracking,
-        Actions = actions, Target = target, ChartColumns = chartCols, ChartRows = ArtistSections.ChartMaxRows, RailBeside = railBeside,
-        RailW = railW, RailGap = railGap, LatestArt = latestArt, PickArt = pickArt, DiscoMinColumn = ZuneArtistRules.ShelfCardW,
-        DiscoGap = ZuneArtistRules.ShelfGap, DrawerColumns = drawerCols, DrawerPitch = drawerPitch, DrawerHead = drawerHead,
-        AboutBeside = aboutBeside, PageMax = pageMax,
-    };
+        float gutter = ZuneTiers.Frame(tier).Gutter;
+        return new()
+        {
+            Tier = tier, Gutter = gutter, ZoneGap = zoneGap, BodyTop = bodyTop, HeroH = heroH, EyebrowTop = eyebrowTop,
+            CaptionBottom = captionBottom, CompactName = compactName, NameSize = nameSize, NameLine = nameLine, NameTracking = nameTracking,
+            Actions = actions, Secondary = secondary, Target = target, ChartColumns = chartCols, ChartRows = ArtistSections.ChartMaxRows,
+            ChartMaxW = chartMaxW, RailBeside = railBeside, RailW = railW, RailGap = railGap, LatestArt = latestArt, PickArt = pickArt,
+            DiscoMinColumn = ZuneArtistRules.ShelfCardW, DiscoGap = ZuneArtistRules.ShelfGap, DrawerColumns = drawerCols, DrawerPitch = drawerPitch,
+            DrawerHead = drawerHead, AboutBeside = aboutBeside,
+            // The system page column at every tier (audit A1: Standard's 1600 measure left 800 dead at 2560): 2400 plus the gutters.
+            PageMax = ZuneFrameRules.PageCap + 2f * gutter,
+        };
+    }
 
     private static readonly ZuneArtistLayout[] s_records =
     [
         // Compact (Z-Artist-Compact): a 220 hero with the 64 compact name, a 40 actions row under it, one chart column, the rail under the chart,
         // the drawer one column of 40 rows.
         Make(WidthTier.Compact, zoneGap: 22f, bodyTop: 8f, heroH: 220f, eyebrowTop: 16f, captionBottom: 10f, compactName: true, nameSize: 0f,
-            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.BelowHero, target: 40f, chartCols: 1, railBeside: false, railW: 0f, railGap: 22f,
-            latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false, pageMax: 9999f),
-        // Small (Z-Artist-Small): a 140 hero with the compact name and the actions at its bottom right, one chart column beside a 220 rail.
+            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.BelowHero, ZuneArtistSecondary.None, target: 40f, chartCols: 1, chartMaxW: 0f,
+            railBeside: false, railW: 0f, railGap: 22f, latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false),
+        // Small (Z-Artist-Small): a 140 hero with the compact name, play · shuffle · follow in the band, radio and "..." at the hero's bottom right,
+        // one chart column beside a 220 rail.
         Make(WidthTier.Small, zoneGap: 28f, bodyTop: 12f, heroH: 140f, eyebrowTop: 12f, captionBottom: 8f, compactName: true, nameSize: 0f,
-            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.HeroCorner, target: 36f, chartCols: 1, railBeside: true, railW: 220f, railGap: 32f,
-            latestArt: 120f, pickArt: 48f, drawerCols: 2, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false, pageMax: 9999f),
+            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.Corner, target: 36f, chartCols: 1, chartMaxW: 0f,
+            railBeside: true, railW: 220f, railGap: 32f, latestArt: 120f, pickArt: 48f, drawerCols: 2, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false),
         // Standard (Z-Artist): the tuned page. The actions are the band's row 2.
         Make(WidthTier.Standard, zoneGap: 28f, bodyTop: 24f, heroH: 340f, eyebrowTop: 36f, captionBottom: 16f, compactName: false, nameSize: 0f,
-            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, target: 36f, chartCols: 2, railBeside: true, railW: 300f, railGap: 48f,
-            latestArt: 96f, pickArt: 64f, drawerCols: 0, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true, pageMax: 1600f),
-        // Huge (Z-Artist-Huge): a 400 hero with the 150 name and the actions in a row under the caption, a 360 rail, the 2400 fill.
+            nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.None, target: 36f, chartCols: 2, chartMaxW: 0f,
+            railBeside: true, railW: 300f, railGap: 48f, latestArt: 96f, pickArt: 64f, drawerCols: 0, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
+        // Huge (Z-Artist-Huge): a 400 hero with the 150 name, play · shuffle · follow in the band, radio and "..." in a row under the caption, the
+        // chart capped at 1200 beside a 360 rail, the 2400 page column.
         Make(WidthTier.Huge, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
-            nameLine: 160f, nameTracking: -20f, ZuneArtistActions.HeroRow, target: 36f, chartCols: 2, railBeside: true, railW: 360f, railGap: 48f,
-            latestArt: 128f, pickArt: 72f, drawerCols: 4, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true, pageMax: ZuneArtistRules.HugePageMax),
+            nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
+            chartMaxW: ZuneArtistRules.HugeChartMaxW, railBeside: true, railW: 360f, railGap: 48f, latestArt: 128f, pickArt: 72f, drawerCols: 4,
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
         // Huge 4K: Huge's (pages cap at 2400, decision 2); ZT6 tunes the board's 520 hero and the 440 rail against it.
         Make(WidthTier.Huge4K, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
-            nameLine: 160f, nameTracking: -20f, ZuneArtistActions.HeroRow, target: 36f, chartCols: 2, railBeside: true, railW: 360f, railGap: 48f,
-            latestArt: 128f, pickArt: 72f, drawerCols: 4, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true, pageMax: ZuneArtistRules.HugePageMax),
+            nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
+            chartMaxW: ZuneArtistRules.HugeChartMaxW, railBeside: true, railW: 360f, railGap: 48f, latestArt: 128f, pickArt: 72f, drawerCols: 4,
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>

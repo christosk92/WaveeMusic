@@ -14,7 +14,6 @@
 //
 // The hosts keep every gate, stamp and verb (`Entities\Album.Page.cs`, `Album.UI.cs`); the rows reach these views as plain records with closures.
 
-using System.Globalization;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -190,14 +189,98 @@ internal static class ZuneAlbumTrailing
                 Children =
                 [
                     K.HeadingRow(Z.AboutKey + ":head", K.Heading(Loc.Get(Strings.Detail.AboutTheArtist)), null, Z.AsideHeadingH),
-                    // The card freezes at mount: its band height is in the key, so a crossing re-mounts it at the new band.
-                    Controls.ArtistAboutCard(artist, AboutLayout.Aside, lay.ArtistBand)
-                        with { Key = "aside:about:" + artist.Uri.Text + ":" + lay.ArtistBand.ToString(CultureInfo.InvariantCulture) },
+                    AboutCard(artist, lay) with { Key = "aside:about:" + artist.Uri.Text },
                 ],
             });
         if (p.MoreBy is { } moreBy) kids.Add(moreBy);
         if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, w));
         return new BoxEl { Key = Z.AlbumAsideKey, Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+    }
+
+    /// <summary>Zune's aside artist card, flat: the artist's image as the record's band, then the name (20/28, two lines, as written) with the follow pill
+    /// STACKED under it (audit B, Album at 1440: beside the name the pill ellipsised "Mia S..." in the 260 aside), the monthly listeners in the accent and
+    /// the bio (four lines). The band and the name are the card's one link (to the artist); the pill is its sibling, never a button inside a button. The
+    /// band's height is a live prop of the same node (a crossing eases it, nothing remounts).</summary>
+    static Element AboutCard(Artist artist, ZuneDetailLayout lay)
+    {
+        string name = artist.Name;
+        string uri = artist.Uri.Text;
+        string? image = Controls.ArtUrl(artist.HeroImageId) is { Length: > 0 } hero ? hero : Controls.ArtUrl(artist.ImageId);
+        string bio = Entities.Strings.Resolve(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
+        Action open = () => Track.GoToArtist(artist);
+        Element band = new BoxEl
+        {
+            Key = "about:band", Height = lay.ArtistBand, ZStack = true, ClipToBounds = true, Fill = R.Layer.RowHover, Animate = Z.SlotReveal,
+            Children = image is { Length: > 0 } url ? [Ui.Image(url, ImageFit.Cover, decodePx: Z.AboutImageDecode)] : [],
+        };
+        Element nameRow = new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.S, MinWidth = 0f,
+            Children =
+            [
+                R.Type.TrackTitle(name) with
+                {
+                    Size = Z.AboutNameSize, LineHeight = Z.AboutNameLine, Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                    Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.AboutNameLines, Trim = TextTrim.CharacterEllipsis,
+                },
+                artist.IsVerified
+                    ? Ui.Icon(Icons.Check, Z.AboutCheck, Tok.AccentTextPrimary) with { Shrink = 0f, Margin = new Edges4(0f, Z.AboutCheckTop, 0f, 0f) }
+                    : new BoxEl { Width = 0f, Shrink = 0f },
+            ],
+        };
+        Element link = new BoxEl
+        {
+            Key = "about:link", Direction = 1, Gap = Z.AboutWordsGap, MinWidth = 0f,
+            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+            Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = open,
+            Children =
+            [
+                band,
+                new BoxEl
+                {
+                    Direction = 1, Gap = Z.AboutWordsGap, MinWidth = 0f, Padding = new Edges4(Z.AboutPadX, Z.AboutPadTop, Z.AboutPadX, 0f),
+                    Children =
+                    [
+                        R.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist)) with
+                        {
+                            Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        },
+                        nameRow,
+                    ],
+                },
+            ],
+        };
+        var words = new List<Element>(2);
+        if (artist.MonthlyListeners > 0)
+            words.Add(R.Type.DenseMeta(Detail.Text.CompactCount(artist.MonthlyListeners) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with
+            {
+                Size = Z.AboutBodySize, LineHeight = Z.AboutBodyLine, Color = Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label),
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        if (!string.IsNullOrWhiteSpace(bio))
+            words.Add(R.Type.DenseMeta(bio) with
+            {
+                Size = Z.AboutBodySize, LineHeight = Z.AboutBodyLine, Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords,
+                MaxLines = Z.AboutBioLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children =
+            [
+                link,
+                new BoxEl
+                {
+                    Key = "about:follow", Direction = 0, MinWidth = 0f, Padding = new Edges4(Z.AboutPadX, Z.AboutFollowTop, Z.AboutPadX, 0f),
+                    Children = [Embed.Comp(() => new ZuneArtistHero.FollowPill { Uri = uri, Name = name, Height = lay.Target }) with { Key = "about:follow:" + uri }],
+                },
+                new BoxEl
+                {
+                    Key = "about:words", Direction = 1, Gap = Z.AboutWordsGap, MinWidth = 0f,
+                    Padding = new Edges4(Z.AboutPadX, Z.AboutWordsGap, Z.AboutPadX, Z.AboutPadBottom), Children = words.ToArray(),
+                },
+            ],
+        };
     }
 
     /// <summary>Fans also like in the aside: four circles a row under the heading.</summary>
@@ -258,12 +341,27 @@ internal static class ZuneAlbumTrailing
             for (int i = 0; i < rows.Length; i++) rows[i] = TrailRow(p.Rows[i]);
             body = new BoxEl { Direction = 1, Gap = Z.SkelRowGap, MinWidth = 0f, Animate = Z.SlotReveal, Children = rows };
         }
+        // In the aside the heading carries a name in a narrow column: the 22/28 step over at most two lines, the row a floor of the heading height (audit B).
+        Element heading = aside
+            ? new BoxEl
+            {
+                Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
+                Gap = Z.SectionGap,
+                Children = link is null ? [AsideNamedHeading(p.Title)] : [AsideNamedHeading(p.Title), link],
+            }
+            : K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(p.Title), link, Z.AsideHeadingH);
         return new BoxEl
         {
             Key = Z.StackKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-            Children = [K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(p.Title), link, Z.AsideHeadingH), body],
+            Children = [heading, body],
         };
     }
+
+    /// <summary>The aside's named heading ("More by Mia Solace"): the heading voice as written at 22/28, wrapping by words to two lines.</summary>
+    static TextEl AsideNamedHeading(string title) => K.NamedHeading(title) with
+    {
+        Size = Z.AsideNamedSize, LineHeight = Z.AsideNamedLine, MaxLines = Z.AsideNamedLines, Wrap = TextWrap.WrapWholeWords, Grow = 1f, Basis = 0f,
+    };
 
     static Element TrailRow(TrailRowData row) => row.Kind switch
     {

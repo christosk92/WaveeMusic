@@ -15,7 +15,11 @@
 //
 //   Compact   (Z-Album-Compact)  the VERTICAL arm: the panorama in the compact voice (64/72), the 144 cover beside the artist and the meta,
 //             the 40 ring row (play and saved with their words, share and "..." at the end), then the list. No rail, no aside.
-//   Small     (Z-Album-Small)    the panorama 64/72 over a 160 identity column, 32 apart from the list; the rings without words.
+//   Small     (Z-Album-Small)    the panorama 64/72 over a 160 identity column, 32 apart from the list; share and "..." only (from Small up
+//             play, shuffle and saved live in the band's row 2: one home per verb, audit A4); the meta on two lines.
+//
+// THE PANORAMA BAND is the title's size, its descender (a quarter of it) and 8 of air (`PanoramaHFor`, audit A3: 88 / 158 / 196), so no descender
+// is clipped and the body starts at least 8 under it. A playlist and Liked Songs take their own step (`ZunePlaylistTiers.Panorama`, audit A8).
 //   Standard  (Z-Album)          the panorama 120/130 over the 240 identity column, the list, and the 260 aside, 48 apart.
 //   Huge      (Z-Album-Huge)     the panorama 150/160; 320 identity, 400 aside (the artist band, "more by" as a grid, fans).
 //   Huge 4K   (Z-Album-Huge4K)   the panorama 150/160; 400 identity, 440 aside, 64 apart, the larger text and the 40 rings, shuffle in the rings.
@@ -122,8 +126,15 @@ public static class ZuneDetailRules
 
     // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The widest the page's columns grow (P5 decision 2: pages cap at 2400, at 4K too), the gutters outside it.</summary>
-    public const float PageCap = 2400f;
+    /// <summary>The widest the page's columns grow: the system page column's cap (<see cref="ZuneFrameRules.PageCap"/>), the gutters outside it.</summary>
+    public const float PageCap = ZuneFrameRules.PageCap;
+
+    /// <summary>The panorama band's height for a <c>size</c>-DIP title (audit A3): the size, its descender (a quarter of it) and 8 of air, so the
+    /// body starts at least 8 below the descender (64: 88, 120: 158, 150: 196, Liked's 40: 58).</summary>
+    public const float PanoramaDescent = 0.25f, PanoramaAir = 8f;
+
+    /// <summary>See <see cref="PanoramaDescent"/>.</summary>
+    public static float PanoramaHFor(float size) => MathF.Ceiling(size + PanoramaDescent * size + PanoramaAir);
 
     /// <summary>The slots' width ease (the aside and the identity column when a crossing moves them): real layout, the list yields.</summary>
     public static readonly LayoutTransition SlotReveal = new(TransitionChannels.Size,
@@ -184,6 +195,22 @@ public static class ZuneDetailRules
     /// <summary>The meta line's loading SHAPE (never painted as text: the deriver paints its bar).</summary>
     public const string MetaShimmerText = "00 songs · 0 hr 00 min";
 
+    /// <summary>The meta line's run separator, and the no-break space that glues a run's own words.</summary>
+    public const string MetaSeparator = " · ";
+
+    /// <inheritdoc cref="MetaSeparator"/>
+    public const char NoBreakSpace = '\u00A0';
+
+    /// <summary>The runs of a meta line with each run's own spaces made no-break (the engine's line breaker breaks at a plain space only), so a meta
+    /// that wraps breaks between its runs, never inside one: no orphan "min" (audit B, Playlist at 400). The words are unchanged (no casing, no data
+    /// rewritten).</summary>
+    public static string Glued(string meta)
+    {
+        var runs = meta.Split(MetaSeparator);
+        for (int i = 0; i < runs.Length; i++) runs[i] = runs[i].Replace(' ', NoBreakSpace);
+        return string.Join(MetaSeparator, runs);
+    }
+
     /// <summary>The tags line under the meta (Z-Album-Compact: 12/16).</summary>
     public const float TagsLine = 16f;
 
@@ -232,6 +259,21 @@ public static class ZuneDetailRules
 
     /// <summary>The aside's sections' gap (Z-Album-Huge: 22 over each heading) and its heading row (40).</summary>
     public const float AsideSectionGap = 22f, AsideHeadingH = 40f, AsideRowGap = 10f;
+
+    /// <summary>The aside's "more by" heading carries a NAME, so it takes the 22/28 step and may wrap to two lines (audit B, Album at 1440: the 26 heading
+    /// ellipsised "More by Mia S..." in the 260 aside).</summary>
+    public const float AsideNamedSize = 22f, AsideNamedLine = 28f;
+
+    /// <summary>See <see cref="AsideNamedSize"/>.</summary>
+    public const int AsideNamedLines = 2;
+
+    /// <summary>The aside's artist card (Zune's own, flat): the words' inset under the image band, their gap, the name (20/28, two lines), the follow
+    /// pill STACKED under the name (audit B: beside the name it ellipsised "Mia S..." at 260), the listeners and the bio (14/20, four lines).</summary>
+    public const float AboutPadX = 20f, AboutPadTop = 16f, AboutPadBottom = 20f, AboutWordsGap = 6f, AboutNameSize = 20f, AboutNameLine = 28f,
+        AboutFollowTop = 4f, AboutBodySize = 14f, AboutBodyLine = 20f, AboutCheck = 12f, AboutCheckTop = 8f, AboutImageDecode = 640f;
+
+    /// <summary>See <see cref="AboutPadX"/>.</summary>
+    public const int AboutNameLines = 2, AboutBioLines = 4;
 
     /// <summary>"More by" as rows (Z-Album: a 56 cover, 12 to its words) and as a grid (Z-Album-Huge: two columns 16 apart).</summary>
     public const float MoreByArt = 56f, MoreByArtGap = 12f, MoreByGridGap = 16f;
@@ -295,38 +337,40 @@ public static class ZuneDetailRules
     /// <summary>Compact (Z-Album-Compact): the vertical arm's numbers.</summary>
     public static ZuneDetailLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, PanoramaH = 80f, PanoramaLarge = false, PanoramaNudgeX = -6f, PanoramaNudgeY = 0f,
+        Tier = WidthTier.Compact, PanoramaH = 88f, PanoramaLarge = false, PanoramaNudgeX = -6f, PanoramaNudgeY = 0f,
         RailW = 0f, ColumnGap = 16f, AsideW = 0f, RailGap = 8f, RingSize = 40f, RingGlyph = 14f, RingLabelGap = 10f, ActionsGap = 16f,
-        PlayWord = true, SaveWord = true, ShareRing = true, MoreRing = true, ShuffleRing = false,
+        PlayWord = true, SaveWord = true, ShareRing = true, MoreRing = true, ShuffleRing = false, PrimaryInHero = true, MetaLines = 2,
         ArtistSize = 18f, ArtistLine = 24f, MetaSize = 13f, MetaLine = 18f, NotesSize = 12f, NotesLine = 18f, LabelSize = 14f,
         ArtistBand = 0f, MoreByGrid = false, Target = 40f,
     };
 
-    /// <summary>Small (Z-Album-Small): the 160 identity column, the rings without words (play, saved, "..."), 32 apart from the list.</summary>
+    /// <summary>Small (Z-Album-Small): the 160 identity column, 32 apart from the list. Play, shuffle and saved live in the band's row 2 from here up
+    /// (audit A4: one home per verb), so the column keeps only share and "..." as unlabelled rings; the meta line may take two lines.</summary>
     public static ZuneDetailLayout Small { get; } = Compact with
     {
         Tier = WidthTier.Small, PanoramaNudgeX = -6f, RailW = 160f, ColumnGap = 32f, RingSize = 36f, RingGlyph = 13f, ActionsGap = 12f,
-        PlayWord = false, SaveWord = false, ShareRing = false, Target = 36f,
+        PlayWord = false, SaveWord = false, ShareRing = true, PrimaryInHero = false, Target = 36f,
     };
 
     /// <summary>Standard (Z-Album): the panorama 120/130 (the role's own), the 240 identity column, the 260 aside, 48 apart.</summary>
     public static ZuneDetailLayout Standard { get; } = Small with
     {
-        Tier = WidthTier.Standard, PanoramaH = 140f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = -6f,
+        Tier = WidthTier.Standard, PanoramaH = 158f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = -6f,
         RailW = 240f, ColumnGap = 48f, AsideW = 260f, RailGap = 12f, ActionsGap = 18f, PlayWord = true, ShareRing = true, ArtistBand = 120f,
+        MetaLines = 1,
     };
 
     /// <summary>Huge (Z-Album-Huge): the panorama 150/160, the 320 identity column, the 400 aside with its 140 artist band and "more by" as a grid.</summary>
     public static ZuneDetailLayout Huge { get; } = Standard with
     {
-        Tier = WidthTier.Huge, PanoramaH = 176f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = -8f,
+        Tier = WidthTier.Huge, PanoramaH = 196f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = -8f,
         RailW = 320f, AsideW = 400f, SaveWord = true, ArtistBand = 140f, MoreByGrid = true,
     };
 
     /// <summary>Huge 4K (Z-Album-Huge4K): 400 identity, 440 aside, 64 apart, the 40 rings with shuffle, the 20/28 and 15/20 text.</summary>
     public static ZuneDetailLayout Huge4K { get; } = Huge with
     {
-        Tier = WidthTier.Huge4K, PanoramaH = 184f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
+        Tier = WidthTier.Huge4K, PanoramaH = 196f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
         RingSize = 40f, RingGlyph = 14f, RingLabelGap = 12f, ActionsGap = 20f, ShuffleRing = true,
         ArtistSize = 20f, ArtistLine = 28f, MetaSize = 15f, MetaLine = 20f, NotesSize = 13f, NotesLine = 20f, LabelSize = 15f,
         ArtistBand = 180f, Target = 40f,
@@ -395,6 +439,13 @@ public sealed record ZuneDetailLayout : ITierLayoutRecord
 
     /// <summary>See <see cref="ShareRing"/>.</summary>
     public required bool ShuffleRing { get; init; }
+
+    /// <summary>Play, saved and shuffle stand among the rings (audit A4). From Small up the band's row 2 is their one home, so the column and the hero
+    /// keep only the verbs the band does not carry (share, "..."); Compact has no band actions and keeps them all.</summary>
+    public required bool PrimaryInHero { get; init; }
+
+    /// <summary>The meta line's lines in the identity column (2 at Compact and Small, where a 160 column would ellipsise it).</summary>
+    public required int MetaLines { get; init; }
 
     /// <summary>The artist link (18/24), the meta line (13/18), the courtesy lines (12/18) and a ring's word (14).</summary>
     public required float ArtistSize { get; init; }
@@ -467,4 +518,8 @@ public static class ZuneDetailTiers
 
     /// <summary>The vertical hero's record: the Compact composition at any width it occurs (the vertical arm is the page column below 640).</summary>
     public static ZuneDetailLayout Hero => ZuneDetailRules.Compact;
+
+    /// <summary>Do play, saved and shuffle stand in a hero or column drawn in <paramref name="facts"/>? The band's row 2 carries them by the WINDOW tier,
+    /// so a vertical arm inside a Small window (a docked panel narrowed the page) leaves them to the band too. True where no frame resolved the tiers.</summary>
+    public static bool PrimaryInHero(in TierFacts facts) => facts.Policy is null || For(facts.Window).PrimaryInHero;
 }

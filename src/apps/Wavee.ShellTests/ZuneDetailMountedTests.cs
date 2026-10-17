@@ -8,6 +8,8 @@
 //   more by      the album's "more by" stack mounts (in the aside where the content tier docks one, else under the rows)
 //   hero         at 400 x 860 (Compact) the vertical arm draws Zune's hero (the panorama, the cover row, the ring row)
 //   ladders      the detail ladders Zune's policy names: the vertical arm below 640, the 24 hold, the record per content tier
+//   tuning (T2)  the panorama band clears its descender (size + a quarter + 8, audit A3); one home per verb (A4: from Small up the identity column
+//                draws no play / saved ring, the band carries them); the page column (A1: the 2400 cap plus the gutters, centred)
 //
 // Anything that loads waits on the wall clock (`UntilBackground`), never a frame budget. Every fact puts Classic back alone (`ZuneHost.Mounted`).
 
@@ -148,6 +150,93 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
             OpenAlbum(shell);
             UntilBackground(shell, () => shell.FindPrefix(ZuneDetailRules.StackKey).Count > 0, "al2's \"more by\" stack");
         }, W, H);
+
+    // ── the tuning (lane T2: audit A1, A3, A4) ───────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_panorama_band_clears_its_descender_at_every_tier_and_the_primary_verbs_leave_the_column_from_small_up()
+    {
+        // A3: the band is the title's size, its descender (a quarter of it) and 8 of air: 88 / 158 / 196.
+        Assert.Equal(88f, ZuneDetailRules.PanoramaHFor(64f));
+        Assert.Equal(158f, ZuneDetailRules.PanoramaHFor(120f));
+        Assert.Equal(196f, ZuneDetailRules.PanoramaHFor(150f));
+        foreach (var (tier, size) in new[] { (WidthTier.Compact, 64f), (WidthTier.Small, 64f), (WidthTier.Standard, 120f), (WidthTier.Huge, 150f),
+                                             (WidthTier.Huge4K, 150f) })
+        {
+            var lay = ZuneDetailTiers.For(tier);
+            Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, $"{tier}: the {lay.PanoramaH} band clears a {size} title's descender");
+            Assert.True(lay.PanoramaSize <= 0f || lay.PanoramaSize == size, $"{tier}: the record's step is the {size} title");
+        }
+
+        // A4: one home per verb. Compact (no band actions) keeps play and saved; Small up leaves them to the band and keeps share and "...".
+        Assert.True(ZuneDetailTiers.For(WidthTier.Compact).PrimaryInHero);
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+        {
+            Assert.False(ZuneDetailTiers.For(tier).PrimaryInHero, $"{tier}: play, shuffle and saved live in the band");
+            Assert.True(ZuneDetailTiers.For(tier).ShareRing && ZuneDetailTiers.For(tier).MoreRing, $"{tier}: share and \"...\" stay in the column");
+            Assert.True(ZuneBandRules.Band(tier).TitleAndActions, $"{tier}: the band carries the page's actions");
+        }
+        Assert.False(ZuneBandRules.Band(WidthTier.Compact).TitleAndActions, "Compact's band carries no actions: the hero keeps them");
+        Assert.True(ZuneDetailTiers.PrimaryInHero(default), "a hero mounted alone keeps its verbs");
+
+        // B (Album at 800): the 160 column's meta takes two lines; a wrapping meta breaks only between its runs.
+        Assert.Equal(2, ZuneDetailTiers.For(WidthTier.Small).MetaLines);
+        Assert.Equal(1, ZuneDetailTiers.For(WidthTier.Standard).MetaLines);
+        string glued = ZuneDetailRules.Glued("playlist · 4 songs · 12 min");
+        Assert.Equal(3, glued.Split(" · ").Length);
+        Assert.DoesNotContain(' ', glued.Replace(" · ", ""));
+        Assert.DoesNotContain("12 min", glued);
+        Assert.Contains("12\u00A0min", glued);
+    }
+
+    [Fact]
+    public void The_page_column_caps_at_2400_plus_the_gutters_and_centres()
+    {
+        var page = ZuneFrameRules.PageColumn(new FluentGpu.Dsl.BoxEl { Padding = new Edges4(0f, 12f, 0f, 20f) }, 48f);
+        Assert.Equal(ZuneFrameRules.PageCap + 96f, page.MaxWidth);
+        Assert.Equal(FlexAlign.Center, page.AlignSelf);
+        Assert.Equal(new Edges4(48f, 12f, 48f, 20f), page.Padding);
+        Assert.Equal(2400f, ZuneFrameRules.PageCap);
+        Assert.Equal(ZuneFrameRules.PageCap, ZuneDetailRules.PageCap);
+    }
+
+    [Theory]
+    [InlineData(800f)]
+    [InlineData(1440f)]
+    public void From_small_up_the_identity_column_draws_no_play_or_saved_ring_and_the_band_carries_them(float width)
+        => ZuneHost.Mounted(host, shell =>
+        {
+            shell.RunFrames(10);
+            OpenAlbum(shell);
+            UntilBackground(shell, () => !shell.Find(ZuneDetailRules.RailKey).IsNull && !shell.Find(ZuneDetailRules.ActionsKey).IsNull, "the identity column's rings");
+            UntilBackground(shell, () => !shell.Find(ZuneBandRules.ActionKeyPrefix + "play").IsNull, "the play action in the band");
+            shell.RunFrames(30);
+            Assert.True(shell.Find(ZuneDetailRules.RingPrefix + "play").IsNull, $"no play ring in the column at {width}: the band carries it");
+            Assert.Empty(shell.FindPrefix(ZuneDetailRules.RingPrefix + "save"));
+            Assert.Empty(shell.FindPrefix(ZuneDetailRules.RingPrefix + "shuffle"));
+        }, width, H);
+
+    [Theory]
+    [InlineData(1440f, 120f, WidthTier.Standard)]
+    [InlineData(2560f, 150f, WidthTier.Huge)]
+    public void The_albums_panorama_band_clears_its_titles_descender_and_sits_in_the_page_column(float width, float size, WidthTier tier)
+        => ZuneHost.Mounted(host, shell =>
+        {
+            shell.RunFrames(10);
+            OpenAlbum(shell);
+            UntilBackground(shell, () => !shell.Find(ZuneDetailRules.RailKey).IsNull, "the identity column");
+            shell.RunFrames(60);
+            var scene = shell.Host.Scene;
+            var band = scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
+            Assert.True(band.H >= size * 1.25f - 0.5f, $"the panorama band is at least {size} x 1.25 tall ({band})");
+            // A1: the identity column (the page x) stands in the system page column: never left of the gutter, never past the cap.
+            var rail = scene.AbsoluteRect(Node(shell, ZuneDetailRules.RailKey));
+            var frame = scene.AbsoluteRect(Node(shell, ZuneDetailRules.FrameKey));
+            float gutter = ZuneTiers.Frame(tier).Gutter;
+            float expected = frame.X + MathF.Max(gutter, (frame.W - ZuneFrameRules.PageCap) / 2f);
+            Assert.True(MathF.Abs(rail.X - expected) <= 1f, $"the page x is the page column's ({rail.X} vs {expected})");
+            Assert.True(rail.Y >= band.Y + band.H - 0.5f, $"the body starts under the panorama band ({rail} under {band})");
+        }, width, H);
 
     // ── the vertical arm ─────────────────────────────────────────────────────────────────────────────────────────────────
 

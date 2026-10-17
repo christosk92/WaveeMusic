@@ -3,7 +3,8 @@
 // `disco:<kind>:<artist>`: the artist as the one ancestor (a name link, kept as written), the facet's title as a 40/48 light page title (lowercased by
 // the heading case role), the release-type words (albums · singles & eps · compilations) as a sub-pivot row (the 14/20 voice, the current one in
 // 600 under a 2-dip accent line, 20 apart, as the band's row 2 words), then the SAME grid and album drawer the artist page's facets use, at the
-// page's reveal inset. Everything stands on the frame's gutter and scrolls as one column; the player dock's reserve ends it.
+// page's reveal inset. Everything stands in the system page column (`ZuneFrameRules.PageColumn`: the frame's gutter, the 2400 cap, centred: the
+// band's x, audit A1) and scrolls as one column; the player dock's reserve ends it.
 //
 // Deliberately NO cover palette (the system accent) and NO shell tint (ch 08 W22). The route parse, the demand, the scroll plumbing and the
 // navigation the crumbs and the words cause stay core (`Artist.DiscoPageHost`). The words are a fresh selection per render: the ROUTE is the truth.
@@ -60,11 +61,11 @@ internal static class ZuneDiscographyPage
 
         var content = new BoxEl
         {
-            Key = Rules.DiscoPageKey, Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, MaxWidth = lay.PageMax, AlignItems = FlexAlign.Stretch,
-            Padding = new Edges4(lay.Gutter, lay.BodyTop, lay.Gutter, R.Space.DockReserve + Rules.PageBottom),
+            Key = Rules.DiscoPageKey, Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Padding = new Edges4(0f, lay.BodyTop, 0f, R.Space.DockReserve + Rules.PageBottom),
             Children = [head, p.Grid is { } grid ? grid(Rules.GridRevealInset) : new BoxEl()],
         };
-        return ScrollView(new BoxEl { Direction = 0, MinWidth = 0f, Children = [content] }) with
+        return ScrollView(new BoxEl { Direction = 1, MinWidth = 0f, Children = [ZuneDetailKit.CentredPage(content, lay.Gutter)] }) with
         {
             Grow = 1f, MinHeight = 0f, ScrollKey = p.ScrollKey, Handle = p.Scroll,
         };
