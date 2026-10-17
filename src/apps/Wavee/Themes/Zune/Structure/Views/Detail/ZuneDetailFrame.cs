@@ -56,6 +56,7 @@ internal static class ZuneDetailFrame
         var lay = ZuneDetailTiers.Of(facts);
         float gutter = ZuneTiers.FrameOf(facts).Gutter;
         IReadSignal<Design.PageAccent>? accent = p.PageAccent;
+        bool coreDocked = ctx.Hooks.UseContext(Detail.AsideDocked);   // the core's answer by the window tier, read before any early return
 
         // ── the vertical / hero system ──
         if (p.Vertical)
@@ -73,7 +74,7 @@ internal static class ZuneDetailFrame
             Element verticalRoot = p.VerticalTracks && p.Sheet is { } sheet
                 ? ctx.View(ViewKeys.DetailInsights, sheet with { Page = verticalPage })
                 : verticalPage;
-            return Root(p, accent, "vertical", verticalRoot);
+            return Ctx.Provide(Detail.AsideDocked, coreDocked, Root(p, accent, "vertical", verticalRoot));   // the same wrapper as the two-column arm's
         }
 
         bool dock = p.Aside is not null && lay.AsideW > 0f;
@@ -141,7 +142,9 @@ internal static class ZuneDetailFrame
         Element root = Root(p, accent, armKey, arm);
         // The core docked the aside by the window tier; the content tier is narrower here (a docked panel's page): the aside folds and what it held
         // returns to the band under the rows.
-        return p.Aside is not null && !dock ? Ctx.Provide(Detail.AsideDocked, false, root) : root;
+        // ALWAYS provided (a value, never a wrapper that comes and goes): a conditional wrapper made the frame's outermost element differ across the
+        // 1008 edge, remounting the whole page on the crossing.
+        return Ctx.Provide(Detail.AsideDocked, p.Aside is not null && !dock ? false : coreDocked, root);
     }
 
     /// <summary>The frame's root: the tint claim, the tone plane (the art wash) and the arm, the page's accent provided around them.</summary>

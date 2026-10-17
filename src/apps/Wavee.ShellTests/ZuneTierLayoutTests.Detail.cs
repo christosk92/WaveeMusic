@@ -214,10 +214,13 @@ public sealed partial class ZuneTierLayoutTests
                 Assert.True(scene.IsLive(p.Node), $"{what}: {p.Name} was thrown away on the crossing");
                 Assert.True(shell.Find(p.Name).Equals(p.Node), $"{what}: {p.Name} was remounted on the crossing");
             }
-            // The columns a record resizes glide on their size channel (the frame and the band follow the window itself).
-            foreach (var p in kept)
-                if (p.Name is ZuneDetailRules.RailKey or ZuneDetailRules.AsideKey)
-                    AssertKeptGliding(shell, p, what);
+            // The columns a record resizes glide on their size channel (the frame and the band follow the window itself). A HEIGHT crossing resizes
+            // no column: the panorama band folds on the flow-reveal channel (asserted below) and the columns under it ride its presented extent, so their
+            // own stretched height has no track of its own to hold.
+            if (toW != fromW)
+                foreach (var p in kept)
+                    if (p.Name is ZuneDetailRules.RailKey or ZuneDetailRules.AsideKey)
+                        AssertKeptGliding(shell, p, what);
             if (before.Height != Tiers.Height)
                 AssertKeptGliding(shell, kept.Find(static p => p.Name == ZuneDetailRules.PanoramaKey), what);
 
@@ -227,7 +230,9 @@ public sealed partial class ZuneTierLayoutTests
             var rail = scene.AbsoluteRect(Node(shell, ZuneDetailRules.RailKey));
             Assert.True(rail.W <= lay.RailW + 1f, $"{what}: the identity column settles at the record's {lay.RailW} ({rail.W})");
             var band = scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
-            Assert.Equal(lay.PanoramaH, band.H, 1f);
+            // Every kind's band wraps its title and HUGS it: the record's height is a floor (the title's own line box can stand a few DIP over it).
+            if (lay.PanoramaWraps) Assert.True(band.H >= lay.PanoramaH - 1f, $"{what}: the band is {band.H}, under its floor {lay.PanoramaH}");
+            else Assert.Equal(lay.PanoramaH, band.H, 1f);
         }
         finally
         {
