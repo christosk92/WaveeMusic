@@ -114,6 +114,19 @@ public sealed record ZuneArtistLayout : ITierLayoutRecord
     /// <summary>The gap between the rail's items (the board: the 10 under a heading plus the pick heading's own top margin, 22 / 16 / 26 / 32).</summary>
     public float RailStackGap { get; init; } = 22f;
 
+    /// <summary>The chart row's geometry in the tier (the boards: Standard 60 / 48 / 52 lane, Compact and Huge 56 / 44, Small 52 / 40 / 44, 4K 68 / 52 / 60), and the air between the
+    /// chart's two columns (48; 64 at 4K).</summary>
+    public float ChartRowH { get; init; } = 60f;
+
+    /// <inheritdoc cref="ChartRowH"/>
+    public float ChartArt { get; init; } = 48f;
+
+    /// <inheritdoc cref="ChartRowH"/>
+    public float ChartLead { get; init; } = 52f;
+
+    /// <inheritdoc cref="ChartRowH"/>
+    public float ChartColumnGap { get; init; } = 48f;
+
     /// <summary>The latest release stands as a card (the cover over its words) rather than a row: Small's 220 rail.</summary>
     public bool LatestStacked { get; init; }
 
@@ -417,12 +430,12 @@ public static class ZuneArtistTiers
         // the drawer one column of 40 rows.
         Make(WidthTier.Compact, zoneGap: 22f, bodyTop: 8f, heroH: 220f, eyebrowTop: 16f, captionBottom: 10f, compactName: true, nameSize: 0f,
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.BelowHero, ZuneArtistSecondary.None, target: 40f, chartCols: 1, chartMaxW: 0f,
-            railBeside: false, railW: 0f, railGap: 22f, latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false),
+            railBeside: false, railW: 0f, railGap: 22f, latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false) with { ChartRowH = 56f, ChartArt = 44f, ChartLead = 40f },
         // Small (Z-Artist-Small): a 140 hero with the compact name, play · shuffle · follow in the band, radio and "..." at the hero's bottom right,
         // one chart column beside a 220 rail.
         Make(WidthTier.Small, zoneGap: 28f, bodyTop: 12f, heroH: 140f, eyebrowTop: 12f, captionBottom: 8f, compactName: true, nameSize: 0f,
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.Corner, target: 36f, chartCols: 1, chartMaxW: 0f,
-            railBeside: true, railW: 220f, railGap: 32f, latestArt: 120f, pickArt: 48f, drawerCols: 2, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false) with { RailStackGap = 16f, LatestStacked = true },
+            railBeside: true, railW: 220f, railGap: 32f, latestArt: 120f, pickArt: 48f, drawerCols: 2, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false) with { RailStackGap = 16f, LatestStacked = true, ChartRowH = 52f, ChartArt = 40f, ChartLead = 44f },
         // Standard (Z-Artist): the tuned page. The actions are the band's row 2.
         Make(WidthTier.Standard, zoneGap: 28f, bodyTop: 24f, heroH: 340f, eyebrowTop: 36f, captionBottom: 16f, compactName: false, nameSize: 0f,
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.None, target: 36f, chartCols: 2, chartMaxW: 0f,
@@ -432,7 +445,7 @@ public static class ZuneArtistTiers
         Make(WidthTier.Huge, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
             nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
             chartMaxW: ZuneArtistRules.HugeChartMaxW, railBeside: true, railW: 360f, railGap: 48f, latestArt: 128f, pickArt: 72f, drawerCols: 4,
-            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell, RailStackGap = 26f },
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell, RailStackGap = 26f, ChartRowH = 56f, ChartArt = 44f },
         // Huge 4K (Z-Artist-Huge4K) on the 2400 page column (decision 2: the board fills 2632, the page stops at 2400). KEPT from the board: the 520 hero
         // (the 150 name, a 56 eyebrow, a 24 foot), the 440 rail with its 64 gap, the 44 section gap, the 32 body top, the 88 pick art, the cells 200 wide with
         // a 20 gap (eleven across at 2400, the board's count), the 220 shelf cards. GIVEN UP to the cap: the board's 2632 column (the chart is the column
@@ -441,7 +454,7 @@ public static class ZuneArtistTiers
         Make(WidthTier.Huge4K, zoneGap: 44f, bodyTop: 32f, heroH: 520f, eyebrowTop: 56f, captionBottom: 24f, compactName: false, nameSize: 150f,
             nameLine: 160f, nameTracking: -20f, ZuneArtistActions.Band, ZuneArtistSecondary.Row, target: 36f, chartCols: 2,
             chartMaxW: 0f, railBeside: true, railW: 440f, railGap: 64f, latestArt: 160f, pickArt: 88f, drawerCols: 4,
-            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell, DiscoGap = ZuneArtistRules.Huge4KGap, RailStackGap = 32f },
+            drawerPitch: 40f, drawerHead: 48f, aboutBeside: true) with { DiscoMinColumn = ZuneArtistRules.HugeCell, DiscoGap = ZuneArtistRules.Huge4KGap, RailStackGap = 32f, ChartRowH = 68f, ChartArt = 52f, ChartLead = 60f, ChartColumnGap = 64f },
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
@@ -489,6 +502,16 @@ public sealed class ZuneArtistTierPolicy : ArtistTierPolicy
 
     /// <inheritdoc />
     public override int ChartMaxColumns(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartColumns;
+
+    /// <inheritdoc />
+    public override ArtistChartRowShape ChartRowShape(in TierFacts facts)
+    {
+        var lay = ZuneArtistTiers.Of(in facts);
+        return new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f);
+    }
+
+    /// <inheritdoc />
+    public override bool ChartBalanced(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartColumns > 1;
 
     /// <inheritdoc />
     public override int ChartRows(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartRows;

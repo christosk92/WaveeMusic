@@ -257,6 +257,9 @@ public static class ZuneListRules
     /// breakpoint (as Classic's) and the edge fade the shelf's.</summary>
     public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartMinCardWidth = 264f, ChartEdgeFade = 24f;
 
+    /// <summary>The chart heading's gap to its "see all" word, and the word's drop onto the heading's baseline.</summary>
+    public const float ChartHeadGap = 20f, ChartBaseline = 4f;
+
     /// <summary>The rank box (the board's 52 lane), the art edge (48) and the skeleton's art, and the gaps.</summary>
     public const float ChartRankBox = 52f, ChartArt = 48f, ChartSubGap = 6f, ChartTrailGap = 12f, ChartFeatGap = 4f, ChartPagerChevron = 28f;
 

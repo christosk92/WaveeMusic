@@ -62,6 +62,11 @@ public static class ArtistLadders
     }
 }
 
+/// <summary>The geometry of one chart row in a tier (contract 1.31, additive): <paramref name="RowHeight"/> the row's height, <paramref name="Art"/> its cover edge,
+/// <paramref name="Lead"/> the rank lane's width and <paramref name="ColumnGap"/> the air between two columns (the style splits it over the two inner edges). A
+/// zero field is "the style's own" (the shell before tiers and Classic answer <c>default</c>).</summary>
+public readonly record struct ArtistChartRowShape(float RowHeight, float Art, float Lead = 0f, float ColumnGap = 0f);
+
 /// <summary>What a structure lays out on the artist and people pages per tier. The core asks it with the tier facts on screen; a structure overrides what it
 /// designs. <see cref="Default"/> is the shell before tiers.</summary>
 public class ArtistTierPolicy
@@ -82,6 +87,13 @@ public class ArtistTierPolicy
 
     /// <summary>The rows of one chart column in the tiers <paramref name="facts"/> (contract 1.22): five where the structure declares none.</summary>
     public virtual int ChartRows(in TierFacts facts) => ArtistSections.ChartMaxRows;
+
+    /// <summary>The chart row's geometry in the tiers <paramref name="facts"/> (contract 1.31): <c>default</c> where the structure keeps its style's own.</summary>
+    public virtual ArtistChartRowShape ChartRowShape(in TierFacts facts) => default;
+
+    /// <summary>The chart spreads its rows over its columns in reading order (1 2 / 3 4 / 5), even a short list (five tracks stand 3 + 2), instead of filling a
+    /// column before the next (contract 1.31). A list that needs more than one page keeps filling columns on its last page.</summary>
+    public virtual bool ChartBalanced(in TierFacts facts) => false;
 
     /// <summary>How far under the top of the page's viewport a pivot click parks a section, and the scroll spy's band edge, in the tiers
     /// <paramref name="facts"/> (optional): the sticky band's height where the band sits INSIDE the viewport (the shell before tiers and Classic: 56), 0

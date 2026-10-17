@@ -94,6 +94,13 @@ public readonly partial struct Artist
         bool _ready, _failed;
         /// <summary>The tier's widest chart and its rows per column, written by render (the derived shimmer reads them outside it).</summary>
         int _maxColumns = ArtistSections.ChartMaxColumns, _rows = ArtistSections.ChartMaxRows;
+        /// <summary>The tier's chart row geometry (contract 1.31), whether the rows spread over the columns in reading order, and the rows and columns the
+        /// shelf is laid out with this render (a short balanced list takes fewer rows than the tier's).</summary>
+        Wavee.Theming.ArtistChartRowShape _rowShape;
+        bool _balanced;
+        int _effRows = ArtistSections.ChartMaxRows, _effCols = 1;
+        bool _orderBalanced;
+        int _orderRows;
         Element? _shelf;
         IOverlayService? _overlay;
 
@@ -139,18 +146,23 @@ public readonly partial struct Artist
         {
             _cardAt = Card;
             _keyOf = (_, i) => (uint)i < (uint)_keys.Length ? _keys[i] : "chart#" + i;
-            _pager = ctx => Embed.Comp(
-                new ChartPagerProps(_style!, ctx.Page, ctx.PageCount, ctx.CanPrev, ctx.CanNext, ctx.Prev, ctx.Next, ctx.GoTo, _items.Length),
-                static () => new ChartPager());
+            _seeAll = () => _pageStep?.Invoke();
+            _pager = ctx =>
+            {
+                _pageStep = () => { if (ctx.CanNext) ctx.Next(); else ctx.GoTo(0); };
+                return Embed.Comp(
+                    new ChartPagerProps(_style!, ctx.Page, ctx.PageCount, ctx.CanPrev, ctx.CanNext, ctx.Prev, ctx.Next, ctx.GoTo, _items.Length),
+                    static () => new ChartPager());
+            };
             _pendingFn = () => !_ready && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _shelf ?? new BoxEl();
             _shimmerFn = () => _style is null ? new BoxEl()
-                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork, _maxColumns, _rows));
+                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork, _maxColumns, _rows, _rowShape));
             _retry = Retry;
             _failedPanelFn = () => _style is null ? new BoxEl()
                 : _style.Failed(Loc.Get(Strings.Artist.TopTracks), AccentSignal?.Peek() ?? Tok.AccentDefault, _retry);
-            _trackAt = TrackAt;
+            _trackAt = TrackAtPos;
             _pillFill = Prop.Of(() => AccentSignal?.Value ?? Tok.AccentDefault);
             _demand = Demand;
             _demandTargets = DemandTargets;
@@ -187,9 +199,12 @@ public readonly partial struct Artist
             var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
             if (style is null) return new BoxEl();
             var metrics = style.Metrics(Classic);
-            if (_cardHeightFn is null || _cardHeightFor != metrics.RowHeight)
+            var chartTiers = ShellPolicy.Tracked.ArtistTiers;
+            var tierFacts = facts.Value.Tiers;
+            _rowShape = chartTiers.ChartRowShape(tierFacts);
+            if (_cardHeightFn is null || _cardHeightFor != RowHeightNow(in metrics))
             {
-                float rowHeight = metrics.RowHeight;
+                float rowHeight = RowHeightNow(in metrics);
                 _cardHeightFn = _ => rowHeight;
                 _cardHeightFor = rowHeight;
             }
@@ -197,30 +212,29 @@ public readonly partial struct Artist
             _ready = ArtistReadiness.Chart(Owner);
             _failed = !_ready && ChartFailedNow(scope);
             NoteGate(scope);
+            _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
+            _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
+            _balanced = _maxColumns >= 2 && chartTiers.ChartBalanced(tierFacts);
             RefreshItems();
             Selection.ItemCount = _items.Length;
 
             // The tier's widest chart and its rows per column (TC6: two columns at Standard, more at Huge, one at Compact; Huge 4K's four rows), read
             // tracked: a window crossing re-renders the chart and re-fits the mounted shelf to both (live props, never a key). The skeleton reads the
             // same pair (the fields), so it keeps the chart's columns per tier.
-            var chartTiers = ShellPolicy.Tracked.ArtistTiers;
-            var tierFacts = facts.Value.Tiers;
-            _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
-            _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
-            int cols = ArtistSections.ChartColumns(_items.Length, _maxColumns, _rows);
+            int cols = _effCols;
             int shelfKey = (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);   // no column or row count: the fit is live (the crossing re-fits the same shelf)
             Element shelf = PagedShelf.Create(
                 _items,
                 cardAt: _cardAt,
                 cardHeight: _cardHeightFn!,
-                header: style.Header(Loc.Get(Strings.Artist.TopTracks), accent),
+                header: Header(style, accent),
                 pager: ShelfPager.None,
                 customPager: _pager,
                 minCardW: metrics.MinCardWidth,
                 maxCardW: 9999f,
                 gap: metrics.CellGap,
                 headerGap: metrics.HeaderGap,
-                rows: _rows,
+                rows: _effRows,
                 edgeFade: metrics.EdgeFade,
                 keyOf: _keyOf,
                 maxColumns: cols,
@@ -412,8 +426,31 @@ public readonly partial struct Artist
         {
             var slots = Owner.PopularSlots;
             int n = Math.Min(slots.Length, ArtistSections.ChartMaxTracks);
-            bool same = n == _items.Length && _keysArt == ShowArtwork && _keysClassic == Classic;
-            for (int i = 0; same && i < n; i++) same = _items[i].Slot == slots[i];
+            // The rows and columns the shelf is laid out with. A balanced short list (it fits one page of the tier's columns x rows) takes ceil(n / 2) rows
+            // over two columns and stands in reading order, 1 3 5 | 2 4 for five tracks: the shelf fills a column before the next, so the ORDER is interleaved here.
+            bool balanced = _balanced && n >= 3;
+            int pageSize = balanced ? 2 * _rows : 0;
+            int effRows = _rows;
+            _effCols = ArtistSections.ChartColumns(n, _maxColumns, _rows);
+            if (balanced)
+            {
+                _effCols = 2;
+                if (n <= pageSize) effRows = Math.Max(2, (n + 1) / 2);
+            }
+            _effRows = effRows;
+            var order = new int[n];
+            for (int i = 0; i < n; i++) order[i] = i;
+            if (balanced)
+                for (int start = 0; start < n; start += pageSize)
+                {
+                    int m = Math.Min(pageSize, n - start);
+                    if (m < pageSize && n > pageSize) break;   // the last page of a longer list fills its columns in turn
+                    int k = 0;
+                    for (int c = 0; c < 2; c++)
+                        for (int r = c; r < m; r += 2) order[start + k++] = start + r;
+                }
+            bool same = n == _items.Length && _keysArt == ShowArtwork && _keysClassic == Classic && _orderBalanced == balanced && _orderRows == effRows;
+            for (int i = 0; same && i < n; i++) same = _items[i].Slot == slots[order[i]] && _items[i].Index == order[i];
             if (same) return;
 
             var items = new ChartItem[n];
@@ -421,15 +458,42 @@ public readonly partial struct Artist
             string suffix = (ShowArtwork ? "|art" : "|noart") + (Classic ? "|classic" : "|modern");
             for (int i = 0; i < n; i++)
             {
-                items[i] = new ChartItem(i, slots[i]);
-                var track = new Track(slots[i]);
+                int c = order[i];
+                items[i] = new ChartItem(c, slots[c]);
+                var track = new Track(slots[c]);
                 string uri = track.IsValid ? track.Uri.Text : "";
-                keys[i] = uri.Length > 0 ? "row:" + uri + suffix : "chart#" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                keys[i] = uri.Length > 0 ? "row:" + uri + suffix : "chart#" + c.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
             _items = items;
             _keys = keys;
             _keysArt = ShowArtwork;
             _keysClassic = Classic;
+            _orderBalanced = balanced;
+            _orderRows = effRows;
+        }
+
+        float RowHeightNow(in ArtistChartMetrics metrics) => _rowShape.RowHeight > 0f ? _rowShape.RowHeight : metrics.RowHeight;
+
+        /// <summary>The tier's row height and rank lane for a row (0: the style's own).</summary>
+        internal float RowHeightFor() => _rowShape.RowHeight;
+
+        /// <inheritdoc cref="RowHeightFor"/>
+        internal float LeadFor() => _rowShape.Lead;
+
+        /// <summary>The pager's last context turned into the "see all" step: the next page, wrapping to the first.</summary>
+        Action? _pageStep;
+        readonly Action _seeAll;
+
+        /// <summary>The header: the structure's own with the count and the "see all" verb where it draws them, else its plain one.</summary>
+        Element Header(ArtistChartStyle style, ColorF accent)
+        {
+            string title = Loc.Get(Strings.Artist.TopTracks);
+            if (style.HeaderWith is not { } headerWith) return style.Header(title, accent);
+            int per = Math.Max(1, _effCols * _effRows);
+            return headerWith(new ArtistChartHeaderArgs
+            {
+                Title = title, Accent = accent, Total = _items.Length, SeeAll = _items.Length > per ? _seeAll : null,
+            });
         }
 
         /// <summary>One cell at the fitted width. The TIER is decided here with hysteresis and re-pushed as a PROP (never
@@ -441,8 +505,10 @@ public readonly partial struct Artist
             _tierClassic = classic;
             var tier = ArtistPopularLayout.Decide(cellW, classic, _tier);
             _tier = tier;
+            if (_rowShape.Art > 0f) tier = tier with { Art = _rowShape.Art };   // the structure's cover edge for the tier
 
-            Element content = Embed.Comp(new ChartRowProps(this, index, tier), static () => new ChartRow())
+            // The row's identity is its chart ordinal (the number it prints, its track); the SHELF position `index` is the selection's.
+            Element content = Embed.Comp(new ChartRowProps(this, item.Index, tier), static () => new ChartRow())
                 with { Key = _keyOf(item, index) };
             int at = index;
             var row = _style!.Cell(new ArtistChartCellArgs
@@ -454,6 +520,7 @@ public readonly partial struct Artist
                 // The accent pill is the single-selection cue; with the check lane up the checkbox says it instead.
                 PillOpacity = Prop.Of(() => { _ = Selection.Version.Value; return Selection.IsSelected(at) && !ChecksVisible() ? 1f : 0f; }),
                 Classic = classic,
+                Column = _effRows > 0 ? (index % Math.Max(1, _effCols * _effRows)) / _effRows : 0, Columns = _effCols, ColumnGap = _rowShape.ColumnGap,
             });
             var overlay = _overlay;
             return Controls.IsNullOverlay(overlay) ? row : row.WithContextMenu(overlay, () => MenuFor(at));
@@ -464,6 +531,12 @@ public readonly partial struct Artist
             var slots = Owner.PopularSlots;
             return (uint)index < (uint)slots.Length ? new Track(slots[index]) : default;
         }
+
+        /// <summary>The track at a SHELF position (the selection's index space; a balanced chart's differs from the chart ordinal).</summary>
+        internal Track TrackAtPos(int pos) => (uint)pos < (uint)_items.Length ? new Track(_items[pos].Slot) : default;
+
+        /// <summary>The chart ordinal at a shelf position.</summary>
+        int ChartIndexOf(int pos) => (uint)pos < (uint)_items.Length ? _items[pos].Index : pos;
 
         /// <summary>Play the chart FROM this row, with the chart's OWN rows as the queue — the same funnel every other
         /// track list goes through (<c>Track.Table.StartVisible</c>, and the album / playlist / liked pages).
@@ -494,15 +567,14 @@ public readonly partial struct Artist
         /// no playlist. Runs once, at promotion.</summary>
         DragPayload? DragPayloadFor(int index)
         {
-            var slots = Owner.PopularSlots;
-            if ((uint)index >= (uint)slots.Length) return null;
-            var pressed = new Track(slots[index]);
+            if ((uint)index >= (uint)_items.Length) return null;
+            var pressed = TrackAtPos(index);
             SelectionDrag.Indices(Selection, index, _dragIndices);
             var tracks = new List<Track>(_dragIndices.Count);
             for (int k = 0; k < _dragIndices.Count; k++)
             {
                 int i = _dragIndices[k];
-                if ((uint)i < (uint)slots.Length) tracks.Add(new Track(slots[i]));
+                if ((uint)i < (uint)_items.Length) tracks.Add(TrackAtPos(i));
             }
             if (tracks.Count == 0) tracks.Add(pressed);
             string uri = pressed.Uri.Text;
@@ -514,21 +586,21 @@ public readonly partial struct Artist
         /// play the chart FROM this row.</summary>
         void InvokeAt(int index)
         {
-            var t = TrackAt(index);
+            var t = TrackAtPos(index);
             if (!t.IsValid) return;
-            Track.Invoke(t, () => StartAt(index));
+            int ordinal = ChartIndexOf(index);
+            Track.Invoke(t, () => StartAt(ordinal));
         }
 
         /// <summary>The selected tracks, in chart order — the selection lane's provider (called at render and at the "…" open).</summary>
         internal IReadOnlyList<Track> SelectedTracks()
         {
-            var slots = Owner.PopularSlots;
             var picked = new List<Track>(Selection.SelectedCount);
             for (int r = 0; r < Selection.RangeCount; r++)
             {
                 var (s, e) = Selection.GetRange(r);
-                for (int i = s; i <= e && i < slots.Length; i++)
-                    if (slots[i] > Table.None) picked.Add(new Track(slots[i]));
+                for (int i = s; i <= e && i < _items.Length; i++)
+                    if (_items[i].Slot > Table.None) picked.Add(new Track(_items[i].Slot));
             }
             return picked;
         }
@@ -634,7 +706,7 @@ public readonly partial struct Artist
                 t.IsExplicit, t.HasVideo);
             return owner.Style!.Row(new ArtistChartRowArgs
             {
-                Cells = cells, Index = p.Index, State = pr.State, Tier = p.Tier,
+                Cells = cells, Index = p.Index, State = pr.State, Tier = p.Tier, RowHeight = owner.RowHeightFor(), Lead = owner.LeadFor(),
                 Track = t, PageArtist = owner.Owner.Slot, FeatSlot = pr.FeatSlot, FeatCount = pr.FeatCount,
                 OnPlay = _play, OnLike = t.IsValid ? _like : null, Pop = pop,
                 Hovered = hovered, Slot = slot, ChecksVisible = owner.ChecksVisible,

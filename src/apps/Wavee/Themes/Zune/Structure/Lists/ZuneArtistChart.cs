@@ -28,7 +28,7 @@ using ChartCells = global::Wavee.Theming.Contracts.ArtistChartCells;
 internal static class ZuneArtistChart
 {
     /// <summary>The style Zune registers under <c>StyleKeys.ArtistChart</c>. Stateless.</summary>
-    public static readonly ArtistChartStyle Style = new(Metrics, Frame, Shelf, Bar, Header, Row, Cell, Skeleton, Failed, Pager);
+    public static readonly ArtistChartStyle Style = new(Metrics, Frame, Shelf, Bar, Header, Row, Cell, Skeleton, Failed, Pager) { HeaderWith = HeaderWith };
 
     /// <summary>One row skin: 60 tall, touching, whatever the row style.</summary>
     static ArtistChartMetrics Metrics(bool classic)
@@ -64,9 +64,31 @@ internal static class ZuneArtistChart
     static Element Header(string title, ColorF accent)
         => R.Type.Heading(Loc.Get(Strings.Artist.Popular)) with { Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
+    /// <summary>The header of Z-Artist: "popular" with "see all N" inline after it (20 apart, the word's baseline on the heading's). "see all" steps the chart to
+    /// its next page; at one page it is the count alone (there is nothing more to open: the chart already shows every track it holds).</summary>
+    static Element HeaderWith(ArtistChartHeaderArgs a)
+    {
+        var heading = Header(a.Title, a.Accent);
+        Element? tail = null;
+        if (a.Total > 0)
+        {
+            var word = R.Type.TrackMeta(Strings.Home.SeeAllN(a.Total)) with
+            {
+                Color = Tok.TextSecondary, HoverColor = a.SeeAll is null ? Tok.TextSecondary : Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1,
+            };
+            tail = new BoxEl
+            {
+                Key = "zune-artist-chart-seeall", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Margin = new Edges4(ZuneListRules.ChartHeadGap, ZuneListRules.ChartBaseline, 0f, 0f),
+                Cursor = a.SeeAll is null ? null : CursorId.Hand, Role = a.SeeAll is null ? AutomationRole.None : AutomationRole.Hyperlink,
+                Focusable = a.SeeAll is not null, AllowFocusOnInteraction = false, OnClick = a.SeeAll, Children = [word],
+            };
+        }
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = tail is null ? [heading] : [heading, tail] };
+    }
+
     static Element Row(ArtistChartRowArgs a)
         => ChartRow(a.Cells, a.Index, a.State, a.Tier, FeatLine(a.Track, a.PageArtist, a.FeatCount, a.FeatSlot), a.OnPlay, a.OnLike, a.Pop,
-                    a.Hovered, a.Slot, a.ChecksVisible, a.ShowArtwork);
+                    a.Hovered, a.Slot, a.ChecksVisible, a.ShowArtwork, a.RowHeight, a.Lead);
 
     /// <summary>One realized cell: the row with the cell's drag; selection is the 12 % accent wash (no pill), compositor-only through the bound
     /// opacity the core hands for the single-selection cue.</summary>
@@ -74,6 +96,10 @@ internal static class ZuneArtistChart
     {
         ZStack = true,
         Draggable = a.Draggable,
+        // The air between two columns, split over their inner edges: the first column gives its right, the last its left (the board's 48 gap).
+        Padding = a.Columns > 1 && a.ColumnGap > 0f
+            ? new Edges4(a.Column > 0 ? a.ColumnGap / 2f : 0f, 0f, a.Column < a.Columns - 1 ? a.ColumnGap / 2f : 0f, 0f)
+            : default,
         Children =
         [
             new BoxEl
@@ -95,7 +121,7 @@ internal static class ZuneArtistChart
     static Element Skeleton(ArtistChartSkeletonArgs s)
     {
         int cols = s.Columns;
-        var tier = new ArtistPopularLayout.Tier(ZuneListRules.ChartArt, true, false);
+        var tier = new ArtistPopularLayout.Tier(s.RowShape.Art > 0f ? s.RowShape.Art : ZuneListRules.ChartArt, true, false);
         var cells = new ChartCells("Top track title", null, "3:30", "1.2M", "1,234,567", false, false);
         var state = default(Track.RowState);
         var columns = new Element[cols];
@@ -104,7 +130,7 @@ internal static class ZuneArtistChart
             int rows = Math.Min(s.PerColumn, Math.Max(0, s.Total - c * s.PerColumn));
             var kids = new Element[rows];
             for (int r = 0; r < rows; r++)
-                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork);
+                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead);
             columns[c] = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.ChartCellGap, Children = kids };
         }
         return new BoxEl
@@ -122,7 +148,7 @@ internal static class ZuneArtistChart
     static Element Pager(ArtistChartPagerArgs p)
     {
         if (p.PageCount <= 1)
-            return R.Type.TrackMeta(Strings.Home.SeeAllN(p.Total)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 };
+            return new BoxEl();   // the count is the header's "see all N"
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
@@ -137,11 +163,13 @@ internal static class ZuneArtistChart
 
     /// <summary>One chart row (Z-Artist), shared by live rows and the skeleton.</summary>
     static Element ChartRow(in ChartCells c, int index, in Track.RowState st, ArtistPopularLayout.Tier tier, Element? feat, Action? onPlay,
-                            Action? onLike, bool pop, Signal<bool>? hovered, RowScope? slot, Func<bool>? checksVisible, bool showArtwork)
+                            Action? onLike, bool pop, Signal<bool>? hovered, RowScope? slot, Func<bool>? checksVisible, bool showArtwork,
+                            float rowH = 0f, float lead = 0f)
     {
         bool isNow = st.IsNow;
-        // The board's cover is 48 where the core's tier says the 44 step (the 40 floor of a narrow column stays).
-        if (tier.Art >= 44f) tier = tier with { Art = ZuneListRules.ChartArt };
+        // The tier's own geometry (the policy's ArtistChartRowShape: Z-Artist's 60 / 48 / 52 at Standard, 56 / 44 / 40 Compact, 52 / 40 / 44 Small, 68 / 52 / 60 at 4K).
+        float rowHeight = rowH > 0f ? rowH : ZuneListRules.ChartRowHeight;
+        float rankLane = lead > 0f ? lead : ZuneListRules.ChartRankBox;
         ColorF accent = R.Ink.AccentAction;
         ColorF secondary = ZuneListRules.RowInk(isNow, accent, Tok.TextSecondary);
         ColorF tertiary = ZuneListRules.RowInk(isNow, accent, Tok.TextTertiary);
@@ -191,7 +219,7 @@ internal static class ZuneArtistChart
         {
             new BoxEl
             {
-                Width = ZuneListRules.ChartRankBox - Spacing.M, Height = ZuneListRules.ChartRowHeight, Shrink = 0f,
+                Width = rankLane - Spacing.M, Height = rowHeight, Shrink = 0f,
                 Children = [ZuneRowCells.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, large: true)],
             },
         };
@@ -207,7 +235,6 @@ internal static class ZuneArtistChart
         });
         rowChildren.Add(new BoxEl { Direction = 0, Gap = ZuneListRules.ChartTrailGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail.ToArray() });
 
-        float rowHeight = ZuneListRules.ChartRowHeight;
         var inset = new Edges4(0f, 0f, Spacing.S, 0f);
         BoxEl body = slot is { } scope && checksVisible is not null
             ? new BoxEl
