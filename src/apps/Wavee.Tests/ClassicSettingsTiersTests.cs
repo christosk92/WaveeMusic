@@ -74,8 +74,9 @@ public class ClassicSettingsTiersTests
         Assert.Equal(2, l.Columns);
         Assert.Equal(1000f, l.ColumnMaxW);
         Assert.Equal(32f, l.ColumnGap);
-        Assert.Equal(ClassicThemePickerForm.Wrap, l.Picker);
-        Assert.Equal(184f, l.PickerCardW);                   // C-Settings-Huge: five-up inside the 1000 column
+        Assert.Equal(ClassicThemePickerForm.Fit, l.Picker);   // C-Settings-Huge: repeat(5, 1fr), one line that fits the column
+        Assert.Equal(184f, l.PickerCardW);                   // the fluid card's cap: the board's fifth of the 1000 column
+        Assert.Equal(172f, l.PickerCardH);
         Assert.Equal(92f, l.PickerThumbH);
         Assert.False(l.Touch);
         Assert.False(l.TabsScroll);
@@ -147,6 +148,40 @@ public class ClassicSettingsTiersTests
     [InlineData(200f, 96f)]     // never under the grid's floor
     public void A_grid_card_is_half_the_card_less_its_gaps(float window, float expected)
         => Assert.Equal(expected, ClassicSettingsTiers.For(WidthTier.Compact).GridCardWidth(window, ClassicTiers.Page(WidthTier.Compact).Gutter));
+
+    // ── the theme picker per tier (C-Settings*: Compact a 2-up grid, Small a scrolling strip, Standard the tuned wrap, Huge the five-up fit) ─────────────
+
+    [Theory]
+    [InlineData(WidthTier.Compact, ClassicThemePickerForm.Grid, false)]
+    [InlineData(WidthTier.Small, ClassicThemePickerForm.Strip, true)]
+    [InlineData(WidthTier.Standard, ClassicThemePickerForm.Wrap, false)]
+    [InlineData(WidthTier.Huge, ClassicThemePickerForm.Fit, false)]
+    [InlineData(WidthTier.Huge4K, ClassicThemePickerForm.Fit, false)]
+    public void The_picker_scrolls_only_at_Small_and_wraps_or_fits_elsewhere(WidthTier tier, ClassicThemePickerForm form, bool scrolls)
+    {
+        var l = ClassicSettingsTiers.For(tier);
+        Assert.Equal(form, l.Picker);
+        Assert.Equal(scrolls, l.PickerScrolls);
+    }
+
+    [Theory]
+    // picker card width, themes, the card each takes: (width - 2 x 16 pad - 2 border - (n - 1) x 12) / n, never over 184
+    [InlineData(1000f, 5, 183.6f)]   // the board's 1000 column: five side by side, just under the cap
+    [InlineData(748f, 5, 133.2f)]    // the narrowest Huge column (a 1600 content region split in two): five still fit, smaller
+    [InlineData(1000f, 1, 184f)]     // one theme keeps the board's width, left-aligned
+    [InlineData(748f, 3, 184f)]
+    [InlineData(1000f, 7, 127.71f)]  // more than five share the one line
+    public void A_fit_card_is_its_share_of_the_line_capped_at_the_boards_fifth(float pickerWidth, int count, float expected)
+        => Assert.Equal(expected, ClassicSettingsTiers.For(WidthTier.Huge).FitCardWidth(pickerWidth, count), 0.01f);
+
+    [Fact]
+    public void Five_fit_cards_fill_the_boards_1000_column_without_wrapping()
+    {
+        var l = ClassicSettingsTiers.For(WidthTier.Huge);
+        float card = l.FitCardWidth(l.ColumnMaxW, ClassicSettingsTiers.FitColumns);
+        float line = ClassicSettingsTiers.FitColumns * card + (ClassicSettingsTiers.FitColumns - 1) * l.PickerGap;
+        Assert.True(line <= l.ColumnMaxW - 2f * l.PickerPad - 2f * ClassicSettingsTiers.PickerBorder + 0.01f, $"five cards take {line}");
+    }
 
     [Fact]
     public void A_grid_card_with_its_name_row_is_a_target_over_40()

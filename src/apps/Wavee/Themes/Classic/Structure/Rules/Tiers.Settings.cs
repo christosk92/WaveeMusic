@@ -10,12 +10,17 @@
 //                                               toggles keep label | state | 48 x 40
 //   Small     40 tall, scroll, fade at the edge label | control (32 controls)              one strip, 190 cards, 72 thumbs      1, 1000
 //   Standard  stock item, in the gutter            label | control                            208 x 172 cards that wrap            1, 1000
-//   Huge      stock item, in the gutter            label | control                            184 x 172 cards that wrap (5-up)     2 x 1000, gap 32, left-aligned
+//   Huge      stock item, in the gutter            label | control                            five-up row that fits, x 172         2 x 1000, gap 32, left-aligned
+//                                                                                             (each card <= 184, the board's fifth)
 //
 // COLUMNS. At Huge a tab's sections split over two columns (the board: Appearance puts Theme, options, mode, zoom and marquee on the left and Lists, Sidebar, Lyrics
 // and Full screen on the right; Playback puts Runtime, Audio and Sound beside Player bar and Video). `SplitAt` picks the section boundary that balances the two: pure
 // arithmetic over the sections' weights, never a width comparison. A tab with one section stays one column. The columns never exceed 1000 each and the pair is
-// LEFT-ALIGNED (never centred), as the Huge boards draw.
+// LEFT-ALIGNED (never centred), as the Huge boards draw. The split is made at EVERY tier and only laid out differently (the pair is a row at Huge and a column,
+// reading as one, elsewhere), so a crossing into or out of Huge keeps every section as the same node; no tier or column count is in a key.
+//
+// THE THEME PICKER keeps one tree too: the radio group always rides one lane that scrolls sideways at Small and is a content-sized box elsewhere; the form below
+// is that lane's orientation and the row's and cards' sizing (Grid and Wrap: fixed cards that wrap; Strip: one scrolling line; Fit: one line of equal fluid columns).
 //
 // THE HEAD AND THE SECTION HEADERS. The Compact, Small and Huge boards draw the page title behind a 24 gear glyph (gap 12); the tuned Standard title stays alone. A
 // section header is the glyph and the title with its caption UNDER it at Compact (C-SettingsSections-Compact: 20 above, 6 under) and at Standard (the tuned 32 / 8);
@@ -42,12 +47,15 @@ namespace Wavee.Themes.Classic;
 /// <summary>How the theme picker's cards are laid out in a tier.</summary>
 public enum ClassicThemePickerForm : byte
 {
-    /// <summary>The tuned strip of fixed 208 x 172 cards that wraps (Standard) or 184 x 172 (Huge's five-up).</summary>
+    /// <summary>Standard: the tuned strip of fixed 208 x 172 cards that wraps.</summary>
     Wrap,
     /// <summary>Compact: a two-column grid of fluid cards (72 thumb over the name), no description.</summary>
     Grid,
     /// <summary>Small: one horizontal strip of 190-wide cards that scrolls.</summary>
     Strip,
+    /// <summary>Huge (C-Settings-Huge, `repeat(5, 1fr)`): ONE line of equal fluid columns that fits the column, each card at most the record's
+    /// <see cref="ClassicSettingsLayout.PickerCardW"/> (the board's fifth of the 1000 column), never scrolling, never wrapping.</summary>
+    Fit,
 }
 
 /// <summary>What the Settings page lays out in one content tier.</summary>
@@ -61,7 +69,7 @@ public enum ClassicThemePickerForm : byte
 /// <param name="ColumnMaxW">One column's cap (the board's 1000).</param>
 /// <param name="ColumnGap">The gap between columns.</param>
 /// <param name="Picker">The theme picker's form.</param>
-/// <param name="PickerCardW">A picker card's width (0: fluid, from the grid).</param>
+/// <param name="PickerCardW">A picker card's width (0: fluid, from the grid; at <see cref="ClassicThemePickerForm.Fit"/> the fluid card's cap).</param>
 /// <param name="PickerCardH">A picker card's height (0: sized by its content).</param>
 /// <param name="PickerThumbH">The thumbnail's height.</param>
 /// <param name="PickerShowsText">The card carries the theme's description under its name.</param>
@@ -85,6 +93,9 @@ public sealed record ClassicSettingsLayout(
 
     /// <summary>The toggle's least height.</summary>
     public float ToggleMinHeight => Touch ? Target : 36f;
+
+    /// <summary>The theme picker's lane scrolls sideways (Small's strip); at every other tier it is sized by its cards and never scrolls.</summary>
+    public bool PickerScrolls => Picker == ClassicThemePickerForm.Strip;
 }
 
 /// <summary>Classic's Settings tier records.</summary>
@@ -107,10 +118,11 @@ public static class ClassicSettingsTiers
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
             ClassicThemePickerForm.Wrap, PickerCardW: 208f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
             TitleGlyph: false, SectionInline: false, SectionTop: 32f, SectionBottom: 8f),
-        // Huge (C-Settings-Huge, C-SettingsSections-Huge): two 1000 columns 32 apart, left-aligned; the picker's cards are the board's five-up 184.
+        // Huge (C-Settings-Huge, C-SettingsSections-Huge): two 1000 columns 32 apart, left-aligned; the picker is the board's five-up row that fits its column,
+        // each card at most 184 (the board's (1000 - 2 x 16 - 2 - 4 x 12) / 5).
         new(WidthTier.Huge, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false, TabsBleed: false,
             Columns: 2, ColumnMaxW: 1000f, ColumnGap: 32f,
-            ClassicThemePickerForm.Wrap, PickerCardW: 184f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
+            ClassicThemePickerForm.Fit, PickerCardW: 184f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
             TitleGlyph: true, SectionInline: true, SectionTop: 28f, SectionBottom: 4f),
     ];
 
@@ -145,6 +157,19 @@ public static class ClassicSettingsTiers
 
     /// <summary>The columns of the Compact grid: two.</summary>
     public const int GridColumns = 2;
+
+    /// <summary>The cards of the Huge row that fit a full 1000 column at the record's cap (the board's five).</summary>
+    public const int FitColumns = 5;
+
+    /// <summary>The width a <see cref="ClassicThemePickerForm.Fit"/> card takes in a picker card <paramref name="pickerWidth"/> wide holding
+    /// <paramref name="count"/> themes: an equal share of the line less its gaps, never over the record's cap. What the flex pass lays out (the tests'
+    /// expectation, not a view's input: the view leaves the share to the layout).</summary>
+    public static float FitCardWidth(this ClassicSettingsLayout layout, float pickerWidth, int count)
+    {
+        if (count <= 0) return 0f;
+        float room = pickerWidth - 2f * layout.PickerPad - 2f * PickerBorder - (count - 1) * layout.PickerGap;
+        return MathF.Min(layout.PickerCardW, MathF.Max(0f, room / count));
+    }
 
     /// <summary>A grid card's width in a window <paramref name="viewportWidth"/> wide: the window less the page gutters, the picker card's padding and borders, and the
     /// gaps between the columns, over the columns. Never under <see cref="GridMinCardW"/>.</summary>

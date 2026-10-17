@@ -74,10 +74,14 @@ public sealed partial class TierLayoutTests
             if (layout.TabsScroll)
                 Assert.True(strip.H >= layout.TabHeight - 0.5f, $"{size}: the tab strip is {strip.H} tall, under the record's {layout.TabHeight}");
 
-            // The body: one column capped by the record, or two that share the row without overlap, left-aligned on the gutter.
-            if (layout.Columns == 1)
+            // The body. A tab with two or more sections is the SAME pair of keyed columns at every tier (a crossing keeps them): side by side at Huge, sharing
+            // the row without overlap, each capped; stacked elsewhere, reading as one capped column. A tab with one section is one column. Left-aligned on the
+            // gutter either way.
+            bool split = !shell.Find("settings:columns").IsNull;
+            if (tab is Settings.Tab.Appearance or Settings.Tab.Playback) Assert.True(split, $"{size}: the {tab} tab's sections are not in the column pair");
+            if (!split)
             {
-                Assert.True(shell.Find("settings:column:0").IsNull && shell.Find("settings:column:1").IsNull, $"{size}: a one-column tier has two columns");
+                Assert.True(shell.Find("settings:column:0").IsNull && shell.Find("settings:column:1").IsNull, $"{size}: a one-section tab has a column pair");
                 var column = scene.AbsoluteRect(Node(shell, "settings:column"));
                 Assert.True(column.W <= layout.ColumnMaxW + 0.5f, $"{size}: the column is {column.W}, over its cap {layout.ColumnMaxW}");
                 Assert.True(column.X + column.W <= card.X + card.W + 0.5f, $"{size}: the column runs outside the card");
@@ -85,25 +89,52 @@ public sealed partial class TierLayoutTests
             }
             else
             {
-                Assert.True(shell.Find("settings:column").IsNull, $"{size}: a two-column tier has one column");
+                Assert.True(shell.Find("settings:column").IsNull, $"{size}: a split tab also has a lone column");
                 var left = scene.AbsoluteRect(Node(shell, "settings:column:0"));
                 var right = scene.AbsoluteRect(Node(shell, "settings:column:1"));
                 Assert.True(left.W <= layout.ColumnMaxW + 0.5f && right.W <= layout.ColumnMaxW + 0.5f, $"{size}: a column is over its cap ({left.W}, {right.W})");
-                Assert.True(left.X + left.W + layout.ColumnGap <= right.X + 0.5f, $"{size}: the columns overlap or sit closer than the gap ({left}, {right})");
                 Assert.True(right.X + right.W <= card.X + card.W + 0.5f, $"{size}: the second column runs outside the card");
                 Assert.Equal(card.X + gutter, left.X, 1.5f);
+                if (layout.Columns > 1)
+                    Assert.True(left.X + left.W + layout.ColumnGap <= right.X + 0.5f, $"{size}: the columns overlap or sit closer than the gap ({left}, {right})");
+                else
+                {
+                    Assert.Equal(left.X, right.X, 0.5f);   // stacked: one column's edge and width
+                    Assert.Equal(left.W, right.W, 0.5f);
+                    Assert.True(right.Y >= left.Y + left.H - 0.5f, $"{size}: the second half overlaps the first ({left}, {right})");
+                }
             }
 
-            // The theme picker (Appearance) takes the record's form: the grid's cards share two columns, the strip's cards are one row.
+            // The theme picker (Appearance) takes the record's form on ONE lane at every tier: the lane scrolls sideways only at Small (the strip, one row);
+            // elsewhere it is a vertical box that never scrolls and holds every card whole (the Compact grid's two columns, the Standard wrap, the Huge fit:
+            // one row of equal cards at the fit width). Nothing is clipped where nothing scrolls.
             var cards = shell.FindPrefix("settings:theme:card:");
             if (cards.Count > 0)
             {
+                var laneNode = Node(shell, "settings:theme:lane");
+                var laneScroll = scene.ScrollRef(laneNode);
+                Assert.True((laneScroll.Orientation == 1) == layout.PickerScrolls,
+                    $"{size}: the picker lane's orientation is {laneScroll.Orientation} where the record says scrolls={layout.PickerScrolls}");
+                if (!layout.PickerScrolls)
+                    Assert.True(laneScroll.ContentH <= laneScroll.ViewportH + 0.5f, $"{size}: the picker lane overflows ({laneScroll.ContentH} in {laneScroll.ViewportH})");
+                var lane = scene.AbsoluteRect(laneNode);
+                var picker = scene.AbsoluteRect(Node(shell, "settings:theme:picker"));
                 var rects = cards.Select(c => scene.AbsoluteRect(c.Node)).ToList();
                 if (layout.Picker == ClassicThemePickerForm.Grid && rects.Count >= 2)
                     Assert.Equal(2, rects.Select(r => (int)MathF.Round(r.X)).Distinct().Count());
-                if (layout.Picker == ClassicThemePickerForm.Strip)
+                if (layout.Picker is ClassicThemePickerForm.Strip or ClassicThemePickerForm.Fit)
                     Assert.Single(rects.Select(r => (int)MathF.Round(r.Y)).Distinct());
-                if (layout.PickerCardW > 0f) foreach (var r in rects) Assert.Equal(layout.PickerCardW, r.W, 1f);
+                if (layout.Picker is ClassicThemePickerForm.Strip or ClassicThemePickerForm.Wrap)
+                    foreach (var r in rects) Assert.Equal(layout.PickerCardW, r.W, 1f);
+                if (layout.Picker == ClassicThemePickerForm.Fit)
+                {
+                    float fit = layout.FitCardWidth(picker.W, rects.Count);
+                    foreach (var r in rects) Assert.Equal(fit, r.W, 1f);
+                }
+                if (!layout.PickerScrolls)
+                    foreach (var r in rects)
+                        Assert.True(r.X >= lane.X - 0.5f && r.X + r.W <= lane.X + lane.W + 0.5f && r.Y >= lane.Y - 0.5f && r.Y + r.H <= lane.Y + lane.H + 0.5f,
+                            $"{size}: a theme card ({r}) is clipped by the picker lane ({lane})");
             }
 
             // Compact: every control that can be pressed in the body and the strip is at least 40 x 40 (the brief's rule).

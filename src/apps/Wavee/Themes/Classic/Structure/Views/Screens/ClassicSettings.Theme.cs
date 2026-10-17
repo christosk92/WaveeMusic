@@ -48,24 +48,36 @@ internal static partial class ClassicSettings
 
     // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A picker card's footprint in a tier: the record's width and height (0 = fluid / sized by its content). The 1-DIP inset is the resting padding a
-    /// selected card spends on its border growing 1 → 2, so the thumbnail never shifts by a pixel when the selection moves.</summary>
+    /// <summary>A picker card's footprint in a tier: the record's width and height (0 = fluid / sized by its content; NaN width: the Huge row's share). The
+    /// 1-DIP inset is the resting padding a selected card spends on its border growing 1 → 2, so the thumbnail never shifts by a pixel when the selection moves.</summary>
     static Controls.PickerShell ThemeCardShell(ClassicSettingsLayout layout, float cardWidth)
         => new(cardWidth, layout.PickerCardH > 0f ? layout.PickerCardH : float.NaN, 1f, 0f);
 
     /// <summary>The picker as a Settings row: a card holding the theme cards. With one installed theme it is one card, left-aligned, exactly as tall as with
-    /// five; with more than fit a line the cards wrap to the next line (Standard, Huge), scroll sideways as one strip (Small) or fill a two-column grid (Compact).</summary>
+    /// five. Per tier (the record's <see cref="ClassicThemePickerForm"/>): a two-column grid (Compact, C-Settings-Compact), one strip that scrolls sideways
+    /// (Small, C-Settings-Small), the tuned 208 cards that wrap (Standard), the board's five-up row that fits the column (Huge, C-Settings-Huge).
+    /// ONE TREE AT EVERY TIER: the radio group always rides the lane scroller (<see cref="PickerLaneKey"/>), which scrolls sideways at Small and elsewhere is a
+    /// vertical box sized by its content that never scrolls (its cards wrap or fit to its width); the form is the lane's orientation, the row's wrap and the
+    /// columns' and cards' sizing, all live props, and the group keeps one card per column in every form. A crossing therefore keeps the group, its cards and
+    /// the focused card as the same nodes, and the cards glide into their new boxes (<see cref="ClassicTierMotion.Reflow"/>) instead of the picker popping in.</summary>
     static Element ThemePickerView() => Embed.Comp(static () => new ThemePickerCard());
+
+    /// <summary>The picker's lane (the tier tests find it).</summary>
+    internal const string PickerLaneKey = "settings:theme:lane";
 
     sealed class ThemePickerCard : SettingsComponent
     {
         public override Element Render()
         {
-            UseLayout();
             var layout = UseLayout();
             var viewport = UseContext(Viewport.Size);   // the Compact grid's card width follows the window live inside the tier
             float gutter = ClassicTiers.PageOf(Tier).Gutter;
-            float cardWidth = layout.Picker == ClassicThemePickerForm.Grid ? layout.GridCardWidth(viewport.Width, gutter) : layout.PickerCardW;
+            float cardWidth = layout.Picker switch
+            {
+                ClassicThemePickerForm.Grid => layout.GridCardWidth(viewport.Width, gutter),
+                ClassicThemePickerForm.Fit => float.NaN,    // fluid: its column's share of the row, capped by FitParts
+                _ => layout.PickerCardW,
+            };
             var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);   // tracked: a switch or Developer mode re-renders
             Element body;
             if (entries.Count == 0)
@@ -79,12 +91,14 @@ internal static partial class ClassicSettings
                     if (entries[i].Selected) { selected = i; break; }
                 // A pick runs a theme transaction: while its prewarm holds the UI the picked card shows a busy ring after 100 ms.
                 string? busyId = ThemeHost.SwitchBusy ? ThemeHost.PendingSwitch.Value : null;
-                body = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on, busyId == entries[i].Id, layout, cardWidth), PickTheme,
-                    layout.Picker == ClassicThemePickerForm.Strip ? entries.Count : null,
-                    layout.Picker == ClassicThemePickerForm.Strip ? OneLineParts : null);
-                // Small: ONE strip that scrolls, its end fading where more cards wait (the board's mask).
-                if (layout.Picker == ClassicThemePickerForm.Strip)
-                    body = ScrollView(body, horizontal: true) with { Grow = 0f, Shrink = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true, ScrollKey = "settings:theme:strip" };
+                Element strip = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on, busyId == entries[i].Id, layout, cardWidth), PickTheme,
+                    parts: PickerParts(layout));
+                bool scrolls = layout.Picker == ClassicThemePickerForm.Strip;
+                body = ScrollView(strip, horizontal: scrolls) with
+                {
+                    Key = PickerLaneKey, Grow = 0f, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, ContentSized = !scrolls,
+                    SuppressScrollBar = true, AutoEdgeFade = scrolls, ScrollKey = "settings:theme:strip",
+                };
             }
 
             var card = SettingsCard.DefaultStyle;
@@ -107,12 +121,42 @@ internal static partial class ClassicSettings
         if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
     }
 
+    /// <summary>The group's row and columns in the tier's form: the same nodes in every form, only their props differ.</summary>
+    static TemplateParts PickerParts(ClassicSettingsLayout layout) => layout.Picker switch
+    {
+        ClassicThemePickerForm.Strip => OneLineParts,
+        ClassicThemePickerForm.Fit => FitParts(layout.PickerCardW),
+        _ => WrapParts,
+    };
+
+    /// <summary>The fixed-width cards wrap to the next line (Standard's 208, Compact's two-up grid): a line drops whole cards, never shrinks them.</summary>
+    static readonly TemplateParts WrapParts = new()
+    {
+        [RadioButtons.PartGrid] = g => g with { Wrap = true, Gap = Spacing.M },
+        [RadioButtons.PartColumn] = c => c with { Shrink = 0f },
+    };
+
     /// <summary>The cards in one line, no wrap (the Small strip scrolls instead).</summary>
     static readonly TemplateParts OneLineParts = new()
     {
         [RadioButtons.PartGrid] = g => g with { Wrap = false, Gap = Spacing.M },
         [RadioButtons.PartColumn] = c => c with { Shrink = 0f },
     };
+
+    static readonly Dictionary<float, TemplateParts> s_fitParts = new();
+
+    /// <summary>Huge (C-Settings-Huge: `repeat(5, 1fr)`): the cards share ONE line in equal columns, each at most <paramref name="cap"/> (the board's fifth of
+    /// the 1000 column), so five fit any Huge column and fewer stay the board's width, left-aligned. Fluid in the flex pass itself: right in the first frame.</summary>
+    static TemplateParts FitParts(float cap)
+    {
+        if (!s_fitParts.TryGetValue(cap, out var parts))
+            s_fitParts[cap] = parts = new TemplateParts
+            {
+                [RadioButtons.PartGrid] = g => g with { Wrap = false, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch },
+                [RadioButtons.PartColumn] = c => c with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = cap },
+            };
+        return parts;
+    }
 
     static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy, ClassicSettingsLayout layout, float cardWidth)
     {
@@ -152,7 +196,12 @@ internal static partial class ClassicSettings
             },
             Children = kids.ToArray(),
         };
-        return Controls.PickerCard(on, ThemeCardShell(layout, cardWidth), ThemeThumbnail(entry.Preview, layout), details) with { Key = "settings:theme:card:" + entry.Id };
+        var shell = Controls.PickerCard(on, ThemeCardShell(layout, cardWidth), ThemeThumbnail(entry.Preview, layout), details) with
+        {
+            Key = "settings:theme:card:" + entry.Id, Animate = ClassicTierMotion.Reflow,   // a crossing re-forms the picker: the card glides into its new box
+        };
+        // Huge's fluid card fills its column's share (the radio item is a row: the card grows along it).
+        return float.IsNaN(cardWidth) ? shell with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f } : shell;
     }
 
     static Element DeveloperTag() => new BoxEl

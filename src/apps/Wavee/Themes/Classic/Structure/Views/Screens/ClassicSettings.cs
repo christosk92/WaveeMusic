@@ -201,25 +201,31 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>N2: cards 4 DIP apart. The tab's first child sits on the column's top edge: a section header that opens the tab drops its
-    /// 32-DIP top margin (the gap above a section separates it from the one before; the first has none). Where the tier has two columns (Huge) the
-    /// sections split over them at the boundary that balances the two (<see cref="ClassicSettingsTiers.SplitAt"/>); each column starts on its top edge.</summary>
+    /// 32-DIP top margin (the gap above a section separates it from the one before; the first has none). A tab with two or more sections splits them at
+    /// the boundary that balances the two halves (<see cref="ClassicSettingsTiers.SplitAt"/>) AT EVERY TIER, so the tree is the same whatever the tier: the
+    /// two halves are two keyed columns (`settings:column:0`, `:1`) in one pair box (`settings:columns`). Where the tier has two columns (Huge) the pair is a
+    /// row, 32 apart, each column capped at 1000 and starting on its top edge; elsewhere the pair is a column, 4 apart, and the second half's first header
+    /// keeps the space above it, so the stack reads exactly as one column. The split is a live prop of the pair (its direction, gap and the columns' sizing),
+    /// never a different tree: a crossing into or out of Huge keeps every section, row and expander as the SAME node (its scroll, focus and open state with
+    /// it), and the columns glide into their new boxes (<see cref="ClassicTierMotion.Reflow"/>) while the second half's header reveals or folds its top space.</summary>
     static Element TabStack(params Element[] children)
     {
         var layout = s_layout;
-        if (layout.Columns > 1 && SplitSections(children, out var left, out var right))
-            return new BoxEl
-            {
-                Direction = 0, Gap = layout.ColumnGap, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Start,
-                Children = [Column(left, layout, 0), Column(right, layout, 1)],
-            };
-        return Column(children, layout, -1);
+        if (!SplitSections(children, out var left, out var right)) return Column(children, layout, -1, pair: false);
+        bool pair = layout.Columns > 1;
+        return new BoxEl
+        {
+            Key = ColumnsKey, Direction = (byte)(pair ? 0 : 1), Gap = pair ? layout.ColumnGap : ClassicSettingsRules.CardSpacing,
+            AlignSelf = FlexAlign.Stretch, AlignItems = pair ? FlexAlign.Start : FlexAlign.Stretch, Animate = ClassicTierMotion.Reflow,
+            Children = [Column(left, layout, 0, pair), Column(right, layout, 1, pair)],
+        };
     }
 
-    /// <summary>One column of cards: 4 apart, its first child on its top edge. A column of a pair grows to share the row, each capped.</summary>
-    static Element Column(Element[] children, ClassicSettingsLayout layout, int index)
+    /// <summary>One column of cards: 4 apart. The tab's first column starts on its top edge; the second starts on its top edge only where it stands BESIDE the
+    /// first (<paramref name="pair"/>), and below the first it keeps its opening header's space above. A column beside another grows to share the row, capped.</summary>
+    static Element Column(Element[] children, ClassicSettingsLayout layout, int index, bool pair)
     {
-        bool pair = index >= 0;
-        if (children.Length > 0 && children[0] is BoxEl first)
+        if (children.Length > 0 && children[0] is BoxEl first && (index <= 0 || pair))
         {
             // The space above a section is a section header's own top padding (inside its height reveal) or another opener's top margin: the first has none.
             if (first.Margin.Top > 0f) first = first with { Margin = first.Margin with { Top = 0f } };
@@ -229,8 +235,11 @@ internal static partial class ClassicSettings
         }
         return new BoxEl
         {
-            Key = pair ? ColumnKey + ":" + index : ColumnKey, Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = pair ? FlexAlign.Start : FlexAlign.Stretch,
-            Grow = pair ? 1f : 0f, Basis = pair ? 0f : float.NaN, MinWidth = 0f, MaxWidth = pair ? layout.ColumnMaxW : float.NaN, Children = children,
+            Key = index < 0 ? ColumnKey : ColumnKey + ":" + index, Direction = 1, Gap = ClassicSettingsRules.CardSpacing,
+            AlignSelf = pair ? FlexAlign.Start : FlexAlign.Stretch,
+            Grow = pair ? 1f : 0f, Basis = pair ? 0f : float.NaN, MinWidth = 0f, MaxWidth = pair ? layout.ColumnMaxW : float.NaN,
+            Animate = index < 0 ? null : ClassicTierMotion.Reflow,
+            Children = children,
         };
     }
 
@@ -251,8 +260,12 @@ internal static partial class ClassicSettings
         return true;
     }
 
-    /// <summary>The tab body's column node (`settings:column`, or `settings:column:0` and `:1` where the tier has two): the tier tests find them.</summary>
+    /// <summary>The tab body's column node: `settings:column` for a tab with one section, `settings:column:0` and `:1` (in <see cref="ColumnsKey"/>) for a tab
+    /// with more, at every tier. The tier tests find them.</summary>
     internal const string ColumnKey = "settings:column";
+
+    /// <summary>The pair box of a tab with two or more sections: a row at Huge, a column elsewhere.</summary>
+    internal const string ColumnsKey = "settings:columns";
 
     /// <summary>The key every section header carries (the column split starts a group at one).</summary>
     const string SectionKeyPrefix = "settings:section:";
