@@ -206,7 +206,7 @@ internal static class ZuneAlbumTrailing
         string name = artist.Name;
         string uri = artist.Uri.Text;
         string? image = Controls.ArtUrl(artist.HeroImageId) is { Length: > 0 } hero ? hero : Controls.ArtUrl(artist.ImageId);
-        string bio = Entities.Strings.Resolve(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
+        string bio = ArtistVerbs.Text(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
         Action open = () => Track.GoToArtist(artist);
         Element band = new BoxEl
         {
