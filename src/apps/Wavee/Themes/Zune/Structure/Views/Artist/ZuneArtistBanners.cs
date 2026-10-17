@@ -29,6 +29,10 @@ namespace Wavee.Themes.Zune;
 /// <summary>Zune's artist rail items and banners.</summary>
 internal static class ZuneArtistBanners
 {
+    /// <summary>The surface's own 8 padding leaves the rail's art 8 in from the heading: a rail row stands flush, its art on the heading's x and
+    /// 10 under it (the board), so the wash on hover overhangs the column by the padding.</summary>
+    static Element Flush(Element row) => new BoxEl { Direction = 1, MinWidth = 0f, Margin = Edges4.All(-SurfaceGeometry.RowPad), Children = [row] };
+
     // ── the latest release ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>"album · 2025 · 22 songs": the kind, the year (when known) and the track count (when known) as one lowercase meta line.</summary>
@@ -41,7 +45,7 @@ internal static class ZuneArtistBanners
     }
 
     /// <summary>The latest release as a row: its art, the title and the kind line. The whole row opens it; the ring on the art plays it.</summary>
-    public static Element Latest(Album al, float art)
+    public static Element Latest(Album al, float art, bool stacked = false)
     {
         string title = al.Title;
         string uri = al.Uri.Text;
@@ -49,14 +53,16 @@ internal static class ZuneArtistBanners
         string kind = KindLine(al);
         var album = al;
         var id = al.Id;
-        var data = new Controls.CardData(uri, title, K.Caption(kind) with { Color = Tok.TextSecondary }, cover,
+        var data = new Controls.CardData(uri, title, R.Type.TrackMeta(kind) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, cover,
             OnClick: () => Track.GoToAlbum(album),
             OnPlay: () => ArtistVerbs.PlayOrToggle(id),
             Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title, new EntityRef(EntityKind.Album, album.Slot), ArtUrl: cover)))
         {
             Menu = () => Menus.Container(ActionTarget.ForAlbum(album.Uri, title), cover, kind),
         };
-        return Controls.Surface(data, Shape.Row(art));
+        // Small's rail is narrow (220): the cover stands over its words (Z-Artist-Small), a shelf card at the art's width.
+        if (stacked) return Controls.Surface(data, Shape.Shelf(captionLines: 1), art);
+        return Flush(Controls.Surface(data, ZuneListRules.RailRow(art)));
     }
 
     // ── the artist pick ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -77,7 +83,7 @@ internal static class ZuneArtistBanners
         var targetUri = EntityUri.Parse(target);
         string quote = comment.Length > 0 ? comment : kind;
 
-        Element? line = quote.Length == 0 ? null : R.Type.DenseMeta(quote) with
+        Element? line = quote.Length == 0 ? null : R.Type.TrackMeta(quote) with
         {
             Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
@@ -91,7 +97,7 @@ internal static class ZuneArtistBanners
                 ? Embed.Comp(() => new Controls.PreSaveButton { Uri = target, Name = title, Accent = accent }) with { Key = "zune-pick-presave:" + target }
                 : null,
         };
-        return Controls.Surface(data, Shape.Row(art));
+        return Flush(Controls.Surface(data, ZuneListRules.RailRow(art)));
     }
 
     // ── the upcoming release ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -110,9 +116,9 @@ internal static class ZuneArtistBanners
         string? date = releaseAt > 0 ? Track.Format.ShortDate(releaseAt, now) : null;
         string meta = type.Length > 0 && date is not null ? type + " · " + date : type.Length > 0 ? type : date ?? "";
 
-        var data = new Controls.CardData(uri, name, meta.Length == 0 ? null : K.Caption(meta) with { Color = Tok.TextSecondary }, cover,
+        var data = new Controls.CardData(uri, name, meta.Length == 0 ? null : R.Type.TrackMeta(meta) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, cover,
             OnClick: () => ArtistVerbs.OpenEntity(uri, name));
-        Element row = Controls.Surface(data, Shape.Row(art));
+        Element row = Flush(Controls.Surface(data, ZuneListRules.RailRow(art)));
 
         Element actions = new BoxEl
         {

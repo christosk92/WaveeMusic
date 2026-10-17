@@ -178,10 +178,10 @@ internal sealed class ZuneBand : Component
             Children = row1Kids.ToArray(),
         };
 
-        // ── row 2 (laid out at its full height whenever the page has one: the root's height clips it while it folds) ───────────
+        // ── row 2 (mounted while shown: it leaves whole, fading, before the root's height folds; see Row2) ─────────────────────
         var kids = new List<Element>(2) { row1 };
         _views.Begin();
-        if (hasRow2) kids.Add(Row2(views, actions, title, rec, type, edgeFade, OnTabKey));
+        if (row2) kids.Add(Row2(views, actions, title, rec, type, edgeFade, OnTabKey));
 
         // THE INSETS (lead 16 / 24 / 48 / 48 / 64, trailing 0 / 24 / 48 / 48 / 64) are spacers, not the root's padding (ZT1): a crossing eases
         // their WIDTHS (a reflow, a size channel), so the rows ride the re-solve. A position FLIP of the rows would be snapped by the engine's
@@ -192,7 +192,7 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
             Height = rec.HeightWith(row2),
-            Animate = Design.Reduced ? null : ZuneBandRules.HeightMotion,
+            Animate = Design.Reduced ? null : collapsed ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
             Children =
             [
                 new BoxEl
@@ -434,6 +434,9 @@ internal sealed class ZuneBand : Component
         {
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f,
             Gap = rec.Row2Gap,
+            // The row is whole or gone: it fades and slides out BEFORE the band's height eases away (HeightMotionAfterFade) and fades in AFTER the height
+            // has settled (the enter's delay), so the band's clip never cuts it half way.
+            Enter = Design.Reduced ? default : ZuneBandRules.Row2Enter, Exit = Design.Reduced ? default : ZuneBandRules.Row2Exit,
             Children = kids.ToArray(),
         };
     }

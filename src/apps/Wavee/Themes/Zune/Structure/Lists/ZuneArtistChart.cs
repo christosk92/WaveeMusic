@@ -59,9 +59,10 @@ internal static class ZuneArtistChart
 
     static Element Bar(int count, Func<int, Element> lane) => Controls.SelectionBar(count, lane, standalone: true, bottomPadding: Spacing.S);
 
-    /// <summary>The chart's heading: the Heading role (26/32·300), lowercased by the style. Zune draws no accent rule (the accent is ink).</summary>
+    /// <summary>The chart's heading: "popular" (Z-Artist's word, not the core's "top tracks"), the Heading role (26/32·300), lowercased by the style.
+    /// Zune draws no accent rule (the accent is ink).</summary>
     static Element Header(string title, ColorF accent)
-        => R.Type.Heading(title) with { Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        => R.Type.Heading(Loc.Get(Strings.Artist.Popular)) with { Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
     static Element Row(ArtistChartRowArgs a)
         => ChartRow(a.Cells, a.Index, a.State, a.Tier, FeatLine(a.Track, a.PageArtist, a.FeatCount, a.FeatSlot), a.OnPlay, a.OnLike, a.Pop,
@@ -121,7 +122,7 @@ internal static class ZuneArtistChart
     static Element Pager(ArtistChartPagerArgs p)
     {
         if (p.PageCount <= 1)
-            return R.Type.TrackMeta(p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture)) with { Color = Tok.TextTertiary };
+            return R.Type.TrackMeta(Strings.Home.SeeAllN(p.Total)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 };
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
@@ -139,6 +140,8 @@ internal static class ZuneArtistChart
                             Action? onLike, bool pop, Signal<bool>? hovered, RowScope? slot, Func<bool>? checksVisible, bool showArtwork)
     {
         bool isNow = st.IsNow;
+        // The board's cover is 48 where the core's tier says the 44 step (the 40 floor of a narrow column stays).
+        if (tier.Art >= 44f) tier = tier with { Art = ZuneListRules.ChartArt };
         ColorF accent = R.Ink.AccentAction;
         ColorF secondary = ZuneListRules.RowInk(isNow, accent, Tok.TextSecondary);
         ColorF tertiary = ZuneListRules.RowInk(isNow, accent, Tok.TextTertiary);
@@ -188,7 +191,7 @@ internal static class ZuneArtistChart
         {
             new BoxEl
             {
-                Width = ZuneListRules.ChartRankBox, Height = ZuneListRules.ChartRowHeight, Shrink = 0f,
+                Width = ZuneListRules.ChartRankBox - Spacing.M, Height = ZuneListRules.ChartRowHeight, Shrink = 0f,
                 Children = [ZuneRowCells.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, large: true)],
             },
         };

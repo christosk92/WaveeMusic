@@ -255,7 +255,7 @@ public static class ZuneListRules
 
     /// <summary>A chart row: 60 tall on a 0 gap (the rows touch, Z-Artist), the header 16 over them; the 264 card minimum is the two-column
     /// breakpoint (as Classic's) and the edge fade the shelf's.</summary>
-    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 16f, ChartMinCardWidth = 264f, ChartEdgeFade = 24f;
+    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartMinCardWidth = 264f, ChartEdgeFade = 24f;
 
     /// <summary>The rank box (the board's 52 lane), the art edge (48) and the skeleton's art, and the gaps.</summary>
     public const float ChartRankBox = 52f, ChartArt = 48f, ChartSubGap = 6f, ChartTrailGap = 12f, ChartFeatGap = 4f, ChartPagerChevron = 28f;
@@ -264,6 +264,14 @@ public static class ZuneListRules
     /// rides it (the engine's flow reveal), never a jump.</summary>
     public static readonly LayoutTransition ChartResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
+
+    /// <summary>A rail row (Z-Artist's "latest release" and "artist pick"): a row at <paramref name="art"/> whose title stays the 15/20 card-title rung
+    /// (the board draws 15 beside a 96 cover; the core's page-hero rung belongs to Search's top result). The mark is the row shape's MetaLine dial,
+    /// which a row never reads (it is a stack's reserved meta line).</summary>
+    public static SurfaceShape RailRow(float art) => Shape.Row(art) with { MetaLine = true };
+
+    /// <summary>The shape is a <see cref="RailRow"/>.</summary>
+    public static bool IsRailRow(in SurfaceShape s) => s.IsRow && s.MetaLine;
 
     /// <summary>The chart's decode size for a 48 cover at 2x.</summary>
     public const int ChartArtDecodePx = 96;

@@ -182,6 +182,18 @@ public static class ZuneBandRules
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>The height motion while row 2 folds away: it waits for row 2's fade-out (<see cref="Row2FadeMs"/>), so the clip never cuts the row.</summary>
+    public static readonly LayoutTransition HeightMotionAfterFade = HeightMotion with { DelayMs = Row2FadeMs };
+
+    /// <summary>Row 2's fade-out, and the slide that rides it (up, under row 1).</summary>
+    public const float Row2FadeMs = 120f, Row2Slide = -8f;
+
+    /// <summary>Row 2 comes back after the band's height has eased open (whole, fading in), and leaves at once (whole, fading out).</summary>
+    public static readonly EnterExit Row2Enter = new(Dy: Row2Slide, Opacity: 0f, Active: true, DelayMs: ZuneMotion.PivotSlideMs);
+
+    /// <inheritdoc cref="Row2Enter"/>
+    public static readonly EnterExit Row2Exit = new(Dy: Row2Slide, Opacity: 0f, Active: true);
+
     /// <summary>The edge fade of a row that overflows where the tier does not fade (the pivot run under EdgeFadeScroll at Standard and up).</summary>
     public const float EdgeFadeBand = 32f;
 

@@ -86,14 +86,14 @@ internal static class ZuneArtistSections
             rail.Add(RailItem("upcoming", Loc.Get(Strings.Artist.Upcoming), ZuneArtistBanners.Upcoming(a, p.AccentFn, lay.LatestArt)));
         var latest = a.Latest;
         if (latest.IsValid && latest.Knows(AlbumFields.DiscoCard))
-            rail.Add(RailItem("latest", Loc.Get(Strings.Artist.LatestRelease), ZuneArtistBanners.Latest(latest, lay.LatestArt)));
+            rail.Add(RailItem("latest", Loc.Get(Strings.Artist.LatestRelease), ZuneArtistBanners.Latest(latest, lay.LatestArt, lay.LatestStacked)));
         if (a.HasPick)
             rail.Add(RailItem("pick", Loc.Get(Strings.Artist.ArtistPick), ZuneArtistBanners.Pick(a, p.AccentFn, lay.PickArt)));
         if (rail.Count == 0) return new BoxEl { Key = Rules.PopularKey, Direction = 1, MinWidth = 0f, Children = [chart] };
 
         Element railBox = new BoxEl
         {
-            Key = Rules.RailKey, Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, Shrink = 0f, Width = lay.RailBeside ? lay.RailW : float.NaN,
+            Key = Rules.RailKey, Direction = 1, Gap = lay.RailStackGap, MinWidth = 0f, Shrink = 0f, Width = lay.RailBeside ? lay.RailW : float.NaN,
             Layout = ZuneMotion.ColumnCollapse, Children = rail.ToArray(),
         };
         return new BoxEl
