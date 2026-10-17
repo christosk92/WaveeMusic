@@ -108,7 +108,7 @@ public sealed partial class ZuneTierLayoutTests
         else Assert.Equal(lay.DaylistH, daylist.H, 1f);
         Assert.Equal(lay.DaylistArtW, scene.AbsoluteRect(Node(shell, "zune-daylist-art")).W, 1f);
         Assert.Equal(lay.ClockW, scene.AbsoluteRect(Node(shell, "zune-daylist-clock")).W, 1f);
-        Assert.Equal(lay.PlayAtEnd, !shell.Find("zune-daylist-end").IsNull);
+        Assert.True(shell.Find("zune-daylist-end").IsNull, $"{sizeName}: no end slot: the rings row is the copy's child in every form");
         Assert.Equal(lay.DaylistMeta, !shell.Find("zune-daylist-meta").IsNull);
         Assert.False(shell.Find("zune-daylist-play").IsNull, $"{sizeName}: the play ring");
         Assert.Equal(lay.DaylistRings >= 2, !shell.Find("zune-daylist-shuffle").IsNull);
@@ -120,6 +120,12 @@ public sealed partial class ZuneTierLayoutTests
         Assert.Equal(MathF.Max(lay.RingSize, lay.RingTarget), play.H, 1f);
         Assert.True(play.W >= lay.RingTarget - 0.5f, $"{sizeName}: the play ring is {play.W} wide, under its {lay.RingTarget} target");
         if (lay.DaylistForm == ZuneDaylistForm.OneRow) Assert.Equal(56f, daylist.H, 1f);
+        // The play ring stands inside the copy in every form; the one-row form ends the copy with it (the pad before the strip's edge), the others
+        // put it under the text block.
+        var copyRect = scene.AbsoluteRect(Node(shell, "zune-daylist-copy"));
+        AssertWithin(sizeName, "the play ring in the copy", play, copyRect.X, copyRect.X + copyRect.W);
+        if (lay.PlayAtEnd) Assert.True(play.X + play.W >= copyRect.X + copyRect.W - lay.DaylistPad - 1f, $"{sizeName}: the play ring ends the one-row copy");
+        else Assert.True(play.Y >= scene.AbsoluteRect(Node(shell, "zune-daylist-title")).Y, $"{sizeName}: the play ring stands under the title");
 
         // The quickplay strip: the pins capped by the record (one tile at its art), no new group where the tier has none, the history in its arm.
         var tiles = shell.FindPrefix(ZuneHomeRules.PinTilePrefix);

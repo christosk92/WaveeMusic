@@ -10,8 +10,9 @@
 //     shows it on the navigation's first frame, before the page mounts. The Library kinds are the first (`User.LibraryChromeViews`), Browse's bands the second (`BrowseBands.ChromeViews`), Home's lone "all" a seed (`HomeSeedViews`, ZT4: `HomeHost` publishes the real words).
 //   · IN-PAGE ROW 2 (`Publish`, through the `PageChromeSink` the content host provides around every page): a page's core host or its
 //     theme template publishes its in-page tabs, its actions and its backdrop under its route. LRU 16, as the masthead publications.
-//   · THE MERGE (`ChromeOf`): the title and trail are the masthead's for its family and the destination's title elsewhere; the views
-//     are the page's when it published any, else the route's; the actions and the backdrop are the page's.
+//   · THE MERGE (`ChromeOf`): the title and trail are the masthead's for its family and the destination's title elsewhere (a detail page's
+//     published entity name replaces the title, contract 1.30); the views are the page's when it published any, else the route's; the
+//     actions and the backdrop are the page's.
 //   · THE PAGE SCROLL (`Scroll`): the current page's main scroller, named through the sink, followed by an effect: its offset and the
 //     direction it last travelled past a dead zone (`PageScrollRules`), what a band collapses on.
 //   · THE BAND (`Band`): the one `BandProps` instance `Sidebar.DockedPaneProps` / `DrawerPaneProps` carry (`NavPaneProps.Band`).
@@ -190,6 +191,9 @@ public static partial class Shell
             var views = row is { Views.Count: > 0 } ? row.Views : RouteViews(route);
             return head with
             {
+                // Contract 1.30 (A10): a detail page's entity name replaces the kind ("Album") as the title; while it loads the kind stands.
+                // The crumbs keep the destination's own words. Only the band reads this title: Classic's masthead is the masthead's.
+                Title = row?.Title is { Length: > 0 } name ? name : head.Title,
                 Views = views,
                 Actions = row?.Actions ?? [],
                 Backdrop = row?.Backdrop ?? PageBackdrop.None,

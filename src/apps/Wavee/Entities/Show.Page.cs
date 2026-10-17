@@ -242,7 +242,8 @@ public readonly partial struct Show
             if (uri.Length == 0 || !_show.IsValid) return;
             var lib = Controls.Library;
             bool following = lib is not null && lib.IsSaved(uri);
-            long sig = HashCode.Combine(uri, following, lib is not null);
+            string? name = _show.Knows(ShowFields.Title) && _show.Title.Length > 0 ? _show.Title : null;
+            long sig = HashCode.Combine(uri, following, lib is not null, name);
             if (sig == _chromeSig) return;
             _chromeSig = sig;
             var views = new PageView[] { new("episodes", Loc.Get(Strings.Podcast.Episodes), true, s_noView) };
@@ -250,7 +251,7 @@ public readonly partial struct Show
             if (lib is not null)
                 actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
                     () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : "")));
-            _sink.Publish(new PageChromeRow(views, actions));
+            _sink.Publish(new PageChromeRow(views, actions, Title: name));
         }
 
         void DemandShow()

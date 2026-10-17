@@ -122,6 +122,37 @@ public class PageChromeRowTests
     }
 
     [Fact]
+    public void A_pages_published_title_replaces_the_kind_and_the_crumbs_keep_it()
+    {
+        var route = new Shell.Route(Shell.RouteKind.LibraryAlbums, Tab: 9107);
+        string kind = Shell.Dest(route).Title;
+        var play = new PageAction("play", "Play", static () => { }, PageActionKind.Play);
+        try
+        {
+            // A row that holds a title alone is not empty (contract 1.30); the kind stands while the page has no name.
+            Assert.False(new PageChromeRow([], [], Title: "Abbey Road").IsEmpty);
+            Assert.True(new PageChromeRow([], [], Title: "").IsEmpty);
+            Assert.True(Shell.PageChromeChannel.Publish(route, new PageChromeRow([], [play], Title: "")));
+            Assert.Equal(kind, Shell.PageChromeChannel.ChromeOf(route).Title);
+            Assert.True(Shell.PageChromeChannel.Publish(route, new PageChromeRow([], [play], Title: null)));
+            Assert.Equal(kind, Shell.PageChromeChannel.ChromeOf(route).Title);
+
+            // The name arrives: it is the title, the crumb is still the destination's own word, the rest of the row is untouched.
+            Assert.True(Shell.PageChromeChannel.Publish(route, new PageChromeRow([], [play], Title: "Abbey Road")));
+            var chrome = Shell.PageChromeChannel.ChromeOf(route);
+            Assert.Equal("Abbey Road", chrome.Title);
+            Assert.Equal(kind, Assert.Single(chrome.Crumbs).Label);
+            Assert.Same(play, Assert.Single(chrome.Actions));
+            Assert.Equal(6, chrome.Views.Count);
+        }
+        finally
+        {
+            Shell.PageChromeChannel.Publish(route, null);
+        }
+        Assert.Equal(kind, Shell.PageChromeChannel.ChromeOf(route).Title);
+    }
+
+    [Fact]
     public void A_publication_is_kept_per_route_and_tab()
     {
         var a = new Shell.Route(Shell.RouteKind.LibraryArtists, Tab: 9103);

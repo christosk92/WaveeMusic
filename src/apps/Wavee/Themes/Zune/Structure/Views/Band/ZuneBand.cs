@@ -373,23 +373,36 @@ internal sealed class ZuneBand : Component
         var run = new List<Element>(views.Count + 2);
         if (title is not null)
         {
+            // A10 (contract 1.30): the title is the entity's name once the page has published it, the kind ("Album") while it loads. The slot
+            // keeps its height and stacks its words (ZStack), each in a layer keyed by its text: the old one fades out as the new one fades in,
+            // in place, so the swap never relayouts; the views and the hairline beside it slide to the new width (the pivot slide).
             run.Add(new BoxEl
             {
                 Key = ZuneBandRules.Row2TitleKey, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H,
-                MaxWidth = ZuneBandRules.TitleMaxW, Shrink = 1f, MinWidth = 0f,
+                MaxWidth = ZuneBandRules.TitleMaxW, Shrink = 1f, MinWidth = 0f, ZStack = true,
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
                 Children =
                 [
-                    SubText(R.Type.SubPivot(title), type) with
+                    new BoxEl
                     {
-                        // The entity's name in its own casing (A10: names are never re-cased), ellipsised at 360.
-                        Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight, Color = Tok.TextPrimary, Case = TextCase.AsWritten,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                        Key = ZuneBandRules.Row2TitleKey + ":" + title, Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                        Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                        Children =
+                        [
+                            SubText(R.Type.SubPivot(title), type) with
+                            {
+                                // The entity's name in its own casing (A10: names are never re-cased), ellipsised at 360.
+                                Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight, Color = Tok.TextPrimary, Case = TextCase.AsWritten,
+                                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                            },
+                        ],
                     },
                 ],
             });
             run.Add(new BoxEl
             {
                 Width = ZuneBandRules.HairlineW, Height = ZuneBandRules.HairlineH, Shrink = 0f, HitTestVisible = false,
+                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
                 Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
             });
         }
@@ -437,14 +450,15 @@ internal sealed class ZuneBand : Component
         if (v.Current && !tabStyle) text = text with { Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight };
         return new BoxEl
         {
-            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, Shrink = 0f,
+            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, MinWidth = rec.ViewMinW, Shrink = 0f,
             Role = AutomationRole.Tab, Focusable = true, TabStop = tabStop, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = v.Go,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => nodes.Realized(v.Id, h),
             Children =
             [
-                new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Children = [text] },
+                // Centred: at Compact the hit box is 40 wide even for a one-word "all" (ViewMinW).
+                new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [text] },
                 // The underline's place is always kept, so the word sits at one height lit or not.
                 new BoxEl
                 {

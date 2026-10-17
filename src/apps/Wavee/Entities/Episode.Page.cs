@@ -217,6 +217,7 @@ public readonly partial struct Episode
         Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
         readonly Action _publishChrome;
         string _chromeUri = "";
+        string? _chromeTitle;   // the episode's name, row 2's title (contract 1.30)
         long _chromeSig = long.MinValue;
 
         public EpisodeReader()
@@ -252,6 +253,7 @@ public readonly partial struct Episode
             UseSignalEffect(_watchScroll);
             _sink = UseContext(Contracts.PageChromeSink.Context);
             _chromeUri = e.Uri.Text;
+            _chromeTitle = e.Knows(EpisodeFields.Title) && e.Title.Length > 0 ? e.Title : null;
             UseEffect(_publishChrome);   // auto-tracks the spy's answer (_active) — row 2 follows the scroll
 
             return ViewSlots.View(Contracts.ViewKeys.EpisodeReader, new Contracts.EpisodeReaderProps(
@@ -271,7 +273,7 @@ public readonly partial struct Episode
         {
             int active = _active.Value;
             if (_chromeUri.Length == 0) return;
-            long sig = HashCode.Combine(_chromeUri, active);
+            long sig = HashCode.Combine(_chromeUri, active, _chromeTitle);
             if (sig == _chromeSig) return;
             _chromeSig = sig;
             var views = new Contracts.PageView[SectionCount]
@@ -281,7 +283,7 @@ public readonly partial struct Episode
                 new("transcript", Loc.Get(Strings.Podcast.Tabs.Transcript), active == 2, _sectionClicks[2]),
                 new("comments", Loc.Get(Strings.Podcast.Tabs.Comments), active == 3, _sectionClicks[3]),
             };
-            _sink.Publish(new Contracts.PageChromeRow(views, []));
+            _sink.Publish(new Contracts.PageChromeRow(views, [], Title: _chromeTitle));
         }
 
         void GoToSection(int section)

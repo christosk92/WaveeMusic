@@ -457,6 +457,7 @@ internal static class ZuneConcertDetail
         ChromeProps? _p;
         PageChromeSink _sink = PageChromeSink.None;
         bool _shown, _lineup, _related;
+        string? _title;   // the concert's name, row 2's title (contract 1.30); null while the row is pending
         long _sig = long.MinValue;
         readonly Action _publish, _spy;
         readonly Action[] _go = new Action[Cell.Sections];
@@ -484,6 +485,7 @@ internal static class ZuneConcertDetail
             var d = answered ? props.Detail() : null;
             _lineup = d is { Lineup.Length: > 0 };
             _related = d is { Related.Length: > 0 };
+            _title = d is { Title.Length: > 0 } ? d.Title : null;
             UseEffect(_spy);        // auto-tracks the viewport's scroll offset
             UseEffect(_publish);    // auto-tracks the spy's answer
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
@@ -535,7 +537,7 @@ internal static class ZuneConcertDetail
             var cell = _p!.Cell;
             int active = cell.Active.Value;
             if (!_shown) return;
-            long sig = HashCode.Combine(_lineup, _related, active);
+            long sig = HashCode.Combine(_lineup, _related, active, _title);
             if (sig == _sig) return;
             _sig = sig;
             var views = new List<PageView>(3)
@@ -544,7 +546,7 @@ internal static class ZuneConcertDetail
             };
             if (_lineup) views.Add(new PageView("lineup", Loc.Get(Strings.Concerts.Detail.Lineup), active == 1, _go[1]));
             if (_related) views.Add(new PageView("related", Loc.Get(Strings.Concerts.Detail.RelatedConcerts), active == 2, _go[2]));
-            _sink.Publish(new PageChromeRow(views, []));
+            _sink.Publish(new PageChromeRow(views, [], Title: _title));
         }
     }
 }

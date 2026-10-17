@@ -267,7 +267,7 @@ public static partial class Profile
             bool composed = !unavailable && _bodyReady;
             ProfileSectionSlot[] sections = composed ? PlanSections(u) : [];
             _chromeCount = composed ? _pivotCount : 0;
-            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch, _chromeCount, 0));
+            UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch, _chromeCount, _name.GetHashCode()));   // the name rides row 2's title (1.30)
             UseSignalEffect(_watchScroll);
 
             // The accent and the band's engaged edge are read here, as the page always read them (only for a body that is composed): this render wakes on
@@ -347,7 +347,7 @@ public static partial class Profile
             if (_own) actions.Add(new PageAction("open-account", Loc.Get(Strings.Person.OpenAccount), ProfileVerbs.OpenAccount));
             actions.Add(new PageAction("share", Loc.Get(Strings.Menu.Share), _acts.Share));
             _chromePublished = true;
-            sink.Publish(new PageChromeRow(views, actions));
+            sink.Publish(new PageChromeRow(views, actions, Title: _name.Length > 0 ? _name : null));
         }
 
         // ── the section plan ─────────────────────────────────────────────────────────────────────────────────────────

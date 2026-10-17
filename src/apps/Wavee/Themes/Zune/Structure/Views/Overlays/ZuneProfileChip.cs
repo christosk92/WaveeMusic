@@ -47,6 +47,7 @@ internal static class ZuneProfileChip
         return new BoxEl
         {
             Key = ChipKey, Direction = 0, Gap = ZuneOverlayRules.ChipGap, AlignItems = FlexAlign.Center, Height = layout.ChipHeight, Shrink = 0f,
+            MinWidth = layout.ChipMinWidth, Justify = FlexJustify.Center,
             // The named form carries 6 extra DIP of right padding: part of the budgeted name width.
             Padding = props.ShowName ? ZuneOverlayRules.ChipPaddingNamed : ZuneOverlayRules.ChipPaddingBare,
             Corners = R.Shape.All(ShapeRole.Control),
