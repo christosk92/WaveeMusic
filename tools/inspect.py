@@ -35,8 +35,8 @@ def find_exe(explicit):
 
 
 class Server:
-    def __init__(self, exe, pipe=None, profile=None, text=None):
-        argv = [exe, "--inspect"]
+    def __init__(self, exe, pipe=None, profile=None, text=None, extra=None):
+        argv = [exe, "--inspect"] + list(extra or [])
         if pipe:
             argv += ["--pipe", pipe]
         if profile:

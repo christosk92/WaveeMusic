@@ -61,6 +61,12 @@ public static partial class Diagnostics
                                 headlessText = mode == "headless";
                                 break;
                             }
+                        case "--fg":   // engine switches (EngineSwitches.ApplyList), e.g. `--fg motion` logs the projected-motion decisions to stderr
+                            {
+                                if (!Value(args, ref i, a, out string list, ref usage)) return false;
+                                FluentGpu.Hosting.EngineSwitches.ApplyList(list);
+                                break;
+                            }
                         default:
                             usage = "unknown argument '" + a + "'\n" + Usage;
                             return false;

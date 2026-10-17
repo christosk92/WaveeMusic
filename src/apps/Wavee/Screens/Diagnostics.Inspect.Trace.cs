@@ -49,6 +49,8 @@ public static partial class Diagnostics
             /// <summary>A change over this many DIP in one frame with no track is a snap.</summary>
             public float SnapDip = 0.5f;
             public bool Rows = true;
+            /// <summary>Turn the host's render census on: a slow frame's row then names the components that made it slow (`census`). Off by default (it costs frame time).</summary>
+            public bool Census;
             /// <summary>Wheel notches (dy), cycled per event: "3" or "3,3,-6". Empty = no input.</summary>
             public double[] Wheel = [];
             public int WheelEvery = 1;
@@ -83,6 +85,7 @@ public static partial class Diagnostics
             o.JumpDip = a.Float("jump", 2f);
             o.SnapDip = a.Float("snap", 0.5f);
             o.Rows = a.Bool("rows", true);
+            o.Census = a.Bool("census", false);
             if (a.Has("wheel"))
             {
                 if (!TryWheelSequence(a.Str("wheel"), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
@@ -163,6 +166,8 @@ public static partial class Diagnostics
                        Components, ReactiveUnits, BindingFires, BindingWrites, ImageApplied, Gc0, Gc1, Gc2;
             public List<NodeSample> Nodes = [];
             public ScrollSample? Scroll;
+            /// <summary>The render census of a slow frame (which components made the flush slow), when the host has it on.</summary>
+            public string? Census;
 
             /// <summary>Escapes that were not absorbed locally: each one is a full-window solve.</summary>
             public int RootSolves => Math.Max(0, Escapes - LocalResolves);
@@ -383,6 +388,7 @@ public static partial class Diagnostics
         {
             w.WriteStartObject();
             w.WriteNumber("f", r.Frame);
+            if (!string.IsNullOrEmpty(r.Census)) w.WriteString("census", r.Census);
             w.WriteNumber("abs", r.Abs);
             w.WriteBoolean("rendered", r.Rendered);
             w.WriteBoolean("animating", r.Animating);
@@ -576,6 +582,7 @@ public static partial class Diagnostics
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
             int sent = 0;
             bool moved = false;
+            shell.Host.RenderCensus = o.Census;   // a slow frame names its components (row.census)
             for (int f = 0; f < o.Frames; f++)
             {
                 var keyed = shell.FindPrefix("");   // one key copy per frame serves the nodes, the wheel target and the scroller
@@ -615,7 +622,7 @@ public static partial class Diagnostics
                     NodesVisited = s.NodesVisited, DrawNodes = s.DrawNodeCount, ScopedMarks = s.ScopedRelayoutMarks, Escapes = s.RootRelayoutEscapes,
                     LocalResolves = s.LocalRelayoutResolves, Components = s.ComponentsRendered, ReactiveUnits = s.ReactiveUnits,
                     BindingFires = s.BindingFires, BindingWrites = s.BindingWrites, ImageApplied = s.ImageApplyCount,
-                    Gc0 = s.Gc0Delta, Gc1 = s.Gc1Delta, Gc2 = s.Gc2Delta,
+                    Gc0 = s.Gc0Delta, Gc1 = s.Gc1Delta, Gc2 = s.Gc2Delta, Census = s.Census,
                 };
                 if (o.WatchesNodes)
                 {
