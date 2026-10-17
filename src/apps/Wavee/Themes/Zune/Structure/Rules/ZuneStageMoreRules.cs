@@ -144,18 +144,35 @@ public static class ZuneStageLyricsRules
 /// <param name="ChromeAtRest">The hover chrome shows at rest (there is no hover on a Compact window's touch).</param>
 /// <param name="BarPadL">The fullscreen bar's left padding (the frame's gutter: 16 / 24 / 48 / 48 / 64).</param>
 /// <param name="BarPadR">The fullscreen bar's right padding.</param>
-public sealed record ZuneStageVideoLayout(WidthTier Tier, float WordH, float StripH, float GlyphBox, bool ChromeAtRest, float BarPadL, float BarPadR);
+/// <param name="BarH">The fullscreen bar's height (Z-Video 48; Z-Video-Huge 56; 72 at Huge 4K, the stage's head).</param>
+/// <param name="BarGap">The gap between the fullscreen bar's parts.</param>
+/// <param name="LabelSize">The bar's label and words: type size (13; 14 at Huge; 17 at Huge 4K).</param>
+/// <param name="LabelLine">Their line height.</param>
+/// <param name="TitleSize">The track's title in the bar.</param>
+/// <param name="TitleLine">Its line height.</param>
+public sealed record ZuneStageVideoLayout(WidthTier Tier, float WordH, float StripH, float GlyphBox, bool ChromeAtRest, float BarPadL, float BarPadR,
+    float BarH, float BarGap, float LabelSize, float LabelLine, float TitleSize, float TitleLine);
 
 /// <summary>The video surfaces' numbers and their per-window-tier record.</summary>
 public static class ZuneStageVideoRules
 {
     private static readonly ZuneStageVideoLayout[] s_tiers =
     [
-        new(WidthTier.Compact, WordH: 40f, StripH: 40f, GlyphBox: 40f, ChromeAtRest: true, BarPadL: ZuneTiers.Frame(WidthTier.Compact).Gutter, BarPadR: 8f),
-        new(WidthTier.Small, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: ZuneTiers.Frame(WidthTier.Small).Gutter, BarPadR: 8f),
-        new(WidthTier.Standard, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: ZuneTiers.Frame(WidthTier.Standard).Gutter, BarPadR: 24f),
-        new(WidthTier.Huge, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: ZuneTiers.Frame(WidthTier.Huge).Gutter, BarPadR: 24f),
-        new(WidthTier.Huge4K, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: ZuneTiers.Frame(WidthTier.Huge4K).Gutter, BarPadR: 24f),
+        // Z-Video-Compact: 40 targets, the chrome at rest (touch), the 16 gutter
+        new(WidthTier.Compact, WordH: 40f, StripH: 40f, GlyphBox: 40f, ChromeAtRest: true, BarPadL: 16f, BarPadR: 4f,
+            BarH: 48f, BarGap: 4f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
+        // Z-Video-Small
+        new(WidthTier.Small, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 24f, BarPadR: 12f,
+            BarH: 48f, BarGap: 20f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
+        // Z-Video, Z-Mini (Standard)
+        new(WidthTier.Standard, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 48f, BarPadR: 24f,
+            BarH: 48f, BarGap: 24f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
+        // Z-Video-Huge: the 56 bar, 64 / 24, 14 type, 44 targets
+        new(WidthTier.Huge, WordH: 44f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 64f, BarPadR: 24f,
+            BarH: 56f, BarGap: 28f, LabelSize: 14f, LabelLine: 20f, TitleSize: 17f, TitleLine: 22f),
+        // Huge 4K (no video board: the stage's Huge 4K head): the 72 bar, 96 / 32, 17 type, 56 targets
+        new(WidthTier.Huge4K, WordH: 56f, StripH: 40f, GlyphBox: 36f, ChromeAtRest: false, BarPadL: 96f, BarPadR: 32f,
+            BarH: 72f, BarGap: 36f, LabelSize: 17f, LabelLine: 22f, TitleSize: 20f, TitleLine: 26f),
     ];
 
     /// <summary>The record for window tier <paramref name="window"/>.</summary>

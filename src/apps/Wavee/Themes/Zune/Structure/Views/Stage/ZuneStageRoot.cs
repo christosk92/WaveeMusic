@@ -132,9 +132,10 @@ internal static class ZuneStageRoot
                     Key = "chrome:top", Enter = top, Exit = top, Transition = MotionTok.ControlNormal,
                     Children =
                     [
+                        // content-tall: the bar sizes itself to the tier's head (48, the Compact bar and its pivot row, 56, 72)
                         new BoxEl
                         {
-                            Height = Stage.Layout.TopBarH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
+                            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
                             Children = [Slots.View(ViewKeys.StageTopBar, v.TopBar)],
                         },
                     ],
@@ -178,23 +179,39 @@ internal static class ZuneStageRoot
 
     static readonly EnterExit s_upNextMotion = new(Dx: G.UpNextSlide, Opacity: 0f, Active: true);
 
-    /// <summary>The Up next column a wide Huge stage docks beside the lyrics (the core's rect): a flat floating pane, square.</summary>
+    /// <summary>The Up next column a wide Huge stage docks beside the lyrics (the core's rect, at the tier's gutter and under its head).</summary>
     static Element UpNext(StageRootView v)
-    {
-        var r = v.Stage.Layout.Value.UpNextRect;
-        var build = v.Layers.UpNext;
-        return Stage.Layer with
+        => Stage.Layer with
         {
             Key = "stage:upnext",
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
+            Children = [Embed.Comp(new ZuneStageUpNextColumn.Props(v.Stage, v.Layers.UpNext), static () => new ZuneStageUpNextColumn())],
+        };
+}
+
+/// <summary>The Up next column's flat floating pane: the core's rect moved in by the tier's gutter (the core budgets it at the plate's 0
+/// inset) and down by the tier's head. A component: the rect needs the window tier.</summary>
+internal sealed class ZuneStageUpNextColumn : Component
+{
+    public sealed record Props(Stage.StageCtx Stage, Func<Element>? Build);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+        var t = ZuneStageTiers.StageOf(in tiers);
+        var r = p.Stage.Layout.Value.UpNextRect;
+        float x = MathF.Max(0f, r.X - t.Gutter), y = r.Y + t.Drop, h = MathF.Max(0f, r.H - t.Drop);
+        return Stage.Layer with
+        {
             Children =
             [
                 new BoxEl
                 {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
+                    Key = "stage:upnext:pane", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = h, Margin = new Edges4(x, y, 0f, 0f),
                     Direction = 1, Padding = Edges4.All(G.UpNextPad), Corners = R.Shape.All(ShapeRole.Overlay), ClipToBounds = true,
                     Fill = R.Layer.FloatingPane,
-                    Children = build is null ? [] : [build()],
+                    Children = p.Build is null ? [] : [p.Build()],
                 },
             ],
         };

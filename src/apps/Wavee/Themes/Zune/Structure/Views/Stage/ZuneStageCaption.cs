@@ -38,6 +38,8 @@ internal static class ZuneStageCaption
             var a = ZuneStageKit.Arrangement(sc, tiers);
             var L = sc.Layout.Value;
             bottom = G.CaptionBottom(in L, in a, props.Bottom);
+            // the Compact stack fills the column with the cover, the titles and the controls: no line over them (the clock stays)
+            if (!G.CaptionAllowed(in a)) return Stage.Layer with { HitTestVisible = false, HitTestPassThrough = false, Children = [.. props.Ticker] };
         }
         string gen = props.Generation;
         var kids = new List<Element>(3);

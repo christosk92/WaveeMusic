@@ -5,8 +5,8 @@
 // ("exit full screen"). The picture lives in the stay-mounted presenter (`Video.Pip`'s overlay fills the window); the core's surface keeps the
 // mode (the OS window goes borderless-fullscreen on its monitor and restores what it found, mount = enter, unmount = exit), the focus scope,
 // Escape / F at the root and the never-leave-focus-null guard. This template draws the hover band only; the opacity is on THIS band only, never
-// on an ancestor of the hole. The window's gutter is the bar's left padding and the right is 24 (8 at Compact), the words are the tier's
-// target tall (36, 40 at Compact).
+// on an ancestor of the hole. Per window tier (`ZuneStageVideoRules.Of`, ZT3): the bar is 48 (56 at Huge, Z-Video-Huge; 72 at Huge 4K),
+// its padding the board's (16 / 24 / 48 / 64 / 96 on the left), its type 13 (14, 17) and its words the tier's target tall (40 at Compact).
 //
 // Not on this view's props: the board's "switch to audio" word (no verb reaches the surface; "turn off video" is in the placement menu), listed
 // as a gap.
@@ -39,7 +39,7 @@ internal static class ZuneStageVideoFullscreen
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Height = MathF.Max(VR.FullscreenBarH, t.WordH), Gap = VR.BarGap,
+                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Height = MathF.Max(t.BarH, t.WordH), Gap = t.BarGap,
                     Padding = new Edges4(t.BarPadL, 0f, t.BarPadR, 0f),
                     Gradient = Tok.ScrimTop,
                     Opacity = t.ChromeAtRest ? 1f : 0f, HoverOpacity = 1f,
@@ -48,18 +48,18 @@ internal static class ZuneStageVideoFullscreen
                     [
                         new TextEl(Loc.Get(Strings.Theme.Zune.Stage.VideoFullScreen))
                         {
-                            Size = VR.LabelSize, LineHeight = VR.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
+                            Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
                             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         },
                         new BoxEl { Grow = 1f, MinWidth = 0f },
                         // Bound REACTIVELY: the surface outlives a track change. The title keeps its own casing.
                         new TextEl(Prop.Of(props.Title))
                         {
-                            Size = VR.TitleSize, LineHeight = VR.TitleLine, Weight = VR.TitleWeight, Color = Tok.OnMediaPrimary,
+                            Size = t.TitleSize, LineHeight = t.TitleLine, Weight = VR.TitleWeight, Color = Tok.OnMediaPrimary,
                             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
                         },
                         new BoxEl { Grow = 1f, MinWidth = 0f },
-                        Word(Loc.Get(Strings.Player.VideoExitFullScreen), props.Exit, t.WordH),
+                        Word(Loc.Get(Strings.Player.VideoExitFullScreen), props.Exit, t),
                     ],
                 },
             ],
@@ -67,10 +67,10 @@ internal static class ZuneStageVideoFullscreen
     }
 
     /// <summary>The way out: a word, the on-media primary ink, no plate (the hover lifts nothing: it is already the brightest ink).</summary>
-    static Element Word(string text, Action onClick, float target) => new BoxEl
+    static Element Word(string text, Action onClick, ZuneStageVideoLayout t) => new BoxEl
     {
-        Height = target, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+        Height = t.WordH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
-        Children = [new TextEl(text) { Size = VR.WordSize, LineHeight = VR.WordLine, Color = Tok.OnMediaPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
+        Children = [new TextEl(text) { Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
     };
 }

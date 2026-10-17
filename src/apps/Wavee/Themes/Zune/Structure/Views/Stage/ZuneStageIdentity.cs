@@ -14,6 +14,7 @@
 // layout or arrangement change never jumps. The covers are Zune's cover shape (2). The wrapper is pass-through: the meta link stays
 // clickable. Right-clicking the titles opens the "…" menu.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -34,6 +35,8 @@ internal static class ZuneStageIdentity
 {
     static readonly LayoutTransition s_flip = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.ScaleCorrect);
 
+    static readonly Element[] s_none = [];
+
     static readonly LayoutTransition s_move = new(TransitionChannels.Position, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping));
 
     /// <summary>The registered template of <see cref="ViewKeys.StageIdentity"/>.</summary>
@@ -46,7 +49,9 @@ internal static class ZuneStageIdentity
         var set = sc.Accent.Value;
         var track = sc.RowValue();
         var k = sc.Look.Value;
-        var a = ZuneStageKit.Arrangement(sc, ctx.Tier());
+        var tiers = ctx.Tier();
+        var t = ZuneStageTiers.StageOf(in tiers);
+        var a = ZuneStageKit.Arrangement(sc, in tiers);
         string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
         string title = props.Title();
         int heroArtist = k.Eff == Stage.VizLayout.Artist && !k.HeroLyrics ? sc.HeroArtist.Value : 0;
@@ -54,35 +59,42 @@ internal static class ZuneStageIdentity
         float coverX, coverY, size, titlesX, titlesY, titlesW, titlesH = float.NaN, gap;
         bool center = false, bottom = false;
         var kids = new List<Element>(4);
+        Element? display = null;
+        var v = a.Voice;
         switch (a.Form)
         {
-            case ZuneStageForm.Card:
+            case ZuneStageForm.Card when v is not null:
             {
                 (coverX, coverY, size) = (a.Cover.X, a.Cover.Y, a.Cover.W);
                 (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
                 gap = G.CardTextGap;
                 bottom = true;
-                kids.Add(new TextEl(Loc.Get(Strings.Stage.NowPlayingEyebrow)) { Size = G.CardEyebrowSize, LineHeight = G.CardEyebrowLine, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 });
-                kids.Add(new TextEl(title)
-                {
-                    Size = a.TitleSize, LineHeight = a.TitleLine, Weight = G.TitleLight, FontFamily = R.Type.DisplayFace, CharSpacing = G.CardTitleTracking, Color = Ink.Ink,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                });
-                kids.Add(Meta(props, G.CardMetaSize, G.CardMetaLine, G.TitleRegular, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
+                kids.Add(new TextEl(Loc.Get(Strings.Stage.NowPlayingEyebrow)) { Size = v.EyebrowSize, LineHeight = v.EyebrowLine, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 });
+                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
+                kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
+                if (!a.Display.IsEmpty) display = Display(props, in a, title, set.Text, heroArtist);
                 break;
             }
-            case ZuneStageForm.Column:
+            case ZuneStageForm.Column when v is not null:
             {
                 (coverX, coverY, size) = (a.Cover.X, a.Cover.Y, a.Cover.W);
                 (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
                 gap = 0f;
                 bottom = true;
-                kids.Add(Meta(props, G.ColumnMetaSize, G.ColumnMetaLine, G.ColumnMetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
-                kids.Add(new TextEl(title)
-                {
-                    Size = a.TitleSize, LineHeight = a.TitleLine, Weight = G.ColumnTitleWeight, FontFamily = R.Type.DisplayFace, CharSpacing = G.ColumnTitleTracking, Color = Ink.Ink,
-                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                });
+                kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
+                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
+                break;
+            }
+            case ZuneStageForm.Centered or ZuneStageForm.Stack when v is not null:
+            {
+                // Centered: the title and the accent artist line centred under the cover; Stack: left-aligned under the cover
+                (coverX, coverY, size) = (a.Cover.X, a.Cover.Y, a.Cover.W);
+                (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
+                center = a.Form == ZuneStageForm.Centered;
+                gap = 0f;
+                var head = Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking);
+                kids.Add(center ? head with { MaxWidth = titlesW } : head);
+                kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
                 break;
             }
             default:
@@ -90,6 +102,10 @@ internal static class ZuneStageIdentity
                 size = L.CoverSize(in k);
                 (coverX, coverY) = (L.CoverX(in k), L.CoverY(in k));
                 (titlesX, titlesY, titlesW) = (L.TitleX(in k), L.TitleY(in k), L.TitleW(in k));
+                // a cover the allocator hung under its 48 bar moves down with the tier's taller head, its titles with it
+                float drop = G.DropFor(coverY, t);
+                coverY += drop;
+                titlesY += drop;
                 gap = L.TitleGapFor(in k);
                 center = L.TitlesCentered(in k);
                 var (ts, tl) = L.TitleFont(in k);
@@ -132,6 +148,36 @@ internal static class ZuneStageIdentity
                     Margin = new Edges4(titlesX, titlesY, 0f, 0f), Layout = s_move, HitTestPassThrough = true,
                     Children = [block],
                 },
+                .. (display is null ? s_none : [display]),
+            ],
+        };
+    }
+
+    /// <summary>A title in an arrangement's voice: the display face, one line.</summary>
+    static TextEl Title(string title, float size, float line, ushort weight, float tracking) => new(title)
+    {
+        Size = size, LineHeight = line, Weight = weight, FontFamily = R.Type.DisplayFace, CharSpacing = tracking, Color = Ink.Ink,
+        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+    };
+
+    /// <summary>The Card arrangement's display title over the face at Huge and Huge 4K (Z-NowPlaying-Huge: 150/160 at 200 in the ink at
+    /// 0.92, the artist line 28/36 at 600 in the accent under it). Keyed: it fades in and out with the arrangement, never pops.</summary>
+    static Element Display(StageIdentityProps props, in ZuneStageArrangement a, string title, ColorF accent, int heroArtist)
+    {
+        var fade = new EnterExit(Opacity: 0f, Active: true);
+        return new BoxEl
+        {
+            Key = "stage:display", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = a.Display.W, Height = a.Display.H,
+            Margin = new Edges4(a.Display.X, a.Display.Y, 0f, 0f), Direction = 1, ClipToBounds = true, HitTestPassThrough = true,
+            Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new TextEl(title)
+                {
+                    Size = a.DisplaySize, LineHeight = a.DisplayLine, Weight = G.ColumnTitleWeight, FontFamily = R.Type.DisplayFace, CharSpacing = G.DisplayTracking,
+                    Color = Ink.Ink with { A = G.DisplayInkA }, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+                Meta(props, a.DisplayMetaSize, a.DisplayMetaLine, G.ColumnMetaWeight, R.Type.DisplayFace, accent, Ink.Ink, false, heroArtist),
             ],
         };
     }
