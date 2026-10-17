@@ -489,7 +489,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.28 (P5 round D): Home.Quickplay.
         // 1.29 (P5 rounds E-F): docked pane arrangements, ChromePolicy.Small, OverlayPolicy.Small.
         // 1.30 (P5 round G): PageChromeRow.Title, ShellTitleBarProps.OnSearchRoute, ArtistTierPolicy.BandClearance.
-        Assert.Equal("1.30", ContractVersion.Text);
+        // 1.31 (Zune fidelity): ArtistTierPolicy.ChartRowShape / ChartBalanced, ArtistChartStyle.HeaderWith.
+        Assert.Equal("1.31", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -520,7 +521,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 28));
         Assert.True(ContractVersion.IsCompatible(1, 29));
         Assert.True(ContractVersion.IsCompatible(1, 30));
-        Assert.False(ContractVersion.IsCompatible(1, 31));
+        Assert.True(ContractVersion.IsCompatible(1, 31));
+        Assert.False(ContractVersion.IsCompatible(1, 32));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

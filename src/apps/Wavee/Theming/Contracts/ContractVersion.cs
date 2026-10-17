@@ -125,6 +125,8 @@
 // tier's arrangement; Classic's rule docks exactly as before); `ChromePolicy.Small` and `OverlayPolicy.Small` (null keeps Standard's).
 // 1.30 (P5 round G): `PageChromeRow.Title` (a detail page's entity name folds into `PageChrome.Title`), `ShellTitleBarProps.OnSearchRoute`
 // (the Search route is on screen), `ArtistTierPolicy.BandClearance` (where a pivot click parks a section; Classic keeps 56).
+// 1.31 (Zune fidelity): `ArtistTierPolicy.ChartRowShape` / `.ChartBalanced` with `ArtistChartRowShape`, `ArtistChartStyle.HeaderWith`
+// (`ArtistChartHeaderArgs`), the chart row / cell / skeleton args' optional row-shape and column fields (defaults keep Classic's).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -140,7 +142,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 30;
+    public const int Minor = 31;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
