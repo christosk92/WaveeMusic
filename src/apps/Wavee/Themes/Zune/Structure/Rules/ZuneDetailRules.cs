@@ -1,0 +1,470 @@
+// ── Themes/Zune/Structure/Rules/ZuneDetailRules.cs — the numbers and records of Zune's detail frame and album (themes plan 6.3; P5 Z6a1) ──
+//
+// Boards Z-Album (Standard, 1440), Z-Album-Small (800), Z-Album-Compact (400), Z-Album-Huge (2560), Z-Album-Huge4K (3840), Album-Page and Album
+// (the early panorama studies), Z-Light-Album (the light pass reads the same numbers).
+//
+// THE COMPOSITION. A Zune detail page is a PANORAMA: the page's title set huge and light across the top (`R.Type.Panorama`, bleeding off the
+// right edge or fitting it, `structure.panoramaFit`), then up to three columns under it: the IDENTITY column (the cover, the artist, the meta
+// line, the ring actions, the release's courtesy lines), the LIST (a "songs" heading over the track table), and the ASIDE ("more by", the
+// artist, fans also like). The art wash behind the top is the material's (the frame places the core's tint and tone leaves; Zune's material
+// draws them as the wash). The page's title and its views also sit in the band's row 2 (the page publishes them, `Album.Page.cs`).
+//
+// ONE RECORD PER CONTENT TIER (`ZuneDetailTiers.Of`): the columns follow the CONTENT width (the window less a docked panel), never the window's,
+// so a Standard window with the panel docked lays the page out as Small instead of starving the list. The tier is the layout record in use,
+// never a key (a crossing re-renders the frame; the slots ease their widths; the arms cross-fade):
+//
+//   Compact   (Z-Album-Compact)  the VERTICAL arm: the panorama in the compact voice (64/72), the 144 cover beside the artist and the meta,
+//             the 40 ring row (play and saved with their words, share and "..." at the end), then the list. No rail, no aside.
+//   Small     (Z-Album-Small)    the panorama 64/72 over a 160 identity column, 32 apart from the list; the rings without words.
+//   Standard  (Z-Album)          the panorama 120/130 over the 240 identity column, the list, and the 260 aside, 48 apart.
+//   Huge      (Z-Album-Huge)     the panorama 150/160; 320 identity, 400 aside (the artist band, "more by" as a grid, fans).
+//   Huge 4K   (Z-Album-Huge4K)   the panorama 150/160; 400 identity, 440 aside, 64 apart, the larger text and the 40 rings, shuffle in the rings.
+//
+// A SHORT window (Z-Sizes-Breakpoints: below 700 tall) keeps the page's rows: the two-column arm's panorama folds away (its band eases to 0)
+// and the identity column leads with the title in the heading voice instead. The vertical arm keeps its panorama (it scrolls away with the hero).
+//
+// THE LADDERS the core resolves by id (`DetailLadders`, declared through `ZuneTiers.LaddersDetail`, Tiers.Detail.cs):
+//   mode    the page column: the vertical arm below 640, the two-column arms from it (820 and 1008 split the core's three rail modes, which
+//           Zune's records do not read), each held 24 on narrowing like every Zune edge (Z-Sizes-Breakpoints).
+//   table   the list column: the core's seven table tiers at 300 / 340 / 440 / 560 / 720 / 860, a lane yielding at once and re-admitted 24
+//           past its edge (the lanes the width admits; the window tier's record caps them, `ZuneListRules.DetailTiers`).
+//   height  the window's height: short below 700 (the description's tight clamp), tall from 900 (the rail title cap), held 24 on shrinking.
+//
+// Public, so `Wavee.Tests` pins the rules (the assembly has no InternalsVisibleTo).
+
+using System.Collections.Immutable;
+using FluentGpu.Animation;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+
+namespace Wavee.Themes.Zune;
+
+/// <summary>The numbers and records of Zune's detail frame and album views.</summary>
+public static class ZuneDetailRules
+{
+    // ── the node keys (the tests find them) ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The frame's root, the panorama band, the identity column, the list column's heading, the aside slot and its column.</summary>
+    public const string FrameKey = "zune.detail.frame", PanoramaKey = "zune.detail.panorama", RailKey = "zune.detail.rail",
+        CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
+        AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
+        ShowHeaderKey = "zune.detail.show-header", NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
+        HeadKey = "zune.detail.head";
+
+    /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
+    public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",
+        SectionsKey = "zune.album.sections", StackKey = "zune.album.stack", AlbumAsideKey = "zune.album.aside", FansKey = "zune.album.fans",
+        AboutKey = "zune.album.about", UnresolvedKey = "zune.album.unresolved";
+
+    /// <summary>The ring actions' key prefix (the vertical hero's and the identity column's): "play", "save", "share", "shuffle", "more".</summary>
+    public const string RingPrefix = "zune.detail.ring:";
+
+    // ── the mode ladder (the page column) ───────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The two-column arm begins at the Small edge; below it the vertical arm (Z-Album-Compact).</summary>
+    public const float TwoColumnFrom = 640f;
+
+    /// <summary>The core's narrow and mid rail modes split here (Zune's records read the content tier, not the mode).</summary>
+    public const float MidFrom = 820f;
+
+    /// <summary>The wide arm begins at the Standard edge.</summary>
+    public const float WideFrom = 1008f;
+
+    /// <summary>Every detail edge's hold: 24 on narrowing, none on widening (Z-Sizes-Breakpoints).</summary>
+    public const float Hold = 24f;
+
+    /// <summary>The page-mode ladder (index = 3 - mode).</summary>
+    public static TierLadder Mode { get; } = TierLadder.Of(
+        new TierEdge(TwoColumnFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(MidFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(WideFrom, NarrowHold: Hold, WidenHold: 0f));
+
+    // ── the table ladder (the list column) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The table tiers' edges, narrowest first: tier 5 from 300 … tier 0 from 860.</summary>
+    public static ImmutableArray<float> TableEdges { get; } = ImmutableArray.Create(300f, 340f, 440f, 560f, 720f, 860f);
+
+    /// <summary>The table-tier ladder (index = 6 - tier): a lane yields at once and is re-admitted 24 past its edge.</summary>
+    public static TierLadder Table { get; } = BuildTable();
+
+    static TierLadder BuildTable()
+    {
+        var edges = new TierEdge[TableEdges.Length];
+        for (int i = 0; i < edges.Length; i++) edges[i] = new TierEdge(TableEdges[i], NarrowHold: 0f, WidenHold: Hold);
+        return new TierLadder(edges);
+    }
+
+    // ── the height rungs ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Regular from Zune's short edge; tall (the rail title's tall cap) from 900.</summary>
+    public const float RegularFrom = 700f, TallFrom = 900f;
+
+    /// <summary>The height-rung ladder, held 24 on shrinking.</summary>
+    public static TierLadder Height { get; } = TierLadder.Of(
+        new TierEdge(RegularFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(TallFrom, NarrowHold: Hold, WidenHold: 0f));
+
+    /// <summary>The three ladders as Zune's tier policy names them.</summary>
+    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(
+        new NamedLadder(DetailLadders.Mode, Mode),
+        new NamedLadder(DetailLadders.Table, Table),
+        new NamedLadder(DetailLadders.Height, Height));
+
+    /// <summary>The page mode of a <paramref name="width"/>-wide page column, held against <paramref name="previous"/> once
+    /// <paramref name="initialized"/>. An unmeasured width keeps the previous mode.</summary>
+    public static int ModeFor(float width, int previous, bool initialized = true)
+    {
+        if (!(width > 0f)) return previous;
+        return DetailLadders.ModeOf(Mode.Resolve(width, initialized ? DetailLadders.IndexOfMode(previous) : -1));
+    }
+
+    // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The widest the page's columns grow (P5 decision 2: pages cap at 2400, at 4K too), the gutters outside it.</summary>
+    public const float PageCap = 2400f;
+
+    /// <summary>The slots' width ease (the aside and the identity column when a crossing moves them): real layout, the list yields.</summary>
+    public static readonly LayoutTransition SlotReveal = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reveal);
+
+    /// <summary>The panorama band's height ease (a crossing to a short window folds it; the title scales with its size step).</summary>
+    public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.Reveal);
+
+    /// <summary>A mode crossing's arm cross-fade (the vertical arm ↔ the two-column arm).</summary>
+    public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The arm cross-fade's timing.</summary>
+    public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
+
+    /// <summary>The panorama's opacity (the boards' 0.92: the title sits a breath back from the ink).</summary>
+    public const float PanoramaOpacity = 0.92f;
+
+    /// <summary>The "songs" heading row over the list (Z-Album: 40), and the list's inset under it (the rows' own 8 already stand in).</summary>
+    public const float HeadingRowH = 40f;
+
+    /// <summary>The identity column's cover decode bucket (the shelf's: a warm texture on arrival) and its saturation.</summary>
+    public const int CoverDecodePx = 512;
+
+    /// <summary>The vertical hero's cover: 0.42 of the column inside its gutters, 96 to 144 (Z-Album-Compact 144 at 400).</summary>
+    public const float HeroCoverMin = 96f, HeroCoverMax = 144f, HeroCoverFraction = 0.42f;
+
+    /// <summary>The vertical hero's cover edge in a <paramref name="columnW"/>-wide column with <paramref name="gutter"/> each side.</summary>
+    public static float HeroCoverFor(float columnW, float gutter)
+        => MathF.Floor(Math.Clamp((columnW - 2f * gutter) * HeroCoverFraction, HeroCoverMin, HeroCoverMax));
+
+    /// <summary>The vertical hero's rows: the gap beside the cover, the actions' air over them, the air under the actions and the description's.</summary>
+    public const float HeroCoverGap = 16f, HeroActionsTop = 16f, HeroBottom = 12f, HeroIdentityGap = 6f, HeroDescriptionTop = 12f;
+
+    /// <summary>The vertical hero's ring row writes its words (play, saved) from this inner measure; narrower, the rings stand alone so the row
+    /// keeps its one line (Z-Album-Compact at 400 writes them; a 300 window does not have the room).</summary>
+    public const float HeroWordsFrom = 340f;
+
+    /// <summary>Does a <paramref name="columnW"/>-wide hero with <paramref name="gutter"/> each side write its ring words?</summary>
+    public static bool HeroWords(float columnW, float gutter) => columnW - 2f * gutter >= HeroWordsFrom;
+
+    /// <summary>The hero cover's resize: its bounds tween from the top-left (the page's anchor: no entrance, no morph).</summary>
+    public static readonly LayoutTransition HeroGeometry = new(TransitionChannels.Bounds, TransitionDynamics.Tween(HeroGeometryMs, Easing.SmoothOut),
+        SizeMode.ScaleCorrect);
+
+    /// <summary>The hero's geometry tween.</summary>
+    public const float HeroGeometryMs = 280f;
+
+    /// <summary>The fallback column width before the table measured (the Compact board's).</summary>
+    public const float HeroFallbackW = 400f;
+
+    /// <summary>The description's clamp and line (13/20) in the vertical hero and the identity column.</summary>
+    public const int DescriptionLines = 3;
+
+    /// <summary>The description's line height.</summary>
+    public const float DescriptionLine = 20f, DescriptionSize = 13f;
+
+    /// <summary>The meta line's loading SHAPE (never painted as text: the deriver paints its bar).</summary>
+    public const string MetaShimmerText = "00 songs · 0 hr 00 min";
+
+    /// <summary>The tags line under the meta (Z-Album-Compact: 12/16).</summary>
+    public const float TagsLine = 16f;
+
+    /// <summary>The vertical hero's height: the panorama band, the cover row, the action row and its air, the description when present, the bottom
+    /// air and the toolbar block (the core's list bar row and its pads). The skeleton reserves exactly this, and the loaded hero lays out these blocks
+    /// at these heights, so the swap is a dissolve.</summary>
+    public static float HeroHeight(ZuneDetailLayout lay, float cover, bool description, float toolbarBlock)
+        => lay.PanoramaH + cover + HeroActionsTop + lay.RingSize
+           + (description ? HeroDescriptionTop + DescriptionLines * DescriptionLine : 0f) + HeroBottom + toolbarBlock;
+
+    // ── the rings (Z-Album: the 36 ring, 2 dip outline; the play ring a filled accent disc) ─────────────────────────
+
+    /// <summary>The ring's outline.</summary>
+    public const float RingStroke = 2f;
+
+    // ── the identity column's rows ────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The air between the actions and the release's courtesy lines (Z-Album: 12).</summary>
+    public const float NotesTop = 12f;
+
+    /// <summary>The short window's title row in the identity column: the heading voice's line (26/32), two lines at most.</summary>
+    public const int RailTitleLines = 2;
+
+    /// <summary>The skeleton bars: the artist bar's and the meta bar's share of the column, their radius.</summary>
+    public const float SkelArtistFraction = 0.55f, SkelMetaFraction = 0.85f, SkelRadius = 2f;
+
+    // ── the collapsed strip (a collapse stored by another theme: Zune draws no grip) ───────────────────────────────────
+
+    /// <summary>The strip's padding and the expand target (40, the Compact minimum).</summary>
+    public const float StripPad = 8f, StripTarget = 40f, StripChevron = 12f;
+
+    // ── the show header (the vertical arm of a show or an episode) ──────────────────────────────────────────────────
+
+    /// <summary>The header's cover, its gap and its padding.</summary>
+    public const float ShowCover = 140f, ShowGap = 16f, ShowPadTop = 16f, ShowPadBottom = 8f, ShowRowsGap = 12f;
+
+    // ── the notice ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The notice strip's air above and below.</summary>
+    public const float NoticePadTop = 8f, NoticePadBottom = 4f;
+
+    // ── the trailing band and the aside ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A trailing section's air over its heading (32), its heading's gap to its body (14), the band's side inset (the rows' 8).</summary>
+    public const float SectionTop = 32f, SectionGap = 14f, SectionInset = 8f, SectionBottom = 16f;
+
+    /// <summary>The aside's sections' gap (Z-Album-Huge: 22 over each heading) and its heading row (40).</summary>
+    public const float AsideSectionGap = 22f, AsideHeadingH = 40f, AsideRowGap = 10f;
+
+    /// <summary>"More by" as rows (Z-Album: a 56 cover, 12 to its words) and as a grid (Z-Album-Huge: two columns 16 apart).</summary>
+    public const float MoreByArt = 56f, MoreByArtGap = 12f, MoreByGridGap = 16f;
+
+    /// <summary>"More by"'s grid columns.</summary>
+    public const int MoreByColumns = 2;
+
+    /// <summary>Fans also like in the aside: four circles a row.</summary>
+    public const int FanColumns = 4;
+
+    /// <summary>The gap between two fans and two fan rows.</summary>
+    public const float FanGap = 16f;
+
+    /// <summary>The trailing band's video hero: a 200 x 116 still, its play badge.</summary>
+    public const float VideoThumbW = 200f, VideoThumbH = 116f, VideoFab = 40f, VideoGap = 16f;
+
+    /// <summary>The video shelf's cards (16:9) and its fade.</summary>
+    public const float VideoCardMinW = 220f, VideoCardMaxW = 320f, VideoAspect = 16f / 9f, ShelfFade = 24f;
+
+    /// <summary>A merch row: its art, its height.</summary>
+    public const float MerchArt = 48f, MerchRowH = 64f;
+
+    /// <summary>A missing row's reserve (a related row whose slot is gone).</summary>
+    public const float PlaceholderRowH = 64f;
+
+    /// <summary>The fans row's card width in the band (the artist page's shelf width).</summary>
+    public const float FanCardW = 148f;
+
+    /// <summary>The trailing skeleton: a heading bar, a row bar, the gap between rows.</summary>
+    public const float SkelHeadingW = 160f, SkelHeadingH = 20f, SkelRowH = 64f, SkelRowGap = 4f, SkelAboutH = 140f, SkelVideoH = 116f;
+
+    /// <summary>The countdown's unit tiles: the numeral over its unit word, 12 apart.</summary>
+    public const float CountdownGap = 12f, CountdownUnitGap = 2f, CountdownPad = 16f;
+
+    /// <summary>The unresolvable route's line: its air.</summary>
+    public const float UnresolvedPadX = 24f, UnresolvedPadY = 48f;
+
+    /// <summary>The person flyout: its width, its row (44), the portrait (32), the list's height cap.</summary>
+    public const float FlyoutW = 280f, FlyoutRowH = 44f, FlyoutPortrait = 32f, FlyoutMaxH = 360f, FlyoutPad = 8f, FlyoutRowGap = 12f;
+
+    // ── the insights ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The sheet's width (a third of the page, 320 to 400), its padding, the header row's gap and the close target (40).</summary>
+    public const float SheetMinW = 320f, SheetMaxW = 400f, SheetFraction = 0.34f, SheetPad = 16f, SheetGap = 12f, SheetClose = 40f, SheetCloseGlyph = 12f;
+
+    /// <summary>The sheet's width for a <paramref name="pageWidth"/>-wide page (NaN: the minimum).</summary>
+    public static float SheetWidthFor(float pageWidth)
+        => float.IsFinite(pageWidth) && pageWidth > 0f ? Math.Clamp(MathF.Floor(pageWidth * SheetFraction), SheetMinW, SheetMaxW) : SheetMinW;
+
+    /// <summary>The docked insights column (the head arm at Huge).</summary>
+    public const float DockedInsightsW = 360f;
+
+    /// <summary>The sheet's slide: 350 open, 120 close (the WinUI pane's).</summary>
+    public const float SheetOpenMs = 350f, SheetCloseMs = 120f;
+
+    /// <summary>The toggle's glyph edge (the bar's 32, the Compact 40 target from the record).</summary>
+    public const float ToggleEdge = 32f, ToggleGlyph = 16f;
+
+    // ── the records ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Compact (Z-Album-Compact): the vertical arm's numbers.</summary>
+    public static ZuneDetailLayout Compact { get; } = new()
+    {
+        Tier = WidthTier.Compact, PanoramaH = 80f, PanoramaLarge = false, PanoramaNudgeX = -6f, PanoramaNudgeY = 0f,
+        RailW = 0f, ColumnGap = 16f, AsideW = 0f, RailGap = 8f, RingSize = 40f, RingGlyph = 14f, RingLabelGap = 10f, ActionsGap = 16f,
+        PlayWord = true, SaveWord = true, ShareRing = true, MoreRing = true, ShuffleRing = false,
+        ArtistSize = 18f, ArtistLine = 24f, MetaSize = 13f, MetaLine = 18f, NotesSize = 12f, NotesLine = 18f, LabelSize = 14f,
+        ArtistBand = 0f, MoreByGrid = false, Target = 40f,
+    };
+
+    /// <summary>Small (Z-Album-Small): the 160 identity column, the rings without words (play, saved, "..."), 32 apart from the list.</summary>
+    public static ZuneDetailLayout Small { get; } = Compact with
+    {
+        Tier = WidthTier.Small, PanoramaNudgeX = -6f, RailW = 160f, ColumnGap = 32f, RingSize = 36f, RingGlyph = 13f, ActionsGap = 12f,
+        PlayWord = false, SaveWord = false, ShareRing = false, Target = 36f,
+    };
+
+    /// <summary>Standard (Z-Album): the panorama 120/130 (the role's own), the 240 identity column, the 260 aside, 48 apart.</summary>
+    public static ZuneDetailLayout Standard { get; } = Small with
+    {
+        Tier = WidthTier.Standard, PanoramaH = 140f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = -6f,
+        RailW = 240f, ColumnGap = 48f, AsideW = 260f, RailGap = 12f, ActionsGap = 18f, PlayWord = true, ShareRing = true, ArtistBand = 120f,
+    };
+
+    /// <summary>Huge (Z-Album-Huge): the panorama 150/160, the 320 identity column, the 400 aside with its 140 artist band and "more by" as a grid.</summary>
+    public static ZuneDetailLayout Huge { get; } = Standard with
+    {
+        Tier = WidthTier.Huge, PanoramaH = 176f, PanoramaSize = 150f, PanoramaLine = 160f, PanoramaNudgeX = -10f, PanoramaNudgeY = -8f,
+        RailW = 320f, AsideW = 400f, SaveWord = true, ArtistBand = 140f, MoreByGrid = true,
+    };
+
+    /// <summary>Huge 4K (Z-Album-Huge4K): 400 identity, 440 aside, 64 apart, the 40 rings with shuffle, the 20/28 and 15/20 text.</summary>
+    public static ZuneDetailLayout Huge4K { get; } = Huge with
+    {
+        Tier = WidthTier.Huge4K, PanoramaH = 184f, RailW = 400f, ColumnGap = 64f, AsideW = 440f, RailGap = 14f,
+        RingSize = 40f, RingGlyph = 14f, RingLabelGap = 12f, ActionsGap = 20f, ShuffleRing = true,
+        ArtistSize = 20f, ArtistLine = 28f, MetaSize = 15f, MetaLine = 20f, NotesSize = 13f, NotesLine = 20f, LabelSize = 15f,
+        ArtistBand = 180f, Target = 40f,
+    };
+}
+
+/// <summary>What Zune's detail views lay out in one content tier (see <see cref="ZuneDetailRules"/>' header).</summary>
+public sealed record ZuneDetailLayout : ITierLayoutRecord
+{
+    /// <summary>The content tier.</summary>
+    public required WidthTier Tier { get; init; }
+
+    /// <summary>The panorama band's reserved height: the title's line and its air over the columns (0: folded, a short window).</summary>
+    public required float PanoramaH { get; init; }
+
+    /// <summary>The panorama voice (120/130) rather than the compact one (64/72).</summary>
+    public required bool PanoramaLarge { get; init; }
+
+    /// <summary>The panorama's size and line where the board draws a step beyond the role's (150/160 at Huge); 0: the role's.</summary>
+    public float PanoramaSize { get; init; }
+
+    /// <summary>See <see cref="PanoramaSize"/>.</summary>
+    public float PanoramaLine { get; init; }
+
+    /// <summary>The title's optical offset from the gutter (the light face's side bearing) and from the band's top.</summary>
+    public required float PanoramaNudgeX { get; init; }
+
+    /// <summary>See <see cref="PanoramaNudgeX"/>.</summary>
+    public required float PanoramaNudgeY { get; init; }
+
+    /// <summary>The identity column's width and cover edge (0: the vertical arm).</summary>
+    public required float RailW { get; init; }
+
+    /// <summary>The gap between two columns.</summary>
+    public required float ColumnGap { get; init; }
+
+    /// <summary>The aside's width (0: no aside docks at this tier).</summary>
+    public required float AsideW { get; init; }
+
+    /// <summary>The identity column's row gap.</summary>
+    public required float RailGap { get; init; }
+
+    /// <summary>The ring's edge (40 at Compact: the touch minimum), its glyph, the gap to its word and between two rings.</summary>
+    public required float RingSize { get; init; }
+
+    /// <summary>See <see cref="RingSize"/>.</summary>
+    public required float RingGlyph { get; init; }
+
+    /// <summary>See <see cref="RingSize"/>.</summary>
+    public required float RingLabelGap { get; init; }
+
+    /// <summary>See <see cref="RingSize"/>.</summary>
+    public required float ActionsGap { get; init; }
+
+    /// <summary>Play and saved carry their words beside the ring.</summary>
+    public required bool PlayWord { get; init; }
+
+    /// <summary>See <see cref="PlayWord"/>.</summary>
+    public required bool SaveWord { get; init; }
+
+    /// <summary>The share ring, the "..." ring and the shuffle ring are drawn.</summary>
+    public required bool ShareRing { get; init; }
+
+    /// <summary>See <see cref="ShareRing"/>.</summary>
+    public required bool MoreRing { get; init; }
+
+    /// <summary>See <see cref="ShareRing"/>.</summary>
+    public required bool ShuffleRing { get; init; }
+
+    /// <summary>The artist link (18/24), the meta line (13/18), the courtesy lines (12/18) and a ring's word (14).</summary>
+    public required float ArtistSize { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float ArtistLine { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float MetaSize { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float MetaLine { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float NotesSize { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float NotesLine { get; init; }
+
+    /// <summary>See <see cref="ArtistSize"/>.</summary>
+    public required float LabelSize { get; init; }
+
+    /// <summary>The aside's artist band (the about card's image) height.</summary>
+    public required float ArtistBand { get; init; }
+
+    /// <summary>"More by" in the aside is a two-column grid of covers (else rows with a 56 cover).</summary>
+    public required bool MoreByGrid { get; init; }
+
+    /// <summary>A command's hit edge (40 at Compact and 4K).</summary>
+    public required float Target { get; init; }
+
+    /// <summary>The identity column leads with the title (a short window folded the panorama).</summary>
+    public bool RailTitle { get; init; }
+
+    /// <summary>None: every region of the page fits at every size its tier lays out (the list yields, the slots ease).</summary>
+    public ImmutableArray<TierRegion> Regions => ImmutableArray<TierRegion>.Empty;
+}
+
+/// <summary>The detail records per content tier, and the short window's fold.</summary>
+public static class ZuneDetailTiers
+{
+    /// <summary>The record of content tier <paramref name="tier"/>.</summary>
+    public static ZuneDetailLayout For(WidthTier tier) => tier switch
+    {
+        WidthTier.Compact => ZuneDetailRules.Compact,
+        WidthTier.Small => ZuneDetailRules.Small,
+        WidthTier.Standard => ZuneDetailRules.Standard,
+        WidthTier.Huge => ZuneDetailRules.Huge,
+        _ => ZuneDetailRules.Huge4K,
+    };
+
+    static readonly ZuneDetailLayout[] s_short =
+    [
+        Fold(ZuneDetailRules.Small),
+        Fold(ZuneDetailRules.Small), Fold(ZuneDetailRules.Standard), Fold(ZuneDetailRules.Huge), Fold(ZuneDetailRules.Huge4K),
+    ];
+
+    static ZuneDetailLayout Fold(ZuneDetailLayout r) => r with { PanoramaH = 0f, RailTitle = true };
+
+    /// <summary>The record the two-column arm and its pieces read for <paramref name="facts"/>: the content tier's, folded on a short window (the
+    /// panorama gives its band to the rows; the identity column leads with the title). A Compact content tier reads Small's: the two-column arm
+    /// exists there only inside the mode ladder's hold (the vertical arm, whose record is <see cref="Hero"/>, takes the rest). Standard's where no
+    /// frame resolved the tiers (a view mounted alone).</summary>
+    public static ZuneDetailLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return ZuneDetailRules.Standard;
+        if (facts.Height == HeightTier.Short) return s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)];
+        return For(facts.Content == WidthTier.Compact ? WidthTier.Small : facts.Content);
+    }
+
+    /// <summary>The vertical hero's record: the Compact composition at any width it occurs (the vertical arm is the page column below 640).</summary>
+    public static ZuneDetailLayout Hero => ZuneDetailRules.Compact;
+}

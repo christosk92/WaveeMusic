@@ -297,11 +297,16 @@ public static class ZuneListRules
         new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
-    /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows.</summary>
-    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard;
+    /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
+    /// page docks its ASIDE from Standard (Z-Album's 260 "more by" column; the frame folds it again where the CONTENT tier is narrower, a docked
+    /// panel's page), and the identity column rests at the board's 240 (the core's list seed reads it; Zune draws no grip).</summary>
+    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with { AsideDocked = true, RailRest = 240f };
 
-    /// <summary>The detail tiers Zune publishes (the table's part: the rail, insights and aside are the detail lanes', Z6a1 / ZT5).</summary>
-    public static DetailTierPolicy DetailTiers { get; } = new(Compact, Small, Standard, Standard,
+    /// <summary>Huge and Huge 4K (Z-Album-Huge, -Huge4K): Standard's, the identity column resting at 320 (Z6a1).</summary>
+    public static DetailTierLayout Huge { get; } = Standard with { RailRest = 320f };
+
+    /// <summary>The detail tiers Zune publishes (the table's part is Z3's; the aside and the rail rest are Z6a1's; ZT5 tunes the tiers).</summary>
+    public static DetailTierPolicy DetailTiers { get; } = new(Compact, Small, Standard, Huge,
         RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6);
 
     /// <summary>A row's height in a window tier's table record at a density: the density's row at every tier (no floor: "Standard rows").</summary>
