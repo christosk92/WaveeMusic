@@ -1074,8 +1074,11 @@ public static partial class Spotify
             // The demotion decides its own shelf life (`LosslessFallback.RememberFor`): sticky for a key that cannot be
             // had, seconds for a refused body — otherwise one bad mirror set costs the user lossless on this track for
             // half an hour and swallows the very retry that was meant to diagnose it.
-            RememberChoice(new CachedChoice(uri, quality, ogg, track, Environment.TickCount64,
-                                            LosslessFallback.RememberFor(opened.Fault)));
+            long ttl = LosslessFallback.RememberFor(opened.Fault);
+            RememberChoice(new CachedChoice(uri, quality, ogg, track, Environment.TickCount64, ttl));
+            // A sticky demotion (a key that cannot be had) IS the file this quality plays from now on, so "on this PC" asks
+            // about it; a refused body's seconds-long answer is not, and the lossless file stays the one recorded.
+            if (ttl >= ChoiceTtlMs) NoteFileChosen(uri, quality, in ogg);
             return Open(ogg, ct, prepared);
         }
 
@@ -1160,8 +1163,20 @@ public static partial class Spotify
                                             track, now);
                 }
             }
-            if (made.Choice.Ok) RememberChoice(in made);
+            if (made.Choice.Ok)
+            {
+                RememberChoice(in made);
+                NoteFileChosen(uri, quality, in made.Choice);
+            }
             return made;
+        }
+
+        /// <summary>The ladder resolved <paramref name="uri"/> at <paramref name="quality"/> to a catalogue file: record it in
+        /// the persisted (track, quality) → file id map behind the "on this PC" row fact (<see cref="Playback.OnThisPc"/>).
+        /// An external body (a podcast enclosure) has no cached file id worth recording. Any thread; never blocks.</summary>
+        static void NoteFileChosen(string uri, Quality quality, in FileChoice choice)
+        {
+            if (choice.ExternalUrl is null && choice.FileId.Length > 0) Playback.OnThisPc.Record(uri, (byte)quality, choice.FileIdHex);
         }
 
         static void RememberChoice(in CachedChoice choice)

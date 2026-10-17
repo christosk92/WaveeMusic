@@ -65,18 +65,24 @@ public readonly partial struct Track
         public const string HeartTrailing = "c.heart.t";
     }
 
-    /// <summary>The per-row playback/library state the cells reflect.</summary>
-    public readonly record struct RowState(bool IsNow, bool IsPlaying, bool IsBuffering, bool IsTop, bool Saved);
+    /// <summary>The per-row playback/library state the cells reflect. <c>OnThisPc</c> (ZC2, owner Q29/NQ4): the
+    /// track's audio is fully cached on this computer at the current quality with its key saved
+    /// (<see cref="Playback.OnThisPc"/>). An indicator only, never offline playback; a theme that draws it labels it
+    /// <c>Loc.Get(Strings.Track.OnThisPc)</c>, and Classic draws nothing for it. Appended with a default so every existing
+    /// construction keeps its meaning.</summary>
+    public readonly record struct RowState(bool IsNow, bool IsPlaying, bool IsBuffering, bool IsTop, bool Saved,
+                                          bool OnThisPc = false);
 
     /// <summary>The row's state, read REACTIVELY: subscribes to <c>Playback.CurrentId</c> (always), and — only on the
     /// now-playing row — to <c>Playback.IsPlaying</c> / <c>Buffering</c> / <c>Pending.Load</c>, plus the Liked edge
-    /// table's <c>Changed</c>. <paramref name="extraBuffering"/> is the host's own "this row's play is in flight".</summary>
+    /// table's <c>Changed</c> and the "on this PC" facts' <c>Changed</c>. <paramref name="extraBuffering"/> is the host's own
+    /// "this row's play is in flight".</summary>
     public static RowState StateOf(Track t, bool isTop = false, bool extraBuffering = false)
     {
         bool isNow = IsNowPlaying(t);
         bool playing = isNow && Playback.IsPlaying.Value;
         bool buffering = extraBuffering || (isNow && (Playback.Buffering.Value || Playback.Pending.Load.Value));
-        return new RowState(isNow, playing, buffering, isTop, LikedNow(t));
+        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), t.Slot > 0 && Playback.OnThisPc.Of(t.Id));
     }
 
     /// <summary>Is this the playable the deck is on? A subscribing read of <c>Playback.CurrentId</c> — compared by

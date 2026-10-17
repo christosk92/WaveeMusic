@@ -100,6 +100,28 @@ public sealed class ChunkDiskCache : IDisposable
     bool _scanPending;   // a WarmScan is owed for the current _activeDirectory (guarded by _stateGate)
     int _scanGen;        // bumped on every directory switch so a stale scan can't publish over the new root's count
 
+    // ── The completeness index ("on this PC") ────────────────────────────────────────────────────────────────────────
+    // Which files of the ACTIVE root have every chunk committed, kept in memory so a list row can ask per render without
+    // touching the disk (IsComplete is two dictionary probes and allocates nothing for a hex file id). A file's progress
+    // (its chunk count and how many entries are committed) is mutated only under that file's FileLock, by the writer
+    // (WriteChunkCore), the read-side discard (ClearEntry), the map (re)creation (EnsureMap) and every delete (DeletePair,
+    // TrimInternal); ClearAll, a relocation, a reconcile that dropped files and a root switch reset it. The first query
+    // seeds it with one read-only background sweep of the root's maps (EnsureIndex; BuildIndex runs it inline). Until the
+    // sweep lands a file reads as not complete, which is the safe answer: the index is a display fact, nothing plays from
+    // it. CompletionChanged fires on the thread that made the change (the writer, a reader, a settings thread) whenever
+    // the complete set changes, with the file's stem or null for "anything may have changed".
+    sealed class Progress(int chunks, int committed)
+    {
+        public readonly int Chunks = chunks;
+        public int Committed = committed;   // under the file's FileLock
+    }
+
+    readonly ConcurrentDictionary<string, Progress> _progress = new(StringComparer.OrdinalIgnoreCase);
+    readonly ConcurrentDictionary<string, byte> _complete = new(StringComparer.OrdinalIgnoreCase);
+    int _indexState;     // 0 = owed for the active root, 1 = building, 2 = built
+    int _indexGen;       // bumped by every reset (guarded by _stateGate), so a sweep started before it never publishes
+    int _completionVersion;
+
     // ── Background write-through (item 5) ───────────────────────────────────────────────────────────────────────────
     // WriteChunk used to do everything — per-file lock, header re-read, DriveInfo probe, SHA-256, and a
     // flush-to-physical-disk fsync — INLINE, on the caller's thread, which for a RangedHttpSource fetch is the thread
@@ -250,14 +272,16 @@ public sealed class ChunkDiskCache : IDisposable
             _scanGen++;
             _scanPending = true;
             _approxBytes = 0;
+            ResetIndexLocked(built: false);   // the index describes one root; the new one is swept on its first query
             try
             {
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(Path.Combine(directory, MarkerFileName), MarkerText);
             }
             catch { }
-            return directory;
         }
+        RaiseCompletion(null);
+        return directory;
     }
 
     /// <summary>Run the owed reconcile + measure sweep for the active root, if any. Idempotent per directory switch;
@@ -283,6 +307,7 @@ public sealed class ChunkDiskCache : IDisposable
         {
             if (gen == _scanGen) Interlocked.Exchange(ref _approxBytes, bytes);
         }
+        if (dropped > 0) ResetIndex(built: false);   // the reconcile deleted maps behind the index's back: sweep again
         _log.Event(StreamLogLevel.Info, "audio.cache.scan", "Audio body cache reconciled + measured",
             Environment.TickCount64 - start,
             [
@@ -371,6 +396,197 @@ public sealed class ChunkDiskCache : IDisposable
     sealed class MutexLease(Mutex mutex) : IDisposable
     {
         public void Dispose() { try { mutex.ReleaseMutex(); } catch { } mutex.Dispose(); }
+    }
+
+    // ── the completeness index ───────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Raised when the set of complete files changes: the file's stem (its lower-case hex id), or null when
+    /// anything may have changed (the first sweep landed, a clear, a relocation, a root switch). Raised on the thread
+    /// that made the change, possibly while that file's lock is held: a handler only records or posts, and never
+    /// calls back into this cache.</summary>
+    public event Action<string?>? CompletionChanged;
+
+    /// <summary>Bumped on every change <see cref="CompletionChanged"/> reports. Any thread.</summary>
+    public int CompletionVersion => Volatile.Read(ref _completionVersion);
+
+    /// <summary>The first sweep of the active root has landed (until then <see cref="IsComplete"/> answers only for the
+    /// files written this session).</summary>
+    public bool IndexReady => Volatile.Read(ref _indexState) == 2;
+
+    /// <summary>Is every chunk of <paramref name="fileId"/> committed under the active root? In memory only, any thread,
+    /// and allocation-free for a hex file id (8-128 hex digits, either case). The first call for a root starts the
+    /// background sweep (<see cref="EnsureIndex"/>) and answers false until it lands for files this session did not
+    /// write. A disk read that later fails its digest clears the chunk and the file reads as not complete again.</summary>
+    public bool IsComplete(string fileId)
+    {
+        if (string.IsNullOrEmpty(fileId)) return false;
+        if (Volatile.Read(ref _indexState) == 0) EnsureIndex();
+        return _complete.ContainsKey(IsPlainStem(fileId) ? fileId : Stem(fileId));
+    }
+
+    /// <summary>Start the read-only background sweep that seeds the index for the active root, once per root (and again
+    /// after a reset). Never blocks; never throws.</summary>
+    public void EnsureIndex()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Interlocked.CompareExchange(ref _indexState, 1, 0) != 0) return;
+        try
+        {
+            new Thread(static state => ((ChunkDiskCache)state!).BuildIndexCore())
+            {
+                IsBackground = true,
+                Name = "Wavee.ChunkDiskCache.Index",
+                Priority = ThreadPriority.BelowNormal,
+            }.Start(this);
+        }
+        catch { Interlocked.CompareExchange(ref _indexState, 0, 1); }
+    }
+
+    /// <summary>Run the index sweep on the CALLER's thread (a test, or a host that is already off the UI thread). Reads
+    /// every map of the active root once; never deletes anything (the reconcile is <see cref="WarmScan"/>'s).</summary>
+    public void BuildIndex()
+    {
+        Volatile.Write(ref _indexState, 1);
+        BuildIndexCore();
+    }
+
+    void BuildIndexCore()
+    {
+        string root;
+        int gen;
+        lock (_stateGate)
+        {
+            root = _activeDirectory;
+            gen = _indexGen;
+        }
+        long start = Environment.TickCount64;
+        int files = 0, complete = 0;
+        try
+        {
+            if (Directory.Exists(root))
+            {
+                foreach (string map in Directory.EnumerateFiles(root, "*.map", SearchOption.AllDirectories))
+                {
+                    if (Volatile.Read(ref _indexGen) != gen) return;
+                    string stem = Path.GetFileNameWithoutExtension(map);
+                    lock (FileLock(root, stem))
+                    {
+                        // A file the writer already counted this session is authoritative; the sweep only fills the rest.
+                        if (Volatile.Read(ref _indexGen) != gen || _progress.ContainsKey(stem)) continue;
+                        if (!TryCountCommitted(map, out int chunks, out int committed)) continue;
+                        _progress[stem] = new Progress(chunks, committed);
+                        files++;
+                        if (committed >= chunks && _complete.TryAdd(stem, 0)) complete++;
+                    }
+                }
+            }
+        }
+        catch { }
+        lock (_stateGate)
+        {
+            if (gen != _indexGen) return;
+            Volatile.Write(ref _indexState, 2);
+        }
+        _log.Event(StreamLogLevel.Info, "audio.cache.index", "Audio body cache completeness index built",
+            Environment.TickCount64 - start,
+            [
+                StreamLogField.Of("files", files),
+                StreamLogField.Of("complete", complete),
+            ]);
+        RaiseCompletion(null);
+    }
+
+    /// <summary>Forget the index (and, with <paramref name="built"/>, declare the empty index correct, as after a
+    /// clear), then announce it.</summary>
+    void ResetIndex(bool built)
+    {
+        lock (_stateGate) ResetIndexLocked(built);
+        RaiseCompletion(null);
+    }
+
+    void ResetIndexLocked(bool built)
+    {
+        _indexGen++;
+        _progress.Clear();
+        _complete.Clear();
+        Volatile.Write(ref _indexState, built ? 2 : 0);
+    }
+
+    void RaiseCompletion(string? stem)
+    {
+        Interlocked.Increment(ref _completionVersion);
+        if (CompletionChanged is not { } handler) return;
+        try { handler(stem); }
+        catch { }
+    }
+
+    bool IsActiveRoot(string root) => string.Equals(Volatile.Read(ref _activeDirectory), root, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A chunk of <paramref name="fileId"/> was committed (the caller holds its FileLock).</summary>
+    void NoteCommitted(string root, string fileId, int chunks, bool wasCommitted)
+    {
+        if (!IsActiveRoot(root)) return;
+        string stem = Stem(fileId);
+        if (_progress.TryGetValue(stem, out var progress) && progress.Chunks == chunks)
+        {
+            if (!wasCommitted) progress.Committed++;
+        }
+        else
+        {
+            // First write this session to a file the sweep has not reached: count it from its map once.
+            if (!TryCountCommitted(MapPath(root, fileId), out int counted, out int committed)) return;
+            progress = new Progress(counted, committed);
+            _progress[stem] = progress;
+        }
+        if (progress.Committed >= progress.Chunks && _complete.TryAdd(stem, 0)) RaiseCompletion(stem);
+    }
+
+    /// <summary>A committed chunk of <paramref name="fileId"/> was cleared (the caller holds its FileLock).</summary>
+    void NoteCleared(string root, string fileId)
+    {
+        if (!IsActiveRoot(root)) return;
+        string stem = Stem(fileId);
+        if (_progress.TryGetValue(stem, out var progress) && progress.Committed > 0) progress.Committed--;
+        if (_complete.TryRemove(stem, out _)) RaiseCompletion(stem);
+    }
+
+    /// <summary>The file under <paramref name="stem"/> is gone (or about to be re-created).</summary>
+    void ForgetIndex(string root, string stem)
+    {
+        if (!IsActiveRoot(root)) return;
+        _progress.TryRemove(stem, out _);
+        if (_complete.TryRemove(stem, out _)) RaiseCompletion(stem);
+    }
+
+    /// <summary>A hex id is its own stem up to case (the dictionaries ignore case), so it needs no lower-cased copy.</summary>
+    static bool IsPlainStem(string id)
+    {
+        if (id.Length is < 8 or > 128) return false;
+        foreach (char c in id)
+            if (!char.IsAsciiHexDigit(c)) return false;
+        return true;
+    }
+
+    /// <summary>Read a map's header and count its committed entries. Read-only: an invalid map is skipped, not deleted.</summary>
+    static bool TryCountCommitted(string map, out int chunks, out int committed)
+    {
+        chunks = 0;
+        committed = 0;
+        byte[]? rented = null;
+        try
+        {
+            using var fs = OpenShared(map, FileMode.Open);
+            if (!TryReadValidHeader(fs, out _, out chunks)) return false;
+            int bytes = checked(chunks * EntryBytes);
+            rented = ArrayPool<byte>.Shared.Rent(bytes);
+            fs.Position = HeaderBytes;
+            fs.ReadExactly(rented, 0, bytes);
+            for (int i = 0; i < chunks; i++)
+                if (rented[i * EntryBytes] == 1) committed++;
+            return true;
+        }
+        catch { return false; }
+        finally { if (rented is not null) ArrayPool<byte>.Shared.Return(rented); }
     }
 
     /// <summary>The stored total size for <paramref name="fileId"/>, or null when nothing is cached.</summary>
@@ -542,9 +758,10 @@ public sealed class ChunkDiskCache : IDisposable
 
                 Span<byte> digest = stackalloc byte[32];
                 SHA256.HashData(data, digest);
-                CommitEntry(root, fileId, chunkIndex, digest);
+                bool wasCommitted = CommitEntry(root, fileId, chunkIndex, digest);
                 Interlocked.Add(ref _approxBytes, growth);
                 TouchMap(root, fileId, force: true);
+                NoteCommitted(root, fileId, header.Value.ChunkCount, wasCommitted);
             }
         }
         catch { }
@@ -649,6 +866,7 @@ public sealed class ChunkDiskCache : IDisposable
             }
             File.Move(tmp, map, true);
             Interlocked.Add(ref _approxBytes, new FileInfo(map).Length);
+            if (IsActiveRoot(root)) _progress[Stem(fileId)] = new Progress(chunks, 0);   // a fresh map: nothing committed
         }
         finally { TryDelete(tmp); }
     }
@@ -695,28 +913,38 @@ public sealed class ChunkDiskCache : IDisposable
         return true;
     }
 
-    void CommitEntry(string root, string fileId, int index, ReadOnlySpan<byte> digest)
+    /// <summary>Commit one entry; returns whether it was ALREADY committed (a rewrite of the same chunk), which the
+    /// completeness index needs so a re-fetched chunk is not counted twice.</summary>
+    bool CommitEntry(string root, string fileId, int index, ReadOnlySpan<byte> digest)
     {
         string map = MapPath(root, fileId);
         using var fs = OpenShared(map, FileMode.Open);
-        fs.Position = HeaderBytes + (long)index * EntryBytes;
+        long position = HeaderBytes + (long)index * EntryBytes;
+        fs.Position = position;
+        bool wasCommitted = fs.ReadByte() == 1;
+        fs.Position = position;
         Span<byte> entry = stackalloc byte[EntryBytes];
         entry[0] = 1;
         digest.CopyTo(entry[1..]);
         fs.Write(entry);
         // No fs.Flush(true) here either — see WriteChunkCore: the SHA-256 verify-and-discard on read already covers
         // a torn commit-entry write, so paying an fsync per chunk buys nothing.
+        return wasCommitted;
     }
 
+    /// <summary>Un-commit a chunk whose entry WAS committed (every caller checked it first) and tell the index.</summary>
     void ClearEntry(string root, string fileId, int index)
     {
         try
         {
             string map = MapPath(root, fileId);
-            using var fs = OpenShared(map, FileMode.Open);
-            fs.Position = HeaderBytes + (long)index * EntryBytes;
-            fs.WriteByte(0);
-            fs.Flush(true);
+            using (var fs = OpenShared(map, FileMode.Open))
+            {
+                fs.Position = HeaderBytes + (long)index * EntryBytes;
+                fs.WriteByte(0);
+                fs.Flush(true);
+            }
+            NoteCleared(root, fileId);
         }
         catch { }
     }
@@ -733,6 +961,7 @@ public sealed class ChunkDiskCache : IDisposable
     {
         TryDelete(EncPath(root, fileId));
         TryDelete(MapPath(root, fileId));
+        ForgetIndex(root, Stem(fileId));
     }
 
     /// <summary>Delete every cached body + map under the active root (the root must be owned).</summary>
@@ -753,6 +982,7 @@ public sealed class ChunkDiskCache : IDisposable
                     TryDelete(file);
             RemoveEmptyDirectories(root);
             Interlocked.Exchange(ref _approxBytes, Measure(root));
+            if (IsActiveRoot(root)) ResetIndex(built: true);   // nothing is complete now, and that IS the index
         }
         catch { }
     }
@@ -800,8 +1030,13 @@ public sealed class ChunkDiskCache : IDisposable
                 if (total <= target) break;
                 string enc = Path.ChangeExtension(map.FullName, ".enc");
                 long bytes = map.Length + SafeLength(enc);
-                TryDelete(enc);
-                TryDelete(map.FullName);
+                string stem = Path.GetFileNameWithoutExtension(map.Name);
+                lock (FileLock(root, stem))
+                {
+                    TryDelete(enc);
+                    TryDelete(map.FullName);
+                    ForgetIndex(root, stem);
+                }
                 total -= bytes;
                 freed += bytes;
             }
@@ -851,6 +1086,7 @@ public sealed class ChunkDiskCache : IDisposable
                 File.WriteAllText(Path.Combine(newRoot, MarkerFileName), MarkerText);
                 if (mode == AudioCacheRelocationMode.StartEmptyDeleteOld) DeleteOwnedContents(oldRoot);
             }
+            ResetIndex(built: false);   // the old root's files may be gone; the root switch that follows resets it again
             return true;
         }
         catch { return false; }
@@ -908,21 +1144,30 @@ public sealed class ChunkDiskCache : IDisposable
     {
         try
         {
-            Span<byte> header = stackalloc byte[HeaderBytes];
             using var fs = OpenShared(map, FileMode.Open);
-            if (fs.Length < HeaderBytes) return false;
-            fs.ReadExactly(header);
-            if (!header[..4].SequenceEqual(Magic)) return false;
-            int chunkBytes = BitConverter.ToInt32(header.Slice(4, 4));
-            long total = BitConverter.ToInt64(header.Slice(8, 8));
-            int chunks = BitConverter.ToInt32(header.Slice(16, 4));
-            Span<byte> digest = stackalloc byte[32];
-            SHA256.HashData(header[..HeaderCoreBytes], digest);
-            return chunkBytes == ChunkBytes && total > 0 && total <= int.MaxValue && chunks > 0 &&
-                   chunks == (total + ChunkBytes - 1) / ChunkBytes && fs.Length == HeaderBytes + (long)chunks * EntryBytes &&
-                   CryptographicOperations.FixedTimeEquals(digest, header.Slice(HeaderCoreBytes, 32));
+            return TryReadValidHeader(fs, out _, out _);
         }
         catch { return false; }
+    }
+
+    /// <summary>Read and check a map's header from position 0 (magic, chunk size, sizes, file length, digest).</summary>
+    static bool TryReadValidHeader(FileStream fs, out long total, out int chunks)
+    {
+        total = 0;
+        chunks = 0;
+        Span<byte> header = stackalloc byte[HeaderBytes];
+        if (fs.Length < HeaderBytes) return false;
+        fs.Position = 0;
+        fs.ReadExactly(header);
+        if (!header[..4].SequenceEqual(Magic)) return false;
+        int chunkBytes = BitConverter.ToInt32(header.Slice(4, 4));
+        total = BitConverter.ToInt64(header.Slice(8, 8));
+        chunks = BitConverter.ToInt32(header.Slice(16, 4));
+        Span<byte> digest = stackalloc byte[32];
+        SHA256.HashData(header[..HeaderCoreBytes], digest);
+        return chunkBytes == ChunkBytes && total > 0 && total <= int.MaxValue && chunks > 0 &&
+               chunks == (total + ChunkBytes - 1) / ChunkBytes && fs.Length == HeaderBytes + (long)chunks * EntryBytes &&
+               CryptographicOperations.FixedTimeEquals(digest, header.Slice(HeaderCoreBytes, 32));
     }
 
     void TouchMap(string root, string fileId, bool force = false)
