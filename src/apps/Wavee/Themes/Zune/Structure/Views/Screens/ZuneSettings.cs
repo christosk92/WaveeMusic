@@ -5,7 +5,8 @@
 // THE PICTURE. A panorama title ("settings", 120/130 at the light weight, 64/72 under the compact width), then a lowercase SECTION LIST on the left (220,
 // the 20/28 display voice, the open section in the ink and heavier, the rest tertiary) beside the open section's column (660, every group a 26/32 heading
 // over its label | control rows); on Appearance a PREVIEW of the options beside the column (or under it where there is no room). Where the tier has no room for a
-// list beside the column (Compact, Small) the same words sit in a wrapping row above it.
+// list beside the column (Compact) the same words sit in a wrapping row of 40-tall targets above it; the sizes of the title, the list's words, the label column, the picker and
+// the swatches are the tier's record (`ZuneSettingsTiers`, tuned by ZT8 against the -Compact, -Small and -Huge boards).
 //
 // WHAT STAYS CORE. The document (`SettingsDoc`: which rows exist, their titles, values, enablement and reasons, visibility), every verb (`row.Writer`), the facts
 // the rows ask (`SettingsFacts`), the page epoch (`Settings.Bump`), the Storage census (the props carry it), the pivot's root-lifetime cell and the deep link,
@@ -120,6 +121,7 @@ internal static partial class ZuneSettings
     {
         string text = Loc.Get(Strings.Settings.Title);
         TextEl title = lay.CompactTitle ? R.Type.PanoramaCompact(text) : R.Type.Panorama(text);
+        if (lay.TitleSize > 0f) title = title with { Size = lay.TitleSize, LineHeight = lay.TitleLineH };   // Huge: the board's 150 over its 160 line
         return new BoxEl
         {
             Key = TitleKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = lay.TitleH, ClipToBounds = true, Animate = ZuneMotion.TitleScale,
@@ -142,7 +144,7 @@ internal static partial class ZuneSettings
         Loc.Get(Strings.Settings.Tabs.About),
     ];
 
-    /// <summary>The section list: a column of words beside the lane (Standard and up), a wrapping row of the same words above it (Compact, Small). ONE node, one
+    /// <summary>The section list: a column of words beside the lane (Small and up), a wrapping row of the same words above it (Compact). ONE node, one
     /// child per tab; the direction, wrap, width and gap are the tier's. The open section is the ink in the heavier weight, the rest tertiary.</summary>
     static Element Sections(ZuneKit k, SettingsPageProps props, int open)
     {
@@ -164,6 +166,7 @@ internal static partial class ZuneSettings
                     ZuneText.Nav(names[i]) with
                     {
                         Color = on ? Tok.TextPrimary : Tok.TextTertiary, HoverColor = Tok.TextPrimary, Weight = on ? Z.NavSelectedWeight : Z.NavRestWeight,
+                        Size = lay.NavSize, LineHeight = lay.NavLineH,
                     },
                 ],
             }.Interactive(Interaction.Subtle);
@@ -171,7 +174,7 @@ internal static partial class ZuneSettings
         return new BoxEl
         {
             Key = SectionsKey, Direction = (byte)(lay.ListIsStrip ? 0 : 1), Wrap = lay.ListIsStrip, Gap = lay.ListGap,
-            Width = lay.ListIsStrip ? float.NaN : lay.ListW, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = items,
+            Width = lay.ListIsStrip ? float.NaN : lay.ListW, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Animate = ZuneMotion.ColumnCollapse, Children = items,
         };
     }
 }

@@ -6,14 +6,16 @@
 //
 // ONE RECORD PER CONTENT TIER (`ctx.Tier().Content`: the region the page lives in, which is what the page gutter follows). A view reads `ZuneSettingsTiers.Of(ctx.Tier())` and never
 // compares a width with a number (WVTH013). Standard follows `Z-Settings-Appearance`, `Z-Settings-Playback`, `Z-Settings-Sections` and `Z-Theme-Options` (the 220 section list, the
-// 660 column, the 200 | rest rows, the 150 x 100 theme tiles); Compact, Small and Huge are built from their parts for now (ZT8 tunes them against the -Compact, -Small and -Huge boards).
+// 660 column, the 200 | rest rows, the 150 x 100 theme tiles); ZT8 tuned Compact, Small and Huge against the -Compact, -Small and -Huge boards:
 //
-//   tier       title                 section list         column      rows              choices        picker tiles                 preview
-//   Compact    64/72 (compact step)  a wrapping row       fill        control UNDER     combos         2-up fluid, 120 x 88, name   none
-//   Small      64/72 (compact step)  180 column           520         control UNDER     chips          fluid, 150 x 68, name        none
-//   Standard   120/130 panorama      220 column          660         200 | rest        chips          150 x 100 + a line           beside / under the column
-//   Huge       120/130 panorama      220 column          760         200 | rest        chips          190 x 120 + a line           beside / under the column
-//   Huge 4K    120/130 panorama      220 column          760         200 | rest        chips          190 x 120 + a line           beside / under the column
+//   tier       title               section list (word)                  column      rows             picker tiles (gap)                   swatch
+//   Compact    64/72               wrapping row of 40-tall 20/28        fill        control UNDER    2-up fluid, 120 x 88 + a line (16)   40
+//   Small      64/72               180 column, 30-tall 18/24            520         140 | rest       4-up fluid, 118 x 68, name (12)      28
+//   Standard   120/130             220 column, 40-tall 20/28            660         200 | rest       150 x 100 + a line (16)              32
+//   Huge       150/160             260 column, 52-tall 24/32 (40 gap)   760         220 | rest       4-up fluid, 176 x 120 + a line (16)  36
+//   Huge 4K    150/160             Huge's                               760         220 | rest       Huge's                               36
+//
+// A short choice is a row of chips at every tier: the engine's segmented control, and at Compact (the board's wrapping 40-tall chips) a wrapping row of buttons that tall.
 //
 // The page gutter is the frame's (`ZuneTiers.Frame`: 16 / 24 / 48 / 48 / 64). TOUCH: `Target` is the Compact hit target (40); the record never decides what a control is.
 //
@@ -45,13 +47,31 @@ public sealed record ZuneSettingsLayout
     /// <summary>The title box's height (the larger size's line, reserved).</summary>
     public required float TitleH { get; init; }
 
+    /// <summary>The panorama's size and line where the tier sets one beyond the role's two steps (Huge: the board's 150 / 160); 0 keeps the role's.</summary>
+    public required float TitleSize { get; init; }
+
+    /// <summary>The line height that goes with <see cref="TitleSize"/>.</summary>
+    public required float TitleLineH { get; init; }
+
+    /// <summary>A section word's size and line (the display voice: 18/24 at Small, 20/28, 24/32 at Huge).</summary>
+    public required float NavSize { get; init; }
+
+    /// <summary>The line height that goes with <see cref="NavSize"/>.</summary>
+    public required float NavLineH { get; init; }
+
+    /// <summary>A colour swatch's edge (40 at a hit target, 28 / 32 / 36 up the desktop tiers).</summary>
+    public required float SwatchSize { get; init; }
+
+    /// <summary>The gap between picker tiles.</summary>
+    public required float PickerGap { get; init; }
+
     /// <summary>The section list is a wrapping row above the column (Compact) instead of a column beside it.</summary>
     public required bool ListIsStrip { get; init; }
 
     /// <summary>The section list's width (0 where it is a row).</summary>
     public required float ListW { get; init; }
 
-    /// <summary>A section word's least height (40).</summary>
+    /// <summary>A section word's least height (40 at a hit target and Standard, 30 at Small, 52 at Huge).</summary>
     public required float ListItemH { get; init; }
 
     /// <summary>The space after a section word where the list is a row.</summary>
@@ -72,14 +92,15 @@ public sealed record ZuneSettingsLayout
     /// <summary>A row's control sits UNDER its label (full width) instead of beside it.</summary>
     public required bool StacksRows { get; init; }
 
+    /// <summary>A row that does not stack still wraps its control under its label when the column is too narrow for both (Small: the 520 column shrinks to 380 in a 640 window, and a
+    /// 220 combo or a slider with its value then no longer fits beside a 140 label).</summary>
+    public required bool RowsWrap { get; init; }
+
     /// <summary>The label column's width where rows do not stack (200).</summary>
     public required float LabelW { get; init; }
 
     /// <summary>A slider's track length.</summary>
     public required float SliderLength { get; init; }
-
-    /// <summary>A short choice is a row of chips (false folds it into a combo: Compact).</summary>
-    public required bool ChipsStay { get; init; }
 
     /// <summary>The Appearance tab draws the options' preview (beside the column where there is room, under it where there is not).</summary>
     public required bool ShowsAside { get; init; }
@@ -103,33 +124,51 @@ public sealed record ZuneSettingsLayout
 /// <summary>The Settings page's tier records.</summary>
 public static class ZuneSettingsTiers
 {
-    private static ZuneSettingsLayout Make(WidthTier tier, float target, bool compactTitle, bool strip, float listW, float listGap, float bodyGap,
-        float columnW, bool columnGrows, bool stacks, float sliderLength, bool chips, bool aside, bool pickerGrows, float cardW, float thumbH, bool pickerText) => new()
+    /// <summary>One record. The title is <paramref name="titleH"/> tall (the larger size's line, reserved); <paramref name="titleSize"/> 0 keeps the role's size.</summary>
+    private static ZuneSettingsLayout Make(WidthTier tier, float target, bool compactTitle, float titleSize, float titleLineH, float titleH,
+        bool strip, float listW, float listItemH, float navSize, float navLineH, float listGap, float bodyGap,
+        float columnW, bool columnGrows, bool stacks, bool rowsWrap, float labelW, float sliderLength, bool aside,
+        bool pickerGrows, float cardW, float thumbH, float pickerGap, bool pickerText, float swatch) => new()
     {
         Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, Target = target, CompactTitle = compactTitle,
-        TitleH = compactTitle ? ZuneSettingsRules.TitleHCompact : ZuneSettingsRules.TitleHPanorama,
-        ListIsStrip = strip, ListW = listW, ListItemH = ZuneSettingsRules.ListItemH, ListItemPadRight = strip ? ZuneSettingsRules.ListItemPadRightRow : 0f,
-        ListGap = listGap, BodyGap = bodyGap, ColumnW = columnW, ColumnGrows = columnGrows, StacksRows = stacks, LabelW = ZuneSettingsRules.LabelW,
-        SliderLength = sliderLength, ChipsStay = chips, ShowsAside = aside, PickerGrows = pickerGrows, PickerCardW = cardW, PickerThumbH = thumbH, PickerShowsText = pickerText,
+        TitleSize = titleSize, TitleLineH = titleLineH, TitleH = titleH,
+        ListIsStrip = strip, ListW = listW, ListItemH = listItemH, NavSize = navSize, NavLineH = navLineH,
+        ListItemPadRight = strip ? ZuneSettingsRules.ListItemPadRightRow : 0f,
+        ListGap = listGap, BodyGap = bodyGap, ColumnW = columnW, ColumnGrows = columnGrows, StacksRows = stacks, RowsWrap = rowsWrap, LabelW = labelW,
+        SliderLength = sliderLength, ShowsAside = aside, PickerGrows = pickerGrows, PickerCardW = cardW, PickerThumbH = thumbH, PickerGap = pickerGap,
+        PickerShowsText = pickerText, SwatchSize = swatch,
     };
 
     private static readonly ZuneSettingsLayout[] s_records =
     [
-        // Compact (Z-Settings-Appearance-Compact, Z-Settings-Sections-Compact): the sections are a wrapping row of words above the column, the rows stack, the choices are combos.
-        Make(WidthTier.Compact, target: 40f, compactTitle: true, strip: true, listW: 0f, listGap: 4f, bodyGap: 8f, columnW: 1000f, columnGrows: true, stacks: true,
-            sliderLength: 200f, chips: false, aside: false, pickerGrows: true, cardW: 120f, thumbH: 88f, pickerText: false),
-        // Small (Z-Settings-Appearance-Small): a 180 section column, a 520 column, rows stacked at this width.
-        Make(WidthTier.Small, target: 0f, compactTitle: true, strip: false, listW: 180f, listGap: 0f, bodyGap: 32f, columnW: 520f, columnGrows: false, stacks: true,
-            sliderLength: 220f, chips: true, aside: false, pickerGrows: true, cardW: 150f, thumbH: 68f, pickerText: false),
-        // Standard: the tuned design (the 220 list, the 660 column, the 200 | rest rows, 150 x 100 tiles).
-        Make(WidthTier.Standard, target: 0f, compactTitle: false, strip: false, listW: 220f, listGap: 0f, bodyGap: 48f, columnW: 660f, columnGrows: false, stacks: false,
-            sliderLength: 220f, chips: true, aside: true, pickerGrows: false, cardW: 150f, thumbH: 100f, pickerText: true),
-        // Huge (Z-Settings-Appearance-Huge): a 760 column, tiles 120 tall.
-        Make(WidthTier.Huge, target: 0f, compactTitle: false, strip: false, listW: 220f, listGap: 0f, bodyGap: 48f, columnW: 760f, columnGrows: false, stacks: false,
-            sliderLength: 260f, chips: true, aside: true, pickerGrows: false, cardW: 190f, thumbH: 120f, pickerText: true),
+        // Compact (Z-Settings-Appearance-Compact, -Playback-Compact, Z-Theme-Options-Compact): the sections are a wrapping row of 40-tall words above the column, the rows stack, the
+        // short choices are the board's wrapping 40-tall chips, the picker is 2-up (88 tall, name and line), the swatches 40.
+        Make(WidthTier.Compact, target: 40f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHCompact,
+            strip: true, listW: 0f, listItemH: 40f, navSize: 20f, navLineH: 28f, listGap: 4f, bodyGap: 8f,
+            columnW: 1000f, columnGrows: true, stacks: true, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 200f, aside: false,
+            pickerGrows: true, cardW: 120f, thumbH: 88f, pickerGap: 16f, pickerText: true, swatch: 40f),
+        // Small (Z-Settings-Appearance-Small, Z-Theme-Options-Small): a 180 section column of 30-tall 18/24 words, a 520 column, rows beside their labels (140 | rest), the picker 4-up
+        // (68 tall, the name alone, 12 apart), the swatches 28.
+        Make(WidthTier.Small, target: 0f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHCompact,
+            strip: false, listW: 180f, listItemH: 30f, navSize: 18f, navLineH: 24f, listGap: 0f, bodyGap: 32f,
+            columnW: 520f, columnGrows: false, stacks: false, rowsWrap: true, labelW: 140f, sliderLength: 220f, aside: false,
+            pickerGrows: true, cardW: 118f, thumbH: 68f, pickerGap: 12f, pickerText: false, swatch: 28f),
+        // Standard: the tuned design (the 220 list of 40-tall 20/28 words, the 660 column, the 200 | rest rows, 150 x 100 tiles, 32 swatches).
+        Make(WidthTier.Standard, target: 0f, compactTitle: false, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleHPanorama,
+            strip: false, listW: 220f, listItemH: 40f, navSize: 20f, navLineH: 28f, listGap: 0f, bodyGap: 48f,
+            columnW: 660f, columnGrows: false, stacks: false, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 220f, aside: true,
+            pickerGrows: false, cardW: 150f, thumbH: 100f, pickerGap: 16f, pickerText: true, swatch: 32f),
+        // Huge (Z-Settings-Appearance-Huge, Z-Theme-Options-Huge): the 150 / 160 panorama, a 260 list of 52-tall 24/32 words 40 from a 760 column, rows 220 | rest, the picker 4-up
+        // (120 tall), the swatches 36.
+        Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleHHuge, titleH: ZuneSettingsRules.TitleHHuge,
+            strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
+            columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
+            pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
         // Huge 4K: Huge's (pages cap at 2400, owner 6.2; the page holds its 760 column and the frame's 64 gutter).
-        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, strip: false, listW: 220f, listGap: 0f, bodyGap: 48f, columnW: 760f, columnGrows: false, stacks: false,
-            sliderLength: 260f, chips: true, aside: true, pickerGrows: false, cardW: 190f, thumbH: 120f, pickerText: true),
+        Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleHHuge, titleH: ZuneSettingsRules.TitleHHuge,
+            strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, listGap: 0f, bodyGap: 40f,
+            columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
+            pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
@@ -182,11 +221,14 @@ public static class ZuneSettingsRules
     /// <summary>The title box's height: the panorama's line (120/130) and its compact step's (64/72).</summary>
     public const float TitleHPanorama = 130f, TitleHCompact = 72f;
 
+    /// <summary>The Huge panorama (Z-Settings-Appearance-Huge: 150 over a 160 line), which the box reserves too.</summary>
+    public const float TitleSizeHuge = 150f, TitleHHuge = 160f;
+
     /// <summary>The panorama bleeds this far left of the gutter (the board draws it at 40 over a 48 gutter).</summary>
     public const float PanoramaBleed = 8f;
 
-    /// <summary>A section word's least height and the space after it where the list is a row.</summary>
-    public const float ListItemH = 40f, ListItemPadRightRow = 16f;
+    /// <summary>The space after a section word where the list is a row.</summary>
+    public const float ListItemPadRightRow = 16f;
 
     /// <summary>The open section word's weight and the others': 400 and 300 (Z-Settings-Appearance).</summary>
     public const ushort NavSelectedWeight = 400, NavRestWeight = 300;
@@ -199,6 +241,9 @@ public static class ZuneSettingsRules
 
     /// <summary>A short choice stays a row of chips up to this many (past it, a combo).</summary>
     public const int MaxChips = 4;
+
+    /// <summary>The gap between a hit-target chip and the next, in the wrapping row that stands in for the segmented control at Compact.</summary>
+    public const float ChipGap = 8f;
 
     /// <summary>How many topic rows the Notifications tab sizes its list for.</summary>
     public const int TopicCapacity = 12;
@@ -259,15 +304,12 @@ public static class ZuneSettingsRules
 
     // ── the theme picker ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The gap between tiles, a fluid tile's cap, the gap inside a tile, the lines its text may take.</summary>
-    public const float PickerGap = 16f, PickerFluidMax = 220f, PickerCardGap = 8f;
+    /// <summary>A fluid tile's cap and the gap inside a tile (the gap between tiles is the tier's), and the lines the text may take.</summary>
+    public const float PickerFluidMax = 220f, PickerCardGap = 8f;
     public const int PickerTextLines = 2;
 
     /// <summary>The selection ring (the thumbnail's border, clear at rest, so nothing shifts) and the gap it keeps from the picture.</summary>
     public const float SelectRing = 2f, SelectGap = 2f;
-
-    /// <summary>A colour swatch's edge (the board's 32).</summary>
-    public const float SwatchSize = 32f;
 
     /// <summary>The preview image's decode width and fade.</summary>
     public const float PreviewDecodePx = 480f, PreviewFadeMs = 150f;

@@ -50,7 +50,7 @@ internal static partial class ZuneSettings
         if (!s_pickerParts.TryGetValue(lay, out var parts))
             s_pickerParts[lay] = parts = new TemplateParts
             {
-                [RadioButtons.PartGrid] = g => g with { Wrap = true, Gap = Z.PickerGap },
+                [RadioButtons.PartGrid] = g => g with { Wrap = true, Gap = lay.PickerGap },
                 [RadioButtons.PartColumn] = c => c with
                 {
                     Shrink = 0f, Grow = lay.PickerGrows ? 1f : 0f, Basis = lay.PickerCardW, MinWidth = 0f, MaxWidth = lay.PickerGrows ? Z.PickerFluidMax : lay.PickerCardW,
@@ -334,7 +334,7 @@ internal static partial class ZuneSettings
             int selected = -1;
             for (int i = 0; i < g.Swatches.Count; i++)
                 if (ThemeOptionsSection.PackColor(g.Swatches[i]) == packed) { selected = i; break; }
-            float edge = MathF.Max(Z.SwatchSize, lay.Target);
+            float edge = MathF.Max(lay.SwatchSize, lay.Target);
             return Controls.PickerStrip(g.Swatches.Count, selected, (i, on) => new BoxEl
             {
                 Key = "zs:swatch:" + i.ToString(CultureInfo.InvariantCulture), Width = edge, Height = edge, Shrink = 0f, Fill = g.Swatches[i],

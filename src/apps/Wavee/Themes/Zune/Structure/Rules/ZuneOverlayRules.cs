@@ -10,8 +10,9 @@
 // play-a-link card, the signature sheet, the destination picker, the credits sheet or the Compact context sheet: they are built from the parts above (owner Q18).
 //
 // ONE RECORD per window tier (`ZuneOverlayTiers.For(window)`), read by the views AND by the core hosts through the policy (`ThemePolicies.Overlays`, built from the same
-// records): Compact is the sheet, the full-width toast, the 40-DIP targets and the quiet vacancy; Small and Standard the board; Huge the same with the form dialogs'
-// two-pane 1040 card (Z8b's `ZuneDialogRules.HugeCardWidth`). Nothing here names a width edge: the ladder is `ZuneTiers`'.
+// records): Compact is the sheet, the full-width toast, the 40-DIP targets and the quiet vacancy; Standard the board; Small the board with the form dialogs' two-pane 752 card
+// (Z-Dialogs-Small; `OverlayPolicy.Small`); Huge the board again (Z-Dialogs-Huge draws the 548 plate, nothing wider); Huge 4K Huge's under the 56 title bar (ZT8: the chrome
+// row a panel and a sheet keep clear is the frame's for the tier). Nothing here names a width edge: the ladder is `ZuneTiers`'.
 //
 // Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
 
@@ -387,7 +388,7 @@ public static class ZuneOverlayTiers
         PickerRowArtHeight = 48f, PickerRowHeight = 44f,
     };
 
-    /// <summary>Small and Standard (boards Z-Overlays, Z-Overlays-Small, Z-Dialogs): the toast bottom right 12 above the bar, the 548 plates.</summary>
+    /// <summary>Standard (boards Z-Overlays, Z-Dialogs): the toast bottom right 12 above the bar, the 548 plates.</summary>
     public static ZuneOverlayLayout Standard { get; } = new()
     {
         Tier = WidthTier.Standard,
@@ -404,26 +405,47 @@ public static class ZuneOverlayTiers
         PickerRowArtHeight = ZuneOverlayRules.PickerRowArtHeight, PickerRowHeight = ZuneOverlayRules.PickerRowHeight,
     };
 
-    /// <summary>Huge and Huge 4K (board Z-Dialogs-Huge): the standard overlays; a dialog never stretches (its width caps at 548), except the two FORM dialogs, whose card is the
-    /// two-pane 1040 (Z8b's `ZuneDialogTiers`).</summary>
+    /// <summary>Small (boards Z-Overlays-Small, Z-Dialogs-Small): the standard overlays, 24 from the window's edge, and the two FORM dialogs (report, crash) as the 752 two-pane card
+    /// (`DialogFit.FormWidth`; `ZuneDialogTiers` reads it). The core hosts see this band through `OverlayPolicy.Small` (ZT8's contract addition).</summary>
+    public static ZuneOverlayLayout Small { get; } = Standard with
+    {
+        Tier = WidthTier.Small,
+        Core = new OverlayLayout(
+            DialogFit.Stock with { CommandMinWidth = 48f, Inset = ZuneDialogRules.SmallInset, FormWidth = ZuneDialogRules.SmallCardWidth },
+            new ToastDock(ToastPlacement.BottomRight, GapAboveBar: 12f, Lane: ZuneOverlayRules.DesktopToastLane),
+            VacancyFit.Stock, SelectionFit.Stock, ContextSheet: false),
+        ChromeRow = ZuneTiers.Frame(WidthTier.Small).TitleBarH,
+    };
+
+    /// <summary>Huge (board Z-Dialogs-Huge): the standard overlays; a dialog never stretches, so the report and crash dialogs are the 548 plate too (the board draws no wider card).</summary>
     public static ZuneOverlayLayout Huge { get; } = Standard with
     {
         Tier = WidthTier.Huge,
-        Core = new OverlayLayout(
-            DialogFit.Stock with { CommandMinWidth = 48f, FormWidth = ZuneDialogRules.HugeCardWidth },
-            new ToastDock(ToastPlacement.BottomRight, GapAboveBar: 12f, Lane: ZuneOverlayRules.DesktopToastLane),
-            VacancyFit.Stock, SelectionFit.Stock, ContextSheet: false),
         ChromeRow = ZuneTiers.Frame(WidthTier.Huge).TitleBarH,
     };
 
-    /// <summary>The record of <paramref name="tier"/>: Compact, Huge (and Huge 4K), and the standard record for the tiers between.</summary>
-    public static ZuneOverlayLayout For(WidthTier tier) => tier == WidthTier.Compact ? Compact : tier >= WidthTier.Huge ? Huge : Standard;
+    /// <summary>Huge 4K: Huge's overlays under the 56 title bar (ZT1: the chrome row a panel and a sheet keep clear is the frame's for the tier, not Huge's 48).</summary>
+    public static ZuneOverlayLayout Huge4K { get; } = Huge with
+    {
+        Tier = WidthTier.Huge4K,
+        ChromeRow = ZuneTiers.Frame(WidthTier.Huge4K).TitleBarH,
+    };
+
+    /// <summary>The record of window tier <paramref name="tier"/>: one per tier.</summary>
+    public static ZuneOverlayLayout For(WidthTier tier) => tier switch
+    {
+        WidthTier.Compact => Compact,
+        WidthTier.Small => Small,
+        WidthTier.Standard => Standard,
+        WidthTier.Huge => Huge,
+        _ => Huge4K,
+    };
 
     /// <summary>The record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ZuneOverlayLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Window);
 
     /// <summary>The policy the structure publishes for the core hosts.</summary>
-    public static OverlayPolicy Policy { get; } = new(Compact.Core, Standard.Core, Huge.Core);
+    public static OverlayPolicy Policy { get; } = new(Compact.Core, Standard.Core, Huge.Core) { Small = Small.Core };
 
     // ── what a Short window gives up (a height rule: a 330-tall window leaves the page 210) ───────────────────────
 

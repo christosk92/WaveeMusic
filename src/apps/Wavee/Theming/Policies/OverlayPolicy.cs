@@ -164,14 +164,19 @@ public sealed record OverlayLayout(DialogFit Dialog, ToastDock Toast, VacancyFit
 /// (Small and Standard) and Huge (Huge 4K included), so a ladder that moves an edge never moves a layout.</summary>
 /// <param name="Compact">Compact.</param>
 /// <param name="Standard">Small and Standard.</param>
-/// <param name="Huge">Huge and Huge 4K.</param>
+/// <param name="Huge">Huge and Huge 4K. (The optional <see cref="OverlayPolicy.Small"/> splits Small from Standard.)</param>
 public sealed record OverlayPolicy(OverlayLayout Compact, OverlayLayout Standard, OverlayLayout Huge)
 {
+    /// <summary>Small, when a structure draws it apart from <see cref="Standard"/> (Zune's report dialog is a two-pane 752 card at Small and the 548 plate at Standard; ZT8).
+    /// Null: Small takes <see cref="Standard"/>, so a structure that names no Small band is exactly what it was.</summary>
+    public OverlayLayout? Small { get; init; }
+
     /// <summary>The shell as it shipped: every band `Stock`.</summary>
     public static OverlayPolicy Default { get; } = new(OverlayLayout.Stock, OverlayLayout.Stock, OverlayLayout.Stock);
 
     /// <summary>The layout of <paramref name="tier"/>.</summary>
-    public OverlayLayout For(WidthTier tier) => tier == WidthTier.Compact ? Compact : tier >= WidthTier.Huge ? Huge : Standard;
+    public OverlayLayout For(WidthTier tier)
+        => tier == WidthTier.Compact ? Compact : tier == WidthTier.Small && Small is { } small ? small : tier >= WidthTier.Huge ? Huge : Standard;
 
     /// <summary>Everything wrong with the policy, empty when every core host can run on it.</summary>
     public IReadOnlyList<string> Validate()
@@ -180,6 +185,7 @@ public sealed record OverlayPolicy(OverlayLayout Compact, OverlayLayout Standard
         if (Compact is null) problems.Add("Compact is missing"); else problems.AddRange(Compact.Validate());
         if (Standard is null) problems.Add("Standard is missing"); else problems.AddRange(Standard.Validate());
         if (Huge is null) problems.Add("Huge is missing"); else problems.AddRange(Huge.Validate());
+        if (Small is not null) problems.AddRange(Small.Validate());
         return problems;
     }
 }

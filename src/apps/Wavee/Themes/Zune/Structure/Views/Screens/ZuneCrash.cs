@@ -11,8 +11,8 @@
 // not finished composing.
 //
 // THE TIERS (`Rules\ZuneSetupRules.cs`, `ZuneDialogTiers`): the body is laid out by the record of the window tier the dialog OPENED in and the width its card left it
-// (`ZuneDialogShape`, frozen in a ref): Compact fills the window less 16 with 40-tall targets; Small and Standard the tuned 548 card with the report under its command; Huge a
-// second pane, the report always shown.
+// (`ZuneDialogShape`, frozen in a ref): Compact fills the window less 16 with 40-tall targets; Standard and Huge the tuned 548 card with the report under its command; Small the
+// 752 card with the report in a second pane, always shown (a card too narrow for the pane keeps the report under its command).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
