@@ -254,7 +254,7 @@ internal static class ZuneSurface
     {
         if (!s.Labels) return null;
         int lines = Math.Max(1, s.TitleLines);
-        TextEl title = SurfaceParts.RowTitleStyle(in s, d.Title) with
+        TextEl title = (ZuneListRules.IsRailRow(in s) ? R.Type.TrackTitle(d.Title) : SurfaceParts.RowTitleStyle(in s, d.Title)) with
         {
             MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
@@ -266,7 +266,7 @@ internal static class ZuneSurface
         if (d.Below is not null) kids.Add(d.Below);
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = s.IsLargeRow ? Spacing.S : SurfaceGeometry.CardLabelGap,
+            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = s.IsLargeRow && !ZuneListRules.IsRailRow(in s) ? Spacing.S : SurfaceGeometry.CardLabelGap,
             Children = kids.ToArray(),
         };
     }
