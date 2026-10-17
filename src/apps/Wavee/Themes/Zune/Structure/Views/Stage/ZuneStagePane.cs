@@ -32,8 +32,15 @@ internal static class ZuneStagePane
         var sc = props.Stage;
         var L = sc.Layout.Value;
         var k = sc.Look.Value;
-        var a = ZuneStageKit.Arrangement(sc, ctx.Tier());
+        var tiers = ctx.Tier();   // hooks first, unconditionally
+        var a = ZuneStageKit.Arrangement(sc, in tiers);
         var (x, y, w, h) = a.Form == ZuneStageForm.Column ? (a.Pane.X, a.Pane.Y, a.Pane.W, a.Pane.H) : L.PaneRect(in k);
+        if (a.Form != ZuneStageForm.Column)
+        {
+            // the allocator hangs the pane under its 48 bar: the tier's taller head (the Compact pivot row, 56, 72) takes its top
+            float drop = ZuneStageTiers.StageOf(in tiers).Drop;
+            (y, h) = (y + drop, MathF.Max(0f, h - drop));
+        }
         return new BoxEl
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = w, Height = h, ClipToBounds = true,

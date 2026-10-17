@@ -87,8 +87,9 @@ internal static class ZuneStageFace
         bool galleryOpen = sc.GalleryShown.Value;
         float w = L.W - L.FaceRight(galleryOpen);
         bool caption = sc.CaptionOn.Value;
-        var a = ZuneStageKit.Arrangement(sc, ctx.Tier());
-        var safe = G.FaceSafe(in L, in a, galleryOpen, caption, backdrop);
+        var tiers = ctx.Tier();
+        var a = ZuneStageKit.Arrangement(sc, in tiers);
+        var safe = G.FaceSafe(in L, in a, galleryOpen, caption, backdrop, ZuneStageTiers.StageOf(in tiers).HeadH);
         var track = sc.RowValue();
         string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
         Visualizer.UseScopeReader(ctx.Hooks, sc.Slab, Visualizer.Catalog.UsesScope(kind));
@@ -134,7 +135,14 @@ internal static class ZuneStageSpectrum
         Element? body = null;
         float x = 0f, y = 0f, w = 0f, h = 0f;
         string key = "";
-        if (a.Form == ZuneStageForm.Column)
+        if (a.Form == ZuneStageForm.Centered && k.Spectrum == Stage.SpectrumStyle.Ring && !a.Spectrum.IsEmpty)
+        {
+            // the Centered arrangement's ring around its own cover (the strips stay the allocator's: they sit above its plate line)
+            (x, y, w, h) = (a.Spectrum.X, a.Spectrum.Y, a.Spectrum.W, a.Spectrum.H);
+            body = Visualizer.RingAround(slab, a.Cover.W);
+            key = "zcring:" + ((int)w >> 2);
+        }
+        else if (a.Form == ZuneStageForm.Column)
         {
             if (!a.Spectrum.IsEmpty)
             {
@@ -213,15 +221,20 @@ internal static class ZuneStageNowPlayingCard
     public static Element Template(StageNowPlayingCardProps props, in ViewContext ctx)
     {
         var sc = props.Stage;
-        var a = ZuneStageKit.Arrangement(sc, ctx.Tier());
+        var tiers = ctx.Tier();
+        var a = ZuneStageKit.Arrangement(sc, in tiers);
         bool card = a.Form == ZuneStageForm.Card;
+        // the Stack draws no card (its cover and titles stand on the face); the allocator's card hangs under the head
+        bool drawn = a.Form != ZuneStageForm.Stack;
         var (x, y, w, h) = card ? (a.Card.X, a.Card.Y, a.Card.W, a.Card.H) : sc.Layout.Value.NowPlayingCardRect(sc.Mode.Value);
+        if (!card) y += ZuneStageTiers.StageOf(in tiers).Drop;
+        var shown = props.Shown;
         return new BoxEl
         {
             AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,
             Children =
             [
-                Flow.Show(props.Shown, new BoxEl
+                Flow.Show(() => drawn && shown(), new BoxEl
                 {
                     Key = "stage:npcard", Width = w, Height = h, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(x, y, 0f, 0f), Corners = R.Shape.All(ShapeRole.Card),

@@ -484,7 +484,22 @@ _Not built yet._
 
 ## ZT3: stage tiers
 
-_Not built yet._
+The stage's per-window-tier numbers live in `Rules\Tiers.Stage.cs`: the allocator's metrics (`ZuneStageTiers.Policy`) and the views'
+record (`ZuneStageLayout`, with the Card, Column, Centered and Stack records and the voice each draws in). Views read
+`ZuneStageTiers.StageOf(ctx.Tier())`; nothing compares a width.
+
+| Tier | Head | Plate | Arrangements |
+|---|---|---|---|
+| Compact | 48 bar (exit chevron, "now playing", options) over a 48 pivot row (28/36, the lit pivot rotated to the front, edge-fade scroll) | 152 stack: seek 36, cluster 68 spread across (56 disc), heart · device · "…" 44 | Visualizer + Card layout: the Stack (cover at 0.76 of the width, 40/48 title, 64 disc, face and layout words at the foot); every target at least 40 |
+| Small | 48 bar, pivots lead (20/28), look words, "…" and exit glyphs | 96: seek 30, heart · cluster (48 disc) · device · "…" | Large art: the 360 column (no volume row; the aside sits under the block); Centered at its Small record |
+| Standard | Z4b's 48 bar | Z4b's 112 | Z4b's Card and Column; Centered with the 76 gradient foot |
+| Huge | 56 bar, 64 gutter, pivots 22/28 | 120: seek 40, row 80, 44 targets, 64 disc, 160 volume | the 860 card (360 cover, 64/72 title, 72 disc) under the 150/160 display title; the 440 Up next column beside the lyrics |
+| Huge 4K | 72 bar, 96 gutter, pivots 28/36, words 17 | 280 (from the stage's own `stage.huge4k` rung): seek 72, row 160, 56 targets, 96 disc, 220 volume | the 1120 card (480 cover), the larger column and Centered records; the 560 Up next column |
+
+Every rect the allocator hangs under its 48 bar (the identity card, a Portrait or Compact identity, the pane, the 460 card, the face
+chip, the docked gallery) moves down by the tier's `Drop` (the head's height above 48). An arrangement that does not fit its tier tries
+Standard's, then the plate. Crossings re-key nothing: the stage root, the transport's layer and the cover keep their nodes; the plates
+cross-fade, the cover and the pane spring.
 
 ## ZT4: discovery tiers
 

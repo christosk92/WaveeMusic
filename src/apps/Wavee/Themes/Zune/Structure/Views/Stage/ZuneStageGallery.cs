@@ -30,12 +30,17 @@ internal static class ZuneStageGallery
     /// <summary>The registered template of <see cref="ViewKeys.StageGallery"/>. It reads the layout (the pane's size is the layout's).</summary>
     public static Element Template(StageGalleryProps props, in ViewContext ctx)
     {
+        var tiers = ctx.Tier();   // hooks first, unconditionally
         var stage = props.Stage;
         var layout = stage.Layout.Value;
+        // the docked column starts under the tier's head (taller than the allocator's 48 bar at Huge 4K and on a Compact window); the sheet
+        // rises from the foot and keeps its height
+        float drop = layout.Aspect == Stage.Aspect.Portrait ? 0f : ZuneStageTiers.StageOf(in tiers).Drop;
         return new BoxEl
         {
+            Margin = new Edges4(0f, drop, 0f, 0f),
             OnHoverMove = _ => stage.OverControls(true), OnPointerExit = () => stage.OverControls(false),
-            Children = [Embed.Comp(new ZuneGalleryPane.Props(layout.GalleryW, layout.GalleryH, props), static () => new ZuneGalleryPane())],
+            Children = [Embed.Comp(new ZuneGalleryPane.Props(layout.GalleryW, MathF.Max(0f, layout.GalleryH - drop), props), static () => new ZuneGalleryPane())],
         };
     }
 }
