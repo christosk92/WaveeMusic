@@ -48,6 +48,10 @@ public static class ZuneHomeRules
     /// <summary>The air between a heading's title group and its tools (A6): the "see all" word never glues to the title or its subtitle.</summary>
     public const float HeadToolsGap = 14f;
 
+    /// <summary>A shelf's heading row takes the header's room before the shelf's own spacer does (the engine's header row is title, spacer, pager:
+    /// two grow factors would split the room), so "see all" stands at the row's right edge as the board draws it.</summary>
+    public const float HeadFillGrow = 1000f;
+
     /// <summary>The busy bar's height (a switch in flight), over the top of the content.</summary>
     public const float BusyH = 2f;
 
@@ -80,6 +84,9 @@ public static class ZuneHomeRules
 
     /// <summary>The idle bars' ink: the primary text at 14 %.</summary>
     public const float BarIdleAlpha = 0.14f;
+
+    /// <summary>The gap between two daypart words of the clock's last line (a space at 12; the line wraps between words, as the board's does).</summary>
+    public const float DaypartWordGap = 4f;
 
     /// <summary>The daylist art's focus (a little above centre) and its decode size.</summary>
     public const float DaylistArtFocusY = 0.4f;
@@ -207,6 +214,11 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
 
     /// <summary>The quickplay groups stand in one column (Compact) instead of a row that wraps; the gap between them.</summary>
     public bool QuickStacked { get; init; }
+
+    /// <summary>The groups wrap onto a second row where the page is narrower than the row of them (every tier but Huge). Huge keeps ONE row, as
+    /// Z-Frame-Huge draws it (the pins, then the history running on past the page's right edge, clipped there): the owner's window never stacks the
+    /// groups into full rows of big tiles.</summary>
+    public bool QuickWrap { get; init; } = true;
 
     /// <inheritdoc cref="QuickStacked"/>
     public float QuickGroupGap { get; init; } = ZuneHomeRules.QuickGap;
@@ -372,7 +384,7 @@ public static class ZuneHomeTiers
     // Huge's numbers (Z-Frame-Huge, Z-Home-Huge); Huge 4K is the same (the page caps at 2400, decision 2; plan "Home at 4K is built from the Huge rules").
     private static ZuneHomeLayout Huge(WidthTier tier) => Std(tier) with
     {
-        ZoneGap = 36f, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
+        ZoneGap = 36f, QuickWrap = false, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
         DaylistH = 220f, DaylistArtW = 440f, ClockW = 320f, DaylistTitle = ZuneDaylistTitle.Hero, DaylistPad = 40f, DaylistRings = 3, ClockBarW = 52f,
         ShelfCols = 8, ShelfMinW = 140f, WideCols = 6, ClusterCols = 3, TileCols = 8, TileH = 120f, TileBig = true,
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,

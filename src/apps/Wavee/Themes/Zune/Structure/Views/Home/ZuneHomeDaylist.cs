@@ -62,7 +62,7 @@ internal static class ZuneHomeDaylist
         Element[] rings =
         [
             K.Ring("zune-daylist-play", pauses ? Icons.Pause : Icons.Play, Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), lay.RingLabels,
-                   primary: true, () => HomeCardNav.Play(in c), lay.RingSize, lay.RingTarget),
+                   primary: true, () => HomeCardNav.Play(in c), lay.RingSize, lay.RingTarget, stableName: true),
             // Shuffle STARTS the daylist shuffled; it never toggles.
             K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), lay.RingLabels, primary: false,
                    () => HomeVerbs.ShuffleContext(c.Uri), lay.RingSize, lay.RingTarget),
@@ -85,7 +85,7 @@ internal static class ZuneHomeDaylist
         bool words = lay.RingLabels;
         Element[] rings =
         [
-            K.Ring("zune-daylist-play", Icons.Play, Loc.Get(Strings.Home.Play), words, primary: true, static () => { }, lay.RingSize, lay.RingTarget),
+            K.Ring("zune-daylist-play", Icons.Play, Loc.Get(Strings.Home.Play), words, primary: true, static () => { }, lay.RingSize, lay.RingTarget, stableName: true),
             K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
             K.Ring("zune-daylist-save", Icons.Heart, Loc.Get(Strings.Home.Save), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
             K.Ring("zune-daylist-more", Icons.More, Loc.Get(Strings.Home.More), showLabel: false, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
@@ -206,7 +206,7 @@ internal static class ZuneHomeDaylist
             },
             new BoxEl
             {
-                Key = "zune-daylist-actions", Direction = 0, Wrap = true, Gap = lay.RingsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Key = "zune-daylist-actions", Direction = 0, Wrap = !end, Gap = lay.RingsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Shrink = end ? 0f : 1f, Margin = end ? default : new Edges4(0f, H.DaylistActionsTop, 0f, 0f),
                 Animate = Design.Reduced ? null : ZuneMotion.PivotSlide, Children = inCopy.ToArray(),
             },
@@ -291,17 +291,18 @@ internal static class ZuneHomeDaylist
                 Width = barW, Height = on ? H.BarLitH : H.BarH, Shrink = 0f,
                 Fill = on ? Prop.Of(static () => Tok.AccentDefault) : Prop.Of(static () => Tok.TextPrimary with { A = H.BarIdleAlpha }),
             };
-            if (i > 0) names.Add(LineText(" · ") with { Shrink = 0f });
-            names.Add(LineText(Loc.Get(DaypartTimeline.LabelKey(i))) with
+            // Each word carries the dot after it ("evening ·"), so the line wraps between words and a dot never starts a line (the board's second
+            // line is "night"); the current one is in the primary ink.
+            names.Add(LineText(Loc.Get(DaypartTimeline.LabelKey(i)) + (i < bars.Length - 1 ? " ·" : "")) with
             {
-                Case = R.Case.For(LabelKind.Label), Color = on ? Tok.TextPrimary : Tok.TextSecondary, Shrink = on ? 0f : 1f,
+                Case = R.Case.For(LabelKind.Label), Color = on ? Tok.TextPrimary : Tok.TextSecondary, Shrink = 0f,
             });
         }
         var kids = new List<Element>(4)
         {
             line,
             new BoxEl { Direction = 0, Gap = H.BarGap, AlignItems = FlexAlign.End, Height = H.BarLitH, MinWidth = 0f, Children = bars },
-            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = names.ToArray() },
+            new BoxEl { Direction = 0, Wrap = true, Gap = H.DaypartWordGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = names.ToArray() },
         };
         if (action is not null) kids.Add(action);
         return new BoxEl { Key = "zune-daylist-clock-block", Direction = 1, Gap = H.ClockGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
