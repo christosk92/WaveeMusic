@@ -386,4 +386,31 @@ public static partial class ZuneStageGeometry
         }
         return new ZuneRect(nx, y, MathF.Max(0f, right - nx), h);
     }
+
+    // ── Lyrics mode's identity column and pane (Z-Lyrics, -Small, -Huge) ─────────────────────────────────────────────────
+
+    /// <summary>Where Lyrics mode puts its parts: the cover, the title column under it and the lines' pane.</summary>
+    public readonly record struct LyricsSideRects(ZuneRect Cover, ZuneRect Titles, ZuneRect Pane);
+
+    /// <summary>Lyrics mode on a wide stage in a tier with an identity column (Standard, Small, Huge): the cover on the gutter with its column of
+    /// title, accent artist line and tag line, the lines' pane <see cref="ZuneStageLyricsSide.Gap"/> to its right running to the gutter (or short of
+    /// the Up next column). Null elsewhere (Portrait, Compact's identity card, every other mode): the allocator's rects stand.</summary>
+    public static LyricsSideRects? LyricsSide(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier)
+    {
+        if (look.Mode != Stage.Mode.Lyrics || look.IsLayout || tier.LyricsSide is not { } s) return null;
+        if (layout.Aspect is not (Stage.Aspect.Desktop or Stage.Aspect.Ultrawide)) return null;
+        float head = tier.HeadH, foot = layout.TransportTop;
+        float room = MathF.Max(0f, foot - head);
+        float y = s.Centered ? head + MathF.Max(0f, (room - s.ColumnH) * 0.5f) : head + s.PadTop;
+        float x = tier.Gutter;
+        var cover = new ZuneRect(x, y, s.Cover, s.Cover);
+        float ty = y + s.Cover + s.ColGap;
+        var titles = new ZuneRect(x, ty, s.Cover, MathF.Max(0f, s.ColumnH - s.Cover - s.ColGap));
+        float lead = LyricsLead(in layout);
+        float left = x + s.Cover + s.Gap;
+        float right = layout.W - tier.Gutter;
+        if (layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
+        float nx = left - lead;
+        return new LyricsSideRects(cover, titles, new ZuneRect(nx, head, MathF.Max(0f, right - nx), room));
+    }
 }

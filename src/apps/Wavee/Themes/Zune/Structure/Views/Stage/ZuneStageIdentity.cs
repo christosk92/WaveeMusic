@@ -97,6 +97,18 @@ internal static class ZuneStageIdentity
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
                 break;
             }
+            case ZuneStageForm.Plate when G.LyricsSide(in L, in k, t) is { } side && t.LyricsSide is { } ls:
+            {
+                // Lyrics mode (Z-Lyrics): the cover on the gutter, under it the 26 title, the accent artist line and the quiet tag line
+                (coverX, coverY, size) = (side.Cover.X, side.Cover.Y, side.Cover.W);
+                (titlesX, titlesY, titlesW, titlesH) = (side.Titles.X, side.Titles.Y, side.Titles.W, side.Titles.H);
+                gap = ls.ColGap;
+                var head = Title(title, ls.TitleSize, ls.TitleLine, G.TitleLight, 0f) with { Margin = new Edges4(0f, ls.TitleTop, 0f, 0f) };
+                kids.Add(head);
+                kids.Add(Meta(props, ls.ArtistSize, ls.ArtistLine, G.TitleRegular, ls.ArtistDisplay ? R.Type.DisplayFace : null, set.Text, Ink.Ink, false, heroArtist));
+                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(props.Chips, ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
+                break;
+            }
             default:
             {
                 size = L.CoverSize(in k);
@@ -222,6 +234,25 @@ internal sealed class ZuneStageMetaLink : Component
     }
 
     void Go() => _props?.Open(_begin);
+}
+
+/// <summary>Lyrics mode's tag line ("synced lyrics · 73 bpm"): the chips' facts as one quiet line of tertiary type, no plates (Z-Lyrics).</summary>
+internal sealed class ZuneStageTags : Component
+{
+    public sealed record Props(Func<IReadOnlyList<StageChipFact>> Chips, float Size, float Line, float Top);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var chips = p.Chips();
+        var parts = new string[chips.Count];
+        for (int i = 0; i < parts.Length; i++) parts[i] = chips[i].Text;
+        return new TextEl(string.Join(" · ", parts))
+        {
+            Size = p.Size, LineHeight = p.Line, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.NoWrap, MaxLines = 1,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, p.Top, 0f, 0f),
+        };
+    }
 }
 
 /// <summary>The format chip, "Synced lyrics" and BPM: flat, square, the label case. Its own component so the format / device / owner signals
