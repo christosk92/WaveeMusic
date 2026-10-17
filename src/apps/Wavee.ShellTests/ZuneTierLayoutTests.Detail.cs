@@ -63,7 +63,8 @@ public sealed partial class ZuneTierLayoutTests
         bool vertical = size.Window == WidthTier.Compact;
         bool tracks = kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Liked;
         bool head = kind == DetailKind.Liked;
-        bool fold = size.Tall == HeightTier.Short;
+        // Z-Album-Small is 800 x 600 (short) and keeps its 64/72 panorama; a Small page folds only below the record's floor.
+        bool fold = size.Tall == HeightTier.Short && !(size.Window == WidthTier.Small && size.Height >= ZuneDetailRules.SmallPanoramaMinH);
 
         // What marks the arm on screen: the hero (a track page) or the show header, or the identity column, or Liked Songs' head.
         string armKey = vertical ? (tracks ? ZuneDetailRules.HeroKey : ZuneDetailRules.ShowHeaderKey) : head ? ZuneDetailRules.HeadKey : ZuneDetailRules.RailKey;

@@ -156,15 +156,15 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
     [Fact]
     public void The_panorama_band_clears_its_descender_at_every_tier_and_the_primary_verbs_leave_the_column_from_small_up()
     {
-        // A3: the band is the title's size, its descender (a quarter of it) and 8 of air: 88 / 158 / 196.
-        Assert.Equal(88f, ZuneDetailRules.PanoramaHFor(64f));
-        Assert.Equal(158f, ZuneDetailRules.PanoramaHFor(120f));
-        Assert.Equal(196f, ZuneDetailRules.PanoramaHFor(150f));
+        // A3 (as the boards draw it): the title sits on its exact line and the band is the boards' own, 80 / 140 / 176, its gap under the line holding the descender.
+        Assert.Equal(80f, ZuneDetailRules.PanoramaHFor(64f));
+        Assert.Equal(140f, ZuneDetailRules.PanoramaHFor(120f));
+        Assert.Equal(176f, ZuneDetailRules.PanoramaHFor(150f));
         foreach (var (tier, size) in new[] { (WidthTier.Compact, 64f), (WidthTier.Small, 64f), (WidthTier.Standard, 120f), (WidthTier.Huge, 150f),
                                              (WidthTier.Huge4K, 150f) })
         {
             var lay = ZuneDetailTiers.For(tier);
-            Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, $"{tier}: the {lay.PanoramaH} band clears a {size} title's descender");
+            Assert.True(lay.PanoramaGap > 0f && lay.PanoramaH >= size * 1.2f - 0.5f, $"{tier}: the {lay.PanoramaH} band clears a {size} title's descender");
             Assert.True(lay.PanoramaSize <= 0f || lay.PanoramaSize == size, $"{tier}: the record's step is the {size} title");
         }
 

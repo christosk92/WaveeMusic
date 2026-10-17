@@ -63,7 +63,7 @@ public static class ZunePlaylistRules
     // ── the editor ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The read arm's hairline (1) and its resting opacity; the hover raises it to full. The pencil's glyph and box.</summary>
-    public const float UnderlineH = 1f, UnderlineRest = 0.35f, PencilGlyph = 14f, PencilBox = 24f, UnderlineGap = 4f;
+    public const float UnderlineH = 1f, UnderlineRest = 0f, PencilGlyph = 14f, PencilBox = 24f, UnderlineGap = 4f;
 
     /// <summary>The title field's extra height over its font size, the description field's height, and the description's size and clamp (13/20).</summary>
     public const float TitleFieldExtra = 16f, DescriptionFieldH = 72f, DescriptionSize = 13f;

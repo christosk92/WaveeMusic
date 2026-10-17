@@ -159,7 +159,7 @@ public sealed class ZuneDetailTiersTests
         var lay = ZuneDetailTiers.For(tier);
         Assert.Equal(size, StepOf(lay));
         Assert.Equal(ZuneDetailRules.PanoramaHFor(size), lay.PanoramaH);
-        Assert.True(lay.PanoramaH >= size * 1.25f + 8f - 0.5f, "the band clears the title's descender");
+        Assert.True(lay.PanoramaH >= size * 1.2f - 0.5f && lay.PanoramaGap > 0f, "the band clears the title's descender");
     }
 
     [Fact]

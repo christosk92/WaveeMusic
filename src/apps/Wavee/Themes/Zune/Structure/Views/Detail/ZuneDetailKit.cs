@@ -104,6 +104,8 @@ internal static class ZuneDetailKit
     {
         var text = lay.PanoramaLarge ? R.Type.Panorama(title) : R.Type.PanoramaCompact(title);
         if (lay.PanoramaSize > 0f) text = text with { Size = lay.PanoramaSize, LineHeight = lay.PanoramaLine };
+        // The boards set the title on an EXACT line (120/130, 150/160, 64/72): the line advances by the line height, not the font's taller natural box.
+        text = text with { LineStacking = LineStacking.BlockLineHeight };
         if (lay.PanoramaWraps)
             return text with
             {
@@ -151,7 +153,8 @@ internal static class ZuneDetailKit
             [
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = inside ? 1f : 0f, Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, 0f),
+                    Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = inside ? 1f : 0f,
+                    Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, inside ? lay.PanoramaGap : 0f),
                     Animate = ZuneMotion.TitleScale, Opacity = Z.PanoramaOpacity,
                     Children = [title],
                 },
