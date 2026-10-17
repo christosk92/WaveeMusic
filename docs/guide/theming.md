@@ -2227,7 +2227,7 @@ toggle are `PanelTransportProps.Source` / `.Device` / `.ToggleDevicePicker`, 1.2
 the docked body's sections. A request for the device picker (a toast's "Choose device", the tray's
 Devices: `PanelTransportProps.DevicePickerRequest`, the signal the bar's Devices button opens on) is answered by the sheet: the frame shows the now-playing
 body if the sheet shows another or none, then asks the Devices door (`ClassicSheetPickerAsk`, once per ask) to open its picker, at once when that body is
-already up and after the slide-up when it was not; at every other placement the bar's button answers as before. The other panel kinds as a sheet are the head over their own
+already up and in the same step when it was not (the picker follows the door as the sheet slides up); at every other placement the bar's button answers as before. The other panel kinds as a sheet are the head over their own
 scrolling body.
 
 Still not moved out of core, because none is a ladder this primitive can state without changing behaviour: the chrome-row allocator

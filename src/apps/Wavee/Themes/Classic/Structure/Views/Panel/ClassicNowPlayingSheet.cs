@@ -270,13 +270,15 @@ internal sealed class ClassicSheetDeviceDoor : Component
         var toggle = t.ToggleDevicePicker;
         var ask = UseContext(ClassicPanel.SheetPickerAsk);
         int ticket = ask?.Ticket.Value ?? 0;
+        // The picker anchors on the door's node: an ask waits for it to be realized (a door mounted by the ask itself is not yet).
+        var (realized, setRealized) = UseState(false);
         UseEffect(() =>
         {
-            if (ask is null || ticket == ask.Consumed) return;
+            if (ask is null || !realized || ticket == ask.Consumed) return;
             ask.Consumed = ticket;
             if (handle.Value is not { IsOpen: true }) toggle?.Invoke(overlay, anchor, handle);
-        }, DepKey.From(ticket));
-        _realized ??= h => anchor.Value = h;
+        }, DepKey.From(ticket, realized ? 1 : 0));
+        _realized ??= h => { anchor.Value = h; setRealized(true); };
         var door = ClassicPanel.DoorBox(Icons.Devices, null, device.Name, () => toggle?.Invoke(overlay, anchor, handle), device.Remote, _realized);
         return ToolTip.Wrap(door, Loc.Get(Strings.Player.ChooseDevice));
     }

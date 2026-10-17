@@ -91,10 +91,6 @@ public static class ClassicPanelTiers
     public const float SheetHeaderH = 48f, SheetHeaderInset = 8f, SheetHeaderGap = 4f, SheetHeaderButton = 40f, SheetHeaderGlyph = 16f,
         SheetSourceSize = 12f, SheetSourceLine = 16f;
 
-    /// <summary>How long the frame waits before asking the Devices door to open its picker, when the sheet had to slide up (or switch to the
-    /// now-playing body) for the ask: the slide's 300 and a beat, so the picker anchors on a door that stands still.</summary>
-    public const float SheetPickerAskMs = 350f;
-
     /// <summary>The now-playing sheet's whole head: the grab strip over the header row.</summary>
     public const float SheetHeadH = GrabStripH + SheetHeaderH;
 

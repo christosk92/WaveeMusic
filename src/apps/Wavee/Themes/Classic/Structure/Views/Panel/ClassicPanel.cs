@@ -373,11 +373,10 @@ internal sealed class ClassicPanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     readonly ClassicModalScope _scope = new();
-    // A device picker ask the sheet answers (see Render): the last request seen, whether this instance has taken its baseline, the ask waiting for the
-    // sheet to finish sliding up, and what the timer reads (the sheet is open on the now-playing body).
+    // A device picker ask the sheet answers (see Render): the last request seen and whether this instance has taken its baseline.
     readonly ClassicSheetPickerAsk _ask = new();
     int _askSeen;
-    bool _askBaselined, _askPending, _nowPlayingUp;
+    bool _askBaselined;
 
     public override Element Render()
     {
@@ -401,27 +400,25 @@ internal sealed class ClassicPanelFrame : Component
         UseLayoutEffect(() => { if (drag is not null) drag.SlideNode = Context.HostNode; });   // the arm runs the open/close slide; the drag moves the host
         // A request for the device picker (a toast's "Choose device", the tray's Devices) while the panel is a sheet: the sheet covers the player bar whose
         // Devices button answers it at every other placement (and the Compact mini bar has none), so the SHEET answers. It shows the now-playing body
-        // (the one that carries the Devices door) if it shows another or none, then asks the door to open its picker: at once when that body is already up,
-        // else once the slide-up has landed (the picker anchors on the door, which must stand still). The baseline is taken at mount: a remount never
+        // (the one that carries the Devices door) if it shows another or none, and raises the ask in the same step: the door answers it once, as soon as
+        // it stands (it may mount because of this very step), and the picker follows the door while the sheet slides up (the overlay re-places on anchor
+        // drift). No timer: an idle headless clock never reaches one, and nothing needs the wait. The baseline is taken at mount: a remount never
         // replays an old request.
         int pickerAsked = props.Transport?.DevicePickerRequest?.Value ?? 0;
         if (!_askBaselined) { _askBaselined = true; _askSeen = pickerAsked; }
-        _nowPlayingUp = open && sheet && body == PanelMode.NowPlaying;
+        bool nowPlayingUp = open && sheet && body == PanelMode.NowPlaying;
         UseEffect(() =>
         {
             if (pickerAsked == _askSeen) return;
             _askSeen = pickerAsked;
             if (!sheet) return;
-            if (_nowPlayingUp) { _ask.Ticket.Value++; return; }
-            props.ShowMode?.Invoke(PanelMode.NowPlaying);
-            _askPending = true;
+            if (!nowPlayingUp)
+            {
+                if (props.ShowMode is not { } show) return;
+                show(PanelMode.NowPlaying);
+            }
+            _ask.Ticket.Value++;
         }, DepKey.From(pickerAsked));
-        UseTimeout(() =>
-        {
-            if (!_askPending) return;
-            _askPending = false;
-            if (_nowPlayingUp) _ask.Ticket.Value++;
-        }, ClassicPanelTiers.SheetPickerAskMs, DepKey.From(pickerAsked));
         // A sheet is modal: focus into it with Tab trapped there, back where it was on close; Escape closes it.
         bool modal = open && sheet;
         UseLayoutEffect(() => _scope.Update(hooks, Context.Scene, Context.HostNode, modal), DepKey.From(modal));
