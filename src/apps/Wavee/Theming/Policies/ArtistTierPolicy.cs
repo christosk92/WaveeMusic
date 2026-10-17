@@ -83,6 +83,11 @@ public class ArtistTierPolicy
     /// <summary>The rows of one chart column in the tiers <paramref name="facts"/> (contract 1.22): five where the structure declares none.</summary>
     public virtual int ChartRows(in TierFacts facts) => ArtistSections.ChartMaxRows;
 
+    /// <summary>How far under the top of the page's viewport a pivot click parks a section, and the scroll spy's band edge, in the tiers
+    /// <paramref name="facts"/> (optional): the sticky band's height where the band sits INSIDE the viewport (the shell before tiers and Classic: 56), 0
+    /// where the structure draws its band outside the viewport (Zune). The artist and the profile pages both read it.</summary>
+    public virtual float BandClearance(in TierFacts facts) => Detail.BandLayout.Height;
+
     /// <summary>The profile list grid's narrowest card in the tiers <paramref name="facts"/>.</summary>
     public virtual float ProfileListMinCell(in TierFacts facts) => 176f;
 }

@@ -405,7 +405,7 @@ internal static class ZuneConcertDetail
             Children =
             [
                 Cells.SectionHead(Loc.Get(Strings.Concerts.Detail.RelatedConcerts), null,
-                    K.Link("related:near", Loc.Get(Strings.Concerts.NearYou), s_goHub)),
+                    K.Link("related:near", Loc.Get(Strings.Concerts.NearYou), s_goHub, lay.LinkTarget)),
                 new GridEl
                 {
                     Columns = tracks, ColGap = lay.RelatedGap, RowGap = lay.RelatedGap, RowHeight = lay.RelatedRowH, Children = cards,

@@ -155,7 +155,8 @@ internal static class ZuneArtistHero
     /// <summary>The 36 ring (the 40 target at Compact) with its lowercase word beside it where <paramref name="showLabel"/>.</summary>
     static Element Ring(string key, string glyph, string label, bool showLabel, bool primary, Action? onClick, float target)
     {
-        Element ring = K.Ring(key, glyph, label, showLabel, primary, onClick ?? s_noop);
+        // The clickable node is the kit's ring box: its hit edge is the tier's target (40 at Compact, the ring's own 36 elsewhere), the disc centred in it.
+        Element ring = K.Ring(key, glyph, label, showLabel, primary, onClick ?? s_noop, target: target);
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = target, MinWidth = showLabel ? 0f : target,

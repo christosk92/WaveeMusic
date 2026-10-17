@@ -26,7 +26,7 @@ using System.Collections.Immutable;
 using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using Wavee.Theming;
-using Wavee.Theming.Roles;
+using Wavee.Theming.Roles;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -297,6 +297,40 @@ public static class ZuneConcertRules
     /// <summary>The calendar's cells.</summary>
     public const float CalendarCellW = 38f, CalendarCellH = 32f, CalendarHeadH = 20f, CalendarGap = 4f;
 
+    // ── the popups' fit (a Compact window is 300 wide) ──
+
+    /// <summary>How far a flyout keeps from the window's side edges (both sides), and the flyout's own padding (<c>Spacing.S</c>) the calendar sits inside.</summary>
+    public const float FlyoutMarginX = 12f, FlyoutPad = 8f;
+
+    /// <summary>A flyout's width: its natural one, less than the window less the margins where the window is narrower.</summary>
+    public static float FlyoutWidthIn(float natural, float viewportWidth)
+        => MathF.Min(natural, MathF.Max(1f, viewportWidth - 2f * FlyoutMarginX));
+
+    /// <summary>How far a flyout keeps from the window's top and bottom (both), and what the place picker's card holds besides its results (the field, the
+    /// location button, the padding and the gaps).</summary>
+    public const float FlyoutMarginY = 24f, PickerChrome = 160f;
+
+    /// <summary>A flyout's height cap: its natural one, or the window less its margins where the window is shorter (a Short window is 330 tall).</summary>
+    public static float FlyoutHeightIn(float natural, float viewportHeight)
+        => MathF.Min(natural, MathF.Max(1f, viewportHeight - 2f * FlyoutMarginY));
+
+    /// <summary>The place picker's results cap in a window <paramref name="viewportHeight"/> tall: 248, or what the card leaves (a row at least).</summary>
+    public static float PickerResultsIn(float viewportHeight)
+        => MathF.Max(PickerRowH, MathF.Min(PickerResultsMaxH, viewportHeight - PickerChrome - 2f * FlyoutMarginY));
+
+    /// <summary>A calendar day's width in a flyout of <paramref name="flyoutWidth"/>: 38, or the seven shared across what the padding leaves.</summary>
+    public static float CalendarCellWIn(float flyoutWidth)
+        => MathF.Min(CalendarCellW, MathF.Max(1f, (flyoutWidth - 2f * FlyoutPad - 6f * CalendarGap) / 7f));
+
+    /// <summary>A calendar day's height: 32, or the tier's hit edge where that is taller (40 at Compact).</summary>
+    public static float CalendarCellHIn(float target) => MathF.Max(CalendarCellH, target);
+
+    /// <summary>The month leaf's back target: 28, or the tier's hit edge where that is larger.</summary>
+    public static float BackEdge(float target) => MathF.Max(MonthBackBox, target);
+
+    /// <summary>The place picker's field in a card of <paramref name="card"/> wide (the field is 20 narrower than the card).</summary>
+    public static float PickerFieldIn(float card) => MathF.Max(1f, card - (PickerW - PickerFieldW));
+
     // ── the location picker ──
 
     /// <summary>The picker's width, its field, its results' cap, a row and its pin.</summary>
@@ -366,7 +400,7 @@ public static class ZuneConcertTiers
         SlabHeadSize = 26f, SlabHeadLine = 32f, OfferRowH = 48f, OfferSize = 15f, LineupAvatar = 48f, LineupRows = true, LineupRowH = 64f,
         RelatedColumns = 1, RelatedPlate = false, RelatedRowH = 56f, RelatedGap = 0f, RelatedDateW = 40f, RelatedDaySize = 28f, RelatedDayLine = 30f,
         Target = 40f, HubPill = 40f, GridMinColumn = 150f, ZoneGap = 24f, ScheduleWide = false, ScheduleDateW = 48f, SchedulePhotoW = 0f,
-        SchedulePhotoH = 160f, ScheduleTitleSize = 40f, ScheduleTitleLine = 48f,
+        SchedulePhotoH = 160f, ScheduleTitleSize = 40f, ScheduleTitleLine = 48f, LinkTarget = 40f,
     };
 
     /// <summary>Small (Z-Concert-Small): the title 40/48, the numeral 64 over its words, the 260 slab beside the facts, the rows.</summary>
@@ -375,7 +409,7 @@ public static class ZuneConcertTiers
         Tier = WidthTier.Small, TitleSize = 40f, TitleLine = 48f, TitleSingleLine = false, DateStacked = true, DateGap = 28f, DateTop = 4f,
         DateWordsSize = 13f, DateWordsLine = 18f, HeroGap = 32f, TicketsW = 260f, SlabBleed = false, SlabPadX = 20f, SlabHeadSize = 22f, SlabHeadLine = 28f,
         OfferRowH = 36f, OfferSize = 14f, LineupRowH = 56f, RelatedGap = 0f, Target = 36f, HubPill = 32f, GridMinColumn = 160f, ScheduleDateW = 48f,
-        SchedulePhotoH = 180f,
+        SchedulePhotoH = 180f, LinkTarget = 0f,
     };
 
     /// <summary>Standard (Z-Concert): the title 64/72, the numeral 64 over "november · saturday", the 320 slab beside the facts, a line of round faces
@@ -415,7 +449,30 @@ public static class ZuneConcertTiers
 
     /// <summary>The record of <paramref name="facts"/> by the CONTENT tier (a docked panel leaves the page narrower than the window); Standard's where no
     /// frame resolved the tiers (a view mounted alone).</summary>
-    public static ZuneConcertLayout Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Content);
+    public static ZuneConcertLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return Standard;
+        return facts.Height == HeightTier.Short ? s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)] : For(facts.Content);
+    }
+
+    /// <summary>The Short rung (windows 330-699 tall: the band folds to 52 and the player bar holds 72, so about 160 of height is left): the
+    /// title, the numeral and the facts take the Small voice at most (40/48 and 15/22), the gaps close, the schedule's photo and name shrink. The
+    /// columns, the slab and the rows are the content tier's own. A pure fold of the tier's record.</summary>
+    static ZuneConcertLayout Fold(ZuneConcertLayout r) => r with
+    {
+        TitleSize = MathF.Min(r.TitleSize, Small.TitleSize), TitleLine = MathF.Min(r.TitleLine, Small.TitleLine),
+        NumeralSize = MathF.Min(r.NumeralSize, ShortNumeral), NumeralLine = MathF.Min(r.NumeralLine, ShortNumeral),
+        DateWordsSize = MathF.Min(r.DateWordsSize, Standard.DateWordsSize), DateWordsLine = MathF.Min(r.DateWordsLine, Standard.DateWordsLine),
+        FactsSize = MathF.Min(r.FactsSize, Standard.FactsSize), FactsLine = MathF.Min(r.FactsLine, Standard.FactsLine),
+        SectionGap = MathF.Min(r.SectionGap, ShortGap), HeroGap = MathF.Min(r.HeroGap, Standard.HeroGap), ZoneGap = MathF.Min(r.ZoneGap, ShortGap),
+        SchedulePhotoH = MathF.Min(r.SchedulePhotoH, ShortPhotoH), ScheduleTitleSize = MathF.Min(r.ScheduleTitleSize, Small.ScheduleTitleSize),
+        ScheduleTitleLine = MathF.Min(r.ScheduleTitleLine, Small.ScheduleTitleLine),
+    };
+
+    /// <summary>The folded numeral, the folded gaps and the folded schedule photo's height.</summary>
+    public const float ShortNumeral = 48f, ShortGap = 20f, ShortPhotoH = 140f;
+
+    static readonly ZuneConcertLayout[] s_short = [Fold(Compact), Fold(Small), Fold(Standard), Fold(Huge), Fold(Huge4K)];
 }
 
 /// <summary>What the concert pages lay out in one content tier (see <see cref="ZuneConcertTiers"/>).</summary>
@@ -562,6 +619,9 @@ public sealed record ZuneConcertLayout : ITierLayoutRecord
 
     /// <summary>See <see cref="ScheduleDateW"/>.</summary>
     public required float ScheduleTitleLine { get; init; }
+
+    /// <summary>A bare link word's minimum hit edge (the "near you" link beside a heading): 40 at Compact, 0 elsewhere (the word is its own target).</summary>
+    public float LinkTarget { get; init; }
 
     /// <summary>The hub's records are the event page's (the hub has no board of its own): its filter pills' height in the tiers <paramref name="facts"/>.</summary>
     public static float HubPillOf(in TierFacts facts) => ZuneConcertTiers.Of(in facts).HubPill;

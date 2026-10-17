@@ -52,19 +52,19 @@ internal static class ZuneArtistSections
         {
             ArtistSection.Popular => PopularBand(p, lay),
             ArtistSection.LatestRelease => K.Section(K.Heading(Loc.Get(Strings.Artist.LatestRelease), null, null), ZuneArtistBanners.Latest(a.Latest, lay.LatestArt)),
-            ArtistSection.Albums => Discography(a, DiscoFacet.Albums, p),
-            ArtistSection.Singles => Discography(a, DiscoFacet.Singles, p),
-            ArtistSection.Compilations => Discography(a, DiscoFacet.Compilations, p),
-            ArtistSection.AppearsOn => AppearsOnShelf(a),
+            ArtistSection.Albums => Discography(a, DiscoFacet.Albums, p, lay),
+            ArtistSection.Singles => Discography(a, DiscoFacet.Singles, p, lay),
+            ArtistSection.Compilations => Discography(a, DiscoFacet.Compilations, p, lay),
+            ArtistSection.AppearsOn => AppearsOnShelf(a, lay),
             ArtistSection.Tour => ZuneArtistBanners.Tour(a),
-            ArtistSection.MusicVideos => VideosShelf(a),
-            ArtistSection.Playlists => PlaylistsShelf(a),
-            ArtistSection.Concerts => ConcertsShelf(a),
-            ArtistSection.Merch => MerchShelf(a),
+            ArtistSection.MusicVideos => VideosShelf(a, lay),
+            ArtistSection.Playlists => PlaylistsShelf(a, lay),
+            ArtistSection.Concerts => ConcertsShelf(a, lay),
+            ArtistSection.Merch => MerchShelf(a, lay),
             ArtistSection.Biography => About(p, lay),
-            ArtistSection.Gallery => GalleryShelf(p),
-            ArtistSection.Related => ArtistsShelf(a.RelatedSlots),
-            _ => ArtistsShelf(p.Fans),
+            ArtistSection.Gallery => GalleryShelf(p, lay),
+            ArtistSection.Related => ArtistsShelf(a.RelatedSlots, lay),
+            _ => ArtistsShelf(p.Fans, lay),
         };
     }
 
@@ -109,12 +109,12 @@ internal static class ZuneArtistSections
 
     // ── the discography facets ───────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element Discography(Artist a, DiscoFacet facet, ArtistPageProps p)
+    static Element Discography(Artist a, DiscoFacet facet, ArtistPageProps p, ZuneArtistLayout lay)
     {
         int total = Artist.FacetTotal(a, facet);
         string artistUri = a.Uri.Text;
         Element link = K.Link(Rules.DiscographyLinkPrefix + ((int)facet).ToString(CultureInfo.InvariantCulture), Loc.Get(Strings.Theme.Zune.Artist.Discography),
-            () => ArtistVerbs.OpenRoute(DiscoRoute.Key(facet, artistUri)));
+            () => ArtistVerbs.OpenRoute(DiscoRoute.Key(facet, artistUri)), lay.LinkTarget);
         Element heading = K.Heading(Artist.FacetTitle(facet), total > 0 ? Strings.Artist.ReleaseCount(total) : null, link);
         // The grid is the core's; the facet's own heading is the page's (it holds the link and the count), so the style's facet draws the grid alone.
         return new BoxEl
@@ -140,7 +140,7 @@ internal static class ZuneArtistSections
     static readonly Track.MenuOptions s_trackMenu = new(ShowGoToAlbum: true);
 
     /// <summary>A shelf of fixed cards under the heading row, the chevrons at its end; one key at every width (the fit is a live prop).</summary>
-    static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, float cardW = Rules.ShelfCardW,
+    static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, float cardW,
                            Func<float, float>? cardHeight = null, Action<ShelfEntity, int>? onInvoke = null)
         => new BoxEl
         {
@@ -178,8 +178,8 @@ internal static class ZuneArtistSections
 
     static Element CardSubtitle(string text) => K.Sub(text) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
-    static Element AppearsOnShelf(Artist a)
-        => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard, Loc.Get(Strings.Artist.AppearsOn),
+    static Element AppearsOnShelf(Artist a, ZuneArtistLayout lay)
+        => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard, Loc.Get(Strings.Artist.AppearsOn), lay.ShelfCardW,
                    onInvoke: static (item, _) => OpenAlbum(item));
 
     static void OpenAlbum(ShelfEntity item) => Track.GoToAlbum(new Album(item.Slot));
@@ -202,7 +202,7 @@ internal static class ZuneArtistSections
         return Controls.Surface(data, s_shelfShape, w);
     }
 
-    static Element VideosShelf(Artist a)
+    static Element VideosShelf(Artist a, ZuneArtistLayout lay)
     {
         var slots = a.VideoSlots;
         var payload = a.VideoPayload;
@@ -213,7 +213,7 @@ internal static class ZuneArtistSections
             var v = i < payload.Length ? payload[i] : default;
             items[i] = new ShelfEntity(slots[i], new Track(slots[i]).Version, v.Thumb, v.DurationMs, slots[i].ToString(CultureInfo.InvariantCulture));
         }
-        return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), Rules.VideoCardW, s_videoHeight, static (item, _) => PlayVideo(item));
+        return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), lay.VideoCardW, s_videoHeight, static (item, _) => PlayVideo(item));
     }
 
     static void PlayVideo(ShelfEntity item) => ArtistVerbs.Play(new Track(item.Slot).Id);
@@ -239,7 +239,7 @@ internal static class ZuneArtistSections
         return Controls.Surface(data, Shape.Video, w);
     }
 
-    static Element PlaylistsShelf(Artist a)
+    static Element PlaylistsShelf(Artist a, ZuneArtistLayout lay)
     {
         var slots = a.PlaylistSlots;
         var subtitles = a.PlaylistSubtitleIds;
@@ -248,7 +248,7 @@ internal static class ZuneArtistSections
         for (int i = 0; i < n; i++)
             items[i] = new ShelfEntity(slots[i], new Playlist(slots[i]).Version, i < subtitles.Length ? subtitles[i] : default, 0,
                 slots[i].ToString(CultureInfo.InvariantCulture));
-        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), onInvoke: static (item, _) => OpenPlaylist(item));
+        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), lay.ShelfCardW, onInvoke: static (item, _) => OpenPlaylist(item));
     }
 
     static void OpenPlaylist(ShelfEntity item) => ArtistVerbs.OpenPlaylist(new Playlist(item.Slot));
@@ -272,9 +272,9 @@ internal static class ZuneArtistSections
 
     // ── concerts and merch ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element ConcertsShelf(Artist a)
+    static Element ConcertsShelf(Artist a, ZuneArtistLayout lay)
         => ShelfOf(Items(a.ConcertSlots, EntityKind.Concert, ArtistSections.ConcertCap), s_concertCard, Loc.Get(Strings.Artist.UpcomingConcerts),
-                   cardHeight: s_concertHeight);
+                   lay.ShelfCardW, cardHeight: s_concertHeight);
 
     static readonly Func<float, float> s_concertHeight = static _ => Rules.StubH;
 
@@ -312,8 +312,8 @@ internal static class ZuneArtistSections
         };
     };
 
-    static Element MerchShelf(Artist a)
-        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch));
+    static Element MerchShelf(Artist a, ZuneArtistLayout lay)
+        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), lay.ShelfCardW);
 
     /// <summary>Square art, the name, the price in accent ink; it opens the shop link when the row carries one.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_merchCard = static (item, _, w) =>
@@ -342,7 +342,7 @@ internal static class ZuneArtistSections
 
     // ── the gallery and the related artists ──────────────────────────────────────────────────────────────────────────────
 
-    static Element GalleryShelf(ArtistPageProps p)
+    static Element GalleryShelf(ArtistPageProps p, ZuneArtistLayout lay)
     {
         var ids = p.Artist.GallerySlots;
         int n = Math.Min(ids.Length, ArtistSections.GalleryCap);
@@ -361,12 +361,12 @@ internal static class ZuneArtistSections
             HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
             OnClick = () => open(urls, index),
             Children = [Controls.Artwork(urls[index], w, w, R.Shape.Cover, decodePx: Rules.GalleryDecode)],
-        }, Loc.Get(Strings.Artist.Gallery));
+        }, Loc.Get(Strings.Artist.Gallery), lay.ShelfCardW);
     }
 
     /// <summary>"Fans also like": round cards with the subtitle "artist" — the related artists, or the fallback pool of followed artists.</summary>
-    static Element ArtistsShelf(ReadOnlySpan<int> slots)
-        => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard, Loc.Get(Strings.Detail.FansAlsoLike),
+    static Element ArtistsShelf(ReadOnlySpan<int> slots, ZuneArtistLayout lay)
+        => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard, Loc.Get(Strings.Detail.FansAlsoLike), lay.ShelfCardW,
                    onInvoke: static (item, _) => OpenArtist(item));
 
     static void OpenArtist(ShelfEntity item) => Track.GoToArtist(new Artist(item.Slot));
@@ -406,7 +406,7 @@ internal static class ZuneArtistSections
         var left = new List<Element>(3);
         if (bio.Length > 0)
             left.Add(Controls.RichText(bio, Rules.BioSize, Tok.TextSecondary, Tok.AccentTextPrimary, lay.AboutTextWidth(p.Width), Rules.BioLines, ArtistVerbs.OpenRoute));
-        if (links.Length > 0) left.Add(LinkPills(links));
+        if (links.Length > 0) left.Add(LinkPills(links, lay.LinkTarget));
         if (cities.Length > 0) left.Add(CityBars(cities));
         Element text = new BoxEl
         {
@@ -454,14 +454,14 @@ internal static class ZuneArtistSections
     };
 
     /// <summary>The external links: link words in the secondary ink (the primary on hover), each opening its page.</summary>
-    static Element LinkPills(LinkEdge[] links)
+    static Element LinkPills(LinkEdge[] links, float target)
     {
         var words = new Element[links.Length];
         for (int i = 0; i < links.Length; i++)
         {
             string name = ArtistVerbs.Text(links[i].Name);
             string url = ArtistVerbs.Text(links[i].Url);
-            words[i] = K.Link("zune-artist-link:" + i.ToString(CultureInfo.InvariantCulture), name, () => ArtistVerbs.OpenLink(url));
+            words[i] = K.Link("zune-artist-link:" + i.ToString(CultureInfo.InvariantCulture), name, () => ArtistVerbs.OpenLink(url), target);
         }
         return new BoxEl { Direction = 0, Gap = Rules.HeadInlineGap, Wrap = true, MinWidth = 0f, Children = words };
     }
