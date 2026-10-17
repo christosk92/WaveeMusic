@@ -233,29 +233,53 @@ public sealed class ZuneFrameMountedTests(ShellHost host)
             FieldWidth = static () => 330f,
             Suggestions = Source(SearchAnswerState.Pending),
         };
-        ViewHarness.With(host, ViewKeys.ShellSearch, props, harness =>
+        // NOT ViewHarness: it mounts the view with no OverlayHost, so the AutoSuggestBox's popup goes to the null overlay service and never
+        // opens. Mounted here under the INSTALLED Zune (its registry and facts are the root's, so the popup layer resolves Zune's
+        // suggestions body) inside an overlay host, as the frame mounts it.
+        host.Run(ZuneHost.Activate);
+        try
         {
-            harness.RunFrames(5);
-            var pill = harness.AbsoluteBounds(harness.Node(ZuneFrameRules.PillKey));
-            Assert.Equal(ZuneFrameRules.TitleBar(WidthTier.Standard).PillW, pill.W, 0.5f);
+            host.Run(() =>
+            {
+                TierFacts tiers = WindowTiers.Resolve(ThemeHost.Facts.Peek().Policies.Tiers, W, H, W);
+                ThemeHost.PublishTiers(in tiers);
+                var shell = Shell.Headless.Mount(() => OverlayHost.Create(FluentGpu.Theming.Slots.View(ViewKeys.ShellSearch, props)), W, H);
+                try
+                {
+                    shell.RunFrames(5);
+                    var scene = shell.Host.Scene;
+                    var pill = scene.PresentedAbsoluteRect(Node(shell, ZuneFrameRules.PillKey));
+                    Assert.Equal(ZuneFrameRules.TitleBar(WidthTier.Standard).PillW, pill.W, 0.5f);
 
-            // Click into the pill and type: the popup opens under it.
-            var p = new Point2(pill.X + pill.W / 2f, pill.Y + pill.H / 2f);
-            harness.Shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, p, 0, 0, TimestampMs: 1000));
-            harness.Shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, p, 0, 0, TimestampMs: 1040));
-            harness.RunFrames(5);
-            harness.Shell.Window.QueueInput(new InputEvent(InputKind.Char, p, 0, 'l', TimestampMs: 1100));
-            harness.Shell.Window.QueueInput(new InputEvent(InputKind.Char, p, 0, 'o', TimestampMs: 1120));
-            Until(harness.Shell, () => !harness.Find(ZuneFrameRules.PopupProgressKey).IsNull, "the suggestions popup opened under the pill");
-            harness.RunFrames(40);   // the focus growth settles
+                    // Click into the pill and type: the popup opens under it.
+                    var p = new Point2(pill.X + pill.W / 2f, pill.Y + pill.H / 2f);
+                    shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: 990));
+                    shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, p, 0, 0, TimestampMs: 1000));
+                    shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, p, 0, 0, TimestampMs: 1040));
+                    shell.RunFrames(5);
+                    shell.Window.QueueInput(new InputEvent(InputKind.Char, default, 0, 'l'));
+                    shell.Window.QueueInput(new InputEvent(InputKind.Char, default, 0, 'o'));
+                    Until(shell, () => !shell.Find(ZuneFrameRules.PopupProgressKey).IsNull, "the suggestions popup opened under the pill");
+                    shell.RunFrames(40);   // the focus growth settles
 
-            // The popup is the box's width and starts at its left edge (the focused box, after its growth).
-            var box = harness.AbsoluteBounds(harness.Node(ZuneFrameRules.PillKey));
-            var popup = harness.AbsoluteBounds(harness.Node(ZuneFrameRules.PopupProgressKey));
-            Assert.Equal(box.W, popup.W, 1f);
-            Assert.Equal(box.X, popup.X, 1f);
-            Assert.True(popup.Y >= box.Y + box.H - 0.5f, $"the popup hangs below the pill ({popup} under {box})");
-        }, UnderZune());
+                    // The popup is the box's width and starts at its left edge (the focused box, after its growth).
+                    var box = scene.PresentedAbsoluteRect(Node(shell, ZuneFrameRules.PillKey));
+                    var popup = scene.PresentedAbsoluteRect(Node(shell, ZuneFrameRules.PopupProgressKey));
+                    Assert.Equal(box.W, popup.W, 1f);
+                    Assert.Equal(box.X, popup.X, 1f);
+                    Assert.True(popup.Y >= box.Y + box.H - 0.5f, $"the popup hangs below the pill ({popup} under {box})");
+                }
+                finally
+                {
+                    shell.Dispose();
+                }
+                ShellHost.AssertNoNetwork();
+            });
+        }
+        finally
+        {
+            host.Run(ZuneHost.Restore);
+        }
     }
 
     // ── the page head ────────────────────────────────────────────────────────────────────────────────────────────────────
