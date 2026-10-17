@@ -290,6 +290,7 @@ internal static class RailWiring
         Source = ReadSheetSource,
         Device = ReadSheetDevice,
         ToggleDevicePicker = Shell.BarToggleDevicePicker,
+        DevicePickerRequest = Playback.DevicePickerRequest,
     };
 
     /// <summary>Where playback comes from: the stage's "Playing from {kind}" over the context's name (the same reads as the stage's transport

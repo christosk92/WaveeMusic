@@ -82,14 +82,18 @@ public static class ClassicPanelTiers
     public const float Corner = 8f;
 
     /// <summary>The now-playing sheet's doors under the transport (Lyrics, Devices, Queue: three equal columns): 48 tall, 8 apart, inset 16,
-    /// 8 above and below (C-NowPlaying-Compact).</summary>
-    public const float SheetDoorH = 48f, SheetDoorGap = 8f, SheetDoorInset = 16f, SheetDoorPadY = 8f, SheetDoorGlyph = 16f, SheetDoorText = 12f, SheetDoorTextLine = 16f;
+    /// 14 under the transport row (the board's `margin-top: 14px`; it was 8) and 8 above the lyrics peek (C-NowPlaying-Compact).</summary>
+    public const float SheetDoorH = 48f, SheetDoorGap = 8f, SheetDoorInset = 16f, SheetDoorTop = 14f, SheetDoorBottom = 8f, SheetDoorGlyph = 16f, SheetDoorText = 12f, SheetDoorTextLine = 16f;
 
     /// <summary>The now-playing sheet's own header under the grab strip (C-NowPlaying-Compact): a 48-tall row inset 8 from the sheet's edges,
     /// its parts 4 apart: the close chevron (40), "Playing from album" over the source's name (12/16 each, the name bold, centred), the
     /// "⋯" (40); 16 glyphs.</summary>
     public const float SheetHeaderH = 48f, SheetHeaderInset = 8f, SheetHeaderGap = 4f, SheetHeaderButton = 40f, SheetHeaderGlyph = 16f,
         SheetSourceSize = 12f, SheetSourceLine = 16f;
+
+    /// <summary>How long the frame waits before asking the Devices door to open its picker, when the sheet had to slide up (or switch to the
+    /// now-playing body) for the ask: the slide's 300 and a beat, so the picker anchors on a door that stands still.</summary>
+    public const float SheetPickerAskMs = 350f;
 
     /// <summary>The now-playing sheet's whole head: the grab strip over the header row.</summary>
     public const float SheetHeadH = GrabStripH + SheetHeaderH;
@@ -99,7 +103,7 @@ public static class ClassicPanelTiers
     //   head      the grab strip and the sheet's header row (close · "Playing from" · ⋯): it stays put and is the sheet's drag handle
     //   scroll    the art (12 under the head, centred, at most 320 and never wider than the sheet less 16 either side), then 20 down the
     //             title (20/28) over the artists (14/20) beside the 40 heart, 14 down the seek block (the rail's 32-tall lane over the 16-tall
-    //             times), 10 down the 56-tall transport row, the doors (8 + 48 + 8), then the lyrics peek and the sections
+    //             times), 10 down the 56-tall transport row, the doors (14 + 48 + 8), then the lyrics peek and the sections
     //
     // The art is the one part that gives: it shrinks so the identity, the transport and the doors stay in the window (8 above its bottom
     // edge), and only below its floor (96) does the column outgrow the sheet and scroll.
@@ -132,7 +136,7 @@ public static class ClassicPanelTiers
     public const float SheetBelowArt = SheetMetaTop + SheetTitleLine + SheetMetaGap + SheetArtistLine
         + SheetSeekTop + SheetSeekRailH + SheetSeekGap + SheetTimesH
         + SheetTransportTop + SheetTransportH
-        + SheetDoorPadY + SheetDoorH + SheetDoorPadY;
+        + SheetDoorTop + SheetDoorH + SheetDoorBottom;
 
     /// <summary>The sheet's height in a window <paramref name="viewportH"/> tall: from 8 under the 48 title bar to the bottom edge.</summary>
     public static float SheetHeight(float viewportH) => MathF.Max(1f, viewportH - ClassicSheetRules.ChromeRow - Gap);

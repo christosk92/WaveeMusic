@@ -10,7 +10,9 @@
 //     the panel is not shown;
 //   · the panels lie inside the window and the content region never runs under a docked one.
 //   · the now-playing SHEET (Compact, C-NowPlaying-Compact) carries its own 48-tall header (close · "Playing from" · ⋯, inset 8, every
-//     target at least 40 x 40) and the Devices door between Lyrics and Queue, one of three equal 48-tall doors.
+//     target at least 40 x 40) and the Devices door between Lyrics and Queue, one of three equal 48-tall doors, 14 under the transport row and 8 apart;
+//   · a request for the device picker (a toast's "Choose device") at Compact opens the sheet's Devices picker: the sheet slides up if it is down,
+//     shows the now-playing body if it shows another, and with the now-playing sheet already open just opens the picker.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -163,6 +165,90 @@ public sealed partial class TierLayoutTests
             Assert.Equal(ClassicPanelTiers.SheetDoorH, devices.H, 0.5f);
             Assert.Equal(doors.X + ClassicPanelTiers.SheetDoorInset + share + ClassicPanelTiers.SheetDoorGap, devices.X, 0.5f);
             AssertTargetsAtLeast40(shell, Node(shell, ClassicPanelTiers.SheetDoorsKey), s.Name);
+        }
+        finally
+        {
+            Shell.PanelHost.Shared.Close();
+            shell.RunFrames(30);
+        }
+    });
+
+    /// <summary>The sheet's doors: the board's 14 under the transport row (it was 8), the Devices door 48 tall and 8 from its neighbours.</summary>
+    [Theory]
+    [InlineData("compact 400x860")]
+    [InlineData("floor 300x640")]
+    public void The_sheets_doors_stand_14_under_the_transport_and_8_apart(string size) => AssertPage(Home, size, (shell, tiers) =>
+    {
+        Assert.Equal(PanelPlacement.Sheet, ClassicPanelTiers.Of(tiers).Rule.Placement);
+        try
+        {
+            Play("spotify:track:tr40", fromMs: 20_000);
+            Shell.PanelHost.Shared.SetMode(Shell.RailMode.NowPlaying);
+            shell.RunFrames(60);
+            var scene = shell.Host.Scene;
+            var transport = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetTransportKey));
+            var doors = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetDoorsKey));
+            var devices = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetDevicesKey));
+            Assert.Equal(14f, ClassicPanelTiers.SheetDoorTop);
+            Assert.Equal(transport.Y + transport.H, doors.Y, 0.5f);                                  // the row follows the transport directly
+            Assert.Equal(doors.Y + ClassicPanelTiers.SheetDoorTop, devices.Y, 0.5f);                 // 14 of air above the doors
+            Assert.Equal(ClassicPanelTiers.SheetDoorTop + ClassicPanelTiers.SheetDoorH + ClassicPanelTiers.SheetDoorBottom, doors.H, 0.5f);
+            float share = (doors.W - 2f * ClassicPanelTiers.SheetDoorInset - 2f * ClassicPanelTiers.SheetDoorGap) / 3f;
+            Assert.Equal(doors.X + ClassicPanelTiers.SheetDoorInset + share + ClassicPanelTiers.SheetDoorGap, devices.X, 0.5f);   // 8 from Lyrics
+            Assert.Equal(doors.X + doors.W - ClassicPanelTiers.SheetDoorInset - share - ClassicPanelTiers.SheetDoorGap, devices.X + devices.W, 0.5f);   // and from Queue
+        }
+        finally
+        {
+            Shell.PanelHost.Shared.Close();
+            shell.RunFrames(30);
+        }
+    });
+
+    /// <summary>The toast's "Choose device" (and the tray's Devices) bump <c>Playback.DevicePickerRequest</c>; at Compact the mini bar has no Devices
+    /// button, so the sheet answers: from closed (on the lyrics body, the shell's default, and on the now-playing body), from the sheet open on
+    /// Lyrics, and with the now-playing sheet already open. The picker is the door's (its menu is keyed "devices:"); one request opens exactly one.</summary>
+    [Theory]
+    [InlineData("compact 400x860", Shell.RailMode.Lyrics, false)]
+    [InlineData("compact 400x860", Shell.RailMode.NowPlaying, false)]
+    [InlineData("compact 400x860", Shell.RailMode.Lyrics, true)]
+    [InlineData("compact 400x860", Shell.RailMode.NowPlaying, true)]
+    [InlineData("floor 300x640", Shell.RailMode.Lyrics, false)]
+    [InlineData("floor 300x640", Shell.RailMode.NowPlaying, false)]
+    [InlineData("floor 300x640", Shell.RailMode.Lyrics, true)]
+    [InlineData("floor 300x640", Shell.RailMode.NowPlaying, true)]
+    public void A_device_picker_request_opens_the_sheet_and_its_devices_picker(string size, Shell.RailMode before, bool startClosed) => AssertPage(Home, size, (shell, tiers) =>
+    {
+        Assert.Equal(PanelPlacement.Sheet, ClassicPanelTiers.Of(tiers).Rule.Placement);
+        try
+        {
+            Play("spotify:track:tr40", fromMs: 20_000);
+            Shell.PanelHost.Shared.SetMode(before);
+            shell.RunFrames(60);
+            Assert.True(Shell.Ui.RailOpen.Peek(), $"{size}: the sheet is open on {before}");
+            if (startClosed)
+            {
+                Shell.PanelHost.Shared.Close();
+                shell.RunFrames(40);
+                Assert.False(Shell.Ui.RailOpen.Peek(), $"{size}: the sheet is closed");
+            }
+            Assert.Empty(shell.FindPrefix("devices:"));
+
+            Playback.RequestDevicePicker();
+            shell.RunFrames(90);
+
+            Assert.True(Shell.Ui.RailOpen.Peek(), $"{size}: the request opens the sheet");
+            Assert.Equal(Shell.RailMode.NowPlaying, Shell.Ui.Mode.Peek());
+            Assert.Equal(PanelPlacement.Sheet, Shell.Ui.PanelPlacement.Peek());
+            var picker = shell.FindPrefix("devices:");
+            Assert.True(picker.Count > 0, $"{size}: the Devices picker is open (from {before}{(startClosed ? ", closed" : "")})");
+            var door = shell.Host.Scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetDevicesKey));
+            Assert.True(door.W > 0f && door.Y + door.H <= Sizes[size].Height + 0.5f, $"{size}: the Devices door stands in the window ({door})");
+            int count = picker.Count;
+
+            // A second request while the picker is up opens no second one.
+            Playback.RequestDevicePicker();
+            shell.RunFrames(40);
+            Assert.Equal(count, shell.FindPrefix("devices:").Count);
         }
         finally
         {

@@ -290,6 +290,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **"Choose device" opens the Devices list in a narrow window.** In a window under 528 wide, where Now playing is a sheet that covers the
+  player bar, the "Choose device" button on a message (and the tray's Devices entry) now slides the Now playing sheet up if it is down, shows
+  its Now playing page if it was on Lyrics or Queue, and opens the same device list as the sheet's Devices button; with the sheet already
+  open it just opens the list. The sheet's Lyrics, Devices and Queue buttons now sit 14 under the playback controls, as designed (it was 8).
 - **Resizing the window past a size step no longer rebuilds parts of the page.** Crossing 528, 1008 or 1920 wide (or the page widths 600,
   880 and 1600) used to throw away Home's shelves, the "See all" grid, Browse and Search shelves and grids, the Recents tabs, the Settings
   tab strip and number boxes, the What's new picker, cards and sections, the log list and the artist page's shelves, chart and albums, and

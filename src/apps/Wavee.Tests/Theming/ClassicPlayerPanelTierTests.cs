@@ -267,7 +267,7 @@ public sealed class ClassicPlayerPanelTierTests
 
     [Theory]
     [InlineData(400f, 860f, 320f)]     // C-NowPlaying-Compact: the board's 320 art, room to spare
-    [InlineData(400f, 640f, 238f)]     // the art gives so the identity, the transport and the doors stay in the window
+    [InlineData(400f, 640f, 232f)]     // the art gives so the identity, the transport and the doors stay in the window
     [InlineData(300f, 860f, 268f)]     // never wider than the sheet less its 16 insets
     [InlineData(400f, 330f, 96f)]      // a Short window: the floor, and the column scrolls
     public void The_sheets_art_gives_way_to_the_fixed_column(float w, float h, float side)
@@ -276,6 +276,22 @@ public sealed class ClassicPlayerPanelTierTests
         Assert.Equal(side, ClassicPanelTiers.SheetArtSide(w, h, head));
         float bottom = ClassicSheetRules.ChromeRow + ClassicPanelTiers.Gap + head + ClassicPanelTiers.SheetArtTop + side + ClassicPanelTiers.SheetBelowArt;
         if (side > ClassicPanelTiers.SheetArtMin) Assert.True(bottom <= h, $"{w} x {h}: the doors end at {bottom}");
+    }
+
+    [Fact]
+    public void The_sheets_doors_keep_the_boards_spacing()
+    {
+        // C-NowPlaying-Compact: the doors are a three-column grid 8 apart, `margin-top: 14px` under the transport row (it was 8), the lyrics peek 16 below
+        // (the row's 8 and the peek's own 8).
+        Assert.Equal(14f, ClassicPanelTiers.SheetDoorTop);
+        Assert.Equal(8f, ClassicPanelTiers.SheetDoorGap);
+        Assert.Equal(8f, ClassicPanelTiers.SheetDoorBottom);
+        Assert.Equal(16f, ClassicPanelTiers.SheetDoorInset);
+        // The fixed column the art gives way to counts the doors' 14 + 48 + 8.
+        float expected = ClassicPanelTiers.SheetMetaTop + ClassicPanelTiers.SheetTitleLine + ClassicPanelTiers.SheetMetaGap + ClassicPanelTiers.SheetArtistLine
+            + ClassicPanelTiers.SheetSeekTop + ClassicPanelTiers.SheetSeekRailH + ClassicPanelTiers.SheetSeekGap + ClassicPanelTiers.SheetTimesH
+            + ClassicPanelTiers.SheetTransportTop + ClassicPanelTiers.SheetTransportH + 14f + ClassicPanelTiers.SheetDoorH + 8f;
+        Assert.Equal(expected, ClassicPanelTiers.SheetBelowArt);
     }
 
     [Fact]

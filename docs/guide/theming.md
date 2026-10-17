@@ -2211,8 +2211,12 @@ right-click seam, as the context sheet; the developer-only style gear beside it)
 320, the sheet's width less 16 a side, and whatever the fixed column under it leaves the window, floor 96), the title and the artists beside the
 heart, the bar's seek rail and times, the transport (shuffle 40, previous 48, the 56 play disc, next 48, repeat 40; `PanelProps.Transport`, 1.20),
 the Lyrics, Devices and Queue doors (three equal columns; Devices is named for the device playback is on and opens the bar's own picker over the
-door; the source, the device and the toggle are `PanelTransportProps.Source` / `.Device` / `.ToggleDevicePicker`, 1.22), then the lyrics peek and
-the docked body's sections. The other panel kinds as a sheet are the head over their own
+door, 14 under the transport row and 8 apart (`ClassicPanelTiers.SheetDoorTop` / `SheetDoorGap`; the board's `margin-top: 14px`); the source, the device and the
+toggle are `PanelTransportProps.Source` / `.Device` / `.ToggleDevicePicker`, 1.22), then the lyrics peek and
+the docked body's sections. A request for the device picker (a toast's "Choose device", the tray's
+Devices: `PanelTransportProps.DevicePickerRequest`, the signal the bar's Devices button opens on) is answered by the sheet: the frame shows the now-playing
+body if the sheet shows another or none, then asks the Devices door (`ClassicSheetPickerAsk`, once per ask) to open its picker, at once when that body is
+already up and after the slide-up when it was not; at every other placement the bar's button answers as before. The other panel kinds as a sheet are the head over their own
 scrolling body.
 
 Still not moved out of core, because none is a ladder this primitive can state without changing behaviour: the chrome-row allocator

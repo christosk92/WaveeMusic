@@ -231,6 +231,11 @@ public sealed record PanelTransportProps
     /// <summary>Open the device picker over an anchor, or close it when it is open: the player bar's own toggle (the core's overlay, placement,
     /// dismissal and picker-opened side effect; the menu is <see cref="ViewKeys.DevicePicker"/>). Null with no Devices door (contract 1.22).</summary>
     public Action<IOverlayService, Ref<NodeHandle>, Ref<OverlayHandle?>>? ToggleDevicePicker { get; init; }
+
+    /// <summary>Bumped when something asks for the device picker (a toast's "Choose device", the tray's Devices): the same signal the player bar's
+    /// Devices button opens itself on. The sheet covers the bar, so the sheet answers it: it shows the now-playing body if it shows another, then
+    /// opens the Devices door's picker. Null with no Devices door. Added to contract 1.24 without a bump (the orchestrator renumbers).</summary>
+    public IReadSignal<int>? DevicePickerRequest { get; init; }
 }
 
 /// <summary>Where playback comes from, for the now-playing sheet's head (contract 1.22).</summary>

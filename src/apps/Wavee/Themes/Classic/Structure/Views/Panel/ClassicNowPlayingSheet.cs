@@ -254,7 +254,8 @@ internal sealed class ClassicSheetHeader : Component
 
 /// <summary>The now-playing sheet's Devices door (C-NowPlaying-Compact): the device playback is on ("This computer"), inked in the accent while it is
 /// another device, opening the player bar's own device picker over the door (the core's overlay; the menu is <c>Player.DevicePicker</c>). Reads the
-/// roster in its own render, so a device change re-renders only the door.</summary>
+/// roster in its own render, so a device change re-renders only the door. It also opens the picker when the frame asks (a toast's "Choose device",
+/// the tray's Devices: <see cref="ClassicSheetPickerAsk"/>), once per ask, whether the door was mounted before the ask or by it.</summary>
 internal sealed class ClassicSheetDeviceDoor : Component
 {
     Action<NodeHandle>? _realized;
@@ -267,6 +268,14 @@ internal sealed class ClassicSheetDeviceDoor : Component
         var overlay = UseContext(Overlay.Service);
         var device = t.Device is { } read ? read() : new PanelDeviceFacts(Loc.Get(Strings.Player.ThisComputer), false);
         var toggle = t.ToggleDevicePicker;
+        var ask = UseContext(ClassicPanel.SheetPickerAsk);
+        int ticket = ask?.Ticket.Value ?? 0;
+        UseEffect(() =>
+        {
+            if (ask is null || ticket == ask.Consumed) return;
+            ask.Consumed = ticket;
+            if (handle.Value is not { IsOpen: true }) toggle?.Invoke(overlay, anchor, handle);
+        }, DepKey.From(ticket));
         _realized ??= h => anchor.Value = h;
         var door = ClassicPanel.DoorBox(Icons.Devices, null, device.Name, () => toggle?.Invoke(overlay, anchor, handle), device.Remote, _realized);
         return ToolTip.Wrap(door, Loc.Get(Strings.Player.ChooseDevice));

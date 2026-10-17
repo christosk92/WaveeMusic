@@ -60,6 +60,9 @@ internal static class ClassicPanel
     /// <summary>The shared sheet drag of the primary panel host (null outside the frame's panel layer, and for the second pane).</summary>
     internal static readonly Context<ClassicSheetDrag?> SheetDragSlot = new(null);
 
+    /// <summary>The frame's ask of the now-playing sheet's Devices door: open your picker (null outside the sheet's now-playing arm).</summary>
+    internal static readonly Context<ClassicSheetPickerAsk?> SheetPickerAsk = new(null);
+
     // ── the arm ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The arm's corners for a placement: the card radius top-left docked, every corner floating, the top two as a sheet.</summary>
@@ -122,7 +125,7 @@ internal static class ClassicPanel
         return new BoxEl
         {
             Key = ClassicPanelTiers.SheetDoorsKey, Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
-            Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY, ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY),
+            Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorTop, ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorBottom),
             Children = devices
                 ? [
                     lyrics,
@@ -236,7 +239,7 @@ internal static class ClassicPanel
     /// <summary>The now-playing sheet's column (C-NowPlaying-Compact): one scroll holding the hero at the side the window leaves it (its
     /// video switch over its corner when the video could dock), then the identity, the transport, the doors and the rest
     /// (<see cref="ClassicNowPlayingSheet"/>). The side is bound to the window, so a resize re-fits it in the same frame.</summary>
-    internal static Element NowPlayingSheet(PanelProps props, PanelView view, IReadSignal<Size2> vp)
+    internal static Element NowPlayingSheet(PanelProps props, PanelView view, IReadSignal<Size2> vp, ClassicSheetPickerAsk ask)
     {
         Func<float> side = () => ClassicPanelTiers.SheetArtSide(vp.Value.Width, vp.Value.Height, ClassicPanelTiers.SheetHeadH);
         Element art = Ctx.Provide(SheetArtSide, side, Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying));
@@ -246,7 +249,7 @@ internal static class ClassicPanel
         return ScrollView(new BoxEl
         {
             Direction = 1,
-            Children = [hero, Embed.Comp(props, static () => new ClassicNowPlayingSheet())],
+            Children = [hero, Ctx.Provide(SheetPickerAsk, ask, Embed.Comp(props, static () => new ClassicNowPlayingSheet()))],
         }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
@@ -370,6 +373,11 @@ internal sealed class ClassicPanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     readonly ClassicModalScope _scope = new();
+    // A device picker ask the sheet answers (see Render): the last request seen, whether this instance has taken its baseline, the ask waiting for the
+    // sheet to finish sliding up, and what the timer reads (the sheet is open on the now-playing body).
+    readonly ClassicSheetPickerAsk _ask = new();
+    int _askSeen;
+    bool _askBaselined, _askPending, _nowPlayingUp;
 
     public override Element Render()
     {
@@ -391,6 +399,29 @@ internal sealed class ClassicPanelFrame : Component
         _close = props.Close;
         if (drag is not null) drag.Dismiss = _close;
         UseLayoutEffect(() => { if (drag is not null) drag.SlideNode = Context.HostNode; });   // the arm runs the open/close slide; the drag moves the host
+        // A request for the device picker (a toast's "Choose device", the tray's Devices) while the panel is a sheet: the sheet covers the player bar whose
+        // Devices button answers it at every other placement (and the Compact mini bar has none), so the SHEET answers. It shows the now-playing body
+        // (the one that carries the Devices door) if it shows another or none, then asks the door to open its picker: at once when that body is already up,
+        // else once the slide-up has landed (the picker anchors on the door, which must stand still). The baseline is taken at mount: a remount never
+        // replays an old request.
+        int pickerAsked = props.Transport?.DevicePickerRequest?.Value ?? 0;
+        if (!_askBaselined) { _askBaselined = true; _askSeen = pickerAsked; }
+        _nowPlayingUp = open && sheet && body == PanelMode.NowPlaying;
+        UseEffect(() =>
+        {
+            if (pickerAsked == _askSeen) return;
+            _askSeen = pickerAsked;
+            if (!sheet) return;
+            if (_nowPlayingUp) { _ask.Ticket.Value++; return; }
+            props.ShowMode?.Invoke(PanelMode.NowPlaying);
+            _askPending = true;
+        }, DepKey.From(pickerAsked));
+        UseTimeout(() =>
+        {
+            if (!_askPending) return;
+            _askPending = false;
+            if (_nowPlayingUp) _ask.Ticket.Value++;
+        }, ClassicPanelTiers.SheetPickerAskMs, DepKey.From(pickerAsked));
         // A sheet is modal: focus into it with Tab trapped there, back where it was on close; Escape closes it.
         bool modal = open && sheet;
         UseLayoutEffect(() => _scope.Update(hooks, Context.Scene, Context.HostNode, modal), DepKey.From(modal));
@@ -460,7 +491,7 @@ internal sealed class ClassicPanelFrame : Component
                     {
                         Direction = 1, Children = [Embed.Comp(props, static () => new ClassicSheetHeader())],
                     }),
-                    ClassicPanel.NowPlayingSheet(props, view, vp))
+                    ClassicPanel.NowPlayingSheet(props, view, vp, _ask))
                 : ClassicPanel.Arm(open, placement, surface, edge, null,
                     ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
@@ -475,6 +506,18 @@ internal sealed class ClassicPanelFrame : Component
         }
         return sheet ? arm with { OnKeyDown = _onKey } : arm;
     }
+}
+
+/// <summary>The frame's ask of the now-playing sheet's Devices door: <see cref="Ticket"/> goes up when the door should open its picker. The door
+/// compares it with <see cref="Consumed"/> (what it has already answered), so a door that mounts after the ask (the sheet switching to the now-playing
+/// body) still answers it exactly once, and a remount never answers it again.</summary>
+internal sealed class ClassicSheetPickerAsk
+{
+    /// <summary>Bumped by the frame.</summary>
+    public readonly Signal<int> Ticket = new(0);
+
+    /// <summary>The last ticket a door answered.</summary>
+    public int Consumed;
 }
 
 /// <summary>The Compact sheet's scrim (TC2, C-Queue-Compact / C-NowPlaying-Compact: black at 0.4 from the title bar down): it fades with
