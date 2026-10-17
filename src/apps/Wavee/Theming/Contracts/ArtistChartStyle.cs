@@ -47,6 +47,12 @@ internal sealed class ArtistChartRowArgs
     /// <summary>The tier the host decided for the cell's width (the art edge, whether the duration shows, whether the sub line stacks).</summary>
     public required ArtistPopularLayout.Tier Tier { get; init; }
 
+    /// <summary>The row's height in this tier (<see cref="Wavee.Theming.ArtistChartRowShape"/>; 0: the style's own).</summary>
+    public float RowHeight { get; init; }
+
+    /// <summary>The rank lane's width in this tier (0: the style's own).</summary>
+    public float Lead { get; init; }
+
     /// <summary>The row's track, for the featured credit; default for the skeleton.</summary>
     public Track Track { get; init; }
 
@@ -104,6 +110,15 @@ internal sealed class ArtistChartCellArgs
 
     /// <summary>The row style.</summary>
     public required bool Classic { get; init; }
+
+    /// <summary>The cell's column and how many columns the chart lays out (a cell in the first column and one in the last keep the column gap between).</summary>
+    public int Column { get; init; }
+
+    /// <inheritdoc cref="Column"/>
+    public int Columns { get; init; } = 1;
+
+    /// <summary>The air between two columns (<see cref="Wavee.Theming.ArtistChartRowShape.ColumnGap"/>; 0: none).</summary>
+    public float ColumnGap { get; init; }
 }
 
 /// <summary>What the core decided for the chart's skeleton: the real layout's counts.</summary>
@@ -112,14 +127,18 @@ internal sealed class ArtistChartSkeletonArgs
     /// <summary>The skeleton for a known chart length (0: the overview's seed), at the core's counts (<see cref="ArtistSections.ChartSkeletonShape"/>) for the
     /// tier's widest chart (<paramref name="maxColumns"/>) and its rows per column (<paramref name="rows"/>): the chart host's shimmer and the artist page's
     /// derived skeleton read the same answer, so the skeleton keeps the chart's columns at every tier.</summary>
-    public static ArtistChartSkeletonArgs For(int knownCount, bool classic, bool showArtwork, int maxColumns, int rows)
+    public static ArtistChartSkeletonArgs For(int knownCount, bool classic, bool showArtwork, int maxColumns, int rows,
+        Wavee.Theming.ArtistChartRowShape rowShape = default)
     {
         var (total, columns, perColumn) = ArtistSections.ChartSkeletonShape(knownCount, maxColumns, rows);
         return new ArtistChartSkeletonArgs
         {
-            Total = total, Columns = columns, PerColumn = perColumn, Classic = classic, ShowArtwork = showArtwork,
+            Total = total, Columns = columns, PerColumn = perColumn, Classic = classic, ShowArtwork = showArtwork, RowShape = rowShape,
         };
     }
+
+    /// <summary>The tier's chart row geometry (<see cref="Wavee.Theming.ArtistChartRowShape"/>; default: the style's own).</summary>
+    public Wavee.Theming.ArtistChartRowShape RowShape { get; init; }
 
     /// <summary>Charted rows shown (the known count, else the overview's seed cap).</summary>
     public required int Total { get; init; }
@@ -189,6 +208,26 @@ internal sealed class ArtistChartFrameArgs
     /// <summary>The floating selection bar (the core's keyed component: selecting re-renders it alone).</summary>
     public required Element Bar { get; init; }
 }
+
+/// <summary>What the core hands a header that wants the count and the "see all" verb (contract 1.31): the title, the accent, how many tracks the chart holds
+/// and the verb that opens the rest (null: there is nothing more to open).</summary>
+internal sealed class ArtistChartHeaderArgs
+{
+    /// <summary>The core's title.</summary>
+    public required string Title { get; init; }
+
+    /// <summary>The page accent.</summary>
+    public required ColorF Accent { get; init; }
+
+    /// <summary>The charted count.</summary>
+    public required int Total { get; init; }
+
+    /// <summary>Show the next page of the chart (null at one page).</summary>
+    public Action? SeeAll { get; init; }
+}
+
+/// <summary>Draws the chart's header with the count and the verb (optional; a style without it gets <see cref="ArtistChartHeaderTemplate"/>).</summary>
+internal delegate Element ArtistChartHeaderWithTemplate(ArtistChartHeaderArgs args);
 
 /// <summary>The chart's shelf configuration for a row style.</summary>
 internal delegate ArtistChartMetrics ArtistChartMetricsTemplate(bool classic);
@@ -269,4 +308,7 @@ public sealed class ArtistChartStyle
 
     /// <summary>The pager.</summary>
     internal ArtistChartPagerTemplate Pager { get; }
+
+    /// <summary>The header that also gets the count and the "see all" verb (contract 1.31; null: <see cref="Header"/>).</summary>
+    internal ArtistChartHeaderWithTemplate? HeaderWith { get; init; }
 }

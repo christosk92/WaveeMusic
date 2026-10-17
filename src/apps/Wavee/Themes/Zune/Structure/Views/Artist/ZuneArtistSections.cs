@@ -115,7 +115,7 @@ internal static class ZuneArtistSections
         string artistUri = a.Uri.Text;
         Element link = K.Link(Rules.DiscographyLinkPrefix + ((int)facet).ToString(CultureInfo.InvariantCulture), Loc.Get(Strings.Theme.Zune.Artist.Discography),
             () => ArtistVerbs.OpenRoute(DiscoRoute.Key(facet, artistUri)), lay.LinkTarget);
-        Element heading = K.Heading(Artist.FacetTitle(facet), total > 0 ? Strings.Artist.ReleaseCount(total) : null, link);
+        Element heading = InlineHeading(Artist.FacetTitle(facet), link);
         // The grid is the core's; the facet's own heading is the page's (it holds the link and the count), so the style's facet draws the grid alone.
         return new BoxEl
         {
@@ -127,6 +127,18 @@ internal static class ZuneArtistSections
             ],
         };
     }
+
+    /// <summary>A heading row as Z-Artist draws it: the word, then its link 20 after it on the heading's baseline ("albums  discography"), never at the row's end.</summary>
+    static Element InlineHeading(string title, Element link)
+        => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children =
+            [
+                K.HeadingText(title),
+                new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Margin = new Edges4(ZuneListRules.ChartHeadGap, ZuneListRules.ChartBaseline, 0f, 0f), Children = [link] },
+            ],
+        };
 
     // ── the shelves ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

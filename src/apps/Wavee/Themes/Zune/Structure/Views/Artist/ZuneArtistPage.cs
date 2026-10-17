@@ -173,7 +173,8 @@ internal static class ZuneArtistPage
         var none = new ZuneArtistHero.Acts(null, null, null, null);
         Element hero = ZuneArtistHero.Build(Artist.HeroText.Placeholder, "", lay, p.AccentPeek(), in none);
         Element chartShape = chart is null ? new BoxEl()
-            : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows));
+            : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows,
+                new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
         if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
         column.Add(Magazine([chartShape], lay));
