@@ -220,7 +220,13 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
         host.Run(() =>
         {
             saved = LibraryViewPrefs.Read("albums");
-            LibraryViewPrefs.Save("albums", saved with { View = view }, artists: false);
+            // A known baseline, not whatever an earlier fact left (a Zune library fact changed the size, sort or selection, which moved the album
+            // pane's restore by 2 DIP in full runs): the preference defaults, with the view under test.
+            LibraryViewPrefs.Save("albums", saved with
+            {
+                View = view, Sort = 0, Desc = false, Size = 1, Scope = 0, AlbumSort = 0, SelectedKey = "", AlbumKey = "",
+                LeftW = LibraryViewPrefs.LeftWKey("albums").Default, MidW = LibraryViewPrefs.MidWKey("albums").Default,
+            }, artists: false);
         });
         try { body(); }
         finally { host.Run(() => LibraryViewPrefs.Save("albums", saved, artists: false)); }
