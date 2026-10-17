@@ -107,6 +107,8 @@ public static class App
             // The saved audio keys (G-123): records the path and the setting and opens NOTHING — the file opens off-thread at the AP welcome or on the first lookup. --fake stays detached.
             Spotify.Audio.KeyStore.Use(Spotify.Audio.KeyStore.DefaultPath(), OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector(),
                 static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
+            // "On this PC" (ZC2): the persisted (track, quality) → file id map loads off-thread; the row fact reads the cache index and the key store above. Indicator only (NQ4).
+            Playback.OnThisPc.Use(Playback.AudioFileMap.PathUnder(Platform.LocalFolder));
         }
         Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
         Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
@@ -297,6 +299,7 @@ public static class App
         Playback.Audio.Shutdown();
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.AudioKeys);
         Spotify.Audio.KeyStore.Shutdown();   // after the pump stopped asking: drain the queued key writes, checkpoint, close
+        Playback.OnThisPc.Shutdown();        // the (track, quality) → file id map's last debounced save
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Video);
         Playback.Video.Shutdown();
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Modules);
