@@ -1,8 +1,9 @@
 // ── Themes/Zune/Structure/Views/Detail/ZuneDetailRail.cs — Zune's identity column, its collapsed strip and the show header (P5 Z6a1) ─────────
 //
 // Z-Album's left column (240 at Standard, 160 Small, 320 Huge, 400 Huge 4K): the cover at the column's width, the artist in the 18/24 voice,
-// the meta line ("album · may 17, 2013 · 13 songs · 74 min", the label case lowering the words), the RING row (play and saved with their
-// words where the tier writes them, share, "..."), then the release's courtesy lines (About this release, `Album.ReleasePanel`), the countdown
+// the meta line ("album · may 17, 2013 · 13 songs · 74 min", the label case lowering the words; two lines at Small, broken only
+// between its runs), the RING row (play and saved with their words at Compact only: from Small up play, shuffle and saved live in the band's
+// row 2, audit A4, so the column keeps share and "..."), then the release's courtesy lines (About this release, `Album.ReleasePanel`), the countdown
 // of a release not out yet and the description. No title: the title is the panorama over the columns and the band's row 2 (a short window
 // folds the panorama and the column leads with the title in the heading voice instead).
 //
@@ -78,7 +79,7 @@ internal static class ZuneDetailRail
         if (slots.Rating is { } rating) kids.Add(K.LateRow("rail:rating", rating(w)));
         kids.Add(K.LateRow("rail:meta", p.Shown is { } shown
             ? Embed.Comp(new MetaProps(id, w, lay), () => new MetaLine(shown))
-            : K.Meta(id, w, lay)));
+            : K.Meta(id, w, lay, lay.MetaLines)));
         if (slots.Ledger is { } ledger) kids.Add(K.LateRow("rail:ledger", ledger(w)));
         if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(K.LateRow("rail:daylist", pulse()));
         if (id.ChartNewEntries > 0 && slots.Chart is { } chart) kids.Add(K.LateRow("rail:chart", chart()));
@@ -127,7 +128,7 @@ internal static class ZuneDetailRail
         {
             var p = UseProps<MetaProps>();
             var count = shown.Value;
-            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return K.Meta(p.Id, p.Width, p.Layout);
+            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return K.Meta(p.Id, p.Width, p.Layout, p.Layout.MetaLines);
             var lay = p.Layout;
             return new BoxEl
             {

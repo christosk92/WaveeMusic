@@ -438,9 +438,11 @@ internal static class ZuneTrackChrome
         }
 
         /// <summary>The page bar's lead (Z-Liked, Z-State-Rows' band): the round accent play disc, the ringed shuffle with its word and the
-        /// divider before the chips. Zune's disc is one target: "more ways to play" stays in the page's "..." menu.</summary>
+        /// divider before the chips. Zune's disc is one target: "more ways to play" stays in the page's "..." menu. One home per verb (audit A4): where
+        /// the window's band row 2 carries play and shuffle (Small up), the lead is empty and the chips lead the bar.</summary>
         public Element PageLead(EntityUri subject, Func<ColorF> accent, Action play, string shuffleLabel, Action shuffle)
         {
+            if (ZuneBandRules.Band(_tier).TitleAndActions) return new BoxEl { Key = "lead:band", Shrink = 0f };
             float edge = Edge;
             return new BoxEl
             {

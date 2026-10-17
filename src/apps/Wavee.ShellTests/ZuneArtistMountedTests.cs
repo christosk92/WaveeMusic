@@ -7,6 +7,8 @@
 //                the hero stands at the tier record's height, the popular band mounts, and the discography facets mount under their headings
 //   bleed        the artist's header image is published as the page's `Backdrop.Bleed` and the band's row 2 carries the pivot and the actions
 //   discography  the standalone page mounts Zune's column with its release-type words (the route's facet current)
+//   tuning (T2)  one home per verb (audit A4: from Small up play / shuffle / follow are the band's, the hero keeps radio and "..."), the system page
+//                column at every tier (A1), the Huge chart cap, and the hero HUGS its copy: it never overlaps the first section at any tier
 //
 // Anything that loads waits on the wall clock (`UntilBackground`), never a frame budget. Every fact puts Classic back alone (`ZuneHost.Mounted`).
 
@@ -61,11 +63,11 @@ public sealed class ZuneArtistMountedTests(ShellHost host)
                 Assert.True(shell.FindPrefix("artist-page:").Count == 0, "Classic's artist column is not drawn under Zune");
                 Assert.Single(shell.FindPrefix(ZuneArtistRules.PagePrefix));
 
-                // The hero stands at the tier record's height, inside the page.
+                // The hero stands at least at the tier record's height (it hugs a longer copy), inside the page.
                 var scene = shell.Host.Scene;
                 var lay = ZuneArtistTiers.For(WidthTier.Standard);
                 var hero = scene.AbsoluteRect(Node(shell, ZuneArtistRules.HeroKey));
-                Assert.True(MathF.Abs(hero.H - lay.HeroH) < 0.5f, $"the hero is the record's {lay.HeroH} tall ({hero})");
+                Assert.True(hero.H >= lay.HeroH - 0.5f, $"the hero is at least the record's {lay.HeroH} tall ({hero})");
                 Assert.False(shell.Find(ZuneArtistRules.NameKey).IsNull, "the panorama name");
 
                 // The popular band (the chart and its rail) and the discography facets mount once the page has loaded.
@@ -94,6 +96,61 @@ public sealed class ZuneArtistMountedTests(ShellHost host)
             }
             finally { GoHome(shell); }
         }, W, H);
+
+    // ── the tuning (lane T2) ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_artist_records_give_each_verb_one_home_and_the_page_the_system_column()
+    {
+        Assert.Equal(ZuneArtistActions.BelowHero, ZuneArtistTiers.For(WidthTier.Compact).Actions);
+        Assert.Equal(ZuneArtistSecondary.None, ZuneArtistTiers.For(WidthTier.Compact).Secondary);
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+        {
+            var lay = ZuneArtistTiers.For(tier);
+            Assert.Equal(ZuneArtistActions.Band, lay.Actions);
+            Assert.True(ZuneBandRules.Band(tier).TitleAndActions, $"{tier}: the band carries play, shuffle and follow");
+            // A1: the page column is the system's, 2400 between the gutters, at every tier.
+            Assert.Equal(ZuneFrameRules.PageCap + 2f * lay.Gutter, lay.PageMax);
+        }
+        Assert.Equal(ZuneArtistSecondary.Corner, ZuneArtistTiers.For(WidthTier.Small).Secondary);
+        Assert.Equal(ZuneArtistSecondary.Row, ZuneArtistTiers.For(WidthTier.Huge).Secondary);
+        Assert.Equal(ZuneArtistSecondary.Row, ZuneArtistTiers.For(WidthTier.Huge4K).Secondary);
+        Assert.Equal(1200f, ZuneArtistTiers.For(WidthTier.Huge).ChartMaxW);
+        Assert.Equal(1200f, ZuneArtistTiers.For(WidthTier.Huge4K).ChartMaxW);
+        Assert.Equal(0f, ZuneArtistTiers.For(WidthTier.Standard).ChartMaxW);
+    }
+
+    [Theory]
+    [InlineData(400f)]
+    [InlineData(800f)]
+    [InlineData(1440f)]
+    [InlineData(2560f)]
+    public void The_artist_hero_never_overlaps_the_first_section_and_draws_no_band_verb_from_small_up(float width)
+        => ZuneHost.Mounted(host, shell =>
+        {
+            shell.RunFrames(10);
+            try
+            {
+                Shell.GoTo(Shell.For(EntityUri.Parse("spotify:artist:ar0"), "Artist"));
+                UntilBackground(shell, () => !shell.Find(ZuneArtistRules.HeroKey).IsNull, "Zune's artist hero");
+                UntilBackground(shell, () => !shell.Find(ZuneArtistRules.PopularKey).IsNull, "the popular band");
+                shell.RunFrames(60);
+                var scene = shell.Host.Scene;
+                var hero = scene.AbsoluteRect(Node(shell, ZuneArtistRules.HeroKey));
+                var popular = scene.AbsoluteRect(Node(shell, ZuneArtistRules.PopularKey));
+                Assert.True(hero.Y + hero.H <= popular.Y + 0.5f, $"the hero ({hero}) ends above the first section ({popular})");
+                var caption = scene.AbsoluteRect(Node(shell, ZuneArtistRules.CaptionKey));
+                Assert.True(caption.Y + caption.H <= hero.Y + hero.H + 0.5f, $"the caption ({caption}) stays inside the hero ({hero})");
+                if (width >= 640f)
+                {
+                    // The band's row 2 carries play, shuffle and follow: the hero draws none of them (only its own radio and "...").
+                    Assert.True(shell.Find(ZuneArtistRules.ActionsKey).IsNull, "no primary action row in the hero");
+                    Assert.True(shell.Find(ZuneArtistRules.ActionsKey + ":below").IsNull, "no Compact row");
+                    Assert.Empty(shell.FindPrefix("zune-artist-follow:"));
+                }
+            }
+            finally { GoHome(shell); }
+        }, width, H);
 
     // ── the discography page ─────────────────────────────────────────────────────────────────────────────────────────────
 

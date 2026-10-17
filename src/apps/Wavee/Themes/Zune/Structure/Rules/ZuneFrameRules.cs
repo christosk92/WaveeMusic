@@ -222,6 +222,16 @@ public static class ZuneFrameRules
     /// <summary>The offline lane's inset: the page <paramref name="gutter"/> either side, 16 from the top, nothing below.</summary>
     public static Edges4 OfflineLanePadding(float gutter) => new(gutter, 16f, gutter, 0f);
 
+    // ── the page column (audit A1) ───────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The widest a page's content grows (P5 decision 2: pages cap at 2400, at 4K too); the gutters stand outside it.</summary>
+    public const float PageCap = 2400f;
+
+    /// <summary>The one page column: <paramref name="page"/> capped at <see cref="PageCap"/> plus its gutters, centred, its left and right padding the
+    /// frame's <paramref name="gutter"/>, so the page x is max(gutter, (contentW - 2400)/2 + gutter) and equals the band's.</summary>
+    public static BoxEl PageColumn(BoxEl page, float gutter)
+        => page with { MaxWidth = PageCap + 2f * gutter, AlignSelf = FlexAlign.Center, Padding = page.Padding with { Left = gutter, Right = gutter } };
+
     // ── the frame ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The page row's shared-layout group: the page column FLIPs relative to the row when the panel docks or leaves.</summary>

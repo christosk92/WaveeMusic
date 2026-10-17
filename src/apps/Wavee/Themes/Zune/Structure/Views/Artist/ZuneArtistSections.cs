@@ -76,6 +76,8 @@ internal static class ZuneArtistSections
         Element chart = new BoxEl
         {
             Key = "zune-artist-chart", Direction = 1, MinWidth = 0f, Grow = lay.RailBeside ? 1f : 0f, Basis = lay.RailBeside ? 0f : float.NaN,
+            // The record's cap (Huge: 1200), so a 2400 page never spreads a track's title and its time across the screen; the rail follows it.
+            MaxWidth = lay.ChartMaxW > 0f ? lay.ChartMaxW : float.NaN,
             Children = [Artist.Chart(a, p.AccentSignal)],
         };
 

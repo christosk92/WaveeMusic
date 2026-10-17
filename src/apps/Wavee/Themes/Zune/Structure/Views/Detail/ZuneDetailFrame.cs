@@ -7,7 +7,9 @@
 //     header over its episodes, or the table that hosts the hero). A TRACK page's vertical arm is ALWAYS wrapped in the insights sheet, open or
 //     not, so the tree under the list never changes when the facts arrive (the list keeps its scroll);
 //   · the TWO-COLUMN arm: the PANORAMA band (the page's title across the top, its height the record's, folded on a short window), then ONE row
-//     of [identity column | list | aside] on the frame's gutter, capped at 2400 and centred past it (P5 decision 2). The identity column is the
+//     of [identity column | list | aside], all in the system PAGE COLUMN (`ZuneFrameRules.PageColumn`: the gutter, capped at 2400 and centred past
+//     it, P5 decision 2), so the page x is the band's x at every width (audit A1). A playlist's and Liked Songs' panorama take their own step
+//     (`ZunePlaylistTiers.Panorama`, audit A8); an editable playlist's panorama IS its inline editor (the Title slot). The identity column is the
 //     record's width (Z-Album 240), not the core's resizable rail: Zune draws no grip. A collapse stored by another theme shows Zune's strip
 //     (`Detail.CompactRail`) with its expand, never a dead end. The list column leads with the "songs" heading on a track page and carries the
 //     insights sheet over its rows (open or not);
@@ -72,7 +74,11 @@ internal static class ZuneDetailFrame
         }
 
         bool dock = p.Aside is not null && lay.AsideW > 0f;
-        string title = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec)?.Identity.Title ?? "";
+        // The panorama's own step for a playlist or Liked Songs (audit A8); the columns keep the content tier's record.
+        Element band = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec) is { } spec
+            ? K.PanoramaBand(spec.Identity, spec.Slots, ZunePlaylistTiers.Panorama(lay, ZunePlaylistTiers.Of(facts), spec.Identity.Kind),
+                gutter: 0f, bleed: gutter)
+            : new BoxEl { Key = Z.PanoramaKey, Height = lay.PanoramaH, Shrink = 0f, Animate = Z.PanoramaFold };
 
         // ── the list column: the "songs" heading on a track page, the list, and the insights sheet's layer over it (composed open or not) ──
         Element listHost = ListHost(p, ctx, dock);
@@ -84,16 +90,15 @@ internal static class ZuneDetailFrame
         {
             // ── a page with no rail (Liked Songs): the panorama and the meta over the list ──
             armKey = "head";
-            arm = Page(p, lay, gutter, title, [
+            arm = Page(p, gutter, band, [
                 new BoxEl
                 {
-                    Key = Z.HeadKey, Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(gutter, 0f, gutter, lay.RailGap),
+                    Key = Z.HeadKey, Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, lay.RailGap),
                     Children = [K.Meta(head.Spec.Identity, float.NaN, lay)],
                 },
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Padding = new Edges4(gutter, 0f, gutter, 0f),
                     Children = [right, AsideSlot(p, lay, dock)],
                 },
             ]);
@@ -118,11 +123,10 @@ internal static class ZuneDetailFrame
                     Children = [ctx.View(ViewKeys.DetailRail, tc.Rail! with { RailWidth = lay.RailW })],
                 };
             armKey = "two-column";
-            arm = Page(p, lay, gutter, title, [
+            arm = Page(p, gutter, band, [
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Padding = new Edges4(gutter, 0f, gutter, 0f),
                     Children = [identity, right, AsideSlot(p, lay, dock)],
                 },
             ]);
@@ -151,11 +155,13 @@ internal static class ZuneDetailFrame
         Children = [root],
     };
 
-    /// <summary>The two-column page: the notice, then the centred column (capped at 2400 between the gutters) of the panorama band over the body rows.</summary>
-    static Element Page(DetailFrameProps p, ZuneDetailLayout lay, float gutter, string title, Element[] body)
+    /// <summary>The two-column page: the notice, then the system page column (<see cref="ZuneFrameRules.PageColumn"/>: the gutter, capped at 2400 and
+    /// centred) of the panorama band over the body rows. The column stands in a row that centres it and stretches it to the page's height (the list
+    /// fills it), so it fills its cap instead of hugging its content.</summary>
+    static Element Page(DetailFrameProps p, float gutter, Element band, Element[] body)
     {
         var kids = new Element[body.Length + 1];
-        kids[0] = K.PanoramaBand(title, lay, gutter);
+        kids[0] = band;
         Array.Copy(body, 0, kids, 1, body.Length);
         return new BoxEl
         {
@@ -163,19 +169,11 @@ internal static class ZuneDetailFrame
             Children =
             [
                 p.Notice,
-                new BoxEl
+                K.CentredPage(new BoxEl
                 {
-                    Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Justify = FlexJustify.Center,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                            MaxWidth = Z.PageCap + 2f * gutter, DropTarget = p.Drop,
-                            Children = kids,
-                        },
-                    ],
-                },
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
+                    Children = kids,
+                }, gutter) with { Grow = 1f, Shrink = 1f, MinHeight = 0f },
             ],
         };
     }

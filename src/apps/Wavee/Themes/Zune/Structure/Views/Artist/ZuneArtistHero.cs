@@ -4,15 +4,20 @@
 // its own (the artist's header is the material's bleed behind the band, published through the page chrome by the core host), no veil, no
 // collapse (the band is the frame's). From the top: the "verified artist" eyebrow, the flexible air, the name (the panorama voice, 120/130 at the
 // light 200; the 64 compact voice below 640; 150 at Huge) standing `NameNudge` left of the gutter so its glyph edge lines up with the copy, the
-// caption ("#3 in the world" in the accent · monthly listeners · followers) and, at Huge, the actions row.
+// caption ("#3 in the world" in the accent · monthly listeners · followers) and, at Huge, the secondary row.
+//
+// THE HEIGHT HUGS. The record's height is a floor (`MinHeight`), not a clip: the copy is a flow (eyebrow, the spring, name, caption, the secondary
+// row), so a long caption that wraps pushes the body down instead of running under it. The copy stands in the system page column (audit A1), so
+// the eyebrow, the name and the caption share the band's and the body's x at every width; the wash behind them stays full bleed.
 //
 // THE NAME. The `panoramaFit` option decides how it meets the window edge: Bleed lets it run off the hero's edge (the hero clips it), Fit trims it
 // with an ellipsis. It is ONE text node whose trim is a live prop, never two keyed arms. A name keeps its own casing (never lowercased); the
 // eyebrow and the caption's words are labels, lowercased by the case role.
 //
-// THE ACTIONS stand where the tier record says (`ZuneArtistLayout.Actions`): the band's row 2 at Standard (the core host publishes them),
-// a row under the caption at Huge (rings with their lowercase words), at the hero's bottom right at Small, a 40 row under the hero at
-// Compact (`ZuneArtistPage` places that one). The follow pill is a 2-dip outline (the accent while following).
+// THE ACTIONS: one home per verb (audit A4). From Small up play, shuffle and follow are the band's row 2 (the core host publishes them); the hero
+// keeps only what the band does not carry, radio and "...", as unlabelled 36 rings (`ZuneArtistLayout.Secondary`: at its bottom right at Small, a
+// row under the caption at Huge). Compact has no band actions: all of them stand in a 40 row under the hero (`ZuneArtistPage` places that one).
+// The follow pill is a 2-dip outline (the accent while following).
 //
 // The hero is built for the live page AND for the derived shimmer (a null `p` is the skeleton arm: the actions are never skeleton content).
 
@@ -37,14 +42,15 @@ internal static class ZuneArtistHero
     /// <summary>The hero's verbs (all null on the skeleton arm).</summary>
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
-    /// <summary>The hero: eyebrow, name, caption and (Huge) the actions row; the Small corner actions ride a layer over it.</summary>
+    /// <summary>The hero: eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
+    /// ride a layer over it.</summary>
     public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, PanoramaFit fit, ColorF accent, in Acts acts)
     {
         float gutter = lay.Gutter;
         bool shimmer = acts.Play is null;
 
         BoxEl eyebrow = text.Verified
-            ? Inset(Lines(Run(Loc.Get(Strings.Artist.Verified), Tok.TextSecondary), shimmer))
+            ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [Lines(Run(Loc.Get(Strings.Artist.Verified), Tok.TextSecondary), shimmer)] }
             : new BoxEl();
         eyebrow = eyebrow with { Key = Rules.EyebrowKey };
 
@@ -56,40 +62,44 @@ internal static class ZuneArtistHero
             // Bleed runs off the hero's edge (the hero clips it); Fit trims it. A live prop of the same node.
             Trim = fit == PanoramaFit.Fit ? TextTrim.CharacterEllipsis : TextTrim.None,
         };
+        // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it.
         Element nameBox = new BoxEl
         {
-            Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Rules.NameCaptionGap),
+            Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(-Rules.NameNudge, 0f, 0f, Rules.NameCaptionGap),
             Animate = ZuneMotion.TitleScale, Children = [Lines(name, shimmer)],
         };
 
-        var kids = new List<Element>(5) { eyebrow, new BoxEl { Grow = 1f, MinHeight = 0f }, nameBox, Inset(Caption(in text, accent, shimmer)) };
-        if (lay.Actions == ZuneArtistActions.HeroRow && !shimmer)
-            kids.Add(Inset(new BoxEl
+        var kids = new List<Element>(5) { eyebrow, new BoxEl { Grow = 1f, MinHeight = 0f }, nameBox, Caption(in text, accent, shimmer) };
+        if (lay.Secondary == ZuneArtistSecondary.Row && !shimmer)
+            kids.Add(new BoxEl
             {
                 Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
                 Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                Children = [Actions(text.Name, uri, lay, acts, labels: true, radio: true)],
-            }));
+                Children = [Secondary(uri, lay, acts)],
+            });
 
-        Element column = new BoxEl
+        // The copy in the page column (the band's x); it fills the hero's height, so the spring parks the name and the caption at its foot.
+        Element column = ZuneDetailKit.CentredPage(new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Padding = new Edges4(gutter - Rules.NameNudge, lay.EyebrowTop, gutter, lay.CaptionBottom),
+            Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, lay.EyebrowTop, 0f, lay.CaptionBottom),
             Children = kids.ToArray(),
-        };
+        }, gutter);
 
         var layers = new List<Element>(2) { column };
-        if (lay.Actions == ZuneArtistActions.HeroCorner && !shimmer)
+        if (lay.Secondary == ZuneArtistSecondary.Corner && !shimmer)
             layers.Add(new BoxEl
             {
                 Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, HitTestPassThrough = true,
                 Padding = new Edges4(0f, 0f, gutter, Rules.CornerInsetY),
                 Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                Children = [Actions(text.Name, uri, lay, acts, labels: false, radio: false)],
+                Children = [Secondary(uri, lay, acts)],
             });
 
+        // MinHeight, not Height: the record's height is a floor and the copy's flow can exceed it (a wrapping caption pushes the body down). Clipped
+        // only for the bleeding name, which runs off the right edge.
         return new BoxEl
         {
-            Key = Rules.HeroKey, Height = lay.HeroH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
+            Key = Rules.HeroKey, MinHeight = lay.HeroH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
             Layout = ZuneMotion.ColumnCollapse, Children = layers.ToArray(),
         };
     }
@@ -103,12 +113,6 @@ internal static class ZuneArtistHero
             Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
             Children = [Actions(name, uri, lay, acts, labels: false, radio: false, spread: true)],
         };
-
-    /// <summary>Nudges a part to the gutter (the hero's column starts `NameNudge` to its left for the name's sake).</summary>
-    static BoxEl Inset(Element e) => new()
-    {
-        Direction = 1, MinWidth = 0f, Margin = new Edges4(Rules.NameNudge, 0f, 0f, 0f), Children = [e],
-    };
 
     /// <summary>"#N in the world" (accent) · monthly listeners · followers; a zero stat drops its run.</summary>
     static Element Caption(in Artist.HeroText text, ColorF accent, bool shimmer)
@@ -161,7 +165,20 @@ internal static class ZuneArtistHero
 
     static readonly Action s_noop = static () => { };
 
-    /// <summary>Play · shuffle · follow (· radio) · more. <paramref name="spread"/> parks the more ring at the end of the row (the Compact row).</summary>
+    /// <summary>The verbs the band does not carry: radio and "...", unlabelled rings (Small's corner, Huge's row under the caption).</summary>
+    static Element Secondary(string uri, ZuneArtistLayout lay, in Acts acts)
+    {
+        var kids = new List<Element>(2) { Ring("radio", Icons.RadioTower, Loc.Get(Strings.Artist.ArtistRadio), false, primary: false, acts.Radio, lay.Target) };
+        if (acts.Menu is { } menu) kids.Add(Embed.Comp(new MoreProps(lay.Target, menu), static () => new MoreRing()) with { Key = "zune-artist-more:" + uri });
+        return new BoxEl
+        {
+            Key = Rules.ActionsKey + ":secondary", Direction = 0, Gap = Rules.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = kids.ToArray(),
+        }.Skeletonized(false);
+    }
+
+    /// <summary>Play · shuffle · follow (· radio) · more: the Compact row's, where the band carries no actions. <paramref name="spread"/> parks the more
+    /// ring at the end of the row.</summary>
     static Element Actions(string name, string uri, ZuneArtistLayout lay, in Acts acts, bool labels, bool radio, bool spread = false)
     {
         float target = lay.Target;
