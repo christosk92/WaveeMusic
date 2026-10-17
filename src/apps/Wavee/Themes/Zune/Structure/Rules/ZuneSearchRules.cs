@@ -38,6 +38,14 @@ public static class ZuneSearchRules
     /// <summary>The inline word runs (genres, related searches): the gap between words, between the two runs.</summary>
     public const float WordGap = 20f, RunsGap = 48f;
 
+    /// <summary>The genres' estimated width per character (the 15 voice) and the narrowest related-searches column worth standing beside them: the
+    /// engine's wrapping box fills its line, so "the genres hug their words" is this estimate against the page's width.</summary>
+    public const float WordCharW = 8.2f, RelatedMinW = 240f;
+
+    /// <summary>A hit row's art stands on the column's left edge and its kind word on the right (the board's 48 art column: 40 art + 8 + the 12 gap),
+    /// so the row's side padding is 0 and the gap after the art is 20.</summary>
+    public const float HitPadX = 0f, HitArtGap = 20f, KindCellW = 60f;
+
     /// <summary>The shimmer's rows and its seed genres.</summary>
     public const int ShimmerRows = 8, ShimmerGenres = 4;
 }

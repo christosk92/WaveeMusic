@@ -164,13 +164,13 @@ internal static class ZuneBrowseCategory
             },
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_cardHeight,
-            header: header,
+            header: header is BoxEl head ? head with { Grow = H.HeadFillGrow } : header,
             pager: ShelfPager.Chevrons,
             // Standard: the fixed 154 card; elsewhere the shelf FITS up to the tier's columns (live props of ONE shelf).
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
-            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => "zune-browse-card:" + item.Card.Uri)
             with { Key = B.CategorySectionPrefix + f.Uri };

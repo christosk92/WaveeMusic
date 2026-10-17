@@ -173,10 +173,10 @@ internal static class ZuneSurface
         Element column = text ?? RowText(d, in s)!;
         var flow = new BoxEl
         {
-            Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f,
+            Direction = 0, Gap = s.ArtGap, AlignItems = FlexAlign.Center, Grow = 1f,
             MinHeight = s.MinHeight, MinWidth = 0f,
             // A floor under art + 2 x pad (Search's 52 / 56 rows of Z-Search-Small / -Compact) trims the pad to fit it; every other row keeps 8.
-            Padding = new Edges4(SurfaceGeometry.RowPad, RowPadY(edge, s.MinHeight), SurfaceGeometry.RowPad, RowPadY(edge, s.MinHeight)),
+            Padding = new Edges4(s.PadX, RowPadY(edge, s.MinHeight), s.PadX, RowPadY(edge, s.MinHeight)),
             Children = trailing is null ? [artBox, column] : [artBox, column, trailing],
         };
         if (lane || !SurfaceRules.ShowsMenuTrailing(in s, hasMenu, d.ShowMenu)) return flow;

@@ -65,7 +65,9 @@ public readonly record struct SurfaceShape(
     MenuPlacement Menu,
     PlayReveal Play,
     float MinHeight,
-    bool Labels)
+    bool Labels,
+    float PadX = 8f,
+    float ArtGap = 12f)
 {
     public bool IsRow => Layout == SurfaceLayout.Row;
 
