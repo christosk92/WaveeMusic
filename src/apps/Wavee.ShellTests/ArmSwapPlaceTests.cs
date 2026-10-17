@@ -297,7 +297,10 @@ public sealed class ArmSwapPlaceTests(ShellHost host)
             shell.RunFrames(30);
             var paneAgain = MainScroller(shell, Node(shell, "lib:detail"));
             Assert.NotNull(paneAgain);
-            Assert.True(Math.Abs(paneAgain!.LastShown - paneOffset) <= 1.0, $"the pane's scroll is {paneAgain.LastShown}, it was {paneOffset}");
+            // Where it was, within the pane's range now: the offset the test picks can be the old maximum, and a re-mounted pane may measure
+            // a pixel or two shorter (text measured afresh), which clamps it.
+            double expected = Math.Min(paneOffset, paneAgain!.MaxOffset);
+            Assert.True(Math.Abs(paneAgain.LastShown - expected) <= 1.0, $"the pane's scroll is {paneAgain.LastShown}, it was {paneOffset} (max now {paneAgain.MaxOffset})");
         }, 800f, 560f));
 
     /// <summary>The first item of the grid's row <paramref name="row"/> (rows counted by distinct item tops).</summary>
