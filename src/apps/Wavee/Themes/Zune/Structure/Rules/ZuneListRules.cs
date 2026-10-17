@@ -179,6 +179,9 @@ public static class ZuneListRules
     public const float LeadGlyph = 12f, RingStroke = 2f, LeadDividerSlot = 17f, DividerHeight = 16f;
 
     /// <summary>The date group head: 40 tall, the words on its floor 6 up, 8 between the name and the count.</summary>
+    public const float GroupHeadSize = 22f, GroupHeadLine = 28f;
+
+    /// <summary>See <see cref="GroupHeadSize"/>.</summary>
     public const float GroupHeadHeight = 40f, GroupHeadPadBottom = 6f, GroupHeadGap = 8f;
 
     /// <summary>A command entering and leaving the bar.</summary>
@@ -342,13 +345,17 @@ public static class ZuneListRules
     /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
     /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false),
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
     /// page docks its ASIDE from Standard (Z-Album's 260 "more by" column; the frame folds it again where the CONTENT tier is narrower, a docked
     /// panel's page), and the identity column rests at the board's 240 (the core's list seed reads it; Zune draws no grip).</summary>
-    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with { AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW };
+    public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
+    {
+        AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW,
+        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim },
+    };
 
     /// <summary>Huge (Z-Album-Huge, Z-Liked-Huge, Z-Playlist-*-Huge): Standard's, the identity column resting at 320 (Z6a1), and the insights REST OPEN
     /// as a column of the page (ZT5: Z-Sizes-Breakpoints "liked songs: huge: insights column", Z-Liked-Huge draws the 420 column open). The pane is the
@@ -369,6 +376,12 @@ public static class ZuneListRules
     {
         HugeWide = Huge4K, HugeWideRung = ZuneTiers.PaneThirdRung,
     };
+
+    /// <summary>An album's numbered rows (one line, no art) stand this far under the density's row: Z-Album's 42 under the standard 52 (compact 34, comfortable 50).</summary>
+    public const float AlbumRowTrim = 10f;
+
+    /// <summary>An album's number sits this far in from its lane's start (Z-Album: 4), and the hover "..." target in the time lane.</summary>
+    public const float NumberInset = 4f, HoverMoreBox = 28f;
 
     /// <summary>A row's height in a window tier's table record at a density: the density's row at every tier (no floor: "Standard rows").</summary>
     public static float TableRowFor(WidthTier window, ZuneDensity density)

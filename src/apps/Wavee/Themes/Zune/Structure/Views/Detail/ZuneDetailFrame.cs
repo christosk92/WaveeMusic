@@ -215,7 +215,8 @@ internal static class ZuneDetailFrame
             Key = "insights:host", ZStack = true, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Children = [p.Content, layer],
         };
-        if (p.Sheet is null) return host;
+        // Liked Songs (the head arm) has no "songs" heading: the meta under its title leads straight into the chips and the table (Z-Liked).
+        if (p.Sheet is null || p.Head is not null) return host;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,

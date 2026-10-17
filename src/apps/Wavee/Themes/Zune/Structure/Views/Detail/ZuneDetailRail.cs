@@ -68,6 +68,10 @@ internal static class ZuneDetailRail
         if (lay.RailTitle)
             kids.Add(K.Row("rail:title", slots.Title?.Invoke(R.Type.Heading("").Size, float.NaN) ?? Title(id.Title, w)));
         kids.Add(K.Row("rail:cover", K.Cover("rail:cover-art", id, acts, slots, w)));
+        // A playlist's description leads its column under the cover (Z-Playlist-Owned-Followed-Huge: description, owner, meta, rings); every other kind's
+        // closes it.
+        bool descriptionLeads = id.Kind == DetailKind.Playlist;
+        if (descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } lead) kids.Add(K.LateRow("rail:desc", lead));
         if (id.OwnerName is { Length: > 0 } && id.Kind != DetailKind.Album && slots.Attribution is null)
             kids.Add(K.LateRow("rail:owner", K.ArtistText(id.OwnerName, w, lay)));
         kids.Add(K.LateRow("rail:artists", new BoxEl
@@ -89,7 +93,7 @@ internal static class ZuneDetailRail
         if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
         if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
             kids.Add(new BoxEl { Key = "rail:release", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, Z.NotesTop - lay.RailGap, 0f, 0f), Children = [release(false)] });
-        if (p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } description) kids.Add(K.LateRow("rail:desc", description));
+        if (!descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } description) kids.Add(K.LateRow("rail:desc", description));
 
         return new BoxEl
         {

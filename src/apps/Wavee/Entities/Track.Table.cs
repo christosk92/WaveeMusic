@@ -656,6 +656,8 @@ public readonly partial struct Track
             var rows = RowMetrics.Rows();   // the style's density (M3)
             float art = form.ArtFor(set.Classic ? rows.ClassicArt : rows.ModernArt);
             float rowH = form.RowFor(set.Classic, set.Classic ? rows.ClassicRow : rows.ModernRow);
+            // An album's numbered rows are one line with no art lane: a structure may stand them under the density's two-line row.
+            if (form.OneLineTrim > 0f && !set.Compact && !set.Thumb && snap.Config.Kind == DetailKind.Album) rowH = MathF.Max(0f, rowH - form.OneLineTrim);
             return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode);
         }
 
@@ -673,6 +675,7 @@ public readonly partial struct Track
             // no versions chevron lane (the drawer stays reachable through the menu's "Track details"), no Artist / Added-by / tempo lane,
             // and the 40 more lane at every width.
             bool compact = form.CompactRows;
+            bool hover = form.HoverActions && !compact && !s.Classic;
             return new ColumnSet(
                 Album: cfg.ShowAlbumColumn && tier < 2 && form.AlbumColumn,
                 By: src.HasAddedBy && tier < 1 && !compact,
@@ -680,19 +683,20 @@ public readonly partial struct Track
                 Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3 && form.PlaysColumn,
                 // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
-                Heart: tier < 5 && !cfg.QuietRows && !compact,
+                Heart: tier < 5 && !cfg.QuietRows && !compact && !hover,
                 Thumb: identity.Thumb,
-                Actions: trailing.Actions || compact,
+                Actions: (trailing.Actions && !hover) || compact,
                 Tier: tier,
                 Tempo: cfg.ShowTempo && s.TempoColumn && !compact,
-                Expand: trailing.Expand && !compact,
+                Expand: trailing.Expand && !compact && !hover,
                 Artist: identity.Artist && !compact,
                 Classic: s.Classic,
-                HeartTrailing: compact || (tier < 5 && cfg.QuietRows),
+                HeartTrailing: compact || (tier < 5 && cfg.QuietRows && !hover),
                 Quiet: cfg.QuietRows,
                 Compact: compact,
                 // A list's Modern row drops its "#" where the tier says so (C-TrackList compact); an album's track number and the Classic row keep it.
-                IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album);
+                IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album,
+                HoverActions: hover);
         }
 
         int ReliefStepFor(in ColumnSet s)

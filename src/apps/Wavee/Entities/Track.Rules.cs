@@ -71,6 +71,8 @@ public readonly partial struct Track
         public const float Tempo = 80f;
         /// <summary>"1:59:59" (an episode in a playlist), not just "59:59".</summary>
         public const float Duration = 52f;
+        /// <summary>The duration lane of a set whose heart and "..." stand in it on row hover (<see cref="ColumnSet.HoverActions"/>): the time's 52 and room for the two 28 targets.</summary>
+        public const float DurationHover = 64f;
         /// <summary>The trailing "…" lane (a 28-DIP button + air), revealed on row hover. There is no film lane any more
         /// (tuned Classic L3): a video is the small film glyph after the title, so the trailing lane is the same on a
         /// release with a video and one without.</summary>
@@ -115,7 +117,7 @@ public readonly partial struct Track
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false,
-                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false);
+                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
