@@ -111,6 +111,24 @@ internal static partial class ZuneLibraryPage
 
     /// <summary>The find field: a plain field with the magnifier, the library's filter signal. A bottom rule in the board; the engine's field is the Zune control style's.</summary>
     static Element Find(LibraryPageProps p, ZuneLibraryLayout l)
+        => l.Single ? FindPill(p, l) : FindRule(p, l);
+
+    /// <summary>The split pages' find field (Z-Library-*): the magnifier, then a plain field with a 1-DIP bottom rule and no plate, "find in albums", 120 / 160 / 220 wide.</summary>
+    static Element FindRule(LibraryPageProps p, ZuneLibraryLayout l)
+        => new BoxEl
+        {
+            Key = "lib:find", Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.FindGap, Shrink = 0f, MinWidth = 0f, Height = l.HeadH,
+            Children =
+            [
+                Icon(Icons.Search, LR.FindGlyph, Tok.TextTertiary),
+                TextBox.Create(p.Filter(), options: new TextBox.TextBoxOptions
+                {
+                    Placeholder = Strings.Theme.Zune.Collection.Library.FindIn(p.Title.ToLower(System.Globalization.CultureInfo.CurrentCulture)), Width = l.FindW, Height = l.HeadH,
+                }),
+            ],
+        };
+
+    static Element FindPill(LibraryPageProps p, ZuneLibraryLayout l)
         => new BoxEl
         {
             Key = "lib:find", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, Basis = LR.FindW, Grow = l.Single ? 1f : 0f,
@@ -124,7 +142,8 @@ internal static partial class ZuneLibraryPage
     /// <summary>The count as ONE bound text (the host's "312 albums").</summary>
     static Element Count(LibraryPageProps p) => R.Type.DenseMeta("") with
     {
-        Text = p.CountText, Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+        // The board's "312 albums": the number and the kind's own words (the page's title), cased by the label role.
+        Text = Prop.Of(() => p.CountText.Current() + " " + p.Title), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
     };
 
     // ══ THE SORT WORDS ═══════════════════════════════════════════════════════════════════════════════════════════════

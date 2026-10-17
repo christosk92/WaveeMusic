@@ -179,10 +179,25 @@ internal static partial class ZuneLibraryPage
     {
         bool circular = kind == EntityKind.Artist;
         Func<bool> sel = scope.Row.IsSelected;
-        Element art = FillArt(scope, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover));
+        // The selection is the accent ring on the cover alone (the board draws it as a 2 outline just outside; the list clips at the column's edge, so it is drawn on the
+        // cover's own edge, never clipped); the name under it stays clear of it.
+        Element art = new BoxEl
+        {
+            ZStack = true,
+            Children =
+            [
+                FillArt(scope, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover)),
+                new BoxEl
+                {
+                    Key = "ic-ring", HitTestVisible = false,
+                    Corners = circular ? CornerRadius4.All(R.Shape.For(ShapeRole.Avatar)) : R.Shape.All(ShapeRole.Cover), BorderWidth = LR.CardRing,
+                    BorderColor = Prop.Of(() => sel() ? Tok.AccentDefault : ColorF.Transparent), BrushTransitionMs = Design.Motion.Fast,
+                },
+            ],
+        };
         Element content = new BoxEl
         {
-            Direction = 1, Gap = LR.CardNameGap, ClipToBounds = true, Padding = Edges4.All(LR.CardPadSelected), Draggable = User.DragOf(scope),
+            Direction = 1, Gap = LR.CardNameGap, Draggable = User.DragOf(scope),
             Children = compact
                 ? [art]
                 : [art, new BoxEl
@@ -279,7 +294,6 @@ internal static partial class ZuneLibraryPage
     /// the container's tap/keys/focus wiring.</summary>
     static BoxEl CardChrome(in RowScope row, Element content)
     {
-        Func<bool> isSel = row.IsSelected;
         var interact = row.OnInteraction;
         return new BoxEl
         {
@@ -295,11 +309,6 @@ internal static partial class ZuneLibraryPage
             Children =
             [
                 new BoxEl { Key = "ic-content", Direction = 1, Children = [content] },
-                new BoxEl
-                {
-                    Key = "ic-ring", HitTestVisible = false, Corners = R.Shape.All(ShapeRole.Cover), BorderWidth = LR.CardRing,
-                    BorderColor = Prop.Of(() => isSel() ? Tok.AccentDefault : ColorF.Transparent), BrushTransitionMs = Design.Motion.Fast,
-                },
                 new BoxEl
                 {
                     Key = "ic-common", HitTestVisible = false, Corners = R.Shape.All(ShapeRole.Cover),
