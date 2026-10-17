@@ -143,15 +143,21 @@ public class ReportChannelsTests
 
     // ── the issue-form YAML, read as data ──────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The repository's issue-form folder, found by walking up from the test binary.</summary>
-    static string TemplateDir()
+    /// <summary>The repository's issue-form folder, found by walking up from the test binary, then from this source file
+    /// (a build with <c>--artifacts-path</c> puts the binary outside the repository).</summary>
+    static string TemplateDir() => TemplateDirAbove(AppContext.BaseDirectory) ?? TemplateDirAbove(SourceDir())
+        ?? throw new InvalidOperationException(".github/ISSUE_TEMPLATE not found above " + AppContext.BaseDirectory);
+
+    static string SourceDir([System.Runtime.CompilerServices.CallerFilePath] string file = "") => Path.GetDirectoryName(file) ?? "";
+
+    static string? TemplateDirAbove(string start)
     {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
         {
             string candidate = Path.Combine(dir.FullName, ".github", "ISSUE_TEMPLATE");
             if (Directory.Exists(candidate)) return candidate;
         }
-        throw new InvalidOperationException(".github/ISSUE_TEMPLATE not found above " + AppContext.BaseDirectory);
+        return null;
     }
 
     static string[] Template(string file)

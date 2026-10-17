@@ -195,9 +195,14 @@ public sealed class ZuneCatalogTests : IDisposable
         Assert.Contains(def.ToString(), values);
     }
 
-    static string? FindMatrix()
+    // above the test binary, then above this source file (a build with --artifacts-path puts the binary outside the repository)
+    static string? FindMatrix() => FindMatrixAbove(AppContext.BaseDirectory) ?? FindMatrixAbove(SourceDir());
+
+    static string SourceDir([System.Runtime.CompilerServices.CallerFilePath] string file = "") => Path.GetDirectoryName(file) ?? "";
+
+    static string? FindMatrixAbove(string start)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        var dir = new DirectoryInfo(start);
         for (int i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
         {
             string candidate = Path.Combine(dir.FullName, "Wavee", "analyzer-input", "WVTH011.matrix.txt");
