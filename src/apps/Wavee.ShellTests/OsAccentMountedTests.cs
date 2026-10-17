@@ -37,6 +37,17 @@ public sealed class OsAccentMountedTests(ShellHost host)
         Design.SeedPalette(Tok.Theme);
     }
 
+    /// <summary>Zune active with ITS OWN defaults and nothing carried over: an earlier fact may have picked a swatch, turned the OS accent
+    /// on or left an OS accent / engine override behind (all process state), and these facts assert the defaults. UI thread.</summary>
+    static void ActivateZuneAtDefaults()
+    {
+        Tok.SetAccent((ColorF?)null);
+        ThemeHost.OsAccent = AccentRamp.FluentDefault;
+        ZuneHost.Activate();
+        ThemeHost.ResetOptions(ZuneTheme.Id);
+        Design.SeedPalette(Tok.Theme);
+    }
+
     [Theory]
     [InlineData(ThemeKind.Dark)]
     [InlineData(ThemeKind.Light)]
@@ -89,7 +100,7 @@ public sealed class OsAccentMountedTests(ShellHost host)
     [Fact]
     public void Zune_with_its_swatch_keeps_the_swatch_through_the_boot_override_and_an_OS_accent_change()
     {
-        host.Run(ZuneHost.Activate);
+        host.Run(ActivateZuneAtDefaults);
         try
         {
             host.Run(() =>
@@ -114,15 +125,19 @@ public sealed class OsAccentMountedTests(ShellHost host)
         }
         finally
         {
-            host.Run(PutBack);
-            host.Run(ZuneHost.Restore);
+            host.Run(() =>
+            {
+                ThemeHost.ResetOptions(ZuneTheme.Id);
+                PutBack();
+                ZuneHost.Restore();
+            });
         }
     }
 
     [Fact]
     public void Zune_with_use_the_windows_accent_draws_the_OS_accent_and_the_swatch_again_when_it_is_off()
     {
-        host.Run(ZuneHost.Activate);
+        host.Run(ActivateZuneAtDefaults);
         try
         {
             host.Run(() =>
@@ -145,9 +160,12 @@ public sealed class OsAccentMountedTests(ShellHost host)
         }
         finally
         {
-            host.Run(() => ThemeHost.ResetOptions(ZuneTheme.Id));
-            host.Run(PutBack);
-            host.Run(ZuneHost.Restore);
+            host.Run(() =>
+            {
+                ThemeHost.ResetOptions(ZuneTheme.Id);
+                PutBack();
+                ZuneHost.Restore();
+            });
         }
     }
 }
