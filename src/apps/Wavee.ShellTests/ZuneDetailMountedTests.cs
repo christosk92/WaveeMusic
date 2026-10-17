@@ -17,7 +17,8 @@ using Wavee.Themes.Zune;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Xunit;
-using static Wavee.ShellTests.ShellProbe;
+using static Wavee.ShellTests.ShellProbe;
+using FluentGpu.Theming;
 
 namespace Wavee.ShellTests;
 
@@ -60,7 +61,10 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
             Assert.True(templates.Add(template), "template id registered twice: " + template);
         }
         Assert.True(registry.TryGetStyle(StyleKeys.DetailHero, out var hero));
-        Assert.Same(ZuneDetailHero.Style, hero);
+        var own = new ViewRegistryBuilder();   // Zune's own registration (ZuneDetailHero is internal to the app)
+        ZuneStructure.RegisterOwn(own);
+        Assert.True(own.Build().TryGetStyle(StyleKeys.DetailHero, out var zuneHero));
+        Assert.Same(zuneHero, hero);
     }
 
     // ── the ladders and the records (pure) ───────────────────────────────────────────────────────────────────────────────
