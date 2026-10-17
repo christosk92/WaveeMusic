@@ -132,12 +132,8 @@ internal static class ZuneStageRoot
                     Key = "chrome:top", Enter = top, Exit = top, Transition = MotionTok.ControlNormal,
                     Children =
                     [
-                        // content-tall: the bar sizes itself to the tier's head (48, the Compact bar and its pivot row, 56, 72)
-                        new BoxEl
-                        {
-                            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                            Children = [Slots.View(ViewKeys.StageTopBar, v.TopBar)],
-                        },
+                        // the head, placed at the tier's height (48, the Compact bar and its pivot row, 56, 72): a component, it reads the tier
+                        Embed.Comp(new ZuneStageHead.Props(v.TopBar), static () => new ZuneStageHead()),
                     ],
                 }),
                 // the transport: ONE slot on a full-bleed layer; the view places the plate (or the Card / Large art controls) itself
@@ -187,6 +183,27 @@ internal static class ZuneStageRoot
             Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
             Children = [Embed.Comp(new ZuneStageUpNextFrame.Props(v.Stage, v.Layers.UpNext), static () => new ZuneStageUpNextFrame())],
         };
+}
+
+/// <summary>The stage's head: the top bar's slot placed at the top, the window tier's head tall (never stretched to the stage). Keyed
+/// <see cref="HeadKey"/> so the tests find the placed bar.</summary>
+internal sealed class ZuneStageHead : Component
+{
+    public const string HeadKey = "zune-stage-head";
+
+    public sealed record Props(StageTopBarProps TopBar);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+        var t = ZuneStageTiers.StageOf(in tiers);
+        return new BoxEl
+        {
+            Key = HeadKey, Height = t.HeadH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 0,
+            Children = [Slots.View(ViewKeys.StageTopBar, p.TopBar)],
+        };
+    }
 }
 
 /// <summary>The Up next column's flat floating pane: the core's rect moved in by the tier's gutter (the core budgets it at the plate's 0
