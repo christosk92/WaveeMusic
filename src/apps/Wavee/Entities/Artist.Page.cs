@@ -115,6 +115,9 @@ public readonly partial struct Artist
         ArtistHeroMetrics _metrics;
         float _width;
         bool _measured;
+        /// <summary>How far under the viewport's top the band reaches (the structure's `ArtistTierPolicy.BandClearance`: Classic's sticky band 56, a
+        /// band outside the viewport 0): the pivot click's margin and the spy's band edge. Latched each render, read by the click and the spy.</summary>
+        float _bandClear = Detail.BandLayout.Height;
 
         // ── scroll, band, spy ──
         readonly Signal<float> _scrollY = new(0f);
@@ -319,6 +322,7 @@ public readonly partial struct Artist
             float measuredW = _heroWidth.Value;
             _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
             _metrics = ShellPolicy.Tracked.ArtistTiers.Hero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
+            _bandClear = ShellPolicy.Tracked.ArtistTiers.BandClearance(in tierFacts);
 
             _ready = ArtistReadiness.Overview(a);
             bool overviewPending = a.IsValid
@@ -539,7 +543,7 @@ public readonly partial struct Artist
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(),
-                margin: Detail.BandLayout.Height);
+                margin: _bandClear);
         }
 
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
@@ -567,7 +571,7 @@ public readonly partial struct Artist
             }
             float viewportHeight = _viewportH.Peek();
             if (viewportHeight <= 0f) viewportHeight = vp.H;
-            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, viewportHeight, atEnd);
+            int at = Detail.BandLayout.ActiveSection(tops[..n], _bandClear, viewportHeight, atEnd);
             if (at != _spyLogged) LogSpy(at, tops[..n], viewportHeight, atEnd);
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40); NoSection lights nothing
         }
@@ -594,7 +598,7 @@ public readonly partial struct Artist
                 WaveeLogField.Of("at", at),
                 WaveeLogField.Of("label", label),
                 WaveeLogField.Of("tops", sb.ToString()),
-                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.Height, viewportHeight)),
+                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(_bandClear, viewportHeight)),
                 WaveeLogField.Of("vh", (double)viewportHeight),
                 WaveeLogField.Of("atEnd", atEnd));
         }

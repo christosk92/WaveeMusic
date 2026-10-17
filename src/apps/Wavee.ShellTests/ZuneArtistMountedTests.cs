@@ -116,7 +116,9 @@ public sealed class ZuneArtistMountedTests(ShellHost host)
         Assert.Equal(ZuneArtistSecondary.Row, ZuneArtistTiers.For(WidthTier.Huge).Secondary);
         Assert.Equal(ZuneArtistSecondary.Row, ZuneArtistTiers.For(WidthTier.Huge4K).Secondary);
         Assert.Equal(1200f, ZuneArtistTiers.For(WidthTier.Huge).ChartMaxW);
-        Assert.Equal(1200f, ZuneArtistTiers.For(WidthTier.Huge4K).ChartMaxW);
+        // Huge 4K draws the board's chart beside its 440 rail on the capped column, so it carries no cap of its own (ZT6).
+        Assert.Equal(0f, ZuneArtistTiers.For(WidthTier.Huge4K).ChartMaxW);
+        Assert.Equal(520f, ZuneArtistTiers.For(WidthTier.Huge4K).HeroH);
         Assert.Equal(0f, ZuneArtistTiers.For(WidthTier.Standard).ChartMaxW);
     }
 

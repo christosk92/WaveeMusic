@@ -44,7 +44,9 @@ public sealed class ZuneProfileRulesTests
         var huge = ZuneProfileTiers.For(WidthTier.Huge);
         var k = ZuneProfileTiers.For(WidthTier.Huge4K);
         Assert.Equal(ZuneProfileName.Panorama, huge.Name);
-        Assert.Equal(huge with { Tier = WidthTier.Huge4K, Gutter = k.Gutter }, k);
+        // The same page; the cards and the list's cells are the board's 220 at 4K (as Home's and the artist's), nothing else differs.
+        Assert.Equal(huge with { Tier = WidthTier.Huge4K, Gutter = k.Gutter, CardW = k.CardW, ListMinCell = k.ListMinCell }, k);
+        Assert.Equal(220f, k.CardW);
     }
 
     [Fact]

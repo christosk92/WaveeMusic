@@ -46,6 +46,14 @@ public static partial class Profile
 
     sealed record PageProps(EntityUri Subject, string RouteKey);
 
+    /// <summary>A subject the page can bind a row to: a <c>spotify:user:</c> uri, or YOUR OWN account's row. The own row is staged under the account's bare
+    /// id (`--fake`'s "wavee-listener", the convention `Entities.ResolveMe` resolves the account by), which no provider owns, so its uri is not
+    /// <see cref="EntityUri.IsValid"/> although its row exists and is known: gating on validity alone left your own profile "unavailable" (never Ready).</summary>
+    static bool Addressable(EntityUri subject)
+        => subject.IsValid
+           || (subject.Id.Form != EntityForm.None && Entities.Current.MeSlot > global::Wavee.Table.None
+               && Entities.Current.Users.TryGetSlot(subject.Id, out int slot) && slot == Entities.Current.MeSlot);
+
     [CoreHost]
     sealed partial class PageHost : Component, IPropsHost
     {
@@ -75,6 +83,9 @@ public static partial class Profile
         ProfileHeroMetrics _metrics;
         float _width;
         bool _measured;
+        /// <summary>How far under the viewport's top the band reaches (`ArtistTierPolicy.BandClearance`: Classic's sticky band 56, a band outside the
+        /// viewport 0 or its air): the pivot click's margin and the spy's band edge. Latched each render.</summary>
+        float _bandClear = Detail.BandLayout.Height;
 
         // ── scroll, band, spy ──
         readonly Signal<float> _scrollY = new(0f), _viewportH = new(0f);
@@ -203,7 +214,7 @@ public static partial class Profile
                 // The first paint carries a cached grading's accent instead of one frame of the default.
                 _accentSeeded = true;
                 _accentEpoch = ThemeEpoch();
-                if (_latest.Subject.IsValid) PublishAccent(Entities.User(_latest.Subject), _latest.RouteKey);
+                if (Addressable(_latest.Subject)) PublishAccent(Entities.User(_latest.Subject), _latest.RouteKey);
             }
             _props.Value = _latest;
         }
@@ -218,7 +229,7 @@ public static partial class Profile
             {
                 _scope = scope;
                 _subject = p.Subject;
-                _user = p.Subject.IsValid ? Entities.User(p.Subject) : default;   // allocates the row: bind now, the demand fills
+                _user = Addressable(p.Subject) ? Entities.User(p.Subject) : default;   // allocates the row: bind now, the demand fills
                 Array.Clear(_anchors);                                            // the body is epoch-keyed: re-register
                 _revealed = false;
             }
@@ -250,6 +261,7 @@ public static partial class Profile
             float measuredW = _heroWidth.Value;
             _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
             _metrics = ShellPolicy.Tracked.ArtistTiers.ProfileHero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
+            _bandClear = ShellPolicy.Tracked.ArtistTiers.BandClearance(in tierFacts);
 
             _header = valid ? ProfileLoadRule.Header(u) : ProfileLoad.Unavailable;
             _bodyReady = ProfileReveal.BodyReady(_header, _measured, _revealed);
@@ -459,7 +471,7 @@ public static partial class Profile
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
-            scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(), margin: Detail.BandLayout.Height);
+            scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(), margin: _bandClear);
         }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through;
@@ -483,7 +495,7 @@ public static partial class Profile
             }
             float vh = _viewportH.Peek();
             if (vh <= 0f) vh = vp.H;
-            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, vh, atEnd);
+            int at = Detail.BandLayout.ActiveSection(tops[..n], _bandClear, vh, atEnd);
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had; NoSection lights nothing
         }
 

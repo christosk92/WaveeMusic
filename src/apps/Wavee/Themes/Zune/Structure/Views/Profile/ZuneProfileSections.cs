@@ -43,12 +43,12 @@ internal static class ZuneProfileSections
     });
 
     /// <summary>A section's heading row: the heading, its subtitle ("only visible to you" on the top artists), the "see all" word at the end.</summary>
-    static Element Head(ProfileSection s, Action? seeAll)
+    static Element Head(ProfileSection s, Action? seeAll, float linkTarget = 0f)
     {
         string? note = s == ProfileSection.TopArtists ? Loc.Get(Strings.Person.OnlyYou) : null;
         Element? tools = seeAll is null
             ? null
-            : K.Link("zune-profile-seeall:" + ProfileSections.Key(s), Loc.Get(Strings.Home.SeeAll), seeAll);
+            : K.Link("zune-profile-seeall:" + ProfileSections.Key(s), Loc.Get(Strings.Home.SeeAll), seeAll, linkTarget);
         return K.Heading(SectionTitle(s), note, tools);
     }
 
@@ -66,19 +66,19 @@ internal static class ZuneProfileSections
     internal static Element Shelf(ProfileSection s, ProfileCard[] items, Action? seeAll, ZuneProfileLayout lay) => s switch
     {
         ProfileSection.TopArtists => K.Section(Head(s, null), TopArtists(items, lay)),
-        ProfileSection.Playlists => ShelfOf(items, s_playlistCard, Head(s, seeAll)),
-        ProfileSection.RecentArtists => ShelfOf(items, s_artistCard, Head(s, null)),
-        _ => ShelfOf(items, s_personCard, Head(s, seeAll)),
+        ProfileSection.Playlists => ShelfOf(items, s_playlistCard, Head(s, seeAll, lay.LinkTarget), lay.CardW),
+        ProfileSection.RecentArtists => ShelfOf(items, s_artistCard, Head(s, null), lay.CardW),
+        _ => ShelfOf(items, s_personCard, Head(s, seeAll, lay.LinkTarget), lay.CardW),
     };
 
     /// <summary>A shelf of cards. The card band is a LIVE prop of the shelf, and it is the same at every tier here, so a crossing keeps the shelf and its page.</summary>
-    static Element ShelfOf(ProfileCard[] items, Func<ProfileCard, int, float, Element> cardAt, Element header) => new BoxEl
+    static Element ShelfOf(ProfileCard[] items, Func<ProfileCard, int, float, Element> cardAt, Element header, float cardW) => new BoxEl
     {
         Direction = 1, MinWidth = 0f,
         Children =
         [
             PagedShelf.Create(items, cardAt, onInvoke: s_open, cardHeight: s_cardHeight, header: header, keyOf: s_keyOf,
-                pager: ShelfPager.Chevrons, minCardW: H.ShelfCardW, maxCardW: H.ShelfCardW, fixedCardW: H.ShelfCardW, gap: H.ShelfGap,
+                pager: ShelfPager.Chevrons, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: H.ShelfGap,
                 headerGap: H.HeadGap, snap: ShelfSnap.Page, edgeFade: HomeModuleLayout.ShelfEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None) with { Key = "zune-profile-shelf" },
         ],
@@ -142,14 +142,14 @@ internal static class ZuneProfileSections
 
     /// <summary>A section's shimmer SOURCE at the shelf's real fit: the real heading, then the fitted count of SEED surfaces (a PagedShelf yields no rows
     /// against an unmeasured viewport).</summary>
-    internal static Element SeedShelf(ProfileSection s, float width)
+    internal static Element SeedShelf(ProfileSection s, float width, float cardW)
     {
-        int count = Math.Clamp((int)MathF.Ceiling(width / (H.ShelfCardW + H.ShelfGap)), 1, Z.SeedCards);
+        int count = Math.Clamp((int)MathF.Ceiling(width / (cardW + H.ShelfGap)), 1, Z.SeedCards);
         var cells = new Element[count];
         SurfaceShape shape = CardShape;
         for (int i = 0; i < cells.Length; i++)
         {
-            Element seed = SurfaceParts.Seed(in shape, H.ShelfCardW);
+            Element seed = SurfaceParts.Seed(in shape, cardW);
             cells[i] = seed.Skel(seed);
         }
         return K.Section(Head(s, null),

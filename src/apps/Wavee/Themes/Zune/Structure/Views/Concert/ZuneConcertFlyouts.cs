@@ -62,6 +62,8 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
     readonly Signal<int> _view = new(-1);            // -1 root; 0..3 = the month leaf's offset from this month
     readonly Signal<DateOnly?> _start = new(null), _end = new(null);
     bool _forward = true;
+    ZuneConcertLayout _lay = ZuneConcertTiers.Standard;
+    float _width = Rules.WhenFlyoutW, _maxHeight = Rules.MonthMaxH;
 
     public override Element Render()
     {
@@ -69,9 +71,16 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
         var culture = CultureInfo.CurrentCulture;
         var today = DateOnly.FromDateTime(DateTime.Now);
         var first = new DateOnly(today.Year, today.Month, 1);
+        // The flyout never outgrows the window it opens in (Compact windows are 300 wide), and its calendar cells share what is left; the days are
+        // the tier's hit edge tall (40 at Compact).
+        var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+        _lay = ZuneConcertTiers.Of(in facts);
+        var viewport = UseContext(Viewport.Size);
+        _width = Rules.FlyoutWidthIn(Rules.WhenFlyoutW, viewport.Width);
+        _maxHeight = Rules.FlyoutHeightIn(Rules.MonthMaxH, viewport.Height);
         return new BoxEl
         {
-            Direction = 1, Width = Rules.WhenFlyoutW, ClipToBounds = true, Padding = Edges4.All(Spacing.S),
+            Direction = 1, Width = _width, ClipToBounds = true, Padding = Edges4.All(Spacing.S),
             Children =
             [
                 new BoxEl
@@ -120,7 +129,7 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
                 [
                     new BoxEl
                     {
-                        Width = Rules.MonthBackBox, Height = Rules.MonthBackBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Width = Rules.BackEdge(_lay.Target), Height = Rules.BackEdge(_lay.Target), Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         Corners = R.Shape.All(ShapeRole.Control), Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                         OnClick = () => { _forward = false; _view.Value = -1; },
                         Children = [Icon(Icons.ChevronLeft, Rules.FlyoutTrailing, Tok.TextSecondary)],
@@ -155,7 +164,7 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
         });
         return new ScrollEl
         {
-            ContentSized = true, MaxHeight = Rules.MonthMaxH,
+            ContentSized = true, MaxHeight = _maxHeight,
             Content = new BoxEl { Direction = 1, Gap = Spacing.XS, Children = rows.ToArray() },
         };
     }
@@ -172,18 +181,19 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
     Element Calendar(DateOnly first, DateOnly today, DateOnly? start, DateOnly? end, CultureInfo culture)
     {
         int days = DateTime.DaysInMonth(first.Year, first.Month), lead = (int)first.DayOfWeek;
+        float cellW = Rules.CalendarCellWIn(_width), cellH = Rules.CalendarCellHIn(_lay.Target);
         var names = culture.DateTimeFormat.AbbreviatedDayNames;
         var grid = new List<Element>(7);
         var header = new Element[7];
         for (int i = 0; i < 7; i++)
             header[i] = new BoxEl
             {
-                Width = Rules.CalendarCellW, Height = Rules.CalendarHeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Width = cellW, Height = Rules.CalendarHeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Children = [Caption(names[i].Length <= 2 ? names[i] : names[i][..2]) with { Color = Tok.TextSecondary, MaxLines = 1 }],
             };
         grid.Add(new BoxEl { Direction = 0, Gap = Rules.CalendarGap, Children = header });
         var week = new List<Element>(7);
-        for (int i = 0; i < lead; i++) week.Add(new BoxEl { Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f });
+        for (int i = 0; i < lead; i++) week.Add(new BoxEl { Width = cellW, Height = cellH, Shrink = 0f });
         for (int d = 1; d <= days; d++)
         {
             var day = new DateOnly(first.Year, first.Month, d);
@@ -192,7 +202,7 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
             bool inRange = start is { } s && end is { } e && day > s && day < e;
             var cell = new BoxEl
             {
-                Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Width = cellW, Height = cellH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = R.Shape.All(ShapeRole.Control), Fill = selected ? Tok.AccentDefault : inRange ? Tok.AccentSubtle : ColorF.Transparent,
                 Children = [Body(d.ToString(culture)) with { Color = selected ? Tok.TextOnAccentPrimary : past ? Tok.TextDisabled : Tok.TextPrimary, MaxLines = 1 }],
             };
@@ -208,7 +218,7 @@ internal sealed class ZuneConcertWhenFlyout(Action<ConcertWhen> onPick) : Compon
         }
         if (week.Count > 0)
         {
-            while (week.Count < 7) week.Add(new BoxEl { Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f });
+            while (week.Count < 7) week.Add(new BoxEl { Width = cellW, Height = cellH, Shrink = 0f });
             grid.Add(new BoxEl { Direction = 0, Gap = Rules.CalendarGap, Children = week.ToArray() });
         }
         return new BoxEl { Direction = 1, Gap = Rules.CalendarGap, Children = grid.ToArray() };
@@ -232,6 +242,7 @@ internal sealed class ZuneConcertWhereFlyout(IReadSignal<int> radius, Action<int
     public override Element Render()
     {
         int current = radius.Value;
+        float width = Rules.FlyoutWidthIn(Rules.WhereFlyoutW, UseContext(Viewport.Size).Width);
         var options = ConcertHub.RadiusOptionsKm;
         var kids = new Element[3 + options.Length];
         kids[0] = ZuneConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Location.SearchCities), onSearch, lead: Icons.MapPin, trailing: Icons.ChevronRight);
@@ -242,6 +253,6 @@ internal sealed class ZuneConcertWhereFlyout(IReadSignal<int> radius, Action<int
             int km = options[i];
             kids[3 + i] = ZuneConcertFlyoutCells.FlyoutRow(Strings.Concerts.Filter.WithinKm(km), () => onRadius(km), toggle: true, active: km == current);
         }
-        return new BoxEl { Direction = 1, Width = Rules.WhereFlyoutW, Gap = Rules.FlyoutGap, Padding = Edges4.All(Spacing.S), Children = kids };
+        return new BoxEl { Direction = 1, Width = width, Gap = Rules.FlyoutGap, Padding = Edges4.All(Spacing.S), Children = kids };
     }
 }

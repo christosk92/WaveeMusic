@@ -49,7 +49,7 @@ internal static class ZuneDiscographyPage
                 new BoxEl
                 {
                     Direction = 1, Gap = Rules.DiscoTrailGap, MinWidth = 0f,
-                    Children = [Crumb(p), R.Type.PageHero(p.Title) with
+                    Children = [Crumb(p, lay), R.Type.PageHero(p.Title) with
                     {
                         Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
                         Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -72,9 +72,10 @@ internal static class ZuneDiscographyPage
     }
 
     /// <summary>The artist as the one ancestor: its name as written (never re-cased) in the secondary ink, the primary on hover.</summary>
-    static Element Crumb(DiscographyPageProps p) => new BoxEl
+    static Element Crumb(DiscographyPageProps p, ZuneArtistLayout lay) => new BoxEl
     {
-        Key = "zune-discography-crumb", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        // The word is its own target above Compact; at Compact it stands in a 40 box (the hit edge, a visual that stays the word).
+        Key = "zune-discography-crumb", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = lay.LinkTarget,
         Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => p.OnCrumb(0),
         Children =
         [
@@ -114,6 +115,8 @@ internal static class ZuneDiscographyPage
                 ],
             };
         }
-        return new BoxEl { Direction = 0, Gap = Rules.DiscoTabGap, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = words };
+        // Wraps where the three words outrun the column (300 wide: "singles & eps" and "compilations" cannot share a line): a second row of 40
+        // targets, never a clipped word or a horizontal overflow.
+        return new BoxEl { Direction = 0, Wrap = true, Gap = Rules.DiscoTabGap, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = words };
     }
 }

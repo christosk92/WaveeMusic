@@ -280,10 +280,12 @@ internal static class ZuneArtistLightbox
         Element TopChrome(int current, Action<Action> post)
         {
             bool saving = _p.Saving.Value;
-            float target = ZuneArtistTiers.Of(in _tiers).Target;
+            // The overlay covers the WINDOW, so its sizes follow the window tier (a docked panel narrowing the page changes none of them).
+            var lay = ZuneArtistTiers.OfWindow(in _tiers);
+            float target = lay.Target;
             return new BoxEl
             {
-                Height = Rules.ChromeH, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                Height = lay.LightboxChromeH, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                 Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
                 Gradient = Rules.TopScrim,
                 Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
@@ -328,6 +330,7 @@ internal static class ZuneArtistLightbox
 
         Element Filmstrip(int current, Action<int> setSelected)
         {
+            float edge = ZuneArtistTiers.OfWindow(in _tiers).LightboxThumb;
             var thumbs = new Element[_photos.Length];
             for (int i = 0; i < thumbs.Length; i++)
             {
@@ -335,12 +338,12 @@ internal static class ZuneArtistLightbox
                 bool active = i == current;
                 thumbs[i] = new BoxEl
                 {
-                    Width = Rules.Thumb, Height = Rules.Thumb, Shrink = 0f,
+                    Width = edge, Height = edge, Shrink = 0f,
                     Corners = CornerRadius4.All(R.Shape.Cover), ClipToBounds = true,
                     BorderWidth = Rules.ThumbBorder, BorderColor = active ? Prop.Of(static () => R.Ink.AccentAction) : Rules.Clear,
                     Opacity = active ? 1f : Rules.ThumbIdleOpacity, Transition = MotionTok.ControlFast,
                     OnClick = () => setSelected(idx), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-                    Children = [Controls.Artwork(_photos[idx], Rules.Thumb, Rules.Thumb, R.Shape.Cover, decodePx: Rules.ThumbDecode)],
+                    Children = [Controls.Artwork(_photos[idx], edge, edge, R.Shape.Cover, decodePx: Rules.ThumbDecode)],
                 };
             }
             // The strip scrolls sideways where the thumbs outrun the window instead of running off it; centred when they fit.
@@ -350,14 +353,14 @@ internal static class ZuneArtistLightbox
             };
             return new BoxEl
             {
-                Height = Rules.Thumb + Rules.StripPad + Rules.StripPad, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Height = edge + Rules.StripPad + Rules.StripPad, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
                 Children =
                 [
                     ScrollView(new BoxEl { Direction = 0, Children = [row] }, horizontal: true) with
                     {
-                        ContentSized = true, Shrink = 1f, MinWidth = 0f, Height = Rules.Thumb + Rules.StripPad + Rules.StripPad,
+                        ContentSized = true, Shrink = 1f, MinWidth = 0f, Height = edge + Rules.StripPad + Rules.StripPad,
                         SuppressScrollBar = true, AutoEdgeFade = true,
                     },
                 ],
