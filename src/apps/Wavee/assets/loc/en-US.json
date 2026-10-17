@@ -2813,7 +2813,9 @@
         "emptyTitle": "Let’s find something for this playlist",
         "emptyLine": "Search below, or drag songs here from anywhere in Wavee",
         "refresh": "Refresh",
-        "add": "Add"
+        "add": "Add",
+        "details": "Details",
+        "ticketsNote": "Prices come from the ticket providers, not Wavee"
       },
       "artist": {
         "$comment": "Z6a2: the artist page, its lightbox and the discography. Written as people say them; the style's case roles lower them. Names are never re-cased.",

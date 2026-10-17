@@ -438,7 +438,39 @@ numbers and tier records `Rules\ZunePlaylistRules.cs` (`ZunePlaylistRules`, `Zun
 
 ## Z6b2: the show, the episode and the concerts
 
-_Not built yet._
+Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Compact` / `-Small` / `-Huge` twins. Files: `Themes\Zune\Structure\ZuneStructure.ShowEpisodeConcert.cs` (the registrar), `Views\Show\ZuneShowReader.cs`, `ZuneShowHead.cs`, `ZuneShowRail.cs`; `Views\Episode\ZuneEpisode.cs`, `ZuneEpisodeReader.cs`, `ZuneEpisodeDiscussion.cs`; `Views\Concert\ZuneConcertCells.cs`, `ZuneConcertDetail.cs`, `ZuneConcertHub.cs`, `ZuneConcertFilterBar.cs`, `ZuneConcertFlyouts.cs`, `ZuneConcertPicker.cs`, `ZuneConcertSchedule.cs`; numbers and records `Rules\ZuneShowRules.cs` (`ZuneShowRules`, `ZuneEpisodeRules`, `ZuneConcertRules`, `ZuneConcertTiers` / `ZuneConcertLayout`). Zune's registrations win over Classic's stand-in key by key.
+
+| Key | Zune's template |
+|---|---|
+| `StyleKeys.ShowReader` | `ZuneShow.Style` (rail primary, ledger, rating, badges, topics, publisher, satellites; the toolbar, the visit head, the headers, the foot, the seed) |
+| `Episode.Primary` `.Attribution` `.Actions` `.Save` `.RailAbout` `.Rating` | `zune.episode.*` |
+| `Episode.Reader` `.About` `.Chapters` | `zune.episode.reader` / `.about` / `.chapters` |
+| `Episode.Discussion` `.CommentCard` `.CommentSeed` `.LoadMore` `.ReactionFlyout` `.ReactionRoster` `.ReactionPeople` | `zune.episode.*` |
+| `Pages.Concert` | `zune.concert.detail` |
+| `Pages.Concerts`, `Concert.Tail` | `zune.concerts.hub`, `zune.concerts.tail` |
+| `Pages.ArtistConcerts`, `Concert.PlacePicker` | `zune.concerts.artist-schedule`, `zune.concerts.place-picker` |
+
+**The show** stands in Z6a1's detail frame. The rail's slots: the publisher link (15), the badge words ("exclusive · E · video", the accent on exclusive), the rating line, the played LEDGER (a 3-dip bar: played in the primary ink, in progress in the accent, the rest the track, its parts easing their widths; "84 played · 3 in progress · 41 to go · 5 new"), the RING row (the accent play ring with its words, "resume" over "23 min left", or "follow" with a ghost play; save, trailer, share and "..." after it) and the topic words. The rings' size is the tier's (36, 40 at Compact and 4K) and a slot template has no view context, so each ring is a small component that reads the facts it is drawn in. The reader is the core word rail under the accent underline (the stage rule's measure is the core's), the visit head's cards are flat (a 72 cover, the accent label, the title, "6 min left · #808", a 2-dip track and a 40 ring), the "episodes 812" heading is the 26/32 heading voice on the core's stated 30 line, a month the 22 light group voice on the stated 24 line. The core's arithmetic (48 rail, 30 + 12 header, 14 + 24 + 4 month, 30 strip) is untouched.
+
+**The episode** is the frame's two columns (the cover, the show link, the ring row: resume over its minutes, save, the played mark, share, "...") and Zune's reader: about · chapters · transcript · comments STACKED in one scroll under 26/32 light headings at a 760 measure, the description at 15/22. Chapters are the BIG-NUMERAL rows (a 22 light numeral in a 44 column, the title at 15, the start time at 12; the playing chapter in the accent on the selected wash). The reader draws no pivot: the four words are the band's row 2.
+
+**Row 2** (all through the `PageChromeSink`, Album's pattern): the episode (`Episode.Page.cs`, `EpisodeReader`) publishes about · chapters · transcript · comments, the spy's section current, a click scrolls it; the show (`Show.Page.cs`, `PageHost`) publishes "episodes" and the action follow / following (the word follows the saved set); the concert (a zero-size component beside the page's scroll) publishes details · lineup · related concerts, each only when the page holds it, with its own spy. Gated on what each row is built from.
+
+**The concert page** (the designed one): the caption ("concert · on sale"), the title in the hero voice (64/72; 40/48 at Small; 150/160 at Huge; a name, never re-cased), the date as a big light NUMERAL (64, 150 at Huge) over "november · saturday", the facts as sentences in the provider's clock ("20:00 · doors open 19:00", venue · place, "ages 18+"), the TICKETS SLAB (the raised plate: one row per offer, provider, price and a round accent ring that buys, or the quiet "tickets not available online"; the footnote says the prices are the providers'), the lineup (round faces, rows with a chevron below Standard) and the related concerts as date cards (a 4-across grid on the plate at Standard, rows below). Compact stacks the slab and bleeds it to the gutters; Small seats a 260 slab beside the facts; Standard 320; Huge 440.
+
+**Undesigned (owner Q18), built from Zune's parts.** The hub: a head (the accent "live music" eyebrow, the 40/48 light title, a quiet line), the filter row PINNED under the band on the ground (no card; round outlined pills, the stock genre toggles, the fused accent pill keeping the segment grammar, the events ticker), the feed (shelves of flat event tiles, playlist promos, the virtualized "all events" grid at a stated tile extent, the tail). The tour dashboard: "on tour", the hero-voice name, the stats, the next-show row (a light numeral, the accent "next show · in 3 days"), "view event" beside the round location control, the spotlight's photo; "tour dates" over the month tabs and ONE month board (two balanced columns at Standard and up, "show all N" over six tiles, a run expanding in place) and the shy month pill. The place picker and the two filter flyouts: square rows on the wash.
+
+**Words and casing.** Everything the theme writes (headings, rings, captions, quiet lines, a month, a weekday) is lowered by the case roles; a title, a venue, a place, an artist and a genre keep their casing.
+
+**Decided here.** `Concert.Tail` and `Concert.PlacePicker` are Zune's own (not Nothing). The stand-in's disabled new-episode bell has no ring in Zune. `ConcertDetailView` gained `Date` (the show's date and time as a value, the contract addition).
+
+**Board versus contract / plan.** The boards lay chapters and transcript side by side; the reader's contract is a stack of anchored sections read by one spy (two sections would share a top), so they stack. The boards put the episode's title (40/48) above the about; the frame's panorama (and row 2) already carries it. The boards draw no panorama on a show or an episode (the title in the rail); Z6a1's frame draws one on every detail page. The board's "about" tab on a show has no target: the rail already carries the description.
+
+**Gaps with no verb in the props.** The concert page's ring row (interested, share, play the lineup, add to calendar) and the Huge board's "in 34 days" and capacity facts: the page carries neither a uri nor a verb for them, so nothing is drawn. The show's "..." menu sits in the rail's ring row (the frame's), not in row 2 (a `PageAction` is a word). The show toolbar's glyph toggles stay 30 wide (the core's stage rule sums them), so below 40 at Compact: a core follow-up.
+
+**Tiers.** `ZuneConcertTiers` has a record per content tier; the show and episode read Z6a1's detail records. Every page is correct from 300 to 3840; ZT5 tunes the finer tiers.
+
+**Tests.** `Wavee.ShellTests\ZuneShowEpisodeConcertMountedTests.cs`: the registry (Zune's own wins over the stand-in), the concert records, the show (toolbar, rail ring, row 2), the episode (stacked sections, four words in row 2, the 40 ring at Compact), the event page and the hub, the 400 and 3840 fits.
 
 ## Z7: the collection
 

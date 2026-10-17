@@ -124,7 +124,10 @@ public readonly partial struct Concert
                 ages.Length > 0 ? Strings.Concerts.Detail.Ages(ages) : null,
                 ConcertDetailInfo.DisplayStatus(s.Resolve(c.StatusTextId)),
                 offers, lineup, ConcertVerbs.ConcertItems(c.RelatedSlots, 15),
-                banner ?? Controls.ArtUrl(c.ImageId) ?? avatar, c.Accent != 0 ? c.Accent : bannerAccent);
+                banner ?? Controls.ArtUrl(c.ImageId) ?? avatar, c.Accent != 0 ? c.Accent : bannerAccent)
+            {
+                Date = c.LocalDate,
+            };
         }
     }
 }

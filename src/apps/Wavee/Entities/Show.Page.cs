@@ -105,8 +105,18 @@ public readonly partial struct Show
         readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share;
         readonly Prop<bool> _heartShown, _trailerShown;
 
+        // ── row 2 (P5 Z6b2, contract 1.26): a band-style structure (Zune) draws the page's views and its follow word in its band's row 2, so the
+        // page host publishes them through the `PageChromeSink` the content host provides around the page: the view "episodes" (the page itself)
+        // and the action follow / following (the word follows the saved set). Gated on what they are built from. Classic draws its own rail and
+        // reads none of it. ──
+        PageChromeSink _sink = PageChromeSink.None;
+        readonly Action _publishChrome;
+        long _chromeSig = long.MinValue;
+        static readonly Action s_noView = static () => { };
+
         public PageHost(EntityUri subject)
         {
+            _publishChrome = PublishChrome;
             _m = new ReaderModel(subject);
             Controls.Library ??= User.LibrarySeam;               // the Follow primary and the ♥ satellite write through it
             _facts = ComputeFacts;
@@ -163,6 +173,8 @@ public readonly partial struct Show
             // mounts the same reader without a page around it.
             UseEffect(_demandTrailer);
             UseEffect(_persist);
+            _sink = UseContext(PageChromeSink.Context);
+            UseEffect(_publishChrome);                          // auto-tracks the saved set: the follow word
 
             if (!show.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
             return Detail.Frame(new Detail.FrameSpec
@@ -220,6 +232,25 @@ public readonly partial struct Show
                 ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
                 Meta: MetaOf(s.Total, s.Cadence, s.OldestYear),
                 Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty);
+        }
+
+        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the saved set, so a follow elsewhere re-words the action without re-rendering
+        /// the page).</summary>
+        void PublishChrome()
+        {
+            string uri = _m.SubjectText;
+            if (uri.Length == 0 || !_show.IsValid) return;
+            var lib = Controls.Library;
+            bool following = lib is not null && lib.IsSaved(uri);
+            long sig = HashCode.Combine(uri, following, lib is not null);
+            if (sig == _chromeSig) return;
+            _chromeSig = sig;
+            var views = new PageView[] { new("episodes", Loc.Get(Strings.Podcast.Episodes), true, s_noView) };
+            var actions = new List<PageAction>(1);
+            if (lib is not null)
+                actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
+                    () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : "")));
+            _sink.Publish(new PageChromeRow(views, actions));
         }
 
         void DemandShow()
