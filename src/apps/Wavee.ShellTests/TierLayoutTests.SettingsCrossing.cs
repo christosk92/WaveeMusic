@@ -15,6 +15,7 @@
 //
 // The crossing rig (the resized frame that keeps the old tier, then the frame that commits) is `TierLayoutTests.Crossing.cs`'s.
 
+using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee;
 using Wavee.Themes.Classic;

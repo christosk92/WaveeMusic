@@ -291,7 +291,7 @@ public sealed class ClassicPlayerPanelTierTests
         float expected = ClassicPanelTiers.SheetMetaTop + ClassicPanelTiers.SheetTitleLine + ClassicPanelTiers.SheetMetaGap + ClassicPanelTiers.SheetArtistLine
             + ClassicPanelTiers.SheetSeekTop + ClassicPanelTiers.SheetSeekRailH + ClassicPanelTiers.SheetSeekGap + ClassicPanelTiers.SheetTimesH
             + ClassicPanelTiers.SheetTransportTop + ClassicPanelTiers.SheetTransportH + 14f + ClassicPanelTiers.SheetDoorH + 8f;
-        Assert.Equal(expected, ClassicPanelTiers.SheetBelowArt);
+        Assert.Equal(ClassicPanelTiers.SheetBelowArt, expected);
     }
 
     [Fact]
