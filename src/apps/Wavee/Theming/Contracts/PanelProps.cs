@@ -234,7 +234,7 @@ public sealed record PanelTransportProps
 
     /// <summary>Bumped when something asks for the device picker (a toast's "Choose device", the tray's Devices): the same signal the player bar's
     /// Devices button opens itself on. The sheet covers the bar, so the sheet answers it: it shows the now-playing body if it shows another, then
-    /// opens the Devices door's picker. Null with no Devices door. Added to contract 1.24 without a bump (the orchestrator renumbers).</summary>
+    /// opens the Devices door's picker. Null with no Devices door. Contract 1.25.</summary>
     public IReadSignal<int>? DevicePickerRequest { get; init; }
 }
 

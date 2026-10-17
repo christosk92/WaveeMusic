@@ -483,7 +483,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // StageLayers.UpNext, QueueStagePaneProps.Aside, PanelProps.VideoTitle.
         // 1.24 (the remaining board items): PanelTransportProps.Source / Device / ToggleDevicePicker, the unavailable-songs bar, DetailTableTier.ListIndex,
         // PlaylistRecsProps.Lead, FacetRowProps.ToggleFriends, SearchBodyModel.ArtistRail, LibraryTierPolicy's Small widths.
-        Assert.Equal("1.24", ContractVersion.Text);
+        // 1.25 (the last Classic gaps): PanelTransportProps.DevicePickerRequest, LibraryTierPolicy's grid gaps.
+        Assert.Equal("1.25", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -508,7 +509,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 22));
         Assert.True(ContractVersion.IsCompatible(1, 23));
         Assert.True(ContractVersion.IsCompatible(1, 24));
-        Assert.False(ContractVersion.IsCompatible(1, 25));
+        Assert.True(ContractVersion.IsCompatible(1, 25));
+        Assert.False(ContractVersion.IsCompatible(1, 26));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

@@ -106,6 +106,9 @@
 // `SearchBodyModel.ArtistRail` and `SearchPageProps.SelectArtists`; and `LibraryTierPolicy.SmallNavWidth`, `.SmallReaderNavWidth`, `.SmallCardCellMin` and
 // `CardCellMinFor` (the Small navigator and its card floor; `NavWidthFor` answers at Small too). `LibraryShowPaneProps.Primary` takes the button's `ControlSize`
 // (the 40 command row at Compact): a changed signature, made before any external theme existed, as 1.2 did.
+// 1.25 (the last Classic gaps): the optional `PanelTransportProps.DevicePickerRequest` (a request, such as a toast's "Choose device", that the
+// now-playing sheet answers by opening its Devices door's picker), and the library grid's per-tier gaps (`LibraryGridGaps`, `LibraryTierPolicy.CompactGridGaps` /
+// `.SmallGridGaps` / `.StandardGridGaps` / `.HugeGridGaps` and `GridGapsFor`; null keeps the core's 8 / 8).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -121,7 +124,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 24;
+    public const int Minor = 25;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
