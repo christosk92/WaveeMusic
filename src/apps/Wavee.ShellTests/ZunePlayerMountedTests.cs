@@ -210,7 +210,10 @@ public sealed class ZunePlayerMountedTests(ShellHost host)
 
                 // The pivot head carries the title ("lyrics", current) and the one close.
                 Assert.False(shell.Find(ZuneFrameRules.PanelPivotKeyPrefix + PanelMode.Lyrics).IsNull, "the lyrics pivot");
-                Assert.Single(shell.FindPrefix(ZuneFrameRules.PanelCloseKey), f => f.Key == ZuneFrameRules.PanelCloseKey);
+                // Count in the primary pane only: the frame also mounts the second pane's host (Huge's queue beside it), closed and zero
+                // wide at Standard, whose own panel draws its own head with the same keys.
+                var primary = new HashSet<NodeHandle>(Subtree(scene, Node(shell, ZuneFrameRules.PanelHostKey)));
+                Assert.Single(shell.FindPrefix(ZuneFrameRules.PanelCloseKey), f => f.Key == ZuneFrameRules.PanelCloseKey && primary.Contains(f.Node));
 
                 // The header is the meta row alone: as tall as the board's 28, nothing heading-sized in it (no second title).
                 var meta = Node(shell, ZunePlayerLayout.LyricsMetaKey);
@@ -221,7 +224,7 @@ public sealed class ZunePlayerMountedTests(ShellHost host)
                     Assert.True(size <= ZunePanelBodies.MetaGlyph + 0.5f, $"a text of {size} DIP in the lyrics header: only the meta row's words and glyphs belong there");
                 }
                 // ... and it sits under the head, inside the panel.
-                var head = Rect(shell, ZuneFrameRules.PanelHeadKey);
+                var head = scene.AbsoluteRect(shell.FindPrefix(ZuneFrameRules.PanelHeadKey).Single(f => f.Key == ZuneFrameRules.PanelHeadKey && primary.Contains(f.Node)).Node);
                 Assert.True(scene.AbsoluteRect(meta).Y >= head.Y + head.H - 0.5f, "the meta row is under the pivot head");
             }
             finally { ClosePanel(shell); }
