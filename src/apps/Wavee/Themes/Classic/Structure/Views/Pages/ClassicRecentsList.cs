@@ -21,6 +21,28 @@ namespace Wavee.Themes.Classic;
 /// parent — a deliberate remount on a re-cut.</summary>
 internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, int shapeEpoch) : Component
 {
+    public override Element Render()
+    {
+        string suffix = (token ?? "all") + ":" + FormatCache.Int(shapeEpoch);
+        // The zoomed-in view is a COMPONENT of its own: the zoom keeps each view's element as it first mounted it (its KeepAlive builds a view once), so a plain element built
+        // here with the tier's numbers would stay at the tier the page MOUNTED in. The component reads the tier it is drawn in inside its own render and re-renders on a crossing.
+        Element zoomedIn = Embed.Comp(() => new ClassicRecentsZoomedIn(host, token, suffix)) with { Key = "recents-zoomed-in:" + suffix };
+        Element zoomedOut = Embed.Comp(() => new ClassicRecentsCalendar(host, shapeEpoch)) with { Key = "recents-calendar:" + FormatCache.Int(shapeEpoch) };
+        return SemanticZoom.Create(
+            new SemanticZoomSlots(new SemanticZoomView(zoomedIn, host.ListController), new SemanticZoomView(zoomedOut, host.CalendarController)),
+            new SemanticZoomOptions
+            {
+                IsZoomedOut = host.IsZoomedOut, Controller = host.ZoomController,
+                MapInToOut = host.MapInToOutFunc, MapOutToIn = host.MapOutToInFunc,
+            });
+    }
+}
+
+/// <summary>The zoomed-in view: the list column and (where the record has one) the annotated day rail beside it. A component so it reads the facts it is drawn in and re-renders
+/// in place on a tier crossing (the semantic zoom would otherwise hold the element it mounted with): the rail fades in or out as an Enter / Exit, and the list and rail glide
+/// when the record moves them (Small's flush rail <-> Standard's 12 gap).</summary>
+internal sealed class ClassicRecentsZoomedIn(IRecentsHost host, string? token, string suffix) : Component
+{
     /// <summary>The day rail entering or leaving with a tier crossing (the list takes its 44 back as the rail goes), 160 ms on opacity; and, while it stays, gliding to its new
     /// place when the layout moves it (the flush rail of Small <-> the gapped one of Standard: its left edge and its margin change in one commit), over the same 160 ms.</summary>
     static readonly LayoutTransition s_rail = new(
@@ -30,14 +52,12 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
 
     public override Element Render()
     {
-        string suffix = (token ?? "all") + ":" + FormatCache.Int(shapeEpoch);
         Element detail = Embed.Comp(() => new ClassicRecentsListSurface(host, token)) with { Key = "recents-list:" + suffix };
         Element rail = Embed.Comp(() => new ClassicRecentsRail(host)) with { Key = "recents-rail:" + suffix };
-        // The day rail is the record's (Compact has none): read here, so a crossing re-renders the surface in place and the rail fades in or out as an Enter / Exit.
         // The tiers of the facts this page is drawn in (the same signal the page's ctx.Tier() reads), never the process's last-published window.
         var facts = UseContext(ThemeFactsContext.Signal);
         var layout = ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers);
-        Element zoomedIn = new BoxEl
+        return new BoxEl
         {
             Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = layout.Rail && !layout.FlushRail ? Spacing.M : 0f, AlignItems = FlexAlign.Stretch,
             Children = layout.Rail
@@ -54,14 +74,6 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
                 ]
                 : [new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Layout = ClassicTierMotion.Reflow, Children = [detail] }],
         };
-        Element zoomedOut = Embed.Comp(() => new ClassicRecentsCalendar(host, shapeEpoch)) with { Key = "recents-calendar:" + FormatCache.Int(shapeEpoch) };
-        return SemanticZoom.Create(
-            new SemanticZoomSlots(new SemanticZoomView(zoomedIn, host.ListController), new SemanticZoomView(zoomedOut, host.CalendarController)),
-            new SemanticZoomOptions
-            {
-                IsZoomedOut = host.IsZoomedOut, Controller = host.ZoomController,
-                MapInToOut = host.MapInToOutFunc, MapOutToIn = host.MapOutToInFunc,
-            });
     }
 }
 
