@@ -39,23 +39,23 @@ public sealed partial class ZuneTierLayoutTests
 
     [Theory, MemberData(nameof(FrameSizes))]
     public void An_album_holds_its_detail_tier_record(string size)
-        => AssertPage(AlbumPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Album));
+        => AssertPage(AlbumPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Album), openFirst: true);
 
     [Theory, MemberData(nameof(PageSizes))]
     public void A_playlist_holds_its_detail_tier_record(string size)
-        => AssertPage(PlaylistPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Playlist));
+        => AssertPage(PlaylistPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Playlist), openFirst: true);
 
     [Theory, MemberData(nameof(PageSizes))]
     public void Liked_songs_holds_its_detail_tier_record(string size)
-        => AssertPage(LikedPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Liked));
+        => AssertPage(LikedPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Liked), openFirst: true);
 
     [Theory, MemberData(nameof(PageSizes))]
     public void A_show_holds_its_detail_tier_record(string size)
-        => AssertPage(ShowPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Show));
+        => AssertPage(ShowPage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Show), openFirst: true);
 
     [Theory, MemberData(nameof(PageSizes))]
     public void An_episode_holds_its_detail_tier_record(string size)
-        => AssertPage(EpisodePage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Episode));
+        => AssertPage(EpisodePage, size, (shell, tiers) => AssertDetail(shell, size, tiers, DetailKind.Episode), openFirst: true);
 
     void AssertDetail(Shell.HeadlessShell shell, string sizeName, TierFacts tiers, DetailKind kind)
     {

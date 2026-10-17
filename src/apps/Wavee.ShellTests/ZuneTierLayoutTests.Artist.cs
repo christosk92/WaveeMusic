@@ -29,9 +29,9 @@ namespace Wavee.ShellTests;
 
 public sealed partial class ZuneTierLayoutTests
 {
-    // ── the fixtures (the fake catalogue's artist ar0 and its discography, the concert hub and cf0, the fake user mia-solace and her list) ──
+    // ── the fixtures (the fake catalogue's artist ar0 and its discography, the concert hub and cc3n0 (the one show with offers, a lineup and related shows), the fake user mia-solace and her list) ──
 
-    const string Zt6ArtistUri = "spotify:artist:ar0", Zt6ConcertUri = "spotify:concert:cf0", Zt6PersonUri = "spotify:user:mia-solace";
+    const string Zt6ArtistUri = "spotify:artist:ar0", Zt6ConcertUri = "spotify:concert:cc3n0", Zt6PersonUri = "spotify:user:mia-solace";
 
     static readonly DiscoveryFixture ArtistFixture = new("zune artist", static () => Shell.For(EntityUri.Parse(Zt6ArtistUri), "Artist"),
         static shell => UntilBackground(shell, () => !shell.Find(ZuneArtistRules.HeroKey).IsNull && !shell.Find(ZuneArtistRules.PopularKey).IsNull,
@@ -50,8 +50,9 @@ public sealed partial class ZuneTierLayoutTests
         ["concert-hub:page", "concert-hub:head", "concert-filter-bar:row"], []);
 
     static readonly DiscoveryFixture ConcertEventFixture = new("zune concert", static () => Shell.For(EntityUri.Parse(Zt6ConcertUri), "Concert"),
-        static shell => UntilBackground(shell, () => !shell.Find("zune-concert:column").IsNull && !shell.Find("zune-concert:date").IsNull,
-            "Zune's event page"),
+        // The column and the date stand from the seed; the hero and the tickets slab arrive with the event's offers (a background load).
+        static shell => UntilBackground(shell, () => !shell.Find("zune-concert:column").IsNull && !shell.Find("zune-concert:date").IsNull
+            && !shell.Find("zune-concert:hero").IsNull && !shell.Find("zune-concert:tickets").IsNull, "Zune's event page and its tickets"),
         ["zune-concert:column", "zune-concert:hero", "zune-concert:date", "zune-concert:tickets"], []);
 
     static readonly DiscoveryFixture ProfileFixture = new("zune profile", static () => ProfileRoute.For(EntityUri.Parse(Zt6PersonUri), "Mia"),
@@ -193,10 +194,12 @@ public sealed partial class ZuneTierLayoutTests
         var column = ArtistRectOf(shell, "zune-concert:column");
         AssertWithin(size, "the column", column, content.X, content.X + content.W);
         Assert.True(column.W <= ZuneFrameRules.PageCap + 0.5f, $"{size}: the column is {column.W} wide, over the page cap");
-        // The slab stands beside the facts at the tiers that give it a width, under them (bled to the gutters at Compact) elsewhere.
+        // The slab's slot is the record's width beside the facts at the tiers that give it one; elsewhere it is the identity's width under them (the
+        // tickets inside it bled to the gutters at Compact). It is the same slot at every tier, so a crossing keeps it.
         var slab = ArtistRectOf(shell, "zune-concert:slab");
-        if (rec.TicketsW > 0f && slab.W > 0f) Assert.True(MathF.Abs(slab.W - rec.TicketsW) <= 0.5f, $"{size}: the slab is {slab.W} wide, not {rec.TicketsW}");
-        Assert.Equal(rec.TicketsW <= 0f, slab.W <= 0f);
+        var identity = ArtistRectOf(shell, "zune-concert:identity");
+        if (rec.TicketsW > 0f) Assert.True(MathF.Abs(slab.W - rec.TicketsW) <= 0.5f, $"{size}: the slab is {slab.W} wide, not {rec.TicketsW}");
+        else Assert.True(slab.Y >= identity.Y + identity.H - 0.5f && MathF.Abs(slab.W - identity.W) <= 0.5f, $"{size}: the slab ({slab}) is not under the identity ({identity})");
         var tickets = ArtistRectOf(shell, "zune-concert:tickets");
         AssertWithin(size, "the tickets", tickets, content.X, content.X + content.W);
         if (tiers.Window == WidthTier.Compact) AssertTargets(shell, size, "related:near");
