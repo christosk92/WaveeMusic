@@ -23,6 +23,14 @@
 //   Pulse        → DaylistStrip      the flip countdown (daylist only)
 //   LikedFacts   → User.FactsPanel   the facts bento (owner B), when FactsHas
 //
+// ── ROW 2 (P5 Z6b1, contract 1.26) ───────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the page's title, its views and its actions in its band's row 2, so the page publishes them through the
+// `PageChromeSink` the content host provides around the page (the album's pattern, Album.Page.cs): the view "Songs" (current: the page itself) and the
+// actions Play and Shuffle (disabled while the list is known to be empty) and, on a playlist that is not the viewer's own, Save / Saved (the word follows
+// the saved set). The inputs are folded into a value the render computes; a keyed effect hands it to a signal, and an auto-tracked effect (it also reads
+// the saved set) publishes the row, so a save elsewhere re-words the action without re-rendering the page. Classic draws its own head and reads none of it.
+//
 // ── DEMAND (the GateAlbumPage pattern) ───────────────────────────────────────────────────────────────────────────────
 //
 // Once per (playlist slot, scope epoch): PlaylistFields.All + the membership through THE OPEN RULE (§6: ListOpen.Open,
@@ -41,6 +49,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Contracts = Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -306,6 +315,16 @@ public readonly partial struct Playlist
         readonly Func<float, float, Element> _title;
         readonly Func<Element> _pulse;
 
+        // ── row 2 (P5 Z6b1): what the band draws for this page (see the file header) ──
+        Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
+        ChromeInputs _chromeNext;
+        readonly Signal<ChromeInputs> _chromeIn = new(default);
+        readonly Action _syncChrome, _publishChrome, _playChrome, _shuffleChrome, _noView;
+
+        /// <summary>What row 2 says: the playlist, its title once known, the heart's presence (not the viewer's own, not Local Files) and whether the list is
+        /// known to be empty (Play and Shuffle are drawn disabled then).</summary>
+        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty);
+
         public PlaylistPage()
         {
             _accent = () => AccentOf(_playlist);
@@ -332,6 +351,11 @@ public readonly partial struct Playlist
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);
             _title = (size, lineHeight) => TitleSlot(_playlist, size, lineHeight);
             _pulse = () => DaylistStrip(_playlist, compact: true, _accent);
+            _syncChrome = () => _chromeIn.SetIfChanged(_chromeNext);
+            _publishChrome = PublishChrome;
+            _playChrome = () => { var pl = _playlist; if (pl.IsValid) DetailVerbs.PlayContext(pl.Uri)(); };
+            _shuffleChrome = Shuffle;
+            _noView = static () => { };
             _actions = new Detail.FrameActions
             {
                 Shuffle = Shuffle, More = MoreMenu, CoverDrag = CoverPayload, DepositOnPage = _deposit,
@@ -410,6 +434,12 @@ public readonly partial struct Playlist
             // (a preallocated delegate — no per-render alloc).
             UseActivation(onActivated: _activated);
 
+            // Row 2 (P5 Z6b1): the inputs this render knows, handed to the publishing effect. Hooks before any early return.
+            _sink = UseContext(Contracts.PageChromeSink.Context);
+            _chromeNext = ChromeOf(pl);
+            UseEffect(_syncChrome, DepKey.From(_chromeNext.GetHashCode()));
+            UseEffect(_publishChrome);
+
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             // Your own playlist has no heart (tuned Classic D1): following it means nothing; a followed one keeps it as Unfollow.
@@ -480,6 +510,32 @@ public readonly partial struct Playlist
                 Slots = _slots,
                 RouteKey = p.RouteKey,
             });
+        }
+
+        /// <summary>Row 2's inputs for <paramref name="pl"/> (default while there is no playlist).</summary>
+        ChromeInputs ChromeOf(Playlist pl)
+            => !pl.IsValid
+                ? default
+                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !_local && !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty);
+
+        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
+        void PublishChrome()
+        {
+            var c = _chromeIn.Value;
+            if (!c.Valid) return;
+            var views = new List<Contracts.PageView>(1) { new("songs", Loc.Get(Strings.Search.Songs), true, _noView) };
+            var actions = new List<Contracts.PageAction>(3)
+            {
+                new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play, !c.Empty),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), _shuffleChrome, Contracts.PageActionKind.Shuffle, !c.Empty),
+            };
+            if (c.Save && Controls.Library is { } lib)
+            {
+                string target = c.Subject.Text, title = c.Title ?? "";
+                bool saved = lib.IsSaved(target);
+                actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
+            }
+            _sink.Publish(new Contracts.PageChromeRow(views, actions));
         }
 
         /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the seven counters this page depends on —

@@ -402,7 +402,39 @@ Boards `Z-Artist` (Standard, the target) and `Z-Artist-Compact` / `-Small` / `-H
 
 ## Z6b1: the playlist and Liked Songs
 
-_Not built yet._
+Boards Z-Playlist-Owned-Followed (+ -Small, -Compact, -Huge), Z-Playlist-Followed (+ -Small, -Huge), Playlist-Page (study), Z-Liked (+ -Small, -Compact, -Huge),
+Liked (study), Z-State-Empty-Playlist (+ -Compact). Registrar `ZuneStructure.PlaylistLiked.cs`; views `Structure\Views\Playlist\*` and `Structure\Views\Liked\*`;
+numbers and tier records `Rules\ZunePlaylistRules.cs` (`ZunePlaylistRules`, `ZunePlaylistTiers`).
+
+- **The frame is Z6a1's.** A playlist and Liked Songs are detail pages: the panorama, the identity column, the vertical hero, the "songs" heading and the aside are
+  `Views\Detail\*`. This family draws what the pages hand the frame as slots and the keys it mounts: `Playlist.*` (ten) and `Liked.*` (four).
+- **Cover.** `Playlist.CoverArt` is a 2 x 2 mosaic or the art at the Cover shape (no saturation boost). `Playlist.CoverEditor` wears a strip along its foot ("change
+  cover"; "drop image to change cover" while a file is dragged anywhere or over it; the status while a write is out), 28 high at Compact and 36 elsewhere, always
+  there (a touch window has no hover); an empty playlist's cover is the dashed "choose a cover" tile (Z-State-Empty-Playlist). The whole cover is the file-drop
+  target and the click-to-pick.
+- **Editor.** The title and the description are the editor: the read arm is the text with a hairline under it that rises on hover (and the pencil), the edit arm is
+  the engine's field over two words, "save" in the accent and "cancel". The status ("saving" / "saved") stands below the box so the measure never moves.
+- **Owner.** The avatar and the name in the artist voice (18/24, a link) or the collaborator pile, and the invite ring (the detail kit's outline disc with a plus,
+  36 / 40) at the row's end. The row reserves the tallest arm's height, so flipping "collaborative" moves neither the ring (the access panel is anchored to it) nor
+  anything below. The collaborator flyout is the album's every-artist flyout.
+- **Access and Tune** are flat panels (no board; Q18): words, rules, a flat accent call to action, the engine's switch; the current tuning is marked by a 2-dip
+  accent bar and "current", not a disabled look.
+- **Daylist.** HH:MM:SS in the numeral voices (22/28 in the rail, 28/36 in the hero), every digit in a fixed cell; the ring stands in past the window, at the same height.
+- **Recommended songs.** The heading (26/32, lowercased), a "refresh" word (a spinner while asked), rows with a 40 cover and an outlined 28 "add" pill (40 hit edge at
+  Compact). An EMPTY playlist leads the section with the board's sentence ("let's find something for this playlist": 40/48 display; 26/32 at Compact), a line and the
+  field that finds songs to add (560 square at the wide tiers, the full-width pill at Compact); the lead reserves its height and eases a change of it.
+- **Liked Songs.** The wide arm has no cover (the frame's head arm: the panorama and the meta over the list); the cover is drawn where a page hands one over (the
+  vertical hero, the Home and library tiles) and is FLAT: the bundled stock cover, a flat mosaic of the newest likes or the accent plate with the heart. The engine's
+  other six treatments are Classic's ambient loops and are not drawn: a persisted look Zune does not draw reads as the mosaic, and the picker (a "cover style" strip
+  on hover or focus, a three-row flyout) writes the engine's persisted index. The chip rail is Zune's flat chips (a wash at rest, the accent fill on), 32 tall, 40 at
+  Compact; "all" takes the label case role, the tags are never re-cased. Day groups are the table's (Z3).
+- **Row 2.** `Playlist.Page.cs` publishes the view "songs" (current) and the actions play, shuffle (disabled while the list is known to be empty) and, on a playlist
+  that is not the viewer's own, save / saved, through the `PageChromeSink`. `User.Page.Liked.cs` publishes play and shuffle and no views (the library route's row stands).
+- **Tiers.** `ZunePlaylistTiers` has a record per content tier (the hit edge, the cover strip, the lead and its field, the duration lane, the detail record the rings
+  read). Standard is the target; ZT5 tunes the rest. Every size is sane from 300 up.
+- **Tests.** `Wavee.ShellTests\ZunePlaylistLikedMountedTests.cs`: the registry draws all fourteen keys; pl1 draws Zune's frame over Zune's table and publishes its row 2;
+  a Compact window draws the vertical arm; Liked Songs draws the head arm and publishes play and shuffle; the cover looks and the tier records are pinned. The fake
+  dataset has no empty playlist, so the lead is pinned through its rules.
 
 ## Z6b2: the show, the episode and the concerts
 

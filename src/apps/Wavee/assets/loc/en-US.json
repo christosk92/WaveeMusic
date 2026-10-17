@@ -2807,7 +2807,13 @@
       },
       "detail": {
         "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
-        "songs": "Songs"
+        "songs": "Songs",
+        "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
+        "chooseCover": "Choose a cover",
+        "emptyTitle": "Let’s find something for this playlist",
+        "emptyLine": "Search below, or drag songs here from anywhere in Wavee",
+        "refresh": "Refresh",
+        "add": "Add"
       },
       "artist": {
         "$comment": "Z6a2: the artist page, its lightbox and the discography. Written as people say them; the style's case roles lower them. Names are never re-cased.",
