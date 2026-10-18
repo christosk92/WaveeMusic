@@ -67,11 +67,11 @@ internal static partial class ZuneSettings
         string[] names = SectionNames();
 
         // Compact (Z-Settings-Sections-Compact, Z-Settings-Playback-Compact): the page is the sections list, and a section opens as its own page under a "‹ settings"
-        // crumb. The open state is the view's (a fresh mount of the page is the list); the tab itself is still the core's pivot cell, so every deep link keeps working.
-        var openSection = ctx.Hooks.UseSignal(false);
+        // crumb. The open section is the ROUTE's (`props.OpenSection`: Back, Escape and the mouse's back button close it, a deep link opens it, and a resize across the Compact edge keeps
+        // it: Small shows the same section in the column layout, Compact its page again); the tab itself is still the core's pivot cell.
         bool compact = lay.ListIsStrip;
-        bool listPage = compact && !openSection.Value;
-        bool sectionPage = compact && openSection.Value;
+        bool listPage = compact && !props.OpenSection;
+        bool sectionPage = compact && props.OpenSection;
 
         Element[] groups = (Settings.Tab)tab switch
         {
@@ -109,7 +109,7 @@ internal static partial class ZuneSettings
             ],
         };
 
-        Element[] bodyKids = listPage ? [SectionsPage(props, names, openSection)] : compact ? [lane] : [Sections(k, props, tab), lane];
+        Element[] bodyKids = listPage ? [SectionsPage(props, names)] : compact ? [lane] : [Sections(k, props, tab), lane];
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -121,7 +121,7 @@ internal static partial class ZuneSettings
         return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = "zs:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Children = sectionPage ? [CrumbRow(openSection), PanoramaTitle(lay, names[tab]), body] : [PanoramaTitle(lay, null), body],
+            Children = sectionPage ? [CrumbRow(props.CloseSection), PanoramaTitle(lay, names[tab]), body] : [PanoramaTitle(lay, null), body],
         }, lay.Gutter);
     }
 
@@ -153,9 +153,8 @@ internal static partial class ZuneSettings
     };
 
     /// <summary>The Compact sections page: every section a large light word with a chevron, one 56-tall target each; a tap opens the section's page.</summary>
-    static Element SectionsPage(SettingsPageProps props, string[] names, Signal<bool> open)
+    static Element SectionsPage(SettingsPageProps props, string[] names)
     {
-        var cell = props.TabCell();
         var rows = new Element[names.Length];
         for (int i = 0; i < rows.Length; i++)
         {
@@ -164,7 +163,7 @@ internal static partial class ZuneSettings
             {
                 Key = "zs:link:" + Settings.TabSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, MinWidth = 0f, MinHeight = Z.SectionRowH,
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = () => { cell.Value = at; open.Value = true; },
+                OnClick = () => props.OpenTab(at),
                 Children =
                 [
                     ZuneText.Heading(names[i]) with { Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
@@ -176,10 +175,10 @@ internal static partial class ZuneSettings
     }
 
     /// <summary>The "‹ settings" crumb over a Compact section's page: one 40-tall target back to the sections.</summary>
-    static Element CrumbRow(Signal<bool> open) => new BoxEl
+    static Element CrumbRow(Action close) => new BoxEl
     {
         Key = "zs:crumb", Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, Shrink = 0f, MinWidth = 0f, MinHeight = Z.CrumbH, AlignSelf = FlexAlign.Start,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => open.Value = false,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = close,
         Children =
         [
             Icon(Icons.ChevronLeft, Z.SectionChevron, Tok.TextSecondary),

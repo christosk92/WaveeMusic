@@ -262,19 +262,25 @@ public sealed partial class ZuneTierLayoutTests
         var scene = shell.Host.Scene;
         RectF At(string key) => scene.AbsoluteRect(Node(shell, key));
 
-        Settings.Open(Settings.Tab.Appearance);
+        var lay = ZuneSettingsTiers.Of(tiers);
+        // (Compact opens on the sections list: the section is entered by a tap below, and by Settings.Open after it.)
+        if (!lay.ListIsStrip) Settings.Open(Settings.Tab.Appearance);
         shell.RunFrames(90);
 
-        var lay = ZuneSettingsTiers.Of(tiers);
         Assert.Equal(tiers.Content, lay.Tier);
         var page = At("zs:page");
 
         // The title: the record's box (the larger size's line, reserved).
-        Until(shell, () => MathF.Abs(At("zs:title").H - lay.TitleH) < 0.5f, $"{size}: the title box at {lay.TitleH}");
+        // (Compact lands on a section's page, whose title is the section's name on its own height; the list page below holds the record's box.)
+        if (!lay.ListIsStrip) Until(shell, () => MathF.Abs(At("zs:title").H - lay.TitleH) < 0.5f, $"{size}: the title box at {lay.TitleH}");
 
         if (lay.ListIsStrip)
         {
-            // Compact: the page is the sections list (one 56-tall target per section, stacked), and a tap opens the section's own page under a "‹ settings" crumb.
+            // Compact: the sections list is the page without an arg.
+            Assert.True(shell.Find("zs:crumb").IsNull, $"{size}: the page opens on the sections list");
+            Until(shell, () => MathF.Abs(At("zs:title").H - lay.TitleH) < 0.5f, $"{size}: the title box at {lay.TitleH}");
+
+            // The page is the sections list (one 56-tall target per section, stacked), and a tap opens the section's own page under a "‹ settings" crumb.
             Assert.True(shell.Find("zs:column").IsNull, $"{size}: the sections page draws no section column");
             float previousY = float.NegativeInfinity;
             foreach (string slug in Settings.TabSlugs)
@@ -284,14 +290,23 @@ public sealed partial class ZuneTierLayoutTests
                 Assert.True(link.Y > previousY, $"{size}: the '{slug}' row is not under the one before it");
                 previousY = link.Y;
             }
-            var openLink = Node(shell, "zs:link:appearance");
-            var r = scene.AbsoluteRect(openLink);
-            var pt = new Point2(r.X + r.W / 2f, r.Y + r.H / 2f);
-            shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, pt, 0, 0, TimestampMs: 2000));
-            shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, pt, 0, 0, TimestampMs: 2010));
-            shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, pt, 0, 0, TimestampMs: 2060));
+            // (The tap itself is OpenTab -> a route to the section: Settings.Open takes the same route.)
+            Settings.Open(Settings.Tab.Appearance);
             shell.RunFrames(90);
             Assert.False(shell.Find("zs:crumb").IsNull, $"{size}: the section's page has its crumb");
+            // The open section is the route's: Back closes it, Forward reopens it, and Settings.Open lands on it.
+            Shell.GoBack();
+            shell.RunFrames(60);
+            Assert.True(shell.Find("zs:crumb").IsNull, $"{size}: Back closes the section");
+            Shell.GoForward();
+            shell.RunFrames(60);
+            Assert.False(shell.Find("zs:crumb").IsNull, $"{size}: Forward reopens the section");
+            Settings.Open(Settings.Tab.Playback);
+            shell.RunFrames(60);
+            Assert.False(shell.Find("zs:crumb").IsNull, $"{size}: Settings.Open lands on its section");
+            Assert.False(shell.Find("zs:tab:playback").IsNull, $"{size}: the section is the one Settings.Open named");
+            Settings.Open(Settings.Tab.Appearance);
+            shell.RunFrames(90);
             Assert.True(shell.Find("zs:sections").IsNull, $"{size}: the section's page draws no sections list");
         }
         else

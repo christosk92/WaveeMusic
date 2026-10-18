@@ -95,9 +95,11 @@ internal static class ZuneEpisode
             Loc.Get(p.Completed ? Strings.Podcast.Menu.MarkUnplayed : Strings.Podcast.Menu.MarkPlayed), false, null, p.ToggleCompleted, lay));
         if (lay.ShareRing) kids.Add(K.Ring("share", Icons.Share, Loc.Get(Strings.Menu.CopyLink), false, null, p.CopyLink, lay));
         if (lay.MoreRing) kids.Add(K.MoreRing(p.Menu, lay));
+        // Beside the primary on one line (Z-Episode-Compact) wherever the row fits; narrower, the rings wrap as a block of their own.
         return new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = lay.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray(),
+            Direction = 0, Wrap = ZuneDetailRules.EpisodeRingsWrap(ctx.Tier()), Gap = lay.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = kids.ToArray(),
         };
     }
 

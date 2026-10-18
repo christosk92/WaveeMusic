@@ -457,6 +457,7 @@ public readonly partial struct User
             Size = new(saved.Size);
             SelectedKey = new(saved.SelectedKey);
             AlbumKey = new(saved.AlbumKey);
+            if (IsPodcasts && SelectedKey.Peek().Length == 0 && ShellPolicy.Now.LibraryTiers.PodcastsEpisodesFirst) PodcastsMode.Value = 1;   // the board opens on Your Episodes
             GroupKey = new(_entity == EntityKind.Album ? Platform.Settings.Get(Platform.Keys.LibraryGroup(_kind)) : "");
             _groupSaved = GroupKey.Peek();
             Scope = new(saved.Scope);
@@ -561,6 +562,7 @@ public readonly partial struct User
             _scrollScope = UseContext(Shell.PageScrollScope);
             _cellBase = UseComputed(_cellBaseOf);              // before the shape: the mint reads it
             _gridGaps = UseComputed(_gridGapsOf);
+            _groupSet = UseComputed(_computeGroups);          // before the shape: the shape narrows to the picked group
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -611,7 +613,6 @@ public readonly partial struct User
             UseEffect(_syncLoad, DepKey.From(shape.Count, (shape.Answered ? 1 : 0) | (raw.Length > 0 ? 2 : 0)
                                                           | (shape.TitlesKnown ? 4 : 0) | (_anyTitleFailed ? 8 : 0)));
             UseEffect(_syncNav, listKey + "|" + shape.OrderKey + "|" + sel + "|" + (fullSearch ? "s" : "b"));
-            _groupSet = UseComputed(_computeGroups);
             UseEffect(_saveState, sortCode + "|" + Desc.Value + "|" + view + "|" + size + "|" + sel + "|" + albumKey + "|"
                                   + Scope.Value + "|" + RSort.Value + "|" + GroupKey.Value);
             UseEffect(_resetDepth, DepKey.From(collapsed));
@@ -654,6 +655,7 @@ public readonly partial struct User
                 SkelGroup = _skelGroup, Navigator = _navigator,
                 Search = fullSearch ? SearchPropsOf() : null,
                 Groups = !collapsed && GroupingOn ? GroupsProps() : null,
+                Episodes = !collapsed && EpisodesFirst ? EpisodesProps() : null,
             });
         }
 
@@ -667,7 +669,7 @@ public readonly partial struct User
             _ = relation.Changed.Value;
             _ = Entities.TableFor(_entity)!.Changed.Value;
             if (_entity == EntityKind.Album) { _ = scope.Edges.AlbumArtists.Changed.Value; _ = scope.Artists.Changed.Value; }
-            string groupKey = GroupingOn ? GroupKey.Value : "";   // the structure's ask AND a split page (tracked: a crossing re-filters)
+            string groupKey = GroupingOn ? EffectiveGroup() : "";   // the structure's ask AND a split page (tracked: a crossing re-filters)
             if (IsArtists)
             {
                 // The Artists SET and both of its counts are reads over five relations plus the albums' track counts, so
@@ -689,6 +691,7 @@ public readonly partial struct User
             // "memo compares equal" trap the old `:902-904` comment worked around by re-reading View a second time
             // inside NavList — gone now that the mount identity IS part of the published value).
             int view = View.Value, size = Size.Value;
+            if (IsPodcasts && EpisodesFirst && IsGridView(view)) view = view == 2 ? 0 : 1;   // the shows list beside the feed is a list
 
             var source = scope.MeSlot <= Table.None ? default
                        : IsArtists ? ArtistsInto(ref _artistSrc)
@@ -697,7 +700,7 @@ public readonly partial struct User
             // Audiobooks/Podcasts split the SAME SavedShows edge client-side (A2 plan §3.6): Podcasts applies the
             // inverse of Audiobooks' own predicate, so a show can never appear on neither or both lists.
             if (IsShowEntity) source = SplitShowKind(source);
-            if (groupKey.Length > 0) source = NarrowToGroup(source, groupKey);
+            if (groupKey.Length > 0 && groupKey != AllGroups) source = NarrowToGroup(source, groupKey);
             Grow(source.Length);
             int n = LibraryRows.Filter(_entity, source, filter, _filtered);
             long[]? played = null;
@@ -968,7 +971,14 @@ public readonly partial struct User
             if (_syncingSel || row < 0 || row >= _sortedCount) return;   // the page's own re-sync is a VIEW update, never a pick
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
+            if (EpisodesFirst && PodcastsMode.Peek() == 1) PodcastsMode.Value = 0;   // a show picked in the list is the body again
             if (Collapsed) _depth.Value = 1;
+            else if (GroupPaneHidden)
+            {
+                // The grouped albums page without a songs pane (Small): a picked album opens its own page.
+                var album = new Album(_sorted[row]);
+                if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
+            }
         }
 
         /// <summary>The navigator's first visible item (the flat index under the top of its visible band, below a pinned letter), or -1 when it rests

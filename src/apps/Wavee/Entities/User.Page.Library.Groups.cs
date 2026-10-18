@@ -25,9 +25,37 @@ public readonly partial struct User
         bool GroupingOn => _entity == EntityKind.Album && ShellPolicy.Tracked.LibraryTiers.GroupAlbumsByArtist
                            && !(_layoutTier is { } tier && Theming.LibraryLadders.IsSingleColumn(tier.Value));
 
-        LibraryGroupsProps GroupsProps() => _groupsProps ??= new LibraryGroupsProps(ReadGroups, PickGroup);
+        /// <summary>The grouping is live but this content tier draws no songs pane (`LibraryTierPolicy.GroupPaneFrom`).</summary>
+        bool GroupPaneHidden => GroupingOn && (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.Content < ShellPolicy.Now.LibraryTiers.GroupPaneFrom;
 
-        void PickGroup(string key) => GroupKey.SetIfChanged(key);
+        LibraryGroupsProps GroupsProps() => _groupsProps ??= new LibraryGroupsProps(ReadGroups, PickGroup)
+        {
+            Play = () => { var a = GroupArtist(); if (a.IsValid) Playback.PlayOrToggleContext(a.Id); },
+            Shuffle = () => { var a = GroupArtist(); if (!a.IsValid) return; Playback.SetShuffle(true); Playback.PlayContext(a.Id); },
+            Open = () => { var a = GroupArtist(); if (a.IsValid) Shell.GoTo(Shell.For(a.Uri, a.Name)); },
+        };
+
+        Artist GroupArtist()
+        {
+            string key = EffectiveGroup();
+            return key == AllGroups ? default : new Artist(SlotOfKey(EntityKind.Artist, key));
+        }
+
+        /// <summary>The pick that means every artist (an unset pick, "", means the first artist of the column, as the boards open on one).</summary>
+        internal const string AllGroups = "*";
+
+        void PickGroup(string key) => GroupKey.SetIfChanged(key.Length == 0 ? AllGroups : key);
+
+        /// <summary>The pick the albums narrow to: the stored one, else the first artist of the column (a stored artist the library no longer holds reads the same).</summary>
+        string EffectiveGroup()
+        {
+            string key = GroupKey.Value;
+            if (key == AllGroups) return key;
+            var rows = _groupSet?.Value.Rows;
+            if (rows is null || rows.Count == 0) return AllGroups;
+            for (int i = 0; i < rows.Count; i++) if (rows[i].Key == key) return key;
+            return rows[0].Key;
+        }
 
         /// <summary>Written only when a structure's pick moved it: a structure that never groups never writes the key.</summary>
         void SaveGroup()
@@ -41,9 +69,18 @@ public readonly partial struct User
         LibraryGroupSet ReadGroups()
         {
             var set = _groupSet!.Value;
-            string key = GroupKey.Value;
+            string key = EffectiveGroup();
             for (int i = 0; i < set.Rows.Count; i++)
-                if (set.Rows[i].Key == key) return set with { Selected = key, SelectedName = set.Rows[i].Name, SelectedAlbums = set.Rows[i].Albums };
+                if (set.Rows[i].Key == key)
+                {
+                    int slot = SlotOfKey(EntityKind.Artist, key);
+                    var artist = new Artist(slot);
+                    return set with
+                    {
+                        Selected = key, SelectedName = set.Rows[i].Name, SelectedAlbums = set.Rows[i].Albums,
+                        SelectedArt = artist.IsValid ? Controls.ArtUrl(artist.ImageId) ?? "" : "", SelectedSongs = LibrarySongCountOf(slot),
+                    };
+                }
             return set;
         }
 

@@ -119,6 +119,10 @@ public sealed record LibraryPageProps
     /// page and the page is split): the structure draws the "all artists" column from it, and the navigator already shows only the picked artist's albums.</summary>
     public LibraryGroupsProps? Groups { get; init; }
 
+    /// <summary>The podcasts page's pinned "your episodes" row (null unless the structure asked for it through <see cref="Wavee.Theming.LibraryTierPolicy.PodcastsEpisodesFirst"/>, this is the
+    /// podcasts page and the page is split). Contract addition after 1.34.</summary>
+    public LibraryEpisodesProps? Episodes { get; init; }
+
     /// <summary>The Your Episodes page, keyed by the scope epoch.</summary>
     public required Func<Element> SavedEpisodes { get; init; }
 
@@ -211,12 +215,32 @@ public sealed record LibraryKindChip(string Title, bool Selected, Action Open);
 
 /// <summary>The albums page's artist groups: what the structure's "all artists" column draws and the one verb that picks. <see cref="Read"/> is a reactive read (call it from the
 /// view's own render: it follows the library, the artists' names and the pick); <see cref="Pick"/> takes a <see cref="LibraryGroupRow.Key"/>, or "" for every artist.</summary>
-public sealed record LibraryGroupsProps(Func<LibraryGroupSet> Read, Action<string> Pick);
+public sealed record LibraryGroupsProps(Func<LibraryGroupSet> Read, Action<string> Pick)
+{
+    /// <summary>The picked artist's verbs (no-ops while every artist is shown): play (toggle), shuffle, open the artist's page. Contract addition after 1.33.</summary>
+    public Action Play { get; init; } = static () => { };
+
+    /// <inheritdoc cref="Play"/>
+    public Action Shuffle { get; init; } = static () => { };
+
+    /// <inheritdoc cref="Play"/>
+    public Action Open { get; init; } = static () => { };
+}
 
 /// <summary>One read of the groups: the artists with a saved album (a-z), the picked one's key ("" = every artist; a pick the library no longer holds reads as ""), its name and its
 /// album count (the whole library's count when none is picked).</summary>
-public sealed record LibraryGroupSet(IReadOnlyList<LibraryGroupRow> Rows, string Selected, string SelectedName, int SelectedAlbums, int TotalAlbums);
+public sealed record LibraryGroupSet(IReadOnlyList<LibraryGroupRow> Rows, string Selected, string SelectedName, int SelectedAlbums, int TotalAlbums)
+{
+    /// <summary>The picked artist's picture (an art url; "" for none or while every artist is shown) and how many songs of theirs the library holds. Contract addition after 1.33.</summary>
+    public string SelectedArt { get; init; } = "";
+
+    /// <inheritdoc cref="SelectedArt"/>
+    public int SelectedSongs { get; init; }
+}
 
 /// <summary>An artist of the groups column: the route key, the name, how many of the library's albums are billed first to them, and the letter that heads their run ("" when the
 /// previous row shares it; "#" for a name that does not start with a letter).</summary>
 public readonly record struct LibraryGroupRow(string Key, string Name, int Albums, string Letter);
+
+/// <summary>The pinned "your episodes" row of the podcasts page: how many episodes are saved (0 while unknown), whether Your Episodes is the shown body (a bound read), and the verb that shows it.</summary>
+public sealed record LibraryEpisodesProps(Prop<int> Count, Func<bool> Active, Action Open);

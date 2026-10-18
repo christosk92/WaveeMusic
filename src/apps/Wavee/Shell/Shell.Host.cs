@@ -953,6 +953,14 @@ public static partial class Shell
         Session.CaptureNav();
     }
 
+    /// <summary>The entry Back would show (the route below the current one in the history), or false when Back has none.</summary>
+    public static bool TryPeekBack(out Route route)
+    {
+        if (s_nav.Back.Count == 0) { route = default; return false; }
+        route = s_nav.Back[^1];
+        return true;
+    }
+
     public static void GoBack()
     {
         if (!BackStep(ref s_nav)) return;

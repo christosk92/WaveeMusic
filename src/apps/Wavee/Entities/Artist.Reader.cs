@@ -936,6 +936,20 @@ public readonly partial struct Artist
             if ((uint)blockIndex < (uint)_count) BringBlockToTop(blockIndex);
         }
 
+        /// <inheritdoc />
+        public IReadOnlyList<ArtistReaderRelease> ReadReleases()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            _ = _shape!.Value;
+            _ = Entities.Current.Albums.Changed.Value;
+            var releases = new ArtistReaderRelease[_count];
+            for (int i = 0; i < releases.Length; i++) releases[i] = new ArtistReaderRelease(_blocks[i].AlbumSlot, _blocks[i].Saved);
+            return releases;
+        }
+
+        /// <inheritdoc />
+        public Element AlbumPane(int albumSlot) => Embed.Comp(new Album.PaneProps(albumSlot, ShowAlsoBy: false), static () => new Album.Pane());
+
         /// <summary>The triple a spine dot re-renders on: the flat index (a recycle always changes it), the album SLOT that index resolves to right now (a reorder can
         /// change it without a recycle), and that album's own row <see cref="Table.Version"/> (a cover, a title, a year landing). <see cref="Entities.ScopeEpoch"/> is
         /// read first, same as every other read in this file, so an account switch invalidates it too.

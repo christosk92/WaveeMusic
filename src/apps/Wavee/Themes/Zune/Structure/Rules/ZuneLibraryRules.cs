@@ -59,6 +59,14 @@ public static class ZuneLibraryRules
     /// <summary>The words' type is the dense meta voice (13); the count follows it.</summary>
     public const float ChevronGlyph = 10f, WordChevronGap = 4f, SaveGlyph = 16f;
 
+    // ── the podcasts' "your episodes first" (Z-Library-Podcasts*: the pinned row over the shows list, the feed or the show beside it) ──
+
+    /// <summary>The pinned row's height, its insets (the plate bleeds this far past the column), the label's weight, and the gap under the row.</summary>
+    public const float EpisodesRowH = 44f, EpisodesRowPad = 8f, EpisodesRowGap = 12f;
+
+    /// <summary>The pinned row's label weight (semibold).</summary>
+    public const ushort EpisodesLabelWeight = 600;
+
     // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
 
     /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>
@@ -72,6 +80,26 @@ public static class ZuneLibraryRules
 
     /// <summary>The middle column's heading: its slot height (the 26 light name's line) and the gaps.</summary>
     public const float GroupHeadingH = 40f, GroupHeadingGap = 12f, GroupHeadingPadBottom = 8f;
+
+    // ── the artists' board (Z-Library-Artists*: the hero, the albums as a 3-up grid, the picked album's songs) ──
+
+    /// <summary>The reader column's gap between the hero, the albums heading and the grid; the grid's columns and gaps; the heading's size (26 light) and line.</summary>
+    public const float BoardGap = 14f, BoardGridGap = 16f, BoardHeadSize = 26f, BoardHeadLine = 32f;
+
+    /// <summary>The albums grid's column count.</summary>
+    public const int BoardCols = 3;
+
+    /// <summary>The hero: its insets, the blob (a 300 disc bleeding off the corner at 55 %), the plate's tint alpha at its top, the name's weight, line factor and gap.</summary>
+    public const float HeroPadX = 24f, HeroPadTop = 20f, HeroPadBottom = 14f, HeroBlob = 300f, HeroBlobBleed = 40f, HeroBlobOpacity = 0.55f, HeroNameLine = 1.11f, HeroNameGap = 4f;
+
+    /// <summary>The hero plate's tint: the artist's placeholder colour darkened to this share (the board's #4a2436 over a dark ground).</summary>
+    public const float HeroTintShade = 0.42f;
+
+    /// <summary>The Huge artist column: the plate, its name's size and line (two lines), the stats' numeral size and the gaps between the column's blocks.</summary>
+    public const float HeroColPlateH = 460f, HeroColNameSize = 120f, HeroColNameLine = 116f, HeroColStatSize = 40f, HeroColStatLine = 48f, HeroColGap = 28f, HeroColStatGap = 16f, HeroColStatLabelGap = 2f;
+
+    /// <summary>The hero name's weight (extra light).</summary>
+    public const ushort HeroNameWeight = 200;
 
     // ── the navigator ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -243,6 +271,21 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The find field's width: the boards draw 120 at Small, 160 at Standard and 220 at Huge (a bottom-rule field, no plate).</summary>
     public float FindW { get; init; } = ZuneLibraryRules.FindW;
 
+    /// <summary>Huge's artist column of the albums page (Z-Library-Albums-Huge: 460 wide): its width (0: none), the plate's height, the name's size and line, the stats' numeral size.</summary>
+    public float HeroColW { get; init; }
+
+    /// <summary>The count says the artists too ("312 albums · 184 artists"): Huge's head.</summary>
+    public bool CountArtists { get; init; }
+
+    /// <summary>The artists board's hero: its height and its name's size (Z-Library-Artists 196 / 72; Small 160 / 72; Huge 380 / 144).</summary>
+    public float HeroH { get; init; } = 196f;
+
+    /// <inheritdoc cref="HeroH"/>
+    public float HeroNameSize { get; init; } = 72f;
+
+    /// <summary>The podcasts page's shows column beside the episodes feed (the board's 320 / 220 / 340).</summary>
+    public float EpisodesNavW { get; init; } = 320f;
+
     /// <summary>The "all artists" column of the albums page (the board's 220 / 200 / 280), its head row and its count lane.</summary>
     public float GroupW { get; init; } = 220f;
 
@@ -339,7 +382,7 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f, EpisodesNavW = 220f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
@@ -353,7 +396,7 @@ public static class ZuneLibraryTiers
     private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
         sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
     {
-        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, HeroH = 380f, HeroNameSize = 144f, EpisodesNavW = 340f, HeroColW = 460f, CountArtists = true, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
     };
 
     /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>
@@ -367,7 +410,7 @@ public static class ZuneLibraryTiers
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
     public static LibraryTierPolicy Policy { get; } = new()
     {
-        SmallCardCellMin = 96f, GroupAlbumsByArtist = true,
+        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PlaylistsMasterDetail = true, PodcastsEpisodesFirst = true, GroupPaneFrom = WidthTier.Standard,
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 

@@ -249,7 +249,7 @@ internal static class ZuneProfile
             _ => R.Type.PageHero(t.Name),
         }) with
         {
-            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.NameLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Tok.TextPrimary, Case = TextCase.AsWritten, Wrap = TextWrap.WrapWholeWords, MaxLines = Z.NameLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, LineStacking = LineStacking.BlockLineHeight,
         };
         var kids = new List<Element>(4)
         {
