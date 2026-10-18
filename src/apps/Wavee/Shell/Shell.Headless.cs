@@ -73,6 +73,9 @@ public static partial class Shell
             ArgumentNullException.ThrowIfNull(options);
             if (s_headless) throw new InvalidOperationException("Shell.Headless.Boot runs once per process.");
             s_headless = true;
+            // the headless frame clock has its own epoch (its present QPC is frame x 16 ms, not the counter): the lyrics media clock anchors its samples in it, or a
+            // playing track reads a huge negative time and no line is ever sung (the shell tests and `--inspect` both boot here)
+            Lyrics.SampleClock.NowQpc = static () => FrameTime.NowQpc;
             s_uiThread = Environment.CurrentManagedThreadId;
             Directory.CreateDirectory(options.ProfileDir);
             Platform.ProfileRoot = options.ProfileDir;
