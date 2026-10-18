@@ -78,7 +78,7 @@ internal static class ZuneArtistPage
         // page-level reveal the rest of the app uses; Group null, not the route: the chart's inner region must NOT join this one.
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, lay),
-            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry),
+            OnFailed: () => ZuneDetailKit.PageVacancy(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry), lay.Gutter),
             Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
             Group: null, SmoothResize: false);
 
