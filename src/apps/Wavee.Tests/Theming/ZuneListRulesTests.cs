@@ -144,4 +144,35 @@ public sealed class ZuneListRulesTests
         Assert.True(ZuneListRules.UnavailableExplains(WidthTier.Standard));
         Assert.True(ZuneListRules.UnavailableExtent(WidthTier.Compact) > ZuneListRules.UnavailableExtent(WidthTier.Standard));
     }
+
+    [Fact]
+    public void The_light_lyric_ladder_lifts_the_rows_beside_the_active_line_to_3_to_1_and_keeps_the_dark_ladder_the_cores()
+    {
+        int Row(int index, int active) => Lyrics.Emphasis.Pack(index, active, -1);
+        // Dark, and a podcast that does not own playback, are the core's ladder untouched.
+        for (int i = 0; i < 12; i++)
+        {
+            Assert.Equal(Lyrics.Emphasis.OpacityOf(Row(i, 6)), ZuneListRules.LyricRowOpacity(false, true, Row(i, 6), light: false));
+            Assert.Equal(1f, ZuneListRules.LyricRowOpacity(true, false, Row(i, 6), light: true));
+        }
+        Assert.Equal(1f, ZuneListRules.LyricRowOpacity(false, true, Row(6, 6), light: true));
+        // The line either side of the active one: dark ink at 56 % on the lightest ground (#f5f5f5) and the pink wash (#e7c4d8) reads 3 : 1 or better.
+        float next = ZuneListRules.LyricRowOpacity(false, true, Row(7, 6), light: true), prev = ZuneListRules.LyricRowOpacity(false, true, Row(5, 6), light: true);
+        Assert.Equal(next, prev);
+        foreach (var ground in new[] { ColorF.FromRgba(0xF5, 0xF5, 0xF5), ColorF.FromRgba(0xE7, 0xC4, 0xD8) })
+        {
+            var ink = ColorContrast.Over(ColorF.FromRgba(0x0A, 0x0A, 0x0A) with { A = next }, ground);
+            Assert.True(ColorContrast.Ratio(ink, ground) >= 3f, "the neighbour line on " + ground);
+        }
+        // Each ring further out is dimmer and none is as quiet as the dark ladder's .10 floor, and a light row is never dimmer than its dark twin.
+        float last = 1f;
+        for (int d = 1; d <= 8; d++)
+        {
+            float future = ZuneListRules.LyricRowOpacity(false, true, Row(6 + d, 6), light: true);
+            Assert.True(future <= last && future >= 0.18f, "ring " + d);
+            Assert.True(future >= Lyrics.Emphasis.OpacityOf(Row(6 + d, 6)));
+            last = future;
+        }
+        Assert.True(ZuneListRules.LyricRowOpacity(false, true, Row(4, 6), light: true) >= Lyrics.Emphasis.OpacityOf(Row(4, 6)));   // a past row too
+    }
 }

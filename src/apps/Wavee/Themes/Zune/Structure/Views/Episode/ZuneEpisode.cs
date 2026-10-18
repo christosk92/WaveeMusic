@@ -83,7 +83,7 @@ internal static class ZuneEpisode
     /// <summary>The show's name under the cover (Z-Episode: a 14 white link): the shared inline link row, so the name is clickable on its own
     /// without owning the whole row's hit box.</summary>
     static Element Attribution(EpisodeAttributionProps p, in ViewContext ctx)
-        => Controls.RichTextRow(p.Html, AttributionSize, Tok.TextPrimary, R.Ink.AccentAction, p.Open);
+        => Controls.RichTextRow(p.Html, AttributionSize, Tok.TextPrimary, R.Ink.AccentDecor, p.Open);
 
     /// <summary>The ring row's satellites: save, the played mark, share, "..." — in the tier's order and size (share is dropped at Small, as the
     /// album's rings drop it).</summary>
@@ -112,7 +112,7 @@ internal static class ZuneEpisode
     static Element RailAbout(EpisodeRailAboutProps p, in ViewContext ctx) => new BoxEl
     {
         Direction = 1, MinWidth = 0, Margin = new Edges4(0, Spacing.XS, 0, 0),
-        Children = [Controls.ExpandableRichTextFlex(p.Prose, RailAboutSize, Tok.TextSecondary, R.Ink.AccentAction, RailAboutLines, p.Key, p.Open)],
+        Children = [Controls.ExpandableRichTextFlex(p.Prose, RailAboutSize, Tok.TextSecondary, R.Ink.AccentDecor, RailAboutLines, p.Key, p.Open)],
     };
 
     /// <summary>The show rating popover: the title, the star row (disabled while busy or offline) and the error line.</summary>
@@ -127,5 +127,5 @@ internal static class ZuneEpisode
         ],
     };
 
-    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentAction;
+    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentDecor;
 }

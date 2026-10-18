@@ -138,10 +138,17 @@ internal static class ZuneArtistChart
             Direction = 1, Gap = ZuneListRules.ChartHeaderGap,
             Children =
             [
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Children = [Header(Loc.Get(Strings.Artist.TopTracks), Tok.AccentDefault)] },
+                HeaderSkeleton(),
                 new BoxEl { Direction = 0, Gap = ZuneListRules.ChartTrailGap, Children = columns },
             ],
         };
+    }
+
+    /// <summary>The loading chart's heading: the real word "popular" (Z-State-Loading), never a bar; the override draws it as is.</summary>
+    static Element HeaderSkeleton()
+    {
+        Element head = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Children = [Header(Loc.Get(Strings.Artist.TopTracks), Tok.AccentDefault)] };
+        return head.Skel(head);
     }
 
     /// <summary>Previous, the pips and next at two or more pages; the bare count at one.</summary>
@@ -170,7 +177,7 @@ internal static class ZuneArtistChart
         // The tier's own geometry (the policy's ArtistChartRowShape: Z-Artist's 60 / 48 / 52 at Standard, 56 / 44 / 40 Compact, 52 / 40 / 44 Small, 68 / 52 / 60 at 4K).
         float rowHeight = rowH > 0f ? rowH : ZuneListRules.ChartRowHeight;
         float rankLane = lead > 0f ? lead : ZuneListRules.ChartRankBox;
-        ColorF accent = R.Ink.AccentAction;
+        ColorF accent = R.Ink.AccentDecor;
         ColorF secondary = ZuneListRules.RowInk(isNow, accent, Tok.TextSecondary);
         ColorF tertiary = ZuneListRules.RowInk(isNow, accent, Tok.TextTertiary);
         bool hasPlays = c.PlaysCompact.Length > 0;

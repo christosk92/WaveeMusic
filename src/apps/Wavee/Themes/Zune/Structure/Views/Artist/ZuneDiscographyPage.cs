@@ -39,7 +39,7 @@ internal static class ZuneDiscographyPage
     public static Element Template(DiscographyPageProps p, in ViewContext ctx)
     {
         var lay = ZuneArtistTiers.Of(ctx.Tier());
-        if (!p.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
+        if (!p.Parsed) return ZuneDetailKit.PageVacancy(Controls.Vacancy(Controls.VacancyVoice.Error), lay.Gutter);
 
         Element head = new BoxEl
         {

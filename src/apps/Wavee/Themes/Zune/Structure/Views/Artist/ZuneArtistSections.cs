@@ -104,6 +104,43 @@ internal static class ZuneArtistSections
         };
     }
 
+    /// <summary>The loading page's popular band (Z-State-Loading): the chart's skeleton beside the rail, whose "latest release" heading stands in real words over a skeleton
+    /// card (cover and two lines), at the loaded band's geometry. The chart skeleton's own heading is real too.</summary>
+    public static Element PopularSkeleton(Element chartShape, ZuneArtistLayout lay)
+    {
+        Element chart = new BoxEl
+        {
+            Key = "zune-artist-chart", Direction = 1, MinWidth = 0f, Grow = lay.RailBeside ? 1f : 0f, Basis = lay.RailBeside ? 0f : float.NaN,
+            MaxWidth = lay.ChartMaxW > 0f ? lay.ChartMaxW : float.NaN,
+            Children = [chartShape],
+        };
+        var meta = R.Type.TrackMeta("Single · 2024");
+        Element card = new BoxEl
+        {
+            Direction = 0, Gap = Rules.RailItemGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl { Width = lay.LatestArt, Height = lay.LatestArt, Shrink = 0f, Fill = Prop.Of(static () => R.Layer.RowHover) },
+                new BoxEl
+                {
+                    Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f,
+                    Children = [R.Type.TrackTitle("Latest release title") with { MaxLines = 1 }, meta with { MaxLines = 1 }],
+                },
+            ],
+        };
+        BoxEl head = K.Heading(Loc.Get(Strings.Artist.LatestRelease), null, null);
+        Element railBox = new BoxEl
+        {
+            Key = Rules.RailKey, Direction = 1, Gap = lay.RailStackGap, MinWidth = 0f, Shrink = 0f, Width = lay.RailBeside ? lay.RailW : float.NaN,
+            Children = [K.Section(head.Skel(head), card)],
+        };
+        return new BoxEl
+        {
+            Key = Rules.PopularKey, Direction = (byte)(lay.RailBeside ? 0 : 1), Gap = lay.RailBeside ? lay.RailGap : lay.ZoneGap, MinWidth = 0f,
+            AlignItems = lay.RailBeside ? FlexAlign.Start : FlexAlign.Stretch, Children = [chart, railBox],
+        };
+    }
+
     static Element RailItem(string key, string title, Element body)
         => K.Section(K.Heading(title, null, null), body) with { Key = "zune-artist-rail:" + key };
 
@@ -311,7 +348,7 @@ internal static class ZuneArtistSections
                     Direction = 1, Width = Rules.StubDateW, Shrink = 0f, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        K.Caption(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Prop.Of(static () => R.Ink.AccentAction) },
+                        K.Caption(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Prop.Of(static () => R.Ink.AccentDecor) },
                         R.Type.Numeral(date.Day.ToString(CultureInfo.CurrentCulture)) with { Color = Tok.TextPrimary, MaxLines = 1 },
                     ],
                 },
@@ -347,7 +384,7 @@ internal static class ZuneArtistSections
             [
                 new BoxEl { ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(R.Shape.Cover), Children = [Controls.ArtworkFill(image, R.Shape.Cover)] },
                 K.Name(name) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
-                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentAction), MaxLines = 1 },
+                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1 },
             ],
         };
     };

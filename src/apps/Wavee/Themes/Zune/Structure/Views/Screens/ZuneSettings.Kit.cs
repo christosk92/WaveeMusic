@@ -256,7 +256,7 @@ internal sealed class ZuneKit
         [
             ZuneText.Command(text) with
             {
-                Color = !enabled ? Tok.TextDisabled : accent ? Tok.AccentDefault : Tok.TextSecondary,
+                Color = !enabled ? Tok.TextDisabled : accent ? R.Ink.AccentDecor : Tok.TextSecondary,
                 HoverColor = !enabled ? Tok.TextDisabled : accent ? Tok.AccentSecondary : Tok.TextPrimary,
                 FocusedColor = !enabled ? Tok.TextDisabled : Tok.TextPrimary,
             },

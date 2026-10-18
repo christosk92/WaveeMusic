@@ -70,7 +70,7 @@ internal static partial class ZuneReleaseNotes
         var body = new List<Element>(5)
         {
             Media(item.Poster, store),
-            ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = store ? R.Ink.AccentAction : Tok.TextTertiary, MaxLines = 1 },
+            ZuneText.Hint(Loc.Get(KindPillLocKey(h.Kind, store))) with { Color = store ? R.Ink.AccentDecor : Tok.TextTertiary, MaxLines = 1 },
             R.Type.TrackTitle(h.Title) with { Wrap = TextWrap.Wrap, MaxLines = K.CardTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), IgnoreLink), isTextSelectionEnabled: false)
                 with { Size = R.Type.TrackMeta("").Size, LineHeight = R.Type.TrackMeta("").LineHeight, MaxLines = compact ? K.CardBodyLinesCompact : K.CardBodyLines, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis, Color = Tok.TextSecondary },
@@ -78,9 +78,9 @@ internal static partial class ZuneReleaseNotes
         // "read more" on every non-store card, overflowing or not: a short card gives no other cue that a click opens anything. A video highlight says so.
         // The action word is the board's "try it →" where the note carries an action (a deep link into the app); a note with none has no action word (the card still opens the viewer).
         if (!store && h.DeepLink is { Length: > 0 })
-            body.Add(R.Type.DenseMeta(Loc.Get(Strings.WhatsNew.TryIt) + (IsVideo(h) ? "  ▶" : "")) with { Color = R.Ink.AccentAction, MaxLines = 1 });
+            body.Add(R.Type.DenseMeta(Loc.Get(Strings.WhatsNew.TryIt) + (IsVideo(h) ? "  ▶" : "")) with { Color = R.Ink.AccentDecor, MaxLines = 1 });
         else if (!store && IsVideo(h))
-            body.Add(R.Type.DenseMeta("▶") with { Color = R.Ink.AccentAction, MaxLines = 1 });
+            body.Add(R.Type.DenseMeta("▶") with { Color = R.Ink.AccentDecor, MaxLines = 1 });
 
         // One column wide (Z-ReleaseNotes-Compact): the card is a ROW, the swatch, the title over its words, and the round "→" at the end where the note has an action.
         if (layout.HighlightColumns <= 1 && !store && !compact)

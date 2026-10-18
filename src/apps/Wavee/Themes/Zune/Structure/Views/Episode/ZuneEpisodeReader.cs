@@ -90,7 +90,7 @@ internal static class ZuneEpisodeReader
         var children = new List<Element>
         {
             Skel.Region(p.Description,
-                () => Controls.RichTextFlex(p.Seed, AboutSize, Tok.TextSecondary, R.Ink.AccentAction, SeedLines),
+                () => Controls.RichTextFlex(p.Seed, AboutSize, Tok.TextSecondary, R.Ink.AccentDecor, SeedLines),
                 text => AboutBody(p, text),
                 onFailed: () => ZuneEpisode.Failed(p.Retry),
                 isEmpty: string.IsNullOrWhiteSpace,
@@ -109,7 +109,7 @@ internal static class ZuneEpisodeReader
         var (prose, chapters) = RichTextBlocks.Split(text);
         var rows = new List<Element>
         {
-            Controls.ExpandableRichTextFlex(prose, AboutSize, Tok.TextSecondary, R.Ink.AccentAction, AboutLines, p.Uri, p.Open),
+            Controls.ExpandableRichTextFlex(prose, AboutSize, Tok.TextSecondary, R.Ink.AccentDecor, AboutLines, p.Uri, p.Open),
         };
         if (chapters.Length > 0)
         {
@@ -149,7 +149,7 @@ internal static class ZuneEpisodeReader
         if (title.Length > 0)
             words.Add(R.Type.TrackTitle(title) with
             {
-                Color = active ? Prop.Of(static () => R.Ink.AccentAction) : (Prop<ColorF>)Tok.TextPrimary,
+                Color = active ? Prop.Of(static () => R.Ink.AccentDecor) : (Prop<ColorF>)Tok.TextPrimary,
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0,
             });
         var time = R.Type.MicroMeta(PodcastReaderRules.Timestamp(startMs)) with
@@ -178,7 +178,7 @@ internal static class ZuneEpisodeReader
                     [
                         R.Type.Numeral((index + 1).ToString(System.Globalization.CultureInfo.CurrentCulture)) with
                         {
-                            Color = active ? Prop.Of(static () => R.Ink.AccentAction) : (Prop<ColorF>)Tok.TextTertiary, MaxLines = 1,
+                            Color = active ? Prop.Of(static () => R.Ink.AccentDecor) : (Prop<ColorF>)Tok.TextTertiary, MaxLines = 1,
                         },
                     ],
                 },

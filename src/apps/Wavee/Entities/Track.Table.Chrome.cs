@@ -181,7 +181,7 @@ public readonly partial struct Track
         Element BuildToolbar(float available)
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
-            if (_selectionVisible?.Value == true) return SelectionSurface("selection");
+            if (_selectionVisible?.Value == true && _dockHost is null) return SelectionSurface("selection");
 
             bool vertical = VerticalArm;
             bool pageBar = PageBar;
@@ -979,7 +979,12 @@ public readonly partial struct Track
             if (count <= 0) { _selectionPrevCount = 0; return new BoxEl(); }
             bool wasVisible = _selectionPrevCount > 0;
             _selectionPrevCount = count;
+            var args = LaneArgs(count, wasVisible);
+            return Track.SelectionLane(fit, in args);
+        }
 
+        SelectionLaneArgs LaneArgs(int count, bool wasVisible)
+        {
             var kind = SelectionLaneKind.Tracks;
             if (_latest.Source.HasEpisodes)
             {
@@ -987,8 +992,33 @@ public readonly partial struct Track
                 if (anyEpisode && !anyTrack) kind = SelectionLaneKind.Episodes;
                 else if (anyEpisode) kind = SelectionLaneKind.Mixed;
             }
-            var args = new SelectionLaneArgs(kind, count, _laneTracks, _laneEpisodes, _laneHost, _exitSelection, _selectAllTracks, wasVisible);
-            return Track.SelectionLane(fit, in args);
+            return new SelectionLaneArgs(kind, count, _laneTracks, _laneEpisodes, _laneHost, _exitSelection, _selectAllTracks, wasVisible);
+        }
+
+        /// <summary>Publish (or withdraw) the docked bar's model: an auto-tracked effect over the selection, so the verbs name it as it stands.</summary>
+        void PublishSelectionDock()
+        {
+            var host = _dockHost;
+            if (host is null) return;
+            _ = _selection.Version.Value;
+            int count = _selectedCount?.Value ?? 0;
+            bool show = _selectionVisible?.Value == true && count > 0;
+            if (!show)
+            {
+                WithdrawSelectionDock();
+                return;
+            }
+            var props = Track.SelectionDock(LaneArgs(count, wasVisible: _dockPublished is not null), _rowItems?.Count.Value ?? 0);
+            _dockPublished = props;
+            host.Model.Value = props;
+        }
+
+        /// <summary>Take this table's model off the host (only if it is still the one showing: another page's table may have published since).</summary>
+        void WithdrawSelectionDock()
+        {
+            if (_dockPublished is null) return;
+            if (_dockHost is { } host && ReferenceEquals(host.Model.Peek(), _dockPublished)) host.Model.Value = null;
+            _dockPublished = null;
         }
 
         /// <summary>The kit of a host mounted where no registry provides <c>StyleKeys.TrackTable</c>: every command draws an empty box.</summary>

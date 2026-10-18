@@ -40,7 +40,7 @@ internal static class ZuneEpisodeRow
     static readonly string SeedTitle = new((char)0x2007, ZuneListRules.EpisodeSeedTitleRun);
     static readonly string SeedDescription = new((char)0x2007, ZuneListRules.EpisodeSeedDescriptionRun);
 
-    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentAction;
+    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentDecor;
 
     static Element Content(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow) => RowContent(in item, ctx, narrow, seed: false);
 
@@ -171,7 +171,7 @@ internal static class ZuneEpisodeRow
                 {
                     FontFamily = role.FontFamily, Size = role.Size, LineHeight = role.LineHeight, Weight = role.ResolvedWeight,
                     MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f, Shrink = 1f,
-                    Color = Prop.Of(() => ZuneListRules.RowInk(Episode.IsNowPlaying(it.Value.Episode), R.Ink.AccentAction, Tok.TextPrimary)),
+                    Color = Prop.Of(() => ZuneListRules.RowInk(Episode.IsNowPlaying(it.Value.Episode), R.Ink.AccentDecor, Tok.TextPrimary)),
                 },
             ],
         };

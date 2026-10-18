@@ -81,7 +81,7 @@ internal static class ZuneTrackChrome
             Fill = Prop.Of(static () => R.Layer.FloatingPane),
             Children =
             [
-                Icon(Icons.Info, ZuneListRules.UnavailableGlyph, R.Ink.AccentAction) with { Shrink = 0f },
+                Icon(Icons.Info, ZuneListRules.UnavailableGlyph, R.Ink.AccentDecor) with { Shrink = 0f },
                 new TextEl(ZuneListRules.UnavailableExplains(tier) ? a.Explained : a.Summary)
                 {
                     Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
@@ -354,7 +354,7 @@ internal static class ZuneTrackChrome
 
         float Edge => ZuneListRules.CommandEdgeFor(_tier);
 
-        static Prop<ColorF> Ink(bool active) => active ? Prop.Of(static () => R.Ink.AccentAction) : Prop.Of(static () => Tok.TextSecondary);
+        static Prop<ColorF> Ink(bool active) => active ? Prop.Of(static () => R.Ink.AccentDecor) : Prop.Of(static () => Tok.TextSecondary);
 
         /// <summary>The chromeless lane both modes share; the keyed mode box animates browse ↔ selection. At Compact the selection mode is
         /// tinted with the accent (Z-State-Rows-Compact).</summary>

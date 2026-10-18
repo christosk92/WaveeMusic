@@ -214,7 +214,7 @@ internal static partial class ZuneShow
             kids.Add(new BoxEl
             {
                 Direction = 1, MaxWidth = AboutMeasure, MinWidth = 0f,
-                Children = [Controls.RichTextFlex(about, AboutSize, Tok.TextSecondary, R.Ink.AccentAction, 0, DetailVerbs.NavigateKey)],
+                Children = [Controls.RichTextFlex(about, AboutSize, Tok.TextSecondary, R.Ink.AccentDecor, 0, DetailVerbs.NavigateKey)],
             });
         kids.Add(R.Type.DenseMeta(a.Meta) with
         {

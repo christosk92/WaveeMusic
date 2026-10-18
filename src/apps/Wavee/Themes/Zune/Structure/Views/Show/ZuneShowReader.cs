@@ -43,7 +43,7 @@ internal static partial class ZuneShow
     static readonly Func<bool> s_never = static () => false;
 
     /// <summary>The accent ink as a live read (a bind calls it; nothing captures the colour).</summary>
-    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentAction;
+    static readonly Func<ColorF> s_accent = static () => R.Ink.AccentDecor;
 
     // ══ 1. TYPE ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -308,7 +308,7 @@ internal static partial class ZuneShow
         {
             Width = ControlEdge, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = R.Shape.All(ShapeRole.Control), Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = click,
-            Children = [Icon(glyph, ToggleGlyph) with { Color = Prop.Of(() => on() ? R.Ink.AccentAction : Tok.TextSecondary) }],
+            Children = [Icon(glyph, ToggleGlyph) with { Color = Prop.Of(() => on() ? R.Ink.AccentDecor : Tok.TextSecondary) }],
         }.Interactive(Interaction.Subtle), name);
 
     // ══ 3. THE HEADER, THE MONTHS, THE FOOT ══════════════════════════════════════════════════════════════════════════════
@@ -347,7 +347,7 @@ internal static partial class ZuneShow
                     [
                         R.Type.TrackMeta(Loc.Get(Strings.Podcast.NothingMatchesHint)) with
                         {
-                            Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, HoverColor = R.Ink.AccentAction, Wrap = TextWrap.Wrap, MinWidth = 0f,
+                            Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, HoverColor = R.Ink.AccentDecor, Wrap = TextWrap.Wrap, MinWidth = 0f,
                         },
                     ],
                 },
@@ -430,7 +430,7 @@ internal static partial class ZuneShow
                 Children =
                 [
                     YearInk(text, 400, Prop.Of(() => now() ? ColorF.Transparent : Tok.TextTertiary)),
-                    YearInk(text, 700, Prop.Of(() => now() ? R.Ink.AccentAction : ColorF.Transparent)),
+                    YearInk(text, 700, Prop.Of(() => now() ? R.Ink.AccentDecor : ColorF.Transparent)),
                 ],
             };
         }

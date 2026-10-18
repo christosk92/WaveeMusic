@@ -592,7 +592,7 @@ internal sealed class ZuneBand : Component
                 [
                     new TextEl(a.Label)
                     {
-                        Size = ZuneBandRules.PillText, Color = Tok.AccentDefault, MaxLines = 1, Case = R.Case.For(LabelKind.Command),
+                        Size = ZuneBandRules.PillText, Color = R.Ink.AccentDecor, MaxLines = 1, Case = R.Case.For(LabelKind.Command),
                     },
                 ],
             },

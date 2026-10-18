@@ -151,7 +151,8 @@
 // 1.45 (Zune fidelity): `PipBounds.OverlaysContent` (the floating video card floats over the page instead of reserving its height).
 // 1.46 (Zune fidelity): `QueueProps.History` with `QueueHistoryRow` and `IQueueVerbs.PlayHistory` (the tracks played before the current one, newest first: the Up next
 // page's "played before this"), `ConcertDetailView.Interested` / `.ToggleInterested` (the concert page's local "interested" mark).
-// 1.47 (Settings sections): `SettingsPageProps.Area` / `.AreaCell` / `.OpenArea` (the page's twelve sections, `Settings.Area`, each a list of document sections),
+// 1.47 (Zune fidelity round 2): `TrackRowSkin.Dimmed` (the row's dim state, so a skin dims the check lane with the row).
+// 1.48 (Settings sections): `SettingsPageProps.Area` / `.AreaCell` / `.OpenArea` (the page's twelve sections, `Settings.Area`, each a list of document sections),
 // `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
 // `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
 //
@@ -169,7 +170,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 47;
+    public const int Minor = 48;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
