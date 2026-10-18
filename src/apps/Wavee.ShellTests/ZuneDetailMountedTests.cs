@@ -128,7 +128,7 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
         {
             shell.RunFrames(10);
             OpenAlbum(shell);
-            UntilBackground(shell, () => Chrome() is { Views.Count: > 1 }, "al2's row 2 with its \"more by\" view");
+            UntilBackground(shell, () => Chrome() is { Views.Count: > 1 } c && c.Views.Any(v => v.Id == "moreby"), "al2's row 2 with its \"more by\" view");
             var chrome = Chrome()!;
             Assert.Equal("songs", chrome.CurrentView?.Id);
             Assert.Contains(chrome.Views, v => v.Id == "moreby");
