@@ -16,7 +16,9 @@
 //
 // THE MAGAZINE is the sections in the plan's order (`ZuneArtistSections`), 28 apart in the system page column (`ZuneFrameRules.PageColumn`: the
 // frame's gutter, 2400 cap, centred: the band's x, audit A1), the player dock's reserve under the last one. Each section's holder is keyed by what it is and carries the
-// pivot destination's anchor; a tier crossing reflows the holders (`ZuneMotion.ColumnCollapse`), nothing is keyed by a tier.
+// pivot destination's anchor; a tier crossing (or a docked panel that narrows the content tier) eases the holders' heights through real layout
+// (`ZuneMotion.HeightResize`), so every section under a changed one rides it; nothing is keyed by a tier. The hero's floor, the air around its
+// copy and the body's top are easing spacers for the same reason (padding cannot ease).
 //
 // PRODUCTION MOTION IS KEPT: ONE visual swap (overview + measured width + the chart settled, `BodyReady`) as a soft reveal over the derived shimmer,
 // exactly as the page always did (Reveal.Soft; the chart's region joins no group); the artist's photograph is the material's, which fades in on
@@ -124,10 +126,14 @@ internal static class ZuneArtistPage
             if (!ZuneArtistSections.Draws(slot.Section, railed)) continue;
             string key = ArtistSections.Key(slot.Section);
             Element body = ZuneArtistSections.Body(slot.Section, p, lay);
+            // The gap above every section but the first is an easing spacer keyed by the section, not the magazine's Gap: a gap cannot ease, and
+            // a tier step that changes it (Huge 4K's 44 to Huge's 28 when the panes dock) would shove every section by its count of gaps at once.
+            if (sections.Count > 0) sections.Add(ZuneArtistHero.Air(Rules.AirPrefix + "gap:" + key, lay.ZoneGap));
             sections.Add(new BoxEl
             {
                 Key = (slot.Anchor is null ? Rules.SectionPrefix : Rules.AnchorPrefix) + key, Direction = 1, MinWidth = 0f,
-                Layout = ZuneMotion.ColumnCollapse, OnRealized = slot.Anchor,
+                // Its height eases through real layout (a tier step re-lays the chart, the shelves, "about"), so the sections under it ride it.
+                Layout = ZuneMotion.HeightResize, OnRealized = slot.Anchor,
                 // The body keeps its own key (the popular band, the about band): the holder above carries the section's.
                 Children = [body],
             });
@@ -139,8 +145,9 @@ internal static class ZuneArtistPage
         // the option itself.
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, washH, lay.HeroH / washH, key: Rules.WashKey + uri, payloadAccent: a.HeaderAccent);
 
-        var column = new List<Element>(3) { hero };
+        var column = new List<Element>(4) { hero };
         if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(ZuneArtistHero.BelowRow(a.Name, uri, lay, in acts));
+        column.Add(BodyAir(lay));
         column.Add(Magazine(sections.ToArray(), lay));
 
         return new BoxEl
@@ -154,13 +161,17 @@ internal static class ZuneArtistPage
         };
     }
 
-    /// <summary>The magazine: the sections in the system page column (the frame's gutter, the 2400 cap, centred), 28 apart, the player dock's
-    /// reserve under the last one.</summary>
+    /// <summary>The body's top under the hero (or the Compact actions row): an easing spacer, not the magazine's padding, so a tier step (a docked
+    /// panel narrowing the content) moves no section.</summary>
+    static Element BodyAir(ZuneArtistLayout lay) => ZuneArtistHero.Air(Rules.AirPrefix + "body", lay.BodyTop);
+
+    /// <summary>The magazine: the sections in the system page column (the frame's gutter, the 2400 cap, centred), 28 apart (the easing gap spacers
+    /// <see cref="Compose"/> puts between them), the player dock's reserve under the last one.</summary>
     static Element Magazine(Element[] sections, ZuneArtistLayout lay) => ZuneDetailKit.CentredPage(new BoxEl
     {
-        Key = "zune-artist-magazine", Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, Layout = ZuneMotion.ColumnCollapse,
+        Key = "zune-artist-magazine", Direction = 1, MinWidth = 0f, Layout = ZuneMotion.ColumnCollapse,
         AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(0f, lay.BodyTop, 0f, R.Space.DockReserve + Rules.PageBottom),
+        Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Rules.PageBottom),
         Children = sections,
     }, lay.Gutter) with { Key = "zune-artist-magazine-column" };
 
@@ -181,6 +192,7 @@ internal static class ZuneArtistPage
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
         if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
+        column.Add(BodyAir(lay));
         column.Add(Magazine([ZuneArtistSections.PopularSkeleton(chartShape, lay)], lay));
         return new BoxEl { Direction = 1, Children = column.ToArray() };
     }

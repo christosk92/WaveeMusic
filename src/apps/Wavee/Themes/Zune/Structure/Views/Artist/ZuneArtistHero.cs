@@ -62,33 +62,64 @@ internal static class ZuneArtistHero
         {
             Color = Tok.TextPrimary, MaxLines = Rules.NameLines, Wrap = TextWrap.WrapWholeWords, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis,
         };
-        // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it.
+        // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it. A tier step (a docked
+        // panel narrowing the content, a crossing) changes its size: the SLOT's height eases with the name riding its foot, and the name itself hugs
+        // its words and scales from its bottom-left, so it never leaves the caption and nothing around it jumps.
         Element nameBox = new BoxEl
         {
             Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(-Rules.NameNudge, 0f, 0f, Rules.NameCaptionGap),
-            Animate = ZuneMotion.TitleScale, Children = [Lines(name, shimmer)],
+            Layout = ZuneMotion.TitleSlot,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Start, Animate = ZuneMotion.TitleScale,
+                    TransformOriginX = ZuneMotion.TitleOriginX, TransformOriginY = ZuneMotion.TitleOriginY,
+                    Children = [Lines(name, shimmer)],
+                },
+            ],
         };
         // Z-State-Loading: a name already known (the search row, a link) stands in its real display type on the skeleton, so it never changes under the reveal.
         if (shimmer && nameKnown) nameBox = nameBox.Skel(nameBox);   // the override is the real name, drawn as is (Skeletonized(false) would blank it)
 
+        // The air above the eyebrow and under the caption are spacers, not padding: they ease (padding cannot), so a tier step moves no copy.
         // The spring is empty space, never a shimmer block (the deriver would paint a page-wide bar there while the page loads).
-        var kids = new List<Element>(5) { eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer) };
-        if (lay.Secondary == ZuneArtistSecondary.Row && !shimmer)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
-                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                Children = [Secondary(uri, lay, acts)],
-            });
+        var kids = new List<Element>(7)
+        {
+            Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
+        };
+        // Huge's secondary row stands in a slot that is ALWAYS mounted: its room (the gap above the rings and the rings) opens and closes as an
+        // easing height while the row fades, so the name and the caption over it glide when Huge comes or goes (two docked panes take the content
+        // to Standard). The rings fade inside it.
+        bool row = lay.Secondary == ZuneArtistSecondary.Row && !shimmer;
+        kids.Add(new BoxEl
+        {
+            Key = Rules.ActionsKey + ":row", Direction = 1, MinWidth = 0f, MinHeight = 0f, Shrink = 0f, ClipToBounds = true,
+            Height = row ? Rules.ActionsTop + lay.Target : 0f, Layout = ZuneMotion.HeightResize,
+            Children = row
+                ?
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
+                        Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                        Children = [Secondary(uri, lay, acts)],
+                    },
+                ]
+                : [],
+        }.Skeletonized(false));
+        kids.Add(Air(Rules.AirPrefix + "foot", lay.CaptionBottom));
 
         // The copy in the page column (the band's x); it fills the hero's height, so the spring parks the name and the caption at its foot.
         Element column = ZuneDetailKit.CentredPage(new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, lay.EyebrowTop, 0f, lay.CaptionBottom),
+            Direction = 1, MinWidth = 0f,
             Children = kids.ToArray(),
         }, gutter);
 
-        var layers = new List<Element>(2) { column };
+        // The record's height is a FLOOR strut under the copy (the ZStack is as tall as its tallest layer), not the hero's MinHeight: a MinHeight
+        // would clamp the eased height on a grow (Small 140 to Standard 340 when a panel undocks), the strut eases both ways.
+        var layers = new List<Element>(3) { Air(Rules.AirPrefix + "floor", lay.HeroH), column };
         if (lay.Secondary == ZuneArtistSecondary.Corner && !shimmer)
             layers.Add(new BoxEl
             {
@@ -98,13 +129,18 @@ internal static class ZuneArtistHero
                 Children = [Secondary(uri, lay, acts)],
             });
 
-        // MinHeight, not Height: the record's height is a floor and the copy's flow can exceed it (a wrapping name or caption pushes the body down).
+        // A floor, not a Height: the copy's flow can exceed the record's height (a wrapping name or caption pushes the body down). A tier step
+        // (Standard 340 to Small 140 when a panel docks) eases the floor through real layout, so the copy at the foot and the body under the hero
+        // ride it instead of jumping.
         return new BoxEl
         {
-            Key = Rules.HeroKey, MinHeight = lay.HeroH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
-            Layout = ZuneMotion.ColumnCollapse, Children = layers.ToArray(),
+            Key = Rules.HeroKey, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true, Children = layers.ToArray(),
         };
     }
+
+    /// <summary>A run of vertical air whose height a tier step changes: a spacer that eases (padding cannot).</summary>
+    internal static Element Air(string key, float height)
+        => new BoxEl { Key = key, Height = height, MinHeight = 0f, Shrink = 0f, Layout = ZuneMotion.HeightResize }.Skeletonized(false);
 
     /// <summary>The Compact row under the hero: play · shuffle · follow, the more ring at the end (40 targets).</summary>
     public static Element BelowRow(string name, string uri, ZuneArtistLayout lay, in Acts acts)
