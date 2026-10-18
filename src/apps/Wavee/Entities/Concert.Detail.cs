@@ -52,6 +52,7 @@ public readonly partial struct Concert
             _ = e.ConcertOffers.Changed.Value;
             _ = e.ConcertLineup.Changed.Value;
             _ = e.ConcertRelated.Changed.Value;
+            _ = ConcertInterest.Version.Value;      // the "interested" mark is a local set: a change re-describes the page
             _routeTitle = Entities.Strings.Resolve(p.Arg);
             if (!ReferenceEquals(_scope, scope) || !_subject.Equals(p.Subject))
             {
@@ -89,6 +90,8 @@ public readonly partial struct Concert
             }
             return null;
         }
+
+        static Action InterestToggle(string uri) => () => ConcertInterest.Toggle(uri);
 
         /// <summary>Everything the detail paints, as VALUES read off the handle.</summary>
         static ConcertDetailView DetailViewOf(Concert c, string routeTitle)
@@ -145,6 +148,8 @@ public readonly partial struct Concert
                     ? "https://open.spotify.com/concert/" + new string(EntityUri.IdOf(c.Uri.Text)) : null,
                 PlayLineup = LineupPlayer(slots, acts.Length),
                 OnSale = Array.Exists(offers, static o => o.Url is not null && o.Availability is { Length: > 0 }),
+                Interested = c.IsValid && ConcertInterest.IsInterested(c.Uri.Text),
+                ToggleInterested = c.IsValid && c.Uri.Text.Length > 0 ? InterestToggle(c.Uri.Text) : null,
             };
         }
     }

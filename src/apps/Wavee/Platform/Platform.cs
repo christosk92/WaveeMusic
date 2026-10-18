@@ -162,6 +162,9 @@ public static partial class Platform
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
+        /// <summary>The concerts the listener marked "interested" (a LOCAL set: the concert API has no interested / saved state of its own): ONE capped blob,
+        /// newest first, the concert uris joined by a space. Read and written ONLY through <see cref="ConcertInterest"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> ConcertInterested = new("concert.interested", "");
 
         // ── podcasts ──
         /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most

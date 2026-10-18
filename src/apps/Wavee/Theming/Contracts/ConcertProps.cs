@@ -304,6 +304,13 @@ public sealed record ConcertDetailView(string Title, string DateLine, string? Do
     /// Appended (contract 1.35).</summary>
     public bool OnSale { get; init; }
 
+    /// <summary>The listener marked this concert "interested". The concert API has no such state, so it is a LOCAL set (`ConcertInterest`); the page
+    /// repaints when it changes. Appended (contract 1.46).</summary>
+    public bool Interested { get; init; }
+
+    /// <summary>Flips <see cref="Interested"/>. Null: the page has no concert uri to mark (the skeleton). Appended (contract 1.46).</summary>
+    public Action? ToggleInterested { get; init; }
+
     /// <summary>The skeleton's content.</summary>
     public static readonly ConcertDetailView Seed = new(" ", "Saturday, January 1, 2030 · 20:00", "Doors open 19:00",
         "Venue name placeholder · City placeholder", null, null,

@@ -210,6 +210,25 @@ internal static class ZuneDetailKit
         return word ? box : Controls.Named(box, label);
     }
 
+    /// <summary>A ring that holds a state (a concert's "interested"): the outline heart at rest; while <paramref name="on"/> the heart is filled and the ring and the heart are
+    /// in the accent (the save ring's look). Its word is the same either way.</summary>
+    public static Element ToggleRing(string id, string glyph, string glyphOn, string label, bool on, Prop<ColorF> accent, Action onClick, ZuneDetailLayout lay)
+    {
+        var disc = Disc(on ? glyphOn : glyph, lay.RingSize, lay.RingGlyph, null);
+        if (on)
+            disc = disc with
+            {
+                BorderColor = accent,
+                Children = [new TextEl(glyphOn) { Size = lay.RingGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = accent }],
+            };
+        return new BoxEl
+        {
+            Key = Z.RingPrefix + id, Direction = 0, AlignItems = FlexAlign.Center, Gap = lay.RingLabelGap, Shrink = 0f, MinHeight = lay.RingSize,
+            Cursor = CursorId.Hand, Role = AutomationRole.ToggleButton, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
+            OnClick = onClick, Children = [disc, Word(label, lay)],
+        };
+    }
+
     /// <summary>The "..." ring: the outline around the page's lazily built menu (the frame's More factory), opened at the ring.</summary>
     public static Element MoreRing(Func<ContextMenuModel?> menu, ZuneDetailLayout lay)
         => Embed.Comp(new MoreProps(lay.RingSize, lay.RingGlyph, menu), static () => new MoreHost()) with { Key = Z.RingPrefix + "more" };

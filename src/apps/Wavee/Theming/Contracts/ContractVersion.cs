@@ -150,7 +150,7 @@
 // recommendations lead drops its heading, toolbar and column header where the theme asks).
 // 1.45 (Zune fidelity): `PipBounds.OverlaysContent` (the floating video card floats over the page instead of reserving its height).
 // 1.46 (Zune fidelity): `QueueProps.History` with `QueueHistoryRow` and `IQueueVerbs.PlayHistory` (the tracks played before the current one, newest first: the Up next
-// page's "played before this").
+// page's "played before this"), `ConcertDetailView.Interested` / `.ToggleInterested` (the concert page's local "interested" mark).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

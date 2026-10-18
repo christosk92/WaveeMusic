@@ -17,8 +17,8 @@
 // (`ConcertDetailView`); the skeleton is the same builder over `ConcertDetailView.Seed` (facts + two offers + three lineup rows: the exact silhouette
 // of the loaded page, a seed date standing in for the numeral).
 //
-// GAPS WITH NO VERB IN THE PROPS (the board's ring row): interested, share, play the lineup, add to calendar. The page carries neither a uri nor a
-// verb for them; they are listed in the lane report and drawn nowhere (never a dead ring).
+// THE BOARD'S RING ROW: interested (a LOCAL mark: the concert API has no such state; `ConcertDetailView.Interested` / `.ToggleInterested`, also the band's "interested"
+// word), share, play the lineup. Add to calendar has no verb in the props and is drawn nowhere (never a dead ring).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -202,10 +202,13 @@ internal static class ZuneConcertDetail
     }
 
     /// <summary>The board's ring row under the facts: share (the page's web link, copied with the confirmation toast) and play the lineup (the headliner's
-    /// artist context). "Interested" has no backing feature in the core (no saved-concert state exists), so it is not drawn: never a dead ring.</summary>
+    /// artist context), and "interested" first (the heart, filled and in the accent while marked).</summary>
     static Element? ActionRing(ConcertDetailView d, ZuneConcertLayout lay, ZuneDetailLayout rings)
     {
-        var kids = new List<Element>(2);
+        var kids = new List<Element>(3);
+        if (d.ToggleInterested is { } interested)
+            kids.Add(K.ToggleRing("interested", Icons.Heart, Icons.HeartFill, Loc.Get(Strings.Concerts.Detail.Interested), d.Interested, Tok.AccentDefault,
+                interested, rings));
         if (K.ShareLinkAction(d.ShareUrl) is { } share)
             kids.Add(K.Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), true, null, share, rings));
         if (d.PlayLineup is { } play)
@@ -501,6 +504,8 @@ internal static class ZuneConcertDetail
         PageChromeSink _sink = PageChromeSink.None;
         bool _shown, _lineup, _related;
         string? _title;   // the concert's name, row 2's title (contract 1.30); null while the row is pending
+        bool _interested;
+        Action? _toggleInterested;   // the band's "interested" word (null: no concert uri to mark)
         long _sig = long.MinValue;
         readonly Action _publish, _spy;
         readonly Action[] _go = new Action[Cell.Sections];
@@ -529,8 +534,11 @@ internal static class ZuneConcertDetail
             _lineup = d is { Lineup.Length: > 0 };
             _related = d is { Related.Length: > 0 };
             _title = d is { Title.Length: > 0 } ? d.Title : null;
+            _interested = d is { Interested: true };
+            _toggleInterested = d?.ToggleInterested;
             UseEffect(_spy);        // auto-tracks the viewport's scroll offset
             UseEffect(_publish);    // auto-tracks the spy's answer
+            UseEffect(_publish, DepKey.From(_interested ? 1 : 0, _toggleInterested is null ? 1 : 0));   // and the "interested" mark (a field this render read, no signal)
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
 
@@ -580,7 +588,7 @@ internal static class ZuneConcertDetail
             var cell = _p!.Cell;
             int active = cell.Active.Value;
             if (!_shown) return;
-            long sig = HashCode.Combine(_lineup, _related, active, _title);
+            long sig = HashCode.Combine(_lineup, _related, active, _title, _interested, _toggleInterested is null);
             if (sig == _sig) return;
             _sig = sig;
             var views = new List<PageView>(3)
@@ -589,7 +597,10 @@ internal static class ZuneConcertDetail
             };
             if (_lineup) views.Add(new PageView("lineup", Loc.Get(Strings.Concerts.Detail.Lineup), active == 1, _go[1]));
             if (_related) views.Add(new PageView("related", Loc.Get(Strings.Concerts.Detail.RelatedConcerts), active == 2, _go[2]));
-            _sink.Publish(new PageChromeRow(views, [], Title: _title));
+            var actions = _toggleInterested is { } toggle
+                ? new List<PageAction>(1) { new("interested", Loc.Get(_interested ? Strings.Concerts.Detail.InterestedOn : Strings.Concerts.Detail.Interested), toggle) }
+                : new List<PageAction>(0);
+            _sink.Publish(new PageChromeRow(views, actions, Title: _title));
         }
     }
 }
