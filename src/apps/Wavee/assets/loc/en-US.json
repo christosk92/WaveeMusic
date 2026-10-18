@@ -598,7 +598,9 @@
       "relatedConcerts": "Related concerts",
       "onSaleFrom": "On sale from {start}",
       "onSaleUntil": "On sale until {end}",
-      "onSaleRange": "On sale {start} - {end}"
+      "onSaleRange": "On sale {start} - {end}",
+      "onSale": "On sale",
+      "playLineup": "Play the lineup"
     },
     "setLocation": "Set location",
     "nearApproximate": "Near {place} (approximate)",

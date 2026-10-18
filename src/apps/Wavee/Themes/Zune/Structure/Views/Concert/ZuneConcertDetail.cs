@@ -118,7 +118,7 @@ internal static class ZuneConcertDetail
     /// stacked under the facts otherwise.</summary>
     static Element Hero(ConcertDetailView d, ZuneConcertLayout lay, ZuneDetailLayout rings, float gutter, bool seed)
     {
-        Element identity = Identity(d, lay, seed);
+        Element identity = Identity(d, lay, rings, seed);
         if (d.Offers.Length == 0) return identity;
         Element slab = Tickets(d.Offers, lay, rings, gutter);
         // ONE tree at every tier: only the hero's direction and the two wrappers' sizing change across the Compact/Small edge, so the identity (and the
@@ -146,7 +146,7 @@ internal static class ZuneConcertDetail
 
     // ══ THE IDENTITY: CAPTION, TITLE, DATE, FACTS ══════════════════════════════════════════════════════════════════════
 
-    static Element Identity(ConcertDetailView d, ZuneConcertLayout lay, bool seed)
+    static Element Identity(ConcertDetailView d, ZuneConcertLayout lay, ZuneDetailLayout rings, bool seed)
     {
         var culture = CultureInfo.CurrentCulture;
         DateTimeOffset? date = d.Date ?? (seed ? Rules.SeedDate : null);
@@ -159,7 +159,9 @@ internal static class ZuneConcertDetail
                 Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
             },
         };
-        if (d.Status is { Length: > 0 } status)
+        // The provider's own word for what is notable, else "on sale" while a ticket can be bought online (Z-Concert: "concert · on sale").
+        string? status = d.Status is { Length: > 0 } stated ? stated : d.OnSale ? Loc.Get(Strings.Concerts.Detail.OnSale) : null;
+        if (status is { Length: > 0 })
         {
             caption.Add(R.Type.DenseMeta("·") with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f });
             caption.Add(R.Type.DenseMeta(status) with
@@ -195,7 +197,25 @@ internal static class ZuneConcertDetail
                 Key = "zune-concert:date", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, lay.DateTop, 0f, 0f),
                 Children = [Facts(d, lay, null, culture)],
             });
+        if (!seed && ActionRing(d, lay, rings) is { } actions) kids.Add(actions);
         return new BoxEl { Direction = 1, Gap = lay.IdentityGap, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>The board's ring row under the facts: share (the page's web link, copied with the confirmation toast) and play the lineup (the headliner's
+    /// artist context). "Interested" has no backing feature in the core (no saved-concert state exists), so it is not drawn: never a dead ring.</summary>
+    static Element? ActionRing(ConcertDetailView d, ZuneConcertLayout lay, ZuneDetailLayout rings)
+    {
+        var kids = new List<Element>(2);
+        if (K.ShareLinkAction(d.ShareUrl) is { } share)
+            kids.Add(K.Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), true, null, share, rings));
+        if (d.PlayLineup is { } play)
+            kids.Add(K.Ring("play-lineup", Icons.Play, Loc.Get(Strings.Concerts.Detail.PlayLineup), true, null, play, rings));
+        if (kids.Count == 0) return null;
+        return new BoxEl
+        {
+            Key = "zune-concert:actions", Direction = 0, Wrap = true, Gap = rings.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Margin = new Edges4(0f, lay.DateTop, 0f, 0f), Children = kids.ToArray(),
+        };
     }
 
     /// <summary>The date as a block: the big light numeral (64, 150 at Huge) and, with it, "november · saturday" (the label voice, lowercased). Stacked
@@ -329,6 +349,8 @@ internal static class ZuneConcertDetail
             });
             if (i < offers.Length - 1) kids.Add(new BoxEl { Height = 1f, MinWidth = 0f, Fill = Tok.StrokeDividerDefault });
         }
+        if (lay.BuyButton && Array.Find(offers, static o => o.Url is not null) is { Url: { } buyUrl })
+            kids.Add(BuyButton(buyUrl, lay));
         kids.Add(R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Detail.TicketsNote)) with
         {
             Size = Rules.NoteSize, LineHeight = Rules.NoteLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label),
@@ -343,6 +365,23 @@ internal static class ZuneConcertDetail
             Margin = new Edges4(-bleed, 0f, -bleed, 0f), Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The one full-width accent button that buys (the first offer that can be bought online): "buy tickets →".</summary>
+    static Element BuyButton(string url, ZuneConcertLayout lay) => new BoxEl
+    {
+        Key = "zune-concert:buy", Direction = 0, Height = lay.Target, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Fill = Prop.Of(static () => R.Ink.AccentAction), HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
+        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
+        OnClick = () => Actions.Services.OpenExternal?.Invoke(url),
+        Children =
+        [
+            R.Type.DenseTitle(Loc.Get(Strings.Concerts.Detail.BuyTickets) + " →") with
+            {
+                Color = Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)), Case = R.Case.For(LabelKind.Command),
+                MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+            },
+        ],
+    };
 
     // ══ THE LINEUP ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
