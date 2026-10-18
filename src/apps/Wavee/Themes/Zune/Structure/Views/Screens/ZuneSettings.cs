@@ -64,6 +64,14 @@ internal static partial class ZuneSettings
         var k = new ZuneKit(lay);
         int tab = Math.Clamp(props.Tab, 0, Settings.TabSlugs.Length - 1);
         string slug = Settings.TabSlugs[tab];
+        string[] names = SectionNames();
+
+        // Compact (Z-Settings-Sections-Compact, Z-Settings-Playback-Compact): the page is the sections list, and a section opens as its own page under a "‹ settings"
+        // crumb. The open state is the view's (a fresh mount of the page is the list); the tab itself is still the core's pivot cell, so every deep link keeps working.
+        var openSection = ctx.Hooks.UseSignal(false);
+        bool compact = lay.ListIsStrip;
+        bool listPage = compact && !openSection.Value;
+        bool sectionPage = compact && openSection.Value;
 
         Element[] groups = (Settings.Tab)tab switch
         {
@@ -75,6 +83,8 @@ internal static partial class ZuneSettings
             Settings.Tab.About => AboutTab(k),
             _ => GeneralTab(k),
         };
+
+        if (!compact) groups = [SectionHeading(names[tab]), .. groups];
 
         // The tab's column: every group of the tab, capped at the tier's width and sitting on the page's left edge (never centred).
         Element column = new BoxEl
@@ -99,18 +109,19 @@ internal static partial class ZuneSettings
             ],
         };
 
+        Element[] bodyKids = listPage ? [SectionsPage(props, names, openSection)] : compact ? [lane] : [Sections(k, props, tab), lane];
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Padding = new Edges4(0f, Z.TitleBodyGap, 0f, 0f), AlignItems = FlexAlign.Stretch,
-            Children = [Sections(k, props, tab), lane],
+            Children = bodyKids,
         };
 
         // The page column (A1): capped at 2400 + the gutters and centred, so the title and the body share the band's x at every width.
         return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = "zs:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Children = [PanoramaTitle(lay), body],
+            Children = sectionPage ? [CrumbRow(openSection), PanoramaTitle(lay, names[tab]), body] : [PanoramaTitle(lay, null), body],
         }, lay.Gutter);
     }
 
@@ -118,21 +129,63 @@ internal static partial class ZuneSettings
 
     /// <summary>The panorama title: the largest voice at the light weight, bled to the left of the gutter by its optical inset; its box reserves the larger
     /// size's line (the title scales from its left edge when the tier steps, so nothing under it moves).</summary>
-    static Element PanoramaTitle(ZuneSettingsLayout lay)
+    static Element PanoramaTitle(ZuneSettingsLayout lay, string? section = null)
     {
-        string text = Loc.Get(Strings.Settings.Title);
+        string text = section ?? Loc.Get(Strings.Settings.Title);
         TextEl title = lay.CompactTitle ? R.Type.PanoramaCompact(text) : R.Type.Panorama(text);
         if (lay.TitleSize > 0f) title = title with { Size = lay.TitleSize, LineHeight = lay.TitleLineH };   // Huge: the board's 150 over its 160 line
         // The line box is exactly the stated line height (the board's CSS line), set `TitleTop` over the body's start; the descenders hang below it.
         title = title with { LineStacking = LineStacking.BlockLineHeight };
         return new BoxEl
         {
-            Key = TitleKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = lay.TitleH, Animate = ZuneMotion.TitleScale,
+            Key = TitleKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = section is null ? lay.TitleH : float.NaN, Animate = ZuneMotion.TitleScale,
             // The page column pads the gutter; the panorama bleeds left of it by its optical inset (never past the column's edge).
             Margin = new Edges4(-MathF.Min(lay.Gutter, Z.PanoramaBleed), 0f, 0f, 0f),
-            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, lay.TitleTop, 0f, 0f) }],
+            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = section is null ? 1 : Z.SectionTitleLines, Wrap = section is null ? TextWrap.NoWrap : TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, lay.TitleTop, 0f, 0f) }],
         };
     }
+
+    /// <summary>The open section's heading at the top of its column (Z-Settings-Playback: 40 / 48, light).</summary>
+    static Element SectionHeading(string name) => new BoxEl
+    {
+        Key = "zs:heading", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Children = [ZuneText.Title(name) with { MaxLines = Z.SectionTitleLines, Trim = TextTrim.CharacterEllipsis }],
+    };
+
+    /// <summary>The Compact sections page: every section a large light word with a chevron, one 56-tall target each; a tap opens the section's page.</summary>
+    static Element SectionsPage(SettingsPageProps props, string[] names, Signal<bool> open)
+    {
+        var cell = props.TabCell();
+        var rows = new Element[names.Length];
+        for (int i = 0; i < rows.Length; i++)
+        {
+            int at = i;
+            rows[i] = new BoxEl
+            {
+                Key = "zs:link:" + Settings.TabSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, MinWidth = 0f, MinHeight = Z.SectionRowH,
+                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+                OnClick = () => { cell.Value = at; open.Value = true; },
+                Children =
+                [
+                    ZuneText.Heading(names[i]) with { Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    new BoxEl { Shrink = 0f, Children = [Icon(Icons.ChevronRight, Z.SectionChevron, Tok.TextTertiary)] },
+                ],
+            }.Interactive(Interaction.Subtle);
+        }
+        return new BoxEl { Key = SectionsKey, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, Children = rows };
+    }
+
+    /// <summary>The "‹ settings" crumb over a Compact section's page: one 40-tall target back to the sections.</summary>
+    static Element CrumbRow(Signal<bool> open) => new BoxEl
+    {
+        Key = "zs:crumb", Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, Shrink = 0f, MinWidth = 0f, MinHeight = Z.CrumbH, AlignSelf = FlexAlign.Start,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => open.Value = false,
+        Children =
+        [
+            Icon(Icons.ChevronLeft, Z.SectionChevron, Tok.TextSecondary),
+            ZuneText.Meta(Loc.Get(Strings.Settings.Title)) with { HoverColor = Tok.TextPrimary },
+        ],
+    }.Interactive(Interaction.Subtle);
 
     // ── the section list ──────────────────────────────────────────────────────────────────────────────────────────────────
 

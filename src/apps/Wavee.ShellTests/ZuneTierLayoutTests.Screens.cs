@@ -272,23 +272,38 @@ public sealed partial class ZuneTierLayoutTests
         // The title: the record's box (the larger size's line, reserved).
         Until(shell, () => MathF.Abs(At("zs:title").H - lay.TitleH) < 0.5f, $"{size}: the title box at {lay.TitleH}");
 
-        // The section list: a row above the column (Compact) or the record's column beside it; every word at least the record's height.
-        var sections = At("zs:sections");
-        if (lay.ListIsStrip) Assert.True(sections.W > 2f * ZuneSettingsRules.ListItemPadRightRow, $"{size}: the section row is {sections.W} wide");
-        else Assert.Equal(lay.ListW, sections.W, 0.5f);
-        // A3 / B-Settings: the Compact section row is ONE line (a scrolling pivot row, never three wrapped lines): every word shares the first's top.
         if (lay.ListIsStrip)
         {
-            float firstTop = At("zs:link:" + Settings.TabSlugs[0]).Y;
+            // Compact: the page is the sections list (one 56-tall target per section, stacked), and a tap opens the section's own page under a "‹ settings" crumb.
+            Assert.True(shell.Find("zs:column").IsNull, $"{size}: the sections page draws no section column");
+            float previousY = float.NegativeInfinity;
             foreach (string slug in Settings.TabSlugs)
-                Assert.True(MathF.Abs(At("zs:link:" + slug).Y - firstTop) < 0.5f, $"{size}: the '{slug}' word wrapped onto another line");
-            Assert.True(sections.H <= lay.ListItemH + 0.5f, $"{size}: the section row is {sections.H} tall, over one line ({lay.ListItemH})");
+            {
+                var link = At("zs:link:" + slug);
+                Assert.True(link.H >= ZuneSettingsRules.SectionRowH - 0.5f && link.W >= 39.5f, $"{size}: the '{slug}' row is {link.W} x {link.H}, under {ZuneSettingsRules.SectionRowH}");
+                Assert.True(link.Y > previousY, $"{size}: the '{slug}' row is not under the one before it");
+                previousY = link.Y;
+            }
+            var openLink = Node(shell, "zs:link:appearance");
+            var r = scene.AbsoluteRect(openLink);
+            var pt = new Point2(r.X + r.W / 2f, r.Y + r.H / 2f);
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, pt, 0, 0, TimestampMs: 2000));
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, pt, 0, 0, TimestampMs: 2010));
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, pt, 0, 0, TimestampMs: 2060));
+            shell.RunFrames(90);
+            Assert.False(shell.Find("zs:crumb").IsNull, $"{size}: the section's page has its crumb");
+            Assert.True(shell.Find("zs:sections").IsNull, $"{size}: the section's page draws no sections list");
         }
-        foreach (string slug in Settings.TabSlugs)
+        else
         {
-            var link = At("zs:link:" + slug);
-            Assert.True(link.H >= lay.ListItemH - 0.5f, $"{size}: the '{slug}' word is {link.H} tall, under {lay.ListItemH}");
-            if (s.Window == WidthTier.Compact) Assert.True(link.H >= 39.5f && link.W >= 39.5f, $"{size}: the '{slug}' word is {link.W} x {link.H}, under 40 x 40");
+            // The section list: the record's column beside the column.
+            var sections = At("zs:sections");
+            Assert.Equal(lay.ListW, sections.W, 0.5f);
+            foreach (string slug in Settings.TabSlugs)
+            {
+                var link = At("zs:link:" + slug);
+                Assert.True(link.H >= lay.ListItemH - 0.5f, $"{size}: the '{slug}' word is {link.H} tall, under {lay.ListItemH}");
+            }
         }
 
         // The column holds the record's width and the page's edge.
@@ -360,8 +375,6 @@ public sealed partial class ZuneTierLayoutTests
     /// <summary>Each Settings crossing: width from, width to, the height both sit at. The narrowing ones start on the held side of the line (Zune holds 24 below it).</summary>
     public static TheoryData<float, float, float> SettingsCrossings() => new()
     {
-        { 639f, 640f, 760f },      // 640: Compact -> Small (the words leave their row for a column)
-        { 640f, 615f, 760f },      // 616 on the way down: Small -> Compact
         { 1007f, 1008f, 760f },    // 1008: Small -> Standard (180 -> 220, the 520 column -> 660, the 72 title -> the 130 panorama)
         { 1008f, 983f, 760f },     // 984 on the way down: Standard -> Small
     };
