@@ -87,6 +87,9 @@ public static class ZuneLibraryRules
     /// <summary>The hero plate's tint: the artist's placeholder colour darkened to this share (the board's #4a2436 over a dark ground).</summary>
     public const float HeroTintShade = 0.42f;
 
+    /// <summary>The Huge artist column: the plate, its name's size and line (two lines), the stats' numeral size and the gaps between the column's blocks.</summary>
+    public const float HeroColPlateH = 460f, HeroColNameSize = 120f, HeroColNameLine = 116f, HeroColStatSize = 40f, HeroColStatLine = 48f, HeroColGap = 28f, HeroColStatGap = 16f, HeroColStatLabelGap = 2f;
+
     /// <summary>The hero name's weight (extra light).</summary>
     public const ushort HeroNameWeight = 200;
 
@@ -260,6 +263,12 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The find field's width: the boards draw 120 at Small, 160 at Standard and 220 at Huge (a bottom-rule field, no plate).</summary>
     public float FindW { get; init; } = ZuneLibraryRules.FindW;
 
+    /// <summary>Huge's artist column of the albums page (Z-Library-Albums-Huge: 460 wide): its width (0: none), the plate's height, the name's size and line, the stats' numeral size.</summary>
+    public float HeroColW { get; init; }
+
+    /// <summary>The count says the artists too ("312 albums · 184 artists"): Huge's head.</summary>
+    public bool CountArtists { get; init; }
+
     /// <summary>The artists board's hero: its height and its name's size (Z-Library-Artists 196 / 72; Small 160 / 72; Huge 380 / 144).</summary>
     public float HeroH { get; init; } = 196f;
 
@@ -376,7 +385,7 @@ public static class ZuneLibraryTiers
     private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
         sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
     {
-        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, HeroH = 380f, HeroNameSize = 144f, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, HeroH = 380f, HeroNameSize = 144f, HeroColW = 460f, CountArtists = true, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
     };
 
     /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>

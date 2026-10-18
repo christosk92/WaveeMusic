@@ -28,7 +28,18 @@ public readonly partial struct User
         /// <summary>The grouping is live but this content tier draws no songs pane (`LibraryTierPolicy.GroupPaneFrom`).</summary>
         bool GroupPaneHidden => GroupingOn && (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.Content < ShellPolicy.Now.LibraryTiers.GroupPaneFrom;
 
-        LibraryGroupsProps GroupsProps() => _groupsProps ??= new LibraryGroupsProps(ReadGroups, PickGroup);
+        LibraryGroupsProps GroupsProps() => _groupsProps ??= new LibraryGroupsProps(ReadGroups, PickGroup)
+        {
+            Play = () => { var a = GroupArtist(); if (a.IsValid) Playback.PlayOrToggleContext(a.Id); },
+            Shuffle = () => { var a = GroupArtist(); if (!a.IsValid) return; Playback.SetShuffle(true); Playback.PlayContext(a.Id); },
+            Open = () => { var a = GroupArtist(); if (a.IsValid) Shell.GoTo(Shell.For(a.Uri, a.Name)); },
+        };
+
+        Artist GroupArtist()
+        {
+            string key = EffectiveGroup();
+            return key == AllGroups ? default : new Artist(SlotOfKey(EntityKind.Artist, key));
+        }
 
         /// <summary>The pick that means every artist (an unset pick, "", means the first artist of the column, as the boards open on one).</summary>
         internal const string AllGroups = "*";
@@ -60,7 +71,16 @@ public readonly partial struct User
             var set = _groupSet!.Value;
             string key = EffectiveGroup();
             for (int i = 0; i < set.Rows.Count; i++)
-                if (set.Rows[i].Key == key) return set with { Selected = key, SelectedName = set.Rows[i].Name, SelectedAlbums = set.Rows[i].Albums };
+                if (set.Rows[i].Key == key)
+                {
+                    int slot = SlotOfKey(EntityKind.Artist, key);
+                    var artist = new Artist(slot);
+                    return set with
+                    {
+                        Selected = key, SelectedName = set.Rows[i].Name, SelectedAlbums = set.Rows[i].Albums,
+                        SelectedArt = artist.IsValid ? Controls.ArtUrl(artist.ImageId) ?? "" : "", SelectedSongs = LibrarySongCountOf(slot),
+                    };
+                }
             return set;
         }
 

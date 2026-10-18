@@ -32,7 +32,7 @@ internal static partial class ZuneLibraryPage
         bool saved = p.SavedEpisodesMode;
         Element lead = Lead(p, l);
         Element? find = saved ? null : Find(p, l);
-        Element? count = saved ? null : Count(p);
+        Element? count = saved ? null : Count(p, l.CountArtists);
         Element? view = saved ? null : Embed.Comp(l, () => new ViewWords(p.View(), p.Size())) with { Key = "lib:view" };
 
         if (l.Single)
@@ -140,18 +140,25 @@ internal static partial class ZuneLibraryPage
         };
 
     /// <summary>The count as ONE bound text (the host's "312 albums").</summary>
-    static Element Count(LibraryPageProps p) => R.Type.DenseMeta("") with
+    static Element Count(LibraryPageProps p, bool withArtists) => R.Type.DenseMeta("") with
     {
         // The board's "312 albums": the number and the kind's noun, one ICU plural per kind ("1 album", "18 albums"), cased by the label role.
-        Text = Prop.Of(() => CountWords(p, p.Count.Current())), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+        Text = Prop.Of(() => CountWords(p, p.Count.Current(), withArtists)), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
     };
 
-    static string CountWords(LibraryPageProps p, int n) => p.Entity switch
+    static string CountWords(LibraryPageProps p, int n, bool withArtists)
     {
-        EntityKind.Artist => Strings.Theme.Zune.Collection.Library.CountArtists(n),
-        EntityKind.Show => p.IsPodcasts ? Strings.Theme.Zune.Collection.Library.CountShows(n) : Strings.Theme.Zune.Collection.Library.CountAudiobooks(n),
-        _ => Strings.Theme.Zune.Collection.Library.CountAlbums(n),
-    };
+        string words = p.Entity switch
+        {
+            EntityKind.Artist => Strings.Theme.Zune.Collection.Library.CountArtists(n),
+            EntityKind.Show => p.IsPodcasts ? Strings.Theme.Zune.Collection.Library.CountShows(n) : Strings.Theme.Zune.Collection.Library.CountAudiobooks(n),
+            _ => Strings.Theme.Zune.Collection.Library.CountAlbums(n),
+        };
+        // Huge's albums head also counts the artists of the groups column ("312 albums · 184 artists").
+        if (!withArtists || p.Groups is not { } groups) return words;
+        var set = groups.Read();
+        return Strings.Theme.Zune.Collection.Library.CountAlbums(set.TotalAlbums) + " · " + Strings.Theme.Zune.Collection.Library.CountArtists(set.Rows.Count);
+    }
 
     // ══ THE SORT WORDS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
