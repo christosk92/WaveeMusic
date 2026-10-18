@@ -21,7 +21,7 @@ namespace Wavee.ShellTests;
 
 public sealed partial class ZuneCollectionMountedTests
 {
-    /// <summary>Albums at <paramref name="w"/> x <paramref name="h"/>: the navigator and the right column fill most of the page's content width and never leave the page.</summary>
+    /// <summary>Albums at <paramref name="w"/> x <paramref name="h"/>: the columns (the artists, Huge's artist hero, the navigator, the right column) fill most of the page's content width and never leave the page.</summary>
     void AlbumsFill(float w, float h, float content)
         => ZuneHost.Mounted(host, shell =>
         {
@@ -38,9 +38,12 @@ public sealed partial class ZuneCollectionMountedTests
                 var right = scene.AbsoluteRect(Node(shell, !shell.Find(ZuneLibraryRules.PaneKey).IsNull ? ZuneLibraryRules.PaneKey : ZuneLibraryRules.EmptyKey));
                 float gutter = ZuneLibraryTiers.For(w >= 3200f ? WidthTier.Huge4K : WidthTier.Huge, single: false).Gutter;
                 float inner = MathF.Min(content, page.W - 2f * gutter);
-                float reach = right.X + right.W - nav.X;
+                // The albums page leads with the "all artists" column (and, at Huge, the artist's hero column): the columns' reach starts at the first of them.
+                float left = nav.X;
+                if (!shell.Find(ZuneLibraryRules.GroupsKey).IsNull) left = MathF.Min(left, scene.AbsoluteRect(Node(shell, ZuneLibraryRules.GroupsKey)).X);
+                float reach = right.X + right.W - left;
                 Assert.True(right.X + right.W <= page.X + page.W + 0.5f, $"no horizontal overflow ({right} in {page})");
-                Assert.True(nav.X >= page.X - 0.5f, $"the navigator starts inside the page ({nav} in {page})");
+                Assert.True(left >= page.X - 0.5f, $"the first column starts inside the page ({left} in {page})");
                 Assert.True(reach >= inner * 0.8f, $"the two columns fill the page column ({reach} of {inner})");
                 Assert.True(right.W <= 1200.5f, $"the pane stops at its cap ({right.W})");
             }

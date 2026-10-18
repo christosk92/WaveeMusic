@@ -63,7 +63,9 @@ public static partial class Video
     /// <param name="ReserveBottom">The viewport space kept clear below the card (the player bar).</param>
     /// <param name="ReserveTop">The viewport space the fit keeps clear above (the chrome).</param>
     /// <param name="Margin">The gap kept from every window edge.</param>
-    public readonly record struct PipBounds(float MinW, float MinH, float ReserveBottom, float ReserveTop, float Margin)
+    /// <param name="OverlaysContent">The card floats OVER the page ("over whatever else is on screen", Z-Mini) instead of the page keeping the space under it clear: the content host
+    /// does not inset its bottom while the card sits at its home. False (the default, Classic's 0.2.9 behaviour): the page shrinks to clear the anchored card.</param>
+    public readonly record struct PipBounds(float MinW, float MinH, float ReserveBottom, float ReserveTop, float Margin, bool OverlaysContent = false)
     {
         /// <summary>0.2.9's numbers (<see cref="Pip.MinW"/>, <see cref="Pip.MinH"/>, <see cref="Pip.ReserveBottom"/>,
         /// <see cref="Pip.ReserveTop"/>, <see cref="PipGesture.Margin"/>).</summary>
@@ -96,7 +98,7 @@ public static partial class Video
 
         /// <summary>The bottom space the page keeps clear: the card's height + the gap while it sits ANCHORED, 0 once the
         /// user has placed it (a deliberately placed card is a free-floating overlay) or when it is not mounted.</summary>
-        public static float Reserve(bool mounted, bool placed, float h, in PipBounds bounds) => mounted && !placed ? h + bounds.Margin : 0f;
+        public static float Reserve(bool mounted, bool placed, float h, in PipBounds bounds) => mounted && !placed && !bounds.OverlaysContent ? h + bounds.Margin : 0f;
 
         /// <summary>Should the card's HEIGHT follow the content? Always until the user sizes it; after that only when the
         /// content's own shape changes by more than 0.01 (the user owns the width, the content owns the shape).</summary>

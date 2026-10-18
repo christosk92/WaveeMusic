@@ -18,7 +18,7 @@ public static partial class ZunePolicies
     static partial void PlayerPolicy(ZuneParameters parameters, ref PlayerBarPolicy playerBar) => playerBar = ZunePlayerTiers.Policy;
 
     static partial void PanelPolicyFor(ZuneParameters parameters, ref PanelPolicy panel)
-        => panel = new PanelPolicy(ZunePanelTiers.PanelW, ZunePanelTiers.PanelW, FullHeight: true, PanelPolicy.Default.Pip)
+        => panel = new PanelPolicy(ZunePanelTiers.PanelW, ZunePanelTiers.PanelW, FullHeight: true, PanelPolicy.Default.Pip with { OverlaysContent = true })
         {
             Tiers = ZunePanelTiers.PanelRules(parameters.PanelMode, parameters.MaxDockedPanes),
         };
