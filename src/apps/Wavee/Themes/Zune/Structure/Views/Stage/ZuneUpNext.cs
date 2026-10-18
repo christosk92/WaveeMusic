@@ -47,12 +47,13 @@ internal sealed class ZuneStageUpNextColumn : Component
     QueueStagePaneProps _props = null!;
     float _s = 1f;
     float _target;
+    ZuneStageQueueRow _q = ZuneStageUpNextRules.Of(WidthTier.Standard);
 
     float ExtentOf(QueueSlot slot) => slot.Kind switch
     {
         QueueSlotKind.More => Px(UR.MoreRowH) + Px(Spacing.XS) + Px(Spacing.XXS),   // = ShowMore's rendered height + margins (each term rounded as rendered)
-        QueueSlotKind.Header => Px(UR.HeaderH),
-        _ => Px(UR.RowH),
+        QueueSlotKind.Header => Px(_q.HeaderH),
+        _ => Px(_q.RowH),
     };
 
     float Px(float v) => MathF.Round(v * _s);
@@ -66,12 +67,13 @@ internal sealed class ZuneStageUpNextColumn : Component
         _props = props;
         _queue = props.Queue;
         _target = ZuneStageTiers.StageOf(in tiers).TargetH;
+        _q = ZuneStageUpNextRules.Of(tiers.Policy is null ? WidthTier.Standard : tiers.Window);
         var set = ctx.Accent.Value;
         var layout = ctx.Layout.Value;
         // the Huge 4K stage's Up next column beside the lyrics stands in its own frame: the board's 1x rows across that frame's width, not the
         // pane region's scale and list cap
         _s = props.Aside ? 1f : layout.QueueScale;
-        lane.SetMetrics(Px(UR.RowH), _extentOf ??= ExtentOf);
+        lane.SetMetrics(Px(_q.RowH), _extentOf ??= ExtentOf);
 
         var kids = new List<Element>(2);
         if (lane.SlotCount > 0)
@@ -94,12 +96,12 @@ internal sealed class ZuneStageUpNextColumn : Component
         Element body = new BoxEl { Direction = 1, MinHeight = 0f, Children = kids.ToArray() };
         Element rows = lane.SlotCount == 0 ? lane.List(body, "stagelane:empty") : body;
 
-        return new BoxEl
+        var column = new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true,
             Children =
             [
-                AutoplayWord(props, set),
+                ModesRow(props, set),
                 new ScrollEl
                 {
                     Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = props.Aside ? "stagequeue:aside" : "stagequeue",
@@ -107,35 +109,82 @@ internal sealed class ZuneStageUpNextColumn : Component
                 },
             ],
         };
+        // Huge: the list and, right of it, the autoplay panel
+        if (_q.SidePanelW <= 0f || props.Aside) return column;
+        return new BoxEl
+        {
+            Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Gap = Px(UR.SideGap),
+            Children = [column, SidePanel(props, set)],
+        };
     }
 
     // ── the toggle row ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The "autoplay" word: the accent while on, the secondary ink while off; a press flips it.</summary>
-    Element AutoplayWord(QueueStagePaneProps props, AccentSet set)
+    /// <summary>The page's three mode words (Z-Queue-Page): "shuffle", "repeat" and "autoplay", the accent while on, the secondary ink while off; a press flips it.</summary>
+    Element ModesRow(QueueStagePaneProps props, AccentSet set)
     {
-        bool on = _queue.Autoplay.Enabled;
-        Action toggle = props.Verbs.ToggleAutoplay;
+        var words = new List<Element>(3);
+        if (props.Player is { } player)
+        {
+            words.Add(ModeWord(Strings.Player.Shuffle, _queue.Shuffle, player.ToggleShuffle, "stage:upnext:shuffle", set));
+            words.Add(ModeWord(Strings.Player.Repeat, (int)_queue.Repeat != 0, player.CycleRepeat, "stage:upnext:repeat", set));
+        }
+        words.Add(ModeWord(Strings.Player.Autoplay, _queue.Autoplay.Enabled, props.Verbs.ToggleAutoplay, "stage:upnext:autoplay", set));
         return new BoxEl
         {
-            Key = "stage:upnext:autoplay", Direction = 0, AlignItems = FlexAlign.Center, Height = MathF.Max(Px(UR.ToggleRowH), _target), Shrink = 0f,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.ModeGap), Height = MathF.Max(Px(UR.ToggleRowH), _target), Shrink = 0f,
+            Children = words.ToArray(),
+        };
+    }
+
+    /// <summary>One mode word; on a Compact window (the board's chips) a flat plate, the accent filled while on.</summary>
+    Element ModeWord(string key, bool on, Action press, string nodeKey, AccentSet set)
+    {
+        bool chip = _q.ModeChips;
+        return new BoxEl
+        {
+            Key = nodeKey, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = _target, Shrink = 0f,
+            Padding = chip ? new Edges4(Px(UR.ChipPadX), 0f, Px(UR.ChipPadX), 0f) : default,
+            Fill = chip ? (on ? set.Text : Ink.Plate) : ColorF.Transparent, Corners = chip ? R.Shape.All(ShapeRole.Control) : default,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = press,
             Children =
             [
-                new BoxEl
+                new TextEl(Loc.Get(key))
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, MinHeight = _target, Shrink = 0f,
-                    Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = toggle,
-                    Children =
-                    [
-                        new TextEl(Loc.Get(Strings.Player.Autoplay))
-                        {
-                            Size = Px(UR.ToggleSize), LineHeight = Px(UR.ToggleLine), Color = on ? set.Text : Ink.InkSecondary, HoverColor = Ink.Ink,
-                            Case = R.Case.For(LabelKind.Command), MaxLines = 1,
-                        },
-                    ],
+                    Size = Px(UR.ToggleSize), LineHeight = Px(UR.ToggleLine), Color = chip ? (on ? Tok.TextOnAccentPrimary : Ink.Ink) : on ? set.Text : Ink.InkSecondary, HoverColor = chip && on ? Tok.TextOnAccentPrimary : Ink.Ink,
+                    Case = R.Case.For(LabelKind.Command), MaxLines = 1,
                 },
             ],
         };
+    }
+
+    /// <summary>Huge's side panel (Z-Queue-Page-Huge): "autoplay when the queue ends", what it does in a sentence, and the switch as a word. ("Played before this" has no
+    /// backing: the player keeps no listening history for the queue to show.)</summary>
+    Element SidePanel(QueueStagePaneProps props, AccentSet set)
+    {
+        bool on = _queue.Autoplay.Enabled;
+        string name = _queue.PlayingFrom is { } pf && pf.Name.Length > 0 ? pf.Name : "";
+        var kids = new List<Element>(3)
+        {
+            new TextEl(Loc.Get(Strings.Theme.Zune.Stage.AutoplayWhenEnds))
+            {
+                Size = Px(UR.SideHeadingSize), LineHeight = Px(UR.SideHeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
+                Case = R.Case.For(LabelKind.Heading), Wrap = TextWrap.Wrap,
+            },
+        };
+        if (name.Length > 0)
+            kids.Add(new TextEl(Strings.Theme.Zune.Stage.AutoplayBlurb(name))
+            {
+                Size = Px(UR.SideBodySize), LineHeight = Px(UR.SideBodyLine), Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, Margin = new Edges4(0f, Px(Spacing.S), 0f, 0f),
+            });
+        kids.Add(new BoxEl
+        {
+            Key = "stage:upnext:autoplay-switch", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = _target, Margin = new Edges4(0f, Px(Spacing.M), 0f, 0f),
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = props.Verbs.ToggleAutoplay,
+            Children = [new TextEl(Loc.Get(on ? Strings.Theme.Zune.Stage.AutoplayIsOn : Strings.Theme.Zune.Stage.AutoplayIsOff))
+                { Size = Px(UR.SideSwitchSize), LineHeight = Px(UR.SideSwitchLine), Color = on ? set.Text : Ink.InkSecondary, HoverColor = Ink.Ink, Case = R.Case.For(LabelKind.Command) }],
+        });
+        return new BoxEl { Direction = 1, Width = Px(_q.SidePanelW), Shrink = 0f, Padding = new Edges4(0f, Px(_q.HeaderH), 0f, 0f), Children = kids.ToArray() };
     }
 
     /// <summary>"Nothing up next": the one sentence under an empty list.</summary>
@@ -155,36 +204,43 @@ internal sealed class ZuneStageUpNextColumn : Component
         QueueRowText text = lane.TextOf(r);
         ulong itemId = row.ItemId;
         int index = row.Index;
-        var kids = new List<Element>(5)
-        {
-            new BoxEl
+        var kids = new List<Element>(7);
+        if (_q.NumberW > 0f)
+            kids.Add(new BoxEl
             {
-                Width = Px(UR.NumberW), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(Px(UR.NumberPadL), 0f, 0f, 0f), HitTestVisible = false,
+                Width = Px(_q.NumberW), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(Px(_q.NumberPadL), 0f, 0f, 0f), HitTestVisible = false,
                 Children =
                 [
                     new TextEl(FormatCache.Int(index + 1))
                     {
-                        Size = Px(UR.NumberSize), LineHeight = Px(UR.NumberLine), Weight = UR.NumberWeight, FontFamily = R.Type.DisplayFace,
+                        Size = Px(_q.NumberSize), LineHeight = Px(_q.NumberLine), Weight = UR.NumberWeight, FontFamily = R.Type.DisplayFace,
                         Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap,
                     },
                 ],
-            },
-            ArtTile(text.Art, Px(UR.ArtEdge), (int)Px(UR.ArtDecode)),
-            TitleBlock(text),
-            // Tabular by geometry: a fixed end-aligned slot, so every colon lands on the same x.
-            new BoxEl
+            });
+        kids.Add(ArtTile(text.Art, Px(_q.ArtEdge), (int)Px(UR.ArtDecode)));
+        kids.Add(TitleBlock(text, _q.Album ? 3f : 1f));
+        // Huge: the album column (the board's 2fr beside the 3fr title)
+        if (_q.Album)
+            kids.Add(new BoxEl
             {
-                Width = Px(UR.TimeW), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
-                Children = [new TextEl(text.DurationMs > 0 ? lane.Clock(text.DurationMs) : "") { Size = Px(UR.TimeSize), LineHeight = Px(UR.TimeLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap }],
-            },
-            RemoveSlot(verbs, row),
-        };
+                Grow = 2f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                Children = [new TextEl(text.Album) { Size = Px(_q.ArtistSize), LineHeight = Px(_q.ArtistLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+            });
+        // Tabular by geometry: a fixed end-aligned slot, so every colon lands on the same x (Compact has none: the board's row is art, titles, remove)
+        if (_q.TimeW > 0f)
+            kids.Add(new BoxEl
+            {
+                Width = Px(_q.TimeW), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                Children = [new TextEl(text.DurationMs > 0 ? lane.Clock(text.DurationMs) : "") { Size = Px(_q.TimeSize), LineHeight = Px(_q.TimeLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap }],
+            });
+        kids.Add(RemoveSlot(verbs, row));
 
         var el = new BoxEl
         {
             Key = lane.RowKey("s", itemId, index) + ":s=" + Px(100f),
             Draggable = lane.OwnDrag(itemId, index, r),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.ColGap), MinHeight = Px(UR.RowH), Height = Px(UR.RowH),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(_q.ColGap), MinHeight = Px(_q.RowH), Height = Px(_q.RowH),
             Corners = R.Shape.All(ShapeRole.Control),
             HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
             PressScale = R.Motion.ScaleSubtle.Press,
@@ -200,20 +256,20 @@ internal sealed class ZuneStageUpNextColumn : Component
     }
 
     /// <summary>Title over artists (an explicit badge before the artists when the track is explicit). A THIN row (title unknown) keeps the slot empty.</summary>
-    Element TitleBlock(QueueRowText text)
+    Element TitleBlock(QueueRowText text, float grow = 1f)
     {
-        if (text.Thin) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f };
+        if (text.Thin) return new BoxEl { Grow = grow, Basis = 0f, MinWidth = 0f };
         var title = new TextEl(text.Title)
         {
-            Size = Px(UR.TitleSize), LineHeight = Px(UR.TitleLine), Weight = UR.TitleWeight, Color = Ink.Ink,
+            Size = Px(_q.TitleSize), LineHeight = Px(_q.TitleLine), Weight = UR.TitleWeight, Color = Ink.Ink,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
-        Element artists = new TextEl(text.Artists) { Size = Px(UR.ArtistSize), LineHeight = Px(UR.ArtistLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        Element artists = new TextEl(text.Artists) { Size = Px(_q.ArtistSize), LineHeight = Px(_q.ArtistLine), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         Element sub = text.Explicit
             ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
                           Children = [Controls.ExplicitBadge(Px(UR.ExplicitBadge), Ink.InkTertiary), artists] }
             : artists;
-        return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = [title, sub] };
+        return new BoxEl { Direction = 1, Grow = grow, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = [title, sub] };
     }
 
     /// <summary>A square cover; the row's click plays.</summary>
@@ -228,11 +284,11 @@ internal sealed class ZuneStageUpNextColumn : Component
         ulong itemId = row.ItemId;
         int index = row.Index;
         EntityRef r = row.Ref;
-        float w = MathF.Max(Px(UR.RemoveW), _target);
+        float w = MathF.Max(Px(_q.RemoveW), _target);
         return row.Removable
             ? new BoxEl
             {
-                Width = w, Height = MathF.Max(Px(UR.RowH), _target), Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, BlocksDragArm = true,
+                Width = w, Height = MathF.Max(Px(_q.RowH), _target), Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, BlocksDragArm = true,
                 Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = () => verbs.Remove(itemId, index, r),
                 Children = [new TextEl(Icons.ChromeClose) { Size = Px(UR.RemoveGlyph), FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary, HoverColor = Ink.Ink }],
             }
@@ -274,14 +330,14 @@ internal sealed class ZuneStageUpNextColumn : Component
         return new BoxEl
         {
             Key = "stagehdr:" + QueueSections.Tag(section),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.HeadingGap), Height = Px(UR.HeaderH),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.HeadingGap), Height = Px(_q.HeaderH),
             Layout = LayoutTransition.Slide,
             BlocksDragArm = true,                                              // a slot, never a handle
             Children =
             [
                 new TextEl(title)
                 {
-                    Size = Px(UR.HeadingSize), LineHeight = Px(UR.HeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
+                    Size = Px(_q.HeadingSize), LineHeight = Px(_q.HeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
                     Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,
                 },
                 new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.XS), MinWidth = 0f, Shrink = 1f, Children = word.ToArray() },

@@ -2803,6 +2803,10 @@
         "aboutArtist": "About the artist",
         "upNextFrom": "From",
         "upNextMore": "{count} more",
+        "autoplayWhenEnds": "Autoplay when the queue ends",
+        "autoplayBlurb": "When {name} ends, Wavee keeps going with songs like it.",
+        "autoplayIsOn": "Autoplay is on",
+        "autoplayIsOff": "Autoplay is off",
         "videoFullScreen": "Video · full screen",
         "videoMiniPlayerWord": "Mini player"
       },

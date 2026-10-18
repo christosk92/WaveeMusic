@@ -7,6 +7,7 @@
 // stays as the stage has it. Literal numbers are allowed here (WVTH003 exempts `Rules\**`); the classes are public so `Wavee.Tests` and the
 // mounted tests read them (the assembly has no InternalsVisibleTo).
 
+using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -88,6 +89,27 @@ public static class ZuneStageArtistRules
 /// maths needs each slot's height exact.</summary>
 public static class ZuneStageUpNextRules
 {
+    /// <summary>The window tier's row, heading and column metrics (Z-Queue-Page, -Small, -Huge, -Compact). Standard's are the constants below.</summary>
+    public static ZuneStageQueueRow Of(WidthTier window) => window switch
+    {
+        WidthTier.Compact => s_compact,
+        WidthTier.Small => s_small,
+        WidthTier.Huge => s_huge,
+        WidthTier.Huge4K => s_huge4K,
+        _ => s_standard,
+    };
+
+    static readonly ZuneStageQueueRow s_standard = new(RowH: 60f, ArtEdge: 44f, NumberW: 48f, NumberPadL: 4f, ColGap: 12f, TimeW: 56f, RemoveW: 40f, NumberSize: 22f, NumberLine: 28f,
+        TitleSize: 17f, TitleLine: 22f, ArtistSize: 13f, ArtistLine: 18f, TimeSize: 13f, TimeLine: 18f, HeaderH: 48f, HeadingSize: 26f, HeadingLine: 32f, Album: false, SidePanelW: 0f, ModeChips: false);
+
+    static readonly ZuneStageQueueRow s_small = new(52f, 40f, 40f, 4f, 8f, 44f, 32f, 22f, 28f, 15f, 20f, 12f, 16f, 12f, 16f, 36f, 22f, 28f, false, 0f, false);
+
+    static readonly ZuneStageQueueRow s_compact = new(56f, 44f, 0f, 0f, 12f, 0f, 40f, 22f, 28f, 15f, 20f, 13f, 18f, 13f, 18f, 48f, 22f, 28f, false, 0f, true);
+
+    static readonly ZuneStageQueueRow s_huge = new(64f, 52f, 56f, 8f, 12f, 72f, 56f, 22f, 28f, 17f, 22f, 13f, 18f, 13f, 18f, 56f, 40f, 48f, true, 440f, false);
+
+    static readonly ZuneStageQueueRow s_huge4K = new(96f, 78f, 84f, 12f, 18f, 108f, 84f, 33f, 42f, 26f, 33f, 20f, 27f, 20f, 27f, 84f, 60f, 72f, true, 660f, false);
+
     /// <summary>The row: 60 tall, the number column 48 (the display face at 22, 300, the tertiary ink), the 44 art, the time 56 at the right,
     /// the remove target 40; 12 between the columns.</summary>
     public const float RowH = 60f, ArtEdge = 44f, NumberW = 48f, TimeW = 56f, RemoveW = 40f, ColGap = 12f, NumberPadL = 4f;
@@ -105,7 +127,10 @@ public static class ZuneStageUpNextRules
     public const ushort HeadingWeight = 300;
 
     /// <summary>The toggle row above the sections: 32 tall, the "autoplay" word 13/18.</summary>
-    public const float ToggleRowH = 32f, ToggleSize = 13f, ToggleLine = 18f;
+    public const float ToggleRowH = 32f, ToggleSize = 13f, ToggleLine = 18f, ModeGap = 16f, ChipPadX = 16f;
+
+    /// <summary>Huge side panel: 64 from the list, its heading 26/32, the sentence 14/21, the switch 15/20.</summary>
+    public const float SideGap = 64f, SideHeadingSize = 26f, SideHeadingLine = 32f, SideBodySize = 14f, SideBodyLine = 21f, SideSwitchSize = 15f, SideSwitchLine = 20f;
 
     /// <summary>"Show more": 40 tall, 12/16.</summary>
     public const float MoreRowH = 40f, MoreSize = 12f, MoreLine = 16f, MoreGlyph = 12f;
@@ -208,3 +233,7 @@ public static class ZuneStageVideoRules
     /// <summary>The watch page's play disc.</summary>
     public const float PlayDisc = 64f;
 }
+
+/// <summary>One window tier's Up next page metrics: the row (its columns and type), the section heading, the album column and the side panel (Huge).</summary>
+public sealed record ZuneStageQueueRow(float RowH, float ArtEdge, float NumberW, float NumberPadL, float ColGap, float TimeW, float RemoveW, float NumberSize, float NumberLine,
+    float TitleSize, float TitleLine, float ArtistSize, float ArtistLine, float TimeSize, float TimeLine, float HeaderH, float HeadingSize, float HeadingLine, bool Album, float SidePanelW, bool ModeChips);
