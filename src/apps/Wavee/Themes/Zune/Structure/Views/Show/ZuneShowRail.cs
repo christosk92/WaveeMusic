@@ -43,7 +43,9 @@ internal static partial class ZuneShow
     /// <summary>The detail record the rail's rings are drawn in: the vertical arm's (the Compact record) below the content's Small edge, else the
     /// content tier's own (the same record the identity column reads).</summary>
     internal static ZuneDetailLayout RingLayoutOf(in TierFacts facts)
-        => facts.Content == WidthTier.Compact ? ZuneDetailTiers.Hero : ZuneDetailTiers.Of(in facts);
+        // The vertical arm's ring row is one line at 400 (Z-Show-Compact, Z-Episode-Compact: resume, the rings, share, "..."): the saved ring stands without its
+        // word there (its filled glyph is the state), so the row does not wrap its last ring onto a second line.
+        => facts.Content == WidthTier.Compact ? ZuneDetailTiers.Hero with { SaveWord = false } : ZuneDetailTiers.Of(in facts);
 
     // ══ THE RINGS ════════════════════════════════════════════════════════════════════════════════════════════════════════
 

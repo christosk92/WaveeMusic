@@ -204,7 +204,7 @@ internal static class ZuneConcertDetail
     {
         var numeral = R.Type.Panorama(date.Day.ToString(culture)) with
         {
-            Size = lay.NumeralSize, LineHeight = lay.NumeralLine, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+            Size = lay.NumeralSize, LineHeight = lay.NumeralLine, LineStacking = LineStacking.BlockLineHeight, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
         };
         string month = date.ToString("MMMM", culture), weekday = date.ToString("dddd", culture);
         if (lay.DateStacked)
