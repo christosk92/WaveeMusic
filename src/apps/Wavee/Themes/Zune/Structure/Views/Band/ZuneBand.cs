@@ -74,7 +74,10 @@ internal sealed class ZuneBand : Component
         var hooks = UseContext(InputHooks.Current);
         var overlay = UseContext(Overlay.Service);
         // The frame provides the core's chrome signal; a band mounted alone reads the band record's own.
-        var chromeSig = UseContext(ZuneFrameContext.PageChrome) ?? band.Chrome;
+        var frameChrome = UseContext(ZuneFrameContext.PageChrome);
+        var chromeSig = frameChrome ?? band.Chrome;
+        // In the frame, the band slot eases the height (ZuneFrame.BandSlot) and clips this root's foot; mounted alone the root does it itself.
+        bool inFrame = frameChrome is not null;
         // Navigation rate: the memo flips only when the page's last direction crosses down / not down.
         var scrolledDown = UseComputed(() => _scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
         // The fade tiers' edge fade follows the band's width (A7; at Compact and Small the panel floats, so the band spans the window). A memo
@@ -190,9 +193,9 @@ internal sealed class ZuneBand : Component
         // the cap holds (Huge, Huge 4K) the insets are equal, so as they ease together the rows stay put.
         return new BoxEl
         {
-            Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f,
+            Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = !inFrame,
             Height = rec.HeightWith(row2),
-            // The height change is eased by the frame's band slot (ZuneFrame.PageColumn), which clips this root's foot as it goes.
+            Animate = inFrame || Design.Reduced ? null : ZuneBandRules.HeightMotion,
             Children =
             [
                 new BoxEl
@@ -480,7 +483,19 @@ internal sealed class ZuneBand : Component
             Color = v.Current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary,
             Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
         };
-        if (v.Current && !tabStyle) text = text with { Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight };
+        // As row 1's pivots: the word keeps the SELECTED weight's width lit or not (an unlit one carries its bold twin, unseen), so lighting a view
+        // never widens it and the views beside it never shift.
+        Element word = text;
+        if (!tabStyle)
+        {
+            var bold = text with { Weight = (ushort)R.Type.FacetCompactStyle.SelectedWeight };
+            if (v.Current) word = bold;
+            else word = new BoxEl
+            {
+                Direction = 0, ZStack = true, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children = [new BoxEl { Opacity = 0f, HitTestVisible = false, Shrink = 0f, Children = [bold] }, text],
+            };
+        }
         return new BoxEl
         {
             Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, MinWidth = rec.ViewMinW, Shrink = 0f,
@@ -491,7 +506,7 @@ internal sealed class ZuneBand : Component
             Children =
             [
                 // Centred: at Compact the hit box is 40 wide even for a one-word "all" (ViewMinW).
-                new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [text] },
+                new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [word] },
                 // The underline's place is always kept, so the word sits at one height lit or not.
                 new BoxEl
                 {

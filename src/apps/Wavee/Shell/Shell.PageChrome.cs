@@ -346,7 +346,9 @@ public static partial class Shell
         public static readonly BandProps Band = new()
         {
             Destinations = CachedDestinations,
-            Current = static () => BandRules.IndexOf(OnScreenRoute().Kind),
+            // A destination lights the moment it is clicked (the click's feedback); a detail page, which lights none, takes the pivot off only when its
+            // page lands, so the leaving page's row 2 does not flash up under a title.
+            Current = static () => BandRules.IndexOf(Shell.Current.Value.Kind) is >= 0 and var lit ? lit : BandRules.IndexOf(OnScreenRoute().Kind),
             Pins = static () => Sidebar.Model.BandPins(ShellCaps.PinCap(ShellCaps.Tracked)),
             Chrome = s_current,
             Scroll = s_scroll,

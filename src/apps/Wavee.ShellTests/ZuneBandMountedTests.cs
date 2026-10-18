@@ -213,9 +213,12 @@ public sealed class ZuneBandMountedTests(ShellHost host)
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryArtists));
-                Until(shell, () => !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
+                // The band shows the page on screen: wait for the swap to land (the leaving page's row 2 stands until then).
+                Until(shell, () => Shell.Shown.Peek().Kind == Shell.RouteKind.LibraryArtists && !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
+                shell.RunFrames(4);
                 var chrome = band.Chrome.Peek()!;
                 Assert.True(chrome.Views.Count > 0, "the library route has views");
+                Until(shell, () => shell.FindPrefix(ZuneBandRules.ViewKeyPrefix).Count == chrome.Views.Count, "the leaving row's words have faded out");   // the old row fades where it stands
                 Assert.Equal(chrome.Views.Count, shell.FindPrefix(ZuneBandRules.ViewKeyPrefix).Count);
                 Assert.False(shell.Find(ZuneBandRules.ViewKeyPrefix + chrome.CurrentView!.Id).IsNull, "the current kind is drawn");
                 Assert.Equal(Shell.BandRules.Library, band.Current());

@@ -128,7 +128,8 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
         {
             shell.RunFrames(10);
             OpenAlbum(shell);
-            UntilBackground(shell, () => Chrome() is { Views.Count: > 1 } c && c.Views.Any(v => v.Id == "moreby"), "al2's row 2 with its \"more by\" view");
+            // The band shows the page ON SCREEN: the leaving page's row 2 stands until the swap lands, so wait for the album's own.
+            UntilBackground(shell, () => Chrome() is { } c && c.Views.Any(v => v.Id == "moreby"), "al2's row 2 with its \"more by\" view");
             var chrome = Chrome()!;
             Assert.Equal("songs", chrome.CurrentView?.Id);
             Assert.Contains(chrome.Views, v => v.Id == "moreby");

@@ -191,7 +191,7 @@ public sealed class ZuneShowEpisodeConcertMountedTests(ShellHost host)
             }
 
             // Row 2: about (current) · chapters · transcript · comments, drawn by the band.
-            UntilBackground(shell, () => Chrome() is { Views.Count: 4 } c && c.Views[0].Id == "about", "the episode's four words in row 2");
+            UntilBackground(shell, () => Chrome() is { Views.Count: 4 } c && c.Views[0].Id == "about", "the episode's four words in row 2");   // the band shows the page on screen: Home has four words too
             var chrome = Chrome()!;
             Assert.Equal(new[] { "about", "chapters", "transcript", "comments" }, chrome.Views.Select(v => v.Id).ToArray());
             Assert.Equal("about", chrome.CurrentView?.Id);
