@@ -1437,7 +1437,7 @@ public static partial class Detail
     /// <summary>What a track page's list shows against what it has, published by the table for the rail's count line (tuned Classic D4):
     /// the shown rows, the membership total, the shown rows' summed length (<paramref name="DurationsKnown"/> false while any is thin)
     /// and whether a find or a filter narrows it. <c>default</c> = nothing narrows it.</summary>
-    public readonly record struct ListCount(int Shown, int Total, long ShownMs, bool DurationsKnown, bool Filtered);
+    public readonly record struct ListCount(int Shown, int Total, long ShownMs, bool DurationsKnown, bool Filtered, bool EmptyLead = false);
 
     public static class Text
     {

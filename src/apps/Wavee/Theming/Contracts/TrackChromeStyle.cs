@@ -240,4 +240,8 @@ public sealed class TrackChromeTemplates
     /// <summary>The band the bar takes in the chrome while shown, its gap to what follows included, in the tiers the table is drawn in (contract
     /// 1.24): the hero arm's pinned chrome adds it to the rows' clip inset. Null (or no <see cref="UnavailableBar"/>): 0.</summary>
     internal Func<global::Wavee.Theming.TierFacts, float>? UnavailableBarExtent { get; init; }
+
+    /// <summary>The theme draws NO table chrome (command bar, chips, lens, column header, the hero's toolbar) over an empty list that carries its recommendations lead (an owned, empty
+    /// playlist: the lead and its finder are the page), and reads <see cref="Detail.ListCount.EmptyLead"/> for the same fact elsewhere. False (the default) keeps the chrome: Classic's.</summary>
+    internal bool HidesChromeOnEmptyLead { get; init; }
 }

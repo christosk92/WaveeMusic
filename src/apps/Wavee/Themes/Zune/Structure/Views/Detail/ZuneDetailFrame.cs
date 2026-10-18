@@ -223,6 +223,9 @@ internal static class ZuneDetailFrame
         };
         // Liked Songs (the head arm) has no "songs" heading: the meta under its title leads straight into the chips and the table (Z-Liked).
         if (p.Sheet is null || p.Head is not null) return host;
+        // An empty list that shows its lead (Z-State-Empty-Playlist) draws no "songs" heading: the row eases to nothing, the rows under it ride it.
+        var shown = p.TwoColumn?.Rail?.Shown;
+        Prop<float> headingH = shown is null ? Z.HeadingRowH : Prop.Of(() => shown.Value.EmptyLead ? 0f : Z.HeadingRowH);
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -230,7 +233,7 @@ internal static class ZuneDetailFrame
             [
                 new BoxEl
                 {
-                    Key = Z.SongsHeadingKey, Direction = 0, AlignItems = FlexAlign.Center, Height = Z.HeadingRowH, Shrink = 0f, MinWidth = 0f,
+                    Key = Z.SongsHeadingKey, Direction = 0, AlignItems = FlexAlign.Center, Height = headingH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
                     Padding = new Edges4(Z.SongsHeadingInset, 0f, Z.SongsHeadingInset, 0f),
                     Children = [K.Heading(Loc.Get(Strings.Theme.Zune.Detail.Songs))],
                 },
