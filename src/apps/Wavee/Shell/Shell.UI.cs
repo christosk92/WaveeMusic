@@ -967,12 +967,16 @@ public static partial class Shell
     /// <summary>`--inspect state`: the vacancy kind the page region shows in place of the page ("" = the page). A developer's probe, never set by the app.</summary>
     static readonly Signal<string> s_inspectState = new("");
 
+    /// <summary>`--inspect state kind=offline-rows`: the page stays and its rows read the session as down (a track not on this PC steps back). A developer's probe.</summary>
+    internal static readonly Signal<bool> InspectOffline = new(false);
+
     /// <summary>Show <paramref name="kind"/> in the page region (empty, nomatch, error, offline), put the page back (none), or open the pending search (loading). False for another word.</summary>
     internal static bool SetInspectState(string kind)
     {
         switch (kind)
         {
-            case "none": case "": s_inspectState.Value = ""; return true;
+            case "none": case "": s_inspectState.Value = ""; InspectOffline.Value = false; return true;
+            case "offline-rows": InspectOffline.Value = true; return true;
             case "empty": case "nomatch": case "error": case "offline": s_inspectState.Value = kind; return true;
             case "loading":
                 s_inspectState.Value = "";

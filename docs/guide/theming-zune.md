@@ -548,7 +548,24 @@ options when the window is too narrow for both.
 
 ## Z9: the states, "on this PC", the light pass and the completeness test
 
-_Not built yet._
+(Round H, first half: the light pass and the review capture list are not in this entry.)
+
+- **"On this PC" (Z-Liked, `Track.RowState.OnThisPc`).** A 14 ring (2 stroke) with an 8 arrow leads the row's subline, in the subline's ink (the accent on
+  the playing row), tooltip "On this PC" (`ZuneRowCells.OnThisPcMark`, numbers in `ZuneListRules.OnPc*`). It is a Visible flip, not a mount, so a
+  row without it pays no subline gap. An indicator only (NQ4).
+- **Offline dimming.** `Track.OfflineGone` (the session is down, the audio is not on this PC, the row is not a local file) joins `Track.Withheld` in
+  `Track.Dimmed`: the WHOLE row steps to 45 % (Z-State-Rows: "unavailable · 45% ink"; it used to be the title column only) and the time lane says
+  "Not on PC" with the long reason in its tooltip. No play gate reads it. Board difference: the board's lane word is "not downloaded"; Wavee has no downloads (Q29).
+- **Probes.** `--fake` marks every third pool track "on this PC" (`Playback.OnThisPc.UseFake`, `Entities.FakeOnThisPc`);
+  `--inspect state kind=offline-rows` keeps the page and reads the session as down (`kind=offline` still swaps the page for the vacancy).
+- **Focused row.** The focused row hands the time lane to its heart and "..." (the rest time and heart used to draw under them).
+- **Loading.** An artist's name already known (a search row, a link) stands in its real display type over the skeleton (Z-State-Loading), the
+  same element and place as the loaded hero's.
+- **Completeness.** `ZuneRegistryCompletenessTests`: every view key and style key the contract declares resolves under Zune to `zune.*` / `common.*`
+  with an EMPTY stand-in list (`DeliberateStandIns`): Classic's stand-in is no longer reached by any key. Availability Developer is asserted.
+- **Not done / conflicts.** The board's selection bar is a bottom-docked bar of ring commands ("3 selected · play · play next · add to playlist · like ·
+  remove · select all · done"); Zune keeps the core table's in-flow command bar in selection mode (a bottom dock is a core change). The focus ring on
+  a row is clipped by the list's viewport on the left and right (the board draws a 2 dip ring inside the row).
 
 ## ZT1: frame tiers
 

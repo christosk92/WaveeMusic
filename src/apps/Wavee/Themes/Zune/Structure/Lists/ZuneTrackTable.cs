@@ -112,11 +112,23 @@ internal static class ZuneTrackTable
 
         // Zune's rows are full-width plates (no inset): the grid pays the whole gutter.
         float padX = RowMetrics.PadXFor(set.Tier);
-        return new GridEl
+        var grid = new GridEl
         {
             Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
             Padding = new Edges4(padX, 0f, padX, 0f),
             Children = cells,
+        };
+        // Z-State-Rows: "unavailable · 45% ink": the whole row steps back (not just its title column), whether the song is withheld or the
+        // session is down and the audio is not on this PC. The grid has no opacity of its own, so one box carries the bound dim.
+        return new BoxEl
+        {
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+            Opacity = Prop.Of(() =>
+            {
+                var p = r.P;
+                return Track.Dimmed(in p, Track.NowUnix) ? Track.RowNotYetOutOpacity : 1f;
+            }),
+            Children = [grid],
         };
     }
 
@@ -335,11 +347,6 @@ internal static class ZuneTrackTable
         var column = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-            Opacity = Prop.Of(() =>
-            {
-                var p = r.P;
-                return Track.Withheld(in p, Track.NowUnix) ? Track.RowNotYetOutOpacity : 1f;
-            }),
             Children = [line, Subline(r, setArtist, setAlbum, durationInline)],
         };
         return new BoxEl
@@ -365,7 +372,8 @@ internal static class ZuneTrackTable
             Visible = durationInline ? (Prop<bool>)true : Prop.Of(() =>
             {
                 var p = r.P;
-                return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
+                return p.State.OnThisPc
+                    || RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
             }),
             Children =
             [
@@ -376,6 +384,8 @@ internal static class ZuneTrackTable
                     Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
                     Visible = Prop.Of(() => r.P.Track.ForDisplay.IsPodcast),
                 },
+                // The "on this PC" ring leads the subline (Z-Liked). A Visible flip, not a mount: an absent mount would still cost the subline's gap.
+                ZuneRowCells.OnThisPcMark(ink) with { Visible = Prop.Of(() => r.P.State.OnThisPc) },
                 ZuneRowCells.ExplicitMark() with { Visible = Prop.Of(() => Track.Badge(r.P)) },
                 new SpanTextEl(Prop.Of(() =>
                 {
@@ -515,9 +525,16 @@ internal static class ZuneTrackTable
         Func<bool> withheld = () =>
         {
             var p = r.P;
-            return Track.Withheld(in p, Track.NowUnix);
+            return Track.Dimmed(in p, Track.NowUnix);
         };
-        var label = Prop.Of(() => Track.DurationLabel(r.P.Track, Track.NowUnix));
+        // A withheld row says why (unavailable / the release date); a row only the offline session cannot reach says "not on this PC".
+        var label = Prop.Of(() =>
+        {
+            var p = r.P;
+            return !Track.Withheld(in p, Track.NowUnix) && Track.OfflineGone(in p)
+                ? Loc.Get(Strings.Track.NotOnThisPc)
+                : Track.DurationLabel(p.Track, Track.NowUnix);
+        });
         var clock = Factual(label, RowInk(r, static () => Tok.TextSecondary), visible: Prop.Of(() => !withheld()));
         var reason = new TextEl(label)
         {
@@ -532,7 +549,9 @@ internal static class ZuneTrackTable
                 hoverActions
                     ? new BoxEl
                     {
-                        Direction = 0, Shrink = 0f, Gap = ZuneListRules.RestHeartGap, AlignItems = FlexAlign.Center, Opacity = 1f, HoverOpacity = 0f,
+                        Direction = 0, Shrink = 0f, Gap = ZuneListRules.RestHeartGap, AlignItems = FlexAlign.Center,
+                        // The focused row hands the lane to the heart and the "..." too (they show for the keyboard): never both over one another.
+                        Opacity = Prop.Of(() => r.Focused ? 0f : 1f), HoverOpacity = 0f,
                         Children =
                         [
                             // A liked track keeps its filled heart at rest, beside the time (Liked Songs rests with none: every row is liked).
@@ -542,7 +561,7 @@ internal static class ZuneTrackTable
                         ],
                     }
                     : clock,
-                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix)))),
+                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix) ?? Loc.Get(Strings.Track.NotOnThisPcReason)))),
             ],
         };
         if (!hoverActions) return time;

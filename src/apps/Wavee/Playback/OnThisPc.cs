@@ -110,7 +110,14 @@ public static partial class Playback
 
         /// <summary>Is <paramref name="id"/>'s audio on this PC (see the file header)? UI THREAD; a subscribing read of the
         /// facts' <see cref="OnThisPcFacts.Changed"/>. False while detached.</summary>
-        public static bool Of(EntityId id) => Volatile.Read(ref s_facts) is { } facts && facts.Of(id);
+        public static bool Of(EntityId id)
+            => Volatile.Read(ref s_facts) is { } facts ? facts.Of(id) : Volatile.Read(ref s_fake) is { } fake && fake(id);
+
+        static Func<EntityId, bool>? s_fake;
+
+        /// <summary><c>--fake</c> only: the demo's answer while no live facts are attached (a deterministic spread of tracks, so a theme's
+        /// "on this PC" indicator has rows to draw). A live <see cref="Use"/> always wins.</summary>
+        public static void UseFake(Func<EntityId, bool> of) => Volatile.Write(ref s_fake, of);
 
         /// <summary>The key question, on a background thread: the hex id as bytes, then the store's presence check.</summary>
         static bool KeyPresent(string fileIdHex)

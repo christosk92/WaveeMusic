@@ -188,6 +188,20 @@ public readonly partial struct Track
     /// <summary>The ONE not-yet-out / unavailable predicate: the dim, the play gate and the duration lane never disagree.</summary>
     internal static bool Withheld(in RowPresentation p, long now) => p.Track.NotYetOut(now) || p.Track.Unplayable();
 
+    /// <summary>The offline fact rows read (a subscribing read): the session is down (a stored credential, no connection), or the
+    /// <c>--inspect state kind=offline-rows</c> probe is on. Indicator only (owner NQ4): no playback path reads it.</summary>
+    internal static bool OfflineNow => Shell.Auth.Value == Shell.AuthState.Offline || Shell.InspectOffline.Value;
+
+    /// <summary>Does this row step back because the session is down and its audio is not on this PC (a local file always is)? A theme that
+    /// draws it dims the row to <see cref="RowNotYetOutOpacity"/> and states <see cref="Strings.Track.NotOnThisPc"/> in the time lane.</summary>
+    internal static bool OfflineGone(Track t, bool onThisPc) => !onThisPc && !t.IsLocal && OfflineNow;
+
+    /// <summary>The bound row's <see cref="OfflineGone(Track, bool)"/>.</summary>
+    internal static bool OfflineGone(in RowPresentation p) => OfflineGone(p.Track, p.State.OnThisPc);
+
+    /// <summary>The ONE dim predicate: a withheld row, or one the offline session cannot reach.</summary>
+    internal static bool Dimmed(in RowPresentation p, long now) => Withheld(in p, now) || OfflineGone(in p);
+
     /// <summary>The duration lane's text, both row builders (the bound table and the eager grid): the clock, or for a
     /// withheld row its SHORT reason — "Unavailable" for a ruled-unavailable row, the release date for a pending one.</summary>
     internal static string DurationLabel(Track t, long now)

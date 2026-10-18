@@ -108,6 +108,13 @@ public static class ZuneListRules
     /// <summary>The subline's explicit "E": a 14 square at the subline's 0.68 type, radius 0 (Zune squares every plate).</summary>
     public const float ExplicitBox = 14f, ExplicitType = 9.5f;
 
+    /// <summary>The "on this PC" mark that leads a row's subline (Z-Liked: a 14 ring, 2 stroke, the 8-type arrow inside, 6 before the artist; the
+    /// subline's own gap is <see cref="MetaGap"/>, so the mark adds the rest). A row that is dimmed offline says its reason in the time lane.</summary>
+    public const float OnPcMark = 14f, OnPcRing = 2f, OnPcGlyph = 8f, OnPcAfter = 2f;
+
+    /// <summary>The arrow the ring carries (Z-Liked draws the plain "arrow down", not a download tray).</summary>
+    public const string OnPcArrow = "↓";
+
     /// <summary>The tempo lane's key swatch: a 6 DIP square at 0.85.</summary>
     public const float TempoDot = 6f, TempoDotOpacity = 0.85f;
 
