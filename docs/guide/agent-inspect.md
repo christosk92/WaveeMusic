@@ -179,6 +179,13 @@ Plays one fake track or episode as its own context. This is the headless probe's
 stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
 track follows its lyrics: render the stage while playing, no pause needed.
 
+### `state {kind}` and `dialog {kind}`
+
+`state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back); `loading` opens a search for
+`zzqx`, which the fake catalogue never answers (the page stays on its skeleton for the first frames). Any other search query is answered from the fake
+catalogue by name; `goto uri=spotify:artist:arzzqx` is the pending artist. `dialog kind=crash|hang|report` opens the crash prompt (over a made-up bundle)
+or Report a problem over the Settings page; `key esc` closes it.
+
 ### `theme {id}`
 
 - Mounted: runs the user's live theme transaction (`ThemeHost.Switch`: prewarm, freeze, remount, thaw). The reply
