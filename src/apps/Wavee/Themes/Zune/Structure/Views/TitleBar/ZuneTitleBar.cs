@@ -65,8 +65,8 @@ internal static class ZuneTitleBar
             TabsElasticLane = true,
             Trailing = () => TrailingIsland(props, tiers),
             // The tier is part of every island's shape (pill or magnifier, the bell, the gaps): a crossing re-renders the bar.
-            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers())),
-            RowSpacing = () => ZuneFrameRules.Spacing(tiers().Window),
+            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, (int)tiers().Content, FieldInLead(props, tiers())),
+            RowSpacing = () => ZuneFrameRules.SpacingOf(tiers()),
             BarHeight = Prop.Of(() => ZuneTiers.FrameOf(tiers()).TitleBarH),
             Parts = parts,
         };
