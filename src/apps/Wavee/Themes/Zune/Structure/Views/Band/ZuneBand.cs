@@ -176,7 +176,7 @@ internal sealed class ZuneBand : Component
         };
 
         var row1Kids = new List<Element>(2) { pivotRun };
-        if (pins.Count > 0) row1Kids.Add(Pins(pins, rec));
+        if (pins.Count > 0) row1Kids.Add(PinsCached(pins, rec));
 
         var row1 = new BoxEl
         {
@@ -294,6 +294,30 @@ internal sealed class ZuneBand : Component
     /// <summary>Row 2's voice at the tier's size (Huge 4K's 15 / 20; the role's own elsewhere).</summary>
     static TextEl SubText(TextEl text, ZuneBandType type)
         => type.SubIsRole ? text : text with { Size = type.SubSize, LineHeight = type.SubLine };
+
+    // The pins element, reused while its inputs hold (page-mount RCA, allocations): the band re-renders on every navigation
+    // (the route lights a pivot, the page publishes its chrome) and rebuilt every pin's tile, tooltips, play disc and dot
+    // each time — about half of the band's 59 KB per render — for a list that only changes when the pins do. The same
+    // instance short-circuits the reconciler (a reference-equal element is not diffed) and keeps the pins' tooltips from
+    // re-rendering. Keyed on what the build reads statically: the pin list instance (NavModel.BandPins hands back the
+    // same one until the pin store, account or cap moves), the tier's layout, the theme and style epochs, the culture
+    // (the "pinned" word, the tooltips) and reduced motion.
+    Element? _pinsEl;
+    IReadOnlyList<BandPin>? _pinsFor;
+    ZuneBandLayout? _pinsRec;
+    int _pinsTok = -1, _pinsStyle = -1, _pinsCulture = -1;
+    bool _pinsReduced;
+
+    Element PinsCached(IReadOnlyList<BandPin> pins, ZuneBandLayout rec)
+    {
+        int tok = Tok.Epoch, style = Tok.StyleEpoch, culture = FluentGpu.Localization.Localization.CultureEpoch.Peek();
+        bool reduced = Design.Reduced;
+        if (_pinsEl is not null && ReferenceEquals(pins, _pinsFor) && Equals(rec, _pinsRec) && tok == _pinsTok && style == _pinsStyle
+            && culture == _pinsCulture && reduced == _pinsReduced)
+            return _pinsEl;
+        _pinsFor = pins; _pinsRec = rec; _pinsTok = tok; _pinsStyle = style; _pinsCulture = culture; _pinsReduced = reduced;
+        return _pinsEl = Pins(pins, rec);
+    }
 
     /// <summary>"pinned", then the pins (at most the core's cap, six).</summary>
     static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec)
