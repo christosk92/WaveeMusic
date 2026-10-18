@@ -605,6 +605,7 @@ public static partial class Diagnostics
             }
             // `video=fullscreen|docked|floating` puts the video SURFACE up with a fake track playing: the placement is committed as if the track had a video (no frames are decoded offline: the
             // chrome, the controls and the placement menu are what draw, over the empty picture).
+            Wavee.Theming.InspectSwitches.HoverChromeAtRest = string.Equals(a.Str("chrome"), "shown", StringComparison.OrdinalIgnoreCase);
             if (a.Has("video"))
             {
                 InspectKit.Play("spotify:track:tr0", a.Int("fromMs", 74_000));

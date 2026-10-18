@@ -176,7 +176,11 @@ public static class ZuneStageVideoRules
     ];
 
     /// <summary>The record for window tier <paramref name="window"/>.</summary>
-    public static ZuneStageVideoLayout Of(WidthTier window) => s_tiers[Math.Clamp((int)window, 0, s_tiers.Length - 1)];
+    public static ZuneStageVideoLayout Of(WidthTier window)
+    {
+        var tier = s_tiers[Math.Clamp((int)window, 0, s_tiers.Length - 1)];
+        return Wavee.Theming.InspectSwitches.HoverChromeAtRest && !tier.ChromeAtRest ? tier with { ChromeAtRest = true } : tier;   // `mount chrome=shown`: an agent has no pointer
+    }
 
     /// <summary>The record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ZuneStageVideoLayout OfFacts(in TierFacts facts) => Of(facts.Policy is null ? WidthTier.Standard : facts.Window);
