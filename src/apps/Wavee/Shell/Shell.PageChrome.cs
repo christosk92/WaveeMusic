@@ -260,11 +260,21 @@ public static partial class Shell
 
         // ══ THE PAGE SCROLL ═══════════════════════════════════════════════════════════════════════════════════════════
 
-        static readonly Dictionary<string, IReadSignal<double>> s_scrollers = new(StringComparer.Ordinal);
-        static readonly Signal<int> s_scrollersVersion = new(0);
+        /// <summary>The follower's state: the pages' scrollers by route, the scroll signal and its direction memory. ROOT-LIFETIME (<see cref="RootScope"/>):
+        /// the scrollers are nodes of the mounted root's pages and the direction is what a band folds on, so a remounted root starts at the top with none of the
+        /// frozen tree's scrollers.</summary>
+        sealed class ScrollFollower
+        {
+            public readonly Dictionary<string, IReadSignal<double>> Scrollers = new(StringComparer.Ordinal);
+            public readonly Signal<int> Version = new(0);
+            public PageScrollRules.State State = PageScrollRules.State.Top;
+            public string Key = "";
+        }
+
+        /// <summary>The scroll signal the one band record holds (a process constant): a new root's first follow writes the top back into it.</summary>
         static readonly Signal<PageScroll> s_scroll = new(PageScroll.Top);
-        static PageScrollRules.State s_scrollState = PageScrollRules.State.Top;
-        static string s_scrollKey = "";
+
+        static readonly RootState<ScrollFollower> s_follow = new("Shell.PageScroll", static () => new ScrollFollower());
 
         /// <summary>The current page's scroll: offset and direction (a band reads it in a bound prop, never in a render body: it moves
         /// every scrolled frame).</summary>
@@ -273,40 +283,42 @@ public static partial class Shell
         /// <summary>Name (or withdraw, with null) the page's main scroller.</summary>
         public static void ReportScroll(in Route route, IReadSignal<double>? offset)
         {
+            var f = s_follow.Value;
             string k = KeyOf(route);
             if (offset is null)
             {
-                if (!s_scrollers.Remove(k)) return;
+                if (!f.Scrollers.Remove(k)) return;
             }
             else
             {
-                if (s_scrollers.TryGetValue(k, out var old) && ReferenceEquals(old, offset)) return;
-                s_scrollers[k] = offset;
-                while (s_scrollers.Count > Capacity * 2) s_scrollers.Remove(FirstKeyBut(k));
+                if (f.Scrollers.TryGetValue(k, out var old) && ReferenceEquals(old, offset)) return;
+                f.Scrollers[k] = offset;
+                while (f.Scrollers.Count > Capacity * 2) f.Scrollers.Remove(FirstKeyBut(f, k));
             }
-            s_scrollersVersion.Value = s_scrollersVersion.Peek() + 1;
+            f.Version.Value = f.Version.Peek() + 1;
         }
 
-        static string FirstKeyBut(string keep)
+        static string FirstKeyBut(ScrollFollower f, string keep)
         {
-            foreach (var key in s_scrollers.Keys) if (!string.Equals(key, keep, StringComparison.Ordinal)) return key;
+            foreach (var key in f.Scrollers.Keys) if (!string.Equals(key, keep, StringComparison.Ordinal)) return key;
             return keep;
         }
 
         /// <summary>The content host's effect: follow the current page's scroller (a navigation starts the follower over).</summary>
         internal static void FollowScroll()
         {
+            var f = s_follow.Value;
             var route = Shell.Current.Value;
-            _ = s_scrollersVersion.Value;
+            _ = f.Version.Value;
             string k = KeyOf(route);
-            float offset = s_scrollers.TryGetValue(k, out var scroller) ? (float)scroller.Value : 0f;
-            if (!string.Equals(k, s_scrollKey, StringComparison.Ordinal))
+            float offset = f.Scrollers.TryGetValue(k, out var scroller) ? (float)scroller.Value : 0f;
+            if (!string.Equals(k, f.Key, StringComparison.Ordinal))
             {
-                s_scrollKey = k;
-                s_scrollState = PageScrollRules.State.Top;
+                f.Key = k;
+                f.State = PageScrollRules.State.Top;
             }
-            s_scrollState = PageScrollRules.Next(in s_scrollState, offset);
-            s_scroll.SetIfChanged(s_scrollState.Scroll);
+            f.State = PageScrollRules.Next(in f.State, offset);
+            s_scroll.SetIfChanged(f.State.Scroll);
         }
 
         // ══ THE BAND ══════════════════════════════════════════════════════════════════════════════════════════════════
