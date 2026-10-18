@@ -205,6 +205,10 @@ public static class ZuneArtistRules
     // ── the hero ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The name stands this far left of the gutter, so the glyph edge of the light panorama lines up with the eyebrow.</summary>
+    /// <summary>The artist photo's focal point, 0..1 from the top: Spotify's header images and avatars put the face in the upper third, so the shell's bleed (the one
+    /// photo behind the title bar, the band and the hero) crops around 28 % down instead of the middle, where only the nose and mouth were left under the chrome.</summary>
+    public const float PhotoFocusY = 0.28f;
+
     public const float NameNudge = 8f;
 
     /// <summary>The gap between the name and the caption under it.</summary>

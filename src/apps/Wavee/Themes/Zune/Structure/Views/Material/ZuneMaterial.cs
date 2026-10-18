@@ -75,7 +75,7 @@ internal static class ZuneMaterial
                 Height = ZuneBandRules.BleedH, AlignSelf = FlexAlign.Start, Direction = 1, ClipToBounds = true, HitTestVisible = false,
                 Opacity = ZuneBandRules.BleedOpacityOf(R.IsLight),
                 Enter = Fade, Exit = Fade,
-                Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade)],
+                Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade, ZuneArtistRules.PhotoFocusY)],
             });
         }
 
@@ -105,9 +105,9 @@ internal static class ZuneMaterial
     }
 
     /// <summary>A backdrop image: cover-fitted, <paramref name="height"/> tall, fading out over its lower <paramref name="fade"/>.</summary>
-    static Element Backdrop(string url, float height, float fade) => new ImageEl
+    static Element Backdrop(string url, float height, float fade, float focusY = 0.5f) => new ImageEl
     {
-        Source = url, Fit = ImageFit.Cover, Height = height, AlignSelf = FlexAlign.Stretch,
+        Source = url, Fit = ImageFit.Cover, FocusY = focusY, Height = height, AlignSelf = FlexAlign.Stretch,
         DecodePx = ZuneBandRules.BackdropDecodePx, Placeholder = ColorF.Transparent,
         Mask = new ImageMaskSpec(EdgeMask.Bottom, 0f, 0f, 0f, fade),
         RevealTransition = Design.Reduced ? null : ImageTransition.Fade(ZuneBandRules.MaterialFadeMs),
