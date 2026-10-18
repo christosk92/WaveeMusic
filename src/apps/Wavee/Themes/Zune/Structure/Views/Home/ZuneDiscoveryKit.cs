@@ -101,7 +101,7 @@ internal static class ZuneDiscoveryKit
         HoverFill = primary ? ColorF.Transparent : R.Layer.ChromeHover, PressedFill = primary ? ColorF.Transparent : R.Layer.ChromePressed,
         Children =
         [
-            new TextEl(glyph)
+            new TextEl(primary && glyph == Icons.Play ? ZunePlayerLayout.PlaySolid : glyph)   // the accent disc's triangle is the filled one (the boards')
             {
                 Size = H.RingGlyph, FontFamily = Tok.Definition.Fonts.Icon,
                 Color = primary ? Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)) : Tok.TextPrimary,
