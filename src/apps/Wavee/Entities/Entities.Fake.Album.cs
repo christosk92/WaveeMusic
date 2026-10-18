@@ -631,6 +631,23 @@ public static partial class Entities
                 Current.Edges.ShowEpisodes.Replace(show, targets[..n], default,
                     total > n ? EdgeState.Partial : EdgeState.Complete, total);
             }
+            LandListenLater();
+        }
+
+        /// <summary>The Podcasts library's Your Episodes: the listen-later playlist (`User.SavedEpisodesReader.FakeSavedUri`) holds a few episodes across the seeded shows, so the demo's feed has
+        /// rows (discovery itself is not faked). The playlist row is minted here if the library fixture did not carry it.</summary>
+        static void LandListenLater()
+        {
+            (int Show, int Index)[] picks = [(0, 0), (1, 0), (3, 0), (0, 1), (1, 1), (4, 0), (0, 4), (2, 0)];
+            Span<int> targets = stackalloc int[picks.Length];
+            Span<PlaylistTrackEdge> payload = stackalloc PlaylistTrackEdge[picks.Length];
+            for (int k = 0; k < picks.Length; k++)
+            {
+                targets[k] = SlotOf(Current.Episodes, EpisodeUri(picks[k].Show, picks[k].Index));
+                payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0, PlaylistItemKind.Episode);
+            }
+            int list = Current.Playlists.Slot("spotify:playlist:37i9dQZF1FgnTBfUlzkeKt".AsSpan());
+            Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, picks.Length);
         }
     }
 }

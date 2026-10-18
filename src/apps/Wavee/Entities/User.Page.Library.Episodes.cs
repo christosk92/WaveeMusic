@@ -15,7 +15,8 @@ public readonly partial struct User
         LibraryEpisodesProps? _episodesProps;
 
         /// <summary>The podcasts page, the structure asked, and the page is split (the one-column drill-in keeps the mode words).</summary>
-        bool EpisodesFirst => IsPodcasts && ShellPolicy.Tracked.LibraryTiers.PodcastsEpisodesFirst
+        // A stored GRID view keeps its grid: the shows list is the pinned row's column only while the view is a list (the grid takes the old arrangement, with the mode words).
+        bool EpisodesFirst => IsPodcasts && ShellPolicy.Tracked.LibraryTiers.PodcastsEpisodesFirst && !IsGridView(View.Value)
                               && !(_layoutTier is { } tier && Theming.LibraryLadders.IsSingleColumn(tier.Value));
 
         LibraryEpisodesProps EpisodesProps() => _episodesProps ??= new LibraryEpisodesProps(

@@ -324,7 +324,10 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     public bool ShowCount => !OneRow;
 
     /// <summary>The view is the "..." menu alone (the grid and list words, and their label, go).</summary>
-    public bool ViewMenuOnly => OneRow;
+    public bool ViewMenuOnly => OneRow || MenuOnlyView;
+
+    /// <summary>The view is the "..." menu alone beside the podcasts' pinned "your episodes" row (the board draws no view words there; the menu keeps grid and list reachable).</summary>
+    public bool MenuOnlyView { get; init; }
 
     /// <summary>The pane folds its header and verbs into ONE row (title, then the rings) and drops the attribution, the meta line, the "also by" line and the
     /// "open album" word: on the Short rung the full header alone is as tall as the page.</summary>
