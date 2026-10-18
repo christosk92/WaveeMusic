@@ -33,7 +33,7 @@ public static partial class Settings
     /// <see cref="Shell.InstallUi"/>.</summary>
     public static void InstallScreens()
     {
-        Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => Page());
+        Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => PageFor(route));
         // `wavee://open?route=settings&arg=<slug>`: the arg is a TAB slug, never a place of its own (plan D4).
         Shell.OnSettingsTabRequested = static slug => Open(TabFromSlug(slug));
         ReleaseNotes.InstallUi();
@@ -42,13 +42,26 @@ public static partial class Settings
     }
 
     // MOUNT POINT (stage B contract)
-    public static Element Page() => Embed.Comp(static () => new PageHost());
+    public static Element Page() => Embed.Comp(new HostProps(""), static () => new PageHost());
+
+    /// <summary>The page for a route: the route's arg, a tab slug, is the OPEN SECTION (the Compact sections-then-section page; every other tier keeps the pivot).
+    /// The slot is the same for every arg (<c>KeyedByArg</c> is false), so opening or closing a section re-pushes the props to the mounted page.</summary>
+    public static Element PageFor(in Shell.Route route) => Embed.Comp(new HostProps(Entities.Strings.Resolve(route.Arg)), static () => new PageHost());
+
+    sealed record HostProps(string Arg);
+
+    /// <summary>The route of a tab's section page (arg = the tab's slug).</summary>
+    static Shell.Route SectionRoute(int tab) => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(TabSlugs[Math.Clamp(tab, 0, TabSlugs.Length - 1)].AsSpan()));
+
+    /// <summary>True when the section page was entered from the sections list by a tap (the list is the entry below it in the history, so "close" is Back).</summary>
+    static bool s_listBelow;
 
     /// <summary>Navigate to Settings on <paramref name="tab"/> (the palette, a toast's "Manage", a deep link).</summary>
     public static void Open(Tab tab)
     {
         s_tab.Value = (int)tab;
-        Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+        s_listBelow = Shell.Current.Value is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: true };   // opened from the sections list: that list is the entry below
+        Shell.GoTo(SectionRoute((int)tab));
     }
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report what
@@ -120,6 +133,11 @@ public static partial class Settings
             // The page's own epoch plus the two foreign epochs the Appearance tab reads: a write on the fullscreen stage's gallery
             // or the player bar re-renders the rows live. Each only ever grows, so the sum changes when any one does.
             int revision = s_epoch.Value + Prefs.PlayerBar.Epoch.Value + Prefs.Stage.Epoch.Value;
+            string arg = UseProps<HostProps>().Arg;
+            bool section = arg.Length > 0;
+            int argTab = (int)TabFromSlug(arg);
+            // A route that names a section (history, a restored session) opens the pivot on it.
+            UseEffect(() => { if (section && s_tab.Peek() != argTab) s_tab.Value = argTab; }, DepKey.From(argTab, section ? 1 : 0));
             int tab = Math.Clamp(s_tab.Value, 0, TabSlugs.Length - 1);
 
             UseEffect(() => EnterStorage(tab == (int)Tab.Storage), DepKey.From(tab));
@@ -129,6 +147,13 @@ public static partial class Settings
                 Tab = tab,
                 Revision = revision,
                 TabCell = s_tabCell,
+                OpenSection = section,
+                OpenTab = static i => { s_tab.Value = i; s_listBelow = true; Shell.GoTo(SectionRoute(i)); },
+                CloseSection = static () =>
+                {
+                    if (s_listBelow) { s_listBelow = false; Shell.GoBack(); }
+                    else Shell.ReplaceCurrent(new Shell.Route(Shell.RouteKind.Settings));
+                },
                 Storage = tab == (int)Tab.Storage ? StorageFacts() : SettingsStorageProps.Idle,
             });
         }

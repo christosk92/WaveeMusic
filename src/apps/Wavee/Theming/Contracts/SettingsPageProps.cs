@@ -23,6 +23,16 @@ public sealed record SettingsPageProps
     /// <summary>The pivot's cell (root-lifetime state: a remounted root opens the first tab, a theme pick opens Appearance). The pivot binds it once.</summary>
     public required Func<Signal<int>> TabCell { get; init; }
 
+    /// <summary>The route names an open section (its arg is the tab's slug). A theme with a sections-then-section page (Zune's Compact) shows that section's page; a theme with a
+    /// pivot ignores it (the tab is <see cref="Tab"/> either way).</summary>
+    public bool OpenSection { get; init; }
+
+    /// <summary>Open section <c>i</c> (a <see cref="Settings.Tab"/> index) as a page of its own: a history step from the sections list.</summary>
+    public Action<int> OpenTab { get; init; } = static _ => { };
+
+    /// <summary>Close the open section: back to the sections list (Back when the list is the entry below, else the page swapped in place).</summary>
+    public Action CloseSection { get; init; } = static () => { };
+
     /// <summary>The Storage census while the Storage tab is visible, else <see cref="SettingsStorageProps.Idle"/>.</summary>
     public required SettingsStorageProps Storage { get; init; }
 }
