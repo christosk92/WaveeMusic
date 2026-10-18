@@ -38,6 +38,115 @@ internal static partial class ZuneLibraryPage
     static Element GroupHeading(LibraryPageProps p)
         => Embed.Comp(p.Groups!, static () => new GroupHeadingView()) with { Key = "lib:groups:heading" };
 
+    /// <summary>Huge's artist column (Z-Library-Albums-Huge, 460): the picked artist's plate (tinted by their picture; the kind and counts line, the name in the display voice over two lines,
+    /// the verbs as words), then "in your library" with the albums and songs held as numerals.</summary>
+    static Element GroupHeroColumn(LibraryPageProps p, ZuneLibraryLayout l)
+        => new BoxEl
+        {
+            Key = "lib:groups:hero", Direction = 1, Width = l.HeroColW, MinWidth = l.HeroColW, Shrink = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize,
+            Children = [Embed.Comp(p.Groups!, static () => new GroupHeroView()) with { Key = "lib:groups:hero:view" }],
+        };
+
+    sealed class GroupHeroView : Component
+    {
+        public override Element Render()
+        {
+            var groups = UseProps<LibraryGroupsProps>();
+            var set = groups.Read();
+            bool all = set.Selected.Length == 0;
+            ColorF ink = Design.PlaceholderFor(set.SelectedArt.Length > 0 ? set.SelectedArt : set.Selected);
+            ColorF tint = new(ink.R * LR.HeroTintShade, ink.G * LR.HeroTintShade, ink.B * LR.HeroTintShade, 1f);
+            string name = all ? Loc.Get(Strings.Theme.Zune.Collection.Library.AllArtists) : set.SelectedName;
+            string line = Loc.Get(Strings.Theme.Zune.Collection.Library.ArtistKind) + " · " + Strings.Theme.Zune.Collection.Library.CountAlbums(set.SelectedAlbums)
+                          + " " + Loc.Get(Strings.Theme.Zune.Collection.Library.InYourLibrary);
+            Element plate = new BoxEl
+            {
+                ZStack = true, Height = LR.HeroColPlateH, Shrink = 0f, ClipToBounds = true,
+                Children =
+                [
+                    new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+                        Gradient = GradientDown(new GradientStop(0f, tint), new GradientStop(1f, Tok.FillSolidBase)) },
+                    new BoxEl
+                    {
+                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, HitTestVisible = false, Width = LR.HeroBlob, Height = LR.HeroBlob,
+                        Margin = new Edges4(0f, -LR.HeroBlobBleed, -LR.HeroBlobBleed, 0f), Corners = Radii.Circle(LR.HeroBlob), Fill = tint, Opacity = LR.HeroBlobOpacity,
+                    },
+                    new BoxEl
+                    {
+                        Direction = 1, Justify = FlexJustify.SpaceBetween, MinWidth = 0f, Padding = new Edges4(LR.HeroPadX, LR.HeroPadTop, LR.HeroPadX, LR.HeroPadBottom),
+                        Children =
+                        [
+                            R.Type.DenseMeta(line) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Case = R.Case.For(LabelKind.Label) },
+                            new BoxEl
+                            {
+                                Direction = 1, Gap = LR.HeroNameGap, MinWidth = 0f,
+                                Children =
+                                [
+                                    new TextEl(name)
+                                    {
+                                        Size = LR.HeroColNameSize, LineHeight = LR.HeroColNameLine, Weight = LR.HeroNameWeight, FontFamily = R.Type.DisplayFace,
+                                        Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                    },
+                                    all ? new BoxEl() : Verbs(groups),
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            };
+            return new BoxEl
+            {
+                Direction = 1, Gap = LR.HeroColGap, MinWidth = 0f,
+                Children = [plate, all ? new BoxEl() : Stats(set)],
+            };
+        }
+
+        static Element Verbs(LibraryGroupsProps g) => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Artist.ReaderShape.ActionGap, MinWidth = 0f, Shrink = 0f, Height = Artist.ReaderShape.ActionH,
+            Children =
+            [
+                ZuneDiscoveryKit.Ring("lib-hero-play", Icons.Play, Loc.Get(Strings.Library.PlayAll), showLabel: true, primary: true, g.Play),
+                ZuneDiscoveryKit.Ring("lib-hero-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: true, primary: false, g.Shuffle),
+                ZuneDiscoveryKit.Ring("lib-hero-go", Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), showLabel: true, primary: false, g.Open),
+            ],
+        };
+
+        static Element Stats(LibraryGroupSet set) => new BoxEl
+        {
+            Direction = 1, Gap = LR.HeroColStatGap, MinWidth = 0f, Shrink = 0f,
+            Children =
+            [
+                R.Type.QuickplayHead(Loc.Get(Strings.Theme.Zune.Collection.Library.InYourLibrary)) with
+                {
+                    Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Case = R.Case.For(LabelKind.Label),
+                },
+                new BoxEl
+                {
+                    Direction = 0, Gap = LR.HeroColStatGap, MinWidth = 0f,
+                    Children =
+                    [
+                        Stat(set.SelectedAlbums, Loc.Get(Strings.Theme.Zune.Collection.Library.HeroAlbums)),
+                        Stat(set.SelectedSongs, Loc.Get(Strings.Theme.Zune.Collection.Library.HeroSongs)),
+                    ],
+                },
+            ],
+        };
+
+        static Element Stat(int n, string word) => new BoxEl
+        {
+            Direction = 1, Gap = LR.HeroColStatLabelGap, MinWidth = 0f, Grow = 1f, Basis = 0f,
+            Children =
+            [
+                new TextEl(FormatCache.Int(n))
+                {
+                    Size = LR.HeroColStatSize, LineHeight = LR.HeroColStatLine, Weight = LR.HeroNameWeight, FontFamily = R.Type.DisplayFace, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                },
+                R.Type.DenseMeta(word) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Case = R.Case.For(LabelKind.Label) },
+            ],
+        };
+    }
+
     sealed class GroupHeadingView : Component
     {
         public override Element Render()
@@ -54,6 +163,7 @@ internal static partial class ZuneLibraryPage
                 [
                     R.Type.QuickplayHead(title) with
                     {
+                        Size = LR.BoardHeadSize, LineHeight = LR.BoardHeadLine,
                         Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         Case = all ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
                     },

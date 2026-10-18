@@ -70,6 +70,7 @@ internal static partial class ZuneLibraryPage
                 : (artists ? ReaderColumn(props, cache.Layout) : (groups && !cache.Layout.GroupPane ? null : DetailColumn(props, cache.Layout)));
             var columns = new List<Element>(3);
             if (groups) columns.Add(GroupColumn(props, cache.Layout));
+            if (groups && cache.Layout.HeroColW > 0f) columns.Add(GroupHeroColumn(props, cache.Layout));
             columns.Add(NavColumn(props, cache));
             if (right is not null) columns.Add(right);
             inner = new BoxEl

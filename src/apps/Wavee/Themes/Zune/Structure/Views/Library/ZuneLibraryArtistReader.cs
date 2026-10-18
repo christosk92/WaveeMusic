@@ -47,6 +47,10 @@ internal static partial class ZuneLibraryArtistReader
     {
         var h = ctx.Hooks.UseRef(new Holder()).Value;           // before the guard: one hook order on every path
         if (props.Vacant) return new BoxEl();
+        // The split tiers draw the board (hero, albums grid, the picked album's songs); the one-column drill-in keeps the block list.
+        var tier = ctx.Tier();
+        var layout = ZuneLibraryTiers.Of(tier, single: tier.Content == WidthTier.Compact);
+        if (!layout.Single) return Board(props, layout);
         h.Props = props;
         // The bound templates run ONCE per slot and are frozen at mount: they read the current props through the holder.
         h.ItemAt ??= scope => scope.Index.Peek() == 1 ? Rail(h) : Embed.Comp(() => new ReaderItem(h.Props.Host, scope));
