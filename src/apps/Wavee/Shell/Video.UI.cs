@@ -287,6 +287,14 @@ public static partial class Video
         return t.IsValid && t.Knows(TrackFields.Title) ? t.Title : "";
     }
 
+    /// <summary>The current track's artists as one line, "" when unknown. Subscribes like <see cref="CurrentTitle"/>.</summary>
+    static string CurrentArtists()
+    {
+        if (CurrentTrack() is not { } t || Entities.Current is not { } scope) return "";
+        _ = scope.Tracks.Changed.Value;
+        return t.IsValid && t.Knows(TrackFields.Row) ? Entities.Strings.Resolve(t.ArtistLineId) : "";
+    }
+
     /// <summary>The current track's cover url, or null. Subscribes.</summary>
     static string? CurrentArtUrl() => CurrentTrack() is { } t ? Controls.ArtUrl(t.ImageId) : null;
 
@@ -1230,6 +1238,10 @@ public static partial class Video
         }
 
         /// <summary>The chrome's props, built once: the title (bound) and the way out. Its band is the theme's (`Video.Fullscreen`).</summary>
-        static readonly VideoFullscreenProps s_chromeProps = new() { Title = s_currentTitle, Exit = static () => State.ExitFullscreen() };
+        static readonly VideoFullscreenProps s_chromeProps = new()
+        {
+            Title = s_currentTitle, Exit = static () => State.ExitFullscreen(),
+            Artists = static () => CurrentArtists(), SwitchToAudio = static () => State.TurnOff(),
+        };
     }
 }

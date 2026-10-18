@@ -2805,6 +2805,8 @@
         "upNextFrom": "From",
         "upNextMore": "{count} more",
         "videoFullScreen": "Video · full screen",
+        "videoKind": "Official video",
+        "videoSwitchToAudio": "Switch to audio",
         "videoMiniPlayerWord": "Mini player"
       },
       "discovery": {

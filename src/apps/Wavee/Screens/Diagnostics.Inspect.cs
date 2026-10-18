@@ -618,6 +618,9 @@ public static partial class Diagnostics
                     "floating" or "pip" => Wavee.Video.SurfacePlacement.Floating,
                     _ => Wavee.Video.SurfacePlacement.Fullscreen,
                 });
+                // `player=fake` binds an idle engine player (no source, no frames) so the presenter and its transport mount as they do while a video plays.
+                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase))
+                    Playback.Video.Player.Value = new Playback.Video.Binding(FluentGpu.Media.MediaPlayer.Create(), 1);
             }
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))

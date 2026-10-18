@@ -46,25 +46,56 @@ internal static class ZuneStageVideoFullscreen
                     HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
                     Children =
                     [
-                        new TextEl(Loc.Get(Strings.Theme.Zune.Stage.VideoFullScreen))
+                        t.LabelShown
+                            ? new TextEl(Loc.Get(Strings.Theme.Zune.Stage.VideoFullScreen))
+                            {
+                                Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
+                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                            }
+                            : new BoxEl { Width = 0f, Margin = new Edges4(-t.BarGap, 0f, 0f, 0f) },
+                        // Centred (Standard) the title has air either side; led (Small, Huge) it follows the label.
+                        t.TitleCentered ? new BoxEl { Grow = 1f, MinWidth = 0f } : new BoxEl { Width = 0f, Margin = new Edges4(-t.BarGap, 0f, 0f, 0f) },
+                        // Bound REACTIVELY: the surface outlives a track change. The title keeps its own casing; the kind and the artists follow it in the secondary ink ("Nightcall · official
+                        // video · Kavinsky").
+                        new BoxEl
                         {
-                            Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
-                            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                            Direction = 0, AlignItems = FlexAlign.Center, Gap = VR.TitleGap, Shrink = 1f, MinWidth = 0f,
+                            Children =
+                            [
+                                new TextEl(Prop.Of(props.Title))
+                                {
+                                    Size = t.TitleSize, LineHeight = t.TitleLine, Weight = VR.TitleWeight, Color = Tok.OnMediaPrimary,
+                                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                                },
+                                new TextEl(Prop.Of(() => props.Title().Length == 0 ? "" : "·  " + Loc.Get(Strings.Theme.Zune.Stage.VideoKind)))
+                                {
+                                    Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
+                                    Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                                },
+                                // The artists keep their own casing (names are not re-cased).
+                                new TextEl(Prop.Of(() => props.Title().Length == 0 || props.Artists().Length == 0 ? "" : "·  " + props.Artists()))
+                                {
+                                    Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = TextCase.AsWritten,
+                                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                                },
+                            ],
                         },
                         new BoxEl { Grow = 1f, MinWidth = 0f },
-                        // Bound REACTIVELY: the surface outlives a track change. The title keeps its own casing.
-                        new TextEl(Prop.Of(props.Title))
-                        {
-                            Size = t.TitleSize, LineHeight = t.TitleLine, Weight = VR.TitleWeight, Color = Tok.OnMediaPrimary,
-                            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
-                        },
-                        new BoxEl { Grow = 1f, MinWidth = 0f },
+                        props.SwitchToAudio is { } toAudio ? SecondaryWord(Loc.Get(Strings.Theme.Zune.Stage.VideoSwitchToAudio), toAudio, t) : new BoxEl { Width = 0f },
                         Word(Loc.Get(Strings.Player.VideoExitFullScreen), props.Exit, t),
                     ],
                 },
             ],
         };
     }
+
+    /// <summary>"Switch to audio": a word in the on-media secondary ink, beside the way out.</summary>
+    static Element SecondaryWord(string text, Action onClick, ZuneStageVideoLayout t) => new BoxEl
+    {
+        Height = t.WordH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Margin = new Edges4(0f, 0f, VR.WordGap, 0f),
+        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
+        Children = [new TextEl(text) { Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, HoverColor = Tok.OnMediaPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
+    };
 
     /// <summary>The way out: a word, the on-media primary ink, no plate (the hover lifts nothing: it is already the brightest ink).</summary>
     static Element Word(string text, Action onClick, ZuneStageVideoLayout t) => new BoxEl
