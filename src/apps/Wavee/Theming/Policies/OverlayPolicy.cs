@@ -30,8 +30,11 @@ namespace Wavee.Theming;
 /// 40-tall buttons still sit side by side in its card. <see cref="StacksCommands"/> reads it.</param>
 /// <param name="UniformCommands">The command buttons share the row equally (<c>ContentDialog.UniformCommandWidths</c>: the Compact boards' two-column grid) instead of
 /// each growing from its own label.</param>
+/// <param name="TitleSize">The title's size where the band sets its own (null: the style's): Zune's Compact sheet draws it at 40.</param>
+/// <param name="CloseMark">The title's row ends in a close mark (the theme draws it; the dialog's close action): Zune's Compact and Huge dialogs.</param>
 public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float EdgeY, Edges4? ContentPadding = null, Edges4? CommandPadding = null,
-    float? FormWidth = null, ControlSize CommandSize = ControlSize.Medium, float CommandMinWidth = DialogFit.EngineButtonMinWidth, bool UniformCommands = false)
+    float? FormWidth = null, ControlSize CommandSize = ControlSize.Medium, float CommandMinWidth = DialogFit.EngineButtonMinWidth, bool UniformCommands = false,
+    float? TitleSize = null, bool CloseMark = false)
 {
     /// <summary>The engine's card with the window caps only: the opener's rung, never wider than the window less the inset.</summary>
     public static DialogFit Stock { get; } = new(Fill: false, Inset: 16f, MaxWidth: 548f, EdgeY: 24f);
