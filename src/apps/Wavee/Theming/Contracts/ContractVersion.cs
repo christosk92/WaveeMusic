@@ -153,6 +153,7 @@
 // page's "played before this"), `ConcertDetailView.Interested` / `.ToggleInterested` (the concert page's local "interested" mark).
 // 1.47 (Zune fidelity round 2): `TrackRowSkin.Dimmed` (the row's dim state, so a skin dims the check lane with the row).
 // 1.48 (Settings sections): `SettingsPageProps.Area` / `.AreaCell` / `.OpenArea` (the page's twelve sections, `Settings.Area`, each a list of document sections),
+// 1.49 (Zune panel wash): `PanelProps.CoverUrl` (the playing track's cover url, so a theme tints the panel's surface from it).
 // `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
 // `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
 //
@@ -170,7 +171,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 48;
+    public const int Minor = 49;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

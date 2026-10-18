@@ -161,6 +161,10 @@ public sealed record PanelProps
     /// <summary>Close the panel, whatever it shows (a docked video is demoted by the coupling).</summary>
     public required Action Close { get; init; }
 
+    /// <summary>The playing track's cover url, read LIVE (a bound thunk that follows a track change), or null / empty with nothing playing or no art: what a theme
+    /// tints the panel's surface from. Appended (contract 1.49).</summary>
+    public Func<string?>? CoverUrl { get; init; }
+
     /// <summary>Show another body in this panel (the Compact now-playing sheet's Lyrics and Queue doors); null where the panel offers none
     /// (contract 1.15).</summary>
     public Action<PanelMode>? ShowMode { get; init; }
