@@ -95,7 +95,7 @@ public readonly partial struct User
             if (episodes.Count > 0) Entities.Ensure(System.Runtime.InteropServices.MemoryMarshal.Cast<int, Episode>(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(episodes)), EpisodeFields.Identity | EpisodeFields.Progress);
             var items = new List<(int Published, LibraryEpisodeRow Row)>(episodes.Count);
             long total = 0;
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long now = Platform.Args.Fake ? Platform.Clock.SeedEpoch : DateTimeOffset.UtcNow.ToUnixTimeSeconds();   // the demo's fixed instant, so its dates group the same on any day
             var playing = Playback.CurrentId.Value;
             foreach (int e in episodes)
             {
