@@ -42,9 +42,9 @@ internal static class ZuneArtistHero
     /// <summary>The hero's verbs (all null on the skeleton arm).</summary>
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
-    /// <summary>The hero: eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
+    /// <summary>The hero (<paramref name="nameKnown"/>: the skeleton arm draws the real name): eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
     /// ride a layer over it.</summary>
-    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts)
+    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts, bool nameKnown = false)
     {
         float gutter = lay.Gutter;
         bool shimmer = acts.Play is null;
@@ -68,6 +68,8 @@ internal static class ZuneArtistHero
             Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(-Rules.NameNudge, 0f, 0f, Rules.NameCaptionGap),
             Animate = ZuneMotion.TitleScale, Children = [Lines(name, shimmer)],
         };
+        // Z-State-Loading: a name already known (the search row, a link) stands in its real display type on the skeleton, so it never changes under the reveal.
+        if (shimmer && nameKnown) nameBox = nameBox.Skel(nameBox);   // the override is the real name, drawn as is (Skeletonized(false) would blank it)
 
         var kids = new List<Element>(5) { eyebrow, new BoxEl { Grow = 1f, MinHeight = 0f }, nameBox, Caption(in text, accent, shimmer) };
         if (lay.Secondary == ZuneArtistSecondary.Row && !shimmer)

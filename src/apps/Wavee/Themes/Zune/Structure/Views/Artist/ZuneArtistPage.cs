@@ -171,7 +171,10 @@ internal static class ZuneArtistPage
     static Element Shimmer(ArtistPageProps p, ArtistChartStyle? chart, ZuneArtistLayout lay)
     {
         var none = new ZuneArtistHero.Acts(null, null, null, null);
-        Element hero = ZuneArtistHero.Build(Artist.HeroText.Placeholder, "", lay, p.AccentPeek(), in none);
+        // A name already known (Z-State-Loading: "the weeknd" in real type over the skeleton) is the loaded hero's name, so it does not move on the reveal.
+        string known = p.Artist.IsValid ? p.Artist.Name : "";
+        Element hero = ZuneArtistHero.Build(known.Length > 0 ? Artist.HeroText.Placeholder with { Name = known } : Artist.HeroText.Placeholder, "", lay, p.AccentPeek(), in none,
+            nameKnown: known.Length > 0);
         Element chartShape = chart is null ? new BoxEl()
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows,
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
