@@ -248,6 +248,8 @@ internal sealed class ZuneLyricsRow : Component
 
     static readonly SpringParams s_opacitySpring = SpringParams.FromResponse(0.18f, 1.0f);
 
+    static readonly SpringParams s_scaleSpring = SpringParams.FromResponse(0.30f, 0.90f);
+
     public ZuneLyricsRow(ILyricsHost host, int index, Lyrics.Line line, Signal<int> emphasis)
     {
         _host = host;
@@ -288,8 +290,9 @@ internal sealed class ZuneLyricsRow : Component
         // the stage's lines in the board's rhythm (Z-Lyrics: the display face at 300, the line a ratio of the type, a tier's gap); the rail keeps the core's
         var facts = UseContext(ThemeFactsContext.Signal);
         var rhythm = host.OnStage && facts is not null && !host.IsPodcast ? ZuneStageTiers.StageOf(facts.Value.Tiers).LyricsRhythm : null;
+        float laid = rhythm is null ? m.FontSize : MathF.Round(m.FontSize * rhythm.ActiveScale);
         if (rhythm is not null)
-            m = m with { LineHeight = MathF.Round(m.FontSize * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight };
+            m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
         if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
@@ -324,9 +327,16 @@ internal sealed class ZuneLyricsRow : Component
                   Margin = new Edges4(0f, Lyrics.Surface.SecondaryGapDip, 0f, 0f),
               }];
 
+        // a row that is not sung rests at the core's size: its scale springs 1 / ActiveScale <-> 1 from the left edge, the layout never moves
+        float rest = rhythm is null || rhythm.ActiveScale <= 1f || isActive || neutral ? 1f : 1f / rhythm.ActiveScale;
+        var scaleKey = DepKey.From((isActive ? 2 : 0) | (neutral ? 16 : 0));
+        UseSpring(AnimChannel.ScaleX, rest, s_scaleSpring, scaleKey);
+        UseSpring(AnimChannel.ScaleY, rest, s_scaleSpring, scaleKey);
+
         return new BoxEl
         {
             Direction = 1,
+            ScaleX = rest, ScaleY = rest, TransformOriginX = 0f, TransformOriginY = 0.5f,
             Opacity = _seedOpacity,
             Shrink = 0f,
             Padding = new Edges4(m.SidePad, m.RowPad + reserve, m.SidePad, m.RowPad),

@@ -163,6 +163,9 @@ public static partial class Lyrics
         // ── advance-probe seam (`--lyrics-advance-probe`, Screens/Diagnostics.Probe.cs, Wave 6) ──────────────────────
         // `internal` accessors, not switches: the probe drives the media clock SYNCHRONOUSLY so a line advance and the
         // frame that records it are the same frame, and the autonomous stepper stays unmounted under it.
+        /// <summary>The fullscreen stage's lyrics view registers its resync here while it is mounted, so the stage's bar word "resync" re-attaches the follow
+        /// without a handle on the view (the pill's own action).</summary>
+        internal static Action? StageResync;
         internal static bool ProbeSyncMode = false;   // set by the probe entry (Wave 6)
         static readonly RootState<ViewCore?> s_probeActive = new("Lyrics.ProbeActive");   // ROOT-LIFETIME (RootScope.cs): a component of the mounted tree
         internal static ViewCore? ProbeActive { get => s_probeActive.Value; set => s_probeActive.Value = value; }
@@ -379,6 +382,13 @@ public static partial class Lyrics
             BindStyle(UseContext(ViewRegistry.Context));
             bool open = _visible();
             UseEffect(() => { if (!open) ResetFollowState(Context.Scene); }, DepKey.From(open));
+            if (OnStage)   // mount config: the hook never comes and goes
+                UseEffect(() =>
+                {
+                    Action resync = () => BeginResync(Context.Scene);
+                    StageResync = resync;
+                    return () => { if (ReferenceEquals(StageResync, resync)) StageResync = null; };
+                }, DepKey.Empty);
             // The user-scroll EDGE: the handle's motion is republished every UI frame while it moves, so the watcher gates
             // on its own last value and hands OnScrollActivity only the flips (detach on grab, arm the resync on release).
             UseSignalEffect(() =>

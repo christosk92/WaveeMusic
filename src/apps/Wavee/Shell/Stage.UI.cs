@@ -148,6 +148,10 @@ public static partial class Stage
         /// <summary>The options popover is open (the top bar's sliders button lights while it is) and the action that toggles it.</summary>
         public readonly Signal<bool> OptionsOpen = new(false);
         public Action OpenOptions = static () => { };
+        /// <summary>The lyrics words of the stage's bar (Z-Lyrics: "translate", "resync"): the second-line cycle (none, translation, romanization), whether the
+        /// playing document carries a second layer and one is on (both read signals, so the caller subscribes), and the lyrics view's resync (re-attach the follow).</summary>
+        public Action ToggleSecondLine = static () => { }, ResyncLyrics = static () => { };
+        public Func<bool> HasSecondLine = static () => false, SecondLineOn = static () => false;
         /// <summary>Open the gallery (never closes it) — the options footer's switch; G is <see cref="ToggleGallery"/>.</summary>
         public Action OpenGallery = static () => { };
         public Action<Mode> SetMode = static _ => { };
@@ -234,6 +238,10 @@ public static partial class Stage
             _ctx.Exit = _verbs.Exit;
             _ctx.Activity = _verbs.Activity;
             _ctx.OpenOptions = _verbs.OpenOptions;
+            _ctx.ToggleSecondLine = static () => LyricsVerbs.Global.ToggleSecondLine();
+            _ctx.ResyncLyrics = static () => Lyrics.ViewCore.StageResync?.Invoke();
+            _ctx.HasSecondLine = static () => Lyrics.Prefs.Available.Value != 0;
+            _ctx.SecondLineOn = static () => Lyrics.Prefs.SecondaryLine() != 0;
             _ctx.OverControls = over => { _idle.SetPointerOverControls(over, Now()); Sync(); };
             _ctx.MenuOpen = open => { _idle.MenuOpen(open, Now()); Sync(); };
             _ctx.Scrubbing = on => { _idle.SetScrubbing(on, Now()); Sync(); };
