@@ -156,6 +156,9 @@ public sealed record ZuneStageVideoLayout(WidthTier Tier, float WordH, float Str
 /// <summary>The video surfaces' numbers and their per-window-tier record.</summary>
 public static class ZuneStageVideoRules
 {
+    /// <summary>The fullscreen bar: the gap between the title and its "official video · artist" run, and between the words at the right.</summary>
+    public const float TitleGap = 8f, WordGap = 24f;
+
     private static readonly ZuneStageVideoLayout[] s_tiers =
     [
         // Z-Video-Compact: 40 targets, the chrome at rest (touch), the 16 gutter

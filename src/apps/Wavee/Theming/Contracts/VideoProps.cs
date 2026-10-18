@@ -181,6 +181,12 @@ public sealed record VideoFullscreenProps
 
     /// <summary>The way out: leave fullscreen.</summary>
     public required Action Exit { get; init; }
+
+    /// <summary>The current track's artists as one line, "" when unknown. Subscribes. Contract addition after 1.40.</summary>
+    public Func<string> Artists { get; init; } = static () => "";
+
+    /// <summary>"Switch to audio": turn the video off for this track and fall back to the song (the same verb as the placement menu's "Turn off video"). Null: no such word. Contract addition after 1.40.</summary>
+    public Action? SwitchToAudio { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPlacementMenu"/>. Built per open (it carries that open's close verb).</summary>
