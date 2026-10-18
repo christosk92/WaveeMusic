@@ -195,12 +195,14 @@ public static class ZunePlayerTiers
     const PlayerBarSlots Identity = PlayerBarSlots.Devices | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.PrevNext
         | PlayerBarSlots.RemoteDeviceLine;
 
-    const PlayerBarSlots NarrowSet = Identity | PlayerBarSlots.VolumeButton | PlayerBarSlots.TimesElapsed;
+    // Both times from the narrow level on: they stand centred under the disc as one line ("1:14 · -3:04"), which fits every level that
+    // shows them; dropping the remaining time on a narrower bar read as a missing duration (owner, 2026-10-18).
+    const PlayerBarSlots NarrowSet = Identity | PlayerBarSlots.VolumeButton | PlayerBarSlots.TimesElapsed | PlayerBarSlots.TimesRemaining;
 
     const PlayerBarSlots MediumSet = NarrowSet | PlayerBarSlots.LikeSlot | PlayerBarSlots.Lyrics;
 
     const PlayerBarSlots FullSet = MediumSet | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.VolumeSlider | PlayerBarSlots.Queue
-        | PlayerBarSlots.VideoSplit | PlayerBarSlots.Expand | PlayerBarSlots.TimesRemaining;
+        | PlayerBarSlots.VideoSplit | PlayerBarSlots.Expand;
 
     private static PlayerTier Level(float from, PlayerBarSlots slots, ZuneBarLook look) => new(
         from, slots,
