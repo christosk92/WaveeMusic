@@ -166,18 +166,23 @@ internal sealed class ZuneKit
     public static string RowKey(SettingsRow row) => "zs:row:" + (int)row.Tab + ":" + row.Id;
 
     /// <summary>A section: its heading (with the caption beside it on the baseline) over its rows.</summary>
-    public Element Block(string key, string title, string? sub, IReadOnlyList<Element> rows)
+    public Element Block(string key, string? title, string? sub, IReadOnlyList<Element> rows)
     {
-        var head = new List<Element>(2) { ZuneText.Heading(title) with { Shrink = 0f, Wrap = TextWrap.NoWrap } };
-        if (sub is { Length: > 0 }) head.Add(ZuneText.Meta(sub) with { Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis });
-        var kids = new List<Element>(rows.Count + 1)
-        {
-            new BoxEl
+        // A section whose title is the page's own heading (Feedback & help) has no heading of its own: its caption leads it as a sentence.
+        bool headed = title is { Length: > 0 };
+        var head = new List<Element>(2);
+        if (headed) head.Add(ZuneText.Heading(title!) with { Shrink = 0f, Wrap = TextWrap.NoWrap });
+        if (sub is { Length: > 0 })
+            head.Add(headed
+                ? ZuneText.Meta(sub) with { Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis }
+                : ZuneText.Prose(sub) with { Key = key + ":sub" });
+        var kids = new List<Element>(rows.Count + 1);
+        if (head.Count > 0)
+            kids.Add(new BoxEl
             {
                 Key = key + ":head", Direction = 0, Wrap = true, AlignItems = FlexAlign.End, Gap = Z.HeadGap, MinWidth = 0f,
                 Children = head.ToArray(),
-            },
-        };
+            });
         kids.AddRange(rows);
         return new BoxEl
         {

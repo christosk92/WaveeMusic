@@ -14,21 +14,21 @@ namespace Wavee.Theming.Contracts;
 /// last one re-runs the template: <see cref="Revision"/> is how a bump of the page epoch (a writer that asks the page to re-read) reaches it.</summary>
 public sealed record SettingsPageProps
 {
-    /// <summary>The visible tab, a <see cref="Settings.Tab"/> index clamped to the seven tabs.</summary>
-    public required int Tab { get; init; }
+    /// <summary>The visible section, a <see cref="Settings.Area"/> index clamped to the twelve areas.</summary>
+    public required int Area { get; init; }
 
-    /// <summary>The page epoch plus the two foreign epochs the Appearance tab reads (the player bar's and the fullscreen stage's). It only grows.</summary>
+    /// <summary>The page epoch plus the two foreign epochs the Appearance area reads (the player bar's and the fullscreen stage's). It only grows.</summary>
     public required int Revision { get; init; }
 
     /// <summary>The pivot's cell (root-lifetime state: a remounted root opens the first tab, a theme pick opens Appearance). The pivot binds it once.</summary>
-    public required Func<Signal<int>> TabCell { get; init; }
+    public required Func<Signal<int>> AreaCell { get; init; }
 
-    /// <summary>The route names an open section (its arg is the tab's slug). A theme with a sections-then-section page (Zune's Compact) shows that section's page; a theme with a
-    /// pivot ignores it (the tab is <see cref="Tab"/> either way).</summary>
+    /// <summary>The route names an open section (its arg is the area's slug). A theme with a sections-then-section page (Zune's Compact) shows that section's page; a theme with a
+    /// pivot ignores it (the area is <see cref="Area"/> either way).</summary>
     public bool OpenSection { get; init; }
 
-    /// <summary>Open section <c>i</c> (a <see cref="Settings.Tab"/> index) as a page of its own: a history step from the sections list.</summary>
-    public Action<int> OpenTab { get; init; } = static _ => { };
+    /// <summary>Open section <c>i</c> (a <see cref="Settings.Area"/> index) as a page of its own: a history step from the sections list.</summary>
+    public Action<int> OpenArea { get; init; } = static _ => { };
 
     /// <summary>Close the open section: back to the sections list (Back when the list is the entry below, else the page swapped in place).</summary>
     public Action CloseSection { get; init; } = static () => { };

@@ -27,6 +27,23 @@ public static partial class SettingsDoc
             Make(T.Playback, "Runtime", "runtimeSignature", K.Action, Strings.Playback.Runtime.ViewSignature,
                 SettingsWriter.OfAction("runtime.viewSignature", SettingsVerbs.ViewRuntimeSignature), catalog: false)),
 
+        // The board's playback section: what the queue does by itself (remember the volume, autoplay, crossfade). How it SOUNDS is Audio.
+        Sect(T.Playback, "Playback", Strings.Settings.Tabs.Playback, null,
+            Make(T.Playback, "Playback", "rememberVolume", K.Toggle, Strings.Settings.Playback.RememberVolume,
+                SettingsWriter.OfToggle("audio.rememberVolume", WriteBool(Platform.Keys.RememberVolume)),
+                captionKey: Strings.Settings.Playback.RememberVolumeSub, value: BoolOf(Platform.Keys.RememberVolume)),
+            Make(T.Playback, "Playback", "autoplay", K.Toggle, Strings.Settings.Playback.Autoplay,
+                SettingsWriter.OfToggle("audio.autoplay", WriteBool(Platform.Keys.AutoplayEnabled)),
+                captionKey: Strings.Settings.Playback.AutoplaySub, value: BoolOf(Platform.Keys.AutoplayEnabled)),
+            Make(T.Playback, "Playback", "crossfade", K.Toggle, Strings.Settings.Sound.Crossfade,
+                SettingsWriter.OfToggle("crossfade.enabled", SettingsVerbs.SetCrossfadeEnabled),
+                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled)),
+            // The slider and the number box commit through ONE verb (seconds; the verb snaps to a millisecond).
+            Make(T.Playback, "Playback", "crossfadeDuration", K.Slider, Strings.Settings.Sound.CrossfadeDuration,
+                SettingsWriter.OfSlider("crossfade.duration", v => SettingsVerbs.CommitCrossfade(v)),
+                value: s => (float)Settings.Quality.CrossfadeSeconds(s.Get(Platform.Keys.CrossfadeMs)),
+                enabled: f => f.CrossfadeEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true, catalog: false)),
+
         Sect(T.Playback, "Audio", Strings.Settings.Playback.AudioTitle, null,
             Make(T.Playback, "Audio", "audioQuality", K.Choice, Strings.Settings.Playback.AudioQuality,
                 SettingsWriter.OfChoice("audio.quality", SettingsVerbs.SetAudioQuality),
@@ -37,12 +54,6 @@ public static partial class SettingsDoc
             Make(T.Playback, "Audio", "meteredQuality", K.Choice, Strings.Settings.Playback.MeteredQuality,
                 SettingsWriter.OfChoice("audio.meteredCap", SettingsVerbs.SetMeteredQuality),
                 value: _ => Platform.Network.MeteredQualityCap.Peek()),
-            Make(T.Playback, "Audio", "rememberVolume", K.Toggle, Strings.Settings.Playback.RememberVolume,
-                SettingsWriter.OfToggle("audio.rememberVolume", WriteBool(Platform.Keys.RememberVolume)),
-                captionKey: Strings.Settings.Playback.RememberVolumeSub, value: BoolOf(Platform.Keys.RememberVolume)),
-            Make(T.Playback, "Audio", "autoplay", K.Toggle, Strings.Settings.Playback.Autoplay,
-                SettingsWriter.OfToggle("audio.autoplay", WriteBool(Platform.Keys.AutoplayEnabled)),
-                captionKey: Strings.Settings.Playback.AutoplaySub, value: BoolOf(Platform.Keys.AutoplayEnabled)),
             // G-132 / D5: the switch, the mode and album mode all apply LIVE to the playing track.
             Make(T.Playback, "Audio", "normalization", K.Toggle, Strings.Settings.Playback.Normalization,
                 SettingsWriter.OfToggle("audio.normalization", on => SettingsVerbs.SetNormalizationToggle(Platform.Keys.NormalizationEnabled, on)),
@@ -70,15 +81,7 @@ public static partial class SettingsDoc
                 caption: f => f.EqualizerEnabled ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff,
                 enabled: EqOn, silent: true, catalog: false),
             Make(T.Playback, "Sound", "eqReset", K.Action, Strings.Settings.Sound.ResetCurve,
-                SettingsWriter.OfAction("eq.reset", SettingsVerbs.ResetEqCurve), enabled: EqOn, silent: true, catalog: false),
-            Make(T.Playback, "Sound", "crossfade", K.Toggle, Strings.Settings.Sound.Crossfade,
-                SettingsWriter.OfToggle("crossfade.enabled", SettingsVerbs.SetCrossfadeEnabled),
-                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled)),
-            // The slider and the number box commit through ONE verb (seconds; the verb snaps to a millisecond).
-            Make(T.Playback, "Sound", "crossfadeDuration", K.Slider, Strings.Settings.Sound.CrossfadeDuration,
-                SettingsWriter.OfSlider("crossfade.duration", v => SettingsVerbs.CommitCrossfade(v)),
-                value: s => (float)Settings.Quality.CrossfadeSeconds(s.Get(Platform.Keys.CrossfadeMs)),
-                enabled: f => f.CrossfadeEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true, catalog: false)),
+                SettingsWriter.OfAction("eq.reset", SettingsVerbs.ResetEqCurve), enabled: EqOn, silent: true, catalog: false)),
 
         Sect(T.Playback, "Video", Strings.VideoOverride.SettingsTitle, null,
             Make(T.Playback, "Video", "videoQuality", K.Choice, Strings.Settings.Playback.VideoQuality,

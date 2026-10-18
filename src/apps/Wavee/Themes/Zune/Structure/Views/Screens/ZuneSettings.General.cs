@@ -27,14 +27,14 @@ internal static partial class ZuneSettings
     /// <summary>The row exists for the facts (a developer-only row is absent, never greyed).</summary>
     static bool Shown(SettingsRow row) => row.Visible(SettingsFacts.Live);
 
-    /// <summary>A group of the open tab: the document section's own title and caption over its rows.</summary>
-    static Element Group(ZuneKit k, Tab tab, string section, params Element?[] rows)
+    /// <summary>A group of the open area: the document section's own title and caption over its rows. It carries the section it draws, so an area can pick its groups.</summary>
+    static Named Group(ZuneKit k, Tab tab, string section, params Element?[] rows)
     {
         var doc = SettingsDoc.Section(tab, section);
         var kids = new List<Element>(rows.Length);
         foreach (var row in rows)
             if (row is not null) kids.Add(row);
-        return k.Block("zs:section:" + (int)tab + ":" + section, Loc.Get(doc.TitleKey), doc.SubtitleKey is { } sub ? Loc.Get(sub) : null, kids);
+        return new Named(section, k.Block("zs:section:" + (int)tab + ":" + section, Loc.Get(doc.TitleKey), doc.SubtitleKey is { } sub ? Loc.Get(sub) : null, kids));
     }
 
     /// <summary>A group with a title of the page's own (a group the document has no section for).</summary>
@@ -60,7 +60,7 @@ internal static partial class ZuneSettings
 
     // ══ GENERAL ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element[] GeneralTab(ZuneKit k)
+    static Named[] GeneralTab(ZuneKit k)
     {
         var language = D(Tab.General, "language");
         var tray = D(Tab.General, "trayIcon");
@@ -118,15 +118,15 @@ internal static partial class ZuneSettings
 
     // ══ NOTIFICATIONS ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element[] NotificationsTab(ZuneKit k)
+    static Named[] NotificationsTab(ZuneKit k)
     {
         _ = Notify.Prefs.Epoch.Value;          // any dial write, from here or the centre, re-reads the tab
         bool dev = SettingsFacts.Live.DeveloperMode;
         var policy = Notify.Prefs.Policy();
-        var groups = new List<Element>(3);
+        var groups = new List<Named>(3);
 
         // The honesty layer first: when Windows suppresses Wavee every dial below is theatre until that is fixed.
-        if (BlockedBar(k, Settings.NotifyRules.Blocked(SettingsFacts.ToastDelivery())) is { } blocked) groups.Add(blocked);
+        if (BlockedBar(k, Settings.NotifyRules.Blocked(SettingsFacts.ToastDelivery())) is { } blocked) groups.Add(new Named("Delivery", blocked));
 
         var quietFrom = D(Tab.Notifications, "quietFrom");
         var quietTo = D(Tab.Notifications, "quietTo");

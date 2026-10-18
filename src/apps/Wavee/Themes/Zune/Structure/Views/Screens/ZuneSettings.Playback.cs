@@ -1,7 +1,7 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Playback.cs — the Playback tab (themes plan 6.3, Z8b) ──────────────────────────────────────
 //
-// Board Z-Settings-Playback: the runtime (ready / not set up / problem) · Audio (quality with the lossless rung, the metered cap with its live status line, remember
-// volume, autoplay, normalization) · Sound (the equalizer and its curve, crossfade: both bound to the live DSP) · Video (quality, the metered cap, prepare ahead, the
+// Board Z-Settings-Playback: the runtime (ready / not set up / problem) · Playback (crossfade, autoplay, remember volume) · Audio (quality with the lossless rung, the metered
+// cap with its live status line, normalization: the Audio AREA) · Sound (the equalizer and its curve: the Audio area; both it and crossfade are bound to the live DSP) · Video (quality, the metered cap, prepare ahead, the
 // attached videos and their manager) · Player bar. The board's "downloads" rows are not built (owner Q29 / NQ4: no offline playback); the audio cache is Storage.
 //
 // THE LIVE DSP is the verbs'. Every equalizer and crossfade write persists and then pushes the WHOLE state to the live graph (`SettingsVerbs.SetEqBand`,
@@ -31,7 +31,7 @@ internal static partial class ZuneSettings
     static float[] s_eqGains = new float[Settings.Eq.BandCount];
     static readonly Action<int, float> s_onEqBand = static (band, gain) => { if (SettingsVerbs.SetEqBand(band, gain)) Settings.Bump(); };
 
-    static Element[] PlaybackTab(ZuneKit k)
+    static Named[] PlaybackTab(ZuneKit k)
     {
         var facts = SettingsFacts.Live;
         var quality = D(Tab.Playback, "audioQuality");
@@ -52,9 +52,20 @@ internal static partial class ZuneSettings
 
         return
         [
-            Embed.Comp(static () => new RuntimeBlock()) with { Key = "zs:runtime" },
+            new Named("Runtime", Embed.Comp(static () => new RuntimeBlock()) with { Key = "zs:runtime" }),
 
-            Group(k, Tab.Playback, "Audio",
+            // The board's playback section: what the queue does by itself. It is the area's own heading's body, so it has no heading of its own.
+            Bare(k, Tab.Playback, "Playback",
+                k.DocRow(crossfade, k.Toggle(crossfade)),
+                k.DocRow(duration, k.Slide("crossfadeDuration", new ZuneSlide(0f, (float)Settings.Quality.CrossfadeMaxSeconds, Z.CrossfadeStep,
+                    () => (float)SettingsFacts.CrossfadeSeconds(),
+                    v => { if (SettingsVerbs.CommitCrossfade(v)) Settings.Bump(); },
+                    static v => v.ToString("0.#", CultureInfo.InvariantCulture) + " s",
+                    () => SettingsFacts.Live.CrossfadeEnabled)), null, crossOn),
+                ToggleRow(k, Tab.Playback, "autoplay"), ToggleRow(k, Tab.Playback, "rememberVolume")),
+
+            // Its title is the Audio area's own heading.
+            Bare(k, Tab.Playback, "Audio",
                 k.DocRow(quality, k.Choice(quality, QualityLabels(qualityRungs), chips: false, descriptions: QualityDescriptions(qualityRungs), width: Z.WideComboWidth),
                     QualityHint(quality, QualityDescriptions(qualityRungs))),
                 // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
@@ -62,7 +73,7 @@ internal static partial class ZuneSettings
                     () => Platform.Network.MeteredQualityCap.Value,
                     i => { if (metered.Writer.Choose!(i)) Settings.Bump(); },   // persist, then publish
                     Chips: false, Descriptions: QualityDescriptions(meteredRungs), Width: Z.WideComboWidth)), MeteredStatus(quality)),
-                ToggleRow(k, Tab.Playback, "rememberVolume"), ToggleRow(k, Tab.Playback, "autoplay"), ToggleRow(k, Tab.Playback, "normalization"),
+                ToggleRow(k, Tab.Playback, "normalization"),
                 k.DocRow(normMode, k.Choice(normMode,
                     [Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
                     chips: true)),
@@ -71,13 +82,7 @@ internal static partial class ZuneSettings
             Group(k, Tab.Playback, "Sound",
                 k.DocRow(equalizer, k.Toggle(equalizer)),
                 k.DocRow(preset, k.Choice(preset, EqPresetLabels(), chips: false, descriptions: presetDescriptions, width: Z.ComboWidth, enabled: eqOn), presetDescriptions[presetAt], eqOn),
-                EqCurveRow(k, eqOn),
-                k.DocRow(crossfade, k.Toggle(crossfade)),
-                k.DocRow(duration, k.Slide("crossfadeDuration", new ZuneSlide(0f, (float)Settings.Quality.CrossfadeMaxSeconds, Z.CrossfadeStep,
-                    () => (float)SettingsFacts.CrossfadeSeconds(),
-                    v => { if (SettingsVerbs.CommitCrossfade(v)) Settings.Bump(); },
-                    static v => v.ToString("0.#", CultureInfo.InvariantCulture) + " s",
-                    () => SettingsFacts.Live.CrossfadeEnabled)), null, crossOn)),
+                EqCurveRow(k, eqOn)),
 
             Group(k, Tab.Playback, "Video",
                 k.DocRow(videoQuality, k.Choice(videoQuality, [Loc.Get(Strings.Settings.Playback.VideoQualityAuto), "180p", "240p", "320p", "480p", "720p", "1080p"],
@@ -238,7 +243,7 @@ internal static partial class ZuneSettings
                             Children =
                             [
                                 Door(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics), Tab.PrivacyDiagnostics, "playbackRuntime"),
-                                Door(Loc.Get(Strings.Nav.ConnectDiagnostics), Tab.PrivacyDiagnostics, "connectDiagnostics"),
+                                Door(Loc.Get(Strings.Nav.ConnectDiagnostics), Tab.Devices, "connectDiagnostics"),
                                 Door(Loc.Get(Strings.Settings.Common.Manage), Tab.Playback, "runtimeSetup"),
                             ],
                         }));
@@ -259,7 +264,7 @@ internal static partial class ZuneSettings
                     Children =
                     [
                         Door(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics), Tab.PrivacyDiagnostics, "playbackRuntime"),
-                        Door(Loc.Get(Strings.Nav.ConnectDiagnostics), Tab.PrivacyDiagnostics, "connectDiagnostics"),
+                        Door(Loc.Get(Strings.Nav.ConnectDiagnostics), Tab.Devices, "connectDiagnostics"),
                         k.Cmd(Loc.Get(Strings.Settings.Common.RetrySetup), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!(), accent: true),
                     ],
                 }) with { Key = "zs:runtime:problem" };

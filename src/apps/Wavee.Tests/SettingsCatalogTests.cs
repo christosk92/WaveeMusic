@@ -129,8 +129,8 @@ public class SettingsCatalogTests
 
         Assert.Equal(new[] { "whatLeaves", "whatLeavesAi", "crashReports", "crashDump", "crashContents", "crashService", "privacyPolicy" }, RowIds(privacy, "Privacy"));
         Assert.Equal(new[] { "savedReports" }, RowIds(privacy, "Crash reports"));
-        Assert.Equal(new[] { "logViewer", "detailLevel", "logFiles", "reportProblem" }, RowIds(privacy, "Logs"));
-        Assert.Equal(new[] { "playbackRuntime", "connectDiagnostics", "realtimeCapture" }, RowIds(privacy, "Tools"));
+        Assert.Equal(new[] { "logViewer", "detailLevel", "logFiles" }, RowIds(privacy, "Logs"));   // "Report a problem" moved to Feedback & help
+        Assert.Equal(new[] { "playbackRuntime", "realtimeCapture" }, RowIds(privacy, "Tools"));   // Connect diagnostics moved to Devices & Connect
         Assert.Equal(new[] { "developerMode", "fpsOverlay", "simulateUpdate", "sendTestCrashReport" }, RowIds(privacy, "Developer"));
 
         // present-and-greyed, not composed away: nothing on this tab is developer-only
@@ -183,7 +183,7 @@ public class SettingsCatalogTests
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug(null));
 
         // The Privacy & diagnostics tab took the sixth slot from the old Logs tab (the log viewer is a route now).
-        Assert.Equal(new[] { "general", "appearance", "playback", "notifications", "storage", "privacy", "about" }, Settings.TabSlugs);
+        Assert.Equal(new[] { "general", "appearance", "playback", "notifications", "storage", "privacy", "about", "account", "devices", "keyboard", "feedback" }, Settings.TabSlugs);
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("privacy"));
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("PRIVACY"));
         Assert.Equal("privacy", Settings.TabSlugs[(int)Settings.Tab.PrivacyDiagnostics]);

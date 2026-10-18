@@ -162,7 +162,7 @@ public static partial class SettingsDoc
 {
     static IReadOnlyList<SettingsTabDoc>? s_tabs;
 
-    /// <summary>All seven tabs, built once.</summary>
+    /// <summary>All eleven tabs, built once.</summary>
     public static IReadOnlyList<SettingsTabDoc> Tabs => s_tabs ??= Build();
 
     static IReadOnlyList<SettingsTabDoc> Build() =>
@@ -174,6 +174,10 @@ public static partial class SettingsDoc
         new(Settings.Tab.Storage, StorageSections()),
         new(Settings.Tab.PrivacyDiagnostics, PrivacySections()),
         new(Settings.Tab.About, AboutSections()),
+        new(Settings.Tab.Account, AccountSections()),
+        new(Settings.Tab.Devices, DeviceSections()),
+        new(Settings.Tab.Keyboard, KeyboardSections()),
+        new(Settings.Tab.Feedback, FeedbackSections()),
     ];
 
     /// <summary>Every row of every tab, in document order.</summary>

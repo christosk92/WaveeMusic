@@ -34,6 +34,9 @@ internal static class ClassicSettingsRules
     /// <summary>The page title's gear glyph where the tier draws one (C-Settings-Compact / -Small / -Huge: 24, 12 before the title).</summary>
     public const float TitleGlyph = 24f, TitleGlyphGap = 12f;
 
+    /// <summary>The keyboard page's key chip: its padding.</summary>
+    public const float KeyChipPadX = 8f, KeyChipPadY = 2f;
+
     /// <summary>The title glyph arrives and leaves on a tier crossing with the form fade (opacity over <c>Design.Motion.Fast</c>), while the title beside it
     /// slides (<see cref="HeadSlide"/>).</summary>
     public static LayoutTransition HeadFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),

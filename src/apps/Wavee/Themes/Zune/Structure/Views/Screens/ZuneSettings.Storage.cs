@@ -32,7 +32,7 @@ internal static partial class ZuneSettings
         Strings.Settings.Storage.ImageCache,
     ];
 
-    static Element[] StorageTab(ZuneKit k, SettingsStorageProps storage)
+    static Named[] StorageTab(ZuneKit k, SettingsStorageProps storage)
     {
         var s = storage.Snapshot;
         var facts = SettingsFacts.Live;

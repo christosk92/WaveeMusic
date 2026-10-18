@@ -207,6 +207,19 @@ public static class ZuneSettingsRules
     /// <summary>The gap between the commands of a row of links.</summary>
     public const float LinkGap = 20f;
 
+    /// <summary>The account card (Z-Settings-Sections: a 48 avatar beside the name and the plan) and its gap.</summary>
+    public const float AccountAvatar = 48f, AccountGap = 16f;
+
+    /// <summary>A key chip on the keyboard page (the board's small outlined cap): its padding and its stroke.</summary>
+    public const float KeyChipPadX = 8f, KeyChipPadY = 2f, KeyChipStroke = 1f;
+
+    /// <summary>One of the feedback actions (Z-Feedback: a 36 disc, the words, a chevron): the gap between them, the row's padding and its height.</summary>
+    public const float ActionGap = 16f, ActionPadX = 12f, ActionPadY = 10f, ActionMinH = 60f, ActionGlyph = 16f;
+
+    /// <summary>The report's contents list: the gap between the mark and its line; and the aside beside the feedback column (the board's rest of the line, 368 at 1440) with the
+    /// space above it that lines its first heading up with the first action (Z-Feedback: 70).</summary>
+    public const float HoldsGap = 12f, HoldsMark = 14f, HoldsAsideMax = 360f, HoldsAsideTop = 70f;
+
     /// <summary>The round accent button: its diameter (Medium), its glyph, and the gap to the word beside it.</summary>
     public const float DiscSize = 36f, DiscGlyph = 14f, DiscGap = 10f;
 

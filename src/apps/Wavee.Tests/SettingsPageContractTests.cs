@@ -85,11 +85,11 @@ public sealed class SettingsPageContractTests : IDisposable
     public void A_page_props_record_changes_with_the_revision_the_tab_and_the_census()
     {
         Func<Signal<int>> cell = static () => new Signal<int>(0);
-        var props = new SettingsPageProps { Tab = 1, Revision = 3, TabCell = cell, Storage = SettingsStorageProps.Idle };
+        var props = new SettingsPageProps { Area = 1, Revision = 3, AreaCell = cell, Storage = SettingsStorageProps.Idle };
 
         Assert.Equal(props, props with { });
         Assert.NotEqual(props, props with { Revision = 4 });
-        Assert.NotEqual(props, props with { Tab = 2 });
+        Assert.NotEqual(props, props with { Area = 2 });
         Assert.NotEqual(props, props with { Storage = SettingsStorageProps.Idle with { Phase = Settings.StorageLoadPhase.Loading } });
     }
 

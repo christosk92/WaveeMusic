@@ -12,15 +12,14 @@
 // the rows ask (`SettingsFacts`), the page epoch (`Settings.Bump`), the Storage census (the props carry it), the pivot's root-lifetime cell and the deep link,
 // and the page context the verbs read. This view reads the document and writes through each row's writer; it never touches the settings store (WVTH002).
 //
-// SECTIONS. The core page state is the seven-tab cell (`SettingsPageProps.TabCell`; the deep links, `Settings.Open` and a theme pick's "open on Appearance"
-// all name a tab), so the list is the seven tabs and every document section of the open tab is a group in its column. The board lists twelve
-// sections (account, appearance, playback, audio, lyrics, devices, downloads & storage, notifications, keyboard, privacy, feedback & help, about); each is
-// reachable here as a group of one tab (audio under playback, lyrics under appearance, feedback & help under about and privacy) except the account, the
-// devices and the keyboard sections, which have no document rows (the account is the account menu; the devices are the player bar's picker).
+// SECTIONS. The core page state is the twelve-AREA cell (`SettingsPageProps.AreaCell`; the deep links, `Settings.Open` and a theme pick's "open on Appearance" all name an
+// area, `Settings.Areas.cs`), so the list is the board's twelve words: account, appearance, playback, audio, lyrics, devices & connect, storage, notifications, keyboard,
+// privacy, feedback & help, about. Every area is a list of document sections (`Settings.PartsOf`), each a group in its column; `ZuneSettings.Areas.cs` builds the four that
+// the document gained (account, devices, keyboard, feedback) and composes the area from the tabs' groups.
 //
 // NODE IDENTITY. The list, the lane, a group and a row are the same nodes in every tier: a crossing changes their DIRECTION, widths and wrap (live props), never
-// their tree, so nothing remounts and the engine's reflow carries them to their new places (`ZuneMotion`). Only the tab's lane is keyed, per tab, so a tab
-// switch is the page cross-fade and each tab keeps its own scroll offset.
+// their tree, so nothing remounts and the engine's reflow carries them to their new places (`ZuneMotion`). Only the area's lane is keyed, per area, so a
+// switch is the page cross-fade and each area keeps its own scroll offset.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -47,6 +46,9 @@ internal static partial class ZuneSettings
         views.Add(ViewKeys.SettingsThemeOptions, ThemeOptionsTemplate, "zune.screens.settings.theme-options");
     }
 
+    /// <summary>One group of a tab, named by the document section it draws (an area is a list of such sections).</summary>
+    internal readonly record struct Named(string Section, Element El);
+
     /// <summary>The page title's node (the tier tests find it).</summary>
     internal const string TitleKey = "zs:title";
 
@@ -62,8 +64,8 @@ internal static partial class ZuneSettings
         TierFacts tiers = ctx.Tier();
         var lay = ZuneSettingsTiers.Of(tiers);
         var k = new ZuneKit(lay);
-        int tab = Math.Clamp(props.Tab, 0, Settings.TabSlugs.Length - 1);
-        string slug = Settings.TabSlugs[tab];
+        int area = Math.Clamp(props.Area, 0, Settings.AreaSlugs.Length - 1);
+        string slug = Settings.AreaSlugs[area];
         string[] names = SectionNames();
 
         // Compact (Z-Settings-Sections-Compact, Z-Settings-Playback-Compact): the page is the sections list, and a section opens as its own page under a "‹ settings"
@@ -73,18 +75,9 @@ internal static partial class ZuneSettings
         bool listPage = compact && !props.OpenSection;
         bool sectionPage = compact && props.OpenSection;
 
-        Element[] groups = (Settings.Tab)tab switch
-        {
-            Settings.Tab.Appearance => AppearanceTab(k),
-            Settings.Tab.Playback => PlaybackTab(k),
-            Settings.Tab.Notifications => NotificationsTab(k),
-            Settings.Tab.Storage => StorageTab(k, props.Storage),
-            Settings.Tab.PrivacyDiagnostics => PrivacyTab(k),
-            Settings.Tab.About => AboutTab(k),
-            _ => GeneralTab(k),
-        };
+        Element[] groups = AreaGroups(k, (Settings.Area)area, props);
 
-        if (!compact) groups = [SectionHeading(names[tab]), .. groups];
+        if (!compact) groups = [SectionHeading(names[area]), .. groups];
 
         // The tab's column: every group of the tab, capped at the tier's width and sitting on the page's left edge (never centred).
         Element column = new BoxEl
@@ -94,7 +87,8 @@ internal static partial class ZuneSettings
             Animate = ZuneMotion.ColumnCollapse, Children = groups,
         };
         var scrolled = new List<Element>(2) { column };
-        if (lay.ShowsAside && (Settings.Tab)tab == Settings.Tab.Appearance) scrolled.Add(Aside(lay));
+        if (lay.ShowsAside && (Settings.Area)area == Settings.Area.Appearance) scrolled.Add(Aside(lay));
+        else if (lay.ShowsAside && (Settings.Area)area == Settings.Area.Feedback) scrolled.Add(HoldsAside(k));
 
         Element lane = new BoxEl
         {
@@ -109,7 +103,7 @@ internal static partial class ZuneSettings
             ],
         };
 
-        Element[] bodyKids = listPage ? [SectionsPage(props, names)] : compact ? [lane] : [Sections(k, props, tab), lane];
+        Element[] bodyKids = listPage ? [SectionsPage(props, names)] : compact ? [lane] : [Sections(k, props, area), lane];
         Element body = new BoxEl
         {
             Key = "zs:body", Direction = (byte)(lay.ListIsStrip ? 1 : 0), Gap = lay.BodyGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -121,7 +115,7 @@ internal static partial class ZuneSettings
         return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = "zs:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Children = sectionPage ? [CrumbRow(props.CloseSection), PanoramaTitle(lay, names[tab]), body] : [PanoramaTitle(lay, null), body],
+            Children = sectionPage ? [CrumbRow(props.CloseSection), PanoramaTitle(lay, names[area]), body] : [PanoramaTitle(lay, null), body],
         }, lay.Gutter);
     }
 
@@ -161,9 +155,9 @@ internal static partial class ZuneSettings
             int at = i;
             rows[i] = new BoxEl
             {
-                Key = "zs:link:" + Settings.TabSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, MinWidth = 0f, MinHeight = Z.SectionRowH,
+                Key = "zs:link:" + Settings.AreaSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.SectionRowGap, MinWidth = 0f, MinHeight = Z.SectionRowH,
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = () => props.OpenTab(at),
+                OnClick = () => props.OpenArea(at),
                 Children =
                 [
                     ZuneText.Heading(names[i]) with { Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
@@ -188,17 +182,13 @@ internal static partial class ZuneSettings
 
     // ── the section list ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The seven tabs' names, in the order of <see cref="Settings.Tab"/>.</summary>
-    static string[] SectionNames() =>
-    [
-        Loc.Get(Strings.Settings.Tabs.General),
-        Loc.Get(Strings.Settings.Tabs.Appearance),
-        Loc.Get(Strings.Settings.Tabs.Playback),
-        Loc.Get(Strings.Settings.Notify.Title),
-        Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Privacy),
-        Loc.Get(Strings.Settings.Tabs.About),
-    ];
+    /// <summary>The twelve sections' names, in the order of <see cref="Settings.Area"/>.</summary>
+    static string[] SectionNames()
+    {
+        var names = new string[Settings.AreaTitleKeys.Length];
+        for (int i = 0; i < names.Length; i++) names[i] = Loc.Get(Settings.AreaTitleKeys[i]);
+        return names;
+    }
 
     /// <summary>The section list: a column of words beside the lane (Small and up), a wrapping row of the same words above it (Compact). ONE node, one
     /// child per tab; the direction, wrap, width and gap are the tier's. The open section is the ink in the heavier weight, the rest tertiary.</summary>
@@ -206,7 +196,7 @@ internal static partial class ZuneSettings
     {
         var lay = k.Lay;
         string[] names = SectionNames();
-        var cell = props.TabCell();
+        var cell = props.AreaCell();
         var items = new Element[names.Length];
         for (int i = 0; i < items.Length; i++)
         {
@@ -214,7 +204,7 @@ internal static partial class ZuneSettings
             bool on = i == open;
             items[i] = new BoxEl
             {
-                Key = "zs:link:" + Settings.TabSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
+                Key = "zs:link:" + Settings.AreaSlugs[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
                 MinHeight = lay.ListItemH, Padding = new Edges4(0f, 0f, lay.ListItemPadRight, 0f), Animate = ZuneMotion.PivotSlide,
                 Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = () => cell.Value = at,
                 Children =

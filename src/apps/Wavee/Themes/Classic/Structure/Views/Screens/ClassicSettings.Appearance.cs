@@ -81,7 +81,7 @@ internal static partial class ClassicSettings
 
     // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static Element AppearanceTab()
+    private static Element[] AppearanceTab()
     {
         // The now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
@@ -93,11 +93,14 @@ internal static partial class ClassicSettings
         // option and has no other home yet. The picker and the options are keyed views that re-render on their own signals.
         var kids = new List<Element>(24)
         {
+            Mark("Theme"),
             SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
                 Loc.Get(Strings.Settings.ThemePicker.Subtitle)),
             ThemePickerView(),
+            Mark("Theme options"),
             ThemeOptionsExpander(),
             // The core presentation prefs every theme honours: no header, so they read as the board's rows under the options.
+            Mark("Display"),
             DocRow(D(Tab.Appearance, "appMode"),
                 Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
@@ -107,12 +110,14 @@ internal static partial class ClassicSettings
 
         // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).
         // The second line and the animated backdrop are no longer settings at all.
+        kids.Add(Mark("Lyrics"));
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
         kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl()));
         kids.Add(AiLyricsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
+        kids.Add(Mark("Fullscreen"));
         kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
         kids.Add(DocRow(D(Tab.Appearance, "stageVisualizer"), Embed.Comp(static () => new StageVisualizerPicker())));
         kids.Add(DocRow(D(Tab.Appearance, "stageLayout"), Embed.Comp(static () => new StageLayoutPicker())));
@@ -126,6 +131,7 @@ internal static partial class ClassicSettings
         // until it affects Now playing (#199), so a normal build composes neither row nor their header.
         if (D(Tab.Appearance, "npvStyle").Visible(facts))
         {
+            kids.Add(Mark("Now playing"));
             kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
                 Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
             // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
@@ -137,12 +143,13 @@ internal static partial class ClassicSettings
             kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
         }
 
+        kids.Add(Mark("Home"));
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Home.Title), SectionGlyph(Tab.Appearance, "Home"),
             Loc.Get(Strings.Settings.Home.Subtitle)));
         // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
         kids.Add(DocRow(D(Tab.Appearance, "daylistClock"), Embed.Comp(static () => new DaylistClockPicker())));
 
-        return TabStack(kids.ToArray());
+        return kids.ToArray();
     }
 
     // ══ 3. THEME + ZOOM ═══════════════════════════════════════════════════════════════════════════════════════════════

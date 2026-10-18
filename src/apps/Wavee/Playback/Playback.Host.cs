@@ -87,6 +87,9 @@ public static partial class Playback
     static Effects s_fx;
     static DeviceIdentity s_identity;
 
+    /// <summary>The name this PC shows in every other Spotify app's device picker (Settings › Devices &amp; Connect names it). Before <see cref="Boot"/> it is the name Boot would register.</summary>
+    public static string DeviceName => s_identity.DeviceName is { Length: > 0 } name ? name : Environment.MachineName + " - Wavee";
+
     /// <summary>Which host holds the row the reducer last loaded: the audio pump, or the video host. Pause, resume and
     /// seek follow it; a load for the other kind stops it first (G-140).</summary>
     static PlayableKind s_hostKind = PlayableKind.Audio;

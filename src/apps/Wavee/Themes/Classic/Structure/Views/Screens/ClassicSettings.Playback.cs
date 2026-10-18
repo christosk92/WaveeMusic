@@ -82,15 +82,23 @@ internal static partial class ClassicSettings
 
     // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static Element PlaybackTab() => TabStack(
+    private static Element[] PlaybackTab() =>
+    [
+        Mark("Runtime"),
         RuntimeCard(),
 
+        // The board's playback section: what the queue does by itself.
+        Mark("Playback"),
+        SectionHeader(Loc.Get(Strings.Settings.Tabs.Playback), SectionGlyph(Tab.Playback, "Playback")),
+        CrossfadeGroup(),
+        DocRow(D(Tab.Playback, "autoplay"), RowToggle(D(Tab.Playback, "autoplay"))),
+        DocRow(D(Tab.Playback, "rememberVolume"), RowToggle(D(Tab.Playback, "rememberVolume"))),
+
+        Mark("Audio"),
         SectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), SectionGlyph(Tab.Playback, "Audio")),
         DocRow(D(Tab.Playback, "audioQuality"), QualityCombo()),
         // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
         DocRow(D(Tab.Playback, "meteredQuality"), MeteredQualityCombo(), sub: MeteredStatus()),
-        DocRow(D(Tab.Playback, "rememberVolume"), RowToggle(D(Tab.Playback, "rememberVolume"))),
-        DocRow(D(Tab.Playback, "autoplay"), RowToggle(D(Tab.Playback, "autoplay"))),
         // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
         DocRow(D(Tab.Playback, "normalization"), RowToggle(D(Tab.Playback, "normalization"))),
         DocRow(D(Tab.Playback, "normalizationMode"),
@@ -100,18 +108,21 @@ internal static partial class ClassicSettings
                 onChange: static i => D(Tab.Playback, "normalizationMode").Writer.Choose!(i))),
         DocRow(D(Tab.Playback, "normalizationAlbum"), RowToggle(D(Tab.Playback, "normalizationAlbum"))),
 
+        Mark("Sound"),
         SectionHeader(Loc.Get(Strings.Settings.Sound.Title), SectionGlyph(Tab.Playback, "Sound")),
         EqualizerGroup(),
-        CrossfadeGroup(),
 
+        Mark("Video"),
         SectionHeader(Loc.Get(Strings.VideoOverride.SettingsTitle), SectionGlyph(Tab.Playback, "Video")),
         DocRow(D(Tab.Playback, "videoQuality"), VideoQualityCombo()),
         DocRow(D(Tab.Playback, "videoMetered"), MeteredVideoCombo()),
         VideoPrepareAheadRow(),
         VideoOverridesRow(),
 
+        Mark("Player bar"),
         SectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), SectionGlyph(Tab.Playback, "Player bar")),
-        DocRow(D(Tab.Playback, "playerBarRemaining"), RowToggle(D(Tab.Playback, "playerBarRemaining"))));
+        DocRow(D(Tab.Playback, "playerBarRemaining"), RowToggle(D(Tab.Playback, "playerBarRemaining"))),
+    ];
 
     // ══ 3. THE RUNTIME CARD (W7 ready · W10 problem · the not-set-up bar) ═══════════════════════════════════════════
 
@@ -171,7 +182,7 @@ internal static partial class ClassicSettings
             LinkButton(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
                 static () => D(Tab.PrivacyDiagnostics, "playbackRuntime").Writer.Run!()),
             LinkButton(Loc.Get(Strings.Nav.ConnectDiagnostics),
-                static () => D(Tab.PrivacyDiagnostics, "connectDiagnostics").Writer.Run!()),
+                static () => D(Tab.Devices, "connectDiagnostics").Writer.Run!()),
         ],
     };
 

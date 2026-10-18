@@ -5,13 +5,14 @@
 // Role: CORE (themes plan 6.1, T11b). The page's PICTURE — the masthead, the seven-tab pivot, the scroll lane, the section
 // headers, the row controls, the cards — is the structure's `Pages.Settings` view (Classic's `ClassicSettings*.cs`), drawn
 // over `SettingsDoc`. What stays here is what decides and publishes:
-//   · `InstallScreens()` / `Page()` / `Open(tab)` / `TabFromSlug`: the route, the deep link and the pivot's root-lifetime cell;
+//   · `InstallScreens()` / `Page()` / `Open(area)` / `AreaFromSlug`: the route, the deep link and the pivot's root-lifetime cell (the cell holds an AREA: the page's twelve
+//     sections, `Settings.Areas.cs`);
 //   · the page EPOCH (`Bump()`): the settings store is not observable, so a writer that returns "re-read" bumps it, the host
 //     folds it (and the two foreign epochs the Appearance tab reads) into the props' `Revision`, and the template re-runs;
 //   · the page CONTEXT (`SettingsContext.Bind`): the overlay host, the input hooks and the UI poster the verbs read;
 //   · the Storage census trigger (the first visit to the tab starts it) and the About notices' warm read.
 //
-// MOUNT POINTS / SEAMS: `Settings.InstallScreens()` (the orchestrator's one call), `Settings.Page()`, `Settings.Open(Tab)`;
+// MOUNT POINTS / SEAMS: `Settings.InstallScreens()` (the orchestrator's one call), `Settings.Page()`, `Settings.Open(Area)` / `Open(Tab)`;
 // `Settings.SendTestEvent` (owner S assigns the notification simulator, G-218).
 
 using FluentGpu;
@@ -34,8 +35,8 @@ public static partial class Settings
     public static void InstallScreens()
     {
         Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => PageFor(route));
-        // `wavee://open?route=settings&arg=<slug>`: the arg is a TAB slug, never a place of its own (plan D4).
-        Shell.OnSettingsTabRequested = static slug => Open(TabFromSlug(slug));
+        // `wavee://open?route=settings&arg=<slug>`: the arg is an AREA slug (the old tab slugs are aliases), never a place of its own (plan D4).
+        Shell.OnSettingsTabRequested = static slug => Open(AreaFromSlug(slug));
         ReleaseNotes.InstallUi();
         Feedback.InstallUi();
         Setup.InstallWizard();
@@ -44,20 +45,23 @@ public static partial class Settings
     // MOUNT POINT (stage B contract)
     public static Element Page() => Embed.Comp(new HostProps(""), static () => new PageHost());
 
-    /// <summary>The page for a route: the route's arg, a tab slug, is the OPEN SECTION (the Compact sections-then-section page; every other tier keeps the pivot).
+    /// <summary>The page for a route: the route's arg, an area slug, is the OPEN SECTION (the Compact sections-then-section page; every other tier keeps the pivot).
     /// The slot is the same for every arg (<c>KeyedByArg</c> is false), so opening or closing a section re-pushes the props to the mounted page.</summary>
     public static Element PageFor(in Shell.Route route) => Embed.Comp(new HostProps(Entities.Strings.Resolve(route.Arg)), static () => new PageHost());
 
     sealed record HostProps(string Arg);
 
-    /// <summary>The route of a tab's section page (arg = the tab's slug).</summary>
-    static Shell.Route SectionRoute(int tab) => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(TabSlugs[Math.Clamp(tab, 0, TabSlugs.Length - 1)].AsSpan()));
+    /// <summary>The route of an area's page (arg = the area's slug).</summary>
+    static Shell.Route SectionRoute(int area) => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(AreaSlugs[Math.Clamp(area, 0, AreaSlugs.Length - 1)].AsSpan()));
 
-    /// <summary>Navigate to Settings on <paramref name="tab"/> (the palette, a toast's "Manage", a deep link).</summary>
-    public static void Open(Tab tab)
+    /// <summary>Navigate to Settings on the area that holds <paramref name="tab"/>'s first section.</summary>
+    public static void Open(Tab tab) => Open(HomeArea(tab));
+
+    /// <summary>Navigate to Settings on <paramref name="area"/> (the palette, a toast's "Manage", a deep link).</summary>
+    public static void Open(Area area)
     {
-        s_tab.Value = (int)tab;
-        var route = SectionRoute((int)tab);
+        s_tab.Value = (int)area;
+        var route = SectionRoute((int)area);
         // Already on a section's page: a tab switch is not a new place, the entry is swapped. From the sections list (Compact) or from another page it is a step.
         if (Shell.Current.Value is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: false }) Shell.ReplaceCurrent(route);
         else Shell.GoTo(route);
@@ -84,13 +88,13 @@ public static partial class Settings
 
     /// <summary>Ask the next mounted root to open Settings on <paramref name="tab"/>: the theme picker's pick remounts the root (owner Q26), and the
     /// remounted page is a fresh navigation to Settings › Appearance with the picker as its first row, instead of General.</summary>
-    public static void OpenNextMountOn(Tab tab) => s_pendingTab = (int)tab;
+    public static void OpenNextMountOn(Area area) => s_pendingTab = (int)area;
 
     static int TakePendingTab()
     {
         int tab = s_pendingTab;
         s_pendingTab = -1;
-        return tab >= 0 && tab < TabSlugs.Length ? tab : 0;
+        return tab >= 0 && tab < AreaSlugs.Length ? tab : 0;
     }
 
     static readonly Signal<int> s_epoch = new(0);
@@ -134,27 +138,27 @@ public static partial class Settings
             int revision = s_epoch.Value + Prefs.PlayerBar.Epoch.Value + Prefs.Stage.Epoch.Value;
             string arg = UseProps<HostProps>().Arg;
             bool section = arg.Length > 0;
-            int argTab = (int)TabFromSlug(arg);
+            int argTab = (int)AreaFromSlug(arg);
             // A route that names a section (history, a restored session) opens the pivot on it.
             UseEffect(() => { if (section && s_tab.Peek() != argTab) s_tab.Value = argTab; }, DepKey.From(argTab, section ? 1 : 0));
-            int tab = Math.Clamp(s_tab.Value, 0, TabSlugs.Length - 1);
+            int area = Math.Clamp(s_tab.Value, 0, AreaSlugs.Length - 1);
 
-            UseEffect(() => EnterStorage(tab == (int)Tab.Storage), DepKey.From(tab));
+            UseEffect(() => EnterStorage(area == (int)Area.Storage), DepKey.From(area));
 
             return Slots.View(ViewKeys.SettingsPage, new SettingsPageProps
             {
-                Tab = tab,
+                Area = area,
                 Revision = revision,
-                TabCell = s_tabCell,
+                AreaCell = s_tabCell,
                 OpenSection = section,
-                OpenTab = static i => { s_tab.Value = i; Shell.GoTo(SectionRoute(i)); },
+                OpenArea = static i => { s_tab.Value = i; Shell.GoTo(SectionRoute(i)); },
                 CloseSection = static () =>
                 {
                     // The history decides: the entry below is the sections list (Settings, no arg) -> Back; else the page is swapped for the list.
                     if (Shell.TryPeekBack(out var below) && below is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: true }) Shell.GoBack();
                     else Shell.ReplaceCurrent(new Shell.Route(Shell.RouteKind.Settings));
                 },
-                Storage = tab == (int)Tab.Storage ? StorageFacts() : SettingsStorageProps.Idle,
+                Storage = area == (int)Area.Storage ? StorageFacts() : SettingsStorageProps.Idle,
             });
         }
     }
