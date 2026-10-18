@@ -2691,7 +2691,9 @@
   },
   "track": {
     "$comment": "Facts about one track row that are not playback state. `onThisPc` is the row indicator for a track whose audio is fully cached on this computer at the current quality with its key saved (Playback.OnThisPc). It is NOT offline playback and not a download, and it is a different key from settings.storage.onThisPc (the Storage section header).",
-    "onThisPc": "On this PC"
+    "onThisPc": "On this PC",
+    "notOnThisPc": "Not on PC",
+    "notOnThisPcReason": "You're offline, and this song isn't saved on this PC."
   },
   "modulePage": {
     "$comment": "A page a playback module DESCRIBES and the app renders (Part 9). `title` is the destination's fallback label — used by the tab strip, the breadcrumb and a pinned row when the navigating surface carried no name of its own. `openOn` takes the module's display name ({name}), so the row reads 'Open on YouTube'. There is deliberately no `loading` and no `retry` here: the loading state is a shimmer DERIVED from the page itself and carries no copy at all, and the retry label is the app's one `common.retry` (ErrorState owns it) — a second spelling of either would be a dead key that drifts. `playing` is the WATCH layout's inert state capsule — it replaces the play capsule while this page's entity is the item in the bar, so it is a state badge and never a control.",

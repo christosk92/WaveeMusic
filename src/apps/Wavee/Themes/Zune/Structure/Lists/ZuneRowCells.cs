@@ -14,7 +14,7 @@
 //
 // WHAT THE CORE KEEPS. The state a cell reflects (`Track.StateOf`, the like edge, `Track.LikedNow`), the data helpers (`Track.ContainerOf`,
 // `NowUnix`, `AddedByLabel`, `DeckPlaying`), the navigation (`GoToArtistAt`, `GoToContainer`) and the lane wrappers (`Track.RowCenterCell`,
-// `RowLeftCell`, `RowEndCell`, `MoreCell`). Track.RowState.OnThisPc exists, but its indicator is Z9's: no cell draws it yet.
+// `RowLeftCell`, `RowEndCell`, `MoreCell`). Track.RowState.OnThisPc is drawn as the ring that leads the subline (`OnThisPcMark`); an offline session dims a row it cannot reach (Z9).
 //
 // Every reveal (`HoverOpacity`) sits on a NON-interactive wrapper so it inherits the row's hover; every in-row affordance sets
 // `BlocksDragArm`. Numbers are `Rules\ZuneListRules.cs` (WVTH003).
@@ -54,7 +54,9 @@ internal static class ZuneRowCells
                                float rowH, Element title, in GridOptions o)
     {
         long now = o.NowUnixSeconds > 0 ? o.NowUnixSeconds : Track.NowUnix;
-        bool withheld = t.NotYetOut(now) || t.Unplayable();
+        bool unplayable = t.NotYetOut(now) || t.Unplayable();
+        bool gone = !unplayable && Track.OfflineGone(t, st.OnThisPc);   // the session is down and the audio is not on this PC
+        bool withheld = unplayable || gone;
         Track d = t.ForDisplay;
         bool isNow = st.IsNow;
         ColorF accent = R.Ink.AccentAction;
@@ -74,7 +76,7 @@ internal static class ZuneRowCells
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, R.Shape.Cover,
                                                         decodePx: Track.RowArtDecodePx), CellKey.Art);
 
-        bool showMeta = artistInTitle || o.ShowAlbumInMeta || badge;
+        bool showMeta = artistInTitle || o.ShowAlbumInMeta || badge || st.OnThisPc;
         Element titleLine = t.HasVideo ? TitleWithVideo(title, isNow) : title;
         cells[i++] = new BoxEl
         {
@@ -84,8 +86,7 @@ internal static class ZuneRowCells
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Opacity = withheld ? Track.RowNotYetOutOpacity : 1f,
-                    Children = showMeta ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, secondary)] : [titleLine],
+                    Children = showMeta ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, secondary, st.OnThisPc)] : [titleLine],
                 },
             ],
         };
@@ -103,9 +104,9 @@ internal static class ZuneRowCells
 
         if (RowMetrics.ShowDuration(in set))
         {
-            string durationText = Track.DurationLabel(t, now);
+            string durationText = gone ? Loc.Get(Strings.Track.NotOnThisPc) : Track.DurationLabel(t, now);
             cells[i++] = Track.RowEndCell(withheld
-                ? ToolTip.Wrap(Reason(durationText), Track.WithheldReason(t, now) ?? "")
+                ? ToolTip.Wrap(Reason(durationText), Track.WithheldReason(t, now) ?? Loc.Get(Strings.Track.NotOnThisPcReason))
                 : Factual(durationText, secondary), CellKey.Duration);
         }
 
@@ -116,12 +117,16 @@ internal static class ZuneRowCells
 
         // Zune's rows are full-width plates (no inset): the grid pays the whole gutter.
         float padX = RowMetrics.PadXFor(set.Tier);
-        return new GridEl
+        var grid = new GridEl
         {
             Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
             Padding = new Edges4(padX, 0f, padX, 0f),
             Children = cells,
         };
+        // The whole row steps back (Z-State-Rows); the grid has no opacity, so a withheld row (a rare, static fact) wraps it in one box.
+        return withheld
+            ? new BoxEl { Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, MinWidth = 0f, Opacity = Track.RowNotYetOutOpacity, Children = [grid] }
+            : grid;
     }
 
     /// <summary>The eager title: one plain ellipsis run in the TrackTitle role, the accent on the playing row.</summary>
@@ -282,7 +287,7 @@ internal static class ZuneRowCells
     };
 
     /// <summary>The subline: [EPISODE] · [E] · the linked artists · the album, one ellipsized run whose artist and album parts are links.</summary>
-    public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF ink)
+    public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF ink, bool onThisPc = false)
     {
         bool episode = t.IsPodcast;
         int artistCount = showArtists ? t.ArtistSlots.Length : 0;
@@ -293,6 +298,7 @@ internal static class ZuneRowCells
         var kids = new List<Element>(3);
         if (episode)
             kids.Add(R.Type.Eyebrow(Loc.Get(Strings.Detail.Badge.Episode)) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 });
+        if (onThisPc) kids.Add(OnThisPcMark(ink));
         if (explicitBadge) kids.Add(ExplicitMark());
         if (spans is not null)
         {
@@ -311,6 +317,16 @@ internal static class ZuneRowCells
             Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The "on this PC" mark (Z-Liked): a 14 ring with the small arrow inside, in the subline's ink (the accent on the playing row),
+    /// leading the subline. An indicator only (NQ4); its tooltip says "On this PC".</summary>
+    internal static Element OnThisPcMark(Prop<ColorF> ink) => ToolTip.Wrap(new BoxEl
+    {
+        Width = ZuneListRules.OnPcMark, Height = ZuneListRules.OnPcMark, Shrink = 0f, Corners = Radii.Circle(ZuneListRules.OnPcMark),
+        BorderWidth = ZuneListRules.OnPcRing, BorderColor = ink, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Margin = new Edges4(0f, 0f, ZuneListRules.OnPcAfter, 0f),
+        Children = [new TextEl(ZuneListRules.OnPcArrow) { Size = ZuneListRules.OnPcGlyph, LineHeight = ZuneListRules.OnPcGlyph + 2f, Weight = 700, Color = ink }],
+    }, Loc.Get(Strings.Track.OnThisPc));
 
     /// <summary>The square "E" (Zune squares every plate).</summary>
     internal static BoxEl ExplicitMark() => new()

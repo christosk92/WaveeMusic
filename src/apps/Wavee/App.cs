@@ -125,6 +125,7 @@ public static class App
         Settings.ClearLicenseKeys = Spotify.Audio.KeyStore.Clear;
         Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
         Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
+        if (Platform.Args.Fake) Playback.OnThisPc.UseFake(Entities.FakeOnThisPc);   // --fake: a stable spread of "on this PC" rows (ZC2's fact has no cache to read)
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
         Spotify.Boot();                  // session static, signals created once; login later
         Spotify.Api.Boot();              // Fetch.Register(Transport): the planner's provider (G-003)

@@ -190,6 +190,16 @@ public static partial class Entities
     };
 
     static string TrackUri(int i) => "spotify:track:tr" + Wrap(i, TrackCount);
+
+    /// <summary>The demo's "on this PC" spread (<c>Playback.OnThisPc.UseFake</c>): every third pool track, and none of the rest, by a stable
+    /// hash of the uri text (FNV-1a: no <c>string.GetHashCode</c>, which is salted per process).</summary>
+    internal static bool FakeOnThisPc(EntityId id)
+    {
+        if (id.Kind != EntityKind.Track) return false;
+        uint h = 2166136261u;
+        foreach (char c in id.Text) h = (h ^ c) * 16777619u;
+        return h % 3u == 0u;
+    }
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);
     static string ArtistUri(int i) => "spotify:artist:ar" + Wrap(i, ArtistCount);
     static string PlaylistUri(int i) => "spotify:playlist:pl" + Wrap(i, PlaylistCount);
