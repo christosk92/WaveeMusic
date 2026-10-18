@@ -3,7 +3,8 @@
 // `Platform/Residency.Heap.cs`'s `NavGcPolicy` is pure: after a navigation's page lands and the host has been quiet for
 // QuietMs, one gen-0 collection runs if gen 0 holds at least MinGen0Bytes, so the next page mount starts with an empty
 // budget instead of paying the collection inside the frame it appears on. Never while the user interacts, an animation
-// runs or a track opens; at most once per navigation; it gives up on a navigation that never goes quiet.
+// runs or a track opens; never while a newer navigation is in flight (it would collect inside that one's transition);
+// at most once per navigation; it gives up on a navigation that never goes quiet.
 using Xunit;
 
 namespace Wavee.Tests;
@@ -34,6 +35,14 @@ public class NavGcPolicyTests
         Assert.Equal(NavGcVerdict.Wait, NavGcPolicy.Decide(Settled() with { TransportCritical = true }));
         Assert.Equal(NavGcVerdict.Done, NavGcPolicy.Decide(Settled(msSinceLanding: NavGcPolicy.GiveUpMs) with { HostQuiet = false }));
     }
+
+    [Fact]
+    public void A_newer_navigation_in_flight_waits_for_its_landing()
+        => Assert.Equal(NavGcVerdict.Wait, NavGcPolicy.Decide(Settled() with { NavigationInFlight = true }));
+
+    [Fact]
+    public void The_wait_outlasts_the_enter_leg()
+        => Assert.True(NavGcPolicy.QuietMs > (long)Design.Nav.EnterDurationMs);
 
     [Fact]
     public void Too_little_garbage_is_not_worth_a_pause()

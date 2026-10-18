@@ -238,7 +238,7 @@ public static partial class Shell
             Headless.RunParked(action => host.Post(PublishAfter.Wrap(action)));   // what pool threads posted between mounts
             Host.FrameCompleted += s_frameTick;
             _hostQuiet = Residency.HostQuiet;
-            Residency.HostQuiet = () => host.IsInteractionQuiet;   // the post-navigation gen-0 collection's quiet gate
+            Residency.HostQuiet = () => host.IsSettledForPause(NavGcPolicy.InteractionQuietMs);   // the post-navigation gen-0 collection's quiet gate
             Palette.ResetPump();   // the pump's deadline and in-flight batch belong to the previous host's clock
             Host.RunFrame();
         }

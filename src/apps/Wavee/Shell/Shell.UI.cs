@@ -854,6 +854,7 @@ public static partial class Shell
             UseSignalEffect(() =>
             {
                 _ = Current.Value;
+                Residency.NoteNavigationStarted();   // the post-navigation gen-0 collection waits for this one to land
                 land.RestartIn(TabLabelStaging.DelayMs(FgMotion.ReducedMotion));
             });
 

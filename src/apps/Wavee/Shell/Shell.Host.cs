@@ -408,7 +408,7 @@ public static partial class Shell
         });
         AiLyrics.Install(s_marshal!);     // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
-        Residency.HostQuiet = static () => FluentApp.IsInteractionQuiet;   // the post-navigation gen-0 collection's quiet gate
+        Residency.HostQuiet = static () => FluentApp.IsSettledForPause(NavGcPolicy.InteractionQuietMs);   // the post-navigation gen-0 collection's quiet gate
         FluentApp.FrameCompleted += s_frameTick;
     }
 

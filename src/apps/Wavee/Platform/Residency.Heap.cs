@@ -18,13 +18,22 @@
 //               and no phase change for a while — → one blocking, LOH-compacting, decommitting collection: the free space
 //               between survivors goes back too. A media key, a Connect transfer or a tray Play can start a track while
 //               the window is parked, which is why "not playing right now" is not enough.
-//   NAVIGATION  after a page has landed and the app has gone quiet (no animation, no interaction, nothing pending) for
-//               NavGcPolicy.QuietMs → one gen-0 collection, if gen 0 took at least NavGcPolicy.MinGen0Bytes since the last GC.
-//               A gen-0 collection fires when the 6 MB gen-0 budget runs out, and a page mount (~2 MB) is the biggest
+//   NAVIGATION  after a page has landed, its enter leg has run (NavGcPolicy.QuietMs) and the app is settled (nothing moving
+//               that a person set in motion, no UI animation, nothing pending, no click/key/wheel in the last
+//               NavGcPolicy.InteractionQuietMs, no newer navigation in flight) → one gen-0 collection, if gen 0 took at least
+//               NavGcPolicy.MinGen0Bytes since the last GC.
+//               A gen-0 collection fires when the gen-0 budget runs out (~4.4 MB between natural gen-0s in the nav-gc bench;
+//               the runtime caps it at 6 MB), and a page mount (~1-2 MB) is the biggest
 //               allocator in a navigation, so it usually ran INSIDE a mount frame (a 3-4 ms pause on the frame the page
 //               appears on, about one navigation in three). Collected while the app is idle instead, the next mount starts
-//               with an empty budget. At most once per navigation; never while the user interacts, an animation runs or a
-//               track is opening. Driven by the governor's one-shot settle timer (Shell.Host.cs, ArmNavGc), not by frames:
+//               with an empty budget. At most once per navigation; never while a scroll/drag/press is live, an animation runs
+//               or a track is opening. It does NOT cost less here than in a mount frame: a gen-0 pause is paid for what
+//               SURVIVES, and what survives is the page just mounted (~1.6 MB promoted, ~4.5 ms p50 in the nav-gc bench);
+//               the gain is only WHERE the pause lands. (nav-gc RCA, 2026-10-18: the gate used to be
+//               AppHost.IsInteractionQuiet, whose 2 s input hold counts hover moves too, so with a hand on the mouse the
+//               collection never ran (0 of 48 navigations); and a page that landed less than QuietMs before the next click
+//               was collected 40-100 ms into the NEXT navigation's transition. Now AppHost.IsSettledForPause, and a
+//               navigation in flight waits.) Driven by the governor's one-shot settle timer (Shell.Host.cs, ArmNavGc), not by frames:
 //               an idle app paints none. (page-mount RCA, round 5: the GC knobs - RegionSize, ConserveMemory - do not move
 //               the gen-0 budget or the GC rate; see Wavee.csproj.)
 // The decisions are pure (`HeapPolicy`, `NavGcPolicy`, unit-tested at their boundaries); `Residency.HeapTick` and
@@ -129,17 +138,23 @@ public enum NavGcVerdict : byte
 /// <summary>The facts one post-navigation decision reads.</summary>
 /// <param name="Pending">A navigation landed since the last post-navigation collection (or give-up).</param>
 /// <param name="MsSinceLanding">Since that landing.</param>
-/// <param name="HostQuiet">The engine host is quiet (<c>AppHost.IsInteractionQuiet</c>): no interaction, no UI animation,
-/// no reactive work pending.</param>
+/// <param name="HostQuiet">The engine host is settled (<c>AppHost.IsSettledForPause</c>): nothing a person set in motion is
+/// moving, no UI animation, no reactive work pending, no click/key/wheel in the last <see cref="NavGcPolicy.InteractionQuietMs"/>.</param>
 /// <param name="TransportCritical">A track is opening or a load is pending (a pause there is a late start).</param>
 /// <param name="Gen0Bytes">Allocated since the last gen-0 collection the governor saw (an under-estimate, never an over-).</param>
-public readonly record struct NavGcFacts(bool Pending, long MsSinceLanding, bool HostQuiet, bool TransportCritical, long Gen0Bytes);
+/// <param name="NavigationInFlight">A newer navigation was committed and has not landed yet: its exit leg and mount are running.</param>
+public readonly record struct NavGcFacts(bool Pending, long MsSinceLanding, bool HostQuiet, bool TransportCritical, long Gen0Bytes,
+    bool NavigationInFlight = false);
 
 /// <summary>THE post-navigation gen-0 decision, pure. See the file header.</summary>
 public static class NavGcPolicy
 {
-    /// <summary>The page must have landed and the host stayed quiet at least this long.</summary>
-    public const long QuietMs = 200;
+    /// <summary>The page must have landed at least this long ago: its enter leg (<see cref="Design.Nav.EnterDurationMs"/> from the
+    /// landing) has run, plus a margin. A gen-0 pause suspends the render thread too, so one inside the enter leg is a hitch in it.</summary>
+    public const long QuietMs = (long)Design.Nav.EnterDurationMs + 40;
+
+    /// <summary>No click, key or wheel input for at least this long (hover moves do not count).</summary>
+    public const long InteractionQuietMs = 150;
 
     /// <summary>Less garbage than this in gen 0 is not worth a pause: the next mount fits in what is left of the budget.</summary>
     public const long MinGen0Bytes = 1L << 20;
@@ -150,7 +165,7 @@ public static class NavGcPolicy
     public static NavGcVerdict Decide(in NavGcFacts f)
     {
         if (!f.Pending) return NavGcVerdict.Done;
-        if (f.MsSinceLanding < QuietMs) return NavGcVerdict.Wait;
+        if (f.NavigationInFlight || f.MsSinceLanding < QuietMs) return NavGcVerdict.Wait;
         if (!f.HostQuiet || f.TransportCritical) return f.MsSinceLanding >= GiveUpMs ? NavGcVerdict.Done : NavGcVerdict.Wait;
         return f.Gen0Bytes >= MinGen0Bytes ? NavGcVerdict.Collect : NavGcVerdict.Done;
     }
@@ -160,11 +175,11 @@ public static partial class Residency
 {
     // ── the post-navigation gen-0 collection (NavGcPolicy) ────────────────────────────────────────────────────────────
 
-    /// <summary>Is the engine host quiet? The GUI reads its host (<c>FluentApp.IsInteractionQuiet</c>); the headless host
+    /// <summary>Is the engine host settled? The GUI reads its host (<c>FluentApp.IsSettledForPause</c>); the headless host
     /// points this at its own. Null = quiet.</summary>
     public static Func<bool>? HostQuiet;
 
-    static bool s_navGcPending;
+    static bool s_navGcPending, s_navInFlight;
     static long s_navLandedMs;
     static int s_seenGen0 = -1;
     static long s_allocAtSeenGen0;
@@ -172,11 +187,16 @@ public static partial class Residency
     /// <summary>Total post-navigation collections run (diagnostics and tests).</summary>
     public static int NavGcRuns { get; private set; }
 
+    /// <summary>A navigation was committed (Shell's route effect): until it lands, a pending decision waits, so a settle tick of
+    /// the previous navigation cannot collect inside this one's exit leg and mount. UI thread.</summary>
+    public static void NoteNavigationStarted() => s_navInFlight = true;
+
     /// <summary>A navigation's page landed (Shell's landing step; Shell arms the settle timer). UI thread.</summary>
     public static void NoteNavigationLanded()
     {
         ObserveGen0();
         s_navGcPending = true;
+        s_navInFlight = false;
         s_navLandedMs = Environment.TickCount64;
     }
 
@@ -202,7 +222,8 @@ public static partial class Residency
             MsSinceLanding: now - s_navLandedMs,
             HostQuiet: HostQuiet?.Invoke() ?? true,
             TransportCritical: phase == Playback.Phase.Loading || Playback.Pending.Load.Peek(),
-            Gen0Bytes: GC.GetTotalAllocatedBytes(precise: false) - s_allocAtSeenGen0);
+            Gen0Bytes: GC.GetTotalAllocatedBytes(precise: false) - s_allocAtSeenGen0,
+            NavigationInFlight: s_navInFlight);
         switch (NavGcPolicy.Decide(in facts))
         {
             case NavGcVerdict.Wait:

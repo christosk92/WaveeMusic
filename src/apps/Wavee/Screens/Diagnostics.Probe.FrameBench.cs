@@ -331,6 +331,14 @@ public static partial class Diagnostics
                         Shell.Ui.RailOpen.Value = false;
                         return r;
                     }
+                case FrameBenchScenarios.NavGc:
+                {
+                    // `--bench-nav-play`: the first playlist plays, so its row's equalizer runs while the bench navigates.
+                    bool playList = Array.IndexOf(Platform.Args.Argv, "--bench-nav-play") >= 0 && t.Playlists.Length > 0;
+                    Base(playing: playList, playList ? t.Playlists[0] : null);
+                    SettleQuiet(host, w, 10);
+                    return NavGc(name, host, w, t);
+                }
                 case FrameBenchScenarios.HideRestore:
                     Base(playing: false);
                     SettleQuiet(host, w, 20);

@@ -43,7 +43,7 @@ public static partial class Diagnostics
             PlaylistOpen = "playlist-open", PlaylistScroll = "playlist-scroll", Lyrics = "lyrics", LyricsLine = "lyrics-line",
             StageLyrics = "stage-lyrics", StageVisualizer = "stage-visualizer", TrackChange = "track-change", Video = "video",
             LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead", HideRestore = "hide-restore",
-            SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle";
+            SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle", NavGc = "nav-gc";
 
         /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
         /// with `--bench-gpu-passes`.</summary>
@@ -57,7 +57,7 @@ public static partial class Diagnostics
         /// window for tens of seconds per cycle, so a default run never does it. <see cref="SidebarDisclosure"/> (the Classic sidebar's
         /// Playlists section collapsing and expanding every 0.6 s) and <see cref="DrawerToggle"/> (a playlist row's drawer opening and
         /// closing every 0.6 s) measure the reveal motion; with `--bench-shots` they also capture every frame of two toggles as PNGs.</summary>
-        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle];
+        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the
