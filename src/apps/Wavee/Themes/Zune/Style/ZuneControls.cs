@@ -220,7 +220,7 @@ public static class ZuneControls
         PlateFill = Tok.FillLayerAlt, PlateBorderWidth = 0f, Radius = 0f, Shadow = Elevation.Dialog,
         MaxWidth = 548f,
         ContentPadding = new Edges4(24f, 24f, 24f, 24f), ContentFill = Tok.FillLayerAlt,
-        TitleSize = 26f, TitleWeight = 300, TitleColor = Tok.TextPrimary, TitleGap = 14f,
+        TitleSize = 26f, TitleWeight = 300, TitleColor = Tok.TextPrimary, TitleGap = 14f, TitleCase = TextCase.Lower, CommandCase = TextCase.Lower,   // Z-Dialogs: "report a problem" (a title with a name sets ContentDialog.TitleLiteral)
         MessageSize = 14f, MessageColor = Tok.TextPrimary,
         SeparatorThickness = 0f,
         CommandPadding = new Edges4(24f, 4f, 24f, 24f), CommandFill = Tok.FillLayerAlt, CommandGap = 20f,

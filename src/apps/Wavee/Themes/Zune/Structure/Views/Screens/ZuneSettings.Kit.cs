@@ -36,6 +36,9 @@ internal static class ZuneText
     public static TextEl Cased(TextEl text, LabelKind kind) => text with { Case = R.Case.For(kind) };
 
     /// <summary>A row's label: the 15/20 body voice, wrapping.</summary>
+    /// <summary>A command word or label as a STRING in the label case (for a control that takes a plain string: a field's header, a placeholder, a segment). Never for a name.</summary>
+    public static string Word(string text, LabelKind kind = LabelKind.Label) => FluentGpu.Text.TextCaseMap.Apply(text, R.Case.For(kind));
+
     public static TextEl Label(string text) => Cased(R.Type.TrackTitle(text), LabelKind.Label) with { MinWidth = 0f, Wrap = TextWrap.Wrap };
 
     /// <summary>The line under a label: the micro voice in the tertiary ink, wrapping.</summary>
