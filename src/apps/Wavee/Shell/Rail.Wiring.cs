@@ -379,6 +379,7 @@ internal static class RailWiring
     {
         Read = static () => ReadPanel(),
         InlineAndOpen = static () => Shell.Ui.RailFits.Value && Shell.Ui.RailOpen.Value,
+        CoverUrl = static () => Rail.NowArtUrl(),
         BodyHeightChanged = static h =>
         {
             if (MathF.Abs(Shell.Ui.RailBodyHeight.Peek() - h) > 0.5f) Shell.Ui.RailBodyHeight.Value = h;

@@ -616,6 +616,11 @@ public static partial class Diagnostics
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
+            // `grade=hue`: every cover grades to a hue taken from its uri (the fake catalogue's covers are local files the provider cannot grade), so a surface that tints
+            // from the playing cover renders in colour offline
+            Palette.SchemeSeam = a.Str("grade").Equals("hue", StringComparison.OrdinalIgnoreCase)
+                ? static (uri, light) => { var g = InspectKit.GradeOf(uri); return light ? g.Light : g.Dark; }
+                : null;
             _shell = MountOn(w0, h0, scale, gpu);
             _frames++;
             mounted = true;

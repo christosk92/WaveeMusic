@@ -341,6 +341,7 @@ public static partial class Palette
     public static bool TryScheme(ReadOnlySpan<char> url, bool lightTheme, out Scheme scheme)
     {
         scheme = default;
+        if (SchemeSeam is { } seam && seam(url.ToString(), lightTheme) is { } seamed) { scheme = seamed; return true; }
         var id = ImageIdOf(url);
         var key = ArtIdentityOf(id);
         if (key.IsEmpty) return false;
@@ -366,6 +367,10 @@ public static partial class Palette
         Enqueue(slot, id);
         return false;
     }
+
+    /// <summary>A grading answered without the provider, for covers that are not gradeable (the fake catalogue's local files): null in the app. The `--inspect`
+    /// host sets it (`mount grade=hue`) so surfaces that tint from a cover can be rendered offline.</summary>
+    public static Func<string, bool, Scheme?>? SchemeSeam { get; set; }
 
     /// <inheritdoc cref="TryScheme(ReadOnlySpan{char},bool,out Scheme)"/>
     public static bool TryScheme(StringId imageRef, bool lightTheme, out Scheme scheme)

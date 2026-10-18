@@ -301,6 +301,7 @@ internal sealed class ZunePanelFrame : Component
 
         _surfaceFill ??= () => props.InlineAndOpen() ? ColorF.Transparent : R.Layer.FloatingPane;
         _onBounds ??= r => props.BodyHeightChanged(r.H);
+        var wash = ZunePanelWash.Layers(props.CoverUrl?.Invoke());
 
         Element bodySlot = new BoxEl
         {
@@ -323,7 +324,7 @@ internal sealed class ZunePanelFrame : Component
             OnKeyDown = _onKey,
             Children =
             [
-                new BoxEl { Grow = 1f, ClipToBounds = true, Fill = Prop.Of(_surfaceFill), OnBoundsChanged = _onBounds },
+                new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, Fill = Prop.Of(_surfaceFill), OnBoundsChanged = _onBounds, Children = wash },
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
         };

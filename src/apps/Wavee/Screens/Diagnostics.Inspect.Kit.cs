@@ -137,7 +137,26 @@ public static partial class Diagnostics
         /// that colours itself from artwork would exist. The fixture grades every cover one colour from the first frame on
         /// (a cover asked while no grader exists is marked failed for good, so install it right after the boot).</summary>
         public static void InstallFixtureGrader()
-            => Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static _ => (Palette.Graded?)FixtureGrade));
+            => Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static uri => (Palette.Graded?)GradeOf(uri)));
+
+        /// <summary>A grade whose hue follows the cover's uri (a stable hash), so covers of different tracks tint differently: the dark half deep and saturated,
+        /// the light half pale, as the provider grades them.</summary>
+        public static Palette.Graded GradeOf(string uri)
+        {
+            uint h = 2166136261u;
+            foreach (char c in uri) h = (h ^ c) * 16777619u;
+            float hue = h % 360u;
+            var dark = new Scheme(Hsv(hue, 0.60f, 0.30f), Hsv(hue, 0.65f, 0.46f), 0xFFFFFFFFu, 0xFFC8C8C8u, 0xFFFFFFFFu);
+            var light = new Scheme(Hsv(hue, 0.18f, 0.96f), Hsv(hue, 0.30f, 0.90f), 0xFF000000u, 0xFF404040u, 0xFF000000u);
+            return new Palette.Graded(dark, light, HasLight: true, BestFitIsLight: false);
+        }
+
+        static uint Hsv(float h, float s, float v)
+        {
+            float c = v * s, x = c * (1f - MathF.Abs(h / 60f % 2f - 1f)), m = v - c;
+            (float r, float g, float b) = (int)(h / 60f) switch { 0 => (c, x, 0f), 1 => (x, c, 0f), 2 => (0f, c, x), 3 => (0f, x, c), 4 => (x, 0f, c), _ => (c, 0f, x) };
+            return 0xFF000000u | (uint)((r + m) * 255f) << 16 | (uint)((g + m) * 255f) << 8 | (uint)((b + m) * 255f);
+        }
 
         // ── themes ──────────────────────────────────────────────────────────────────────────────────────────────────
 

@@ -494,7 +494,7 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.37 (Zune fidelity): ConcertDetailView.ShareUrl / PlayLineup / OnSale.
         // 1.47 (Zune fidelity round 2): TrackRowSkin.Dimmed.
         // 1.48 (Settings sections): SettingsPageProps.Area / AreaCell / OpenArea (the old Tab / TabCell / OpenTab stay as adapters), Settings.Area and its Parts.
-        Assert.Equal("1.48", ContractVersion.Text);
+        Assert.Equal("1.49", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -543,7 +543,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 46));
         Assert.True(ContractVersion.IsCompatible(1, 47));
         Assert.True(ContractVersion.IsCompatible(1, 48));
-        Assert.False(ContractVersion.IsCompatible(1, 49));
+        Assert.True(ContractVersion.IsCompatible(1, 49));
+        Assert.False(ContractVersion.IsCompatible(1, 50));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }
