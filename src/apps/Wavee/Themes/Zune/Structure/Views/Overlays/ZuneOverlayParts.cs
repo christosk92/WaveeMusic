@@ -43,6 +43,14 @@ internal static class ZuneOverlayParts
         };
     }
 
+    /// <summary>The dialog's close mark (Z-Dialogs-Compact, -Huge): a 36 target with the close glyph in the secondary ink at the title row's end.</summary>
+    public static Element CloseMark(Action close) => new BoxEl
+    {
+        Key = "zdialog:close", Width = ZuneOverlayRules.DialogClose, Height = ZuneOverlayRules.DialogClose, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = close,
+        Children = [Icon(Icons.ChromeClose, ZuneOverlayRules.DialogCloseGlyph, Tok.TextSecondary)],
+    }.Interactive(Interaction.Subtle);
+
     /// <summary>The menu's hairline: 16 in, 5 above and below (the menu style's separator).</summary>
     public static Element Divider() => new BoxEl
     {

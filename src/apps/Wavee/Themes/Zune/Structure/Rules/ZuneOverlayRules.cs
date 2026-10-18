@@ -220,7 +220,7 @@ public static class ZuneOverlayRules
     public const float VacancyActionsGap = 22f, VacancyActionsTop = 10f, VacancyRowH = 56f, VacancyRowGap = 4f, VacancyActionsTopCompact = 20f, VacancyRing = 36f, VacancyRingCompact = 40f;
 
     /// <summary>A dialog's commands: the primary's ring (36), a word's height and its trailing air, the disabled opacity.</summary>
-    public const float DialogRing = 36f, DialogWordHeight = 36f, DialogWordPadX = 0f, DialogDisabledOpacity = 0.45f;
+    public const float DialogTitleCompact = 40f, DialogClose = 36f, DialogCloseGlyph = 14f, DialogRing = 36f, DialogWordHeight = 36f, DialogWordPadX = 0f, DialogDisabledOpacity = 0.45f;
 
     // ── the dialogs ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -386,7 +386,7 @@ public static class ZuneOverlayTiers
             // Every dialog's commands are the engine's buttons at the 40-DIP target; Zune's commands are words, so the floor is a word's.
             Dialog: new DialogFit(Fill: true, Inset: 16f, MaxWidth: 548f, EdgeY: 16f,
                 ContentPadding: new Edges4(16f, 20f, 16f, 12f), CommandPadding: new Edges4(16f, 4f, 16f, 16f),
-                CommandSize: ControlSize.Large, CommandMinWidth: 48f, UniformCommands: false),
+                CommandSize: ControlSize.Large, CommandMinWidth: 48f, UniformCommands: false, TitleSize: ZuneOverlayRules.DialogTitleCompact, CloseMark: true),
             // Z-Overlays-Compact: the slab is the window less 16 a side, 12 above the 64 mini bar, its action a 40-DIP word.
             Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 12f, BarHeight: ZuneTiers.Frame(WidthTier.Compact).BarH,
                 Lane: new ToastLaneStyle { SideMargin = 16f, FillWidth = true, ActionSize = ControlSize.Large }),
@@ -435,6 +435,7 @@ public static class ZuneOverlayTiers
     public static ZuneOverlayLayout Huge { get; } = Standard with
     {
         Tier = WidthTier.Huge,
+        Core = Standard.Core with { Dialog = Standard.Core.Dialog with { CloseMark = true } },   // Z-Dialogs-Huge draws the close mark
         ChromeRow = ZuneTiers.Frame(WidthTier.Huge).TitleBarH,
     };
 

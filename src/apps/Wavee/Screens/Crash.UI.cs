@@ -122,6 +122,20 @@ public static partial class Crash
         session.Handle = handle;
     }
 
+    /// <summary>`--inspect dialog kind=crash|hang`: the launch prompt over a made-up bundle (a developer's probe; nothing is read from or written to the real reports).</summary>
+    internal static void OpenFakePrompt(IOverlayService? overlay, Kind kind)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "wavee-inspect-fake-crash");
+        Directory.CreateDirectory(dir);
+        File.WriteAllLines(Path.Combine(dir, Files.ReportName), ["Wavee crash report (fake)", "kind: " + kind]);
+        File.WriteAllLines(Path.Combine(dir, Files.TailName), ["info playback started", "warn lyrics provider timed out"]);
+        var summary = new Summary("fake0001", "fake-install", kind, DateTime.UtcNow.AddMinutes(-3).ToString("o", CultureInfo.InvariantCulture),
+            "1.6.0", "1.6.0.0", "0000000", "dev", "x64", "26340", "adapter", "", false, false, "en-US", "fake-session", 120_000, false, "home",
+            "System.InvalidOperationException", "fake", [], 0, 0, "", 1, true, 12L * 1_048_576);
+        var bundle = new BundleInfo(dir, summary, DateTime.Now.AddMinutes(-3), new SendRecord(SendState.NotSent, null, null, 0, false), true, summary.DumpBytes);
+        OpenPrompt(overlay, bundle);
+    }
+
     static string FormatMb(long bytes) => (bytes / 1_048_576.0).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
 
     /// <summary>Pool thread: the scrubbed text a send would carry (<see cref="CrashConsent.ComposePreview"/>).</summary>

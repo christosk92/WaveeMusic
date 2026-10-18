@@ -187,13 +187,25 @@ internal static class ZuneTransport
             Direction = 0, AlignItems = FlexAlign.Center, Justify = onMedia ? (right ? FlexJustify.End : FlexJustify.Start) : right ? FlexJustify.Start : FlexJustify.End,
             OnClick = right ? props.ToggleRemaining : null, Cursor = right ? CursorId.Hand : null,
             Role = right ? AutomationRole.Button : AutomationRole.Text,
-            Children =
-            [
-                new TextEl(Prop.Of(props.Label))
-                {
-                    Size = T.TimeSize, LineHeight = T.TimeLine, Color = ink, HoverColor = right && props.Ink is null ? Tok.TextPrimary : ink, Wrap = TextWrap.NoWrap,
-                },
-            ],
+            // the stage's labels reserve the widest this track can print (an unseen copy of it sizes the slot), so the seek line never moves mid-track
+            ZStack = onMedia && props.Widest is not null,
+            Children = onMedia && props.Widest is { } widest
+                ?
+                [
+                    new TextEl(Prop.Of(widest)) { Size = T.TimeSize, LineHeight = T.TimeLine, Color = ColorF.Transparent, Wrap = TextWrap.NoWrap },
+                    new BoxEl
+                    {
+                        JustifySelf = right ? FlexAlign.End : FlexAlign.Start, AlignSelf = FlexAlign.Center, HitTestVisible = false,
+                        Children = [new TextEl(Prop.Of(props.Label)) { Size = T.TimeSize, LineHeight = T.TimeLine, Color = ink, Wrap = TextWrap.NoWrap }],
+                    },
+                ]
+                :
+                [
+                    new TextEl(Prop.Of(props.Label))
+                    {
+                        Size = T.TimeSize, LineHeight = T.TimeLine, Color = ink, HoverColor = right && props.Ink is null ? Tok.TextPrimary : ink, Wrap = TextWrap.NoWrap,
+                    },
+                ],
         };
     }
 }

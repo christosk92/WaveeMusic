@@ -385,7 +385,7 @@ internal static class ZuneTrackDrawer
                     {
                         Width = ZuneListRules.PlayBadge, Height = ZuneListRules.PlayBadge, Corners = Radii.Circle(ZuneListRules.PlayBadge), Shrink = 0f,
                         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Prop.Of(static () => R.Ink.AccentAction),
-                        Children = [Icon(Icons.Play, ZuneListRules.PlayBadgeGlyph, Tok.TextOnAccentPrimary)],
+                        Children = [Icon(ZunePlayerLayout.PlaySolid, ZuneListRules.PlayBadgeGlyph, Tok.TextOnAccentPrimary)],
                     },
                 ],
             };

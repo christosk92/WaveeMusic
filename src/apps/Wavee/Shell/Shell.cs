@@ -1063,7 +1063,7 @@ public static partial class Shell
     /// <summary>The recipe for a page swap (<see cref="Design.Nav.RecipeFor"/>): the one fade-through for every pair of
     /// pages, a plain fade for Neutral.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion)
-        => Design.Nav.RecipeFor(MapMotion(motion));
+        => Design.Nav.RecipeFor(MapMotion(motion), ShellCaps.Now.ContinuousPageSwap);
 
     public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion)
         => Design.Nav.RecipeForVideoSafe(MapMotion(motion));

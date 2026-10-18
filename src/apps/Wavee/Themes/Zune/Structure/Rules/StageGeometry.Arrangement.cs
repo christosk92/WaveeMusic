@@ -209,7 +209,8 @@ public static partial class ZuneStageGeometry
         float x = g + used + r.Gap;
         float w = MathF.Max(0f, layout.W - x - g);
         float inset = ring ? (slot - cover) * 0.5f : 0f;
-        float blockTop = layout.H - g - r.FootH - r.BlockH;
+        // the block of titles and controls ends on the cover's foot (Z-NowPlaying-Small: the controls end 8 under the 360 cover, the aside sits at the stage's own foot), and never lower than the foot's gutter
+        float blockTop = MathF.Min(layout.H - g - r.FootH, top + used) - r.BlockH;
         float paneTop = top + v.SourceLine + r.PaneTop;
         float title = Math.Clamp(Stage.Layout.Q4(w * r.TitleMax / r.ControlsMaxW), r.TitleMin, r.TitleMax);
         float cw = MathF.Min(w, r.ControlsMaxW);

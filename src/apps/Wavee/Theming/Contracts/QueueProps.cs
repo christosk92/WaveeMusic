@@ -123,7 +123,7 @@ public interface IQueueVerbs
 /// is THIN (its seed face, or two bars), never a bare uri. <see cref="Unavailable"/>: a ruled-unavailable track — the row says so (no
 /// artists, no cover) instead of painting what the table still holds of it. Never a <c>default</c>: the strings are never null.</summary>
 public readonly record struct QueueRowText(string Uri, string Title, string Artists, string? Art, int DurationMs, bool Thin, bool Explicit,
-    bool Unavailable = false);
+    bool Unavailable = false, string Album = "");
 
 /// <summary>The reorder lane and the facts a queue surface's rows need from the core (<c>Queue.QueueSurface</c> implements it).</summary>
 public interface IQueueLane
@@ -218,4 +218,8 @@ public sealed record QueueStagePaneProps
     /// <summary>The column stands in its own frame beside the lyrics (the Huge 4K stage's Up next column, C-Stage-Huge4K): it fills that frame's
     /// width at the board's scale instead of the pane region's width and the stage's queue scale. Appended (contract 1.22).</summary>
     public bool Aside { get; init; }
+
+    /// <summary>The player's shuffle and repeat verbs (the page's "shuffle" and "repeat" words; the lit state is <see cref="QueueProps.Shuffle"/> / <see cref="QueueProps.Repeat"/>).
+    /// Appended (contract 1.41); null: no words.</summary>
+    public IPlayerVerbs? Player { get; init; }
 }

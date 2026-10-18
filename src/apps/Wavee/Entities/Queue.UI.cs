@@ -107,8 +107,9 @@ public static partial class Queue
         // The FACTS come off the display row (a relinked id reads its canonical track); the uri stays this row's.
         Track d = t.ForDisplay;
         bool thin = !d.Knows(TrackFields.Title);
+        string album = !thin && d.Album is { IsValid: true } al && al.Knows(AlbumFields.Title) ? al.Title : "";
         return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, Entities.Strings.Resolve(d.ArtistLineId), Controls.ArtUrl(d.ImageId),
-                           d.DurationMs, thin, d.IsExplicit);
+                           d.DurationMs, thin, d.IsExplicit, Album: album);
     }
 
     /// <summary>Ask the catalog for the context entity's name, so <see cref="ContextName"/> has one to answer with — as ONE
@@ -532,6 +533,7 @@ public static partial class Queue
                 Lane = this,
                 Verbs = Verbs,
                 Aside = _aside,
+                Player = PlayerVerbs.Default,
             });
         }
     }

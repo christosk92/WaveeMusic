@@ -104,7 +104,7 @@ public static partial class Diagnostics
         /// <summary>Play one track or episode as its own context from <paramref name="fromMs"/> (the headless probe's
         /// single-track recipe: BuildContextQueue, Queue.Replace, Playback.PlayNow). False when the uri does not parse.</summary>
         /// <summary><paramref name="next"/> more seeded tracks (the fake catalogue's `tr<k+1>`, `tr<k+2>`, ... after a `spotify:track:tr<k>`) follow it in the
-        /// same context, so "up next" has rows; 0 plays the track alone.</summary>
+        /// same context, so "up next" has rows; 0 plays the track alone. <paramref name="video"/> plays it as a video.</summary>
         public static bool Play(string uri, int fromMs = 0, int next = 0, bool video = false)
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
