@@ -492,7 +492,7 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.31 (Zune fidelity): ArtistTierPolicy.ChartRowShape / ChartBalanced, ArtistChartStyle.HeaderWith.
         // 1.32 (Zune fidelity): DetailTableTier.HoverActions / OneLineTrim.
         // 1.37 (Zune fidelity): ConcertDetailView.ShareUrl / PlayLineup / OnSale.
-        Assert.Equal("1.45", ContractVersion.Text);
+        Assert.Equal("1.46", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -538,7 +538,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 43));
         Assert.True(ContractVersion.IsCompatible(1, 44));
         Assert.True(ContractVersion.IsCompatible(1, 45));
-        Assert.False(ContractVersion.IsCompatible(1, 46));
+        Assert.True(ContractVersion.IsCompatible(1, 46));
+        Assert.False(ContractVersion.IsCompatible(1, 47));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }
