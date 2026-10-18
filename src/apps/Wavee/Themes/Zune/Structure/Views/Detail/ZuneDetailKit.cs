@@ -101,6 +101,10 @@ internal static class ZuneDetailKit
         Children = [ZuneFrameRules.PageColumn(page, gutter) with { AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f }],
     };
 
+    /// <summary>A page-scale vacancy (a page that failed or came back empty) on the page column: the frame's gutter, centred, never flush at x = 0.</summary>
+    public static BoxEl PageVacancy(Element vacancy, float gutter)
+        => CentredPage(new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [vacancy] }, gutter);
+
     // ── the panorama ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The page's title in the panorama voice (the record's step, for every kind): WRAPPED by whole words over up to

@@ -561,7 +561,13 @@ internal static class ZuneTrackTable
                         ],
                     }
                     : clock,
-                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix) ?? Loc.Get(Strings.Track.NotOnThisPcReason)))),
+                Flow.Show(withheld, new BoxEl
+                {
+                    // On row hover (and focus) the heart and "..." take the lane, the reason with the clock (never one over the other).
+                    Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                    Opacity = hoverActions ? Prop.Of(() => r.Focused ? 0f : 1f) : 1f, HoverOpacity = hoverActions ? 0f : float.NaN,
+                    Children = [ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix) ?? Loc.Get(Strings.Track.NotOnThisPcReason)))],
+                }),
             ],
         };
         if (!hoverActions) return time;
@@ -627,6 +633,14 @@ internal static class ZuneTrackTable
 
     // ══ THE SKIN ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The check lane steps back with the row (Z-State-Rows: the unavailable row's check square is at 45 % too). The content dims itself (<see cref="Grid"/>).</summary>
+    static Element DimmedLane(Element lane, Func<bool> dimmed) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Opacity = Prop.Of(() => dimmed() ? Track.RowNotYetOutOpacity : 1f),
+        Children = [lane],
+    };
+
     /// <summary>The row's container (Z-State-Rows): bare at rest, the 5 % ink wash on hover, the pressed wash, the 12 % accent wash while
     /// selected (or while an .mp4 is dragged over it, with the accent line on its top edge). Square, no inset, no border, no zebra, no pill.
     /// Applies every wired member of <paramref name="a"/>.</summary>
@@ -656,7 +670,7 @@ internal static class ZuneTrackTable
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Animate = ZuneListRules.CheckShift,
-                    Children = [a.CheckLane, a.Content],
+                    Children = [a.Dimmed is { } dim ? DimmedLane(a.CheckLane, dim) : a.CheckLane, a.Content],
                 },
                 new BoxEl
                 {

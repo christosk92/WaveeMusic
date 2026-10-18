@@ -78,7 +78,7 @@ internal static class ZuneArtistPage
         // page-level reveal the rest of the app uses; Group null, not the route: the chart's inner region must NOT join this one.
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, lay),
-            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry),
+            OnFailed: () => ZuneDetailKit.PageVacancy(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry), lay.Gutter),
             Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
             Group: null, SmoothResize: false);
 
@@ -180,7 +180,7 @@ internal static class ZuneArtistPage
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
         if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
-        column.Add(Magazine([chartShape], lay));
+        column.Add(Magazine([ZuneArtistSections.PopularSkeleton(chartShape, lay)], lay));
         return new BoxEl { Direction = 1, Children = column.ToArray() };
     }
 }

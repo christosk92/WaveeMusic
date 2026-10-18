@@ -63,6 +63,9 @@ internal static class ZuneFrame
     public static Element Template(ShellFrameProps props, in ViewContext ctx)
     {
         var tiers = ctx.TierReader();
+        // The docked selection bar's host (contract 1.47): provided to the page, so a table in selection mode publishes its bar here instead of in flow.
+        var dockCell = ctx.Hooks.UseRef<SelectionDockHost?>(null);
+        var dockHost = dockCell.Value ??= new SelectionDockHost();
         // The band slot's laid-out height (what the band draws now: 84 or 52, easing between them), for the floating panel's top.
         var bandH = ctx.Hooks.UseSignal(float.NaN);
         bool reduced = ctx.Reduced;
@@ -76,6 +79,8 @@ internal static class ZuneFrame
                 .. props.Chords,
                 TitleBarSlot(props, in ctx, tiers, reduced),
                 Body(props, in ctx, tiers, bandH),
+                // Between the page row and the play bar: its height is the reservation under the page while a selection shows it (Z-State-Rows).
+                ZuneSelectionDock.Slot(dockHost),
                 ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ZuneFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
@@ -88,7 +93,7 @@ internal static class ZuneFrame
             Children = [ctx.View(ViewKeys.ShellMaterialLayer, props.Material), column],
         };
 
-        return Ctx.Provide(ZuneFrameContext.PageChrome, props.NavPane.Band?.Chrome, ZStack(
+        return Ctx.Provide(ZuneFrameContext.PageChrome, props.NavPane.Band?.Chrome, Ctx.Provide(SelectionDockHost.Context, dockHost, ZStack(
             ground,
             // The immersive stage covers the whole frame and sits below the banner, the drop cue and the toasts.
             Flow.Show(props.ImmersiveOpen, new BoxEl
@@ -105,7 +110,7 @@ internal static class ZuneFrame
             ctx.View(ViewKeys.ShellCommandPalette, props.CommandPalette),
             ctx.View(ViewKeys.ShellCoverScrim, props.CoverScrim),
             ctx.View(ViewKeys.ShellDragChip, props.DragChip),
-            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f });
+            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f }));
     }
 
     /// <summary>The title bar's slot (`shell.titlebar`): the record's height (48, 56 at Huge 4K), easing across the 3200 crossing so the band
