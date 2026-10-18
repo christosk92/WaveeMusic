@@ -486,6 +486,25 @@ public static partial class Diagnostics
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
                     }
+                case Inspect.Verb.Dialog:
+                    {
+                        // `dialog {kind}`: opens a dialog over the Settings page (the page binds the overlay host the dialogs open through): crash | hang (the crash prompt over a made-up
+                        // bundle), report (Report a problem). A developer's probe; `esc` closes it.
+                        string kind = a.Str("kind").ToLowerInvariant();
+                        Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+                        RunFrames(30);
+                        var overlay = SettingsContext.Overlay;
+                        if (overlay is null) return Inspect.Reply.Fail(id, name, "no overlay host is bound (is the page mounted?)");
+                        switch (kind)
+                        {
+                            case "crash": Crash.OpenFakePrompt(overlay, Crash.Kind.Managed); break;
+                            case "hang": Crash.OpenFakePrompt(overlay, Crash.Kind.Hang); break;
+                            case "report": Feedback.Open(Feedback.ReportKind.Bug); break;
+                            default: return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report, not '" + kind + "'");
+                        }
+                        RunFrames(40);
+                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                    }
                 case Inspect.Verb.State:
                     {
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a

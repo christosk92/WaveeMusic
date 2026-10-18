@@ -79,7 +79,8 @@ internal static class ZuneCrash
 
         var children = new List<Element>(10)
         {
-            ZuneText.Cased(R.Type.DenseMeta(props.HeaderMessage), LabelKind.Label)
+            // As written: the line carries the report's own data (when it ended, the exception's type and message), which is never re-cased.
+            R.Type.DenseMeta(props.HeaderMessage)
                 with { Color = Tok.SystemFillCaution, Wrap = TextWrap.Wrap, MinWidth = 0f, MaxWidth = column },
         };
         if (!props.FromList) children.Add(R.Type.DenseTitle(props.Lead) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, MaxWidth = column });
