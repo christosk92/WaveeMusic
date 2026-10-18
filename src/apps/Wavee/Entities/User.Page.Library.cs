@@ -561,6 +561,7 @@ public readonly partial struct User
             _scrollScope = UseContext(Shell.PageScrollScope);
             _cellBase = UseComputed(_cellBaseOf);              // before the shape: the mint reads it
             _gridGaps = UseComputed(_gridGapsOf);
+            _groupSet = UseComputed(_computeGroups);          // before the shape: the shape narrows to the picked group
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -611,7 +612,6 @@ public readonly partial struct User
             UseEffect(_syncLoad, DepKey.From(shape.Count, (shape.Answered ? 1 : 0) | (raw.Length > 0 ? 2 : 0)
                                                           | (shape.TitlesKnown ? 4 : 0) | (_anyTitleFailed ? 8 : 0)));
             UseEffect(_syncNav, listKey + "|" + shape.OrderKey + "|" + sel + "|" + (fullSearch ? "s" : "b"));
-            _groupSet = UseComputed(_computeGroups);
             UseEffect(_saveState, sortCode + "|" + Desc.Value + "|" + view + "|" + size + "|" + sel + "|" + albumKey + "|"
                                   + Scope.Value + "|" + RSort.Value + "|" + GroupKey.Value);
             UseEffect(_resetDepth, DepKey.From(collapsed));
@@ -667,7 +667,7 @@ public readonly partial struct User
             _ = relation.Changed.Value;
             _ = Entities.TableFor(_entity)!.Changed.Value;
             if (_entity == EntityKind.Album) { _ = scope.Edges.AlbumArtists.Changed.Value; _ = scope.Artists.Changed.Value; }
-            string groupKey = GroupingOn ? GroupKey.Value : "";   // the structure's ask AND a split page (tracked: a crossing re-filters)
+            string groupKey = GroupingOn ? EffectiveGroup() : "";   // the structure's ask AND a split page (tracked: a crossing re-filters)
             if (IsArtists)
             {
                 // The Artists SET and both of its counts are reads over five relations plus the albums' track counts, so
@@ -697,7 +697,7 @@ public readonly partial struct User
             // Audiobooks/Podcasts split the SAME SavedShows edge client-side (A2 plan §3.6): Podcasts applies the
             // inverse of Audiobooks' own predicate, so a show can never appear on neither or both lists.
             if (IsShowEntity) source = SplitShowKind(source);
-            if (groupKey.Length > 0) source = NarrowToGroup(source, groupKey);
+            if (groupKey.Length > 0 && groupKey != AllGroups) source = NarrowToGroup(source, groupKey);
             Grow(source.Length);
             int n = LibraryRows.Filter(_entity, source, filter, _filtered);
             long[]? played = null;
@@ -969,6 +969,12 @@ public readonly partial struct User
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
             if (Collapsed) _depth.Value = 1;
+            else if (GroupPaneHidden)
+            {
+                // The grouped albums page without a songs pane (Small): a picked album opens its own page.
+                var album = new Album(_sorted[row]);
+                if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
+            }
         }
 
         /// <summary>The navigator's first visible item (the flat index under the top of its visible band, below a pinned letter), or -1 when it rests

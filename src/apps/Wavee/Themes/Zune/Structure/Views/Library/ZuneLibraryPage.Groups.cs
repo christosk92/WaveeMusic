@@ -54,6 +54,7 @@ internal static partial class ZuneLibraryPage
                 [
                     R.Type.QuickplayHead(title) with
                     {
+                        Size = LR.BoardHeadSize, LineHeight = LR.BoardHeadLine,
                         Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                         Case = all ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
                     },

@@ -82,6 +82,9 @@ public readonly record struct ArtistReaderBand(Artist Artist, bool Named, Artist
 /// <param name="ShowAll">The vacancy's action: switch the scope to all releases.</param>
 public readonly record struct ArtistReaderTail(int Kind, float Height, bool Gated, bool Partial, int Missing, string Name, Action ShowAll);
 
+/// <summary>One release of <see cref="IArtistReaderHost.ReadReleases"/>: the album's slot and whether the album itself is in your library (false: only liked songs of it are).</summary>
+public readonly record struct ArtistReaderRelease(int AlbumSlot, bool Saved);
+
 /// <summary>The reader's live state and verbs, as the structure's view reads them.</summary>
 public interface IArtistReaderHost
 {
@@ -123,6 +126,13 @@ public interface IArtistReaderHost
 
     /// <summary>Glide block <paramref name="blockIndex"/> to the top (ignored past the end).</summary>
     void BringToTop(int blockIndex);
+
+    /// <summary>Subscribing read of the releases this artist shows, in block order (the shape, the scope epoch and the album table): a structure that draws the artist as a hero, an
+    /// albums grid and the picked album's songs (instead of the block list) reads them here. Contract addition after 1.33.</summary>
+    IReadOnlyList<ArtistReaderRelease> ReadReleases();
+
+    /// <summary>The album pane of <paramref name="albumSlot"/> (the host's own `Album.Pane`: its title, verbs and songs, demanding its own model). Contract addition after 1.33.</summary>
+    Element AlbumPane(int albumSlot);
 }
 
 /// <summary>One block's cell: its readiness, its record, its rows and its verbs. The core refreshes it from an effect; the view only reads.</summary>
