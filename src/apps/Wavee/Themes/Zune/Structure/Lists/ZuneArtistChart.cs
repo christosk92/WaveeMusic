@@ -130,7 +130,7 @@ internal static class ZuneArtistChart
             int rows = Math.Min(s.PerColumn, Math.Max(0, s.Total - c * s.PerColumn));
             var kids = new Element[rows];
             for (int r = 0; r < rows; r++)
-                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead);
+                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead, skeleton: true);
             columns[c] = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.ChartCellGap, Children = kids };
         }
         return new BoxEl
@@ -171,7 +171,7 @@ internal static class ZuneArtistChart
     /// <summary>One chart row (Z-Artist), shared by live rows and the skeleton.</summary>
     static Element ChartRow(in ChartCells c, int index, in Track.RowState st, ArtistPopularLayout.Tier tier, Element? feat, Action? onPlay,
                             Action? onLike, bool pop, Signal<bool>? hovered, RowScope? slot, Func<bool>? checksVisible, bool showArtwork,
-                            float rowH = 0f, float lead = 0f)
+                            float rowH = 0f, float lead = 0f, bool skeleton = false)
     {
         bool isNow = st.IsNow;
         // The tier's own geometry (the policy's ArtistChartRowShape: Z-Artist's 60 / 48 / 52 at Standard, 56 / 44 / 40 Compact, 52 / 40 / 44 Small, 68 / 52 / 60 at 4K).
@@ -222,12 +222,22 @@ internal static class ZuneArtistChart
         };
         if (tier.ShowDuration) trail.Add(R.Type.DenseMeta(c.Duration) with { Color = secondary });
 
+        // The rank lane: on the skeleton the row's own numeral stands there faint and real (Z-State-Loading's ghost numerals), drawn as is by the deriver, so the
+        // lane is exactly the loaded row's width: a derived bar of the numeral's measured width used to run over the cover.
+        Element rankCell = skeleton
+            ? new BoxEl
+            {
+                Width = rankLane - Spacing.M, Height = rowHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, ClipToBounds = true,
+                Children = [R.Type.NumeralLarge(ZuneRowCells.RowNumberLabel(index + 1)) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap }],
+            }
+            : ZuneRowCells.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, large: true);
+        if (skeleton) rankCell = rankCell.Skel(rankCell);
         var rowChildren = new List<Element>(4)
         {
-            new BoxEl
+            skeleton ? rankCell : new BoxEl
             {
                 Width = rankLane - Spacing.M, Height = rowHeight, Shrink = 0f,
-                Children = [ZuneRowCells.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, large: true)],
+                Children = [rankCell],
             },
         };
         if (showArtwork)

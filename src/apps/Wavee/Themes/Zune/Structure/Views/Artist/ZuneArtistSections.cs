@@ -114,19 +114,28 @@ internal static class ZuneArtistSections
             MaxWidth = lay.ChartMaxW > 0f ? lay.ChartMaxW : float.NaN,
             Children = [chartShape],
         };
-        var meta = R.Type.TrackMeta("Single · 2024");
+        // The loaded card's lanes: the cover, then two lines beside it (stacked under it where the rail is narrow), inside the rail's own width. Explicit bars
+        // of the lines' heights: a derived bar of a placeholder sentence's measured width ran past the rail into the panel.
+        float railW = lay.RailBeside ? lay.RailW : float.NaN;
+        float textW = lay.LatestStacked || float.IsNaN(railW) ? float.NaN : MathF.Max(0f, railW - lay.LatestArt - Rules.RailItemGap);
+        static Element Bar(float w, float h, float share) => new BoxEl
+        {
+            Height = h, Width = float.IsNaN(w) ? float.NaN : w * share, MinWidth = 0f, Shrink = 1f,
+            Fill = Prop.Of(static () => R.Layer.RowHover), Corners = CornerRadius4.All(h / 2f),
+        };
+        var title = R.Type.TrackTitle("");
+        var meta = R.Type.TrackMeta("");
+        Element lines = new BoxEl
+        {
+            Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f, Shrink = 1f, Width = textW,
+            Children = [Bar(float.IsNaN(textW) ? lay.LatestArt : textW, title.LineHeight - 6f, 0.8f), Bar(float.IsNaN(textW) ? lay.LatestArt : textW, meta.LineHeight - 6f, 0.5f)],
+        };
+        Element cover = new BoxEl { Width = lay.LatestArt, Height = lay.LatestArt, Shrink = 0f, Fill = Prop.Of(static () => R.Layer.RowHover) };
         Element card = new BoxEl
         {
-            Direction = 0, Gap = Rules.RailItemGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Width = lay.LatestArt, Height = lay.LatestArt, Shrink = 0f, Fill = Prop.Of(static () => R.Layer.RowHover) },
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f,
-                    Children = [R.Type.TrackTitle("Latest release title") with { MaxLines = 1 }, meta with { MaxLines = 1 }],
-                },
-            ],
+            Direction = (byte)(lay.LatestStacked ? 1 : 0), Gap = lay.LatestStacked ? Spacing.S : Rules.RailItemGap, MinWidth = 0f, Width = railW,
+            AlignItems = lay.LatestStacked ? FlexAlign.Start : FlexAlign.Center, ClipToBounds = true,
+            Children = [cover, lines],
         };
         BoxEl head = K.Heading(Loc.Get(Strings.Artist.LatestRelease), null, null);
         Element railBox = new BoxEl

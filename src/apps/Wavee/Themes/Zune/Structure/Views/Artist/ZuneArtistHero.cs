@@ -71,7 +71,8 @@ internal static class ZuneArtistHero
         // Z-State-Loading: a name already known (the search row, a link) stands in its real display type on the skeleton, so it never changes under the reveal.
         if (shimmer && nameKnown) nameBox = nameBox.Skel(nameBox);   // the override is the real name, drawn as is (Skeletonized(false) would blank it)
 
-        var kids = new List<Element>(5) { eyebrow, new BoxEl { Grow = 1f, MinHeight = 0f }, nameBox, Caption(in text, accent, shimmer) };
+        // The spring is empty space, never a shimmer block (the deriver would paint a page-wide bar there while the page loads).
+        var kids = new List<Element>(5) { eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer) };
         if (lay.Secondary == ZuneArtistSecondary.Row && !shimmer)
             kids.Add(new BoxEl
             {

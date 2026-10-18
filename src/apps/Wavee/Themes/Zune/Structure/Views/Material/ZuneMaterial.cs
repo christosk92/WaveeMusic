@@ -14,7 +14,7 @@
 //
 // THE COVER LEAVES (decided here, plan "Zune specifics"):
 //   PageTone     OWN: under artwork wash, the page's tone as a band from the page's top fading out within its hero band; nothing otherwise.
-//   ArtistBlend  OWN: under artwork wash, the graded blend wash over the artist's hero (the style's ladder); nothing otherwise.
+//   ArtistBlend  OWN: nothing at any option: the shell layer's bleed and wash are the one continuous gradient through the hero (no seam at the band's foot).
 //   ArtistVeil   OWN: a NEUTRAL veil (no hue at any option): Zune darkens the photo for the title and never tints it.
 //   TintBinder   OWN: publishes the cover tint under artwork wash and a definite "no colour" otherwise, so mix and none keep the chrome flat.
 // The hand-over is the core's (`ShellMaterial.Publish` / `TintOwnership`); nothing here decides who owns the slot.
@@ -25,7 +25,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
+using static FluentGpu.Dsl.Ui;
+
 using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
@@ -74,7 +75,7 @@ internal static class ZuneMaterial
                 Height = ZuneBandRules.BleedH, AlignSelf = FlexAlign.Start, Direction = 1, ClipToBounds = true, HitTestVisible = false,
                 Opacity = ZuneBandRules.BleedOpacityOf(R.IsLight),
                 Enter = Fade, Exit = Fade,
-                Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade)],
+                Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade, ZuneArtistRules.PhotoFocusY)],
             });
         }
 
@@ -104,9 +105,9 @@ internal static class ZuneMaterial
     }
 
     /// <summary>A backdrop image: cover-fitted, <paramref name="height"/> tall, fading out over its lower <paramref name="fade"/>.</summary>
-    static Element Backdrop(string url, float height, float fade) => new ImageEl
+    static Element Backdrop(string url, float height, float fade, float focusY = 0.5f) => new ImageEl
     {
-        Source = url, Fit = ImageFit.Cover, Height = height, AlignSelf = FlexAlign.Stretch,
+        Source = url, Fit = ImageFit.Cover, FocusY = focusY, Height = height, AlignSelf = FlexAlign.Stretch,
         DecodePx = ZuneBandRules.BackdropDecodePx, Placeholder = ColorF.Transparent,
         Mask = new ImageMaskSpec(EdgeMask.Bottom, 0f, 0f, 0f, fade),
         RevealTransition = Design.Reduced ? null : ImageTransition.Fade(ZuneBandRules.MaterialFadeMs),
@@ -166,41 +167,13 @@ internal sealed class ZuneCoverTone : Component
     }
 }
 
-/// <summary>The artist page's blend wash: under artwork wash, the style's blend ladder (graded, then the payload, then neutral) from the
-/// hero's top through the caller's boundary to nothing; nothing otherwise. A re-graded colour mounts a fresh keyed node that fades in after
-/// the first paint (never on it).</summary>
+/// <summary>The artist page's blend wash: NOTHING under Zune. The shell material layer already draws one continuous photo bleed and one wash band from the
+/// window's top through the hero (behind the title bar, the band and the page); a second, page-scoped gradient that starts at the page's top drew a hard
+/// horizontal edge at the band's foot (and, while the page scrolled, wherever it met the band), because it composited over a different colour above and below
+/// that line. The leaf keeps its registration (the core mounts it) and its key shape; it draws no pixel.</summary>
 internal sealed class ZuneCoverBlend : Component
 {
-    bool _mounted;
-
-    public override Element Render()
-    {
-        var p = UseProps<CoverBlendProps>();
-        if (ZuneOptions.Background() != ZuneBackground.ArtworkWash) { _mounted = false; return new BoxEl { HitTestVisible = false }; }
-        if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
-        bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
-        var roles = R.Wash;
-        var color = roles.BlendWashLadder(Design.SchemeFor(p.Url), p.PayloadAccent, definite).Color;
-        var fade = _mounted && !Design.Reduced ? ZuneBandRules.MaterialFade : (EnterExit?)null;
-        _mounted = true;
-        return new BoxEl
-        {
-            ZStack = true, Height = p.Height, HitTestVisible = false,
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "zune.artist-blend:" + color.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                    HitTestVisible = false,
-                    Gradient = GradientDown(
-                        new GradientStop(0f, color with { A = roles.BlendWashTop }),
-                        new GradientStop(p.Boundary, color with { A = roles.BlendWashBoundary }),
-                        new GradientStop(1f, color with { A = 0f })),
-                    Enter = fade, Exit = fade,
-                },
-            ],
-        };
-    }
+    public override Element Render() => new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
 }
 
 /// <summary>The photography veil: neutral (the layer colour, no hue), so the title stays legible on the photo at every option. Sized like

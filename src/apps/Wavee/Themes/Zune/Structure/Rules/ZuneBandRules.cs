@@ -125,7 +125,23 @@ public static class ZuneBandRules
     public static ZuneBandLayout Band(WidthTier window) => s_bands[Math.Clamp((int)window, 0, s_bands.Length - 1)];
 
     /// <summary>The band's record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public static ZuneBandLayout BandOf(in TierFacts facts) => Band(facts.Policy is null ? WidthTier.Standard : facts.Window);
+    public static ZuneBandLayout BandOf(in TierFacts facts)
+    {
+        if (facts.Policy is null) return Band(WidthTier.Standard);
+        var window = Band(facts.Window);
+        if (facts.Content == facts.Window) return window;
+        // A docked panel narrows the content area under the band (window Standard, content Small): the page lays out at the CONTENT tier's gutter, so the
+        // band's lead inset (and, where the content is not Compact, its trailing one) is the content tier's too: the band, the page column and the title
+        // bar's wordmark share one left edge in every combination. Everything else (rows, pins, collapse, overflow) stays the window's.
+        int w = (int)facts.Window, c = (int)facts.Content;
+        if ((uint)w >= (uint)s_mixed.GetLength(0) || (uint)c >= (uint)s_mixed.GetLength(1)) return window;
+        return s_mixed[w, c] ??= MixedWith(window, Band(facts.Content));
+    }
+
+    private static readonly ZuneBandLayout?[,] s_mixed = new ZuneBandLayout?[5, 5];
+
+    private static ZuneBandLayout MixedWith(ZuneBandLayout window, ZuneBandLayout content)
+        => window with { Inset = content.Inset, Row2End = content.Tier == WidthTier.Compact ? window.Row2End : content.Row2End };
 
     /// <summary>The pins show: the tier shows them (decision 4) and the `bandPins` option is on.</summary>
     public static bool ShowPins(ZuneBandLayout band, bool option) => band.Pins && option;

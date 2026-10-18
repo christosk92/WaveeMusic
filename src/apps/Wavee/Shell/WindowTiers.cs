@@ -230,7 +230,12 @@ public static class WindowTiers
             bool queueBeside = track ? Shell.Ui.QueueBeside.Value : Shell.Ui.QueueBeside.Peek();
             var panel = track ? ShellPolicy.Tracked.Panel : ShellPolicy.Now.Panel;
             float panels = PanelsReserved(panel, (WidthTier)logical, viewportWidth, railOpen, railMode, railWidth, queueBeside);
-            return EstimateContentWidth(viewportWidth, Shell.FrameRules.SidebarPaneWidth(peek, expanded, presented), panels);
+            // A structure without a nav tree presents no pane (FrameModel.Gate): it takes nothing from the content, whatever the band says. Without this the
+            // Wide band's Expanded verdict reserved the pane's 320 under Zune, so the content tier read Small for every window under 1328 and the pages
+            // laid out on a narrower gutter than the band above them.
+            bool navTree = track ? ShellCaps.Tracked.NavTree : ShellCaps.Now.NavTree;
+            float pane = navTree ? Shell.FrameRules.SidebarPaneWidth(peek, expanded, presented) : 0f;
+            return EstimateContentWidth(viewportWidth, pane, panels);
         }
     }
 }
