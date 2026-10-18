@@ -54,7 +54,8 @@ internal static partial class ZuneLibraryPage
         if (props.Collapsed)
             inner = Collapsed(props, cache);
         // Your Episodes: the podcasts mode words swap the WHOLE body for the flat episode table, but the head (and the word that switches back) stays put.
-        else if (props.SavedEpisodesMode)
+        // (A structure that pins "your episodes" over the shows list keeps its columns in both modes: the feed is the right column.)
+        else if (props.SavedEpisodesMode && !HasEpisodes(props))
             inner = new BoxEl
             {
                 Key = LR.SavedKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
@@ -67,7 +68,9 @@ internal static partial class ZuneLibraryPage
             // The albums' "all artists" column (the host's grouping): Small's board has no songs pane beside the covers.
             Element? right = props.FullSearch
                 ? (artists ? SearchArtistColumns(props, cache) : SearchAlbumDetail(props, cache))
-                : (artists ? ReaderColumn(props, cache.Layout) : (groups && !cache.Layout.GroupPane ? null : DetailColumn(props, cache.Layout)));
+                : (artists ? ReaderColumn(props, cache.Layout)
+                    : HasEpisodes(props) && props.SavedEpisodesMode ? EpisodesFeed(props, cache.Layout)
+                    : (groups && !cache.Layout.GroupPane ? null : DetailColumn(props, cache.Layout)));
             var columns = new List<Element>(3);
             if (groups) columns.Add(GroupColumn(props, cache.Layout));
             if (groups && cache.Layout.HeroColW > 0f) columns.Add(GroupHeroColumn(props, cache.Layout));
@@ -111,6 +114,10 @@ internal static partial class ZuneLibraryPage
         public Func<Element>? NavNoMatch, NavShimmer;
         Func<BoundItemScope<LibraryNavItem>, Element>? _slotT, _slotCompactT, _cardT, _cardCompactT;
 
+        /// <summary>Dark-selection thunk for the shows list while Your Episodes owns the highlight (read live through the props: a template is frozen per slot).</summary>
+        Func<bool>? _hideSel;
+        Func<bool> HideSel => _hideSel ??= () => Props.Episodes is { } e && e.Active();
+
         public void Prepare()
         {
             OnBounds ??= Measured;
@@ -136,10 +143,10 @@ internal static partial class ZuneLibraryPage
             var entity = Props.Entity;
             return template switch
             {
-                LibraryNavTemplate.RowCompact => _slotCompactT ??= scope => NavSlot(scope, entity, compact: true),
+                LibraryNavTemplate.RowCompact => _slotCompactT ??= scope => NavSlot(scope, entity, compact: true, HideSel),
                 LibraryNavTemplate.Card => _cardT ??= scope => NavCard(scope, entity, compact: false),
                 LibraryNavTemplate.CardCompact => _cardCompactT ??= scope => NavCard(scope, entity, compact: true),
-                _ => _slotT ??= scope => NavSlot(scope, entity, compact: false),
+                _ => _slotT ??= scope => NavSlot(scope, entity, compact: false, HideSel),
             };
         }
     }
@@ -157,13 +164,17 @@ internal static partial class ZuneLibraryPage
         var l = c.Layout;
         // A GRID's cells fill whatever column it gets; a LIST (and the search hits) stop at the record's cap so a 2400 page is never one 1960-wide list. The view cell is
         // read here so the cap follows a grid <-> list switch (the column eases its width, the node is the same one).
-        float cap = artists ? float.NaN : (!p.FullSearch && User.IsGridView(p.View().Value) ? l.GridNavMaxW : l.NavMaxW);
+        bool episodes = HasEpisodes(p);
+        float cap = artists || episodes ? float.NaN : (!p.FullSearch && User.IsGridView(p.View().Value) ? l.GridNavMaxW : l.NavMaxW);
         return Section with
         {
             Key = LR.NavKey, Direction = 1,
-            Width = artists ? l.ReaderNavW : float.NaN, Grow = artists ? 0f : l.NavGrow, Basis = artists ? float.NaN : 0f, Shrink = artists ? 0f : 1f,
-            MinWidth = artists ? l.ReaderNavW : l.NavMinW, MaxWidth = cap, Animate = Design.Reveal.Resize,
-            Children = HasGroups(p)
+            Width = episodes ? l.EpisodesNavW : artists ? l.ReaderNavW : float.NaN, Grow = artists || episodes ? 0f : l.NavGrow, Basis = artists || episodes ? float.NaN : 0f,
+            Shrink = artists || episodes ? 0f : 1f,
+            MinWidth = episodes ? l.EpisodesNavW : artists ? l.ReaderNavW : l.NavMinW, MaxWidth = cap, Animate = Design.Reveal.Resize,
+            Children = episodes
+                ? [EpisodesRow(p, l), ShowsLabel(), new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [ListBody(p, c)] }]
+                : HasGroups(p)
                 // The picked artist's name over their albums: the list is the one flexing child.
                 ? [GroupHeading(p), new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [ListBody(p, c)] }]
                 : [p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
@@ -178,6 +189,13 @@ internal static partial class ZuneLibraryPage
 
     static Element DetailColumn(LibraryPageProps p, ZuneLibraryLayout l)
     {
+        // Beside the pinned "your episodes" row the show pane takes all the width the shows list leaves.
+        if (HasEpisodes(p))
+            return Section with
+            {
+                Key = p.HasSelection ? LR.PaneKey : LR.EmptyKey, Grow = 1f, Basis = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
+                Children = [p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(Strings.Library.SelectShow))],
+            };
         if (!p.HasSelection) return PaneSection(LR.EmptyKey, l) with { Children = [EmptyCompact(Loc.Get(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum))] };
         // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
         return PaneSection(LR.PaneKey, l) with { Children = [p.Pane()] };

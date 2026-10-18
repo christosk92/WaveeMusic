@@ -59,6 +59,14 @@ public static class ZuneLibraryRules
     /// <summary>The words' type is the dense meta voice (13); the count follows it.</summary>
     public const float ChevronGlyph = 10f, WordChevronGap = 4f, SaveGlyph = 16f;
 
+    // ── the podcasts' "your episodes first" (Z-Library-Podcasts*: the pinned row over the shows list, the feed or the show beside it) ──
+
+    /// <summary>The pinned row's height, its insets (the plate bleeds this far past the column), the label's weight, and the gap under the row.</summary>
+    public const float EpisodesRowH = 44f, EpisodesRowPad = 8f, EpisodesRowGap = 12f;
+
+    /// <summary>The pinned row's label weight (semibold).</summary>
+    public const ushort EpisodesLabelWeight = 600;
+
     // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
 
     /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>
@@ -275,6 +283,9 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <inheritdoc cref="HeroH"/>
     public float HeroNameSize { get; init; } = 72f;
 
+    /// <summary>The podcasts page's shows column beside the episodes feed (the board's 320 / 220 / 340).</summary>
+    public float EpisodesNavW { get; init; } = 320f;
+
     /// <summary>The "all artists" column of the albums page (the board's 220 / 200 / 280), its head row and its count lane.</summary>
     public float GroupW { get; init; } = 220f;
 
@@ -371,7 +382,7 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f, EpisodesNavW = 220f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
@@ -385,7 +396,7 @@ public static class ZuneLibraryTiers
     private static ZuneLibraryLayout HugeRecord(WidthTier tier) => Make(tier, headH: 28f, headGap: 8f, colGap: 48f, paneW: ZuneLibraryRules.HugePaneW, readerNavW: 280f, navMin: 320f,
         sortMenu: false, rightMin: 440f, new LibraryGridGaps(Column: 16f, Row: 20f), cardCellMin: float.NaN) with
     {
-        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, HeroH = 380f, HeroNameSize = 144f, HeroColW = 460f, CountArtists = true, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
+        FindW = 220f, GroupW = 280f, GroupHeadH = 40f, GroupCountLane = 32f, HeroH = 380f, HeroNameSize = 144f, EpisodesNavW = 340f, HeroColW = 460f, CountArtists = true, NavMaxW = ZuneLibraryRules.NavCap, NavGrow = ZuneLibraryRules.HugeNavGrow, PaneGrow = ZuneLibraryRules.HugePaneGrow, PaneMaxW = ZuneLibraryRules.PaneCap,
     };
 
     /// <summary>The same records on the Short height rung: the page's top and the head-to-body gap tighten, a Compact head gaps 4.</summary>
@@ -399,7 +410,7 @@ public static class ZuneLibraryTiers
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
     public static LibraryTierPolicy Policy { get; } = new()
     {
-        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, GroupPaneFrom = WidthTier.Standard,
+        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PodcastsEpisodesFirst = true, GroupPaneFrom = WidthTier.Standard,
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 

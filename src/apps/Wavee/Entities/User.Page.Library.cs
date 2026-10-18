@@ -457,6 +457,7 @@ public readonly partial struct User
             Size = new(saved.Size);
             SelectedKey = new(saved.SelectedKey);
             AlbumKey = new(saved.AlbumKey);
+            if (IsPodcasts && SelectedKey.Peek().Length == 0 && ShellPolicy.Now.LibraryTiers.PodcastsEpisodesFirst) PodcastsMode.Value = 1;   // the board opens on Your Episodes
             GroupKey = new(_entity == EntityKind.Album ? Platform.Settings.Get(Platform.Keys.LibraryGroup(_kind)) : "");
             _groupSaved = GroupKey.Peek();
             Scope = new(saved.Scope);
@@ -654,6 +655,7 @@ public readonly partial struct User
                 SkelGroup = _skelGroup, Navigator = _navigator,
                 Search = fullSearch ? SearchPropsOf() : null,
                 Groups = !collapsed && GroupingOn ? GroupsProps() : null,
+                Episodes = !collapsed && EpisodesFirst ? EpisodesProps() : null,
             });
         }
 
@@ -689,6 +691,7 @@ public readonly partial struct User
             // "memo compares equal" trap the old `:902-904` comment worked around by re-reading View a second time
             // inside NavList — gone now that the mount identity IS part of the published value).
             int view = View.Value, size = Size.Value;
+            if (IsPodcasts && EpisodesFirst && IsGridView(view)) view = view == 2 ? 0 : 1;   // the shows list beside the feed is a list
 
             var source = scope.MeSlot <= Table.None ? default
                        : IsArtists ? ArtistsInto(ref _artistSrc)
@@ -968,6 +971,7 @@ public readonly partial struct User
             if (_syncingSel || row < 0 || row >= _sortedCount) return;   // the page's own re-sync is a VIEW update, never a pick
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
+            if (EpisodesFirst && PodcastsMode.Peek() == 1) PodcastsMode.Value = 0;   // a show picked in the list is the body again
             if (Collapsed) _depth.Value = 1;
             else if (GroupPaneHidden)
             {

@@ -137,8 +137,8 @@ internal static partial class ZuneLibraryPage
     }
 
     /// <summary>The list slot: the template runs ONCE per recycled slot and branches at BUILD time on the pooled content type (a header and a row never share a pool).</summary>
-    static Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
-        => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope) : NavRow(scope, kind, compact);
+    static Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact, Func<bool>? hideSelection = null)
+        => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope) : NavRow(scope, kind, compact, hideSelection);
 
     /// <summary>The inline header item (the flat projection's <c>ContentType 1</c>, extent <see cref="LibraryLetters.HeaderExtent"/>): the letter, read out of the slot.</summary>
     static Element LetterHeader(BoundItemScope<LibraryNavItem> scope) => new BoxEl
@@ -152,10 +152,10 @@ internal static partial class ZuneLibraryPage
 
     /// <summary>A navigator LIST row (plate 40 compact / 56): the 40 art (a circle for an artist) + the name + the line under it; compact drops both the art and the line,
     /// except an artist's, which stays at the end of the row as the count (the board's letter · name · count). Wears the bound plate chrome.</summary>
-    static Element NavRow(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
+    static Element NavRow(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact, Func<bool>? hideSelection)
     {
         bool circular = kind == EntityKind.Artist;
-        Func<bool> sel = scope.Row.IsSelected;
+        Func<bool> sel = Lit(scope.Row.IsSelected, hideSelection);
         Element text = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f, Justify = FlexJustify.Center,
@@ -171,7 +171,7 @@ internal static partial class ZuneLibraryPage
             Draggable = User.DragOf(scope), Children = kids.ToArray(),
         };
         // The PLATE height, not the row extent: the chrome's own margin is what makes the outer extent the host's seed. Setting the extent here would measure the plate plus the margin.
-        return RowChrome(scope.Row, content, compact ? User.NavRowCompactPlate : User.NavRowPlate);
+        return RowChrome(scope.Row, content, compact ? User.NavRowCompactPlate : User.NavRowPlate, sel);
     }
 
     /// <summary>A navigator GRID card: the fill-width square cover + the name (13) and its line (12); compact drops both. The selection is the accent ring outside the cover.</summary>
@@ -208,6 +208,9 @@ internal static partial class ZuneLibraryPage
         };
         return CardChrome(scope.Row, content);
     }
+
+    /// <summary>A row's lit state, dark while <paramref name="hide"/> says another body owns the highlight (the pinned "your episodes" row).</summary>
+    static Func<bool> Lit(Func<bool> selected, Func<bool>? hide) => hide is null ? selected : () => selected() && !hide();
 
     static TextEl TitleText(in BoundItemScope<LibraryNavItem> scope, Func<bool> selected)
         => R.Type.TrackTitle("") with
@@ -257,9 +260,9 @@ internal static partial class ZuneLibraryPage
 
     /// <summary>The list row's chrome, bound: a faint plate revealed by the slot's IsSelected predicate (a brush fade), the hover and press plates above the content, and the
     /// container's tap/keys/focus wiring: shape-stable, so selection never re-renders a row. The margin is the host's row margin (outer extent = plate + 2 x margin).</summary>
-    static BoxEl RowChrome(in RowScope row, Element content, float plate)
+    static BoxEl RowChrome(in RowScope row, Element content, float plate, Func<bool>? lit = null)
     {
-        Func<bool> isSel = row.IsSelected;
+        Func<bool> isSel = lit ?? row.IsSelected;
         var interact = row.OnInteraction;
         return new BoxEl
         {

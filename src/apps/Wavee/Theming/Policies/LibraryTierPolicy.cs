@@ -56,6 +56,11 @@ public sealed record LibraryTierPolicy
     /// an album's page when it is picked (default Compact: the pane is drawn at every split tier). Contract addition after 1.33.</summary>
     public WidthTier GroupPaneFrom { get; init; } = WidthTier.Compact;
 
+    /// <summary>The structure draws the PODCASTS library as the board does: "your episodes" as a pinned first row of the shows list, the episodes feed (or the picked show) beside it, and no
+    /// mode words in the head. The host then opens on Your Episodes until a show has been picked, and a show picked in the list switches back to its pane; false (the default,
+    /// Classic's) leaves the two mode words and their swap as they were. Contract addition after 1.34.</summary>
+    public bool PodcastsEpisodesFirst { get; init; }
+
     /// <summary>The navigator's resting width at a Huge content tier (NaN: the key's own default at every tier).</summary>
     public float HugeNavWidth { get; init; } = float.NaN;
 
