@@ -72,9 +72,9 @@ public sealed class ZuneScreensMountedTests(ShellHost host)
             Node(shell, "zs:sections");
             Node(shell, "zs:scroll:playback");
             // One word per tab, the open one included.
-            foreach (string slug in Settings.TabSlugs) Node(shell, "zs:link:" + slug);
+            foreach (string slug in Settings.AreaSlugs) Node(shell, "zs:link:" + slug);
             // The other tabs' lanes are not mounted once the cross-fade settles: only the lane is keyed per tab.
-            foreach (string other in Settings.TabSlugs)
+            foreach (string other in Settings.AreaSlugs)
                 if (other != "playback") Assert.True(shell.Find("zs:scroll:" + other).IsNull, "the '" + other + "' lane is mounted beside 'playback'");
             // Classic's page is not on screen.
             Assert.True(shell.Find("settings:title").IsNull, "Classic's Settings title is mounted under Zune");
@@ -131,12 +131,12 @@ public sealed class ZuneScreensMountedTests(ShellHost host)
     public void Every_tab_mounts_at_every_tier_without_an_exception(float width, float height)
         => ZuneHost.Mounted(host, shell =>
         {
-            foreach (var tab in new[] { Settings.Tab.General, Settings.Tab.Appearance, Settings.Tab.Playback, Settings.Tab.Notifications })
+            foreach (var area in Enum.GetValues<Settings.Area>())
             {
-                Settings.Open(tab);
+                Settings.Open(area);
                 shell.RunFrames(40);
                 Node(shell, "zs:title");
-                Node(shell, "zs:scroll:" + Settings.TabSlugs[(int)tab]);
+                Node(shell, "zs:scroll:" + Settings.AreaSlugs[(int)area]);
             }
         }, width, height);
 

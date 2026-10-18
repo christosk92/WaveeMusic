@@ -30,30 +30,34 @@ internal static partial class ClassicSettings
         s_trayMode.Value = D(Tab.General, "trayIcon").Current is int mode ? mode : (int)Tray.DefaultIconMode;
     }
 
-    static Element GeneralTab()
+    static Element[] GeneralTab()
     {
         var kids = new List<Element>(20)
         {
+            Mark("Language & region"),
             SectionHeader(Loc.Get(Strings.Settings.Language.Title), SectionGlyph(Tab.General, "Language & region"),
                 Loc.Get(Strings.Settings.Language.Subtitle)),
             DocRow(D(Tab.General, "language"),
                 Combo(LanguageLabels(), s_language, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
                     itemEnabled: Settings.Language.Enabled)),
 
+            Mark("Links"),
             SectionHeader(Loc.Get(Strings.Settings.Links.Title), SectionGlyph(Tab.General, "Links"),
                 Loc.Get(Strings.Settings.Links.Subtitle)),
             SpotifyLinksRow(),
         };
 
+        kids.Add(Mark("Notification area"));
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.General.Tray.Title), SectionGlyph(Tab.General, "Notification area"),
             Loc.Get(Strings.Settings.General.Tray.Subtitle)));
         AddTrayRows(kids);
 
+        kids.Add(Mark("Graphics"));
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Gpu.Title), SectionGlyph(Tab.General, "Graphics"),
             Loc.Get(Strings.Settings.Gpu.Subtitle)));
         kids.Add(Embed.Comp(static () => new GpuPickerCard()));
 
-        return TabStack(kids.ToArray());
+        return kids.ToArray();
     }
 
     static string[] LanguageLabels() =>
@@ -150,12 +154,12 @@ internal static partial class ClassicSettings
     // Two global gates, then ONE LADDER PER TOPIC (Off → In Wavee → Windows), in `Notify.Prefs.AllTopics` order — read,
     // never re-listed (A9). Not catalog-driven: the Bell/gear glyphs repeat on purpose (ch 27 parity 75a).
 
-    static Element NotificationsTab()
+    static Element[] NotificationsTab()
     {
         _ = Notify.Prefs.Epoch.Value;          // any dial write, from here or the centre, re-reads the tab
         bool dev = SettingsFacts.Live.DeveloperMode;
         var policy = Notify.Prefs.Policy();
-        var children = new List<Element>(16);
+        var children = new List<Element>(16) { Mark("Delivery") };
 
         // The honesty layer FIRST: when Windows suppresses Wavee every dial below is theatre until that is fixed.
         if (BlockedBar(Settings.NotifyRules.Blocked(SettingsFacts.ToastDelivery())) is { } blocked) children.Add(blocked);
@@ -169,6 +173,7 @@ internal static partial class ClassicSettings
         if (D(Tab.Notifications, "quietFrom").Visible(SettingsFacts.Live))
             children.Add(QuietRange(policy));
 
+        children.Add(Mark("Topics"));
         children.Add(SectionHeader(Loc.Get(Strings.Settings.Notify.TopicsTitle), Icons.Settings));
         children.Add(new BoxEl
         {
@@ -181,7 +186,7 @@ internal static partial class ClassicSettings
         foreach (var topic in Notify.Prefs.AllTopics)
             children.Add(TopicRow(topic, dev));
 
-        return TabStack(children.ToArray());
+        return children.ToArray();
     }
 
     static Element TopicRow(NotifyTopic topic, bool dev)

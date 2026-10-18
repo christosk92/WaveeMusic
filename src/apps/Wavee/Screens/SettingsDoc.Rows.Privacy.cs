@@ -80,18 +80,15 @@ public static partial class SettingsDoc
             Make(T.PrivacyDiagnostics, "Logs", "logLevelFile", K.Choice, PvLogs.InFile,
                 SettingsWriter.OfChoice("logs.fileLevel", SettingsVerbs.SetFileLogLevel),
                 captionKey: PvLogs.InFileSub, value: _ => (int)LogCapturePolicy.EffectiveFileLevel(Log.MinLevel, Log.FileMinLevel), catalog: false),
+            // "Report a problem" lives in Feedback & help (Tab.Feedback, "Help"): one home for the action.
             Make(T.PrivacyDiagnostics, "Logs", "logFiles", K.Action, PvLogs.Files,
-                SettingsWriter.OfAction("logs.openFolder", SettingsVerbs.OpenLogFolder)),
-            Make(T.PrivacyDiagnostics, "Logs", "reportProblem", K.Action, PvLogs.Report,
-                SettingsWriter.OfAction("logs.reportProblem", SettingsVerbs.ReportProblem), captionKey: PvLogs.ReportSub)),
+                SettingsWriter.OfAction("logs.openFolder", SettingsVerbs.OpenLogFolder))),
 
         Sect(T.PrivacyDiagnostics, "Tools", PvTools.Title, PvTools.Subtitle,
             Make(T.PrivacyDiagnostics, "Tools", "playbackRuntime", K.Action, PvTools.PlaybackRuntime,
                 SettingsWriter.OfAction("tools.playbackRuntime", () => SettingsVerbs.OpenDiagnostics(Shell.RouteKind.PlaybackDiagnostics)),
                 captionKey: PvTools.PlaybackRuntimeSub),
-            Make(T.PrivacyDiagnostics, "Tools", "connectDiagnostics", K.Action, PvTools.Connect,
-                SettingsWriter.OfAction("tools.connect", () => SettingsVerbs.OpenDiagnostics(Shell.RouteKind.ConnectDiagnostics)),
-                captionKey: PvTools.ConnectSub),
+            // The Connect diagnostics page is a door of Devices & Connect (Tab.Devices, "Connect").
             // The persisted key is `dealerArchive` verbatim (no legacy renumbering); it applies live through the capture host.
             Make(T.PrivacyDiagnostics, "Tools", "realtimeCapture", K.Toggle, PvTools.Capture,
                 SettingsWriter.OfToggle("tools.capture", SettingsVerbs.SetRealtimeCapture),
@@ -172,14 +169,12 @@ public static partial class SettingsDoc
                 captionKey: Strings.Update.AutoShow.Hint, value: BoolOf(Platform.Keys.ReleaseNotesAutoShow), catalog: false)),
 
         Sect(T.About, "Links", Strings.Settings.About.Website, null,
+            // "Report a problem", "Suggest a feature" and "Copy diagnostics" moved to Feedback & help (Tab.Feedback).
             AboutLink("whatsNew", Strings.Update.About.OpenWhatsNew, SettingsVerbs.OpenWhatsNew),
-            AboutLink("reportProblem", Strings.Report.AboutReportProblem, () => SettingsVerbs.OpenFeedback(Feedback.ReportKind.Bug)),
-            AboutLink("suggestFeature", Strings.Report.AboutSuggestFeature, () => SettingsVerbs.OpenFeedback(Feedback.ReportKind.Feature)),
             AboutLink("allIssues", Strings.Report.AboutAllIssues, () => SettingsVerbs.OpenUri(Settings.IssuesUrl)),
             AboutLink("website", Strings.Settings.About.Website, () => SettingsVerbs.OpenUri(Settings.WebsiteUrl)),
             AboutLink("privacyPolicy", Strings.Settings.About.PrivacyPolicy, () => SettingsVerbs.OpenUri(Settings.PrivacyUrl)),
             AboutLink("thirdPartyNotices", Strings.Settings.About.ThirdPartyNotices, SettingsVerbs.OpenNotices),
-            AboutLink("copyDiagnostics", Strings.Settings.About.CopyDiagnostics, SettingsVerbs.CopyDiagnostics),
             AboutLink("openDataFolder", Strings.Settings.About.OpenDataFolder, SettingsVerbs.OpenDataFolder),
             Make(T.About, "Links", "showSummaryAgain", K.Action, Strings.Update.About.ShowSummaryAgain,
                 SettingsWriter.OfAction("about.showSummaryAgain", SettingsVerbs.ShowSummaryAgain), catalog: false)),

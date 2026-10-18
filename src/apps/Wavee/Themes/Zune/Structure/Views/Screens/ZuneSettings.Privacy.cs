@@ -31,9 +31,9 @@ namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    static Element[] PrivacyTab(ZuneKit k) =>
+    static Named[] PrivacyTab(ZuneKit k) =>
     [
-        Group(k, Tab.PrivacyDiagnostics, "Privacy",
+        Bare(k, Tab.PrivacyDiagnostics, "Privacy",
             WhatLeaves(k), Embed.Comp(static () => new CrashModeRows()) with { Key = "zs:crash-mode" },
             Embed.Comp(static () => new CrashServiceRow()) with { Key = "zs:crash-service" },
             LinkRow(k, "privacyPolicy")),
@@ -45,11 +45,10 @@ internal static partial class ZuneSettings
             Embed.Comp(static () => new DetailLevelRows()) with { Key = "zs:detail-level" },
             k.Row("zs:row:log-files", Loc.Get(PvLogs.Files),
                 PvLogs.FilesSub(PrivacyRules.WholeMb(Log.MaxFileBytes), Log.RetentionDays.ToString(CultureInfo.InvariantCulture), PrivacyRules.WholeMb(Log.RetentionBytes)),
-                k.Cmd(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!())),
-            LinkRow(k, "reportProblem", Loc.Get(PvLogs.Report), Loc.Get(PvLogs.ReportSub))),
+                k.Cmd(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()))),
 
         Group(k, Tab.PrivacyDiagnostics, "Tools",
-            LinkRow(k, "playbackRuntime"), LinkRow(k, "connectDiagnostics"), CaptureRow(k)),
+            LinkRow(k, "playbackRuntime"), CaptureRow(k)),
 
         Group(k, Tab.PrivacyDiagnostics, "Developer", Embed.Comp(static () => new DeveloperRows()) with { Key = "zs:developer" }),
     ];

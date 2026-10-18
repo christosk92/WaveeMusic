@@ -452,6 +452,7 @@ public static partial class Settings
 
     // ══ 8. ABOUT: THE NOTICES FILE, THE DIAGNOSTICS COPY, THE IDENTITY STRINGS ═══════════════════════════════════
 
+    internal const string SpotifyAccountUrl = "https://www.spotify.com/account/overview/";
     internal const string IssuesUrl = "https://github.com/christosk92/WaveeMusic/issues";
     internal const string WebsiteUrl = "https://github.com/christosk92/WaveeMusic";
     internal const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";

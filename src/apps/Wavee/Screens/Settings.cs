@@ -29,12 +29,14 @@ public static partial class Settings
 {
     // ══ 1. THE TAB MODEL ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The seven tabs, in strip order (ch 27 parity 2). The slug is the scroll key's suffix.</summary>
-    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, PrivacyDiagnostics, About }
+    /// <summary>The document's tabs: where a ROW lives (its writer, its facts and its tests are keyed by tab). The first seven are the original pivot; Account,
+    /// Devices, Keyboard and Feedback hold the rows of the four sections the Zune boards add. What the PAGE shows is the twelve <see cref="Area"/>s
+    /// (`Settings.Areas.cs`), each a composition of document sections, so a row can move between areas without changing its identity.</summary>
+    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, PrivacyDiagnostics, About, Account, Devices, Keyboard, Feedback }
 
     /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9. The log viewer
     /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
-    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about"];
+    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about", "account", "devices", "keyboard", "feedback"];
 
     /// <summary>A deep link's tab name → the tab, General when unknown (a bad arg lands on the page, never nowhere).</summary>
     public static Tab TabFromSlug(string? slug)
@@ -82,6 +84,7 @@ public static partial class Settings
             new(Tab.Appearance, "Now playing", "Album"),
             new(Tab.Appearance, "Home", "Home"),
 
+            new(Tab.Playback, "Playback", "Forward"),
             new(Tab.Playback, "Audio", "MusicNote"),
             new(Tab.Playback, "Sound", "Speakers"),
             new(Tab.Playback, "Video", "Movie"),
@@ -148,10 +151,12 @@ public static partial class Settings
             // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
             new(Tab.Appearance, "Home", "daylistClock", "Clock"),
 
+            // Playback (the behaviour of the queue): the board's playback section holds autoplay and crossfade; the sound of it is Audio.
+            new(Tab.Playback, "Playback", "rememberVolume", "Volume"),
+            new(Tab.Playback, "Playback", "autoplay", "Play"),
+            new(Tab.Playback, "Playback", "crossfade", "Audio"),
             new(Tab.Playback, "Audio", "audioQuality", "Headphones"),
             new(Tab.Playback, "Audio", "meteredQuality", "RadioTower"),
-            new(Tab.Playback, "Audio", "rememberVolume", "Volume"),
-            new(Tab.Playback, "Audio", "autoplay", "Play"),
             // G-132: the normalization switch 0.2.9 persisted but never showed.
             new(Tab.Playback, "Audio", "normalization", "Equalizer"),
             // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `ClassicSettings.Glyph` and distinct from every
@@ -159,7 +164,6 @@ public static partial class Settings
             new(Tab.Playback, "Audio", "normalizationMode", "Speakers"),
             new(Tab.Playback, "Audio", "normalizationAlbum", "Album"),
             new(Tab.Playback, "Sound", "equalizer", "Equalizer"),
-            new(Tab.Playback, "Sound", "crossfade", "Audio"),
             new(Tab.Playback, "Video", "videoQuality", "TvMonitor"),
             new(Tab.Playback, "Video", "videoMetered", "RadioTower"),
             new(Tab.Playback, "Video", "videoPrepareAhead", "Download"),
@@ -200,9 +204,7 @@ public static partial class Settings
             new(Tab.PrivacyDiagnostics, "Logs", "logViewer", "ViewList"),
             new(Tab.PrivacyDiagnostics, "Logs", "detailLevel", "Filter"),
             new(Tab.PrivacyDiagnostics, "Logs", "logFiles", "Folder"),
-            new(Tab.PrivacyDiagnostics, "Logs", "reportProblem", "Attention"),
             new(Tab.PrivacyDiagnostics, "Tools", "playbackRuntime", "MusicNote"),
-            new(Tab.PrivacyDiagnostics, "Tools", "connectDiagnostics", "Devices"),
             new(Tab.PrivacyDiagnostics, "Tools", "realtimeCapture", "RadioTower"),
             new(Tab.PrivacyDiagnostics, "Developer", "developerMode", "Settings"),
             new(Tab.PrivacyDiagnostics, "Developer", "fpsOverlay", "Clock"),

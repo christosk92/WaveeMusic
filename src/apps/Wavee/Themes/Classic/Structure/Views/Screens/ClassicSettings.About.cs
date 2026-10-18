@@ -28,15 +28,21 @@ internal static partial class ClassicSettings
 
     /// <summary>Order: update panel, links, the receipts, Licenses. Crash reports moved to Settings › General ›
     /// Privacy &amp; diagnostics and Settings › Logs › Reports (crash-diagnostics-implementation.md §D, §E).</summary>
-    private static Element AboutTab() => TabStack(
+    private static Element[] AboutTab() =>
+    [
+        Mark("Update"),
         Embed.Comp(static () => new AboutUpdatePanel()) with { Key = "about:update" },
+        Mark("Links"),
         AboutLinksCard(),
+        Mark("Right now"),
         SectionHeader(Loc.Get(Strings.Settings.About.RightNow), Icons.Info),
         Embed.Comp(static () => new ReceiptsCard()),
+        Mark("Licenses"),
         SectionHeader(Loc.Get(Strings.Settings.About.Licenses), Icons.Document),
         LicenseExpander("Wavee", "MIT", Settings.WaveeLicense),
         // ONE expander for everything third-party, read from the generated file rather than restated in code.
-        LicenseExpander(Loc.Get(Strings.Settings.About.ThirdPartyNotices), Settings.NoticesFileName, Settings.ReadNotices()));
+        LicenseExpander(Loc.Get(Strings.Settings.About.ThirdPartyNotices), Settings.NoticesFileName, Settings.ReadNotices()),
+    ];
 
     /// <summary>W19's links card: ContentAlignment.Left (no header, glyph or chevron at any width), the link column
     /// pulled flush to the card padding. "Open What's new" carries the unread dot while the running release's notes
@@ -56,13 +62,10 @@ internal static partial class ClassicSettings
                 Children =
                 [
                     whatsNew,
-                    LinkButton(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
-                    LinkButton(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
                     LinkButton(Loc.Get(Strings.Report.AboutAllIssues), Settings.IssuesUrl),
                     LinkButton(Loc.Get(Strings.Settings.About.Website), Settings.WebsiteUrl),
                     LinkButton(Loc.Get(Strings.Settings.About.PrivacyPolicy), Settings.PrivacyUrl),
                     LinkButton(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
-                    LinkButton(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
                     LinkButton(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
                     new TextEl(Loc.Get(Strings.Settings.About.Unofficial)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     new TextEl(Settings.OsDescription) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },

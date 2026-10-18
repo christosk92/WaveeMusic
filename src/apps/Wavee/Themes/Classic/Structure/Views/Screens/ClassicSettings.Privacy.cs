@@ -34,29 +34,34 @@ internal static partial class ClassicSettings
 {
     // ══ 1. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static Element PrivacyDiagnosticsTab() => TabStack(
+    private static Element[] PrivacyDiagnosticsTab() =>
+    [
+        Mark("Privacy"),
         SectionHeader(Loc.Get(PvFacts.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Privacy"), Loc.Get(PvFacts.Subtitle)),
         WhatLeavesExpander(),
         CrashReportsExpander(),
         Embed.Comp(static () => new CrashServiceCard()) with { Key = "privacy.crash-service" },
         PrivacyPolicyCard(),
 
+        Mark("Crash reports"),
         SectionHeader(Loc.Get(PvReports.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Crash reports"), Loc.Get(PvReports.Subtitle)),
         Embed.Comp(static () => new SavedReportsGroup()) with { Key = "privacy.reports" },
 
+        Mark("Logs"),
         SectionHeader(Loc.Get(PvLogs.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Logs"), Loc.Get(PvLogs.Subtitle)),
         Embed.Comp(static () => new LogViewerCard()) with { Key = "privacy.log-viewer" },
         Embed.Comp(static () => new DetailLevelGroup()) with { Key = "privacy.detail-level" },
         LogFilesCard(),
-        ReportProblemCard(),
 
+        Mark("Tools"),
         SectionHeader(Loc.Get(PvTools.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Tools"), Loc.Get(PvTools.Subtitle)),
-        ToolLinkCard("playbackRuntime"),
-        ToolLinkCard("connectDiagnostics"),
+        ToolLinkCard(Tab.PrivacyDiagnostics, "playbackRuntime"),
         RealtimeCaptureExpander(),
 
+        Mark("Developer"),
         SectionHeader(Loc.Get(PvDev.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Developer"), Loc.Get(PvDev.Subtitle)),
-        Embed.Comp(static () => new DeveloperGroup()) with { Key = "privacy.developer" });
+        Embed.Comp(static () => new DeveloperGroup()) with { Key = "privacy.developer" },
+    ];
 
     // ══ 2. PRIVACY ════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -477,15 +482,11 @@ internal static partial class ClassicSettings
         StdButton(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()),
         RowGlyph(Tab.PrivacyDiagnostics, "logFiles"));
 
-    static Element ReportProblemCard() => Row(Loc.Get(PvLogs.Report), Loc.Get(PvLogs.ReportSub), null,
-        RowGlyph(Tab.PrivacyDiagnostics, "reportProblem"), isClickEnabled: true,
-        onClick: static () => D(Tab.PrivacyDiagnostics, "reportProblem").Writer.Run!());
-
     // ══ 5. TOOLS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A clickable card that opens one diagnostics page (Playback keeps its own door to the same pages).</summary>
-    static Element ToolLinkCard(string rowId)
-        => DocRow(D(Tab.PrivacyDiagnostics, rowId), isClickEnabled: true, onClick: () => D(Tab.PrivacyDiagnostics, rowId).Writer.Run!());
+    static Element ToolLinkCard(Tab tab, string rowId)
+        => DocRow(D(tab, rowId), isClickEnabled: true, onClick: () => D(tab, rowId).Writer.Run!());
 
     /// <summary>The persisted key/subtitle are `dealerArchive` verbatim (CLAUDE.md: no legacy renumbering); the toggle
     /// applies live through <c>RealtimeCaptureHost.OnSettingsChanged</c>, and the two doors sit inside.</summary>

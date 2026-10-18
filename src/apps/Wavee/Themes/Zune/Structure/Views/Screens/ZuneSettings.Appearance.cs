@@ -23,13 +23,13 @@ namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    static Element[] AppearanceTab(ZuneKit k)
+    static Named[] AppearanceTab(ZuneKit k)
     {
         var facts = SettingsFacts.Live;
-        var groups = new List<Element>(8)
+        var groups = new List<Named>(8)
         {
             Group(k, Tab.Appearance, "Theme", Slots.View(ViewKeys.SettingsThemePicker, SettingsThemePickerProps.Instance) with { Key = "zs:picker-view" }),
-            Slots.View(ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.Page) with { Key = "zs:options-view" },
+            new Named("Theme options", Slots.View(ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.Page) with { Key = "zs:options-view" }),
         };
 
         var mode = D(Tab.Appearance, "appMode");
@@ -40,7 +40,7 @@ internal static partial class ZuneSettings
             k.DocRow(marquee, k.Toggle(marquee))));
 
         var blur = D(Tab.Appearance, "lyricsBlur");
-        groups.Add(Group(k, Tab.Appearance, "Lyrics",
+        groups.Add(Bare(k, Tab.Appearance, "Lyrics",
             k.DocRow(blur, k.Slide("lyricsBlur", new ZuneSlide(0f, 100f, 1f,
                 () => blur.Current is float v ? v : 0f,
                 v => { if (blur.Writer.Slide!(v)) Settings.Bump(); },

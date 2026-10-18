@@ -1,6 +1,6 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.cs — Classic's `Pages.Settings` (themes plan 6.1, T11b) ───────────────────────────
 //
-// From `Screens\Settings.UI.cs` (`SettingsPageView`, §3 the row grammar, §4 the glyphs). The page's PICTURE: the masthead, the seven-tab pivot over a
+// From `Screens\Settings.UI.cs` (`SettingsPageView`, §3 the row grammar, §4 the glyphs). The page's PICTURE: the masthead, the twelve-area pivot over a
 // per-tab keyed scroll lane, and the shared row grammar every tab builds with (the section header, the card, the expander item, the value tag, the
 // compact toggle over a document row). The tabs' bodies are `ClassicSettings.<Tab>.cs`; the theme picker, the options and the sidebar layout cards are
 // `ClassicSettings.Theme.cs` (they are their own keys: the setup wizard mounts them too).
@@ -68,21 +68,12 @@ internal static partial class ClassicSettings
         // The route is keep-alive: a PARKED page is not unmounted, so the same teardown rides the deactivation edge.
         hooks.UseActivation(onDeactivated: static () => EnterPlayback(false));
 
-        int tab = Math.Clamp(props.Tab, 0, Settings.TabSlugs.Length - 1);
-        hooks.UseEffect(() => EnterPlayback(tab == (int)Tab.Playback), DepKey.From(tab));
+        int area = Math.Clamp(props.Area, 0, Settings.AreaSlugs.Length - 1);
+        hooks.UseEffect(() => EnterPlayback(area == (int)Settings.Area.Playback), DepKey.From(area));
 
-        Element body = (Tab)tab switch
-        {
-            Tab.Appearance => AppearanceTab(),
-            Tab.Playback => PlaybackTab(),
-            Tab.Notifications => NotificationsTab(),
-            Tab.Storage => StorageTab(props.Storage),
-            Tab.PrivacyDiagnostics => PrivacyDiagnosticsTab(),
-            Tab.About => AboutTab(),
-            _ => GeneralTab(),
-        };
+        Element body = AreaBody((Settings.Area)area, props);
 
-        string slug = Settings.TabSlugs[tab];
+        string slug = Settings.AreaSlugs[area];
         // The body swaps with the page cross-fade (Q38): the lane is keyed per tab, so a switch is a real unmount the
         // engine fades out under the arriving tab, and each tab keeps its own offset. Every tab is an ordinary scrolling
         // lane (N8's unscrolled Logs lane is retired: the viewer is the route `logs`).
@@ -122,17 +113,6 @@ internal static partial class ClassicSettings
         SeedPlayback();
         SeedStorage();
     }
-
-    static string[] TabLabels() =>
-    [
-        Loc.Get(Strings.Settings.Tabs.General),
-        Loc.Get(Strings.Settings.Tabs.Appearance),
-        Loc.Get(Strings.Settings.Tabs.Playback),
-        Loc.Get(Strings.Settings.Notify.Title),
-        Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Privacy),
-        Loc.Get(Strings.Settings.Tabs.About),
-    ];
 
     // ══ 1. THE SHARED ROW GRAMMAR (0.2.9 `SettingsPage.cs:192-290`, `SettingsShared.cs`) ══════════════════════════
 
@@ -184,7 +164,7 @@ internal static partial class ClassicSettings
     static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
     {
         var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight, LeadingInset = ClassicSettingsRules.TabLeadingInset } : null;
-        Element bar = SelectorBar.Create(TabLabels(), props.TabCell(), style: style);
+        Element bar = SelectorBar.Create(AreaLabels(), props.AreaCell(), style: style);
         return new BoxEl
         {
             Key = "settings:tabs", Direction = 1, Shrink = 0f,

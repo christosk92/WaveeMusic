@@ -70,7 +70,7 @@ internal static partial class ClassicSettings
 
     // ══ 2. THE TAB (W15 loading · W16 ready · W18 failed) ══════════════════════════════════════════════════════════
 
-    private static Element StorageTab(SettingsStorageProps storage)
+    private static Element[] StorageTab(SettingsStorageProps storage)
     {
         var phase = storage.Phase;
         var s = storage.Snapshot;
@@ -98,7 +98,9 @@ internal static partial class ClassicSettings
             : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
         var facts = SettingsFacts.Live;
 
-        return TabStack(
+        return
+        [
+            Mark("On this PC"),
             SectionHeader(Loc.Get(Strings.Settings.Storage.OnThisPc), SectionGlyph(Tab.Storage, "On this PC")),
             census,
             StorageRow(0, "library", Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb),
@@ -107,6 +109,7 @@ internal static partial class ClassicSettings
             StorageRow(3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
             StorageRow(6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
 
+            Mark("Playback cache"),
             SectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), SectionGlyph(Tab.Storage, "Playback cache")),
             DocRow(D(Tab.Storage, "cacheAudio"), RowToggle(D(Tab.Storage, "cacheAudio"))),
             DocRow(D(Tab.Storage, "cacheKeys"), RowToggle(D(Tab.Storage, "cacheKeys"))),
@@ -128,6 +131,7 @@ internal static partial class ClassicSettings
                 StorageClearButton(D(Tab.Storage, "audioBodiesClear"), facts)),
             StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, StorageClearButton(D(Tab.Storage, "licenseKeysClear"), facts)),
 
+            Mark("Metadata cache"),
             SectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SectionGlyph(Tab.Storage, "Metadata cache")),
             DocRow(D(Tab.Storage, "metadataBudget"),
                 Combo(Settings.StorageFormat.MetaBudgetLabels, s_metaBudget, width: ClassicSettingsRules.BudgetComboWidth, onChange: SetMetaBudget)),
@@ -135,6 +139,7 @@ internal static partial class ClassicSettings
                 StorageClearButton(D(Tab.Storage, "clearMetadata"), facts),
                 RowGlyph(Tab.Storage, "clearMetadata")),
 
+            Mark("Reset"),
             SectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SectionGlyph(Tab.Storage, "Reset"),
                 Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
             DocRow(D(Tab.Storage, "factoryReset"),
@@ -143,7 +148,8 @@ internal static partial class ClassicSettings
                     var reset = D(Tab.Storage, "factoryReset");
                     ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
                         () => reset.Writer.Run!());
-                })));
+                })),
+        ];
     }
 
     /// <summary>N11: the verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed

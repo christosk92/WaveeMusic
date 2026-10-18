@@ -405,7 +405,7 @@ public static partial class AiLyrics
         Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail };
         if (Rules.ToastOnError(SettingsCardVisible, kind))
             Notify.Say(Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
-                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Tab.Appearance),
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
                 dedupeKey: "ai-lyrics-error");
     }
 

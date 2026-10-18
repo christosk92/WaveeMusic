@@ -83,7 +83,7 @@ public static partial class LogsPage
         public void GoBack()
         {
             if (Shell.CanBack.Peek()) Shell.GoBack();
-            else Settings.Open(Settings.Tab.PrivacyDiagnostics);
+            else Settings.Open(Settings.Area.Feedback);
         }
 
         /// <summary>Settings › Privacy &amp; diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
@@ -91,7 +91,7 @@ public static partial class LogsPage
         public void OpenCrumb(int index)
         {
             if (index == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
-            else if (index == 1) Settings.Open(Settings.Tab.PrivacyDiagnostics);
+            else if (index == 1) Settings.Open(Settings.Area.Feedback);
         }
 
         public void OpenLogFolder() => Diagnostics.OpenFolder(Path.GetDirectoryName(Log.FilePath ?? ""));

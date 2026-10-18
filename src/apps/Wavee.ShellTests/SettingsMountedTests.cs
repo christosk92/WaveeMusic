@@ -26,10 +26,10 @@ public sealed class SettingsMountedTests(ShellHost host)
             Settings.Open(tab);
             shell.RunFrames(60);
 
-            string slug = Settings.TabSlugs[(int)tab];
+            string slug = Settings.AreaSlugs[(int)Settings.HomeArea(tab)];
             Node(shell, "settings:scroll:" + slug);
             // The other tabs' lanes are not mounted once the cross-fade settles: only the lane is keyed per tab.
-            foreach (string other in Settings.TabSlugs)
+            foreach (string other in Settings.AreaSlugs)
                 if (other != slug) Assert.True(shell.Find("settings:scroll:" + other).IsNull, "the '" + other + "' lane is mounted beside '" + slug + "'");
         });
 
@@ -38,10 +38,10 @@ public sealed class SettingsMountedTests(ShellHost host)
     public void A_tab_switch_cross_fades_the_lane_like_a_page()
         => host.Mounted(shell =>
         {
-            Settings.Open(Settings.Tab.General);
+            Settings.Open(Settings.Area.Account);
             shell.RunFrames(60);
 
-            Settings.Open(Settings.Tab.Appearance);
+            Settings.Open(Settings.Area.Appearance);
             shell.RunFrames(1);
             var lane = Node(shell, "settings:tab:appearance");
             Assert.True(shell.Host.Animation.TryGetTransition(lane, out LayoutTransition swap), "the tab lane declares no transition");
@@ -64,7 +64,7 @@ public sealed class SettingsMountedTests(ShellHost host)
             var title = scene.PresentedAbsoluteRect(Node(shell, "settings:title"));
             Assert.True(title.H >= 52f, $"the title is {title.H} tall: not the 40/52 page title");
 
-            var lane = Node(shell, "settings:scroll:general");
+            var lane = Node(shell, "settings:scroll:appearance");
             var laneBox = scene.PresentedAbsoluteRect(lane);
             // The first section header sits 16 under the lane's top edge (the lane's own padding), not 16 + 32.
             float first = shell.FindPrefix("settings:section:").Min(s => scene.PresentedAbsoluteRect(s.Node).Y);
@@ -72,16 +72,21 @@ public sealed class SettingsMountedTests(ShellHost host)
         });
 
     [Fact]
-    public void A_deep_link_opens_the_tab_its_slug_names_and_a_bad_slug_lands_on_general()
+    public void A_deep_link_opens_the_area_its_slug_names_and_a_bad_slug_lands_on_the_first_area()
         => host.Mounted(shell =>
         {
-            Settings.Open(Settings.TabFromSlug("playback"));
+            Settings.Open(Settings.AreaFromSlug("playback"));
             shell.RunFrames(60);
             Node(shell, "settings:scroll:playback");
 
-            Settings.Open(Settings.TabFromSlug("no-such-tab"));
+            Settings.Open(Settings.AreaFromSlug("no-such-tab"));
             shell.RunFrames(60);
-            Node(shell, "settings:scroll:general");
+            Node(shell, "settings:scroll:account");
+
+            // An old tab slug lands on the area that holds what it opened.
+            Settings.Open(Settings.AreaFromSlug("logs"));
+            shell.RunFrames(60);
+            Node(shell, "settings:scroll:feedback");
         });
 
     [Fact]

@@ -155,7 +155,9 @@ public class SettingsDocTests
     {
         Assert.Equal(
             new[] { "Privacy/whatLeaves", "Privacy/whatLeavesAi", "Privacy/crashContents", "Right now/receipts", "Licenses/licenses" },
-            Rows.Where(r => r.Writer.IsReadOnly).Select(r => r.Section + "/" + r.Id).ToArray());
+            // (the four tabs the Zune boards add have their own facts: the account, this PC's Connect name, the shortcuts, what a report holds)
+            Rows.Where(r => r.Writer.IsReadOnly && r.Tab is not (Settings.Tab.Account or Settings.Tab.Devices or Settings.Tab.Keyboard or Settings.Tab.Feedback))
+                .Select(r => r.Section + "/" + r.Id).ToArray());
 
         foreach (var row in Rows.Where(r => r.Writer.IsOwned))
             Assert.Contains('.', row.Writer.Verb);   // "AiLyrics.…", "SettingsVerbs.…": a named hand-off, not a blank

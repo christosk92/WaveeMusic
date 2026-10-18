@@ -51,7 +51,7 @@ public sealed partial class TierLayoutTests
         host.Mounted(shell =>
         {
             Settings.Open(tab);
-            string slug = Settings.TabSlugs[(int)tab];
+            string slug = Settings.AreaSlugs[(int)Settings.HomeArea(tab)];
             Until(shell, () => !shell.Find("settings:scroll:" + slug).IsNull, "the " + slug + " tab");
             shell.RunFrames(90);
             body(shell);

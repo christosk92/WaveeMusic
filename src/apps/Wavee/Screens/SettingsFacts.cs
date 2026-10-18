@@ -129,6 +129,9 @@ public static class SettingsFacts
 
     public static void PublishAutoZoom(float suggestion) => AutoZoom = suggestion;
 
+    /// <summary>The signed-in account's avatar url for the Account section, or null until the user row carries one.</summary>
+    public static string? AccountAvatarUrl() => Shell.AccountSummary().AvatarUrl;
+
     /// <summary>True from the click until the test crash bundle is written and handed to the uploader (UI thread only). A
     /// signal, so the Developer group's button follows it.</summary>
     public static readonly FluentGpu.Signals.Signal<bool> TestCrashBusy = new(false);

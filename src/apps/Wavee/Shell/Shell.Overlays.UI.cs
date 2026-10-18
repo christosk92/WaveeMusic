@@ -376,6 +376,19 @@ public static partial class Shell
         return new AccountIdentity(true, Entities.Strings.Resolve(me.NameId), Controls.ArtUrl(me.ImageId));
     }
 
+    /// <summary>The signed-in account as the Settings account section shows it: the name and avatar once the user row carries them (else null), and the plan.</summary>
+    public static (string? Name, string? AvatarUrl, Spotify.Tier Tier) AccountSummary()
+    {
+        var identity = ReadIdentity();
+        return (identity.Known ? identity.Name : null, identity.AvatarUrl, Spotify.Current.Tier);
+    }
+
+    /// <summary>The profile menu's "Log out" for another door (the Settings account section): the SAME confirm dialog, then the same sign-out.</summary>
+    public static void OpenLogoutConfirm(IOverlayService? overlay)
+    {
+        if (overlay is not null) ConfirmLogout(overlay);
+    }
+
     /// <summary>The account flyout: the rows in the row table's order (the body, the header over stock WinUI menu rows, is `Overlay.ProfileMenu`).</summary>
     static Element ProfileMenuContent(AccountIdentity identity, Spotify.Tier tier, int unread, bool actionsInMenu,
         IOverlayService overlay, Action close, Action openNotifications)

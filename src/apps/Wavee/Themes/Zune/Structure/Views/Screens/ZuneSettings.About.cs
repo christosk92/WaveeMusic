@@ -25,19 +25,19 @@ namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    static Element[] AboutTab(ZuneKit k) =>
+    static Named[] AboutTab(ZuneKit k) =>
     [
-        Embed.Comp(static () => new UpdatePanel()) with { Key = "zs:about:update" },
-        Group(k, "zs:section:about:links", Loc.Get(Strings.Settings.Tabs.About), null, LinksRow(k)),
-        Group(k, "zs:section:about:right-now", Loc.Get(Strings.Settings.About.RightNow), null, Embed.Comp(static () => new ReceiptsRows()) with { Key = "zs:receipts" }),
-        Group(k, "zs:section:about:licenses", Loc.Get(Strings.Settings.About.Licenses), null,
+        new Named("Update", Embed.Comp(static () => new UpdatePanel()) with { Key = "zs:about:update" }),
+        new Named("Links", Group(k, "zs:section:about:links", Loc.Get(Strings.Settings.Tabs.About), null, LinksRow(k))),
+        new Named("Right now", Group(k, "zs:section:about:right-now", Loc.Get(Strings.Settings.About.RightNow), null, Embed.Comp(static () => new ReceiptsRows()) with { Key = "zs:receipts" })),
+        new Named("Licenses", Group(k, "zs:section:about:licenses", Loc.Get(Strings.Settings.About.Licenses), null,
             Embed.Comp(static () => new LicenseRow("Wavee", "MIT", Settings.WaveeLicense)) with { Key = "zs:license:wavee" },
-            Embed.Comp(static () => new LicenseRow(Loc.Get(Strings.Settings.About.ThirdPartyNotices), Settings.NoticesFileName, Settings.ReadNotices())) with { Key = "zs:license:third-party" }),
+            Embed.Comp(static () => new LicenseRow(Loc.Get(Strings.Settings.About.ThirdPartyNotices), Settings.NoticesFileName, Settings.ReadNotices())) with { Key = "zs:license:third-party" })),
     ];
 
     /// <summary>The doors: what's new (with the unread dot while the running release's notes have never been opened: the ONLY unread affordance outside the notification
-    /// centre), report a problem, suggest a feature, all issues, the website, privacy, the notices, copy diagnostics, open the data folder; then the unofficial line, the OS
-    /// and the data folder.</summary>
+    /// centre), all issues, the website, privacy, the notices, open the data folder; then the unofficial line, the OS and the data folder. (Report a problem, suggest a
+    /// feature and copy diagnostics are Feedback &amp; help's.)</summary>
     static Element LinksRow(ZuneKit k)
     {
         Element whatsNew = k.Cmd(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => D(Tab.About, "whatsNew").Writer.Run!());
@@ -54,13 +54,10 @@ internal static partial class ZuneSettings
                     Children =
                     [
                         whatsNew,
-                        k.Cmd(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
-                        k.Cmd(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
                         k.Link(Loc.Get(Strings.Report.AboutAllIssues), Settings.IssuesUrl),
                         k.Link(Loc.Get(Strings.Settings.About.Website), Settings.WebsiteUrl),
                         k.Link(Loc.Get(Strings.Settings.About.PrivacyPolicy), Settings.PrivacyUrl),
                         k.Cmd(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
-                        k.Cmd(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
                         k.Cmd(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
                     ],
                 },
