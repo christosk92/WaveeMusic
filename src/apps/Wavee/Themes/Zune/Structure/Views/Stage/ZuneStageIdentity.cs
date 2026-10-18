@@ -97,7 +97,7 @@ internal static class ZuneStageIdentity
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
                 break;
             }
-            case ZuneStageForm.Plate when G.LyricsSide(in L, in k, t) is { } side && t.LyricsSide is { } ls:
+            case ZuneStageForm.Plate when G.LyricsSide(in L, in k, t) is { } side && (k.Mode == Stage.Mode.Queue ? t.QueueSide : t.LyricsSide) is { } ls:
             {
                 // Lyrics mode (Z-Lyrics): the cover on the gutter, under it the 26 title, the accent artist line and the quiet tag line
                 (coverX, coverY, size) = (side.Cover.X, side.Cover.Y, side.Cover.W);
@@ -106,7 +106,7 @@ internal static class ZuneStageIdentity
                 var head = Title(title, ls.TitleSize, ls.TitleLine, G.TitleLight, 0f) with { Margin = new Edges4(0f, ls.TitleTop, 0f, 0f) };
                 kids.Add(head);
                 kids.Add(Meta(props, ls.ArtistSize, ls.ArtistLine, G.TitleRegular, ls.ArtistDisplay ? R.Type.DisplayFace : null, set.Text, Ink.Ink, false, heroArtist));
-                if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(props.Chips, ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
+                if (ls.TagLine > 0f && L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageTags.Props(props.Chips, ls.TagSize, ls.TagLine, ls.TagTop), static () => new ZuneStageTags()) with { Key = "stage:chips" });
                 break;
             }
             default:
@@ -132,7 +132,9 @@ internal static class ZuneStageIdentity
                     MaxWidth = center ? titlesW : float.NaN,
                 };
                 kids.Add(ts >= G.DisplayFrom ? head with { FontFamily = R.Type.DisplayFace } : head);
-                kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, Ink.InkSecondary, set.Text, center, heroArtist));
+                // Lyrics mode's identity card (Z-Lyrics-Compact): the artist line rests in the accent
+                bool lyricsCard = k.Mode == Stage.Mode.Lyrics && L.IdentityCardOn(k.Mode);
+                kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, lyricsCard ? set.Text : Ink.InkSecondary, lyricsCard ? Ink.Ink : set.Text, center, heroArtist));
                 if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(props.Chips), static () => new ZuneStageChips()) with { Key = "stage:chips" });
                 break;
             }

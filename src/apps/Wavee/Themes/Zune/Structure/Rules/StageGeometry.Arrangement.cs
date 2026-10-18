@@ -360,6 +360,10 @@ public static partial class ZuneStageGeometry
     /// 22 at the Compact stage's 26).</summary>
     public static float LyricsLead(in Stage.Layout layout) => Lyrics.Surface.Timed(true).Scaled(layout.LyricsTypeScale).SidePad;
 
+    /// <summary>Where the lyrics' text starts inside the pane in <paramref name="tier"/>: the row's side padding, or none where the tier's rows scale (the
+    /// sung line grows from the row's left edge, so the edge must be the text's).</summary>
+    public static float LyricsLeadFor(in Stage.Layout layout, ZuneStageLayout tier) => tier.LyricsRhythm is { ActiveScale: > 1f } ? 0f : LyricsLead(in layout);
+
     /// <summary>The pane region of a plate stage, under the tier's head. The pane sits on the tier's gutter:
     /// <list type="bullet">
     /// <item>Portrait (the pane under the identity): its left edge is the gutter, and the lyrics' TEXT starts there (the pane moves left by
@@ -377,7 +381,7 @@ public static partial class ZuneStageGeometry
         bool lyrics = pane == Stage.PaneKind.Lyrics;
         float right = x + layout.PaneW;   // the pane's full run (the allocator narrows the lyrics pane by its own Up next gap, which Zune replaces)
         float nx;
-        if (layout.Aspect == Stage.Aspect.Portrait) nx = tier.Gutter - (lyrics ? LyricsLead(in layout) : 0f);
+        if (layout.Aspect == Stage.Aspect.Portrait) nx = tier.Gutter - (lyrics ? LyricsLeadFor(in layout, tier) : 0f);
         else nx = x + EdgeShift(in layout, in look, tier);
         if (lyrics && look.Mode == Stage.Mode.Lyrics)
         {
@@ -397,7 +401,8 @@ public static partial class ZuneStageGeometry
     /// the Up next column). Null elsewhere (Portrait, Compact's identity card, every other mode): the allocator's rects stand.</summary>
     public static LyricsSideRects? LyricsSide(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier)
     {
-        if (look.Mode != Stage.Mode.Lyrics || look.IsLayout || tier.LyricsSide is not { } s) return null;
+        if (look.IsLayout || (look.Mode == Stage.Mode.Lyrics ? tier.LyricsSide : look.Mode == Stage.Mode.Queue ? tier.QueueSide : null) is not { } s) return null;
+        bool queue = look.Mode == Stage.Mode.Queue;
         if (layout.Aspect is not (Stage.Aspect.Desktop or Stage.Aspect.Ultrawide)) return null;
         float head = tier.HeadH, foot = layout.TransportTop;
         float room = MathF.Max(0f, foot - head);
@@ -406,11 +411,12 @@ public static partial class ZuneStageGeometry
         var cover = new ZuneRect(x, y, s.Cover, s.Cover);
         float ty = y + s.Cover + s.ColGap;
         var titles = new ZuneRect(x, ty, s.Cover, MathF.Max(0f, s.ColumnH - s.Cover - s.ColGap));
-        float lead = LyricsLead(in layout);
+        float lead = queue ? 0f : LyricsLeadFor(in layout, tier);
         float left = x + s.Cover + s.Gap;
         float right = layout.W - tier.Gutter;
-        if (layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
+        if (!queue && layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
         float nx = left - lead;
-        return new LyricsSideRects(cover, titles, new ZuneRect(nx, head, MathF.Max(0f, right - nx), room));
+        float paneTop = queue ? head + s.PadTop : head;
+        return new LyricsSideRects(cover, titles, new ZuneRect(nx, paneTop, MathF.Max(0f, right - nx), MathF.Max(0f, foot - paneTop)));
     }
 }

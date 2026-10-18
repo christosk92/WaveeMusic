@@ -63,6 +63,14 @@ internal static class ZuneStageTopBar
             right.Add(Word(Strings.Theme.Zune.Stage.LayoutWord(layout), st.OpenOptions, Ink.InkSecondary, t, null, "stage:word:layout"));
             right.Add(Word(Strings.Theme.Zune.Stage.FaceWord(face), st.ToggleGallery, Ink.InkSecondary, t, null, "stage:word:face"));
         }
+        if (mode == Stage.Mode.Lyrics)
+        {
+            // Z-Lyrics: "translate" (the second-line cycle; quiet and inert when the document has no second layer, lit while one shows) and "resync"
+            bool hasSecond = st.HasSecondLine(), secondOn = hasSecond && st.SecondLineOn();
+            right.Add(Word(Loc.Get(Strings.Theme.Zune.Player.Translate), hasSecond ? st.ToggleSecondLine : static () => { },
+                secondOn ? Ink.Ink : Ink.InkSecondary, t, null, "stage:word:translate"));
+            right.Add(Word(Loc.Get(Strings.Player.ResyncLyrics), st.ResyncLyrics, Ink.InkSecondary, t, null, "stage:word:resync"));
+        }
         if (glyphs)
         {
             right.Add(ToolTip.Wrap(Glyph(Icons.More, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), target, "stage:glyph:options"), Loc.Get(Strings.Theme.Zune.Stage.Options)));

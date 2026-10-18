@@ -135,19 +135,24 @@ public static class ZuneStageTiers
     static readonly ZuneStageLyricsSide s_lyricsSideStandard = new(Cover: 300f, Gap: 80f, PadTop: 144f, Centered: false, ColGap: 14f, TitleTop: 0f,
         TitleSize: 26f, TitleLine: 32f, ArtistSize: 15f, ArtistLine: 20f, ArtistDisplay: false, TagSize: 12f, TagLine: 16f, TagTop: 0f);
 
+    /// <summary>Z-Queue-Page: the 400 cover from the 24 under the head, the 40/48 title, the 20 accent artist line, the pane 64 to its right (no tag line: the
+    /// plate says where it plays from).</summary>
+    static readonly ZuneStageLyricsSide s_queueSideStandard = new(Cover: 400f, Gap: 64f, PadTop: 24f, Centered: false, ColGap: 16f, TitleTop: 0f,
+        TitleSize: 40f, TitleLine: 48f, ArtistSize: 20f, ArtistLine: 28f, ArtistDisplay: false, TagSize: 0f, TagLine: 0f, TagTop: 0f);
+
     static readonly ZuneStageLyricsSide s_lyricsSideSmall = new(180f, 40f, 0f, true, 8f, 0f, 22f, 28f, 14f, 20f, false, 11f, 14f, 0f);
 
     static readonly ZuneStageLyricsSide s_lyricsSideHuge = new(440f, 96f, 40f, false, 8f, 18f, 40f, 48f, 22f, 28f, true, 13f, 18f, 8f);
 
     static readonly ZuneStageLyricsSide s_lyricsSide4K = new(660f, 144f, 60f, false, 12f, 27f, 60f, 72f, 33f, 42f, true, 20f, 27f, 12f);
 
-    static readonly ZuneStageLyricsRhythm s_rhythmCompact = new(LineRatio: 32f / 26f, RowPad: 5f, Weight: 300, Tracking: -12f);
+    static readonly ZuneStageLyricsRhythm s_rhythmCompact = new(LineRatio: 38f / 32f, RowPad: 0f, ActiveScale: 32f / 26f, Weight: 300, Tracking: -12f);
 
-    static readonly ZuneStageLyricsRhythm s_rhythmSmall = new(46f / 36f, 2f, 300, -11f);
+    static readonly ZuneStageLyricsRhythm s_rhythmSmall = new(46f / 36f, 1f, 1f, 300, -11f);
 
-    static readonly ZuneStageLyricsRhythm s_rhythmStandard = new(68f / 56f, 3f, 300, -9f);
+    static readonly ZuneStageLyricsRhythm s_rhythmStandard = new(68f / 56f, 0f, 1f, 300, -9f);
 
-    static readonly ZuneStageLyricsRhythm s_rhythmHuge = new(64f / 56f, 13f, 300, -18f);
+    static readonly ZuneStageLyricsRhythm s_rhythmHuge = new(80f / 72f, 0f, 72f / 56f, 300, -14f);
 
     static readonly ZuneStageStack s_stack = new(Top: 12f, CoverFrac: 0.76f, CoverMin: 160f, TitleTop: 20f, SeekTop: 18f, BottomPad: 16f, s_stackVoice);
 
@@ -183,7 +188,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Full, SeekRowH = 36f, PlateRowH = 76f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 128f, ClusterGap = 24f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnStandard, Centered = s_centeredStandard, Stack = null,
-            LyricsSide = s_lyricsSideStandard, LyricsRhythm = s_rhythmStandard,
+            LyricsSide = s_lyricsSideStandard, QueueSide = s_queueSideStandard, LyricsRhythm = s_rhythmStandard,
         },
         // Huge (Z-NowPlaying-Huge, Z-Lyrics-Huge, Z-Queue-Page-Huge)
         new()
@@ -343,6 +348,9 @@ public sealed record ZuneStageLayout
     /// null: the allocator's identity (Compact's card).</summary>
     public ZuneStageLyricsSide? LyricsSide { get; init; }
 
+    /// <summary>Queue mode's identity column at this tier (Z-Queue-Page); null: the allocator's identity.</summary>
+    public ZuneStageLyricsSide? QueueSide { get; init; }
+
     /// <summary>The stage's lyric lines' rhythm at this tier (line height, gap, the sung line's growth, the light display voice).</summary>
     public ZuneStageLyricsRhythm? LyricsRhythm { get; init; }
 
@@ -401,10 +409,12 @@ public sealed record ZuneStageLyricsSide(float Cover, float Gap, float PadTop, b
     float ArtistSize, float ArtistLine, bool ArtistDisplay, float TagSize, float TagLine, float TagTop)
 {
     /// <summary>The column's height: the cover, the title (with its extra top), the artist line and the tag line, a gap between each.</summary>
-    public float ColumnH => Cover + ColGap + TitleTop + TitleLine + ColGap + ArtistLine + ColGap + TagTop + TagLine;
+    public float ColumnH => Cover + ColGap + TitleTop + TitleLine + ColGap + ArtistLine + (TagLine > 0f ? ColGap + TagTop + TagLine : 0f);
 }
 
-/// <summary>The stage's lyric lines at one window tier: the line height as a ratio of the type, the pad above and below each line (the board's
-/// gap is twice this), the weight (300, the display face) and the tracking in thousandths of an em. (The Compact and Huge boards draw the sung
-/// line one step larger: not done, a size change would jump the row's height.)</summary>
-public sealed record ZuneStageLyricsRhythm(float LineRatio, float RowPad, ushort Weight, float Tracking);
+/// <summary>The stage's lyric lines at one window tier. Every row is LAID OUT at the sung line's size (the type the core hands, times
+/// <c>ActiveScale</c>) and a row that is not sung is scaled down to the core's size on a spring, so the sung line grows (Z-Lyrics-Compact 32/38 over 26/32,
+/// Z-Lyrics-Huge 72/80 over 56/64) and no row's height ever changes. <c>LineRatio</c> is the laid-out line height over its size, <c>RowPad</c> the pad above
+/// and below each line (the face's own line box is taller than the board's, so most tiers need none), the weight is the display light 300 and the tracking is in
+/// thousandths of an em.</summary>
+public sealed record ZuneStageLyricsRhythm(float LineRatio, float RowPad, float ActiveScale, ushort Weight, float Tracking);
