@@ -143,6 +143,10 @@ public sealed record TimeLabelProps
     /// <summary>The label's text, read inside the bind (position, duration, the scrub target, the show-remaining preference).</summary>
     public required Func<string> Label { get; init; }
 
+    /// <summary>The widest this label can print for the playing track (the track's duration with every digit a "0", with the minus on the remaining slot): a theme
+    /// that reserves the label's width reserves this, so the seek line never moves when "9:59" becomes "10:00". Read inside the bind (the duration); null: none.</summary>
+    public Func<string>? Widest { get; init; }
+
     /// <summary>Flip the right slot between −remaining and the duration.</summary>
     public required Action ToggleRemaining { get; init; }
 
