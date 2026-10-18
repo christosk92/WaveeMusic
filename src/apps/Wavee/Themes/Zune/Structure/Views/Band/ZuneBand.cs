@@ -338,7 +338,7 @@ internal sealed class ZuneBand : Component
                         OnClick = play,
                         Children =
                         [
-                            new TextEl(Icons.Play)
+                            new TextEl(ZunePlayerLayout.PlaySolid)
                             {
                                 Size = ZuneBandRules.PinPlayGlyph, FontFamily = Tok.Definition.Fonts.Icon,
                                 Color = Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)),
@@ -541,7 +541,7 @@ internal sealed class ZuneBand : Component
                 Width = h, Height = h, Corners = round, Fill = Prop.Of(static () => R.Ink.AccentAction),
                 Children =
                 [
-                    new TextEl(Icons.Play)
+                    new TextEl(ZunePlayerLayout.PlaySolid)
                     {
                         Size = ZuneBandRules.PlayGlyph, FontFamily = Tok.Definition.Fonts.Icon,
                         Color = Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)),

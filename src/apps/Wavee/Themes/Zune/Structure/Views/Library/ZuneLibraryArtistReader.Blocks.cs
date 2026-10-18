@@ -156,7 +156,7 @@ internal static partial class ZuneLibraryArtistReader
         {
             Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
         };
-        Element play = Controls.Named(Controls.PlayFab(cell.PlayAlbum, Icons.Play, Artist.ReaderShape.HeadCircle), Strings.Library.PlayAlbum(title));
+        Element play = Controls.Named(Controls.PlayFab(cell.PlayAlbum, ZunePlayerLayout.PlaySolid, Artist.ReaderShape.HeadCircle), Strings.Library.PlayAlbum(title));
         Element save = K.Save(uri, title, Artist.ReaderShape.HeadCircle, Artist.ReaderShape.HeadGlyph);
         Element more = K.MoreButton(cell.Menu, Artist.ReaderShape.HeadCircle);
         Element titleSlot = TitleSlot(title, go, narrow);
