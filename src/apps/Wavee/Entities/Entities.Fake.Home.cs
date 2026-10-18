@@ -1042,6 +1042,9 @@ public static partial class Entities
     /// <summary>The query that stays unanswered under --fake (agents render the page's loading skeleton with it: `--inspect state kind=loading`).</summary>
     public const string FakePendingQuery = "zzqx";
 
+    /// <summary>An artist the fake catalogue never answers: its page stays on the skeleton for the first frames (`goto uri=spotify:artist:arzzqx`), then fails; `ar0`..`ar11` load at once.</summary>
+    public const string FakePendingArtistUri = "spotify:artist:arzzqx";
+
     static bool s_fakeSearch;
     static readonly HashSet<string> s_fakeSearched = new(StringComparer.OrdinalIgnoreCase);
 
