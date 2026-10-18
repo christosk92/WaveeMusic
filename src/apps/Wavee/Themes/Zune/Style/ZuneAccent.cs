@@ -19,26 +19,28 @@ namespace Wavee.Themes.Zune;
 
 /// <summary>One accent of the Zune style: the colour on the dark ground and the colour on the light ground.</summary>
 /// <param name="Dark">The accent on the dark ground (the swatch as Z-Tokens draws it).</param>
-/// <param name="Light">The accent on the light ground (one step darker, as Z-Light-* draws it).</param>
+/// <param name="Light">The accent on the light ground: one step darker, as Z-Light-* draws it, and a touch further where the board's step reads
+/// under 4.5 : 1 as ink on the light well (#ebebeb) and ground, so the accent word (playing, saved, a date, a price) is legible as text and
+/// white on the accent fill is 5 : 1 or better. Every swatch is darkened by one factor to 4.5 : 1 on the well.</param>
 public readonly record struct ZuneAccentPair(ColorF Dark, ColorF Light);
 
 /// <summary>The accent swatches of the Zune style and the ramp the definition carries.</summary>
 public static class ZuneAccent
 {
-    /// <summary>Pink, the default (Z-Tokens: #ff3ca6; light #e0197f).</summary>
-    public static ZuneAccentPair Pink { get; } = new(ColorF.FromRgba(0xFF, 0x3C, 0xA6), ColorF.FromRgba(0xE0, 0x19, 0x7F));
+    /// <summary>Pink, the default (Z-Tokens: #ff3ca6; light #cb1773).</summary>
+    public static ZuneAccentPair Pink { get; } = new(ColorF.FromRgba(0xFF, 0x3C, 0xA6), ColorF.FromRgba(0xCB, 0x17, 0x73));
 
-    /// <summary>Orange (#ff7a1a; light #d65a00).</summary>
-    public static ZuneAccentPair Orange { get; } = new(ColorF.FromRgba(0xFF, 0x7A, 0x1A), ColorF.FromRgba(0xD6, 0x5A, 0x00));
+    /// <summary>Orange (#ff7a1a; light #b24b00).</summary>
+    public static ZuneAccentPair Orange { get; } = new(ColorF.FromRgba(0xFF, 0x7A, 0x1A), ColorF.FromRgba(0xB2, 0x4B, 0x00));
 
-    /// <summary>Blue (#60cdff; light #0a7fb5).</summary>
-    public static ZuneAccentPair Blue { get; } = new(ColorF.FromRgba(0x60, 0xCD, 0xFF), ColorF.FromRgba(0x0A, 0x7F, 0xB5));
+    /// <summary>Blue (#60cdff; light #0971a1).</summary>
+    public static ZuneAccentPair Blue { get; } = new(ColorF.FromRgba(0x60, 0xCD, 0xFF), ColorF.FromRgba(0x09, 0x71, 0xA1));
 
-    /// <summary>Green (#8fd14f; light #4f8f1a).</summary>
-    public static ZuneAccentPair Green { get; } = new(ColorF.FromRgba(0x8F, 0xD1, 0x4F), ColorF.FromRgba(0x4F, 0x8F, 0x1A));
+    /// <summary>Green (#8fd14f; light #427716).</summary>
+    public static ZuneAccentPair Green { get; } = new(ColorF.FromRgba(0x8F, 0xD1, 0x4F), ColorF.FromRgba(0x42, 0x77, 0x16));
 
-    /// <summary>Purple (#b983ff; light #8a4fd6).</summary>
-    public static ZuneAccentPair Purple { get; } = new(ColorF.FromRgba(0xB9, 0x83, 0xFF), ColorF.FromRgba(0x8A, 0x4F, 0xD6));
+    /// <summary>Purple (#b983ff; light #844ccd).</summary>
+    public static ZuneAccentPair Purple { get; } = new(ColorF.FromRgba(0xB9, 0x83, 0xFF), ColorF.FromRgba(0x84, 0x4C, 0xCD));
 
     /// <summary>The five swatches in the order the option lists them (Z-Theme-Options): pink, orange, blue, green, purple.</summary>
     public static IReadOnlyList<ZuneAccentPair> Swatches { get; } = [Pink, Orange, Blue, Green, Purple];
