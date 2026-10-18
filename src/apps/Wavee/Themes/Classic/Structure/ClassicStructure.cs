@@ -271,6 +271,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.OverlayToast, ClassicToast.Template, "classic.overlay.toast");
         views.Add(ViewKeys.OverlayOfflineStrip, ClassicOfflineStrip.Template, "classic.overlay.offline-strip");
         views.Add(ViewKeys.OverlayOfflineVacancy, ClassicOfflineVacancy.Template, "classic.overlay.offline-vacancy");   // tuned Classic X1
+        views.Add(ViewKeys.StateVacancy, static (VacancyProps p, in ViewContext _) => Controls.VacancyDefault(p), "classic.state.vacancy");   // contract 1.37: the core's own look
         views.Add(ViewKeys.MenuContext, ClassicContextMenuTile.Template, "classic.menu.context-tile");
         views.Add(ViewKeys.OverlayContextSheet, ClassicContextSheet.Template, "classic.overlay.context-sheet");   // TC9: a context menu at Compact
         views.Add(ViewKeys.DialogLogoutConfirm, ClassicLogoutConfirm.Template, "classic.dialog.logout-confirm");
