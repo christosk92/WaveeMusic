@@ -207,20 +207,18 @@ internal static partial class ZuneReleaseNotes
 
         // Loc keys, not concatenation: the quotation marks are typography a locale must be able to move.
         string headline = doc.Name is { Length: > 0 } name ? Strings.WhatsNew.Headline(doc.Version, name) : Strings.WhatsNew.HeadlineBare(doc.Version);
-        var kids = new List<Element>(4)
+        // The board's hero is its ONE title line; the tagline, the tags and the two links out stay, as a single quiet line under it (words, no ring), so the highlights start where the
+        // board's do.
+        var quiet = new List<Element>(4);
+        if (doc.Tagline is { Length: > 0 } tagline)
+            quiet.Add(ZuneText.Hint(tagline) with { Color = Tok.TextSecondary, MinWidth = 0f, Shrink = 1f });
+        quiet.Add(ZuneText.Hint(string.Join("  ·  ", tags)) with { MinWidth = 0f, Shrink = 1f });
+        quiet.Add(k.Cmd(Loc.Get(Strings.WhatsNew.OpenOnGitHub), () => openUrl(release)) with { Key = "zrn:hero:open" });
+        quiet.Add(k.Cmd(Loc.Get(Strings.WhatsNew.CopyLink), () => copy(release)) with { Key = "zrn:hero:copy" });
+        var kids = new List<Element>(2)
         {
             R.Type.PageHero(headline) with { MinWidth = 0f, Wrap = TextWrap.Wrap },
-            ZuneText.Hint(string.Join("  ·  ", tags)),
-            R.Type.DenseTitle(doc.Tagline) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxWidth = K.HeroTaglineMaxWidth },
-            new BoxEl
-            {
-                Direction = 0, Wrap = true, Gap = K.HeroActionGap, AlignItems = FlexAlign.Center, Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
-                Children =
-                [
-                    k.Go(Loc.Get(Strings.WhatsNew.OpenOnGitHub), () => openUrl(release)) with { Key = "zrn:hero:open" },
-                    k.Cmd(Loc.Get(Strings.WhatsNew.CopyLink), () => copy(release)) with { Key = "zrn:hero:copy" },
-                ],
-            },
+            new BoxEl { Direction = 0, Wrap = true, Gap = K.HeroActionGap, AlignItems = FlexAlign.Center, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = quiet.ToArray() },
         };
         return new BoxEl { Key = "zrn:hero", Direction = 1, Gap = Spacing.S, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = kids.ToArray() };
     }
