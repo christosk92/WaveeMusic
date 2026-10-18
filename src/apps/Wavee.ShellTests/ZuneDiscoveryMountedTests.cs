@@ -212,7 +212,7 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
                 UntilBackground(shell, () => !shell.Find(ZuneBrowseRules.DirectoryKey).IsNull && shell.FindPrefix(ZuneBrowseRules.BandPrefix).Count > 1,
                     "Zune's Browse directory and its bands");
                 Assert.Equal("zune.browse.directory", ThemeHost.Registry.TemplateIdOf(ViewKeys.BrowseDirectory.Id));
-                Assert.Equal(BrowseBands.Top, Chrome()?.CurrentView?.Id);
+                UntilBackground(shell, () => Chrome()?.CurrentView?.Id == BrowseBands.Top, "Browse's top band is lit in row 2");
                 Assert.False(shell.Find(ZuneBrowseRules.BandPrefix + "genres:band").IsNull, "the genres band on the whole directory");
 
                 Click(shell, Node(shell, ZuneBandRules.ViewKeyPrefix + BrowseBands.Genres));
@@ -234,7 +234,7 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
             try
             {
                 Shell.GoTo(Shell.Parse("search", Entities.FakeSearchQuery));
-                UntilBackground(shell, () => !shell.Find(ZuneSearchRules.PageKey).IsNull && Chrome() is { Views.Count: > 1 },
+                UntilBackground(shell, () => !shell.Find(ZuneSearchRules.PageKey).IsNull && Chrome() is { Views.Count: > 1 } c && c.Views.Any(v => v.Count is > 0),
                     "Zune's search page and its facets in row 2");
                 Assert.Equal("zune.search.page", ThemeHost.Registry.TemplateIdOf(ViewKeys.SearchPage.Id));
                 var chrome = Chrome()!;

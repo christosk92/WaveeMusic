@@ -88,10 +88,15 @@ public static class BrowseBands
         _ => Shell.Route.None,
     };
 
-    /// <summary>The kinds whose row 2 is Browse's bands: the directory, a category page and the Concerts hub. A drill-in below them (a section, an
-    /// artist's concerts, one concert) keeps no row 2: its head is the trail.</summary>
+    /// <summary>The kinds whose row 2 is Browse's bands: the directory and the Concerts hub. A drill-in below them keeps no row 2: its head is the trail
+    /// (a category page, Z-Browse-Category: the trail over the colour field; a section; an artist's concerts; one concert).</summary>
     public static bool IsChromeKind(Shell.RouteKind kind)
-        => kind is Shell.RouteKind.Browse or Shell.RouteKind.BrowseCategory or Shell.RouteKind.Concerts;
+        => kind is Shell.RouteKind.Browse or Shell.RouteKind.Concerts;
+
+    /// <summary>Does <paramref name="route"/> draw the bands as row 2: a chrome kind, or the Charts page (the "charts" band's own destination is a category page, and the bands
+    /// are how a reader leaves it for another band).</summary>
+    public static bool HasBands(in Shell.Route route)
+        => IsChromeKind(route.Kind) || (route.Kind == Shell.RouteKind.BrowseCategory && route.Subject == RouteOf(Charts).Subject);
 
     /// <summary>The band a route lights, or null when it lights none. The directory lights its argument (top when it has none); the Concerts hub
     /// lights concerts; a category page lights the band of its taxonomy group (the Charts pages: charts; a genre: genres; a For-you page: for you;
@@ -143,7 +148,7 @@ public static class BrowseBands
     /// empty for a route that is not <see cref="IsChromeKind"/>. The ids are the band ids.</summary>
     public static IReadOnlyList<PageView> ChromeViews(in Shell.Route current)
     {
-        if (!IsChromeKind(current.Kind)) return [];
+        if (!HasBands(current)) return [];
         string? lit = BandOf(current);
         var views = new PageView[All.Count];
         for (int i = 0; i < views.Length; i++)

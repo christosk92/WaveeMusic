@@ -107,7 +107,7 @@ public static partial class Shell
         /// <summary>The views a route family answers from the route alone (empty for every other route). Pure but for the verbs.</summary>
         public static IReadOnlyList<PageView> RouteViews(in Route route)
             => User.IsLibraryChromeKind(route.Kind) ? User.LibraryChromeViews(route.Kind)
-             : BrowseBands.IsChromeKind(route.Kind) ? BrowseBands.ChromeViews(route)
+             : BrowseBands.HasBands(route) ? BrowseBands.ChromeViews(route)
              : route.Kind == RouteKind.Home ? HomeSeedViews(route) : [];
 
         /// <summary>Home's row-2 SEED (P5 ZT4): the "all" word alone, lit, so a band that draws row 2 reserves it on the navigation's first frame instead
@@ -177,6 +177,7 @@ public static partial class Shell
         public static PageChrome ChromeOf(in Route route)
         {
             var published = Mastheads.For(route);
+            var row = RowFor(route);
             PageChrome head;
             if (TryMasthead(route, published?.Title, Origins.For(route), out var title, out var trail))
             {
@@ -185,9 +186,22 @@ public static partial class Shell
             else
             {
                 string own = Dest(route).Title;
-                head = new PageChrome(own, [new PageCrumb(own, null)]);
+                // A detail page's trail (Z-Part-TitleBar: "library › playlists › late night drive", "search › the weeknd"): the journey's origin, else the
+                // information architecture's parents, ending at the entity's own name once the page has published it.
+                string entity = row?.Title is { Length: > 0 } published2 ? published2 : ArgOf(route) is { Length: > 0 } arg && !string.IsNullOrWhiteSpace(arg) ? arg.Trim() : "";
+                var detail = entity.Length > 0 ? DetailTrail(route, entity, Origins.For(route)) : [];
+                if (detail.Count >= 2)
+                {
+                    var crumbs = new PageCrumb[detail.Count];
+                    for (int i = 0; i < crumbs.Length; i++)
+                    {
+                        var crumb = detail[i];
+                        crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null);
+                    }
+                    head = new PageChrome(own, crumbs);
+                }
+                else head = new PageChrome(own, [new PageCrumb(own, null)]);
             }
-            var row = RowFor(route);
             var views = row is { Views.Count: > 0 } ? row.Views : RouteViews(route);
             return head with
             {
