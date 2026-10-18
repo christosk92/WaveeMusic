@@ -61,6 +61,10 @@ public sealed record LibraryTierPolicy
     /// Classic's) leaves the two mode words and their swap as they were. Contract addition after 1.34.</summary>
     public bool PodcastsEpisodesFirst { get; init; }
 
+    /// <summary>The structure draws the PLAYLISTS library as the board does: the rootlist grouped (made by you, made for you, followed) beside the picked playlist's pane (cover, verbs, songs).
+    /// False (the default, Classic's) keeps the flat list page. Contract addition after 1.34.</summary>
+    public bool PlaylistsMasterDetail { get; init; }
+
     /// <summary>The navigator's resting width at a Huge content tier (NaN: the key's own default at every tier).</summary>
     public float HugeNavWidth { get; init; } = float.NaN;
 

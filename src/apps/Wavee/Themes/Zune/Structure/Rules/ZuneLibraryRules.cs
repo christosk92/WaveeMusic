@@ -410,7 +410,7 @@ public static class ZuneLibraryTiers
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
     public static LibraryTierPolicy Policy { get; } = new()
     {
-        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PodcastsEpisodesFirst = true, GroupPaneFrom = WidthTier.Standard,
+        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PlaylistsMasterDetail = true, PodcastsEpisodesFirst = true, GroupPaneFrom = WidthTier.Standard,
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 
