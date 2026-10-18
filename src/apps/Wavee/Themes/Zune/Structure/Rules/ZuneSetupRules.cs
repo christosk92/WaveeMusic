@@ -548,7 +548,10 @@ public static class ZuneDialogRules
     public const float PaneMinWidth = 240f, InlinePreviewHeight = 220f;
 
     /// <summary>The kind switch's items at Compact are at least this wide before they wrap, and the gap between them.</summary>
-    public const float KindMinWidth = 64f, KindGap = 2f;
+    public const float KindMinWidth = 64f, KindGap = 20f;
+
+    /// <summary>The kind words' weights (the picked one heavier: Z-Dialogs).</summary>
+    public const ushort KindSelectedWeight = 600, KindRestWeight = 400;
 
     /// <summary>The Compact preview row's padding either side, its gap and its chevron.</summary>
     public const float FoldPadX = 12f, FoldGap = 8f, FoldChevronSize = 12f;

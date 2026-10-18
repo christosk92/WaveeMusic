@@ -83,6 +83,8 @@ public static class OverlayFit
         dialog.UniformCommandWidths = fit.UniformCommands;
 
         var parts = dialog.Parts ?? new TemplateParts();
+        if (fit.TitleSize is { } titleSize)
+            parts.Set<TextEl>(ContentDialog.PartTitle, t => t with { Size = titleSize, LineHeight = titleSize * 1.2f, MaxLines = 2 });
         parts[ContentDialog.PartPlate] = plate => plate with
         {
             Width = width, MinWidth = 0f, MaxWidth = width,

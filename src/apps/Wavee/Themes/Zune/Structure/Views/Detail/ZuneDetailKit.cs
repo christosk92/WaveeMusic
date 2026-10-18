@@ -180,7 +180,7 @@ internal static class ZuneDetailKit
         HoverFill = accent is null ? R.Layer.ChromeHover : ColorF.Transparent, PressedFill = accent is null ? R.Layer.ChromePressed : ColorF.Transparent,
         Children =
         [
-            new TextEl(glyph)
+            new TextEl(accent is not null && glyph == Icons.Play ? ZunePlayerLayout.PlaySolid : glyph)   // the accent disc's triangle is the filled one
             {
                 Size = glyphSize, FontFamily = Tok.Definition.Fonts.Icon,
                 Color = accent is { } fg ? Prop.Of(() => ColorContrast.PickContrast(fg())) : (Prop<ColorF>)Tok.TextPrimary,

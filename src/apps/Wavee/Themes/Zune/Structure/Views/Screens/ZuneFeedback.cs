@@ -69,24 +69,29 @@ internal static class ZuneFeedback
             ZuneText.Word(Loc.Get(Strings.Report.KindBug)), ZuneText.Word(Loc.Get(Strings.Report.KindFeature)), ZuneText.Word(Loc.Get(Strings.Report.KindQuestion)),
             ZuneText.Word(Loc.Get(Strings.Report.KindIdea)),
         ];
-        if (!shape.Layout.Touch)
-        {
-            var items = new SegmentedItem[labels.Length];
-            for (int i = 0; i < labels.Length; i++) items[i] = new SegmentedItem(labels[i]);
-            return Segmented.Create(items, kindIndex);
-        }
-
-        var buttons = new Element[labels.Length];
+        // The board's kind switch is sub-pivot WORDS (the picked one white and heavier, the others secondary), not chips; at a hit target each word is a 40 target.
+        var words = new Element[labels.Length];
         int selected = kindIndex.Value;
+        float target = shape.Layout.Touch ? shape.Layout.Target : 0f;
         for (int i = 0; i < labels.Length; i++)
         {
             int at = i;
-            buttons[i] = Button.Create(labels[i], () => kindIndex.Value = at, at == selected ? ButtonAppearance.Accent : ButtonAppearance.Subtle, ControlSize.Large) with
+            bool on = at == selected;
+            words[i] = new BoxEl
             {
-                Key = "zreport-kind:" + at, Grow = 1f, Basis = Z.KindMinWidth, MinWidth = 0f, Justify = FlexJustify.Center,
-            };
+                Key = "zreport-kind:" + at, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, Shrink = 0f, MinHeight = target, MinWidth = target,
+                Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = () => kindIndex.Value = at,
+                Children =
+                [
+                    R.Type.DenseTitle(labels[i]) with
+                    {
+                        Color = on ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, Weight = on ? Z.KindSelectedWeight : Z.KindRestWeight,
+                        MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            }.Interactive(Interaction.Subtle);
         }
-        return new BoxEl { Key = "zreport-kinds", Direction = 0, Wrap = true, Gap = Z.KindGap, Width = shape.FormWidth, Shrink = 0f, Children = buttons };
+        return new BoxEl { Key = "zreport-kinds", Direction = 0, Wrap = true, Gap = Z.KindGap, Width = shape.FormWidth, Shrink = 0f, AlignItems = FlexAlign.Center, Children = words };
     }
 
     /// <summary>A check box whose label WRAPS inside its column (the stock label is one line, so a long label overruns a narrow Compact card) and whose row is at least

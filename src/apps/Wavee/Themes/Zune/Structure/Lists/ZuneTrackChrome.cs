@@ -458,7 +458,7 @@ internal static class ZuneTrackChrome
                         Fill = Prop.Of(static () => R.Ink.AccentAction), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = play,
-                        Children = [Icon(Icons.Play, ZuneListRules.LeadGlyph) with { Color = Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)) }],
+                        Children = [Icon(ZunePlayerLayout.PlaySolid, ZuneListRules.LeadGlyph) with { Color = Prop.Of(static () => ColorContrast.PickContrast(R.Ink.AccentAction)) }],
                     }, Loc.Get(Strings.Detail.Play)),
                     new BoxEl
                     {
