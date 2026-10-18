@@ -119,7 +119,8 @@ public sealed class ZuneTierResizeTests(ShellHost host)
             harness.RunFrames(10);
             var band = ZuneBandRules.BandOf(harness.Facts.Peek().Tiers);
             float Height() => harness.AbsoluteBounds(harness.Node(ZuneBandRules.BandKey)).H;
-            Assert.Equal(band.ExpandedH, Height(), 0.5f);
+            // A Short window rests with row 2 folded away (Z-Shell-Short); a Regular one rests expanded.
+            Assert.Equal(collapses ? band.CollapsedH : band.ExpandedH, Height(), 0.5f);
 
             scroll.Value = new PageScroll(120f, PageScrollDirection.Down);
             harness.RunFrames(60);
