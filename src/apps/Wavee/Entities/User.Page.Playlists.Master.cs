@@ -34,7 +34,7 @@ public readonly partial struct User
         public const float ListSmall = 240f, ListStandard = 340f, ListHuge = 380f, GapSmall = 24f, GapStandard = 40f;
 
         /// <summary>The pane's cover edge, its gap to the words, the verb row's top, the title slot.</summary>
-        public const float Cover = 120f, CoverGap = 20f, VerbsTop = 12f, HeaderBottom = 12f;
+        public const float HeadH = 28f, BodyGap = 16f, Cover = 150f, CoverGap = 20f, VerbsTop = 12f, HeaderBottom = 12f;
 
         /// <summary>The selected row's plate corner is the cover role's; a group label's slot is a row high so the list keeps one pitch.</summary>
         public const int Groups = 3;
@@ -47,6 +47,11 @@ public readonly partial struct User
     sealed partial class LibraryPlaylistsPage
     {
         readonly Signal<string> _picked = new("");
+        readonly Signal<string> _find = new("");
+        /// <summary>Huge's group labels are the 22 light heading (the board), narrower tiers' the small tertiary word.</summary>
+        bool _bigGroups;
+        /// <summary>The page's sort word (a <see cref="SidebarLibrarySort"/> code: recents, recently added, alphabetical, custom order), persisted like every library sort.</summary>
+        readonly Signal<int> _sort = new(Platform.Settings.Get(Platform.Keys.LibrarySort("playlists")));
         readonly List<SidebarLibraryEntry> _grouped = new(64);
         readonly List<int> _groupHeads = new(4);
 
@@ -56,18 +61,89 @@ public readonly partial struct User
         {
             _grouped.Clear();
             _groupHeads.Clear();
+            var sort = (SidebarLibrarySort)Math.Clamp(_sort.Value, 0, (int)SidebarLibrarySort.CustomOrder);
             for (int g = 0; g < LibraryPlaylistsMasterRules.Groups; g++)
             {
                 int start = _grouped.Count;
+                // A block is a top-level entry and its folder's children; the sort word orders the blocks by their head.
+                var blocks = new List<List<SidebarLibraryEntry>>();
                 int current = -1;
                 for (int i = 0; i < _rows.Count; i++)
                 {
                     var e = _rows[i];
                     if (e.Depth == 0) current = PlaylistGroupOf(in e);
-                    if (current == g) _grouped.Add(e);
+                    if (current != g) continue;
+                    if (e.Depth == 0 || blocks.Count == 0) blocks.Add(new List<SidebarLibraryEntry>(2));
+                    blocks[^1].Add(e);
                 }
+                blocks.Sort((a, b) => CompareBlocks(sort, a[0], b[0]));
+                foreach (var block in blocks) _grouped.AddRange(block);
                 _groupHeads.Add(_grouped.Count > start ? start : -1);
             }
+        }
+
+        static int CompareBlocks(SidebarLibrarySort sort, in SidebarLibraryEntry a, in SidebarLibraryEntry b)
+        {
+            int c = sort switch
+            {
+                SidebarLibrarySort.Alphabetical => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase),
+                SidebarLibrarySort.RecentlyAdded => b.SortStamp.CompareTo(a.SortStamp),
+                SidebarLibrarySort.CustomOrder => a.SourceOrder.CompareTo(b.SourceOrder),
+                _ => b.LastVisitedTicksUtc.CompareTo(a.LastVisitedTicksUtc),
+            };
+            return c != 0 ? c : a.SourceOrder.CompareTo(b.SourceOrder);
+        }
+
+        static readonly SidebarLibrarySort[] s_sortWords =
+            [SidebarLibrarySort.Recents, SidebarLibrarySort.RecentlyAdded, SidebarLibrarySort.Alphabetical, SidebarLibrarySort.CustomOrder];
+
+        /// <summary>The board's head: "sort" and its four words (the lit one primary), the two create words, then the find field and the count at the end.</summary>
+        Element MasterHead(NavModel model, string count)
+        {
+            int current = _sort.Value;
+            var kids = new List<Element>(10)
+            {
+                R.Type.DenseMeta(Loc.Get(Strings.Library.SortBy)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
+            };
+            foreach (var word in s_sortWords)
+            {
+                var w = word;
+                bool on = (int)w == current;
+                kids.Add(new BoxEl
+                {
+                    Key = "library-playlists-sort:" + (int)w, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Height = LibraryPlaylistsMasterRules.HeadH,
+                    Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
+                    OnClick = () => { _sort.Value = (int)w; Platform.Settings.Set(Platform.Keys.LibrarySort("playlists"), (int)w); },
+                    Children =
+                    [
+                        R.Type.DenseMeta(Loc.Get(SidebarLibraryHeadRules.SortKey(w))) with
+                        {
+                            Color = on ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        },
+                    ],
+                });
+            }
+            kids.Add(Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)));
+            kids.Add(Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)));
+            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
+            kids.Add(new BoxEl
+            {
+                Key = "library-playlists-find", Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Shrink = 0f, Height = LibraryPlaylistsMasterRules.HeadH,
+                Children =
+                [
+                    Icon(Icons.Search, 14f, Tok.TextTertiary),
+                    TextBox.Create(_find, options: new TextBox.TextBoxOptions
+                    {
+                        Placeholder = Strings.Theme.Zune.Collection.Library.FindIn(Loc.Get(Strings.Sidebar.Playlists).ToLower(System.Globalization.CultureInfo.CurrentCulture)),
+                        Width = 160f, Height = LibraryPlaylistsMasterRules.HeadH,
+                    }),
+                ],
+            });
+            kids.Add(R.Type.DenseMeta(count) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f });
+            return new BoxEl
+            {
+                Direction = 0, Height = LibraryPlaylistsMasterRules.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 24f, MinWidth = 0f, Children = kids.ToArray(),
+            };
         }
 
         string PickedKey()
@@ -81,6 +157,7 @@ public readonly partial struct User
         /// <summary>The master-detail body under the head: the grouped list column, the pane.</summary>
         Element Master(NavModel model, float listW, float gap)
         {
+            _bigGroups = listW >= LibraryPlaylistsMasterRules.ListHuge;
             Group();
             string picked = PickedKey();
             // The list's items: a group label, then its rows (every item one row high, so the virtual list keeps one pitch).
@@ -114,7 +191,7 @@ public readonly partial struct User
                 };
             return new BoxEl
             {
-                Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Gap = gap, AlignItems = FlexAlign.Stretch,
+                Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Gap = gap, AlignItems = FlexAlign.Stretch, Margin = new Edges4(0f, LibraryPlaylistsMasterRules.BodyGap, 0f, 0f),
                 Children =
                 [
                     new BoxEl
@@ -147,7 +224,9 @@ public readonly partial struct User
                     Direction = 0, Height = LibraryPlaylistsRules.RowH, AlignItems = FlexAlign.End, Padding = new Edges4(0f, 0f, 0f, 8f), HitTestVisible = false,
                     Children =
                     [
-                        R.Type.MicroMeta(GroupLabel(item.Group)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap },
+                        _bigGroups
+                            ? R.Type.QuickplayHead(GroupLabel(item.Group)) with { Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap }
+                            : R.Type.MicroMeta(GroupLabel(item.Group)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap },
                     ],
                 };
             var e = grouped[item.Index];
