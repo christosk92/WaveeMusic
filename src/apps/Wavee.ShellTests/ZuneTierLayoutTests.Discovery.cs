@@ -106,7 +106,15 @@ public sealed partial class ZuneTierLayoutTests
         // The strip is the record's height, or (Compact) its floor, which a wrapped title or wrapped rings may grow.
         if (lay.DaylistGrows) Assert.True(daylist.H >= lay.DaylistH - 1f, $"{sizeName}: the daylist is {daylist.H}, under its floor {lay.DaylistH}");
         else Assert.Equal(lay.DaylistH, daylist.H, 1f);
-        Assert.Equal(lay.DaylistArtWidthAt(daylist.H), scene.AbsoluteRect(Node(shell, "zune-daylist-art")).W, 1f);   // the art follows the strip's height
+        var artRect = scene.AbsoluteRect(Node(shell, "zune-daylist-art"));
+        if (lay.DaylistBleed)
+        {
+            // The bled strip: the art is its ground (the whole strip), the copy over it as wide as the strip.
+            Assert.Equal(daylist.W, artRect.W, 1f);
+            Assert.Equal(daylist.H, artRect.H, 1f);
+            Assert.Equal(daylist.W, scene.AbsoluteRect(Node(shell, "zune-daylist-copy")).W, 1f);
+        }
+        else Assert.Equal(lay.DaylistArtWidthAt(daylist.H), artRect.W, 1f);   // the art follows the strip's height
         Assert.Equal(lay.ClockW, scene.AbsoluteRect(Node(shell, "zune-daylist-clock")).W, 1f);
         Assert.True(shell.Find("zune-daylist-end").IsNull, $"{sizeName}: no end slot: the rings row is the copy's child in every form");
         Assert.Equal(lay.DaylistMeta, !shell.Find("zune-daylist-meta").IsNull);
@@ -124,8 +132,29 @@ public sealed partial class ZuneTierLayoutTests
         // put it under the text block.
         var copyRect = scene.AbsoluteRect(Node(shell, "zune-daylist-copy"));
         AssertWithin(sizeName, "the play ring in the copy", play, copyRect.X, copyRect.X + copyRect.W);
+        var titleRect = scene.AbsoluteRect(Node(shell, "zune-daylist-title"));
         if (lay.PlayAtEnd) Assert.True(play.X + play.W >= copyRect.X + copyRect.W - lay.DaylistPad - 1f, $"{sizeName}: the play ring ends the one-row copy");
-        else Assert.True(play.Y >= scene.AbsoluteRect(Node(shell, "zune-daylist-title")).Y, $"{sizeName}: the play ring stands under the title");
+        else if (lay.DaylistBleed)
+        {
+            // The bled form: play ends the eyebrow's row (above the title, at the copy's end); shuffle, save and "…" end the countdown's row under the
+            // title, side by side, the "…" at the copy's end; the title runs the copy's whole width, uncut.
+            var eyebrowRow = scene.AbsoluteRect(Node(shell, "zune-daylist-eyebrow-row"));
+            Assert.True(play.Y + play.H <= titleRect.Y + 0.5f, $"{sizeName}: the play ring stands above the title");
+            Assert.Equal(eyebrowRow.Y, play.Y, 1f);
+            Assert.Equal(copyRect.X + copyRect.W - lay.DaylistPad, play.X + play.W, 1f);
+            Assert.Equal(copyRect.W - 2f * lay.DaylistPad, titleRect.W, 1f);
+            var clockRow = scene.AbsoluteRect(Node(shell, "zune-daylist-clock-row"));
+            float x = copyRect.X + copyRect.W - lay.DaylistPad;
+            foreach (string key in new[] { "zune-daylist-more", "zune-daylist-save", "zune-daylist-shuffle" })
+            {
+                var ring = scene.AbsoluteRect(Node(shell, key));
+                Assert.True(ring.Y >= titleRect.Y + titleRect.H - 0.5f, $"{sizeName}: {key} stands under the title");
+                Assert.Equal(clockRow.Y + clockRow.H, ring.Y + ring.H, 1f);
+                Assert.Equal(x, ring.X + ring.W, 1f);
+                x = ring.X - lay.RingsGap;
+            }
+        }
+        else Assert.True(play.Y >= titleRect.Y, $"{sizeName}: the play ring stands under the title");
 
         // The quickplay strip: the pins capped by the record (one tile at its art), no new group where the tier has none, the history in its arm.
         var tiles = shell.FindPrefix(ZuneHomeRules.PinTilePrefix);
@@ -354,6 +383,16 @@ public sealed partial class ZuneTierLayoutTests
     [Theory, MemberData(nameof(DiscoveryCrossings))]
     public void Homes_parts_survive_a_crossing_and_the_daylist_glides(float fromW, float fromH, float toW, float toH)
         => CrossPage(HomeFixture, fromW, fromH, toW, toH, glide: [ZuneHomeRules.DaylistKey]);
+
+    /// <summary>Compact's bled daylist and Small's row are ONE tree: across 640 / 615 both ways the art (the strip's ground at Compact, a cover beside
+    /// the copy at Small) and the play and shuffle rings keep their nodes (no remount: a ring that moves from the rings row to its corner is the same
+    /// node, parked by its slot).</summary>
+    [Theory]
+    [InlineData(639f, 760f, 640f, 760f)]
+    [InlineData(640f, 760f, 615f, 760f)]
+    public void The_bled_daylists_art_and_rings_survive_the_compact_crossing(float fromW, float fromH, float toW, float toH)
+        => CrossPage(HomeFixture with { Parts = ["zune-daylist-art", "zune-daylist-play", "zune-daylist-shuffle", "zune-daylist-copy", "zune-daylist-title"], PartPrefixes = [] },
+            fromW, fromH, toW, toH, glide: []);
 
     [Theory, MemberData(nameof(DiscoveryCrossings))]
     public void Browses_parts_survive_a_crossing(float fromW, float fromH, float toW, float toH)
