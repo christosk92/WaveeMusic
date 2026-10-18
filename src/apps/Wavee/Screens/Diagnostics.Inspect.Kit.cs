@@ -103,13 +103,21 @@ public static partial class Diagnostics
 
         /// <summary>Play one track or episode as its own context from <paramref name="fromMs"/> (the headless probe's
         /// single-track recipe: BuildContextQueue, Queue.Replace, Playback.PlayNow). False when the uri does not parse.</summary>
-        public static bool Play(string uri, int fromMs = 0)
+        /// <summary><paramref name="next"/> more seeded tracks (the fake catalogue's `tr<k+1>`, `tr<k+2>`, ... after a `spotify:track:tr<k>`) follow it in the
+        /// same context, so "up next" has rows; 0 plays the track alone.</summary>
+        public static bool Play(string uri, int fromMs = 0, int next = 0)
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
             EntityRef row = Entities.Ref(id);
-            Span<EntityRef> refs = [row];
-            Span<QueueEdge> rows = stackalloc QueueEdge[1];
-            int n = Headless.BuildContextQueue(refs, 0, refs, rows);
+            next = Math.Clamp(next, 0, 64);
+            var members = new List<EntityRef>(1 + next) { row };
+            const string prefix = "spotify:track:tr";
+            if (next > 0 && uri.StartsWith(prefix, StringComparison.Ordinal) && int.TryParse(uri.AsSpan(prefix.Length), out int k))
+                for (int i = 1; i <= next; i++)
+                    if (EntityId.TryParse((prefix + (k + i).ToString(System.Globalization.CultureInfo.InvariantCulture)).AsSpan(), out EntityId more)) members.Add(Entities.Ref(more));
+            Span<EntityRef> refs = new EntityRef[members.Count];
+            Span<QueueEdge> rows = new QueueEdge[members.Count];
+            int n = Headless.BuildContextQueue(members.ToArray(), 0, refs, rows);
             Queue.Replace(refs[..n], rows[..n]);
             Playback.PlayNow(row, id, Queue.CursorOf(0), Playback.PlayableKind.Audio, fromMs);
             return true;

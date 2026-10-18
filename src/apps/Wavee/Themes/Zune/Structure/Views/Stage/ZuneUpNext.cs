@@ -96,7 +96,7 @@ internal sealed class ZuneStageUpNextColumn : Component
 
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, MaxWidth = props.Aside ? float.NaN : layout.QueueListMaxW,
+            Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true,
             Children =
             [
                 AutoplayWord(props, set),

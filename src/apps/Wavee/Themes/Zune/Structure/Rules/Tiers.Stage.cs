@@ -140,6 +140,12 @@ public static class ZuneStageTiers
     static readonly ZuneStageLyricsSide s_queueSideStandard = new(Cover: 400f, Gap: 64f, PadTop: 24f, Centered: false, ColGap: 16f, TitleTop: 0f,
         TitleSize: 40f, TitleLine: 48f, ArtistSize: 20f, ArtistLine: 28f, ArtistDisplay: false, TagSize: 0f, TagLine: 0f, TagTop: 0f);
 
+    static readonly ZuneStageLyricsSide s_queueSideSmall = new(220f, 32f, 12f, false, 10f, 0f, 26f, 32f, 14f, 20f, false, 0f, 0f, 0f);
+
+    static readonly ZuneStageLyricsSide s_queueSideHuge = new(560f, 64f, 24f, false, 8f, 0f, 64f, 72f, 26f, 32f, true, 0f, 0f, 0f);
+
+    static readonly ZuneStageLyricsSide s_queueSide4K = new(840f, 96f, 36f, false, 12f, 0f, 96f, 108f, 39f, 48f, true, 0f, 0f, 0f);
+
     static readonly ZuneStageLyricsSide s_lyricsSideSmall = new(180f, 40f, 0f, true, 8f, 0f, 22f, 28f, 14f, 20f, false, 11f, 14f, 0f);
 
     static readonly ZuneStageLyricsSide s_lyricsSideHuge = new(440f, 96f, 40f, false, 8f, 18f, 40f, 48f, 22f, 28f, true, 13f, 18f, 8f);
@@ -178,7 +184,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.HeartLead, SeekRowH = 30f, PlateRowH = 66f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 17f, PlayGlyph = 20f, Disc = 48f, VolumeW = 96f, ClusterGap = 20f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnSmall, Centered = s_centeredSmall, Stack = null,
-            LyricsSide = s_lyricsSideSmall, LyricsRhythm = s_rhythmSmall,
+            LyricsSide = s_lyricsSideSmall, QueueSide = s_queueSideSmall, LyricsRhythm = s_rhythmSmall,
         },
         // Standard (Z-NowPlaying, -Card, -LargeArt, -Centered, Z-Lyrics, Z-Queue-Page): Z4b's frame.
         new()
@@ -198,7 +204,7 @@ public static class ZuneStageTiers
             WordSize = 14f, WordLine = 20f, Plate = ZunePlateKind.Full, SeekRowH = 40f, PlateRowH = 80f, PlateFootH = 0f,
             GlyphBox = 44f, Glyph = 20f, PlayGlyph = 24f, Disc = 64f, VolumeW = 160f, ClusterGap = 28f, RightGap = 8f, SourceSize = 14f, SourceLine = 20f,
             DeviceH = 44f, Card = s_cardHugeRec, Column = s_columnHuge, Centered = s_centeredHuge, Stack = null,
-            UpNextGap = 96f, LyricsSide = s_lyricsSideHuge, LyricsRhythm = s_rhythmHuge,
+            UpNextGap = 96f, LyricsSide = s_lyricsSideHuge, QueueSide = s_queueSideHuge, LyricsRhythm = s_rhythmHuge,
         },
         // Huge 4K (Z-NowPlaying-Huge4K)
         new()
@@ -208,7 +214,7 @@ public static class ZuneStageTiers
             WordSize = 17f, WordLine = 22f, Plate = ZunePlateKind.Full, SeekRowH = 72f, PlateRowH = 160f, PlateFootH = 0f,
             GlyphBox = 56f, Glyph = 26f, PlayGlyph = 36f, Disc = 96f, VolumeW = 220f, ClusterGap = 40f, RightGap = 14f, SourceSize = 17f, SourceLine = 22f,
             DeviceH = 56f, Card = s_card4KRec, Column = s_column4K, Centered = s_centered4K, Stack = null,
-            UpNextGap = 336f, LyricsSide = s_lyricsSide4K, LyricsRhythm = s_rhythmHuge,
+            UpNextGap = 336f, LyricsSide = s_lyricsSide4K, QueueSide = s_queueSide4K, LyricsRhythm = s_rhythmHuge,
         },
     ];
 

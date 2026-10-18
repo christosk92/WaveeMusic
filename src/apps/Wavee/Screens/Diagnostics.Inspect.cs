@@ -482,7 +482,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Play:
                     {
                         string uri = a.Str("uri");
-                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
+                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
                     }
