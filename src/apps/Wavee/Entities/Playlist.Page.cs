@@ -535,7 +535,7 @@ public readonly partial struct Playlist
                 bool saved = lib.IsSaved(target);
                 actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
             }
-            _sink.Publish(new Contracts.PageChromeRow(views, actions, Title: c.Title));
+            _sink.Publish(new Contracts.PageChromeRow(views, actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true), c.Title));
         }
 
         /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the seven counters this page depends on —

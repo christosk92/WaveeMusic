@@ -257,6 +257,20 @@ public static class ZuneBandRules
     /// <summary>The wash's opacity at its top (the tint carries its own alpha; this scales it up for a band rather than a floor).</summary>
     public const float WashTopScale = 2f;
 
+    /// <summary>The cover pages' wash (album, playlist, liked): the boards draw ONE gradient from the window top, `tint 0 % -> 55 % of it at 45 % -> clear at 100 %`
+    /// (Z-Album `#3a2f22 -> #2a241c -> #161616` on the `#161616` ground; light `#e6dccf -> #eee8e0 -> #f5f5f5`), this tall per window tier: 520 at Compact and
+    /// Standard, 420 at Small, 760 at Huge, 1000 at Huge 4K. The middle stop's share of the top's strength and where it sits.</summary>
+    public const float CoverWashMidShare = 0.55f, CoverWashMidAt = 0.45f;
+
+    /// <summary>The cover pages' wash height in window tier <paramref name="tier"/> (the boards' Z-Album, -Compact, -Small, -Huge, -Huge4K).</summary>
+    public static float CoverWashH(WidthTier tier) => tier switch
+    {
+        WidthTier.Small => 420f,
+        WidthTier.Huge => 760f,
+        WidthTier.Huge4K => 1000f,
+        _ => 520f,
+    };
+
     /// <summary>The bleed: 420 tall at 35 %, fading out over its lower 240.</summary>
     public const float BleedH = 420f, BleedOpacity = 0.35f, BleedFade = 240f;
 

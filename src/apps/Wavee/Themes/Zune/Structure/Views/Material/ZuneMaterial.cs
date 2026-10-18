@@ -24,6 +24,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -57,12 +58,18 @@ internal static class ZuneMaterial
         if (background == ZuneBackground.ArtworkWash && state.Tint is { } tint)
         {
             var top = tint with { A = MathF.Min(1f, tint.A * ZuneBandRules.WashTopScale) };
+            // A cover page (album, playlist, liked) asks for the boards' tall wash: ONE window-fixed gradient, three stops, per-tier height.
+            // Anything else (Home, the artist) keeps the band-height one.
+            bool tall = backdrop.TallWash;
+            var mid = tint with { A = top.A * ZuneBandRules.CoverWashMidShare };
             kids.Add(new BoxEl
             {
-                // Keyed on the colour: a new tint mounts a fresh band that fades in over the old one (a gradient cannot brush-fade).
-                Key = ZuneBandRules.WashKey + ":" + tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                Height = ZuneBandRules.WashH, AlignSelf = FlexAlign.Start, HitTestVisible = false,
-                Gradient = GradientDown(new GradientStop(0f, top), new GradientStop(1f, tint with { A = 0f })),
+                // Keyed on the colour (and the height): a new tint mounts a fresh band that fades in over the old one (a gradient cannot brush-fade).
+                Key = ZuneBandRules.WashKey + (tall ? "-tall:" : ":") + tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+                Height = tall ? ZuneBandRules.CoverWashH(ctx.Tier().Window) : ZuneBandRules.WashH, AlignSelf = FlexAlign.Start, HitTestVisible = false,
+                Gradient = tall
+                    ? GradientDown(new GradientStop(0f, top), new GradientStop(ZuneBandRules.CoverWashMidAt, mid), new GradientStop(1f, tint with { A = 0f }))
+                    : GradientDown(new GradientStop(0f, top), new GradientStop(1f, tint with { A = 0f })),
                 Enter = Fade, Exit = Fade,
             });
         }
