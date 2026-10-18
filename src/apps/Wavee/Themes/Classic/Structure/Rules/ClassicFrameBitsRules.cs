@@ -27,10 +27,10 @@ internal static class ClassicFrameBitsRules
     /// with the new body. Opacity only: the head sits on the page's column and never travels.</summary>
     public static LayoutTransition MastheadSwap => new(
         TransitionChannels.Opacity,
-        TransitionDynamics.Tween(Design.Nav.EnterDurationMs, Easing.FluentDecelerate),
+        TransitionDynamics.Tween(Design.Nav.EnterDurationMs, Design.Nav.EnterEasing),
         Enter: new EnterExit(Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
+        ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Design.Nav.ExitEasing),
         DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
 
     // ── the narrow drawer ───────────────────────────────────────────────────────────────────────────────────────────

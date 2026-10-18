@@ -950,10 +950,10 @@ public static partial class Shell
             var route = UseProps<DeferredPageProps>().Route;
             if (!_ready)
             {
-                var shown = Shown.Value;
-                _ready = shown.IsNone || string.Equals(SlotKey(in shown), SlotKey(in route), StringComparison.Ordinal);
+                var shown = PageChromeChannel.Landed.Value;   // the page mounts with the band's chrome: both follow the same landing
+                _ready = shown.IsNone || !ShellCaps.Now.DefersPageMount || string.Equals(SlotKey(in shown), SlotKey(in route), StringComparison.Ordinal);
                 // The mount lands as a keep-alive activation does: the page's first layouts are placed, not animated in from zero.
-                if (_ready && !shown.IsNone) Context.SuppressLayoutTransitions?.Invoke();
+                if (_ready && !shown.IsNone && ShellCaps.Now.DefersPageMount) Context.SuppressLayoutTransitions?.Invoke();
             }
             return _ready ? PageBodyNow(route) : s_pendingPage;
         }

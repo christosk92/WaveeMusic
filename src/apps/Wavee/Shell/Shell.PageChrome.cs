@@ -206,6 +206,9 @@ public static partial class Shell
 
         static bool s_landDue;
 
+        /// <summary>The route whose swap has landed (None before the first): the deferred page mount and the band's chrome follow it together.</summary>
+        public static IReadSignal<Route> Landed => s_landed;
+
         /// <summary>The page swap's landing edge, armed by the content host's staged timer (<see cref="Shell.Shown"/>: the exit leg has run, the
         /// incoming page's enter starts). It does not write the signal itself: a timer's write is reconciled AFTER the frame's FLIP capture, so
         /// the band's height (row 2 coming or going) would SNAP and take the page with it. <see cref="LandIfDue"/> writes it from the host's

@@ -35,7 +35,7 @@ public static partial class ZunePolicies
     /// <summary>What the shell offers under Zune (technical plan 6.3): no tabs, no nav tree, no Forward button, six band pins, the history
     /// menu and the friends panel.</summary>
     public static ShellCapabilities Capabilities { get; } = new(
-        Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6);
+        Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true);
 
     private static readonly object s_gate = new();
     private static readonly Dictionary<ZuneParameters, ThemePolicies> s_bundles = new();

@@ -526,8 +526,11 @@ public static partial class Design
         // than that: the entering page's first drawn frame (6 ms into its leg) was already at 0.23 and 1.8 DIP in, then 2.95 DIP further
         // on the next. A linear exit finishes at the slope it started at (the last step is one frame's worth, 0.11), and the quadratic
         // ease-out starts at a quarter of the cubic's rate (0.06 on the first frame) and still settles.
-        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, Easing.EaseOut);
-        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, Easing.Linear);
+        /// <summary>The page swap's curves, shared with whatever rides the swap's clock (Classic's masthead head).</summary>
+        public const Easing EnterEasing = Easing.EaseOut, ExitEasing = Easing.Linear;
+
+        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, EnterEasing);
+        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, ExitEasing);
 
         /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
         static LayoutTransition SeqTranslate(float enterDx, float exitDx) => new(
