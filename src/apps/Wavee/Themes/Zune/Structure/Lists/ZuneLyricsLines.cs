@@ -303,10 +303,21 @@ internal sealed class ZuneLyricsRow : Component
         ColorF lineInk = ZuneListRules.LyricsLineInk(isActive && !neutral, accent, neutral ? ink.Secondary : ink.Primary);
         var weight = rhythm is null ? R.Type.LyricsLine("").ResolvedWeight : rhythm.Weight;
 
+        // WORD TIMING (Z-Lyrics): on a word-synced line the sung line's words FILL as they are sung: the accent sweeps across the line over the dimmed ink, on the
+        // core's glyph wipe (the frame driver finds it on this node and drives the split from the lyrics clock). No halo and no per-word rise: Zune is flat. A line
+        // that is not the sung one carries no wipe (its opacity rung is its whole look); a line-synced one is filled whole.
+        GlyphWipe? wipe = null;
+        if (isActive && !neutral && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line))
+        {
+            float split = Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek());
+            if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
+            wipe = new GlyphWipe(Before: accent, After: ink.Primary with { A = Lyrics.Wipe.UnsungAlpha }, Split: split, Softness: host.SoftnessOfLine(index), Lift: 0f);
+        }
+
         Element main = new TextEl(line.Text)
         {
             Size = m.FontSize, Weight = weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
-            Color = lineInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine,
+            Color = lineInk, MaxLines = 0, Trim = TextTrim.None, OnRealized = _onLine, Wipe = wipe,
             BrushTransitionMs = Design.Motion.Fast,   // the rest <-> accent flip never snaps in one frame
         };
         if (rhythm is not null) main = ((TextEl)main) with { FontFamily = R.Type.DisplayFace, CharSpacing = rhythm.Tracking };
