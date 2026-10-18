@@ -380,6 +380,9 @@ public static class ZuneListRules
     /// <summary>An album's numbered rows (one line, no art) stand this far under the density's row: Z-Album's 42 under the standard 52 (compact 34, comfortable 50).</summary>
     public const float AlbumRowTrim = 10f;
 
+    /// <summary>A liked track's resting heart in the time lane: its glyph and its gap to the time.</summary>
+    public const float RestHeartGlyph = 12f, RestHeartGap = 6f;
+
     /// <summary>An album's number sits this far in from its lane's start (Z-Album: 4), and the hover "..." target in the time lane.</summary>
     public const float NumberInset = 4f, HoverMoreBox = 28f;
 

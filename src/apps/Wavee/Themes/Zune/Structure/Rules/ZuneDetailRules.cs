@@ -398,7 +398,7 @@ public static class ZuneDetailRules
     {
         Tier = WidthTier.Standard, PanoramaH = 140f, PanoramaGap = 8f, PanoramaLarge = true, PanoramaNudgeX = -8f, PanoramaNudgeY = 2f,
         RailW = 240f, ColumnGap = 48f, AsideW = 260f, RailGap = 12f, ActionsGap = 18f, PlayWord = true, ShareRing = true, ArtistBand = 120f,
-        MetaLines = 1, InsightsW = 320f,
+        MetaLines = 2, InsightsW = 320f,
     };
 
     /// <summary>Huge (Z-Album-Huge): the panorama 150/160, the 320 identity column, the 400 aside with its 140 artist band and "more by" as a grid.</summary>
