@@ -393,15 +393,15 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
-        // no new group; the daylist a 168 floor (112 art, the title at the daylist step 40/48 over up to three lines, then four unlabelled 36 rings, each in
-        // a 40 target 12 apart; the strip grows with the title and where the rings wrap); one column of everything,
+        // no new group; the daylist a 112 row (112 art, the eyebrow and the title at the group step 22/28 over up to two lines, the 40 play ring at the end:
+        // Z-Frame-Compact; Z-Home-Compact draws none, so the two boards do not disagree); one column of everything,
         // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
-            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 2,
+            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = 40f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = true,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,

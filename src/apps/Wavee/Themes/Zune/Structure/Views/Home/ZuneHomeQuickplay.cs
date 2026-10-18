@@ -143,7 +143,7 @@ internal static class ZuneHomeQuickplay
         // The two arms are keyed alternatives in an unkeyed box (so they sit in a children list): a crossing cross-fades one into the other.
         Element arm = lay.HistoryRows ? HistoryRows(cells, remoteDevice, lay) : HistoryTiles(cells, remoteDevice, lay);
         return Group(H.HistoryGroup, Loc.Get(Strings.Theme.Zune.Discovery.History),
-            K.Link("zune-home-history-link", Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents, lay.LinkTarget),
+            K.Link("zune-home-history-link", Loc.Get(Strings.Home.SeeAll), HomeVerbs.OpenRecents, lay.LinkTarget),   // "see all" (Z-Frame-Home: history, see all)
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [arm] });
     }
 
