@@ -47,7 +47,7 @@ internal static partial class ZuneSettings
     }
 
     /// <summary>One group of a tab, named by the document section it draws (an area is a list of such sections).</summary>
-    internal readonly record struct Named(string Section, Element El);
+    internal readonly record struct Named(string Section, Element El, bool Sentence = false);
 
     /// <summary>The page title's node (the tier tests find it).</summary>
     internal const string TitleKey = "zs:title";

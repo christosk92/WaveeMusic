@@ -17,15 +17,25 @@ public sealed record SettingsPageProps
     /// <summary>The visible section, a <see cref="Settings.Area"/> index clamped to the twelve areas.</summary>
     public required int Area { get; init; }
 
+    /// <summary>SUPERSEDED by <see cref="Area"/> (contract 1.47; a minor bump only adds, so the pre-areas member stays): the document tab of the open area's first section, a
+    /// <see cref="Settings.Tab"/> index. A theme still written against the seven-tab pivot reads this and keeps working; the page itself is the area.</summary>
+    public int Tab => (int)Settings.FirstTab((Settings.Area)Math.Clamp(Area, 0, Settings.AreaSlugs.Length - 1));
+
     /// <summary>The page epoch plus the two foreign epochs the Appearance area reads (the player bar's and the fullscreen stage's). It only grows.</summary>
     public required int Revision { get; init; }
 
     /// <summary>The pivot's cell (root-lifetime state: a remounted root opens the first tab, a theme pick opens Appearance). The pivot binds it once.</summary>
     public required Func<Signal<int>> AreaCell { get; init; }
 
+    /// <summary>SUPERSEDED by <see cref="AreaCell"/> (contract 1.47): the same cell. It now holds the AREA index (the pivot's twelve sections), not a document tab's.</summary>
+    public Func<Signal<int>> TabCell => AreaCell;
+
     /// <summary>The route names an open section (its arg is the area's slug). A theme with a sections-then-section page (Zune's Compact) shows that section's page; a theme with a
     /// pivot ignores it (the area is <see cref="Area"/> either way).</summary>
     public bool OpenSection { get; init; }
+
+    /// <summary>SUPERSEDED by <see cref="OpenArea"/> (contract 1.47): open the area that holds the document tab <c>i</c> (a <see cref="Settings.Tab"/> index) as a page of its own.</summary>
+    public Action<int> OpenTab => i => OpenArea((int)Settings.HomeArea((Settings.Tab)Math.Clamp(i, 0, Settings.TabSlugs.Length - 1)));
 
     /// <summary>Open section <c>i</c> (a <see cref="Settings.Area"/> index) as a page of its own: a history step from the sections list.</summary>
     public Action<int> OpenArea { get; init; } = static _ => { };

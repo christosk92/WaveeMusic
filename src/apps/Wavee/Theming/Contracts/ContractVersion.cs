@@ -151,6 +151,9 @@
 // 1.45 (Zune fidelity): `PipBounds.OverlaysContent` (the floating video card floats over the page instead of reserving its height).
 // 1.46 (Zune fidelity): `QueueProps.History` with `QueueHistoryRow` and `IQueueVerbs.PlayHistory` (the tracks played before the current one, newest first: the Up next
 // page's "played before this"), `ConcertDetailView.Interested` / `.ToggleInterested` (the concert page's local "interested" mark).
+// 1.47 (Settings sections): `SettingsPageProps.Area` / `.AreaCell` / `.OpenArea` (the page's twelve sections, `Settings.Area`, each a list of document sections),
+// `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
+// `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -166,7 +169,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 46;
+    public const int Minor = 47;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

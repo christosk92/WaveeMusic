@@ -90,6 +90,9 @@ public static partial class Settings
     /// remounted page is a fresh navigation to Settings › Appearance with the picker as its first row, instead of General.</summary>
     public static void OpenNextMountOn(Area area) => s_pendingTab = (int)area;
 
+    /// <summary>The same for the area holding <paramref name="tab"/>'s first section (the pre-areas seam, kept for themes written against it).</summary>
+    public static void OpenNextMountOn(Tab tab) => OpenNextMountOn(HomeArea(tab));
+
     static int TakePendingTab()
     {
         int tab = s_pendingTab;

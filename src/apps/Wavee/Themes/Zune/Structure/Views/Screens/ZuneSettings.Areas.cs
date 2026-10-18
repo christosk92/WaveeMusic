@@ -33,7 +33,11 @@ internal static partial class ZuneSettings
         {
             if (!built.TryGetValue(part.Tab, out var tab)) built[part.Tab] = tab = TabGroups(k, part.Tab, props);
             foreach (var named in tab)
-                if (string.Equals(named.Section, part.Section, StringComparison.Ordinal)) groups.Add(named.El);
+                if (string.Equals(named.Section, part.Section, StringComparison.Ordinal))
+                    // A sentence that leads the area sits 4 under the heading, not a section gap (Z-Feedback).
+                    groups.Add(groups.Count == 0 && named.Sentence && named.El is BoxEl lead
+                        ? lead with { Margin = new Edges4(0f, -(Z.SectionGap - Z.SentenceGap), 0f, 0f) }
+                        : named.El);
         }
         return groups.ToArray();
     }
@@ -60,7 +64,7 @@ internal static partial class ZuneSettings
         var kids = new List<Element>(rows.Length);
         foreach (var row in rows)
             if (row is not null) kids.Add(row);
-        return new Named(section, k.Block("zs:section:" + (int)tab + ":" + section, null, doc.SubtitleKey is { } sub ? Loc.Get(sub) : null, kids));
+        return new Named(section, k.Block("zs:section:" + (int)tab + ":" + section, null, doc.SubtitleKey is { } sub ? Loc.Get(sub) : null, kids), doc.SubtitleKey is not null);
     }
 
     // ══ account ══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -127,7 +131,13 @@ internal static partial class ZuneSettings
         return [Bare(k, Tab.Keyboard, "Shortcuts", rows.ToArray())];
     }
 
+    /// <summary>The cap stands at the right end of its row (Z-Settings-Sections), in a box that fills the control column.</summary>
     static Element KeyChip(string chord) => new BoxEl
+    {
+        Direction = 0, Grow = 1f, Justify = FlexJustify.End, MinWidth = 0f, Children = [KeyCap(chord)],
+    };
+
+    static Element KeyCap(string chord) => new BoxEl
     {
         Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Padding = new Edges4(Z.KeyChipPadX, Z.KeyChipPadY, Z.KeyChipPadX, Z.KeyChipPadY),
         BorderWidth = Z.KeyChipStroke, BorderColor = Tok.StrokeCardDefault, HitTestVisible = false,
@@ -227,7 +237,7 @@ internal static partial class ZuneSettings
     /// <summary>The contents list and the help links as the aside beside the column (a width with room for it).</summary>
     static Element HoldsAside(ZuneKit k) => new BoxEl
     {
-        Key = "zs:aside:holds", Direction = 1, Gap = Z.SectionGap, Basis = Z.AsideBasis, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxWidth = Z.HoldsAsideMax,
+        Key = "zs:aside:holds", Direction = 1, Gap = Z.SectionGap, Basis = Z.AsideBasis, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxWidth = k.Lay.AsideMaxW,
         Padding = new Edges4(0f, Z.HoldsAsideTop, 0f, 0f), Animate = ZuneMotion.PivotSlide,
         Children = [HoldsCard(k), HelpLinks(k)],
     };

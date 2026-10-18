@@ -120,6 +120,10 @@ public sealed record ZuneSettingsLayout
     /// <summary>The tile carries the theme's line under its name.</summary>
     public required bool PickerShowsText { get; init; }
 
+    /// <summary>The aside's widest: the board's rest of the line beside the 660 column at Standard (368 at 1440), more where the Huge lane has room. The engine breaks a wrapping
+    /// row on a child's MAXIMUM, so a larger cap than the room beside the column wraps the aside under it.</summary>
+    public float AsideMaxW => Tier >= WidthTier.Huge ? ZuneSettingsRules.AsideMax : ZuneSettingsRules.AsideMaxStandard;
+
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
     public bool Touch => Target > 0f;
 }
@@ -216,9 +220,12 @@ public static class ZuneSettingsRules
     /// <summary>One of the feedback actions (Z-Feedback: a 36 disc, the words, a chevron): the gap between them, the row's padding and its height.</summary>
     public const float ActionGap = 16f, ActionPadX = 12f, ActionPadY = 10f, ActionMinH = 60f, ActionGlyph = 16f;
 
+    /// <summary>The gap between the area's heading and the sentence that leads it (Z-Feedback: the heading's line, then 4).</summary>
+    public const float SentenceGap = 4f;
+
     /// <summary>The report's contents list: the gap between the mark and its line; and the aside beside the feedback column (the board's rest of the line, 368 at 1440) with the
     /// space above it that lines its first heading up with the first action (Z-Feedback: 70).</summary>
-    public const float HoldsGap = 12f, HoldsMark = 14f, HoldsAsideMax = 360f, HoldsAsideTop = 70f;
+    public const float HoldsGap = 12f, HoldsMark = 14f, HoldsAsideTop = 70f;
 
     /// <summary>The round accent button: its diameter (Medium), its glyph, and the gap to the word beside it.</summary>
     public const float DiscSize = 36f, DiscGlyph = 14f, DiscGap = 10f;
@@ -261,7 +268,7 @@ public static class ZuneSettingsRules
     public const float LaneTop = 4f, LaneBottom = 32f;
 
     /// <summary>The gap between the column and the preview, the preview's basis and its cap.</summary>
-    public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f;
+    public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f, AsideMaxStandard = 360f;
 
     /// <summary>A short choice stays a row of chips up to this many (past it, a combo).</summary>
     public const int MaxChips = 4, MaxChipChars = 14;

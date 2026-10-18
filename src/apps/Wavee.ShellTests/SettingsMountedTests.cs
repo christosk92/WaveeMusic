@@ -81,7 +81,7 @@ public sealed class SettingsMountedTests(ShellHost host)
 
             Settings.Open(Settings.AreaFromSlug("no-such-tab"));
             shell.RunFrames(60);
-            Node(shell, "settings:scroll:account");
+            Node(shell, "settings:scroll:appearance");
 
             // An old tab slug lands on the area that holds what it opened.
             Settings.Open(Settings.AreaFromSlug("logs"));

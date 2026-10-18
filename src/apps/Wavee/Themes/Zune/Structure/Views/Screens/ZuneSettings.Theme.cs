@@ -414,7 +414,7 @@ internal static partial class ZuneSettings
         };
         return new BoxEl
         {
-            Key = "zs:aside", Direction = 1, Gap = Spacing.S, Basis = Z.AsideBasis, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxWidth = Z.AsideMax,
+            Key = "zs:aside", Direction = 1, Gap = Spacing.S, Basis = Z.AsideBasis, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxWidth = lay.AsideMaxW,
             Animate = ZuneMotion.PivotSlide,
             Children =
             [

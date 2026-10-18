@@ -73,7 +73,7 @@ public static partial class Settings
         ("devices-connect", Area.Devices), ("connect", Area.Devices), ("shortcuts", Area.Keyboard),
     ];
 
-    /// <summary>A deep link's name → the area. An unknown or missing name lands on the first area (a bad arg opens the page, never nowhere).</summary>
+    /// <summary>A deep link's name → the area. An unknown or missing name lands where the old default (General) now lives: Appearance (a bad arg opens the page, never nowhere).</summary>
     public static Area AreaFromSlug(string? slug)
     {
         if (slug is { Length: > 0 })
@@ -83,8 +83,11 @@ public static partial class Settings
             foreach (var (alias, area) in s_slugAliases)
                 if (string.Equals(alias, slug, StringComparison.OrdinalIgnoreCase)) return area;
         }
-        return Area.Account;
+        return Area.Appearance;
     }
+
+    /// <summary>The document tab of <paramref name="area"/>'s first section.</summary>
+    public static Tab FirstTab(Area area) => s_parts[(int)area][0].Tab;
 
     /// <summary>The area a tab's first section opens in (what <see cref="Open(Tab)"/> uses).</summary>
     public static Area HomeArea(Tab tab) => tab switch

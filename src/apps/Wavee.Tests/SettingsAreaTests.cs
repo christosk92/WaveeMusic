@@ -47,8 +47,8 @@ public sealed class SettingsAreaTests
     [InlineData("logs", Settings.Area.Feedback)]
     [InlineData("FEEDBACK", Settings.Area.Feedback)]
     [InlineData("downloads", Settings.Area.Storage)]
-    [InlineData("no-such-area", Settings.Area.Account)]
-    [InlineData(null, Settings.Area.Account)]
+    [InlineData("no-such-area", Settings.Area.Appearance)]
+    [InlineData(null, Settings.Area.Appearance)]
     public void DeepLinks_LandOnTheAreaThatNowHoldsWhatTheyOpened(string? slug, Settings.Area expected)
         => Assert.Equal(expected, Settings.AreaFromSlug(slug));
 
