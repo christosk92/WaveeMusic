@@ -47,6 +47,8 @@ internal static class ZuneHomeDaylist
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
     {
         var lay = ZuneHomeTiers.Of(ctx.Tier());
+        // The strip's own height (a wrapped title grows it): the art's width follows it, so the cover keeps its shape.
+        var stripH = ctx.Hooks.UseSignal(lay.DaylistH);
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
@@ -65,13 +67,14 @@ internal static class ZuneHomeDaylist
                    primary: true, () => HomeCardNav.Play(in c), lay.RingSize, lay.RingTarget, stableName: true),
             // Shuffle STARTS the daylist shuffled; it never toggles.
             K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), lay.RingLabels, primary: false,
-                   () => HomeVerbs.ShuffleContext(c.Uri), lay.RingSize, lay.RingTarget),
+                   () => HomeVerbs.ShuffleContext(c.Uri), lay.RingSize, lay.RingTarget, stableName: true),
             SaveRing(uri, title, lay),
             MoreRing(lay),
         ];
 
         var root = Strip(props.Eyebrow, title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
-                         DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay)
+                         DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
+                         ArtWidth(lay, stripH), r => { if (MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; })
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
@@ -86,14 +89,22 @@ internal static class ZuneHomeDaylist
         Element[] rings =
         [
             K.Ring("zune-daylist-play", Icons.Play, Loc.Get(Strings.Home.Play), words, primary: true, static () => { }, lay.RingSize, lay.RingTarget, stableName: true),
-            K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
+            K.Ring("zune-daylist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget, stableName: true),
             K.Ring("zune-daylist-save", Icons.Heart, Loc.Get(Strings.Home.Save), words, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
             K.Ring("zune-daylist-more", Icons.More, Loc.Get(Strings.Home.More), showLabel: false, primary: false, static () => { }, lay.RingSize, lay.RingTarget),
         ];
         var current = DaypartRules.OfHour(DateTime.Now.Hour);
-        Element clock = Clock(StaticLine(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))), (int)current, null, lay.ClockBarW);
+        Element clock = Clock(StaticLine(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))), (int)current, null, lay.ClockBarW, lay.ClockInline);
         string eyebrow = Loc.Get(Strings.Home.YourDaylist);
-        return Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay);
+        return Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay, lay.DaylistArtW, null);
+    }
+
+    /// <summary>The art's width: the strip's height times the tier's aspect, between the board's width and the tier's cap (a fixed width where the
+    /// tier has no aspect). A bound prop: a strip that grows with its title re-lays the art, nothing re-renders.</summary>
+    static Prop<float> ArtWidth(ZuneHomeLayout lay, FluentGpu.Signals.Signal<float> stripH)
+    {
+        if (lay.DaylistArtAspect <= 0f) return lay.DaylistArtW;
+        return Prop.Of(() => lay.DaylistArtWidthAt(stripH.Value));
     }
 
     /// <summary>The save ring: the shared heart (it subscribes to the saved set on its own) inside the outlined ring, with its word where the tier
@@ -173,7 +184,8 @@ internal static class ZuneHomeDaylist
 
     /// <summary>The strip in the tier's form: ONE tree (art, copy, clock, and the play ring at the end where the tier puts it) whose direction
     /// and sizes are live props.</summary>
-    static BoxEl Strip(string eyebrow, string title, string meta, Element[] rings, Element clock, string? art, ZuneHomeLayout lay)
+    static BoxEl Strip(string eyebrow, string title, string meta, Element[] rings, Element clock, string? art, ZuneHomeLayout lay,
+                       Prop<float> artWidth, Action<RectF>? onBounds)
     {
         int shown = Math.Min(rings.Length, lay.DaylistRings);
         var inCopy = new List<Element>(shown);
@@ -193,6 +205,8 @@ internal static class ZuneHomeDaylist
                 Key = "zune-daylist-meta", Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
+        // Where the tier has no clock column the countdown stands here, one line under the title (the clock is a feature: it moves, it is not dropped).
+        if (lay.ClockInline) textKids.Add(clock);
 
         // The copy: ONE box, the rings row its last child in every form. A column under the strip's forms (the text block, then the rings row 8 below
         // it); a row in the one-row form (the text block grows, the rings row, the play ring alone, ends it). The rings row slides to its place.
@@ -216,7 +230,7 @@ internal static class ZuneHomeDaylist
         {
             new BoxEl
             {
-                Key = "zune-daylist-art", Shrink = 0f, ClipToBounds = true, MinWidth = 0f, Width = lay.DaylistArtW,
+                Key = "zune-daylist-art", Shrink = 0f, ClipToBounds = true, MinWidth = 0f, Width = artWidth,
                 Children = [Controls.CoverFill(art, 0f, H.DaylistArtDecodePx, focusY: H.DaylistArtFocusY)],
             },
             new BoxEl
@@ -230,12 +244,12 @@ internal static class ZuneHomeDaylist
             {
                 Key = "zune-daylist-clock", Direction = 1, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
                 Width = lay.ClockW, MaxHeight = lay.ClockW > 0f ? float.NaN : 0f,   // a tier with no clock must not let its hidden face stretch the strip
-                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = [clock],
+                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = lay.ClockW > 0f ? [clock] : [],
             },
         };
         return new BoxEl
         {
-            Key = H.DaylistKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+            Key = H.DaylistKey, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, OnBoundsChanged = onBounds,
             Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
             // The strip's own height (176 / 112 / 56 across the tiers and the height rung) glides on a SIZE channel, so it holds a track on the crossing frame
             // whatever the chapter around it does (a position-only slide would snap beside a live reflow).
@@ -251,7 +265,9 @@ internal static class ZuneHomeDaylist
     public static Element ClockTemplate(HomeDaylistClockProps p, in ViewContext ctx)
     {
         int current = (int)p.Current;
-        float barW = ZuneHomeTiers.Of(ctx.Tier()).ClockBarW;
+        var lay = ZuneHomeTiers.Of(ctx.Tier());
+        float barW = lay.ClockBarW;
+        bool inline = lay.ClockInline;
         switch (p.Face)
         {
             case HomeDaylistClockFace.Counting when p.Countdown is { } countdown:
@@ -259,16 +275,16 @@ internal static class ZuneHomeDaylist
                 // The sentence stays the translator's; only the count is cut out of it, bound to the host's signal.
                 var (before, after) = DaylistCountdownLine.Split(Strings.Home.NextDaylistIn(DaylistCountdownLine.Slot));
                 var kids = new List<Element>(3);
-                if (before.Length > 0) kids.Add(LineText(before));
+                if (before.Length > 0) kids.Add(LineText(before) with { Case = R.Case.For(LabelKind.Label) });
                 kids.Add(LineText("") with { Text = Prop.Of(() => countdown.Value), Color = Tok.TextPrimary, Shrink = 0f });
-                if (after.Length > 0) kids.Add(LineText(after));
-                return Clock(new BoxEl { Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = kids.ToArray() }, current, null, barW);
+                if (after.Length > 0) kids.Add(LineText(after) with { Case = R.Case.For(LabelKind.Label) });
+                return Clock(new BoxEl { Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = kids.ToArray() }, current, null, barW, inline);
             }
             case HomeDaylistClockFace.Late:
                 return Clock(StaticLine(p.Line), current,
-                    K.Link("zune-daylist-check-again", Loc.Get(Strings.Home.Daylist.CheckAgain), p.CheckAgain ?? (static () => { })), barW);
+                    K.Link("zune-daylist-check-again", Loc.Get(Strings.Home.Daylist.CheckAgain), p.CheckAgain ?? (static () => { })), barW, inline);
             default:
-                return Clock(StaticLine(p.Line), current, null, barW);
+                return Clock(StaticLine(p.Line), current, null, barW, inline);
         }
     }
 
@@ -279,8 +295,15 @@ internal static class ZuneHomeDaylist
 
     /// <summary>The clock block: the line, the five bars (the current one lit), the dayparts line (the current one in the primary ink), then the
     /// action (the Late face's link) when there is one.</summary>
-    static Element Clock(Element line, int current, Element? action, float barW)
+    static Element Clock(Element line, int current, Element? action, float barW, bool inline = false)
     {
+        // Inline (a tier with no clock column): just the count line, its action beside it, one row under the title.
+        if (inline)
+            return new BoxEl
+            {
+                Key = "zune-daylist-clock-block", Direction = 0, Wrap = true, Gap = H.ClockGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children = action is null ? [line] : [line, action],
+            };
         int lit = Math.Clamp(current, 0, DaypartTimeline.Segments - 1);
         var bars = new Element[DaypartTimeline.Segments];
         var names = new List<Element>(DaypartTimeline.Segments * 2);
