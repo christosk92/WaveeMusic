@@ -1,7 +1,7 @@
 """Shared driver for the page-mount perf scripts: a `Wavee.exe --inspect` session (tools/inspect.py) plus a trace-row printer.
 WAVEE_EXE picks the build (measure a Release one; see docs/guide/agent-inspect.md)."""
 import importlib.util, json, os, sys, time
-spec = importlib.util.spec_from_file_location("ic", r"C:\WAVEE\zt-t1\WaveeMusic\tools\inspect.py")
+spec = importlib.util.spec_from_file_location("ic", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "inspect.py"))
 ic = importlib.util.module_from_spec(spec); spec.loader.exec_module(ic)
 EXE = os.environ.get("WAVEE_EXE") or ic.find_exe(None)
 class Sess:
