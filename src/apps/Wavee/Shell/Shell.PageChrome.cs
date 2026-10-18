@@ -107,7 +107,7 @@ public static partial class Shell
         /// <summary>The views a route family answers from the route alone (empty for every other route). Pure but for the verbs.</summary>
         public static IReadOnlyList<PageView> RouteViews(in Route route)
             => User.IsLibraryChromeKind(route.Kind) ? User.LibraryChromeViews(route.Kind)
-             : BrowseBands.IsChromeKind(route.Kind) ? BrowseBands.ChromeViews(route)
+             : BrowseBands.HasBands(route) ? BrowseBands.ChromeViews(route)
              : route.Kind == RouteKind.Home ? HomeSeedViews(route) : [];
 
         /// <summary>Home's row-2 SEED (P5 ZT4): the "all" word alone, lit, so a band that draws row 2 reserves it on the navigation's first frame instead
