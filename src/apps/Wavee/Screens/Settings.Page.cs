@@ -53,15 +53,14 @@ public static partial class Settings
     /// <summary>The route of a tab's section page (arg = the tab's slug).</summary>
     static Shell.Route SectionRoute(int tab) => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(TabSlugs[Math.Clamp(tab, 0, TabSlugs.Length - 1)].AsSpan()));
 
-    /// <summary>True when the section page was entered from the sections list by a tap (the list is the entry below it in the history, so "close" is Back).</summary>
-    static bool s_listBelow;
-
     /// <summary>Navigate to Settings on <paramref name="tab"/> (the palette, a toast's "Manage", a deep link).</summary>
     public static void Open(Tab tab)
     {
         s_tab.Value = (int)tab;
-        s_listBelow = Shell.Current.Value is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: true };   // opened from the sections list: that list is the entry below
-        Shell.GoTo(SectionRoute((int)tab));
+        var route = SectionRoute((int)tab);
+        // Already on a section's page: a tab switch is not a new place, the entry is swapped. From the sections list (Compact) or from another page it is a step.
+        if (Shell.Current.Value is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: false }) Shell.ReplaceCurrent(route);
+        else Shell.GoTo(route);
     }
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report what
@@ -148,10 +147,11 @@ public static partial class Settings
                 Revision = revision,
                 TabCell = s_tabCell,
                 OpenSection = section,
-                OpenTab = static i => { s_tab.Value = i; s_listBelow = true; Shell.GoTo(SectionRoute(i)); },
+                OpenTab = static i => { s_tab.Value = i; Shell.GoTo(SectionRoute(i)); },
                 CloseSection = static () =>
                 {
-                    if (s_listBelow) { s_listBelow = false; Shell.GoBack(); }
+                    // The history decides: the entry below is the sections list (Settings, no arg) -> Back; else the page is swapped for the list.
+                    if (Shell.TryPeekBack(out var below) && below is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: true }) Shell.GoBack();
                     else Shell.ReplaceCurrent(new Shell.Route(Shell.RouteKind.Settings));
                 },
                 Storage = tab == (int)Tab.Storage ? StorageFacts() : SettingsStorageProps.Idle,
