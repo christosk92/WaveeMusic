@@ -316,8 +316,7 @@ internal sealed class ZuneKit
                 for (int i = 0; i < chips.Length; i++)
                 {
                     int at = i;
-                    chips[i] = Button.Create(choice.Labels[i], () => choice.Pick(at), at == current ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Large, isEnabled: enabled)
-                        with { Key = "zs:chip:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), MinWidth = lay.Target };
+                    chips[i] = Plate("zs:chip:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), choice.Labels[i], at == current, enabled, () => choice.Pick(at), lay.Target);
                 }
                 return new BoxEl
                 {
@@ -341,6 +340,24 @@ internal sealed class ZuneKit
             return new ZuneKit(lay).Combo(choice.Labels, _selected, choice.Width, enabled, choice.Pick, choice.Descriptions, choice.ItemEnabled);
         }
     }
+
+    /// <summary>One chip as the board's flat rectangle (Z-Settings-Playback-Compact): a wash at rest, the accent fill with the on-accent ink when picked, the tier's target tall and wide at least.</summary>
+    static Element Plate(string key, string label, bool on, bool enabled, Action click, float target) => new BoxEl
+    {
+        Key = key, Direction = 0, MinHeight = target, MinWidth = target, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Padding = new Edges4(Z.ChipPadX, 0f, Z.ChipPadX, 0f),
+        Fill = on ? Tok.AccentDefault : R.Layer.RowHover,
+        HoverFill = on ? Tok.AccentSecondary : R.Layer.ChromeHover, PressedFill = on ? Tok.AccentTertiary : R.Layer.RowPressed,
+        Role = AutomationRole.ToggleButton, Focusable = enabled, AllowFocusOnInteraction = false, IsEnabled = enabled,
+        Cursor = enabled ? CursorId.Hand : (CursorId?)null, OnClick = click, BrushTransitionMs = Design.Motion.Faster,
+        Children =
+        [
+            R.Type.DenseTitle(label) with
+            {
+                Color = on ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+            },
+        ],
+    };
 
     /// <summary>One slider with its value: a line slider (one signal for its life, re-seeded from the document on every page epoch) and the formatted value.</summary>
     sealed class SliderCell(ZuneSlide slide) : ZuneScreenComponent

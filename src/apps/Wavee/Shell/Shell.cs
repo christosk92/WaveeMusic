@@ -166,7 +166,7 @@ public static partial class Shell
         // Recently PLAYED — a different destination from `history`, which is the app's NAVIGATION log. Headphones,
         // not Clock, for exactly that reason: two surfaces wearing one glyph read as the same place.
         new(RouteKind.Recents,             "recents",              false, Strings.Nav.Recents,          Icons.Headphones,  false, true,  false),
-        new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false),
+        new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false, PlaceByArg: true),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
         new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
         new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
@@ -372,7 +372,7 @@ public static partial class Shell
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
         or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
         or RouteKind.Browse   // Browse's arg is a band id (BrowseBands), never a title
-        or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name
+        or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name; it is also the Compact section page (PlaceByArg)
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
     //

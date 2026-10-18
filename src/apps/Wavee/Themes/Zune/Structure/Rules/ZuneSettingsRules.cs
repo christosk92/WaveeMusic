@@ -253,6 +253,9 @@ public static class ZuneSettingsRules
     /// <summary>A short choice stays a row of chips up to this many (past it, a combo).</summary>
     public const int MaxChips = 4, MaxChipChars = 14;
 
+    /// <summary>A Compact chip's side padding (its plate is the target tall).</summary>
+    public const float ChipPadX = 16f;
+
     /// <summary>The Compact sections page's row and chevron, the crumb's height, the gap inside them, and the lines a section's page title may wrap to.</summary>
     public const float SectionRowH = 56f, SectionChevron = 14f, CrumbH = 40f, SectionRowGap = 8f;
 
