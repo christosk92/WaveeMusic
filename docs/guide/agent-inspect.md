@@ -311,7 +311,7 @@ transparent and empty-box nodes are not in it.
 
 | Arg | Meaning |
 |---|---|
-| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a JSON array. Default: all eight. |
+| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a JSON array. Default: all nine. |
 | `root`, `nth` | Lint only the subtree of the node with that key (`nth` picks among duplicates). Default: the whole tree and the overlays. |
 | `min` | Leaves out findings below this severity: `info` (default), `warn` or `error`. |
 | `limit` | The most findings one rule reports, 100 by default. The reply lists the rules it cut in `truncated`. |
@@ -357,6 +357,7 @@ counts, so a rule with no findings can be told apart from a rule that had nothin
 | `type` | Every distinct size / line height / weight with its count (the type scale), and an error per size under `typeFloor`. Icon glyphs are not text here. | scale `info`; floor `error` |
 | `target` | Click targets smaller than 40 × 40 at Compact (32 elsewhere). Sliders, scroll bars, progress bars and inline links are exempt, and a target that fills its interactive parent is that parent's. | `error` at Compact, `warn` elsewhere |
 | `duplicate` | The same action visible twice: click targets with the same role and label whose surfaces differ (the first key of the nearest keyed ancestor, up to the first `:`). The title bar and play bar are skipped. Rows of one list share a surface, so they are not duplicates. | `warn` |
+| `contrast` | Each text run's declared colour (times its own and its ancestors' opacity) against the colour most of its box is painted in on the rendered frame (the lint presents one frame at rest and reads it back, like `render`). Body text needs 4.5 : 1; 24 DIP and up, bold 18.66 DIP and up, and icon glyphs need 3 : 1. Skipped, not passed: disabled subtrees, nodes mid-animation, transparent ink, span runs, boxes mostly off the frame, and boxes over a busy background (art, a gradient: no colour holds half the box). A glyph that fills its box is judged on what is left once its own colour is taken out. No offscreen surface (`gpu=none`), no check (`checked` is 0). The page behind a modal scrim is read dimmed against its undimmed ink, so lint a dialog with `root=` set to it. | `warn` |
 | `rhythm` | The vertical gaps between consecutive text blocks stacked in one column (`info`, one per container), and a warning for a gap under `gapMin`, or an overlap. | `info` / `warn` |
 
 The edge rules need the theme's help: the theme registers a **lint guide** (`IThemeLintGuide`, registered through

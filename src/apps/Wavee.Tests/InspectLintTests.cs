@@ -352,6 +352,139 @@ public class InspectLintTests
         Assert.Empty(L.Run(side, Only(L.Rules.Rhythm)).Findings);
     }
 
+    // ── contrast ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    static ColorF Rgb(int hex) => new(((hex >> 16) & 255) / 255f, ((hex >> 8) & 255) / 255f, (hex & 255) / 255f, 1f);
+
+    /// <summary>A 100 x 100 frame at 1 px per DIP: <paramref name="ground"/> everywhere, with the rect (x, y, w, h) painted <paramref name="patch"/>.</summary>
+    static L.Pixels Frame(int ground, int patch = -1, int px = 0, int py = 0, int pw = 0, int ph = 0)
+    {
+        var bgra = new byte[100 * 100 * 4];
+        for (int y = 0; y < 100; y++)
+            for (int x = 0; x < 100; x++)
+            {
+                int c = patch >= 0 && x >= px && x < px + pw && y >= py && y < py + ph ? patch : ground;
+                int i = (y * 100 + x) * 4;
+                bgra[i] = (byte)(c & 255); bgra[i + 1] = (byte)((c >> 8) & 255); bgra[i + 2] = (byte)((c >> 16) & 255); bgra[i + 3] = 255;
+            }
+        return new L.Pixels(bgra, 100, 100, 1f);
+    }
+
+    static L.Snapshot Painted(L.Pixels frame, params L.Node[] nodes) => new(100f, 100f, WidthTier.Standard, nodes) { Backdrop = frame };
+
+    static L.Node Ink(int i, float size, int ink, string text = "Hello", float alpha = 1f, Func<L.TextRun, L.TextRun>? run = null)
+        => Words(i, -1, 10, 10, 60, 20, text, size, run: t => (run?.Invoke(t) ?? t) with { Color = Rgb(ink) with { A = alpha }, NaturalW = 50f });
+
+    [Fact]
+    public void The_ratio_is_the_wcag_one_and_composites_the_inks_alpha_over_the_ground()
+    {
+        Assert.Equal(21d, L.ContrastOf(Rgb(0x000000), Rgb(0xffffff)), 6);
+        Assert.Equal(1d, L.ContrastOf(Rgb(0x808080), Rgb(0x808080)), 6);
+        Assert.Equal(4.54, L.ContrastOf(Rgb(0x767676), Rgb(0xffffff)), 2);   // the canonical AA pass on white
+        Assert.Equal(4.48, L.ContrastOf(Rgb(0x777777), Rgb(0xffffff)), 2);   // and the canonical fail one step lighter
+        Assert.Equal(L.ContrastOf(Rgb(0xffffff), Rgb(0x000000)), L.ContrastOf(Rgb(0x000000), Rgb(0xffffff)), 6);   // symmetric in which is lighter
+        // Half-transparent black on white is the 50 % grey (about 3.95 : 1), and opacity multiplies the alpha.
+        Assert.Equal(L.ContrastOf(new ColorF(0.5f, 0.5f, 0.5f, 1f), Rgb(0xffffff)), L.ContrastOf(Rgb(0x000000) with { A = 0.5f }, Rgb(0xffffff)), 6);
+        Assert.Equal(L.ContrastOf(Rgb(0x000000) with { A = 0.5f }, Rgb(0xffffff)), L.ContrastOf(Rgb(0x000000), Rgb(0xffffff), 0.5f), 6);
+    }
+
+    [Fact]
+    public void Body_text_needs_4_5_and_large_bold_large_and_glyph_runs_need_3()
+    {
+        var o = new L.Options();
+        Assert.Equal(4.5f, L.ContrastNeeded(new L.TextRun("a", 15), o));
+        Assert.Equal(4.5f, L.ContrastNeeded(new L.TextRun("a", 23.9f), o));
+        Assert.Equal(3f, L.ContrastNeeded(new L.TextRun("a", 24), o));
+        Assert.Equal(4.5f, L.ContrastNeeded(new L.TextRun("a", 18.66f) { Weight = 400 }, o));
+        Assert.Equal(3f, L.ContrastNeeded(new L.TextRun("a", 18.66f) { Weight = 700 }, o));
+        Assert.Equal(3f, L.ContrastNeeded(new L.TextRun("\ue70d", 12) { Glyph = true }, o));
+    }
+
+    [Fact]
+    public void A_run_under_its_floor_is_a_finding_with_the_ratio_and_the_ground_and_one_over_it_is_not()
+    {
+        L.Pixels white = Frame(0xffffff);
+        L.Report bad = L.Run(Painted(white, Ink(0, 14, 0x777777)), Only(L.Rules.Contrast));
+        L.Finding f = Assert.Single(bad.Findings);
+        Assert.Equal(L.Severity.Warn, f.Severity);
+        Assert.Equal(4.48, Value(f.Measured, "ratio"), 2);
+        Assert.Equal(4.5, Value(f.Expected, "minRatio"));
+        Assert.Contains("#ffffff", f.Message);
+        Assert.Equal(1, bad.Checked[L.Rules.Contrast]);
+        Assert.Empty(L.Run(Painted(white, Ink(0, 14, 0x767676)), Only(L.Rules.Contrast)).Findings);
+        // 3.0 : 1 is enough at 28 DIP and not at 15.
+        Assert.Empty(L.Run(Painted(white, Ink(0, 28, 0x949494)), Only(L.Rules.Contrast)).Findings);
+        Assert.Single(L.Run(Painted(white, Ink(0, 15, 0x949494)), Only(L.Rules.Contrast)).Findings);
+    }
+
+    [Fact]
+    public void The_ground_is_what_the_rendered_frame_paints_under_the_run_and_alpha_and_opacity_dim_the_ink()
+    {
+        // The same ink passes on white (5.7 : 1) and fails on the grey the frame paints under the run (3.0 : 1).
+        L.Pixels grey = Frame(0xffffff, patch: 0xbbbbbb, px: 0, py: 0, pw: 100, ph: 100);
+        Assert.Empty(L.Run(Painted(Frame(0xffffff), Ink(0, 14, 0x666666)), Only(L.Rules.Contrast)).Findings);
+        Assert.Single(L.Run(Painted(grey, Ink(0, 14, 0x666666)), Only(L.Rules.Contrast)).Findings);
+        // A 40 % ink fails where the opaque one passes; a node opacity of 0.4 does the same.
+        L.Pixels white = Frame(0xffffff);
+        Assert.Empty(L.Run(Painted(white, Ink(0, 14, 0x000000)), Only(L.Rules.Contrast)).Findings);
+        Assert.Single(L.Run(Painted(white, Ink(0, 14, 0x000000, alpha: 0.4f)), Only(L.Rules.Contrast)).Findings);
+        Assert.Single(L.Run(Painted(white, Ink(0, 14, 0x000000) with { Opacity = 0.4f }), Only(L.Rules.Contrast)).Findings);
+    }
+
+    [Fact]
+    public void Runs_the_check_cannot_judge_are_skipped_not_passed()
+    {
+        L.Pixels white = Frame(0xffffff);
+        L.Snapshot Run1(L.Node n) => Painted(white, n);
+        Assert.Equal(0, L.Run(Run1(Ink(0, 14, 0x777777) with { Inert = true }), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);   // disabled
+        Assert.Equal(0, L.Run(Run1(Ink(0, 14, 0x777777) with { Animating = true }), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);
+        Assert.Equal(0, L.Run(Run1(Ink(0, 14, 0x777777, alpha: 0f)), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);   // invisible ink
+        Assert.Equal(0, L.Run(Run1(Words(0, -1, 10, 10, 60, 20, "Hello", 14)), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);   // no colour known
+        Assert.Equal(0, L.Run(Run1(Ink(0, 14, 0x777777) with { Rect = new RectF(200, 10, 60, 20) }), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);   // off the frame
+        // No frame at all: nothing is checked.
+        var noFrame = new L.Snapshot(100f, 100f, WidthTier.Standard, [Ink(0, 14, 0x777777)]);
+        Assert.Equal(0, L.Run(noFrame, Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);
+        // A box over a busy background (no colour holds half of it) is skipped: four colours, a quarter each.
+        var bgra = new byte[100 * 100 * 4];
+        for (int y = 0; y < 100; y++)
+            for (int x = 0; x < 100; x++)
+            {
+                int c = (x / 4 + y / 4) % 4 * 0x404040;
+                int i = (y * 100 + x) * 4;
+                bgra[i] = (byte)(c & 255); bgra[i + 1] = (byte)((c >> 8) & 255); bgra[i + 2] = (byte)((c >> 16) & 255); bgra[i + 3] = 255;
+            }
+        Assert.Equal(0, L.Run(Painted(new L.Pixels(bgra, 100, 100, 1f), Ink(0, 14, 0x777777)), Only(L.Rules.Contrast)).Checked[L.Rules.Contrast]);
+    }
+
+    [Fact]
+    public void A_glyph_that_fills_its_own_box_is_judged_on_what_is_left_around_it()
+    {
+        // A pink heart painted over most of its 20 x 20 box on white: the mode is the ink itself, so the rule looks past it.
+        L.Pixels frame = Frame(0xffffff, patch: 0xe0197f, px: 12, py: 12, pw: 16, ph: 16);
+        L.Node heart = Words(0, -1, 10, 10, 20, 20, "\ue70d", 12, run: static t => t with { Glyph = true, Color = Rgb(0xe0197f), NaturalW = 20f });
+        L.Report report = L.Run(Painted(frame, heart), Only(L.Rules.Contrast));
+        Assert.Empty(report.Findings);   // 4.2 : 1 on white clears the 3 : 1 a glyph needs
+        Assert.Equal(1, report.Checked[L.Rules.Contrast]);
+        // The same heart in a colour that is 2 : 1 on white is a finding.
+        L.Node faint = heart with { Text = heart.Text! with { Color = Rgb(0xb0b0b0) } };
+        Assert.Single(L.Run(Painted(Frame(0xffffff, patch: 0xb0b0b0, px: 12, py: 12, pw: 16, ph: 16), faint), Only(L.Rules.Contrast)).Findings);
+    }
+
+    [Fact]
+    public void A_frame_reads_its_pixels_at_the_scale_and_unpremultiplies_them()
+    {
+        // 200 x 200 px at 2 px per DIP: a 10 x 10 DIP rect at (5, 5) covers px 10..30. Half-alpha premultiplied #ff0000 is (0, 0, 128, 128) BGRA.
+        var bgra = new byte[200 * 200 * 4];
+        for (int i = 0; i < bgra.Length; i += 4) { bgra[i + 2] = 128; bgra[i + 3] = 128; }
+        var frame = new L.Pixels(bgra, 200, 200, 2f);
+        Assert.True(frame.TryBackground(new RectF(5, 5, 10, 10), null, 0f, out ColorF ground, out float share));
+        Assert.Equal(1f, ground.R, 2);
+        Assert.Equal(0f, ground.G, 2);
+        Assert.Equal(1f, share, 3);
+        Assert.False(frame.TryBackground(new RectF(500, 500, 10, 10), null, 0f, out _, out _));   // off the frame
+        Assert.False(frame.TryBackground(new RectF(5, 5, 10, 10), Rgb(0xff0000), 0.03f, out _, out _));   // everything is the ignored ink
+    }
+
     // ── running: options, order, caps ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
