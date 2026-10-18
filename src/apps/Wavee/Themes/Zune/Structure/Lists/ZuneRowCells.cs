@@ -43,7 +43,7 @@ internal static class ZuneRowCells
     public const string NowKey = "zune.row.now";
 
     /// <summary>The one accent Zune's rows speak in (the style's swatch, never the OS ramp).</summary>
-    public static readonly Func<ColorF> Accent = static () => R.Ink.AccentAction;
+    public static readonly Func<ColorF> Accent = static () => R.Ink.AccentDecor;
 
     // ══ THE EAGER GRID ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -59,7 +59,7 @@ internal static class ZuneRowCells
         bool withheld = unplayable || gone;
         Track d = t.ForDisplay;
         bool isNow = st.IsNow;
-        ColorF accent = R.Ink.AccentAction;
+        ColorF accent = R.Ink.AccentDecor;
         ColorF secondary = ZuneListRules.RowInk(isNow, accent, Tok.TextSecondary);
         float art = o.Art > 0f ? o.Art : RowMetrics.ThumbSize;
         bool artistInTitle = o.ShowTrackArtist && !set.Artist;
@@ -133,7 +133,7 @@ internal static class ZuneRowCells
     public static TextEl TitleCell(Track t, bool isNow)
         => R.Type.TrackTitle(t.ForDisplay.Title) with
         {
-            Color = ZuneListRules.RowInk(isNow, R.Ink.AccentAction, Tok.TextPrimary),
+            Color = ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextPrimary),
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
 
@@ -145,7 +145,7 @@ internal static class ZuneRowCells
     public static Element NumberCell(int displayIndex, in RowState st, Action? onPlay, IReadSignal<bool>? hoverPaused, byte chartStatus,
                                      string? key = null, bool large = false)
     {
-        ColorF accent = R.Ink.AccentAction;
+        ColorF accent = R.Ink.AccentDecor;
         Element rest;
         if (st.IsBuffering) rest = Track.Spinner();
         else if (st.IsNow)
@@ -282,7 +282,7 @@ internal static class ZuneRowCells
         Children =
         [
             new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title] },
-            Icon(Icons.Movie, ZuneListRules.FilmGlyph, ZuneListRules.RowInk(isNow, R.Ink.AccentAction, Tok.TextTertiary)) with { Shrink = 0f },
+            Icon(Icons.Movie, ZuneListRules.FilmGlyph, ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextTertiary)) with { Shrink = 0f },
         ],
     };
 

@@ -205,8 +205,8 @@ internal static class ZuneNotifications
         var arm = Notify.UpdateRow(s.State);
         var (glyph, tint) = arm.Glyph switch
         {
-            UpdateRowGlyph.Download => (Icons.Download, Tok.AccentDefault),
-            UpdateRowGlyph.Refresh => (Icons.Refresh, Tok.AccentDefault),
+            UpdateRowGlyph.Download => (Icons.Download, R.Ink.AccentDecor),
+            UpdateRowGlyph.Refresh => (Icons.Refresh, R.Ink.AccentDecor),
             UpdateRowGlyph.Success => (Icons.StatusSuccess, Tok.SystemFillSuccess),
             UpdateRowGlyph.Error => (Icons.StatusError, Tok.SystemFillCritical),
             _ => (Icons.StatusInfo, Tok.TextSecondary),

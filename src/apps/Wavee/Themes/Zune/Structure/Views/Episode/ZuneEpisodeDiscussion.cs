@@ -121,7 +121,7 @@ internal static class ZuneEpisodeDiscussion
     /// <summary>A small mark after the name (pinned by the show, awaiting review): the micro voice, lowered as a label, the accent where it earns it.</summary>
     static Element Mark(string text, bool accent) => R.Type.MicroMeta(text) with
     {
-        Color = accent ? Prop.Of(static () => R.Ink.AccentAction) : (Prop<ColorF>)Tok.TextTertiary, Case = R.Case.For(LabelKind.Label),
+        Color = accent ? Prop.Of(static () => R.Ink.AccentDecor) : (Prop<ColorF>)Tok.TextTertiary, Case = R.Case.For(LabelKind.Label),
         MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0,
     };
 
@@ -224,7 +224,7 @@ internal static class ZuneEpisodeDiscussion
                 new TextEl(pill.CallToAction ? Loc.Get(Strings.Podcast.React) : FormatCache.Int(pill.Total))
                 {
                     Size = ZuneEpisodeRules.PillSize, LineHeight = ZuneEpisodeRules.PillLine, Weight = 600, Shrink = 0,
-                    Color = pill.Pressed ? R.Ink.AccentAction : Tok.TextSecondary,
+                    Color = pill.Pressed ? R.Ink.AccentDecor : Tok.TextSecondary,
                 },
             ],
         };

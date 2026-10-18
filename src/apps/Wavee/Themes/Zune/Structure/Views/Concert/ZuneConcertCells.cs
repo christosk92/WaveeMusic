@@ -74,7 +74,7 @@ internal static class ZuneConcertCells
         var text = new Element[d.Place.Length > 0 ? 3 : 2];
         text[0] = R.Type.MicroMeta(d.Caption) with
         {
-            Size = Rules.TileCaptionSize, LineHeight = Rules.TileCaptionLine, Height = Rules.TileCaptionLine, Color = Prop.Of(static () => R.Ink.AccentAction),
+            Size = Rules.TileCaptionSize, LineHeight = Rules.TileCaptionLine, Height = Rules.TileCaptionLine, Color = Prop.Of(static () => R.Ink.AccentDecor),
             MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
         };
         text[1] = R.Type.TrackTitle(d.Title) with
@@ -147,7 +147,7 @@ internal static class ZuneConcertCells
                     [
                         R.Type.MicroMeta(Loc.Get(Strings.Concerts.LiveMusic)) with
                         {
-                            Size = Rules.TileCaptionSize, LineHeight = Rules.TileCaptionLine, Height = Rules.TileCaptionLine, Color = Prop.Of(static () => R.Ink.AccentAction),
+                            Size = Rules.TileCaptionSize, LineHeight = Rules.TileCaptionLine, Height = Rules.TileCaptionLine, Color = Prop.Of(static () => R.Ink.AccentDecor),
                             Case = R.Case.For(LabelKind.Label), MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                         },
                         R.Type.TrackTitle(Loc.Get(Strings.Concerts.BrowseAll)) with

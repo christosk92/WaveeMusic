@@ -134,7 +134,8 @@ public sealed class ZuneStyleMountedTests(ShellHost host)
             Assert.True(t.IsCompletedSuccessfully);
             var blue = Tok.Theme == ThemeKind.Light ? ZuneAccent.Blue.Light : ZuneAccent.Blue.Dark;
             Assert.Equal(blue, R.Ink.AccentAction);
-            Assert.Equal(blue with { A = ZuneTokens.SelectedA }, R.Layer.SelectedRest);
+            Assert.Equal(blue with { A = ZuneTokens.SelectedAOf(Tok.Theme) }, R.Layer.SelectedRest);
+            Assert.Equal(Tok.Theme == ThemeKind.Light ? ZuneAccent.Blue.LightInk : ZuneAccent.Blue.Dark, R.Ink.AccentDecor);
             Assert.Equal(ZuneAccent.Blue.Dark, Tok.Definition.Accent.Light2);
             Assert.True(ZuneStyle.DefaultDefinition.DiffersOnlyInColours(Tok.Definition));
         });

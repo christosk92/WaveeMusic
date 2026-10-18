@@ -32,11 +32,11 @@ internal static class ZuneConcertFlyoutCells
         if (lead is not null) kids.Add(Icon(lead, Rules.FlyoutLead, Tok.TextSecondary) with { Shrink = 0f });
         kids.Add(Body(label) with
         {
-            Color = active ? R.Ink.AccentAction : Tok.TextPrimary, Weight = (ushort)(active ? 600 : 400), Case = R.Case.For(LabelKind.Label),
+            Color = active ? R.Ink.AccentDecor : Tok.TextPrimary, Weight = (ushort)(active ? 600 : 400), Case = R.Case.For(LabelKind.Label),
             Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         });
         if (trailing is not null) kids.Add(Icon(trailing, Rules.FlyoutTrailing, Tok.TextSecondary) with { Shrink = 0f });
-        if (toggle) kids.Add(active ? Icon(Icons.Check, Rules.FlyoutTrailing, R.Ink.AccentAction) with { Shrink = 0f } : new BoxEl { Width = Rules.FlyoutCheck, Height = Rules.FlyoutCheck, Shrink = 0f });
+        if (toggle) kids.Add(active ? Icon(Icons.Check, Rules.FlyoutTrailing, R.Ink.AccentDecor) with { Shrink = 0f } : new BoxEl { Width = Rules.FlyoutCheck, Height = Rules.FlyoutCheck, Shrink = 0f });
         return new BoxEl
         {
             Direction = 0, MinHeight = Rules.FlyoutRowMinH, AlignItems = FlexAlign.Center, Gap = Spacing.S,

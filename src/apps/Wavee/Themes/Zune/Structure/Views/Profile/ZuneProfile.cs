@@ -365,7 +365,7 @@ internal static class ZuneProfile
         [
             R.Type.DenseMeta(label) with
             {
-                Color = Tok.AccentDefault, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                Color = R.Ink.AccentDecor, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
             },
         ],
     };

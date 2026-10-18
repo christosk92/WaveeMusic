@@ -77,7 +77,7 @@ internal static class ZuneConcertHub
         [
             R.Type.DenseMeta(Loc.Get(Strings.Concerts.LiveMusic)) with
             {
-                Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
             },
             R.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with
             {

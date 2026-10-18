@@ -48,7 +48,7 @@ internal static class ZuneTransport
         var host = props.Host;
         bool enabled = props.Enabled;
         ColorF rail = Tok.TextPrimary with { A = T.RailA };
-        ColorF value = enabled ? Tok.AccentDefault : Tok.TextTertiary;
+        ColorF value = enabled ? R.Ink.AccentDecor : Tok.TextTertiary;
 
         if (props.Hairline)
             return new BoxEl
@@ -242,7 +242,7 @@ internal sealed class ZuneLiveSlot(TimeLabelProps props) : Component
     {
         var props = _props;
         bool offer = UseComputed(props.OffersGoLive).Value;
-        ColorF ink = props.Ink ?? Tok.AccentDefault;
+        ColorF ink = props.Ink ?? R.Ink.AccentDecor;
         var @case = R.Case.For(LabelKind.Command);
         Element face = offer
             ? new BoxEl

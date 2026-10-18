@@ -125,7 +125,7 @@ internal sealed class ZunePaletteCard : Component
                         new TextEl(results.GlyphAt(at))
                         {
                             Size = ZuneFrameRules.PaletteGlyph, FontFamily = Tok.Definition.Fonts.Icon,
-                            Color = active ? R.Ink.AccentSelection : Tok.TextTertiary,
+                            Color = active ? R.Ink.AccentDecor : Tok.TextTertiary,
                         },
                         new BoxEl
                         {

@@ -100,7 +100,7 @@ internal static partial class ZuneSettings
         {
             ZuneText.Cased(R.Type.CardTitle(Loc.Get(entry.NameKey)), LabelKind.Label) with
             {
-                Color = on ? Tok.AccentDefault : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f,
+                Color = on ? R.Ink.AccentDecor : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f,
             },
         };
         if (entry.Availability == ThemeAvailability.Developer)
@@ -371,7 +371,7 @@ internal static partial class ZuneSettings
         for (int i = 0; i < rows.Length; i++)
         {
             bool playing = i == Z.PreviewPlayingRow;
-            ColorF ink = playing ? R.Ink.AccentAction : Tok.TextPrimary;
+            ColorF ink = playing ? R.Ink.AccentDecor : Tok.TextPrimary;
             rows[i] = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Height = Z.PreviewRowHeight,
@@ -380,7 +380,7 @@ internal static partial class ZuneSettings
                     new BoxEl
                     {
                         Width = Z.PreviewNumberWidth, Shrink = 0f,
-                        Children = [R.Type.Numeral((i + 1).ToString(CultureInfo.InvariantCulture)) with { Color = playing ? R.Ink.AccentAction : Tok.TextTertiary, MaxLines = 1 }],
+                        Children = [R.Type.Numeral((i + 1).ToString(CultureInfo.InvariantCulture)) with { Color = playing ? R.Ink.AccentDecor : Tok.TextTertiary, MaxLines = 1 }],
                     },
                     R.Type.DenseMeta(tracks[i]) with { Color = ink, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],

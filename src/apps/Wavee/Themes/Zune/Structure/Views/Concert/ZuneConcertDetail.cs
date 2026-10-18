@@ -166,7 +166,7 @@ internal static class ZuneConcertDetail
             caption.Add(R.Type.DenseMeta("·") with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f });
             caption.Add(R.Type.DenseMeta(status) with
             {
-                Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         }

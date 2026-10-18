@@ -132,7 +132,7 @@ internal static class ZuneConcertSchedule
         {
             R.Type.DenseMeta(Loc.Get(Strings.Concerts.Schedule.OnTour)) with
             {
-                Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap,
             },
             R.Type.Hero(m.Name) with
             {
@@ -161,7 +161,7 @@ internal static class ZuneConcertSchedule
                         [
                             R.Type.MicroMeta(Strings.Concerts.Schedule.NextShow(ConcertScheduleShaping.RelativeTime(next.Date, m.Now))) with
                             {
-                                Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MinWidth = 0f, MaxLines = 1,
+                                Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MinWidth = 0f, MaxLines = 1,
                                 Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                             },
                             R.Type.TrackTitle(text.Primary) with { MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis },
@@ -326,9 +326,9 @@ internal sealed class ZuneConcertMonthBoard(ZuneConcertBoardState state) : Compo
                     // "show all {SHOWS}" while the cap counts TILES.
                     R.Type.DenseTitle(Strings.Concerts.Schedule.ShowAll(_p.Group.ShowCount)) with
                     {
-                        Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Command), MaxLines = 1,
+                        Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Command), MaxLines = 1,
                     },
-                    Icon(Icons.ChevronDown, Rules.BoardChevron, R.Ink.AccentAction) with { Shrink = 0f },
+                    Icon(Icons.ChevronDown, Rules.BoardChevron, R.Ink.AccentDecor) with { Shrink = 0f },
                 ],
             });
         }
@@ -364,7 +364,7 @@ internal sealed class ZuneConcertMonthBoard(ZuneConcertBoardState state) : Compo
     {
         var text = ConcertScheduleShaping.TileText(c, _p.ArtistName);
         var secondary = new List<Element>(2);
-        if (near) secondary.Add(Icon(Icons.MapPin, Rules.BoardPin, R.Ink.AccentAction) with { Shrink = 0f });
+        if (near) secondary.Add(Icon(Icons.MapPin, Rules.BoardPin, R.Ink.AccentDecor) with { Shrink = 0f });
         if (text.Secondary.Length > 0) secondary.Add(Meta(text.Secondary));
         string uri = c.Uri;
         bool seed = _p.Seed;
@@ -380,7 +380,7 @@ internal sealed class ZuneConcertMonthBoard(ZuneConcertBoardState state) : Compo
         var c = run.First;
         var text = ConcertScheduleShaping.TileText(c, _p.ArtistName);
         var meta = new List<Element>(4);
-        if (near) meta.Add(Icon(Icons.MapPin, Rules.BoardPin, R.Ink.AccentAction) with { Shrink = 0f });
+        if (near) meta.Add(Icon(Icons.MapPin, Rules.BoardPin, R.Ink.AccentDecor) with { Shrink = 0f });
         meta.Add(new BoxEl
         {
             AlignSelf = FlexAlign.Center, Shrink = 0f, Padding = new Edges4(Spacing.S, 1f, Spacing.S, 1f),
@@ -389,7 +389,7 @@ internal sealed class ZuneConcertMonthBoard(ZuneConcertBoardState state) : Compo
             [
                 R.Type.MicroMeta(ConcertCopy.Current.Nights(run.NightCount)) with
                 {
-                    Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MaxLines = 1,
+                    Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MaxLines = 1,
                 },
             ],
         });
@@ -489,7 +489,7 @@ internal sealed class ZuneConcertShyMonthPill(ZuneConcertBoardState state, Scrol
             Fill = Prop.Of(static () => R.Layer.FloatingChrome), Shadow = Elevation.Card,
             Children =
             [
-                R.Type.DenseTitle(text) with { Color = Prop.Of(static () => R.Ink.AccentAction), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap },
+                R.Type.DenseTitle(text) with { Color = Prop.Of(static () => R.Ink.AccentDecor), Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap },
             ],
         });
         return new BoxEl

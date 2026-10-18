@@ -312,7 +312,7 @@ internal static class ZuneDiscography
         [
             R.Type.DenseMeta(Strings.Detail.Discography.ShowAllTracks(a.Total)) with
             {
-                Weight = Rules.ShowAllWeight, Color = Prop.Of(static () => R.Ink.AccentAction), MaxLines = 1,
+                Weight = Rules.ShowAllWeight, Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1,
             },
         ],
     };

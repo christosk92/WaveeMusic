@@ -258,7 +258,7 @@ internal static class ZuneArtistHero
             bool on = lib.IsSaved(Uri);
             string uri = Uri;
             string? name = Name;
-            Prop<ColorF> ink = on ? Prop.Of(static () => R.Ink.AccentAction) : Tok.TextPrimary;
+            Prop<ColorF> ink = on ? Prop.Of(static () => R.Ink.AccentDecor) : Tok.TextPrimary;
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f,
