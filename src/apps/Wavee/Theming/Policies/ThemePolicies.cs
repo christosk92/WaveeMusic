@@ -88,7 +88,9 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
 /// <param name="ForwardButton">A forward button next to back.</param>
 /// <param name="HistoryMenu">The back/forward history menu.</param>
 /// <param name="MaxBandPins">How many pins the nav band holds (<see cref="int.MaxValue"/> = unlimited).</param>
-public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPanel, bool ForwardButton, bool HistoryMenu, int MaxBandPins)
+/// <param name="DefersPageMount">The content host mounts an incoming page at the end of the leaving page's exit leg (an empty slot stands until then),
+/// not on the click frame: a structure whose motion tolerates the page being absent for the exit leg (Zune) asks for it; Classic mounts at the commit.</param>
+public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPanel, bool ForwardButton, bool HistoryMenu, int MaxBandPins, bool DefersPageMount = false)
 {
     /// <summary>Every capability on and no pin limit: what the shell is today (Classic).</summary>
     public static ShellCapabilities Unrestricted { get; } = new(true, true, true, true, true, int.MaxValue);

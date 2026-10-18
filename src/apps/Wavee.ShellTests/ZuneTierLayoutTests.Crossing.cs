@@ -164,6 +164,10 @@ public sealed partial class ZuneTierLayoutTests
             n = only;
             if (shell.Host.Animation.HasTracks(n)) glides = true;
         }
+        // The pivot run is resized by the pins island beside it, whose width reflow re-solves the row each frame: a sibling's track carries it.
+        if (!glides && p.Name == ZuneBandRules.PivotRunKey)
+            for (var sib = scene.FirstChild(scene.Parent(p.Node)); !sib.IsNull; sib = scene.NextSibling(sib))
+                if (shell.Host.Animation.HasTracks(sib)) glides = true;
         Assert.True(glides, $"{what}: {p.Name} snapped into its new box ({p.Local} -> {now}) instead of gliding");
     }
 }

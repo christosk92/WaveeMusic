@@ -192,7 +192,7 @@ public sealed class ZuneTierPolicyTests
 
     [Fact]
     public void The_capabilities_are_zunes()
-        => Assert.Equal(new ShellCapabilities(Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6),
+        => Assert.Equal(new ShellCapabilities(Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true),
             ZunePolicies.Capabilities);
 
     // ── motion ───────────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -169,6 +169,7 @@ public sealed partial class ZuneCollectionMountedTests(ShellHost host)
                 UntilBackground(shell, () => shell.FindPrefix(User.LibraryPlaylistsRules.RowPrefix).Count > 0, "the playlists and folders listed");
                 Assert.Equal(Shell.BandRules.Library, Shell.BandRules.IndexOf(Shell.Current.Peek().Kind));
 
+                shell.RunFrames(40);   // the page mounts as the swap lands: let its enter slide settle before the geometry is read
                 var scene = shell.Host.Scene;
                 var column = scene.AbsoluteRect(Node(shell, User.LibraryPlaylistsRules.ColumnKey));
                 var content = scene.AbsoluteRect(Node(shell, ZuneFrameLayout.ContentKey));

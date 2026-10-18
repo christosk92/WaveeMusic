@@ -184,6 +184,12 @@ public static class ZuneBandRules
         // The page scrolling down is what folds row 2: the scroll-motion latch must not snap the fold it causes.
         AnimateDuringScroll: true);
 
+    /// <summary>The pins island's entrance and exit: it fades and opens (or closes) its width as a reflow, so the pivot run in the same row follows frame by frame.</summary>
+    public static readonly LayoutTransition PinsMotion = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
     /// <summary>The height motion while row 2 folds away: it waits for row 2's fade-out (<see cref="Row2FadeMs"/>), so the clip never cuts the row.</summary>
     public static readonly LayoutTransition HeightMotionAfterFade = HeightMotion with { DelayMs = Row2FadeMs };
 
