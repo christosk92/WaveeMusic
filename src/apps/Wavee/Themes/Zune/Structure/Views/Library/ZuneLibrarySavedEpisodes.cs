@@ -27,7 +27,7 @@ internal static class ZuneLibrarySavedEpisodes
         return new SkelRegionEl(
             Pending: () => props.Pending,
             Failed: () => props.Failed,
-            Content: props.Content,
+            Content: props.Feed is null ? props.Content : () => ZuneLibraryEpisodesFeed.Body(props),
             ShimmerSource: () => new BoxEl { Direction = 1, Children = SeedRows(episodeStyle) },
             OnFailed: props.OnFailed,
             Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null);
