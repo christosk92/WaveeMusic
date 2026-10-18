@@ -533,6 +533,10 @@ public readonly partial struct Track
         Memo<int>? _selectedCount;
         Memo<bool>? _checksVisible;
         Memo<bool>? _selectionVisible;
+        /// <summary>The frame's docked selection bar (contract 1.47), or null where the frame provides none: the table then keeps its in-flow bar.</summary>
+        global::Wavee.Theming.Contracts.SelectionDockHost? _dockHost;
+        global::Wavee.Theming.Contracts.SelectionDockProps? _dockPublished;
+        static readonly Signal<bool> s_neverSelecting = new(false);
         Memo<bool>? _hotSettled;
         BoundItemsSource<Track>? _rowItems;
         /// <summary>B2 (plan §3.2): the parallel episode-row projection over the SAME view/index space as
@@ -1015,6 +1019,7 @@ public readonly partial struct Track
             // The frame's docked aside holds the recommendations then (contract 1.21): the list does not append them a second time.
             bool asideDocked = UseContext(Detail.AsideDocked);
             _post = UsePost();
+            _dockHost = UseContext(global::Wavee.Theming.Contracts.SelectionDockHost.Context);
             // The structure's row templates (T8a): resolved once per host render; the slots read `_listStyle` on their rare renders.
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             _listStyle = registry is not null && registry.TryGetStyle(global::Wavee.Theming.Contracts.StyleKeys.TrackTable, out var listStyle)
@@ -1057,6 +1062,9 @@ public readonly partial struct Track
             _selectedCount = UseComputed(ComputeSelectedCount);
             _checksVisible = UseComputed(() => SelectionBarRules.ChecksVisible(_selectedCount!.Value, _multi.Value));
             _selectionVisible = UseComputed(() => SelectionBarRules.Visible(_selectedCount!.Value, _multi.Value));
+            // A frame that docks the selection bar (Zune): this table publishes the bar's model while the selection shows it, and withdraws it when the table goes.
+            UseEffect(PublishSelectionDock);
+            UseEffect(() => WithdrawSelectionDock, DepKey.Empty);
             var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible, PageBar), DepKey.Empty);
 
             var context = args.Source.Context;
@@ -1560,8 +1568,8 @@ public readonly partial struct Track
             return new Detail.HeroParts(
                 Toolbar: toolbar ? Toolbar() : null,
                 BandActions: BandActions(insights),
-                SelectionBar: Cfg.Selection == ItemsSelectionMode.None ? null : SelectionSurface("compact-selection"),
-                SelectionVisible: _selectionVisible!,
+                SelectionBar: Cfg.Selection == ItemsSelectionMode.None || _dockHost is not null ? null : SelectionSurface("compact-selection"),
+                SelectionVisible: _dockHost is not null ? s_neverSelecting : _selectionVisible!,
                 CompactInteractive: _compactInteractive,
                 SearchField: CompactSearch(colW, left, insights is not null),
                 SearchExpanded: _searchExpanded,
@@ -1902,7 +1910,15 @@ public readonly partial struct Track
             }
             var options = new MenuOptions(Host: selectable ? HostFor() : default, ShowGoToAlbum: Cfg.ShowAlbumColumn, TrackDetails: details);
             if (!selectable) return Track.Menu([t], in options);
-            return Track.RowMenu(_selection, slotIndex, i => DisplayTrack(i - start), i => OriginalOf(i - start), in options);
+            var model = Track.RowMenu(_selection, slotIndex, i => DisplayTrack(i - start), i => OriginalOf(i - start), in options);
+            // A touch long-press (or a right-click) is how a row enters selection without a modifier key: the menu's last row arms select mode with
+            // this row selected (the "..." menu's Select toggle stays for the mouse). Offered only while select mode is off.
+            if (model is { } m && !_multi.Peek())
+                model = m with
+                {
+                    Rows = [.. m.Rows, MenuFlyoutItem.Separator, new MenuFlyoutItem(Loc.Get(Strings.Detail.Select), Icons.MultiSelect, true, () => SetMultiSelect(true))],
+                };
+            return model;
         }
 
         internal void ToggleExpanded(string rowKey, Track t)
@@ -2258,6 +2274,7 @@ public readonly partial struct Track
                              && TryBlockMove(args.KeyCode == Keys.Up ? -1 : 1))
                         args.Handled = true;
                 },
+                Dimmed = () => Track.DimmedTrack(DisplayTrack(index.Value - start), Track.NowUnix),
                 OnFocusChanged = scope.OnFocusChanged,
                 // Row hover → the equalizer's pause (it sits under a hover-opacity reveal and must stop ticking).
                 OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },

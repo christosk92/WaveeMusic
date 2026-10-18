@@ -146,6 +146,10 @@ internal sealed class TrackRowSkin
     /// <summary>The slot's focus edge (keyboard-current tracking).</summary>
     public required Action<bool> OnFocusChanged { get; init; }
 
+    /// <summary>Is this row dimmed (withheld, or unreachable while the session is down)? A live read for a bound fill or opacity. The skin dims what it draws
+    /// outside the content (the check lane) with it, so the whole row steps back as one. Appended (contract 1.47); null = never dimmed.</summary>
+    public Func<bool>? Dimmed { get; init; }
+
     /// <summary>Row hover, which pauses the equalizer under its hover reveal.</summary>
     public required Action<Point2> OnHoverMove { get; init; }
 
