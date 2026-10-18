@@ -292,7 +292,7 @@ internal sealed class ZuneLyricsRow : Component
         var rhythm = host.OnStage && facts is not null && !host.IsPodcast ? ZuneStageTiers.StageOf(facts.Value.Tiers).LyricsRhythm : null;
         float laid = rhythm is null ? m.FontSize : MathF.Round(m.FontSize * rhythm.ActiveScale);
         if (rhythm is not null)
-            m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight };
+            m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight, SidePad = rhythm.ActiveScale > 1f ? 0f : m.SidePad };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
         if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
@@ -327,7 +327,7 @@ internal sealed class ZuneLyricsRow : Component
                   Margin = new Edges4(0f, Lyrics.Surface.SecondaryGapDip, 0f, 0f),
               }];
 
-        // a row that is not sung rests at the core's size: its scale springs 1 / ActiveScale <-> 1 from the left edge, the layout never moves (the text box inside the row's padding, so the text's left edge stays put)
+        // a row that is not sung rests at the core's size: its scale springs 1 / ActiveScale <-> 1 from the left edge, the layout never moves (the row has no side padding while it scales, so its left edge is the text's)
         float rest = rhythm is null || rhythm.ActiveScale <= 1f || isActive || neutral ? 1f : 1f / rhythm.ActiveScale;
         var scaleKey = DepKey.From((isActive ? 2 : 0) | (neutral ? 16 : 0));
         UseSpring(AnimChannel.ScaleX, rest, s_scaleSpring, scaleKey);
@@ -336,6 +336,7 @@ internal sealed class ZuneLyricsRow : Component
         return new BoxEl
         {
             Direction = 1,
+            ScaleX = rest, ScaleY = rest, TransformOriginX = 0f, TransformOriginY = 0.5f,
             Opacity = _seedOpacity,
             Shrink = 0f,
             Padding = new Edges4(m.SidePad, m.RowPad + reserve, m.SidePad, m.RowPad),
@@ -346,7 +347,7 @@ internal sealed class ZuneLyricsRow : Component
             Role = AutomationRole.Button,
             Focusable = true,
             AllowFocusOnInteraction = false,
-            Children = [new BoxEl { Direction = 1, Blur = blur, OnRealized = _onDof, ScaleX = rest, ScaleY = rest, TransformOriginX = 0f, TransformOriginY = 0.5f, Children = column }],
+            Children = [new BoxEl { Direction = 1, Blur = blur, OnRealized = _onDof, Children = column }],
         };
     }
 

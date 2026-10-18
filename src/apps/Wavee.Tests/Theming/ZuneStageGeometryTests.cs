@@ -392,7 +392,7 @@ public sealed class ZuneStageGeometryTests
 
         // the lyrics' TEXT starts on the gutter (Compact: 16, not 28 + 22 = 50); the queue's and the artist pane's edge is the gutter itself
         var lyrics = ZuneStageGeometry.PlatePane(in layout, in look, record, Stage.PaneKind.Lyrics);
-        Assert.Equal(record.Gutter, lyrics.X + ZuneStageGeometry.LyricsLead(in layout), 0.01f);
+        Assert.Equal(record.Gutter, lyrics.X + ZuneStageGeometry.LyricsLeadFor(in layout, record), 0.01f);
         Assert.Equal(record.LyricsPaneMaxW > 0f ? MathF.Min(layout.PaneX + layout.PaneW, lyrics.X + record.LyricsPaneMaxW) : layout.PaneX + layout.PaneW, lyrics.Right, 0.01f);   // the allocator's right edge, or the tier's reading cap (Huge: 900)
         var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), record, Stage.PaneKind.Queue);
         Assert.Equal(record.Gutter, queue.X, 0.01f);
@@ -411,7 +411,7 @@ public sealed class ZuneStageGeometryTests
         Assert.Equal(22f, ZuneStageGeometry.LyricsLead(in layout));   // the rail's gutter at the Compact stage's 26 type
         Assert.Equal(28f + 22f, layout.PaneX + ZuneStageGeometry.LyricsLead(in layout));   // before: the lyrics at 50
         var pane = ZuneStageGeometry.PlatePane(in layout, in look, compact, Stage.PaneKind.Lyrics);
-        Assert.Equal(16f, pane.X + ZuneStageGeometry.LyricsLead(in layout));
+        Assert.Equal(16f, pane.X + ZuneStageGeometry.LyricsLeadFor(in layout, compact));
     }
 
     [Fact]
@@ -439,7 +439,7 @@ public sealed class ZuneStageGeometryTests
         var std = SeedAt(1440f, 900f, ZuneStageTiers.StandardMetrics);
         var s = ZuneStageGeometry.LyricsSide(in std, in look, Standard)!.Value;
         Assert.Equal(new ZuneRect(48f, 192f, 300f, 300f), s.Cover);
-        Assert.Equal(48f + 300f + 80f, s.Pane.X + ZuneStageGeometry.LyricsLead(in std), 0.01f);
+        Assert.Equal(48f + 300f + 80f, s.Pane.X + ZuneStageGeometry.LyricsLeadFor(in std, Standard), 0.01f);
         Assert.Equal(std.W - Standard.Gutter, s.Pane.Right, 0.01f);
         Assert.Equal(56f, std.LyricsTypeSize);   // the board's 56/68 at 300
 
