@@ -26,6 +26,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.OverlayToast, ZuneToast.Template, "zune.overlay.toast");
         views.Add(ViewKeys.OverlayOfflineStrip, ZuneOfflineStrip.Template, "zune.overlay.offline-strip");
         views.Add(ViewKeys.OverlayOfflineVacancy, ZuneOfflineVacancy.Template, "zune.overlay.offline-vacancy");
+        views.Add(ViewKeys.StateVacancy, ZuneVacancy.Template, "zune.state.vacancy");   // contract 1.37
         views.Add(ViewKeys.MenuContext, ZuneContextMenu.Tile, "zune.menu.context-tile");
         views.Add(ViewKeys.OverlayContextSheet, ZuneContextSheet.Template, "zune.overlay.context-sheet");
         views.Add(ViewKeys.DialogLogoutConfirm, ZuneLogoutConfirm.Template, "zune.dialog.logout-confirm");

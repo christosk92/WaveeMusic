@@ -486,6 +486,15 @@ public static partial class Diagnostics
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
                     }
+                case Inspect.Verb.State:
+                    {
+                        // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
+                        // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
+                        string kind = a.Str("kind").ToLowerInvariant();
+                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|loading|none, not '" + kind + "'");
+                        RunFrames(30);
+                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                    }
                 case Inspect.Verb.Find:
                     {
                         string key = a.Str("key"), prefix = a.Str("prefix");
@@ -575,6 +584,15 @@ public static partial class Diagnostics
 
             Unmount();
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
+            // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
+            if (a.Bool("setup", false) || a.Str("setup") == "signin")
+            {
+                Platform.Settings.Set(Platform.Keys.SetupPending, true);
+                Setup.Wizard.ResetForTests();
+                Setup.Wizard.Boot(Platform.Settings, false);
+                // `setup=signin` starts on the sign-in page (step 2) instead of the terms.
+                if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
+            }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
@@ -586,6 +604,23 @@ public static partial class Diagnostics
             {
                 if (!Navigate(a, out error)) return false;
             }
+            // `video=fullscreen|docked|floating` puts the video SURFACE up with a fake track playing: the placement is committed as if the track had a video (no frames are decoded offline: the
+            // chrome, the controls and the placement menu are what draw, over the empty picture).
+            if (a.Has("video"))
+            {
+                InspectKit.Play("spotify:track:tr0", a.Int("fromMs", 74_000));
+                RunFrames(30);
+                Wavee.Video.State.FoldAvailability(true);
+                Wavee.Video.State.OpenAt(a.Str("video").ToLowerInvariant() switch
+                {
+                    "docked" => Wavee.Video.SurfacePlacement.Docked,
+                    "floating" or "pip" => Wavee.Video.SurfacePlacement.Floating,
+                    _ => Wavee.Video.SurfacePlacement.Fullscreen,
+                });
+            }
+            // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
+            if (a.Has("feedback"))
+                Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
             return true;
         }
 

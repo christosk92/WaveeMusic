@@ -70,6 +70,14 @@ public static class ZuneLibraryRules
     /// <summary>The new-episode dot beside a followed show.</summary>
     public const float NewDot = 6f;
 
+    // ── the episodes feed (Z-Library-Podcasts: date groups of 72 rows) ──
+
+    /// <summary>The feed's row (56 cover in a 72 row), the cover and its decode, the gap in the row, the "…" target, a date group's slot and its top air.</summary>
+    public const float FeedRowH = 72f, FeedArt = 56f, FeedRowGap = 16f, FeedMore = 32f, FeedGroupH = 52f, FeedGroupTop = 16f;
+
+    /// <summary>The feed cover's decode size.</summary>
+    public const int FeedArtDecodePx = 112;
+
     // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
 
     /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>

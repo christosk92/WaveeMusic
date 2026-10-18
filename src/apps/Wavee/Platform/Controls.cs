@@ -1182,7 +1182,17 @@ public static partial class Controls
         return Flow.Show(static () => Shell.FrameRules.VoiceFor(VacancyVoice.Error, Shell.Auth.Value) == VacancyVoice.Offline, offline, picture);
     }
 
+    /// <summary>The theme's picture of a vacancy (<see cref="Theming.Contracts.ViewKeys.StateVacancy"/>).</summary>
     static Element VacancyPicture(VacancyVoice voice, VacancyScale scale, string? title, string? subtitle, string? actionLabel, Action? onAction)
+        => FluentGpu.Theming.Slots.View(Theming.Contracts.ViewKeys.StateVacancy,
+            new Theming.Contracts.VacancyProps { Voice = voice, Scale = scale, Title = title, Subtitle = subtitle, ActionLabel = actionLabel, OnAction = onAction });
+
+    /// <summary>The core's own picture of a vacancy: the page-hero headline (the rail's subtitle rung), the caption and the one standard action. Classic's picture is this one;
+    /// another theme draws its own and may still call this for what it does not restyle.</summary>
+    public static Element VacancyDefault(Theming.Contracts.VacancyProps p)
+        => VacancyDefault(p.Voice, p.Scale, p.Title, p.Subtitle, p.ActionLabel, p.OnAction);
+
+    static Element VacancyDefault(VacancyVoice voice, VacancyScale scale, string? title, string? subtitle, string? actionLabel, Action? onAction)
     {
         (string t, string s) = voice switch
         {

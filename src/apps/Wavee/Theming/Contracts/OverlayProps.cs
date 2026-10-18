@@ -116,6 +116,30 @@ public sealed record OfflineVacancyProps
     public Action? GoToLibrary { get; init; }
 }
 
+/// <summary>The props of <see cref="ViewKeys.StateVacancy"/> (contract 1.37): the vacancy the core decided on, in its words. The core has already chosen the voice's default
+/// sentence only where the caller gave none: <see cref="Title"/> and <see cref="Subtitle"/> are null where the theme should speak the voice's own default
+/// (<see cref="Controls.VacancyDefault"/> resolves them).</summary>
+public sealed record VacancyProps
+{
+    /// <summary>Which sentence the vacancy speaks.</summary>
+    public required Controls.VacancyVoice Voice { get; init; }
+
+    /// <summary>The page scale, or the rail scale.</summary>
+    public Controls.VacancyScale Scale { get; init; }
+
+    /// <summary>The heading the surface knows (null: the voice's default).</summary>
+    public string? Title { get; init; }
+
+    /// <summary>The sentence under it (null: the voice's default).</summary>
+    public string? Subtitle { get; init; }
+
+    /// <summary>The one action's label (null: the voice's default, "Retry" for an error or offline vacancy with an action).</summary>
+    public string? ActionLabel { get; init; }
+
+    /// <summary>The action (null: none).</summary>
+    public Action? OnAction { get; init; }
+}
+
 /// <summary>The props of <see cref="ViewKeys.MenuContext"/>.</summary>
 /// <param name="ArtUrl">The art's url.</param>
 /// <param name="Circular">A circle (an artist) rather than a rounded square.</param>

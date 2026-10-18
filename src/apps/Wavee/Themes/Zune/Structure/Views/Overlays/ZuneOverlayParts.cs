@@ -17,8 +17,11 @@ namespace Wavee.Themes.Zune;
 internal static class ZuneOverlayParts
 {
     /// <summary>An <see cref="IconRef"/> as an element: the layered vector when it is registered, else the glyph in its font.</summary>
-    public static Element GlyphOf(IconRef icon, float size, ColorF ink)
+    public static Element GlyphOf(IconRef icon, float size, ColorF ink, bool glyphFirst = false)
     {
+        // A round verb draws the icon's plain glyph in ONE ink (the board's white line glyph; the on-accent ink on the disc): the themed layered icon is a coloured
+        // badge (an accent disc with its symbol), which vanishes into the accent disc and shows pink inside a white ring.
+        if (glyphFirst && icon.Glyph is { Length: > 0 } plain) return Icon(plain, size, ink, icon.Font);
         if (icon.ThemedName is { Length: > 0 } themed && ThemedIconRegistry.Has(themed)) return ThemedIcon.Create(themed, size);
         return icon.Glyph is { Length: > 0 } glyph ? Icon(glyph, size, ink, icon.Font) : new BoxEl { Width = size, Height = size, Shrink = 0f };
     }
@@ -59,7 +62,7 @@ internal static class ZuneOverlayParts
                 Corners = corners, Fill = enabled ? Tok.AccentDefault : Tok.AccentDisabled,
                 HoverFill = enabled ? Tok.AccentSecondary : Tok.AccentDisabled, PressedFill = enabled ? Tok.AccentTertiary : Tok.AccentDisabled,
                 Role = AutomationRole.Button, Focusable = enabled, Cursor = enabled ? CursorId.Hand : default, OnClick = enabled ? press : null,
-                Children = [GlyphOf(icon, glyph, ink)],
+                Children = [GlyphOf(icon, glyph, ink, glyphFirst: true)],
             };
         }
         else
@@ -70,7 +73,7 @@ internal static class ZuneOverlayParts
                 Corners = corners, BorderWidth = ZuneOverlayRules.StripRing,
                 BorderColor = !enabled ? Tok.TextTertiary : on ? Tok.AccentDefault : Tok.TextPrimary,
                 Role = AutomationRole.Button, Focusable = enabled, OnClick = enabled ? press : null,
-                Children = [GlyphOf(icon, glyph, ink)],
+                Children = [GlyphOf(icon, glyph, ink, glyphFirst: true)],
             }.Interactive(Interaction.Subtle, isEnabled: enabled);
         }
         return ToolTip.Wrap(verb, command.Label);
