@@ -55,7 +55,7 @@ internal static partial class ZuneLibraryPage
             var set = groups.Read();
             bool all = set.Selected.Length == 0;
             ColorF ink = Design.PlaceholderFor(set.SelectedArt.Length > 0 ? set.SelectedArt : set.Selected);
-            ColorF tint = new(ink.R * LR.HeroTintShade, ink.G * LR.HeroTintShade, ink.B * LR.HeroTintShade, 1f);
+            ColorF tint = LR.HeroTint(ink, Tok.FillSolidBase, R.IsLight);
             string name = all ? Loc.Get(Strings.Theme.Zune.Collection.Library.AllArtists) : set.SelectedName;
             string line = Loc.Get(Strings.Theme.Zune.Collection.Library.ArtistKind) + " · " + Strings.Theme.Zune.Collection.Library.CountAlbums(set.SelectedAlbums)
                           + " " + Loc.Get(Strings.Theme.Zune.Collection.Library.InYourLibrary);

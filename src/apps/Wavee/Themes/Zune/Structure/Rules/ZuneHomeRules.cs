@@ -130,6 +130,20 @@ public static class ZuneHomeRules
     /// <inheritdoc cref="PlateScrimShare"/>
     public const byte PlateScrimAlpha = 115;
 
+    /// <summary>The lowest contrast the on-media white word may have on a plate's own colour before the plate takes the dark ink (a pale category colour).</summary>
+    public const float PlateInkFloor = 3f;
+
+    /// <summary>A colour plate on hover: lifted toward white a step.</summary>
+    public static ColorF PlateHover(ColorF plate) => ColorF.Lerp(plate, ColorF.FromRgba(255, 255, 255), PlateStep);
+
+    /// <summary>A colour plate pressed: sunk toward black a step.</summary>
+    public static ColorF PlatePressed(ColorF plate) => ColorF.Lerp(plate, ColorF.FromRgba(0, 0, 0), PlateStep);
+
+    /// <summary>True when the on-media white word is under <see cref="PlateInkFloor"/> : 1 on <paramref name="plate"/> (a pale category colour).</summary>
+    public static bool PlateWantsDarkInk(ColorF plate) => ColorContrast.Ratio(ColorF.FromRgba(255, 255, 255), plate) < PlateInkFloor;
+
+    private const float PlateStep = 0.10f;
+
     /// <summary>The plate's bottom scrim: black from 0 at the top of its band to 45 % at the foot.</summary>
     public static readonly GradientSpec PlateScrim = FluentGpu.Dsl.Ui.GradientDown(
         new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 0)),

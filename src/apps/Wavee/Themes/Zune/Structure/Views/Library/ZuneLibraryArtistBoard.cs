@@ -87,8 +87,8 @@ internal static partial class ZuneLibraryArtistReader
         string? name = named ? a.Name : null;
         string url = named ? Controls.ArtUrl(a.ImageId) ?? uri : uri;
         ColorF ink = Design.PlaceholderFor(url);
-        ColorF tint = new(ink.R * LR.HeroTintShade, ink.G * LR.HeroTintShade, ink.B * LR.HeroTintShade, 1f);
         var plate = Tok.FillSolidBase;
+        ColorF tint = LR.HeroTint(ink, plate, R.IsLight);
         Element blob = new BoxEl
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, HitTestVisible = false,

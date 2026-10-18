@@ -167,6 +167,12 @@ internal static class ZuneDiscoveryKit
     {
         bool hasColour = colour is { } c && c != 0u;
         bool hasArt = !hasColour && art is { Length: > 0 };
+        // A pale category colour takes the dark ink (white on a light plate was the white-on-white tile label): the on-media white holds
+        // wherever it reads at 3:1 or better, so the board's saturated plates keep their white word.
+        ColorF plate = hasColour ? ColorScience.ToColor(colour!.Value) : default;
+        Prop<ColorF> labelInk = hasColour && H.PlateWantsDarkInk(plate)
+            ? ColorContrast.NearBlackInk
+            : Prop.Of(static () => R.OnMedia.Ink);
         var layers = new List<Element>(3);
         if (hasArt)
         {
@@ -186,7 +192,7 @@ internal static class ZuneDiscoveryKit
             [
                 (hero ? R.Type.HeroTitle(name) : big ? R.Type.QuickplayHead(name) : R.Type.TrackTitle(name)) with
                 {
-                    Color = Prop.Of(static () => R.OnMedia.Ink), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Color = labelInk, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
             ],
         });
@@ -194,9 +200,20 @@ internal static class ZuneDiscoveryKit
         {
             Key = key, Height = height, MinWidth = 0f, ZStack = true, ClipToBounds = true,
             Corners = R.Shape.All(ShapeRole.Tile),
-            Fill = hasColour ? ColorScience.ToColor(colour!.Value) : hasArt ? Prop.Of(static () => R.Layer.FloatingPane) : Prop.Of(static () => Tok.AccentDefault),
             Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = open,
             Children = layers.ToArray(),
-        }.Interactive(Interaction.Tile);
+        }.Interactive(Interaction.Tile) with
+        {
+            // The recipe paints the card fill and a card stroke over the plate's own colour (a white plate under the on-media label in the light
+            // kind), so the plate's fill and its flat, stroke-less edge go back on after it; hover lifts the plate toward white a step.
+            Fill = hasColour ? plate : hasArt ? Prop.Of(static () => R.Layer.FloatingPane) : Prop.Of(static () => Tok.AccentDefault),
+            HoverFill = hasColour ? H.PlateHover(plate)
+                : hasArt ? Prop.Of(static () => R.Layer.FloatingPane)
+                : Prop.Of(static () => H.PlateHover(Tok.AccentDefault)),
+            PressedFill = hasColour ? H.PlatePressed(plate)
+                : hasArt ? Prop.Of(static () => R.Layer.FloatingPane)
+                : Prop.Of(static () => H.PlatePressed(Tok.AccentDefault)),
+            BorderWidth = 0f,
+        };
     }
 }

@@ -263,6 +263,17 @@ public static class ZuneBandRules
     /// <summary>The mix: the covers behind the top 480 at 18 %, fading out over the lower 240, at most three side by side.</summary>
     public const float MixH = 480f, MixOpacity = 0.18f, MixFade = 240f;
 
+    /// <summary>On the LIGHT ground a photo dims the page instead of lighting it: at the dark ground's strengths a dark artist photo took the band
+    /// and the head to about #bfb7c4, which put the tertiary pivots under 3 : 1 and the small grey lines under 4 : 1. The light kind's strengths
+    /// (14 % and 10 %) keep the band above about #dadada under the darkest photo.</summary>
+    public const float BleedOpacityLight = 0.14f, MixOpacityLight = 0.10f;
+
+    /// <summary>The bleed's opacity on the ground of the kind.</summary>
+    public static float BleedOpacityOf(bool light) => light ? BleedOpacityLight : BleedOpacity;
+
+    /// <summary>The mix's opacity on the ground of the kind.</summary>
+    public static float MixOpacityOf(bool light) => light ? MixOpacityLight : MixOpacity;
+
     /// <summary>At most this many mix covers are drawn.</summary>
     public const int MixMax = 3;
 

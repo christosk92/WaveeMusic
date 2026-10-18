@@ -106,6 +106,16 @@ public static class ZuneLibraryRules
     /// <summary>The hero plate's tint: the artist's placeholder colour darkened to this share (the board's #4a2436 over a dark ground).</summary>
     public const float HeroTintShade = 0.42f;
 
+    /// <summary>On the LIGHT ground the same plate is a wash, not a shade: the placeholder colour mixed this far into the ground. The dark shade
+    /// (0.42 of the colour) left a mid grey under the dark ink and the grey meta line, about 1.5 : 1; a 20 % wash keeps the plate above #d0d0d0.</summary>
+    public const float HeroTintLightMix = 0.20f;
+
+    /// <summary>The hero plate's top colour: the dark ground's shade of the placeholder, the light ground's wash of it.</summary>
+    public static ColorF HeroTint(ColorF ink, ColorF ground, bool light)
+        => light
+            ? ColorF.Lerp(ground, ink, HeroTintLightMix) with { A = 1f }
+            : new ColorF(ink.R * HeroTintShade, ink.G * HeroTintShade, ink.B * HeroTintShade, 1f);
+
     /// <summary>The Huge artist column: the plate, its name's size and line (two lines), the stats' numeral size and the gaps between the column's blocks.</summary>
     public const float HeroColPlateH = 460f, HeroColNameSize = 120f, HeroColNameLine = 116f, HeroColStatSize = 40f, HeroColStatLine = 48f, HeroColGap = 28f, HeroColStatGap = 16f, HeroColStatLabelGap = 2f;
 
