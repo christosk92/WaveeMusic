@@ -636,6 +636,19 @@ public static partial class Shell
             _ink = ink;
             _reveal = reveal;
             _label = Label;
+            _widest = Widest;
+        }
+
+        readonly Func<string> _widest;
+
+        /// <summary>The widest this label can read for the playing track: the duration's clock with every digit a "0" (and the remaining slot's minus).</summary>
+        string Widest()
+        {
+            long duration = Playback.DurationMs.Value;
+            if (Playback.Live.Value.IsLive || duration <= 0L) return _remaining ? "-0:00" : "0:00";
+            var clock = Playback.TimeFormat.Clock(duration).ToCharArray();
+            for (int i = 0; i < clock.Length; i++) if (char.IsDigit(clock[i])) clock[i] = '0';
+            return (_remaining ? "-" : "") + new string(clock);
         }
 
         string Label()
@@ -671,6 +684,7 @@ public static partial class Shell
                 // The right slot while live is the LIVE word-mark or the GO LIVE action: there is no duration to count.
                 LiveSlot = TimeLabel.RightSlotIsLive(_remaining, isLive),
                 Label = _label,
+                Widest = _widest,
                 ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
                 OffersGoLive = s_offersGoLive,
                 GoLiveText = s_goLiveLabel,

@@ -144,6 +144,8 @@
 // `LibraryEpisodeRow` (the podcasts library's own episodes feed; Classic keeps its table).
 // 1.41 (Zune fidelity): `VideoFullscreenProps.Artists` / `.SwitchToAudio` (the fullscreen video bar's title line and audio switch).
 // 1.42 (Zune fidelity): `DialogFit.TitleSize` / `.CloseMark` (a theme's dialog title size and close mark).
+// 1.43 (Zune fidelity): `TimeLabelProps.Widest` (the widest the label prints for the track: a theme reserves it), `QueueStagePaneProps.Player` (the shuffle and repeat verbs)
+// and `QueueRowText.Album` (the Up next page's album column).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -159,7 +161,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 42;
+    public const int Minor = 43;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
