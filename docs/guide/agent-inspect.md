@@ -100,6 +100,9 @@ The navigation args are the ones `goto` takes.
 If the offscreen surface cannot be created (no D3D12 or WARP), `devices` reads `headless-gpu+dwrite (<reason>)`. The
 text is still true, but `render` answers `ok:false`.
 
+`mount` also takes the fullscreen stage's preferences: `stage=lyrics|visualizer|queue|artist`, `layout=card|large|centered|artist`
+and `gallery=on|off` (set before the mount, the first-run tip marked seen), so `key f11` opens the stage straight on that look.
+
 ### `goto {route, arg?} | {uri} | {deeplink}`
 
 - `route` is a route key, the same string a pin or `wavee://open?route=` uses: `home`, `browse`, `search` (with
