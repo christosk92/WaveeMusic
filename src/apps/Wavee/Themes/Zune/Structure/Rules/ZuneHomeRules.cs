@@ -275,6 +275,23 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <inheritdoc cref="DaylistForm"/>
     public float ClockW { get; init; } = 260f;
 
+    /// <summary>The art's shape follows the strip's height: its width is the strip's height times this aspect (the board's: Standard 320 x 176), kept
+    /// between <see cref="DaylistArtW"/> (the board's width, the floor) and <see cref="DaylistArtMaxW"/>, so a strip that grows with a wrapped title grows
+    /// its art with it and the cover is never cropped to a narrow slice. 0 = the fixed <see cref="DaylistArtW"/> (Compact, whose copy cannot spare the
+    /// width, and the one-row form).</summary>
+    public float DaylistArtAspect { get; init; } = 320f / 176f;
+
+    /// <inheritdoc cref="DaylistArtAspect"/>
+    public float DaylistArtMaxW { get; init; } = 480f;
+
+    /// <summary>The art's width for a strip <paramref name="stripH"/> tall (the view's bound prop and the tier tests share it).</summary>
+    public float DaylistArtWidthAt(float stripH)
+        => DaylistArtAspect <= 0f ? DaylistArtW : Math.Clamp(stripH * DaylistArtAspect, DaylistArtW, Math.Max(DaylistArtW, DaylistArtMaxW));
+
+    /// <summary>The countdown stands in the copy, one line under the title, where the tier has no clock column (<see cref="ClockW"/> 0) but is not the
+    /// one-row form: the clock is a feature, so it moves, it is not dropped.</summary>
+    public bool ClockInline => ClockW <= 0f && DaylistForm != ZuneDaylistForm.OneRow;
+
     /// <summary>The title's role and its lines, the copy's side insets. The title keeps its role's size at every tier (Zune is a large typeface): a long
     /// name WRAPS over up to <see cref="DaylistTitleLines"/> lines and the strip grows to hug it (<see cref="DaylistGrows"/>), never an ellipsis on one line.
     /// Only the one-row form (a window too short for the strip) keeps one line.</summary>
@@ -398,7 +415,7 @@ public static class ZuneHomeTiers
     // Huge's numbers (Z-Frame-Huge, Z-Home-Huge); Huge 4K is the same (the page caps at 2400, decision 2; plan "Home at 4K is built from the Huge rules").
     private static ZuneHomeLayout Huge(WidthTier tier) => Std(tier) with
     {
-        ZoneGap = 36f, QuickWrap = false, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
+        DaylistArtAspect = 2f, DaylistArtMaxW = 640f, ZoneGap = 36f, QuickWrap = false, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
         DaylistH = 220f, DaylistArtW = 440f, ClockW = 320f, DaylistTitle = ZuneDaylistTitle.Hero, DaylistPad = 40f, DaylistRings = 3, ClockBarW = 52f,
         ShelfCols = 8, ShelfMinW = 140f, WideCols = 6, ClusterCols = 3, TileCols = 8, TileH = 120f, TileBig = true,
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,
@@ -416,7 +433,7 @@ public static class ZuneHomeTiers
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, DaylistArtAspect = 0.67f, DaylistArtMaxW = 144f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
             DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
@@ -428,7 +445,7 @@ public static class ZuneHomeTiers
         Std(WidthTier.Small) with
         {
             ZoneGap = 18f, QuickGroupGap = 32f, QuickPins = 3, PinTileW = 88f, QuickTiles = 3, QuickTileW = 88f, QuickFresh = 0, QuickSubs = false,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 140f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Heading,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 140f, DaylistArtAspect = 1.25f, DaylistArtMaxW = 210f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Heading,
             DaylistPad = 24f, DaylistMeta = false, DaylistRings = 2, RingsGap = 18f,
             PairBeside = true, PairGap = 32f, ShelfCols = 5, ShelfMinW = 100f, WideCols = 4, WideMinW = 120f, ClusterCols = 1, TileCols = 4,
             ReleaseRowH = 52f, ReleaseArt = 40f, ReleaseWhenW = 72f, ClusterRowH = 52f, ClusterArt = 40f, ChartsBeside = false,
@@ -450,7 +467,7 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_oneRow = Array.ConvertAll(s_records, static r => r with
     {
         ZoneGap = Math.Min(r.ZoneGap, 14f), QuickGroupGap = Math.Min(r.QuickGroupGap, 14f), Subtitles = false,
-        DaylistForm = ZuneDaylistForm.OneRow, DaylistH = 56f, DaylistArtW = 56f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 1,
+        DaylistForm = ZuneDaylistForm.OneRow, DaylistH = 56f, DaylistArtW = 56f, DaylistArtAspect = 0f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 1,
         DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = ZuneHomeRules.RingSize, PlayAtEnd = true,
         DaylistGrows = false,
     });

@@ -106,7 +106,7 @@ public sealed partial class ZuneTierLayoutTests
         // The strip is the record's height, or (Compact) its floor, which a wrapped title or wrapped rings may grow.
         if (lay.DaylistGrows) Assert.True(daylist.H >= lay.DaylistH - 1f, $"{sizeName}: the daylist is {daylist.H}, under its floor {lay.DaylistH}");
         else Assert.Equal(lay.DaylistH, daylist.H, 1f);
-        Assert.Equal(lay.DaylistArtW, scene.AbsoluteRect(Node(shell, "zune-daylist-art")).W, 1f);
+        Assert.Equal(lay.DaylistArtWidthAt(daylist.H), scene.AbsoluteRect(Node(shell, "zune-daylist-art")).W, 1f);   // the art follows the strip's height
         Assert.Equal(lay.ClockW, scene.AbsoluteRect(Node(shell, "zune-daylist-clock")).W, 1f);
         Assert.True(shell.Find("zune-daylist-end").IsNull, $"{sizeName}: no end slot: the rings row is the copy's child in every form");
         Assert.Equal(lay.DaylistMeta, !shell.Find("zune-daylist-meta").IsNull);
