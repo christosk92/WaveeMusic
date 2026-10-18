@@ -931,7 +931,37 @@ public static partial class Shell
     /// body box, the not-found page and the lane are the theme's. The scroll scope is provided around the slot, so the page below
     /// reads it as it always did; so is the page's <see cref="PageChromeSink"/> (P5 ZK): what the page or its template publishes for
     /// row 2, and the scroller it names, land under its route.</summary>
-    static Element PageBody(Route route)
+    static Element PageBody(Route route) => Embed.Comp(new DeferredPageProps(route), static () => new DeferredPage());
+
+    sealed record DeferredPageProps(Route Route);
+
+    /// <summary>The page's COLD MOUNT, kept off the click frame. The keep-alive boundary switches at the commit, so the leaving page starts its exit on
+    /// the click frame; building the incoming page there put 20-30 ms of reconcile and layout on the frame the pointer just clicked (the hitch). The
+    /// incoming slot is an empty placeholder (it already carries the enter, seeded with its 90 ms delay) until <see cref="Shown"/> reaches its
+    /// route, which is when the exit leg has run and the leaving page is gone: the page mounts then, under an opacity 0 enter, and fades in. A
+    /// page mounted once stays mounted (a revisit, or a facet switch inside the slot, never waits). The first frame and a slot that is already
+    /// the shown one are ready at once.</summary>
+    sealed class DeferredPage : Component
+    {
+        bool _ready;
+
+        public override Element Render()
+        {
+            var route = UseProps<DeferredPageProps>().Route;
+            if (!_ready)
+            {
+                var shown = Shown.Value;
+                _ready = shown.IsNone || string.Equals(SlotKey(in shown), SlotKey(in route), StringComparison.Ordinal);
+                // The mount lands as a keep-alive activation does: the page's first layouts are placed, not animated in from zero.
+                if (_ready && !shown.IsNone) Context.SuppressLayoutTransitions?.Invoke();
+            }
+            return _ready ? PageBodyNow(route) : s_pendingPage;
+        }
+    }
+
+    static readonly BoxEl s_pendingPage = new() { Key = "page-pending", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f };
+
+    static Element PageBodyNow(Route route)
     {
         var factory = PageFor(route);
         switch (FrameRules.ContentBodyFor(route, factory is not null, FrameFacts.DeveloperNow))
