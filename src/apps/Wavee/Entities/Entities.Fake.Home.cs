@@ -1039,8 +1039,100 @@ public static partial class Entities
 
     static readonly string[] s_relatedQueries = ["a day to remember", "arctic monkeys", "adele", "a-ha", "ariana grande"];
 
+    /// <summary>The query that stays unanswered under --fake (agents render the page's loading skeleton with it: `--inspect state kind=loading`).</summary>
+    public const string FakePendingQuery = "zzqx";
+
+    static bool s_fakeSearch;
+    static readonly HashSet<string> s_fakeSearched = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Under --fake, answer the search row's query from the fake catalogue (a name that contains the query, every kind), once per query; `a` keeps its hand-built
+    /// answer and <see cref="FakePendingQuery"/> none. True when the fake answered (the fetch is skipped).</summary>
+    internal static bool FakeSearchAnswer(Search row)
+    {
+        if (!s_fakeSearch) return false;
+        string q = Strings.Resolve(row.QueryId).Trim();
+        if (q.Length == 0 || string.Equals(q, FakeSearchQuery, StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase)) return true;
+        if (s_fakeSearched.Add(q)) SeedSearchQuery(q);
+        return true;
+    }
+
+    static void SeedSearchQuery(string q)
+    {
+        static bool Has(EntityKind kind, int slot, string q) => Wavee.Search.TitleOf(new EntityRef(kind, slot)).Contains(q, StringComparison.OrdinalIgnoreCase);
+        static List<int> Find(EntityKind kind, int count, Func<int, string> uriOf, string q, int cap)
+        {
+            var found = new List<int>();
+            for (int i = 0; i < count && found.Count < cap; i++)
+            {
+                int slot = ResolveSeedSlot(kind, uriOf(i));
+                if (slot != Table.None && Has(kind, slot, q)) found.Add(slot);
+            }
+            return found;
+        }
+
+        var tracks = Find(EntityKind.Track, TrackCount, static i => TrackUri(i), q, 30);
+        var artists = Find(EntityKind.Artist, ArtistCount, static i => ArtistUri(i), q, ArtistCount);
+        var albums = Find(EntityKind.Album, AlbumCount, static i => AlbumUri(i), q, AlbumCount);
+        var playlists = Find(EntityKind.Playlist, PlaylistCount, static i => PlaylistUri(i), q, 20);
+        foreach (int slot in Find(EntityKind.Playlist, CatalogueCount, static i => CatalogueUri(i), q, 20)) if (playlists.Count < 20) playlists.Add(slot);
+        var shows = Find(EntityKind.Show, ShowCount, static i => ShowUri(i), q, ShowCount);
+        var users = Find(EntityKind.User, 3, static i => UserUri(i + 1), q, 3);
+
+        var genreTiles = new List<int>();
+        for (int i = 0; i < s_browseTiles.Length && genreTiles.Count < 8; i++)
+            if (s_browseTiles[i].Title.Contains(q, StringComparison.OrdinalIgnoreCase)) genreTiles.Add(BrowseNode(s_browseTiles[i].Uri.AsSpan()).Slot);
+
+        var all = Search(q.AsSpan());
+        var facets = new List<SearchFacet>(7);
+        var totals = new List<int>(7);
+        void Chip(SearchFacet f, int n) { if (n > 0) { facets.Add(f); totals.Add(n); } }
+        Chip(SearchFacet.Tracks, tracks.Count); Chip(SearchFacet.Artists, artists.Count); Chip(SearchFacet.Albums, albums.Count);
+        Chip(SearchFacet.Playlists, playlists.Count); Chip(SearchFacet.Podcasts, shows.Count); Chip(SearchFacet.Profiles, users.Count); Chip(SearchFacet.Genres, genreTiles.Count);
+        all.SetChips(facets.ToArray(), totals.ToArray());
+
+        // The All facet: the artist first (the Top Result), then the kinds taken in turn.
+        var mixed = new List<EntityRef>(10);
+        var lists = new (EntityKind Kind, List<int> Slots)[]
+            { (EntityKind.Artist, artists), (EntityKind.Track, tracks), (EntityKind.Album, albums), (EntityKind.Playlist, playlists), (EntityKind.Show, shows), (EntityKind.User, users) };
+        for (int round = 0; mixed.Count < 10; round++)
+        {
+            bool any = false;
+            foreach (var (kind, slots) in lists)
+                if (round < slots.Count && mixed.Count < 10) { mixed.Add(new EntityRef(kind, slots[round])); any = true; }
+            if (!any) break;
+        }
+        all.ApplyResults(0, mixed.ToArray(), mixed.Count);
+
+        void Facet(SearchFacet f, EntityKind kind, List<int> slots)
+        {
+            if (slots.Count == 0) return;
+            var row = Search(q.AsSpan(), f);
+            row.ApplyResults(0, slots.ToArray(), kind, slots.Count);
+            Current.Searches.Bump(row.Slot, (uint)SearchFields.Results);
+        }
+        Facet(SearchFacet.Tracks, EntityKind.Track, tracks); Facet(SearchFacet.Artists, EntityKind.Artist, artists); Facet(SearchFacet.Albums, EntityKind.Album, albums);
+        Facet(SearchFacet.Playlists, EntityKind.Playlist, playlists); Facet(SearchFacet.Podcasts, EntityKind.Show, shows); Facet(SearchFacet.Profiles, EntityKind.User, users);
+
+        Current.Edges.SearchGenres.ReplaceRun(all.Slot, genreTiles.ToArray(), default);
+        var related = new List<string>();
+        foreach (string r in s_relatedQueries) if (r.StartsWith(q, StringComparison.OrdinalIgnoreCase) && !r.Equals(q, StringComparison.OrdinalIgnoreCase)) related.Add(r);
+        var none = new int[related.Count];
+        var payload = new SearchRelatedEdge[related.Count];
+        for (int i = 0; i < related.Count; i++)
+        {
+            none[i] = Table.None;
+            StringId text = default;
+            RetainText(ref text, Intern(Utf8(related[i])));
+            payload[i] = new SearchRelatedEdge(text);
+        }
+        Current.Edges.SearchRelated.ReplaceRun(all.Slot, none, payload);
+        Current.Searches.Bump(all.Slot, (uint)(SearchFields.Results | SearchFields.Genres | SearchFields.Related));
+    }
+
     static void SeedSearch()
     {
+        s_fakeSearch = true;
         ReadOnlySpan<char> q = FakeSearchQuery.AsSpan();
         var all = Search(q);
 

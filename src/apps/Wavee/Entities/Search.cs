@@ -378,6 +378,7 @@ public static partial class Entities
     /// <inheritdoc cref="Ensure(Table,ReadOnlySpan{int},uint,FetchPriority)"/>
     public static void Ensure(Search row, SearchFields wanted, FetchPriority priority = FetchPriority.Visible)
     {
+        if (FakeSearchAnswer(row)) return;   // --fake answers a query from the fake catalogue (Entities.Fake.Home.cs)
         int slot = row.Slot;
         Ensure(Current.Searches, new ReadOnlySpan<int>(in slot), (uint)wanted, priority);
     }
