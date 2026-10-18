@@ -263,7 +263,7 @@ internal static class ZuneStageTransport
             Direction = 1,
             Children =
             [
-                kit.SeekRow(),
+                kit.SeekStacked(),
                 Spread(s.RowH, kit.Shuffle(), kit.Previous(), kit.Play(disc), kit.Next(), kit.Repeat()),
                 new BoxEl
                 {
@@ -325,6 +325,21 @@ internal static class ZuneStageTransport
                 props.TimeText(false, Ink.InkSecondary),
                 new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [props.SeekBar(props.Stage.Scrubbing)] },
                 props.TimeText(true, Ink.InkSecondary),
+            ],
+        };
+
+        /// <summary>Compact's seek block (Z-NowPlaying-Compact): the 2-px line across the stage's width, the two times under it, one on each edge.</summary>
+        public Element SeekStacked() => new BoxEl
+        {
+            Key = "stage:transport:seek", Height = size.SeekH, Direction = 1, Shrink = 0f,
+            Children =
+            [
+                new BoxEl { Height = size.SeekH - G.StackTimesH, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = [props.SeekBar(props.Stage.Scrubbing)] },
+                new BoxEl
+                {
+                    Height = G.StackTimesH, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween,
+                    Children = [props.TimeText(false, Ink.InkSecondary), props.TimeText(true, Ink.InkSecondary)],
+                },
             ],
         };
 

@@ -431,27 +431,37 @@ public sealed class ZuneStageGeometryTests
     }
 
     [Fact]
-    public void The_huge_lyrics_column_is_900_wide_at_most_and_stops_short_of_the_up_next_column()
+    public void Lyrics_mode_seats_the_identity_column_beside_the_lines_at_each_tier()
     {
-        var huge = ZuneStageTiers.Stage(WidthTier.Huge);
-        Assert.Equal(900f, huge.LyricsPaneMaxW);
-        var layout = SeedAt(2560f, 1440f, ZuneStageTiers.HugeMetrics);
         var look = Stage.Look.Plain(M.Lyrics);
-        Assert.True(layout.UpNextShown(M.Lyrics));
-        var pane = ZuneStageGeometry.PlatePane(in layout, in look, huge, Stage.PaneKind.Lyrics);
-        Assert.True(pane.W <= 900f + 0.01f, $"the Huge lyrics column is {pane.W} wide");
-        Assert.True(pane.W > layout.LyricsPaneW(M.Lyrics), "wider than the 792 the allocator's 336 gap left it (about 610 of text at 48 type)");
-        Assert.True(pane.Right <= ZuneStageGeometry.UpNextPaneX(in layout, huge) - huge.UpNextGap + 0.01f, "it stops short of the Up next column");
-        Assert.Equal(48f, layout.LyricsTypeSize);   // the type is unchanged: the measure is what moved
 
-        // the queue pane is not capped, and the 4K lyrics keep the board's 336 gap (and the column's own cap of 1000 times the scale)
-        var queue = ZuneStageGeometry.PlatePane(in layout, Stage.Look.Plain(M.Queue), huge, Stage.PaneKind.Queue);
-        Assert.Equal(layout.PaneX + layout.PaneW, queue.Right, 0.01f);
-        var k4 = ZuneStageTiers.Stage(WidthTier.Huge4K);
-        Assert.Equal(0f, k4.LyricsPaneMaxW);
-        var big = SeedAt(3840f, 2160f, ZuneStageTiers.Huge4KMetrics);
-        var pane4K = ZuneStageGeometry.PlatePane(in big, in look, k4, Stage.PaneKind.Lyrics);
-        Assert.True(pane4K.Right <= ZuneStageGeometry.UpNextPaneX(in big, k4) - 336f + 0.01f);
-        Assert.True(pane4K.W >= big.LyricsPaneW(M.Lyrics) - 0.01f);
+        // Z-Lyrics (1440 x 900): the 300 cover at (48, 192), the lines' text 80 right of it, running to the gutter
+        var std = SeedAt(1440f, 900f, ZuneStageTiers.StandardMetrics);
+        var s = ZuneStageGeometry.LyricsSide(in std, in look, Standard)!.Value;
+        Assert.Equal(new ZuneRect(48f, 192f, 300f, 300f), s.Cover);
+        Assert.Equal(48f + 300f + 80f, s.Pane.X + ZuneStageGeometry.LyricsLead(in std), 0.01f);
+        Assert.Equal(std.W - Standard.Gutter, s.Pane.Right, 0.01f);
+        Assert.Equal(56f, std.LyricsTypeSize);   // the board's 56/68 at 300
+
+        // Z-Lyrics-Huge (2560 x 1440): the 440 cover under the 56 head, the pane stops the tier's gap short of the Up next column, uncapped
+        var huge = ZuneStageTiers.Stage(WidthTier.Huge);
+        var hl = SeedAt(2560f, 1440f, ZuneStageTiers.HugeMetrics);
+        var h = ZuneStageGeometry.LyricsSide(in hl, in look, huge)!.Value;
+        Assert.Equal(new ZuneRect(64f, 96f, 440f, 440f), h.Cover);
+        Assert.True(hl.UpNextShown(M.Lyrics));
+        Assert.Equal(ZuneStageGeometry.UpNextPaneX(in hl, huge) - huge.UpNextGap, h.Pane.Right, 0.01f);
+        Assert.Equal(56f, hl.LyricsTypeSize);
+
+        // Z-Lyrics-Small (800 x 600): the 180 cover centred between the head and the plate
+        var small = ZuneStageTiers.Stage(WidthTier.Small);
+        var sl = SeedAt(800f, 600f, ZuneStageTiers.SmallMetrics);
+        var m = ZuneStageGeometry.LyricsSide(in sl, in look, small)!.Value;
+        Assert.Equal(180f, m.Cover.W);
+        Assert.Equal(24f, m.Cover.X);
+        Assert.Equal(36f, sl.LyricsTypeSize);
+
+        // another mode, and Compact's identity card, keep the allocator's rects
+        Assert.Null(ZuneStageGeometry.LyricsSide(in std, Stage.Look.Plain(M.Queue), Standard));
+        Assert.Null(ZuneStageGeometry.LyricsSide(SeedAt(400f, 860f, ZuneStageTiers.CompactMetrics), in look, ZuneStageTiers.Stage(WidthTier.Compact)));
     }
 }

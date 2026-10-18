@@ -87,6 +87,9 @@ public static partial class ZuneStageGeometry
     /// <summary>The Standard seek row: 36 tall, the times 16 from the line.</summary>
     public const float SeekRowH = 36f, SeekGap = 16f;
 
+    /// <summary>Compact's stacked seek block: the row of the two times under the line.</summary>
+    public const float StackTimesH = 18f;
+
     /// <summary>The plate's veil over a face (Z-NowPlaying: 0.85) and under a pane (Z-Lyrics, Z-Queue-Page: opaque).</summary>
     public const float PlateFaceA = 0.85f, PlatePaneA = 1f;
 

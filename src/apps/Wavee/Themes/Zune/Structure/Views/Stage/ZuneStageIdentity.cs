@@ -132,7 +132,9 @@ internal static class ZuneStageIdentity
                     MaxWidth = center ? titlesW : float.NaN,
                 };
                 kids.Add(ts >= G.DisplayFrom ? head with { FontFamily = R.Type.DisplayFace } : head);
-                kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, Ink.InkSecondary, set.Text, center, heroArtist));
+                // Lyrics mode's identity card (Z-Lyrics-Compact): the artist line rests in the accent
+                bool lyricsCard = k.Mode == Stage.Mode.Lyrics && L.IdentityCardOn(k.Mode);
+                kids.Add(Meta(props, meta.Size, meta.Line, G.TitleRegular, null, lyricsCard ? set.Text : Ink.InkSecondary, lyricsCard ? Ink.Ink : set.Text, center, heroArtist));
                 if (L.ShowChipsFor(in k)) kids.Add(Embed.Comp(new ZuneStageChips.Props(props.Chips), static () => new ZuneStageChips()) with { Key = "stage:chips" });
                 break;
             }
