@@ -833,7 +833,7 @@ public static partial class Shell
 
     static readonly object s_chromeLanding = new();
 
-    static readonly Action s_landShown = static () => { Shown.Value = Current.Peek(); PageChromeChannel.ArmLanding(); };
+    static readonly Action s_landShown = static () => { Shown.Value = Current.Peek(); PageChromeChannel.ArmLanding(); ArmNavGc(); };
 
     /// <summary>The keep-alive page-swap boundary, the masthead band overlaid on it, and the offline lane. Pages receive
     /// route VALUES, never the route signal — the boundary is the only route subscriber.</summary>

@@ -193,6 +193,7 @@ public static partial class Shell
     {
         readonly HeadlessPlatformApp _app;
         readonly PosterSeams _seams;
+        readonly Func<bool>? _hostQuiet;
         readonly List<(NodeHandle Node, string Key)> _keys = new();
         bool _disposed;
 
@@ -236,6 +237,8 @@ public static partial class Shell
             AssignPosters(action => host.Post(PublishAfter.Wrap(action)));
             Headless.RunParked(action => host.Post(PublishAfter.Wrap(action)));   // what pool threads posted between mounts
             Host.FrameCompleted += s_frameTick;
+            _hostQuiet = Residency.HostQuiet;
+            Residency.HostQuiet = () => host.IsInteractionQuiet;   // the post-navigation gen-0 collection's quiet gate
             Palette.ResetPump();   // the pump's deadline and in-flight batch belong to the previous host's clock
             Host.RunFrame();
         }
@@ -301,6 +304,7 @@ public static partial class Shell
             {
                 Host.FrameCompleted -= s_frameTick;
                 _seams.Restore();
+                Residency.HostQuiet = _hostQuiet;
                 // A pool thread (the fake audio graph, a ticker) can post between the last frame and Restore: those posts sit in
                 // this host's queue, which Dispose would drop. A dropped playback drain leaves its "a wake is queued" latch set
                 // for the rest of the process, and every later Play / SetShuffle then waits forever. Hand them to the

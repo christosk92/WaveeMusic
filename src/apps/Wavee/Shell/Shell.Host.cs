@@ -408,6 +408,7 @@ public static partial class Shell
         });
         AiLyrics.Install(s_marshal!);     // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
+        Residency.HostQuiet = static () => FluentApp.IsInteractionQuiet;   // the post-navigation gen-0 collection's quiet gate
         FluentApp.FrameCompleted += s_frameTick;
     }
 
@@ -663,6 +664,23 @@ public static partial class Shell
     public const int MemoryPollIntervalMs = 30_000;
 
     static System.Threading.Timer? s_memoryPoll;
+
+    /// <summary>The governor's SETTLE tick after a navigation lands (Platform/Residency.Heap.cs, <c>NavGcPolicy</c>): first
+    /// check <see cref="NavGcPolicy.QuietMs"/> after the landing, then every <see cref="NavGcRetryMs"/> while the decision is
+    /// open. A one-shot timer that posts through the UI marshaller, like the poll: an idle app paints no frames, so it cannot
+    /// ride the frame tick.</summary>
+    public const int NavGcRetryMs = 100;
+
+    static System.Threading.Timer? s_navGc;
+    static readonly Action s_navGcTick = static () => { if (Residency.NavGcTick()) s_navGc?.Change(NavGcRetryMs, Timeout.Infinite); };
+
+    /// <summary>A navigation landed: note it with the governor and (re)arm its settle timer. UI thread.</summary>
+    internal static void ArmNavGc()
+    {
+        Residency.NoteNavigationLanded();
+        s_navGc ??= new System.Threading.Timer(static _ => s_marshal?.Invoke(s_navGcTick), null, Timeout.Infinite, Timeout.Infinite);
+        s_navGc.Change((int)NavGcPolicy.QuietMs, Timeout.Infinite);
+    }
 
     /// <summary>Arm the governor's RECURRING poll (unlike <see cref="ArmAudioWarm"/> / <see cref="ArmJumpList"/>,
     /// which fire once): every tick posts <c>Residency.Poll</c> through the UI marshaller, never runs inline on the

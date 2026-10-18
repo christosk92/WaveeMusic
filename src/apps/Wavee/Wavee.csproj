@@ -67,13 +67,15 @@
   <!-- Memory posture (2026-07 heap audit): the engine's PixelBufferPool bounds decoded-pixel retention; these bound
        what remains. SharedArrayPool defaults to 8 arrays/bucket × ProcessorCount partitions — on a 12-core machine
        that legally parks hundreds of MB; 4×4 keeps the remaining users (encoded fetch buffers, BCL/HTTP) to a few MB.
-       ConserveMemory=5 makes the workstation-concurrent GC decommit the churned heap floor more aggressively. -->
+       ConserveMemory=5 makes the workstation-concurrent GC decommit the churned heap floor more aggressively.
+       System.GC.RegionSize=1 MB (the P16b trial, plan §3.1) is REVERTED per the plan's own rule (reverted if it does not
+       help): measured 2026-10-18 (page-mount RCA round 5) it changed neither the gen-0 budget (6 MB either way), the GC
+       rate or pauses on a home/page navigation loop, nor the footprint of a 94-navigation mem-soak (private bytes after
+       idle within run-to-run noise of the default 4 MB regions). -->
   <ItemGroup>
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxPartitionCount" Value="4" />
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxArraysPerPartition" Value="4" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
-    <!-- trial (plan §3.1 P16b), measured in Wave 6 -->
-    <RuntimeHostConfigurationOption Include="System.GC.RegionSize" Value="1048576" />
   </ItemGroup>
 
   <Import Project="Wavee.Publish.props" />
