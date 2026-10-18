@@ -88,10 +88,10 @@ public static class BrowseBands
         _ => Shell.Route.None,
     };
 
-    /// <summary>The kinds whose row 2 is Browse's bands: the directory, a category page and the Concerts hub. A drill-in below them (a section, an
-    /// artist's concerts, one concert) keeps no row 2: its head is the trail.</summary>
+    /// <summary>The kinds whose row 2 is Browse's bands: the directory and the Concerts hub. A drill-in below them keeps no row 2: its head is the trail
+    /// (a category page, Z-Browse-Category: the trail over the colour field; a section; an artist's concerts; one concert).</summary>
     public static bool IsChromeKind(Shell.RouteKind kind)
-        => kind is Shell.RouteKind.Browse or Shell.RouteKind.BrowseCategory or Shell.RouteKind.Concerts;
+        => kind is Shell.RouteKind.Browse or Shell.RouteKind.Concerts;
 
     /// <summary>The band a route lights, or null when it lights none. The directory lights its argument (top when it has none); the Concerts hub
     /// lights concerts; a category page lights the band of its taxonomy group (the Charts pages: charts; a genre: genres; a For-you page: for you;
