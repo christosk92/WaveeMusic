@@ -165,13 +165,12 @@ public static class ZuneFrameRules
     public static TitleBarSpacing Spacing(WidthTier window)
         => new(LeadPad: MathF.Max(0f, ZuneTiers.Frame(window).Gutter - EngineRootPad), MinDragStrip: TitleBar(window).DragStrip);
 
-    /// <summary>The engine bar's spacers for <paramref name="facts"/>: the drag strip is the window's, the lead pad puts the wordmark on the PAGE's gutter, which is the
-    /// content tier's (a docked panel narrows the content: window Standard, content Small), so the wordmark, the band and the page share one left edge.</summary>
+    /// <summary>The engine bar's spacers for <paramref name="facts"/>: the drag strip is the window's, the lead pad puts the wordmark on the frame's gutter (the window tier's,
+    /// <see cref="ZuneTiers.GutterOf"/>): the same one the band and every page use, so a docked panel moves none of them.</summary>
     public static TitleBarSpacing SpacingOf(in TierFacts facts)
     {
         var window = facts.Policy is null ? WidthTier.Standard : facts.Window;
-        var content = facts.Policy is null ? WidthTier.Standard : facts.Content;
-        return new(LeadPad: MathF.Max(0f, ZuneTiers.Frame(content).Gutter - EngineRootPad), MinDragStrip: TitleBar(window).DragStrip);
+        return new(LeadPad: MathF.Max(0f, ZuneTiers.GutterOf(in facts) - EngineRootPad), MinDragStrip: TitleBar(window).DragStrip);
     }
 
     /// <summary>The magnifier's flyout width in a window <paramref name="windowWidth"/> wide: the tier's width, never wider than the window

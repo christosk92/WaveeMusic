@@ -2,8 +2,9 @@
 //
 // A docked panel narrows the CONTENT area but not the window: at a Standard window (1280 wide) with the 340 queue panel docked, the content is 940 wide
 // (Small), so the page lays out on the Small gutter (24) while the window is still Standard (gutter 48). The band's lead inset and the title bar's
-// wordmark used to read the window tier, standing 24 DIP right of the page ("verified artist", the name, the rows). They read the content tier now:
-// the first pivot, the title bar's wordmark and the artist page's copy start on the same x, with the panel closed (Standard gutter) and open (Small's).
+// pages used to read the CONTENT tier's gutter (24), standing 24 DIP left of the band and the wordmark. Every page, the band and the wordmark read the
+// FRAME's gutter (the window tier's) now: the first pivot, the wordmark and the artist page's copy start on the same x, with the panel closed and open,
+// and the content tier's flip moves none of them (no gutter snaps or eases).
 
 using FluentGpu.Foundation;
 using Wavee;
@@ -52,7 +53,7 @@ public sealed class ZuneSharedEdgeMountedTests(ShellHost host)
                 var docked = ThemeHost.Facts.Peek().Tiers;
                 Assert.Equal(WidthTier.Standard, docked.Window);
                 Assert.True(docked.Content < WidthTier.Standard, "the docked panel narrows the content under Standard (" + docked.Content + ")");
-                AssertShared(shell, ZuneTiers.Frame(docked.Content).Gutter, "panel docked");
+                AssertShared(shell, ZuneTiers.Frame(docked.Window).Gutter, "panel docked");   // the frame's gutter: the content tier's flip moves none of the three
             }
             finally
             {

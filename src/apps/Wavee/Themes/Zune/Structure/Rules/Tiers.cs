@@ -193,6 +193,10 @@ public static partial class ZuneTiers
 
     /// <summary>The frame's record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ZuneFrameLayout FrameOf(in TierFacts facts) => Frame(facts.Policy is null ? WidthTier.Standard : facts.Window);
+
+    /// <summary>THE page gutter: the frame's (the window tier's: 16 / 24 / 48 / 48 / 64). The band's lead inset, the title bar's wordmark and every page's column read it, so a
+    /// docked panel (which narrows the content tier, not the window's) moves none of them: no gutter snaps or eases, and the three share one left edge.</summary>
+    public static float GutterOf(in TierFacts facts) => FrameOf(in facts).Gutter;
 }
 
 /// <summary>What Zune's frame lays out in one window tier.</summary>

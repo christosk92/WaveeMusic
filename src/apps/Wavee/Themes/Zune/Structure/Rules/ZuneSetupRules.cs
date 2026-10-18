@@ -288,7 +288,16 @@ public static class ZuneReleaseNotesTiers
     public static ZuneReleaseNotesLayout For(WidthTier content) => s_pages[Math.Clamp((int)content, 0, s_pages.Length - 1)];
 
     /// <summary>The page record for <paramref name="facts"/>; Standard's where no frame resolved the tiers.</summary>
-    public static ZuneReleaseNotesLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);
+    /// <summary>The record for <paramref name="facts"/>: its content tier's, on the FRAME's gutter (the window tier's: the band, the title bar's wordmark and every page share
+    /// one left edge, so a docked panel that narrows the content never moves it).</summary>
+    public static ZuneReleaseNotesLayout Of(in TierFacts facts)
+    {
+        var record = OfContent(in facts);
+        float gutter = ZuneTiers.GutterOf(in facts);
+        return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };
+    }
+
+    private static ZuneReleaseNotesLayout OfContent(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);
 
     // ── the overlays ─────────────────────────────────────────────────────────────────────────────────────────────────────
 

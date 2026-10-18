@@ -441,7 +441,11 @@ public static class ZuneLibraryTiers
     /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or
     /// split. A split page in a Compact content tier (the ladders' holds differ by a frame) reads Small's; Standard's where no frame resolved the tiers.</summary>
     public static ZuneLibraryLayout Of(in TierFacts facts, bool single)
-        => For(facts.Policy is null ? WidthTier.Standard : facts.Content, single, facts.Policy is not null && facts.Height == HeightTier.Short);
+    {
+        var record = For(facts.Policy is null ? WidthTier.Standard : facts.Content, single, facts.Policy is not null && facts.Height == HeightTier.Short);
+        float gutter = ZuneTiers.GutterOf(in facts);
+        return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };   // the frame's gutter, as every page's
+    }
 
     /// <summary>The record for content tier <paramref name="content"/> on the Regular height rung, or the Short rung's (<paramref name="short"/>).</summary>
     public static ZuneLibraryLayout For(WidthTier content, bool single, bool @short = false)

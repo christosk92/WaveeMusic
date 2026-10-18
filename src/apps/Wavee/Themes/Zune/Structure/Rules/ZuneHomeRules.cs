@@ -457,7 +457,16 @@ public static class ZuneHomeTiers
 
     /// <summary>The record for <paramref name="facts"/>: its content tier's, in its one-row daylist form where the window is too short for the
     /// strip (the height rung <see cref="ZuneHomeRules.DaylistRung"/> is not crossed); Standard's where no frame resolved the tiers (a view mounted alone).</summary>
+    /// <summary>The record for <paramref name="facts"/>: its content tier's, on the FRAME's gutter (the window tier's: the band, the title bar's wordmark and every page share
+    /// one left edge, so a docked panel that narrows the content never moves it).</summary>
     public static ZuneHomeLayout Of(in TierFacts facts)
+    {
+        var record = OfContent(in facts);
+        float gutter = ZuneTiers.GutterOf(in facts);
+        return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };
+    }
+
+    private static ZuneHomeLayout OfContent(in TierFacts facts)
     {
         if (facts.Policy is null) return For(WidthTier.Standard);
         int i = Math.Clamp((int)facts.Content, 0, s_records.Length - 1);

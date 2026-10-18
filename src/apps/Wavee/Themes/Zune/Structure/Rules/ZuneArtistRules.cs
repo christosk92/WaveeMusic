@@ -481,7 +481,16 @@ public static class ZuneArtistTiers
 
     /// <summary>The record for <paramref name="facts"/>: the content tier's, folded on a Short window; Standard's where no frame resolved the tiers (a
     /// view mounted alone).</summary>
+    /// <summary>The record for <paramref name="facts"/>: its content tier's, on the FRAME's gutter (the window tier's: the band, the title bar's wordmark and every page share
+    /// one left edge, so a docked panel that narrows the content never moves it).</summary>
     public static ZuneArtistLayout Of(in TierFacts facts)
+    {
+        var record = OfContent(in facts);
+        float gutter = ZuneTiers.GutterOf(in facts);
+        return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };
+    }
+
+    private static ZuneArtistLayout OfContent(in TierFacts facts)
     {
         if (facts.Policy is null) return For(WidthTier.Standard);
         return facts.Height == HeightTier.Short ? s_short[Math.Clamp((int)facts.Content, 0, s_short.Length - 1)] : For(facts.Content);

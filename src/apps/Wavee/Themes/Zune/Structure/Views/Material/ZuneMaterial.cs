@@ -13,7 +13,7 @@
 // Live: the option is read tracked, so a change re-renders the layer and the wash / bleed / mix fade in or out (keyed, Enter / Exit).
 //
 // THE COVER LEAVES (decided here, plan "Zune specifics"):
-//   PageTone     OWN: under artwork wash, the page's tone as a band from the page's top fading out within its hero band; nothing otherwise.
+//   PageTone     OWN: nothing at any option (the shell wash is the one gradient through the hero; a page-top band drew a seam at the band foot).
 //   ArtistBlend  OWN: nothing at any option: the shell layer's bleed and wash are the one continuous gradient through the hero (no seam at the band's foot).
 //   ArtistVeil   OWN: a NEUTRAL veil (no hue at any option): Zune darkens the photo for the title and never tints it.
 //   TintBinder   OWN: publishes the cover tint under artwork wash and a definite "no colour" otherwise, so mix and none keep the chrome flat.
@@ -128,43 +128,13 @@ internal static class ZuneMaterial
     public static Element CoverTint(CoverTintProps props, in ViewContext ctx) => Embed.Comp(props, static () => new ZuneCoverTint());
 }
 
-/// <summary>The detail page's tone (a page-root sibling): under artwork wash, a band of the page's tone from its top that fades out within
-/// its hero band; nothing otherwise. One shape in every arm (the bound gradient's colour reads a transparent tone when there is none), so a
-/// grading that lands after the mount is wired, and the option going to none clears it in place.</summary>
+/// <summary>The detail page's tone (a page-root sibling): NOTHING under Zune, for the artist blend wash's reason. A band of the page's tone that starts at the page's
+/// top starts at the band's foot, where it composites over a different colour than the shell wash above it: a hard horizontal edge there, and, while the page
+/// scrolls under the band, wherever the page's own gradient meets the band. The shell material layer's wash (the cover tint, fading out by 180) already tints the top
+/// of the window through the hero as ONE gradient. The leaf keeps its registration; it draws no pixel.</summary>
 internal sealed class ZuneCoverTone : Component
 {
-    public override Element Render()
-    {
-        var p = UseProps<CoverToneProps>();
-        bool wash = ZuneOptions.Background() == ZuneBackground.ArtworkWash;
-        if (wash && p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
-        if (wash && p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal)) _ = Palette.Watch(fb).Value;
-
-        var tone = wash ? Resolve(p) : null;
-        Element[] kids = tone is { } t
-            ? [new BoxEl
-               {
-                   Key = "zune.page-tone:" + t.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                   HitTestVisible = false,
-                   Height = p.BackdropBand > 1f ? p.BackdropBand : float.NaN, Grow = p.BackdropBand > 1f ? 0f : 1f,
-                   Gradient = GradientDown(
-                       new GradientStop(0f, t with { A = R.Wash.PageTonePlaneAlphaAt(false) }),
-                       new GradientStop(ZuneBandRules.ToneFadeStop, t with { A = 0f })),
-                   Enter = Design.Reduced ? null : ZuneBandRules.MaterialFade,
-                   Exit = Design.Reduced ? null : ZuneBandRules.MaterialFade,
-               }]
-            : [];
-        return new BoxEl { Direction = 1, Grow = 1f, HitTestVisible = false, ClipToBounds = true, Children = kids };
-    }
-
-    /// <summary>The cover's grading as the page tone, else the payload accent's; null while neither is known.</summary>
-    static ColorF? Resolve(CoverToneProps p)
-    {
-        var wash = R.Wash;
-        if ((Design.SchemeFor(p.Url) ?? Design.SchemeFor(p.FallbackUrl)) is { } scheme && wash.PageToneFromHue(ColorScience.Accent(scheme)) is { } fromArt)
-            return fromArt;
-        return p.PayloadAccent == 0 ? null : wash.PageToneFromHue(ColorScience.ToColor(p.PayloadAccent));
-    }
+    public override Element Render() => new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
 }
 
 /// <summary>The artist page's blend wash: NOTHING under Zune. The shell material layer already draws one continuous photo bleed and one wash band from the
