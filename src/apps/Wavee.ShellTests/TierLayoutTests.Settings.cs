@@ -147,7 +147,7 @@ public sealed partial class TierLayoutTests
     static void AssertStockCombos(Shell.HeadlessShell shell, Settings.Tab tab, string size, bool touch)
     {
         var scene = shell.Host.Scene;
-        string slug = Settings.TabSlugs[(int)tab];
+        string slug = Settings.AreaSlugs[(int)Settings.HomeArea(tab)];
         int combos = 0;
         foreach (var n in Subtree(scene, Node(shell, "settings:scroll:" + slug)))
         {
@@ -169,7 +169,7 @@ public sealed partial class TierLayoutTests
     static void AssertSettingsTargets(Shell.HeadlessShell shell, Settings.Tab tab, string size)
     {
         var scene = shell.Host.Scene;
-        string slug = Settings.TabSlugs[(int)tab];
+        string slug = Settings.AreaSlugs[(int)Settings.HomeArea(tab)];
         var roots = new[] { Node(shell, "settings:tabs"), Node(shell, "settings:scroll:" + slug) };
         var offenders = new List<string>();
         int targets = 0;

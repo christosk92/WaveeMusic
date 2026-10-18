@@ -283,7 +283,7 @@ public sealed partial class ZuneTierLayoutTests
             // The page is the sections list (one 56-tall target per section, stacked), and a tap opens the section's own page under a "‹ settings" crumb.
             Assert.True(shell.Find("zs:column").IsNull, $"{size}: the sections page draws no section column");
             float previousY = float.NegativeInfinity;
-            foreach (string slug in Settings.TabSlugs)
+            foreach (string slug in Settings.AreaSlugs)
             {
                 var link = At("zs:link:" + slug);
                 Assert.True(link.H >= ZuneSettingsRules.SectionRowH - 0.5f && link.W >= 39.5f, $"{size}: the '{slug}' row is {link.W} x {link.H}, under {ZuneSettingsRules.SectionRowH}");
@@ -314,7 +314,7 @@ public sealed partial class ZuneTierLayoutTests
             // The section list: the record's column beside the column.
             var sections = At("zs:sections");
             Assert.Equal(lay.ListW, sections.W, 0.5f);
-            foreach (string slug in Settings.TabSlugs)
+            foreach (string slug in Settings.AreaSlugs)
             {
                 var link = At("zs:link:" + slug);
                 Assert.True(link.H >= lay.ListItemH - 0.5f, $"{size}: the '{slug}' word is {link.H} tall, under {lay.ListItemH}");
@@ -414,7 +414,7 @@ public sealed partial class ZuneTierLayoutTests
                 parts.Add(new FramePart(key, n, scene.Bounds(n)));
             }
             foreach (var (node, key) in shell.FindPrefix("zs:link:")) parts.Add(new FramePart(key, node, scene.Bounds(node)));
-            Assert.Equal(6 + Settings.TabSlugs.Length, parts.Count);
+            Assert.Equal(6 + Settings.AreaSlugs.Length, parts.Count);
 
             // The resized frame: the old tier, laid out at the new size (a narrowing drag settles through the modal loop).
             bool narrowing = toW < fromW;
