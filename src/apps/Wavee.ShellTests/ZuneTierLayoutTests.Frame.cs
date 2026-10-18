@@ -123,6 +123,7 @@ public sealed partial class ZuneTierLayoutTests
         Assert.False(string.IsNullOrEmpty(chrome.Title));
         // The crumbs keep the destination's words (the kind), and the title node keeps its place as the name arrives.
         Assert.NotEmpty(chrome.Crumbs);
+        shell.RunFrames(60);   // the name's arrival re-renders the title: let it lay out before its rect is read
         Assert.True(shell.Host.Scene.AbsoluteRect(Node(shell, ZuneBandRules.Row2TitleKey)).H >= ZuneBandRules.Band(ThemeHost.Facts.Peek().Tiers.Window).Row2H - 0.5f);
         Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
         shell.RunFrames(30);

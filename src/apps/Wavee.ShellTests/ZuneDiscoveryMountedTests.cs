@@ -31,13 +31,18 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
 {
     const float W = 1440f, H = 960f;
 
+    // The input clock advances per click: a second click at the same stamps is the first one's double-click window, not a new press.
+    static uint s_clickClock = 2000;
+
     static void Click(Shell.HeadlessShell shell, NodeHandle node)
     {
         var r = shell.Host.Scene.AbsoluteRect(node);
         var p = new Point2(r.X + r.W / 2f, r.Y + r.H / 2f);
-        shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: 2000));
-        shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, p, 0, 0, TimestampMs: 2010));
-        shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, p, 0, 0, TimestampMs: 2060));
+        uint t = s_clickClock;
+        s_clickClock += 2000;
+        shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: t));
+        shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, p, 0, 0, TimestampMs: t + 10));
+        shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, p, 0, 0, TimestampMs: t + 60));
         shell.RunFrames(3);
     }
 
@@ -193,6 +198,8 @@ public sealed class ZuneDiscoveryMountedTests(ShellHost host)
                 Assert.True(MathF.Abs(BandH(shell) - standard.ExpandedH) < 0.5f, "the band keeps its two rows through the switch");
 
                 // And back through row 2: "all".
+                // The row's words slide to their places after a switch (the pivot slide): let them land before aiming at one.
+                shell.RunFrames(60);
                 Click(shell, Node(shell, ZuneBandRules.ViewKeyPrefix + Wavee.HomeUi.HomeHost.AllViewId));
                 UntilBackground(shell, () => Chrome()?.CurrentView?.Id == Wavee.HomeUi.HomeHost.AllViewId, "all is lit again");
             }
