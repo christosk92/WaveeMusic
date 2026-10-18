@@ -551,6 +551,8 @@ public static partial class Diagnostics
         string Mount(int id, string name, Inspect.Args a)
         {
             float w0 = a.Float("w", 1180f), h0 = a.Float("h", 760f);
+            // the headless frame clock has its own epoch: the lyrics media clock must anchor its samples in it (a playing track would read a huge negative time)
+            Lyrics.SampleClock.NowQpc = static () => FrameTime.NowQpc;
             if (!MountShell(a, w0, h0, out string error, out bool mounted)) return Inspect.Reply.Fail(id, name, error, mounted ? WriteMountFacts : null);
             return Settled(id, name, a, WriteMountFacts);
         }

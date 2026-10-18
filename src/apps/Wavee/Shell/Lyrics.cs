@@ -1680,6 +1680,10 @@ public static partial class Lyrics
     /// correct whatever epoch the host clock uses, so the two sides of every comparison share one clock.</summary>
     public static class SampleClock
     {
+        /// <summary>The QPC the media clock anchors a host sample to: the real counter. The `--inspect` host (a deterministic frame clock whose present QPC has
+        /// its own epoch) points it at <c>FrameTime.NowQpc</c>, so a playing track's clock reads in the epoch it is queried in.</summary>
+        public static Func<long> NowQpc { get; set; } = static () => System.Diagnostics.Stopwatch.GetTimestamp();
+
         /// <summary>The QPC instant a host-stamped sample was true. A future stamp (a clock that stepped) reads as age 0.</summary>
         public static long SampleQpc(long sampleStampMs, long hostNowMs, long nowQpc, long qpcFrequency)
         {
