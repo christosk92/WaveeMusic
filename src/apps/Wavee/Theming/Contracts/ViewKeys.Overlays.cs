@@ -45,6 +45,10 @@ public static partial class ViewKeys
     /// <c>Shell.FrameRules.OfflineVoice</c> holds. Props: <see cref="OfflineVacancyProps"/>.</summary>
     public static readonly ViewKey<OfflineVacancyProps> OverlayOfflineVacancy = new("Overlay.OfflineVacancy");
 
+    /// <summary>The shared vacancy (contract 1.37): every "there is nothing to show" surface (empty, no match, error), mounted by <c>Controls.Vacancy</c>. A theme registers its
+    /// own picture; the default is the core's look (<c>Controls.VacancyDefault</c>). Props: <see cref="VacancyProps"/>.</summary>
+    public static readonly ViewKey<VacancyProps> StateVacancy = new("State.Vacancy");
+
     /// <summary>The identity tile of a context menu's header (the art: a rounded square, or a circle for an artist). The menu is the engine's.
     /// Props: <see cref="ContextMenuTileProps"/>.</summary>
     public static readonly ViewKey<ContextMenuTileProps> MenuContext = new("Menu.Context");

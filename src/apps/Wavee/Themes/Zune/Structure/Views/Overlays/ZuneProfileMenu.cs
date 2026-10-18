@@ -33,25 +33,9 @@ internal static class ZuneProfileMenu
             Children =
             [
                 AccountHeader(props),
-                MenuFlyout.Create(Words(props.Items), props.Close, width, size: OverlayFit.MenuSize),
+                MenuFlyout.Create(props.Items, props.Close, width, size: OverlayFit.MenuSize),
             ],
         };
-    }
-
-    /// <summary>The board's account menu (Z-Overlays) is words: no icon column, each row lowercase (a sub-menu's rows too).</summary>
-    static IReadOnlyList<MenuFlyoutItem> Words(IReadOnlyList<MenuFlyoutItem> items)
-    {
-        var words = new MenuFlyoutItem[items.Count];
-        for (int i = 0; i < words.Length; i++)
-        {
-            var item = items[i];
-            words[i] = item.IsSeparator ? item : item with
-            {
-                Label = item.Label.ToLower(System.Globalization.CultureInfo.CurrentCulture), Icon = default,
-                SubItems = item.SubItems is { } sub ? Words(sub) : null,
-            };
-        }
-        return words;
     }
 
     /// <summary>A round avatar beside the name over the tier line.</summary>

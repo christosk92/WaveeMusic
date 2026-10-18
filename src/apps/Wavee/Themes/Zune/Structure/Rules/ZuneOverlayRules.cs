@@ -211,6 +211,14 @@ public static class ZuneOverlayRules
     /// <summary>The column sits above the page's centre: 120 of bottom padding lifts it.</summary>
     public const float OfflineVacancyLift = 120f;
 
+    // ── the state vacancy (Z-State-Empty, Z-State-Error and their Compact boards) ───────────────────────────────────
+
+    /// <summary>The vacancy's column (left-aligned, the page's own gutter): the heading's step from the top, the heading to the sentence, the sentence's measure, the step to the actions.</summary>
+    public const float VacancyTop = 40f, VacancyTopCompact = 28f, VacancyCaptionGap = 10f, VacancyCaptionGapCompact = 8f, VacancyCaptionMaxW = 440f;
+
+    /// <summary>The actions: the gap between rings in a row, their step from the sentence, and at Compact the rows' height and the step (a column of 56 rows, 4 apart, 20 under the sentence).</summary>
+    public const float VacancyActionsGap = 22f, VacancyActionsTop = 10f, VacancyRowH = 56f, VacancyRowGap = 4f, VacancyActionsTopCompact = 20f, VacancyRing = 36f, VacancyRingCompact = 40f;
+
     // ── the dialogs ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The bare plate's key, and its command row's.</summary>

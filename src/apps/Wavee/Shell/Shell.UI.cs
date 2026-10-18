@@ -961,8 +961,44 @@ public static partial class Shell
 
     static readonly BoxEl s_pendingPage = new() { Key = "page-pending", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f };
 
+    /// <summary>`--inspect state`: the vacancy kind the page region shows in place of the page ("" = the page). A developer's probe, never set by the app.</summary>
+    static readonly Signal<string> s_inspectState = new("");
+
+    /// <summary>Show <paramref name="kind"/> in the page region (empty, nomatch, error, offline), put the page back (none), or open the pending search (loading). False for another word.</summary>
+    internal static bool SetInspectState(string kind)
+    {
+        switch (kind)
+        {
+            case "none": case "": s_inspectState.Value = ""; return true;
+            case "empty": case "nomatch": case "error": case "offline": s_inspectState.Value = kind; return true;
+            case "loading":
+                s_inspectState.Value = "";
+                GoTo(new Route(RouteKind.Search, default, Intern("zzqx")));
+                return true;
+            default: return false;
+        }
+    }
+
+    /// <summary>The probe's state on the page's gutter (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on).</summary>
+    static Element InspectStateBody(string kind) => Responsive.Of("inspect-state", w => new BoxEl
+    {
+        Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Padding = new Edges4(w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f, w < 640f ? 16f : w < 1008f ? 24f : 48f, 0f),
+        Children = [InspectVacancy(kind)],
+    }, fallback: 1440f, grow: 1f);
+
+    static Element InspectVacancy(string kind) => kind switch
+    {
+        "nomatch" => Controls.Vacancy(Controls.VacancyVoice.NoMatch, title: "Nothing for \"nightcal kavinsky\"", subtitle: "Did you mean nightcall kavinsky? Or try fewer words."),
+        "error" => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: static () => { }),
+        "offline" => Controls.Vacancy(Controls.VacancyVoice.Offline, onAction: static () => { }),
+        _ => Controls.Vacancy(Controls.VacancyVoice.Empty, title: "No albums yet", subtitle: "Save an album with ♡ on its page and it lands here, sorted by artist.",
+                              actionLabel: "New releases", onAction: static () => { }),
+    };
+
     static Element PageBodyNow(Route route)
     {
+        if (s_inspectState.Value is { Length: > 0 } probe) return InspectStateBody(probe);
         var factory = PageFor(route);
         switch (FrameRules.ContentBodyFor(route, factory is not null, FrameFacts.DeveloperNow))
         {

@@ -94,14 +94,14 @@ public static partial class Diagnostics
         public enum Verb : byte
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
-            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, Quit,
+            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Quit,
         }
 
         /// <summary>Every verb's name, in the order `help` lists them.</summary>
         public static readonly string[] VerbNames =
         [
             "help", "status", "mount", "unmount", "goto", "resize", "frames", "settle", "reset",
-            "click", "hover", "key", "type", "scroll", "play", "option", "theme", "find", "dump", "render", "tiers", "lint", "crossing", "trace", "quit",
+            "click", "hover", "key", "type", "scroll", "play", "option", "theme", "find", "dump", "render", "tiers", "lint", "crossing", "trace", "state", "quit",
         ];
 
         public static Verb VerbOf(string word) => word.ToLowerInvariant() switch
@@ -110,7 +110,7 @@ public static partial class Diagnostics
             "goto" or "go" or "navigate" => Verb.GoTo, "resize" => Verb.Resize, "frames" => Verb.Frames, "settle" => Verb.Settle,
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
-            "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace,
+            "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
@@ -135,12 +135,13 @@ public static partial class Diagnostics
             Verb.Render => s_pathPos,
             Verb.Lint => s_rulesPos,
             Verb.Trace => s_tracePos,
+            Verb.State => s_kindPos,
             _ => default,
         };
 
         static readonly string[] s_mountPos = ["w", "h"], s_whPos = ["w", "h"], s_routePos = ["route", "arg"], s_nPos = ["n"],
             s_maxPos = ["max"], s_keyPos = ["key"], s_textPos = ["text"], s_scrollPos = ["key", "dy"], s_playPos = ["uri", "fromMs"],
-            s_optionPos = ["id", "value"], s_idPos = ["id"], s_prefixPos = ["prefix"], s_rootPos = ["root"], s_pathPos = ["path"], s_rulesPos = ["rules"], s_tracePos = ["frames"];
+            s_optionPos = ["id", "value"], s_idPos = ["id"], s_prefixPos = ["prefix"], s_rootPos = ["root"], s_pathPos = ["path"], s_rulesPos = ["rules"], s_tracePos = ["frames"], s_kindPos = ["kind"];
 
         // ── values and args ─────────────────────────────────────────────────────────────────────────────────────────
 

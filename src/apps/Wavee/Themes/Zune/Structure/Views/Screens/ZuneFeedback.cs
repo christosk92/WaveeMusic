@@ -66,7 +66,8 @@ internal static class ZuneFeedback
     {
         string[] labels =
         [
-            Loc.Get(Strings.Report.KindBug), Loc.Get(Strings.Report.KindFeature), Loc.Get(Strings.Report.KindQuestion), Loc.Get(Strings.Report.KindIdea),
+            ZuneText.Word(Loc.Get(Strings.Report.KindBug)), ZuneText.Word(Loc.Get(Strings.Report.KindFeature)), ZuneText.Word(Loc.Get(Strings.Report.KindQuestion)),
+            ZuneText.Word(Loc.Get(Strings.Report.KindIdea)),
         ];
         if (!shape.Layout.Touch)
         {
@@ -188,7 +189,7 @@ internal static class ZuneFeedback
 
             fields.Add(TextBox.Create(title, null, new TextBox.TextBoxOptions
             {
-                Header = labels.Title, Placeholder = Loc.Get(Strings.Report.TitlePlaceholder), Width = column, Height = layout.TextFieldHeight,
+                Header = ZuneText.Word(labels.Title), Placeholder = ZuneText.Word(Loc.Get(Strings.Report.TitlePlaceholder)), Width = column, Height = layout.TextFieldHeight,
             }));
             AddKindFields(fields, kind, form, labels, f1, f2, f3, when, repro, area, layout, column);
             fields.Add(Check(Strings.Report.IncludeLogs(form.LogLineCount), includeLogs, layout.Target));
@@ -312,11 +313,11 @@ internal static class ZuneFeedback
                     Direction = 1, Gap = Spacing.S, Width = width, Shrink = 0f,
                     Children = [ZuneText.Hint(header), CommonTouch.Picker(items, selected, Z.ComboWidth, layout.Target)],
                 }
-                : ComboBox.Create(items, selected, header: header, width: Z.ComboWidth);
+                : ComboBox.Create(items, selected, header: ZuneText.Word(header), width: Z.ComboWidth);
 
         static Element MultiLine(Signal<string> text, string header, float height, float width) => TextBox.Create(text, null, new TextBox.TextBoxOptions
         {
-            Header = header, Width = width, AcceptsReturn = true, Height = height,
+            Header = ZuneText.Word(header), Width = width, AcceptsReturn = true, Height = height,
         });
     }
 }

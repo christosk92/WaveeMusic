@@ -486,6 +486,15 @@ public static partial class Diagnostics
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
                     }
+                case Inspect.Verb.State:
+                    {
+                        // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
+                        // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
+                        string kind = a.Str("kind").ToLowerInvariant();
+                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|loading|none, not '" + kind + "'");
+                        RunFrames(30);
+                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                    }
                 case Inspect.Verb.Find:
                     {
                         string key = a.Str("key"), prefix = a.Str("prefix");
