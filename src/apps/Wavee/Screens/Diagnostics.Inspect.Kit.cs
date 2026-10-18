@@ -103,7 +103,7 @@ public static partial class Diagnostics
 
         /// <summary>Play one track or episode as its own context from <paramref name="fromMs"/> (the headless probe's
         /// single-track recipe: BuildContextQueue, Queue.Replace, Playback.PlayNow). False when the uri does not parse.</summary>
-        public static bool Play(string uri, int fromMs = 0)
+        public static bool Play(string uri, int fromMs = 0, bool video = false)
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
             EntityRef row = Entities.Ref(id);
@@ -111,7 +111,7 @@ public static partial class Diagnostics
             Span<QueueEdge> rows = stackalloc QueueEdge[1];
             int n = Headless.BuildContextQueue(refs, 0, refs, rows);
             Queue.Replace(refs[..n], rows[..n]);
-            Playback.PlayNow(row, id, Queue.CursorOf(0), Playback.PlayableKind.Audio, fromMs);
+            Playback.PlayNow(row, id, Queue.CursorOf(0), video ? Playback.PlayableKind.Video : Playback.PlayableKind.Audio, fromMs);
             return true;
         }
 
