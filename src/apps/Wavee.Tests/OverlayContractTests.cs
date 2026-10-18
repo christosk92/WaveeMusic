@@ -56,6 +56,15 @@ public class OverlayContractTests
     }
 
     [Fact]
+    public void The_shared_vacancy_key_is_Classics_default_and_Zunes_own_picture()
+    {
+        Assert.Equal("State.Vacancy", ViewKeys.StateVacancy.Id);
+        Assert.Equal("classic.state.vacancy", ClassicTheme.Create().Registry.TemplateIdOf(ViewKeys.StateVacancy.Id));
+        Assert.Equal("zune.state.vacancy", Wavee.Themes.Zune.ZuneTheme.Create().Registry.TemplateIdOf(ViewKeys.StateVacancy.Id));
+        Assert.Empty(Wavee.Themes.Zune.ZuneTheme.Create().Validate());
+    }
+
+    [Fact]
     public void A_context_menu_header_has_a_tile_only_when_it_has_art_or_its_own_leading_element()
     {
         Assert.Null(Actions.Menu.Header(null, "Title", "Sub").Leading);

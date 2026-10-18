@@ -219,6 +219,9 @@ public static class ZuneOverlayRules
     /// <summary>The actions: the gap between rings in a row, their step from the sentence, and at Compact the rows' height and the step (a column of 56 rows, 4 apart, 20 under the sentence).</summary>
     public const float VacancyActionsGap = 22f, VacancyActionsTop = 10f, VacancyRowH = 56f, VacancyRowGap = 4f, VacancyActionsTopCompact = 20f, VacancyRing = 36f, VacancyRingCompact = 40f;
 
+    /// <summary>A dialog's commands: the primary's ring (36), a word's height and its trailing air, the disabled opacity.</summary>
+    public const float DialogRing = 36f, DialogWordHeight = 36f, DialogWordPadX = 0f, DialogDisabledOpacity = 0.45f;
+
     // ── the dialogs ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The bare plate's key, and its command row's.</summary>

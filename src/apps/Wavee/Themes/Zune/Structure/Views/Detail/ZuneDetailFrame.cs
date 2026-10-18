@@ -77,7 +77,10 @@ internal static class ZuneDetailFrame
             return Ctx.Provide(Detail.AsideDocked, coreDocked, Root(p, accent, "vertical", verticalRoot));   // the same wrapper as the two-column arm's
         }
 
-        bool dock = p.Aside is not null && lay.AsideW > 0f;
+        // A playlist's aside holds only its recommended songs: the boards (Z-State-Empty-Playlist, Z-Playlist-Owned-Followed) draw them under the table, the docked aside
+        // being Huge's (Z-Playlist-Huge); below it the page folds the aside and the section returns to the list's tail.
+        bool recsOnly = p.Aside is { Kind: DetailKind.Playlist, Body: not null };
+        bool dock = p.Aside is not null && lay.AsideW > 0f && (!recsOnly || lay.Tier >= WidthTier.Huge);
         // The panorama is the content tier's record for every kind (the album's step); a long title wraps and the band hugs it.
         Element band = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec) is { } spec
             ? K.PanoramaBand(spec.Identity, spec.Slots, lay, gutter: 0f)

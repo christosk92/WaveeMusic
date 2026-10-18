@@ -48,6 +48,9 @@ public static class ZuneSearchRules
 
     /// <summary>The shimmer's rows and its seed genres.</summary>
     public const int ShimmerRows = 8, ShimmerGenres = 4;
+
+    /// <summary>The All shimmer's name bar beside the top result's art: its width and its height (the 40/48 and 64/72 voices' lines).</summary>
+    public const float ShimmerNameW = 200f, ShimmerNameH = 48f, ShimmerNameHeroH = 72f, ShimmerHeadH = 35f, ShimmerWordH = 20f;
 }
 
 /// <summary>Where the top result's name stands: in the copy beside the art (Standard, Huge), over the art row (Compact) or under it (Small).</summary>

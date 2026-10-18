@@ -198,13 +198,13 @@ internal static class ZuneContextSheet
                     ? () => onSub(item)
                     : () => { close(); item.Invoke?.Invoke(); };
                 into.Add(Row(default, item.Label, item.AcceleratorText, item.Enabled, trailGlyph.Length > 0 ? trailGlyph : null, click, key: ZuneOverlayRules.SheetRowKeyPrefix + i,
-                    role: AutomationRole.MenuItem));
+                    role: AutomationRole.MenuItem, literal: item.Literal));
             }
         }
 
         /// <summary>A 48-DIP row of words: the label, an accelerator where the menu has one, and a trailing chevron or check. Zune's menus carry no leading icons (the board's rows are
         /// words); the back row keeps its chevron.</summary>
-        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role)
+        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role, bool literal = false)
         {
             ColorF ink = enabled ? Tok.TextPrimary : Tok.TextDisabled;
             var kids = new List<Element>(4);
@@ -213,6 +213,7 @@ internal static class ZuneContextSheet
             kids.Add(R.Type.TrackTitle(label) with
             {
                 Color = ink, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Case = literal ? TextCase.AsWritten : R.Case.For(LabelKind.Command),   // the menu's words are lowercase (Z-Overlays); a name is content
             });
             if (accelerator is { Length: > 0 }) kids.Add(R.Type.DenseMeta(accelerator) with { Color = Tok.TextTertiary, Shrink = 0f });
             if (trail is not null) kids.Add(Icon(trail, ZuneOverlayRules.SheetRowTrail, enabled ? Tok.TextSecondary : Tok.TextDisabled));
