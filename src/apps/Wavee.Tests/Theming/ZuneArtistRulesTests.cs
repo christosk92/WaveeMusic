@@ -95,7 +95,9 @@ public sealed class ZuneArtistRulesTests
         // The window's tier, not the content's: a docked panel narrowing the page leaves the overlay's sizes alone.
         var facts = new TierFacts(WidthTier.Huge, HeightTier.Regular, WidthTier.Small, 800f, 2560f, 1440f, false, 0UL, ZuneTiers.Policy);
         Assert.Same(ZuneArtistTiers.For(WidthTier.Huge), ZuneArtistTiers.OfWindow(in facts));
-        Assert.Same(ZuneArtistTiers.For(WidthTier.Small), ZuneArtistTiers.Of(in facts));
+        // The page's record is the content tier's on the FRAME's gutter (the window tier's, d243c125): the docked panel's content-tier flip never moves
+        // the page's left edge off the band's and the wordmark's.
+        Assert.Equal(ZuneArtistTiers.For(WidthTier.Small) with { Gutter = ZuneTiers.Frame(WidthTier.Huge).Gutter }, ZuneArtistTiers.Of(in facts));
         Assert.Same(ZuneArtistTiers.For(WidthTier.Standard), ZuneArtistTiers.OfWindow(default));
     }
 

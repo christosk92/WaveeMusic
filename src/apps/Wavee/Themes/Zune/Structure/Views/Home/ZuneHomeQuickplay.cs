@@ -79,7 +79,7 @@ internal static class ZuneHomeQuickplay
         bool stacked = lay.QuickStacked;
         return new BoxEl
         {
-            Key = "zune-home-quick-strip", Direction = (byte)(stacked ? 1 : 0), Wrap = !stacked && lay.QuickWrap, ClipToBounds = !stacked && !lay.QuickWrap,
+            Key = "zune-home-quick-strip", Direction = (byte)(stacked ? 1 : 0), Wrap = !stacked,
             Gap = lay.QuickGroupGap, MinWidth = 0f,
             AlignItems = stacked ? FlexAlign.Stretch : FlexAlign.Start, Children = kids.ToArray(),
         };

@@ -246,13 +246,11 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
 
     // ── quickplay ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The quickplay groups stand in one column (Compact) instead of a row that wraps; the gap between them.</summary>
+    /// <summary>The quickplay groups stand in one column (Compact) instead of a row that wraps; the gap between them. The row wraps at EVERY other tier,
+    /// Huge included: Huge's row is 2316 wide with six pins (6 x 180, 4 x 140, 3 x 140, 16 and 48 apart), wider than its column from the Huge edge
+    /// (1920 less two 48 gutters) to 2412, so a one-row strip clipped there cut the history and the new group mid-tile at the owner's 1920 window. A
+    /// group's tiles never wrap (`ZuneHomeQuickplay.Tiles`), so a wrapped group is its own width on the next row, never a full row of big tiles.</summary>
     public bool QuickStacked { get; init; }
-
-    /// <summary>The groups wrap onto a second row where the page is narrower than the row of them (every tier but Huge). Huge keeps ONE row, as
-    /// Z-Frame-Huge draws it (the pins, then the history running on past the page's right edge, clipped there): the owner's window never stacks the
-    /// groups into full rows of big tiles.</summary>
-    public bool QuickWrap { get; init; } = true;
 
     /// <inheritdoc cref="QuickStacked"/>
     public float QuickGroupGap { get; init; } = ZuneHomeRules.QuickGap;
@@ -442,7 +440,7 @@ public static class ZuneHomeTiers
     // Huge's numbers (Z-Frame-Huge, Z-Home-Huge); Huge 4K is the same (the page caps at 2400, decision 2; plan "Home at 4K is built from the Huge rules").
     private static ZuneHomeLayout Huge(WidthTier tier) => Std(tier) with
     {
-        DaylistArtAspect = 2f, DaylistArtMaxW = 640f, ZoneGap = 36f, QuickWrap = false, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
+        DaylistArtAspect = 2f, DaylistArtMaxW = 640f, ZoneGap = 36f, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
         DaylistH = 220f, DaylistArtW = 440f, ClockW = 320f, DaylistTitle = ZuneDaylistTitle.Hero, DaylistPad = 40f, DaylistRings = 3, ClockBarW = 52f,
         ShelfCols = 8, ShelfMinW = 140f, WideCols = 6, ClusterCols = 3, TileCols = 8, TileH = 120f, TileBig = true,
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,
