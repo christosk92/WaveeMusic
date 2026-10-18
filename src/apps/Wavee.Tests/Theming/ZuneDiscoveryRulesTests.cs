@@ -164,6 +164,15 @@ public sealed class ZuneDiscoveryRulesTests
             // The daylist leaves its copy room beside the art, the clock and the play ring.
             if (home.DaylistForm == ZuneDaylistForm.Strip)
                 Assert.True(home.DaylistArtW + home.ClockW + 2f * home.DaylistPad <= inner, $"{tier}: the daylist strip overflows {inner}");
+            else if (home.DaylistBleed)
+            {
+                // The bled strip: the art is the ground, so the copy has the strip's whole width; the countdown keeps room beside the three foot rings.
+                Assert.Equal(0f, home.ClockW);
+                // (at the narrowest window the countdown keeps 80 beside the rings, and wraps there rather than being cut)
+                Assert.True(home.DaylistTailRingsW + ZuneHomeRules.DaylistBleedRowGap + 2f * home.DaylistPad + 80f <= inner,
+                    $"{tier}: the daylist's foot rings leave the countdown under 80 of {inner}");
+                if (tier == WidthTier.Compact) Assert.True(MathF.Max(home.RingSize, home.RingTarget) >= 40f, $"{tier}: the daylist rings are under a 40 target");
+            }
             else
             {
                 Assert.Equal(0f, home.ClockW);
@@ -187,30 +196,35 @@ public sealed class ZuneDiscoveryRulesTests
     public void Compact_stacks_everything_and_small_sets_the_boards_pairs_side_by_side()
     {
         // Compact (Z-Frame-Compact, Z-Home-Compact, Z-Browse-Compact, Z-Search-Compact): one column; four 80 pins, the history as rows, no new group; the
-        // daylist a 112 row with ONE 40 play ring at its end and no clock.
+        // daylist BLED (the owner's i8 option C): the art is the strip's ground and the copy runs its full width over it.
         var c = ZuneHomeTiers.For(WidthTier.Compact);
         Assert.True(c.QuickStacked);
         Assert.True(c.HistoryRows);
         Assert.Equal(4, c.QuickPins);
         Assert.Equal(80f, c.PinTileW);
         Assert.Equal(0, c.QuickFresh);
-        Assert.Equal(ZuneDaylistForm.Row, c.DaylistForm);
-        // Audit B-Home 400x860: four UNLABELLED 36 rings in 40 hit boxes 12 apart, under the daylist title at its full 40/48 step (the Title role, as at
-        // Standard: Zune is a large typeface, so the title is not shrunk to fit) over up to three lines; the strip is a 168 floor that grows with its copy.
-        Assert.Equal(168f, c.DaylistH);
+        Assert.Equal(ZuneDaylistForm.Bleed, c.DaylistForm);
+        Assert.True(c.DaylistBleed);
+        Assert.True(c.DaylistStacked);
+        // i8 option C at 400: four UNLABELLED 36 rings in 40 hit boxes 10 apart (play at the eyebrow row's end, shuffle, save and "…" ending the countdown's
+        // row), the title at its full 40/48 step (the Title role, as at Standard: Zune is a large typeface, so the title is not shrunk to fit) across the
+        // strip's whole width on as many lines as the name needs (no cap, no ellipsis); the strip is a 160 floor that grows with its copy.
+        Assert.Equal(160f, c.DaylistH);
         Assert.True(c.DaylistGrows);
-        Assert.Equal(112f, c.DaylistArtW);
+        Assert.Equal(0f, c.DaylistArtAspect);
+        Assert.True(c.ClockInline);
         Assert.Equal(0f, c.ClockW);
         Assert.False(c.PlayAtEnd);
         Assert.Equal(4, c.DaylistRings);
         Assert.False(c.RingLabels);
         Assert.Equal(36f, c.RingSize);
         Assert.Equal(40f, c.RingTarget);
-        Assert.Equal(16f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
+        Assert.Equal(14f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
         Assert.Equal(ZuneDaylistTitle.Title, c.DaylistTitle);
-        Assert.Equal(3, c.DaylistTitleLines);
-        // The rings fit the copy beside the art at 400 (a narrower window wraps them and the strip grows).
-        Assert.True(4f * c.RingTarget + 3f * c.RingsGap <= 400f - 2f * c.Gutter - c.DaylistArtW - 2f * c.DaylistPad);
+        Assert.Equal(0, c.DaylistTitleLines);
+        // The foot's three rings and the countdown's room share the copy's row at 400.
+        Assert.Equal(3f * 40f + 2f * 10f, c.DaylistTailRingsW);
+        Assert.True(c.DaylistTailRingsW + ZuneHomeRules.DaylistBleedRowGap + 120f <= 400f - 2f * c.Gutter - 2f * c.DaylistPad);
         Assert.False(c.PairBeside);
         Assert.False(c.ChartsBeside);
         Assert.Equal(2, c.ShelfCols);
@@ -288,6 +302,27 @@ public sealed class ZuneDiscoveryRulesTests
     }
 
     [Fact]
+    public void The_bled_daylists_scrim_keeps_the_ink_legible_on_the_worst_art()
+    {
+        // The scrim is the theme's ground over the art, thinnest at its trailing edge. On the worst cover there is (pure white under the dark theme's
+        // ground, pure black under the light theme's) the primary ink still reads at 4.5 : 1 (body text: the eyebrow and the countdown) everywhere,
+        // so the 40/48 title (3 : 1) and the rings' strokes do too.
+        Assert.True(ZuneHomeRules.DaylistScrimLead >= ZuneHomeRules.DaylistScrimTail);
+        foreach (var (ground, worstArt, ink) in new[]
+                 {
+                     (ZuneTokens.DarkGround, ColorF.FromRgba(255, 255, 255), ZuneTokens.DarkInk),
+                     (ZuneTokens.LightGround, ColorF.FromRgba(0, 0, 0), ZuneTokens.LightInk),
+                 })
+        {
+            foreach (float a in new[] { ZuneHomeRules.DaylistScrimLead, ZuneHomeRules.DaylistScrimTail })
+            {
+                var under = ColorF.Lerp(worstArt, ground with { A = 1f }, a);
+                Assert.True(ColorContrast.Ratio(ink, under) >= 4.5f, $"the ink on the scrim at {a} over {worstArt} reads at {ColorContrast.Ratio(ink, under)}");
+            }
+        }
+    }
+
+    [Fact]
     public void The_daylist_title_keeps_its_role_at_every_tier_and_wraps_while_the_strip_grows()
     {
         // Zune is a large typeface (owner directive): the title is never set smaller to fit and never ellipsised on one line while it could wrap. Compact
@@ -299,7 +334,7 @@ public sealed class ZuneDiscoveryRulesTests
         foreach (var tier in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
         {
             var lay = ZuneHomeTiers.For(tier);
-            Assert.True(lay.DaylistTitleLines >= 2, tier + ": the title wraps instead of truncating");
+            Assert.True(lay.DaylistTitleLines == 0 || lay.DaylistTitleLines >= 2, tier + ": the title wraps instead of truncating");
             Assert.True(lay.DaylistGrows, tier + ": the strip grows to hug a wrapped title");
         }
         // Only the one-row form (a window too short for the strip) keeps one line.

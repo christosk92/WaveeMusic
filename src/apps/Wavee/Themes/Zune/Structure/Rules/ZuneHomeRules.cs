@@ -94,6 +94,21 @@ public static class ZuneHomeRules
     /// <summary>The decode size of the daylist art.</summary>
     public const int DaylistArtDecodePx = 640;
 
+    /// <summary>The bled daylist (Compact, i8 option C): the copy's inset from the strip's top and foot, the gap between the eyebrow and the play ring at
+    /// its row's end, and between the countdown and the rings that end its row.</summary>
+    public const float DaylistBleedPadY = 16f, DaylistBleedRowGap = 12f;
+
+    /// <summary>The bled daylist's scrim: the theme's own ground over the art, strongest at the copy's leading edge and thinner toward the play ring
+    /// (the art reads through it, the ink keeps the theme's polarity). The floor is the alpha that keeps the primary ink at 4.5 : 1 on a pure white
+    /// (dark theme) or pure black (light theme) cover, the worst art there is; the 40/48 title needs only 3 : 1.</summary>
+    public const float DaylistScrimLead = 0.78f, DaylistScrimTail = 0.6f;
+
+    /// <summary>The bled daylist's scrim over the art: the ground <paramref name="ground"/> from <see cref="DaylistScrimLead"/> at the leading edge to
+    /// <see cref="DaylistScrimTail"/> at the trailing one.</summary>
+    public static GradientSpec DaylistScrim(ColorF ground) => FluentGpu.Dsl.Ui.GradientRight(
+        new GradientStop(0f, ground with { A = DaylistScrimLead }),
+        new GradientStop(1f, ground with { A = DaylistScrimTail }));
+
     // ── the zones ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Two zones side by side: the gap between them.</summary>
@@ -190,6 +205,11 @@ public enum ZuneDaylistForm : byte
 
     /// <summary>Art | copy | play in ONE 56 row (a window too short for the strip: Z-Shell-Short).</summary>
     OneRow,
+
+    /// <summary>The art is the strip's ground (Compact, the owner's i8 option C): it bleeds the whole strip under a scrim of the theme's ground, and the
+    /// copy runs the full width over it: the eyebrow with the play ring at its row's end, the 40/48 title wrapping (never cut), then the countdown with
+    /// the shuffle, save and "…" rings ending its row. The same tree as the other forms: the strip, the copy and the rings row turn into z-stacks.</summary>
+    Bleed,
 }
 
 /// <summary>Which role the daylist's title is set in.</summary>
@@ -292,12 +312,19 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// one-row form: the clock is a feature, so it moves, it is not dropped.</summary>
     public bool ClockInline => ClockW <= 0f && DaylistForm != ZuneDaylistForm.OneRow;
 
+    /// <summary>The art bleeds under the whole strip (<see cref="ZuneDaylistForm.Bleed"/>).</summary>
+    public bool DaylistBleed => DaylistForm == ZuneDaylistForm.Bleed;
+
+    /// <summary>The bled form's ring row under the title: the shuffle, save and "…" targets and the gaps between them, the countdown's room ending there.</summary>
+    public float DaylistTailRingsW => 3f * MathF.Max(RingSize, RingTarget) + 2f * RingsGap;
+
     /// <summary>The title's role and its lines, the copy's side insets. The title keeps its role's size at every tier (Zune is a large typeface): a long
     /// name WRAPS over up to <see cref="DaylistTitleLines"/> lines and the strip grows to hug it (<see cref="DaylistGrows"/>), never an ellipsis on one line.
     /// Only the one-row form (a window too short for the strip) keeps one line.</summary>
     public ZuneDaylistTitle DaylistTitle { get; init; } = ZuneDaylistTitle.Title;
 
     /// <inheritdoc cref="DaylistTitle"/>
+    /// <remarks>0 = no cap: the name takes the lines it needs (Compact's bled strip, where the title runs the strip's full width).</remarks>
     public int DaylistTitleLines { get; init; } = 2;
 
     /// <inheritdoc cref="DaylistTitle"/>
@@ -424,17 +451,18 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
-        // no new group; the daylist a 168 floor (112 art, the title at the daylist step 40/48 over up to three lines, then four unlabelled 36 rings, each in
-        // a 40 target 12 apart; the strip grows with the title and where the rings wrap). Z-Frame-Compact draws a 112 row with a 22/28 title and one play ring
-        // at the end, but the owner's large-type rule keeps the 40/48 title, and that step does not fit beside a ring at the end without cutting the name,
-        // so the rings stay under it (Z-Home-Compact draws no daylist, so the two boards do not disagree); one column of everything,
-        // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
+        // no new group; the daylist BLED (the owner's i8 option C): Z-Frame-Compact draws a 112 row with a 22/28 title and one play ring at the end, but
+        // the owner's large-type rule keeps the 40/48 title, and that step does not fit beside the art without cutting the name. So the art becomes the
+        // strip's ground (under the theme's ground as a scrim) and the title runs the full width over it, wrapping as far as the name needs; the
+        // eyebrow row ends with the play ring, the countdown row with the shuffle, save and "…" rings (unlabelled 36 discs in 40 targets 10 apart);
+        // a 160 floor that grows with the name. One column of everything, two across for the shelf, the wide tiles and the Browse tiles; the release
+        // rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, DaylistArtAspect = 0.67f, DaylistArtMaxW = 144f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
-            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
+            DaylistForm = ZuneDaylistForm.Bleed, DaylistH = 160f, DaylistArtW = 0f, DaylistArtAspect = 0f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 0,
+            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 10f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
