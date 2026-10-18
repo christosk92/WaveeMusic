@@ -58,6 +58,10 @@ public static class ZuneBandTiers
     /// <summary>The band's type for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ZuneBandType TypeOf(in TierFacts facts) => Type(facts.Policy is null ? WidthTier.Standard : facts.Window);
 
+    /// <summary>The window rests with row 2 folded away: it is Short, below the Regular height rung (Z-Shell-Short: the band starts at row 1 and row 2 returns on a
+    /// scroll up). A view mounted alone (no policy) does not.</summary>
+    public static bool RestsCollapsed(in TierFacts facts) => facts.Policy is not null && facts.Height == HeightTier.Short;
+
     /// <summary>The band may fold row 2 away in <paramref name="facts"/>: its record collapses in this width tier, or the window is Short
     /// (Z-Shell-Short). A view mounted alone (no policy) answers the record's own.</summary>
     public static bool Collapses(ZuneBandLayout band, in TierFacts facts)
