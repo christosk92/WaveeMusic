@@ -115,7 +115,10 @@ internal static partial class ZuneLibraryPage
         {
             OnBounds ??= Measured;
             NavContent ??= _ => NavList(this);
-            NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
+            // An empty navigator says why: a filter that matched nothing, or a library that holds none of this kind yet (no filter typed).
+            NavNoMatch ??= () => EmptyCompact(Props.Filter().Peek().AsSpan().Trim().Length > 0
+                ? Loc.Get(Strings.Library.NoMatch)
+                : Strings.Theme.Zune.Collection.Library.EmptyKind(Props.Title.ToLower(System.Globalization.CultureInfo.CurrentCulture)));
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount.
             NavShimmer ??= () => NavSkeleton(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps);
         }
