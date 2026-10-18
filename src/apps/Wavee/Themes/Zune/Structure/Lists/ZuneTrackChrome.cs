@@ -54,6 +54,7 @@ internal static class ZuneTrackChrome
     public static readonly TrackChromeTemplates Templates = new(Header, CommandKit.For(WidthTier.Standard), FilterCard, Placeholder, GroupHeader)
     {
         UnavailableBar = UnavailableBar,
+        HidesChromeOnEmptyLead = true,   // Z-State-Empty-Playlist: the lead and its finder are the page, no sort, filter or header over nothing
         UnavailableBarExtent = static tiers => ZuneListRules.UnavailableExtent(tiers.Policy is null ? WidthTier.Standard : tiers.Window),
     };
 

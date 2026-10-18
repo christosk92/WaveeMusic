@@ -116,6 +116,9 @@ public readonly partial struct Track
         /// stuck stratum is an unpainted omission and the rows are clipped at its lower edge.</summary>
         Element Chrome(in Shape shape, Element? chips, Element? lens)
         {
+            // An empty list that shows its recommendations lead has nothing to sort, filter or head: a theme that says so draws no chrome over it (one box, so a row of chrome
+            // that comes back with the first song does so as a change of the box's height, not of the tree).
+            if (EmptyLeadHides) return new BoxEl { Key = "chrome", Height = 0f, Shrink = 0f, HitTestVisible = false };
             float padX = RowMetrics.PadXFor(shape.Set.Tier);
             bool vertical = VerticalArm;
             bool toolbar = !vertical && _latest.ShowToolbar;

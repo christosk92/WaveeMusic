@@ -6,6 +6,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
@@ -30,8 +31,13 @@ internal static class ZuneOverlayParts
     /// a lowercase word in the secondary ink that turns to the primary on hover. The dialog keeps the order, the focus ranking and the cancelable close.</summary>
     public static BoxEl DialogCommand(ContentDialogCommandArgs c)
     {
+        // Zune's dismiss word is "not now" (Z-Dialogs): the app's plain Cancel close command reads that way in this theme (Classic keeps Cancel; a close with its own
+        // word, "Not now" already or a verb, is left as the app wrote it).
+        string text = c.Command == ContentDialogCommand.Close && c.Text == FluentGpu.Text.TextCaseMap.Apply(Loc.Get(Strings.Auth.Cancel), R.Case.For(LabelKind.Command))
+            ? FluentGpu.Text.TextCaseMap.Apply(Loc.Get(Strings.Crash.NotNow), R.Case.For(LabelKind.Command))
+            : c.Text;
         if (c.IsDefault)
-            return (BoxEl)ZuneDiscoveryKit.Ring("zdialog:primary", Icons.Forward, c.Text, showLabel: true, primary: true, c.Invoke, ZuneOverlayRules.DialogRing)
+            return (BoxEl)ZuneDiscoveryKit.Ring("zdialog:primary", Icons.Forward, text, showLabel: true, primary: true, c.Invoke, ZuneOverlayRules.DialogRing)
                 with { IsEnabled = c.IsEnabled, Opacity = c.IsEnabled ? 1f : ZuneOverlayRules.DialogDisabledOpacity };
         return new BoxEl
         {
@@ -39,7 +45,7 @@ internal static class ZuneOverlayParts
             MinHeight = ZuneOverlayRules.DialogWordHeight, Padding = new Edges4(0f, 0f, ZuneOverlayRules.DialogWordPadX, 0f), Shrink = 0f,
             Role = AutomationRole.Button, Focusable = c.IsEnabled, IsEnabled = c.IsEnabled, Cursor = c.IsEnabled ? CursorId.Hand : (CursorId?)null,
             OnClick = c.IsEnabled ? c.Invoke : null, Opacity = c.IsEnabled ? 1f : ZuneOverlayRules.DialogDisabledOpacity,
-            Children = [ZuneText.Command(c.Text) with { Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
+            Children = [ZuneText.Command(text) with { Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
         };
     }
 

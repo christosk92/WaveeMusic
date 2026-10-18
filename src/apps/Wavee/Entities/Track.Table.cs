@@ -477,6 +477,9 @@ public readonly partial struct Track
         readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0));
         // The hero arm's list carries the recommendations section after its rows (C-Playlist-Compact, C-Empty-Compact): the slot map reads it.
         readonly Signal<bool> _verticalRecs = new(false);
+        /// <summary>The list is empty and shows its recommendations lead (an owned, empty playlist): a theme that sets <c>HidesChromeOnEmptyLead</c> draws no table chrome over it.</summary>
+        readonly Signal<bool> _emptyLead = new(false);
+        bool EmptyLeadHides => _listStyle?.Chrome.HidesChromeOnEmptyLead == true && _emptyLead.Value;
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -1131,13 +1134,14 @@ public readonly partial struct Track
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
                 _verticalRecs.Value = recsLive;
+                _emptyLead.Value = recsLive && listState == PlaylistRowsState.Empty;
                 _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, recsLive);
-            }, DepKey.From(visible, listTotal, recsLive ? 1 : 0, 0));
+            }, DepKey.From(visible, listTotal, recsLive ? 1 : 0, listState == PlaylistRowsState.Empty ? 1 : 0));
             UseEffect(PublishHeroHeight);
-            var listCount = CountNow(in snap, visible);
+            var listCount = CountNow(in snap, visible) with { EmptyLead = recsLive && listState == PlaylistRowsState.Empty };
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
                       DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
-                                  (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0)));
+                                  (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0) | (listCount.EmptyLead ? 4 : 0)));
             UseEffect(InstallBenchHook, DepKey.Empty);
 
             float rowH = shape.RowH;
@@ -1541,7 +1545,7 @@ public readonly partial struct Track
         Detail.HeroParts HeroPartsFor(Detail.VerticalSpec spec, float colW, float heroH)
         {
             float left = RowMetrics.PadXFor(_shape!.Value.Set.Tier);
-            bool toolbar = _latest.ShowToolbar && spec.Config.Content == DetailContent.Tracks;
+            bool toolbar = _latest.ShowToolbar && spec.Config.Content == DetailContent.Tracks && !EmptyLeadHides;
             // ── INSIGHTS SHEET (additive) ── the frame's own answer to Detail.InsightsSheet.ShowsToggle, threaded down
             //    as the presence of the toggle object: the band does not re-derive it, and the pinned band and the hero
             //    toolbar therefore cannot disagree about whether the sheet has an entry point. The BAND is the one that
