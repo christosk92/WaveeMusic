@@ -523,7 +523,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 29));
         Assert.True(ContractVersion.IsCompatible(1, 30));
         Assert.True(ContractVersion.IsCompatible(1, 31));
-        Assert.False(ContractVersion.IsCompatible(1, 32));
+        Assert.True(ContractVersion.IsCompatible(1, 32));
+        Assert.False(ContractVersion.IsCompatible(1, 33));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

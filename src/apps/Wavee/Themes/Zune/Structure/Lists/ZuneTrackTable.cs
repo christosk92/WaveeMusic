@@ -103,7 +103,7 @@ internal static class ZuneTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(PlaysCell(r), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(r), CellKey.Tempo);
         if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Quiet), CellKey.HeartTrailing);
-        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r, set.HoverActions), CellKey.Duration);
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r, set.HoverActions, set.Quiet), CellKey.Duration);
         // The Compact row's "..." is a 40 target shown on every row (Z-State-Rows-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
             ? Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused, box: ZuneListRules.CompactTarget, atRest: true)
@@ -509,7 +509,7 @@ internal static class ZuneTrackTable
 
     /// <summary>The time, or for a withheld row its short reason at the reason rung with the long reason as its tooltip (a real mount on the
     /// rare withheld flip, so a playable row carries no tooltip host). Z-State-Rows: "unavailable · 45% ink, says why in the time column".</summary>
-    static Element DurationCell(BoundRow r, bool hoverActions)
+    static Element DurationCell(BoundRow r, bool hoverActions, bool quiet)
     {
         Func<bool> withheld = () =>
         {
@@ -528,7 +528,19 @@ internal static class ZuneTrackTable
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f,
             Children =
             [
-                hoverActions ? new BoxEl { Direction = 0, Shrink = 0f, Opacity = 1f, HoverOpacity = 0f, Children = [clock] } : clock,
+                hoverActions
+                    ? new BoxEl
+                    {
+                        Direction = 0, Shrink = 0f, Gap = ZuneListRules.RestHeartGap, AlignItems = FlexAlign.Center, Opacity = 1f, HoverOpacity = 0f,
+                        Children =
+                        [
+                            // A liked track keeps its filled heart at rest, beside the time (Liked Songs rests with none: every row is liked).
+                            Glyph(Icons.HeartFill, ZuneListRules.RestHeartGlyph, Prop.Of(static () => R.Ink.AccentAction),
+                                  quiet ? (Prop<bool>)false : Prop.Of(() => r.P.State.Saved)) with { Shrink = 0f },
+                            clock,
+                        ],
+                    }
+                    : clock,
                 Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix)))),
             ],
         };

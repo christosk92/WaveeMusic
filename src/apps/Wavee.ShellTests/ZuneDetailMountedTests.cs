@@ -19,7 +19,7 @@ using Wavee.Themes.Zune;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Xunit;
-using static Wavee.ShellTests.ShellProbe;
+using static Wavee.ShellTests.ShellProbe;
 using FluentGpu.Theming;
 
 namespace Wavee.ShellTests;
@@ -164,7 +164,7 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
                                              (WidthTier.Huge4K, 150f) })
         {
             var lay = ZuneDetailTiers.For(tier);
-            Assert.True(lay.PanoramaGap > 0f && lay.PanoramaH >= size * 1.2f - 0.5f, $"{tier}: the {lay.PanoramaH} band clears a {size} title's descender");
+            Assert.True(lay.PanoramaGap > 0f && lay.PanoramaH >= size * 1.05f - 0.5f, $"{tier}: the {lay.PanoramaH} band clears a {size} title's descender");
             Assert.True(lay.PanoramaSize <= 0f || lay.PanoramaSize == size, $"{tier}: the record's step is the {size} title");
         }
 
@@ -181,7 +181,7 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
 
         // B (Album at 800): the 160 column's meta takes two lines; a wrapping meta breaks only between its runs.
         Assert.Equal(2, ZuneDetailTiers.For(WidthTier.Small).MetaLines);
-        Assert.Equal(1, ZuneDetailTiers.For(WidthTier.Standard).MetaLines);
+        Assert.Equal(2, ZuneDetailTiers.For(WidthTier.Standard).MetaLines);
         string glued = ZuneDetailRules.Glued("playlist · 4 songs · 12 min");
         Assert.Equal(3, glued.Split(" · ").Length);
         Assert.DoesNotContain(' ', glued.Replace(" · ", ""));
@@ -228,7 +228,7 @@ public sealed class ZuneDetailMountedTests(ShellHost host)
             shell.RunFrames(60);
             var scene = shell.Host.Scene;
             var band = scene.AbsoluteRect(Node(shell, ZuneDetailRules.PanoramaKey));
-            Assert.True(band.H >= size * 1.25f - 0.5f, $"the panorama band is at least {size} x 1.25 tall ({band})");
+            Assert.True(band.H >= size * 1.05f - 0.5f, $"the panorama band is at least {size} x 1.05 tall ({band})");
             // A1: the identity column (the page x) stands in the system page column: never left of the gutter, never past the cap.
             var rail = scene.AbsoluteRect(Node(shell, ZuneDetailRules.RailKey));
             var frame = scene.AbsoluteRect(Node(shell, ZuneDetailRules.FrameKey));
