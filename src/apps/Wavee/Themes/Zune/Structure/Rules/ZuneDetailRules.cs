@@ -175,6 +175,13 @@ public static class ZuneDetailRules
     /// <summary>A Small (or narrower) page keeps its panorama in a short window down to this height (Z-Album-Small, 800 x 600); lower it folds.</summary>
     public const float SmallPanoramaMinH = 480f;
 
+    /// <summary>The content width from which an episode's ring row (the primary, save, played, share and "...") stands on one line beside the primary: 75 + 4 x 40 +
+    /// 4 x 16 inside two 16 gutters, rounded up.</summary>
+    public const float EpisodeRingsOneLineFrom = 364f;
+
+    /// <summary>Does an episode's ring row wrap (a content narrower than <see cref="EpisodeRingsOneLineFrom"/>)?</summary>
+    public static bool EpisodeRingsWrap(in TierFacts facts) => facts.ContentWidth < EpisodeRingsOneLineFrom;
+
     /// <summary>The panorama's opacity (the boards' 0.92: the title sits a breath back from the ink).</summary>
     public const float PanoramaOpacity = 0.92f;
 
