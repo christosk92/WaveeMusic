@@ -178,7 +178,7 @@ public sealed class SwitchResetsStateTests(ShellHost host)
                     Phase = AiLyrics.SetupPhase.Ready, Availability = AiLyrics.Availability.Available, Enabled = true,
                 };
                 shell.RunFrames(10);
-                Settings.Open(Settings.Tab.Appearance);
+                Settings.Open(Settings.Area.Lyrics);
                 Until(shell, () => !shell.Find("ai:ready").IsNull, "the ready AI lyrics card");
                 shell.RunFrames(60);
                 var card = RevealAiCard(shell);
@@ -189,7 +189,7 @@ public sealed class SwitchResetsStateTests(ShellHost host)
 
                 SwitchTo(shell, ClassicAlt.Id);
                 shell.RunFrames(10);
-                Settings.Open(Settings.Tab.Appearance);
+                Settings.Open(Settings.Area.Lyrics);
                 Until(shell, () => !shell.Find("ai:ready").IsNull, "the remounted AI lyrics card");
                 shell.RunFrames(60);
                 RevealAiCard(shell);
