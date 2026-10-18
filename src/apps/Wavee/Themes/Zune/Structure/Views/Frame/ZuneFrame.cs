@@ -159,16 +159,7 @@ internal static class ZuneFrame
         Children =
         [
             // The band (Z2b): it hugs what `Shell.NavPane` draws and never shrinks under the page.
-            new BoxEl
-            {
-                Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-                // The slot eases its own height (a reflow, anchored at the top and clipped at the foot): the band inside changes height at once, and a
-                // slot that merely hugged an animating child snapped to the child's target (the page jumped by the row's 32). The page follows frame by frame.
-                Animate = Design.Reduced ? null : ZuneBandRules.HeightMotion,
-                // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
-                OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
-                Children = [ctx.View(ViewKeys.ShellNavPane, props.NavPane)],
-            },
+            Embed.Comp(new BandSlotProps(ctx.View(ViewKeys.ShellNavPane, props.NavPane), bandH, props.NavPane.Band?.Scroll), static () => new BandSlot()),
             new BoxEl
             {
                 Key = ZuneFrameRules.PageClipKey,
@@ -177,6 +168,36 @@ internal static class ZuneFrame
             },
         ],
     };
+
+    sealed record BandSlotProps(Element Band, Signal<float> BandH, IReadSignal<PageScroll>? Scroll);
+
+    /// <summary>The band's slot: it eases its own height (a reflow, anchored at the top and clipped at the foot). The band inside changes height at
+    /// once; a slot that merely hugged an animating child snapped to the child's target (the page jumped by the row's 32), and the page follows the
+    /// slot frame by frame. When row 2 folds away the slot WAITS for the row's fade-out (<see cref="ZuneBandRules.HeightMotionAfterFade"/>), so the
+    /// clip never cuts it half way; when it comes back the height opens at once (the row enters after it). Only the flip of "has a row 2"
+    /// re-renders this component.</summary>
+    sealed class BandSlot : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<BandSlotProps>();
+            var chrome = UseContext(ZuneFrameContext.PageChrome);
+            var hasRow2 = UseComputed(() => chrome?.Value is { } c && (c.Views.Count > 0 || c.Actions.Count > 0));
+            // The page scrolling down folds row 2 (the band collapses), as the page having none does: both wait for the row's fade-out.
+            var scroll = p.Scroll;
+            var scrolledDown = UseComputed(() => scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
+            bool folding = !hasRow2.Value || scrolledDown.Value;
+            var bandH = p.BandH;
+            return new BoxEl
+            {
+                Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                Animate = Design.Reduced ? null : folding ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
+                // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
+                OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
+                Children = [p.Band],
+            };
+        }
+    }
 
     /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating), painted the panel's ground so the
     /// slide-out never shows a hole.</summary>

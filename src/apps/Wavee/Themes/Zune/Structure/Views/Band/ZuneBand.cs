@@ -228,10 +228,18 @@ internal sealed class ZuneBand : Component
     {
         // The library pivot says "library" (Z-Part-Band), not the core's "Your Library"; the other words are the core's.
         var text = PivotText(R.Type.Pivot(string.Equals(d.Id, LibraryId, StringComparison.Ordinal) ? Loc.Get(Strings.Theme.Zune.Band.Library) : d.Label), type);
+        var bold = text with { Weight = (ushort)R.Type.FacetTitleStyle.SelectedWeight, Color = Tok.TextPrimary };
         text = lit
-            ? text with { Weight = (ushort)R.Type.FacetTitleStyle.SelectedWeight, Color = Tok.TextPrimary }
+            ? bold
             : text with { Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary };
         text = text with { Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f };
+        // The word's width is the SELECTED weight's whether it is lit or not: an unlit word carries its bold twin, unseen, as the width it
+        // keeps, so lighting it never widens the word by 4 DIP and the pivots beside it never shift.
+        Element word = lit ? text : new BoxEl
+        {
+            Direction = 0, ZStack = true, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children = [new BoxEl { Opacity = 0f, HitTestVisible = false, Shrink = 0f, Children = [bold with { Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f }] }, text],
+        };
         var nodes = _pivots;
         string id = d.Id;
         nodes.Add(id);
@@ -245,7 +253,7 @@ internal sealed class ZuneBand : Component
             OnClick = d.Go,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => nodes.Realized(id, h),
-            Children = [text],
+            Children = [word],
         };
     }
 
