@@ -2,7 +2,7 @@
 //
 // Every number and colour below is read off the Zune boards (Z-Tokens first, then the surface that draws it): the ground ladder
 // #161616 / #111111 / #1b1b1b / #242424 and its light twin #f5f5f5 / #ebebeb / #ffffff / #ffffff, the ink #fff / #a8a8a8 / #7a7a7a
-// (light #111 / #5a5a5a / #8a8a8a), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
+// (light #111 / #5a5a5a / #686868, the boards' #8a8a8a darkened to 4.5 : 1), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
 // from 20 DIP up at the light weights (200 panorama, 300 titles and headings, 350 pivots at rest) and Segoe UI Variable Text below,
 // the square corners (0 everywhere, 2 on covers, full on the round metro buttons and the people), and lowercase for every word the
 // theme writes (labels, navigation, headings, commands; never a name or a title someone typed).
@@ -64,8 +64,9 @@ public static class ZuneTokens
     public static ColorF LightInk { get; } = ColorF.FromRgba(0x11, 0x11, 0x11);
     /// <summary>The light secondary ink.</summary>
     public static ColorF LightInkSecondary { get; } = ColorF.FromRgba(0x5A, 0x5A, 0x5A);
-    /// <summary>The light tertiary ink.</summary>
-    public static ColorF LightInkTertiary { get; } = ColorF.FromRgba(0x8A, 0x8A, 0x8A);
+    /// <summary>The light tertiary ink: #686868, not the boards' #8a8a8a (2.9 to 3.2 : 1 on the light ground and well, under the 4.5 : 1 the
+    /// 11 to 13 DIP captions, dates and counts it inks need): 4.7 : 1 on the well, 5.1 : 1 on the ground, still a step lighter than the secondary.</summary>
+    public static ColorF LightInkTertiary { get; } = ColorF.FromRgba(0x68, 0x68, 0x68);
 
     /// <summary>The hover wash: 5 % of the ink (white on dark, black on light; Z-Tokens, Z-Light-Album).</summary>
     public const float HoverA = 0.05f;
