@@ -393,16 +393,17 @@ public static class ZuneHomeTiers
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
-        // no new group; the daylist a 112 row (112 art, the eyebrow and the title, the 40 play ring at the end: Z-Frame-Compact; Z-Home-Compact draws none, so the two
-        // boards do not disagree). The board sets the title at 22/28; Zune never shrinks its type (owner), so it keeps the daylist step 40/48 over up to three lines
-        // and the strip grows past its 112 floor with it; one column of everything,
+        // no new group; the daylist a 168 floor (112 art, the title at the daylist step 40/48 over up to three lines, then four unlabelled 36 rings, each in
+        // a 40 target 12 apart; the strip grows with the title and where the rings wrap). Z-Frame-Compact draws a 112 row with a 22/28 title and one play ring
+        // at the end, but the owner's large-type rule keeps the 40/48 title, and that step does not fit beside a ring at the end without cutting the name,
+        // so the rings stay under it (Z-Home-Compact draws no daylist, so the two boards do not disagree); one column of everything,
         // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
-            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = 40f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = true,
+            DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
+            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
