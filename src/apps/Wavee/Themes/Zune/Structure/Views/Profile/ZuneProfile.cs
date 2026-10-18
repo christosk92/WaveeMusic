@@ -339,7 +339,7 @@ internal static class ZuneProfile
                 kids.Add(Pill("zune-profile-open-account", Loc.Get(Strings.Person.OpenAccount), ProfileVerbs.OpenAccount, edge));
             if (!t.Own && uri.Length > 0)
                 // Keyed on the uri: FollowTextAction carries its uri as a mount-frozen field.
-                kids.Add(Embed.Comp(() => new Controls.FollowTextAction { Uri = uri, Name = name, Height = edge, PadX = Z.PillPadX })
+                kids.Add(Embed.Comp(() => new ZuneArtistHero.FollowPill { Uri = uri, Name = name, Height = edge })
                     with { Key = "zune-profile-follow:" + uri, SkeletonProxy = s_followShape });
             if (t.Own && lay.OwnVerbsInHero)
                 kids.Add(Controls.Named(Ring("zune-profile-share", Icons.Share, acts.Share, edge), Loc.Get(Strings.Menu.Share)));
