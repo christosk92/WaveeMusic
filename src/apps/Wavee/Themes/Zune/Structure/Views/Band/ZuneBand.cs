@@ -80,6 +80,8 @@ internal sealed class ZuneBand : Component
         bool inFrame = frameChrome is not null;
         // Navigation rate: the memo flips only when the page's last direction crosses down / not down.
         var scrolledDown = UseComputed(() => _scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
+        // At rest (the top, no direction yet): a SHORT window starts with row 2 folded away (Z-Shell-Short) and gets it back as the page scrolls up.
+        var atRest = UseComputed(() => _scroll is not { } s || s.Value.Direction == PageScrollDirection.None);
         // The fade tiers' edge fade follows the band's width (A7; at Compact and Small the panel floats, so the band spans the window). A memo
         // in 4-DIP steps: a live resize re-renders the band per step of fade, and never at the tiers that do not fade.
         var viewport = UseContextSignal(Viewport.Size);
@@ -94,7 +96,9 @@ internal sealed class ZuneBand : Component
         var pins = pinsShown ? band.Pins() : s_noPins;
         var overflow = ZuneOptions.Overflow();
         // The record's tiers collapse, and a Short window at any width (Z-Shell-Short, ZT1).
-        bool collapsed = ZuneBandTiers.Collapses(rec, tiers) && ZuneOptions.CollapseBand() && scrolledDown.Value;
+        // A Short window (below the Regular height rung) rests collapsed: row 2 returns on a scroll up, as it does after any scroll down.
+        bool collapsed = ZuneBandTiers.Collapses(rec, tiers) && ZuneOptions.CollapseBand()
+            && (scrolledDown.Value || (ZuneBandTiers.RestsCollapsed(tiers) && atRest.Value));
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;

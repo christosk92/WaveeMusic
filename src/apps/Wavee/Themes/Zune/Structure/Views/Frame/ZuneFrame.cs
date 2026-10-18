@@ -186,7 +186,10 @@ internal static class ZuneFrame
             // The page scrolling down folds row 2 (the band collapses), as the page having none does: both wait for the row's fade-out.
             var scroll = p.Scroll;
             var scrolledDown = UseComputed(() => scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
-            bool folding = !hasRow2.Value || scrolledDown.Value;
+            // A Short window rests with row 2 folded (Z-Shell-Short): its fold waits for the row's fade-out like any other.
+            var atRest = UseComputed(() => scroll is not { } s2 || s2.Value.Direction == PageScrollDirection.None);
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            bool folding = !hasRow2.Value || scrolledDown.Value || (ZuneBandTiers.RestsCollapsed(tiers) && atRest.Value);
             var bandH = p.BandH;
             return new BoxEl
             {

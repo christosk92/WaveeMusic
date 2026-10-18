@@ -394,7 +394,9 @@ public static class ZuneHomeTiers
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
         // no new group; the daylist a 168 floor (112 art, the title at the daylist step 40/48 over up to three lines, then four unlabelled 36 rings, each in
-        // a 40 target 12 apart; the strip grows with the title and where the rings wrap); one column of everything,
+        // a 40 target 12 apart; the strip grows with the title and where the rings wrap). Z-Frame-Compact draws a 112 row with a 22/28 title and one play ring
+        // at the end, but the owner's large-type rule keeps the 40/48 title, and that step does not fit beside a ring at the end without cutting the name,
+        // so the rings stay under it (Z-Home-Compact draws no daylist, so the two boards do not disagree); one column of everything,
         // two across for the shelf, the wide tiles and the Browse tiles; the release rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {

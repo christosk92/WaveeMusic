@@ -61,7 +61,9 @@ public sealed partial class ZuneTierLayoutTests
         {
             shell.RunFrames(20);
             Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryArtists));
-            Until(shell, () => !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
+            // A Short window rests with row 2 folded away (Z-Shell-Short): the part is not there to glide, row 2 enters when the height crosses up.
+            bool startsShort = fromH < ZuneDetailRules.RegularFrom;
+            if (!startsShort) Until(shell, () => !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
             shell.RunFrames(40);
             var before = Tiers;
             bool pillBefore = ZuneFrameRules.TitleBarOf(before).Pill;
@@ -76,7 +78,7 @@ public sealed partial class ZuneTierLayoutTests
             Take(ZuneBandRules.PivotRunKey);
             Take("zune-account-host");
             foreach (var (node, key) in shell.FindPrefix(ZuneBandRules.PivotKeyPrefix)) parts.Add(new FramePart(key, node, scene.Bounds(node)));
-            Assert.True(parts.Count >= 8, "the frame's parts are mounted");
+            Assert.True(parts.Count >= (startsShort ? 7 : 8), "the frame's parts are mounted");
             var search = new List<FramePart>();
             foreach (string key in new[] { "zune-search-pill-host", "zune-search-icon-host", ZuneFrameRules.PillKey })
             {
