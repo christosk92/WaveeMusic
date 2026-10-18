@@ -45,8 +45,11 @@ public readonly partial struct User
                 : Spotify.Podcasts.ReadSavedAsync(ct), new Spotify.Podcasts.Mutation(false, 0), DepKey.From((int)epoch));
 
             string uri = Platform.Args.Fake ? FakeSavedUri : Spotify.Podcasts.SavedPlaylistUri;
-            int slot = uri.Length > 0 && Entities.Current.Playlists.TryGetSlot(EntityId.Parse(uri), out int s)
-                ? s : Table.None;
+            // Fake mode runs no discovery, so nothing else ever asks for the fixture playlist: its row is minted here (the factory allocates an empty row for an unseen uri, which
+            // the effect below then fills), instead of waiting forever on a row nobody creates.
+            int slot = uri.Length == 0 ? Table.None
+                : Platform.Args.Fake ? Entities.Playlist(EntityId.Parse(uri)).Slot
+                : Entities.Current.Playlists.TryGetSlot(EntityId.Parse(uri), out int s) ? s : Table.None;
 
             // Fake mode never runs discovery (ReadSavedAsync short-circuits to 501), so SavedState never reaches
             // Ready there — the fixture playlist's OWN membership edge is what Fake mode has, so a resolved slot is
@@ -57,7 +60,9 @@ public readonly partial struct User
 
             UseEffect(() =>
             {
-                if (slot > Table.None) Entities.EnsureEdge(FetchEdge.PlaylistTracks, slot, 0);
+                if (slot <= Table.None) return;
+                if (Platform.Args.Fake) Entities.Ensure(new Playlist(slot), PlaylistFields.Identity | PlaylistFields.TrackCount);
+                Entities.EnsureEdge(FetchEdge.PlaylistTracks, slot, 0);
             }, DepKey.From(slot, (int)epoch));
 
             return Slots.View(ViewKeys.LibrarySavedEpisodes, new LibrarySavedEpisodesProps

@@ -691,7 +691,6 @@ public readonly partial struct User
             // "memo compares equal" trap the old `:902-904` comment worked around by re-reading View a second time
             // inside NavList — gone now that the mount identity IS part of the published value).
             int view = View.Value, size = Size.Value;
-            if (IsPodcasts && EpisodesFirst && IsGridView(view)) view = view == 2 ? 0 : 1;   // the shows list beside the feed is a list
 
             var source = scope.MeSlot <= Table.None ? default
                        : IsArtists ? ArtistsInto(ref _artistSrc)

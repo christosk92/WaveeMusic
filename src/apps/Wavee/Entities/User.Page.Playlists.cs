@@ -81,7 +81,8 @@ public readonly partial struct User
                 _ => ThemeHost.Metrics.Value.Gutter,
             };
 
-            Collect(model.Rootlist);
+            bool wantMaster = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail;
+            Collect(model.Rootlist, wantMaster ? _find.Value.Trim() : "");
             // The grouped master-detail (the structure asked, and the content is not one column wide): the list column and the playlist pane share the width the flat page caps.
             var content = tiers.Content;
             bool master = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail && content >= WidthTier.Small && _rows.Count > 0;
@@ -120,12 +121,13 @@ public readonly partial struct User
                 Key = LibraryPlaylistsRules.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
                 MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax + 2f * gutter, AlignItems = FlexAlign.Stretch,
                 Padding = new Edges4(gutter, LibraryPlaylistsRules.PageTop, gutter, LibraryPlaylistsRules.PageBottom),
-                Children = [Head(model, master ? Strings.Library.PlaylistsCount(_playlists, _folders) : null), body],
+                Children = [master ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders)) : Head(model, null), body],
             };
         }
 
-        /// <summary>The visible rows: the rootlist tree depth-first, a collapsed folder's children left out; counts for the head.</summary>
-        void Collect(IReadOnlyList<SidebarLibraryEntry>? tree)
+        /// <summary>The visible rows: the rootlist tree depth-first, a collapsed folder's children left out; counts for the head. A filter (the master-detail's find field) lists every
+        /// playlist whose name matches, folders and their collapse set aside.</summary>
+        void Collect(IReadOnlyList<SidebarLibraryEntry>? tree, string filter = "")
         {
             _rows.Clear();
             _playlists = _folders = 0;
@@ -136,6 +138,11 @@ public readonly partial struct User
                 var e = tree[i];
                 if (e.Kind is not (SidebarEntryKind.Playlist or SidebarEntryKind.Folder)) continue;
                 if (e.IsFolder) _folders++; else _playlists++;
+                if (filter.Length > 0)
+                {
+                    if (!e.IsFolder && e.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase)) _rows.Add(e with { Depth = 0 });
+                    continue;
+                }
                 if (skipBelow >= 0)
                 {
                     if (e.Depth > skipBelow) continue;

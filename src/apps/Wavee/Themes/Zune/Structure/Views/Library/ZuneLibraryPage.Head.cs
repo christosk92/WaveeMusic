@@ -34,7 +34,9 @@ internal static partial class ZuneLibraryPage
         Element lead = Lead(p, l);
         Element? find = saved ? null : Find(p, l);
         Element? count = saved ? null : Count(p, l.CountArtists);
-        Element? view = saved || p.Episodes is not null ? null : Embed.Comp(l, () => new ViewWords(p.View(), p.Size())) with { Key = "lib:view" };
+        // (Beside the pinned "your episodes" row the view is the "..." menu alone: grid and list stay reachable without drawing words the board does not.)
+        var viewLayout = p.Episodes is not null ? l with { MenuOnlyView = true } : l;
+        Element? view = saved ? null : Embed.Comp(viewLayout, () => new ViewWords(p.View(), p.Size())) with { Key = "lib:view" };
 
         if (l.Single)
         {

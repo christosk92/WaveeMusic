@@ -67,6 +67,9 @@ public static class ZuneLibraryRules
     /// <summary>The pinned row's label weight (semibold).</summary>
     public const ushort EpisodesLabelWeight = 600;
 
+    /// <summary>The new-episode dot beside a followed show.</summary>
+    public const float NewDot = 6f;
+
     // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
 
     /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>
@@ -324,7 +327,10 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     public bool ShowCount => !OneRow;
 
     /// <summary>The view is the "..." menu alone (the grid and list words, and their label, go).</summary>
-    public bool ViewMenuOnly => OneRow;
+    public bool ViewMenuOnly => OneRow || MenuOnlyView;
+
+    /// <summary>The view is the "..." menu alone beside the podcasts' pinned "your episodes" row (the board draws no view words there; the menu keeps grid and list reachable).</summary>
+    public bool MenuOnlyView { get; init; }
 
     /// <summary>The pane folds its header and verbs into ONE row (title, then the rings) and drops the attribution, the meta line, the "also by" line and the
     /// "open album" word: on the Short rung the full header alone is as tall as the page.</summary>

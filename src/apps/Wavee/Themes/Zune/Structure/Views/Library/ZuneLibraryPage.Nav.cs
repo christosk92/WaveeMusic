@@ -165,6 +165,13 @@ internal static partial class ZuneLibraryPage
         if (!compact) kids.Add(ArtBox(scope, LR.RowArt, circular ? R.Shape.For(ShapeRole.Avatar) : R.Shape.For(ShapeRole.Cover)));
         kids.Add(text);
         if (compact && circular) kids.Add(NavSubtitle(scope, kind) with { Grow = 0f, Shrink = 0f, MinWidth = 0f });
+        // Beside the pinned "your episodes" row a followed show with news carries the accent dot (Z-Library-Podcasts: unplayed, published after the last play).
+        if (kind == EntityKind.Show && hideSelection is not null)
+            kids.Add(new BoxEl
+            {
+                Width = LR.NewDot, Height = LR.NewDot, Shrink = 0f, Corners = Radii.Circle(LR.NewDot), HitTestVisible = false,
+                Fill = Prop.Of(() => User.ShowHasNew(scope.Item.Value.Slot) ? Tok.AccentDefault : ColorF.Transparent),
+            });
         Element content = new BoxEl
         {
             Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
