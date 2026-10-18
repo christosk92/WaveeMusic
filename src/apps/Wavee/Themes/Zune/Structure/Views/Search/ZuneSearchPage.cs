@@ -444,6 +444,11 @@ internal static class ZuneSearchPage
         }
     }
 
+    /// <summary>The shimmer's run: the heading held at the loaded height.</summary>
+    static Element RunHeld(string key, string heading, Element[] words, bool wrap)
+        => K.Section(Head(K.Heading(heading, null, null), S.ShimmerHeadH), new BoxEl { Direction = 0, Wrap = wrap, Gap = S.WordGap, MinWidth = 0f, Children = words })
+            with { Key = key, Shrink = wrap ? 1f : 0f };
+
     /// <summary>A heading over an inline run of words that wraps.</summary>
     static Element Run(string key, string heading, Element[] words, bool wrap)
         => K.Section(K.Heading(heading, null, null), new BoxEl { Direction = 0, Wrap = wrap, Gap = S.WordGap, MinWidth = 0f, Children = words })
@@ -478,6 +483,7 @@ internal static class ZuneSearchPage
     /// <summary>The facet's own shape in bones: seed rows (the row's own geometry), or seed cards for a card facet.</summary>
     static Element Shimmer(SearchFacet facet, ZuneSearchLayout lay)
     {
+        if (facet == SearchFacet.All) return AllShimmer(lay);
         if (Search.ShimmerFor(facet) == Search.ShimmerShape.CardGrid)
         {
             var cards = new Element[S.ShimmerRows];
@@ -488,6 +494,51 @@ internal static class ZuneSearchPage
         var shape = RowShape(lay);
         for (int i = 0; i < rows.Length; i++) rows[i] = Seed(shape);
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch, Children = rows };
+    }
+
+    /// <summary>The All facet in bones, on the loaded page's own nodes and geometry (the same keys, headings, art, rows, shelf and runs), so landing the answer moves nothing:
+    /// the top result's art square and its name bars beside the best matches' seed rows, then the playlist shelf's seed cards, then the genre and related headings over seed words.</summary>
+    /// <summary>A heading at the height the loaded one has (a skeleton draws text as a thinner bar, which would let the page grow when the answer lands).</summary>
+    static Element Head(Element heading, float height) => new BoxEl { MinHeight = height, AlignItems = FlexAlign.Stretch, Direction = 1, Justify = FlexJustify.Center, Children = [heading] };
+
+    static Element AllShimmer(ZuneSearchLayout lay)
+    {
+        bool beside = lay.TopBeside;
+        var art = new BoxEl { Width = lay.HeroArt, Height = lay.HeroArt, Shrink = 0f, Fill = R.Layer.ArtPlaceholder, Corners = R.Shape.All(ShapeRole.Cover) };
+        Element artSeed = art.Skel(art);
+        var bar = new BoxEl { Height = lay.HeroNameHero ? S.ShimmerNameHeroH : S.ShimmerNameH, Width = S.ShimmerNameW, Fill = R.Layer.ArtPlaceholder };
+        Element top = K.Section(Head(K.Heading(Loc.Get(Strings.Search.TopResult), null, null), S.ShimmerHeadH),
+            new BoxEl { Key = "zune-search-top-hero", Direction = (byte)(lay.HeroStacked ? 1 : 0), Gap = S.HeroGap, AlignItems = lay.HeroStacked ? FlexAlign.Start : FlexAlign.End, MinWidth = 0f,
+                Children = [artSeed, bar.Skel(bar)] });
+        var rows = new List<Element>(S.BestMax);
+        var shape = RowShape(lay);
+        for (int i = 0; i < S.BestMax; i++) rows.Add(new BoxEl { Direction = 1, MinWidth = 0f, Children = [Seed(shape)] });
+        Element best = K.Section(Head(K.Heading(Loc.Get(Strings.Search.BestMatches), null, null), S.ShimmerHeadH),
+            new GridEl { Key = "zune-search-grid", MinColWidth = lay.BestMinCol, MaxColumns = lay.BestCols, ColGap = S.BestColGap, Children = rows.ToArray() });
+        var kids = new List<Element>(4)
+        {
+            new BoxEl
+            {
+                Key = "zune-search-top-row", Direction = (byte)(beside ? 0 : 1), Gap = beside ? lay.TopGap : lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Start, Layout = H.ChapterResize,
+                Children =
+                [
+                    new BoxEl { Key = S.TopKey, Direction = 1, MinWidth = 0f, Width = beside ? lay.TopW : float.NaN, Shrink = 0f, AlignSelf = beside ? FlexAlign.Start : FlexAlign.Stretch, Children = [top] },
+                    new BoxEl { Key = S.BestKey, Direction = 1, MinWidth = 0f, Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, AlignSelf = FlexAlign.Stretch, Children = [best] },
+                ],
+            },
+        };
+        var cards = new List<Element>(lay.ShelfCols > 0 ? lay.ShelfCols : 8);
+        for (int i = 0; i < cards.Capacity; i++) cards.Add(Seed(Shape.Shelf(), H.ShelfCardW));
+        kids.Add(K.Section(Head(K.Heading(Loc.Get(Strings.Search.Playlists), null, null), H.ChevronTarget),
+            new BoxEl { Direction = 0, Gap = H.ShelfGap, MinWidth = 0f, MinHeight = s_cardHeight(H.ShelfCardW), ClipToBounds = true, Children = cards.ToArray() }) with { Key = S.RailKey });
+        var seeds = new Element[S.ShimmerGenres];
+        for (int i = 0; i < seeds.Length; i++) seeds[i] = Word("genre-seed:" + i.ToString(CultureInfo.InvariantCulture), Loc.Get(Strings.Search.Genres), cased: false, primary: true, static () => { }, MathF.Max(lay.LinkTarget, S.ShimmerWordH));
+        kids.Add(new BoxEl
+        {
+            Key = "zune-search-runs", Direction = (byte)(lay.RunsBeside ? 0 : 1), Gap = lay.RunsBeside ? S.RunsGap : lay.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
+            Children = [RunHeld(S.GenresKey, Loc.Get(Strings.Search.Genres), seeds, wrap: !lay.RunsBeside)],
+        });
+        return new BoxEl { Direction = 1, Gap = lay.ZoneGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
     static Element Seed(SurfaceShape shape, float width = float.NaN)
