@@ -132,6 +132,17 @@ public static class ZuneStageUpNextRules
     /// <summary>Huge side panel: 64 from the list, its heading 26/32, the sentence 14/21, the switch 15/20.</summary>
     public const float SideGap = 64f, SideHeadingSize = 26f, SideHeadingLine = 32f, SideBodySize = 14f, SideBodyLine = 21f, SideSwitchSize = 15f, SideSwitchLine = 20f;
 
+    /// <summary>Huge's "played before this" (Z-Queue-Page-Huge): its heading 26/32 on a 56 slot, six rows 64 tall at 0.7 (the 52 cover in a 64 column, the title 15, the artists
+    /// and the "4 min ago" word 13, the word right-aligned in a 56 column that wraps to two lines), and 40 above the autoplay heading. The 4K tier scales every number by 1.5.</summary>
+    public const float HistoryHeadH = 56f, HistoryRowH = 64f, HistoryArtCol = 64f, HistoryArt = 52f, HistoryTitleSize = 15f, HistoryTitleLine = 20f, HistoryMetaSize = 13f,
+        HistoryMetaLine = 18f, HistoryWhenW = 56f, HistoryDim = 0.7f, HistorySectionGap = 40f;
+
+    /// <summary>How many history rows the panel draws (the board's six; the props carry up to fifty).</summary>
+    public const int HistoryShown = 6;
+
+    /// <summary>The factor the history section's numbers take at <paramref name="window"/> (the 4K tier's rows are 96 / 64).</summary>
+    public static float HistoryScale(WidthTier window) => window == WidthTier.Huge4K ? 1.5f : 1f;
+
     /// <summary>"Show more": 40 tall, 12/16.</summary>
     public const float MoreRowH = 40f, MoreSize = 12f, MoreLine = 16f, MoreGlyph = 12f;
 

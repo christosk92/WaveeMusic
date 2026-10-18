@@ -172,12 +172,12 @@ key enter
 Turns the mouse wheel at the target: `dy` notches, positive toward the end of the content (3 by default). With `key`,
 the reply carries `scroll {offset, max}` of the first scroll viewport under that node.
 
-### `play {uri, fromMs?, next?}`
+### `play {uri, fromMs?, next?, ago?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
 `Queue.Replace`, then `Playback.PlayNow`. `next=N` (a `spotify:track:tr<k>` uri) adds the N tracks `tr<k+1>`... to the same context, so the
 stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
-track follows its lyrics: render the stage while playing, no pause needed.
+track follows its lyrics: render the stage while playing, no pause needed. `ago=N` backdates the play in the play log by N minutes (the Up next page's "played before this" reads it).
 
 ### `state {kind}` and `dialog {kind}`
 

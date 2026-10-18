@@ -46,11 +46,19 @@ public readonly record struct QueueAutoplay(bool Enabled, int Count, EntityRef P
 public readonly record struct QueueRowProps(ulong ItemId, int Index, EntityRef Ref, QueueSection Section, int Position,
     bool Removable, bool Draggable);
 
+/// <summary>One track played before the current one ("played before this"): the row it plays as, its uri, the context it was played from (empty: a bare
+/// track play) and when it started (unix ms). Appended (contract 1.46).</summary>
+public readonly record struct QueueHistoryRow(EntityRef Ref, string Uri, string Context, long PlayedAtMs);
+
 /// <summary>What a queue surface draws. <see cref="Rows"/> lists the upcoming rows section by section in list order: the
 /// queue, the continuation, then the autoplay rows ONLY while the toggle is on.</summary>
 public sealed record QueueProps(bool Viewer, EntityRef NowPlaying, QueuePlayingFrom? PlayingFrom, QueueCounts Counts,
     QueueAutoplay Autoplay, bool Shuffle, RepeatMode Repeat, QueueRowProps[] Rows)
 {
+    /// <summary>The tracks played before the current one, most recent first (at most <see cref="Shell.QueueModel.HistoryCap"/>; the play log the app already keeps, so a
+    /// sign-out clears it). Filled by the stage's Up next host only; empty on the rail. Appended (contract 1.46).</summary>
+    public QueueHistoryRow[] History { get; init; } = [];
+
     /// <summary>"Next in queue": the rows the user queued.</summary>
     public int NextInQueue => Counts.Queue;
 
@@ -91,6 +99,9 @@ public interface IQueueVerbs
     /// rebuild; a viewed queue forwards it to the owner. <paramref name="index"/> and <paramref name="row"/> are only the
     /// fallback for a row with no item id (0).</summary>
     void Play(ulong itemId, int index = -1, EntityRef row = default);
+
+    /// <summary>Play a "played before this" row again: in the context it was played from when it has one, else on its own. Appended (contract 1.46).</summary>
+    void PlayHistory(QueueHistoryRow row);
 
     /// <summary>Remove an upcoming row. Refused on a viewed queue.</summary>
     void Remove(ulong itemId, int index, EntityRef row);

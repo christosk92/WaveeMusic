@@ -116,6 +116,36 @@ public static partial class Shell
                 new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
         }
 
+        /// <summary>How many "played before this" rows the props carry.</summary>
+        public const int HistoryCap = 50;
+
+        /// <summary>PURE: the tracks played before the current one, most recent first, from the play log (<paramref name="log"/>, newest LAST). The log's own entry for
+        /// the track on the deck (its start, compared as a row) is skipped, a track appears once (its latest play), and a row that is not a track or episode
+        /// (<paramref name="refOf"/> answers none or another kind) is left out. At most <paramref name="cap"/> rows.</summary>
+        public static QueueHistoryRow[] History(IReadOnlyList<PlayEntry> log, EntityRef nowPlaying, Func<string, EntityRef> refOf, int cap = HistoryCap)
+        {
+            if (log.Count == 0 || cap <= 0) return [];
+            var rows = new List<QueueHistoryRow>(Math.Min(cap, log.Count));
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = log.Count - 1; i >= 0 && rows.Count < cap; i--)
+            {
+                PlayEntry e = log[i];
+                string uri = e.Track.Text;
+                if (uri.Length == 0 || !seen.Add(uri)) continue;
+                EntityRef r = refOf(uri);
+                if (rows.Count == 0 && !nowPlaying.IsNone && r == nowPlaying) continue;   // the deck's own start
+                if (r.Kind != EntityKind.Track && r.Kind != EntityKind.Episode) continue;
+                rows.Add(new QueueHistoryRow(r, uri, e.Context.IsValid ? e.Context.Text : "", e.PlayedAtMs));
+            }
+            return rows.ToArray();
+        }
+
+        /// <summary>The live play log as history rows: each uri resolved to its row (the catalog's row for an unseen one).</summary>
+        public static QueueHistoryRow[] ReadHistory(EntityRef nowPlaying)
+        {
+            return History(PlayLog.Entries, nowPlaying, static uri => Entities.Ref(EntityId.Parse(uri.AsSpan())));
+        }
+
         /// <summary>The live queue as props, with the subscriptions of a render.</summary>
         public static QueueProps Read()
         {

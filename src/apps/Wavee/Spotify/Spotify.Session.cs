@@ -313,6 +313,7 @@ public static partial class Spotify
     static void SignOutTeardown()
     {
         if (Connect.Hello is not null) Playback.Post(Playback.Input.Release(Playback.ReleaseCause.Logout));
+        Shell.PlayLog.Clear();          // the listening log (the Up next page's "played before this") is the account's
         if (FluentGpu.FluentApp.WindowHandle != 0) SignOutOsSurfaces();
     }
 

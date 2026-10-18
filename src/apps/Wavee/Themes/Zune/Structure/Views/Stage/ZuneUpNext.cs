@@ -22,6 +22,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.HomeUi;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
@@ -46,6 +47,7 @@ internal sealed class ZuneStageUpNextColumn : Component
     QueueProps _queue = null!;
     QueueStagePaneProps _props = null!;
     float _s = 1f;
+    float _hs = 1f;     // the "played before this" section's tier factor (1.5 at Huge 4K)
     float _target;
     ZuneStageQueueRow _q = ZuneStageUpNextRules.Of(WidthTier.Standard);
 
@@ -67,7 +69,9 @@ internal sealed class ZuneStageUpNextColumn : Component
         _props = props;
         _queue = props.Queue;
         _target = ZuneStageTiers.StageOf(in tiers).TargetH;
-        _q = ZuneStageUpNextRules.Of(tiers.Policy is null ? WidthTier.Standard : tiers.Window);
+        var window = tiers.Policy is null ? WidthTier.Standard : tiers.Window;
+        _q = ZuneStageUpNextRules.Of(window);
+        _hs = UR.HistoryScale(window);
         var set = ctx.Accent.Value;
         var layout = ctx.Layout.Value;
         // the Huge 4K stage's Up next column beside the lyrics stands in its own frame: the board's 1x rows across that frame's width, not the
@@ -158,8 +162,8 @@ internal sealed class ZuneStageUpNextColumn : Component
         };
     }
 
-    /// <summary>Huge's side panel (Z-Queue-Page-Huge): "autoplay when the queue ends", what it does in a sentence, and the switch as a word. ("Played before this" has no
-    /// backing: the player keeps no listening history for the queue to show.)</summary>
+    /// <summary>Huge's side panel (Z-Queue-Page-Huge): "played before this" (the tracks played earlier, newest first, each with when), then "autoplay when the queue
+    /// ends", what it does in a sentence, and the switch as a word.</summary>
     Element SidePanel(QueueStagePaneProps props, AccentSet set)
     {
         bool on = _queue.Autoplay.Enabled;
@@ -169,7 +173,7 @@ internal sealed class ZuneStageUpNextColumn : Component
             new TextEl(Loc.Get(Strings.Theme.Zune.Stage.AutoplayWhenEnds))
             {
                 Size = Px(UR.SideHeadingSize), LineHeight = Px(UR.SideHeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
-                Case = R.Case.For(LabelKind.Heading), Wrap = TextWrap.Wrap,
+                Case = R.Case.For(LabelKind.Heading), Wrap = TextWrap.Wrap, Margin = new Edges4(0f, Px(UR.HistorySectionGap * _hs), 0f, 0f),
             },
         };
         if (name.Length > 0)
@@ -184,8 +188,91 @@ internal sealed class ZuneStageUpNextColumn : Component
             Children = [new TextEl(Loc.Get(on ? Strings.Theme.Zune.Stage.AutoplayIsOn : Strings.Theme.Zune.Stage.AutoplayIsOff))
                 { Size = Px(UR.SideSwitchSize), LineHeight = Px(UR.SideSwitchLine), Color = on ? set.Text : Ink.InkSecondary, HoverColor = Ink.Ink, Case = R.Case.For(LabelKind.Command) }],
         });
-        return new BoxEl { Direction = 1, Width = Px(_q.SidePanelW), Shrink = 0f, Padding = new Edges4(0f, Px(_q.HeaderH), 0f, 0f), Children = kids.ToArray() };
+        var autoplay = new BoxEl { Key = "stage:upnext:autoplay-block", Direction = 1, Layout = LayoutTransition.Slide, Children = kids.ToArray() };
+        return new BoxEl
+        {
+            Direction = 1, Width = Px(_q.SidePanelW), Shrink = 0f, MinHeight = 0f,
+            Children = [HistorySection(props), autoplay],
+        };
     }
+
+    // ── "played before this" ────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The heading on its 56 slot (the main column's heading height, so the two headings share a baseline) and the played-before rows. With nothing played yet
+    /// the section is the heading and one quiet sentence; the autoplay block under it slides when rows arrive instead of jumping.</summary>
+    Element HistorySection(QueueStagePaneProps props)
+    {
+        var rows = _queue.History;
+        int n = Math.Min(rows.Length, UR.HistoryShown);
+        float h = _hs;
+        var kids = new List<Element>(n + 2)
+        {
+            new BoxEl
+            {
+                Key = "stage:upnext:history-head", Direction = 0, AlignItems = FlexAlign.End, Height = Px(UR.HistoryHeadH * h), Shrink = 0f,
+                Padding = new Edges4(0f, 0f, 0f, Px(8f * h)),
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Theme.Zune.Stage.PlayedBeforeThis))
+                    {
+                        Size = Px(UR.SideHeadingSize), LineHeight = Px(UR.SideHeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
+                        Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
+                ],
+            },
+        };
+        if (n == 0)
+            kids.Add(new TextEl(Loc.Get(Strings.Theme.Zune.Stage.PlayedBeforeEmpty))
+                { Size = Px(UR.EmptySize), LineHeight = Px(UR.EmptyLine), Color = Ink.InkTertiary, Wrap = TextWrap.Wrap });
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        for (int i = 0; i < n; i++) kids.Add(HistoryRow(props, rows[i], now, h));
+        return new BoxEl { Key = "stage:upnext:history", Direction = 1, Layout = LayoutTransition.Slide, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>One played-before row (Z-Queue-Page-Huge): the cover in a 64 column, the title over the artists, the "4 min ago" word at the right; dim at rest. A press plays it.</summary>
+    Element HistoryRow(QueueStagePaneProps props, QueueHistoryRow row, long nowMs, float h)
+    {
+        QueueRowText text = props.Lane.TextOf(row.Ref);
+        var verbs = props.Verbs;
+        float art = Px(UR.HistoryArt * h);
+        var title = new TextEl(text.Thin ? "" : text.Title)
+        {
+            Size = Px(UR.HistoryTitleSize * h), LineHeight = Px(UR.HistoryTitleLine * h), Color = Ink.Ink,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        var artists = new TextEl(text.Thin ? "" : text.Artists)
+        {
+            Size = Px(UR.HistoryMetaSize * h), LineHeight = Px(UR.HistoryMetaLine * h), Color = Ink.InkSecondary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Key = "stage:upnext:history:" + row.Uri,
+            Direction = 0, AlignItems = FlexAlign.Center, Height = Px(UR.HistoryRowH * h), Shrink = 0f, MinWidth = 0f,
+            Corners = R.Shape.All(ShapeRole.Control), HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
+            PressScale = R.Motion.ScaleSubtle.Press, Opacity = UR.HistoryDim,
+            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
+            OnClick = () => verbs.PlayHistory(row),
+            Enter = new EnterExit(Dy: UR.RowEnterDy, Opacity: 0f, Active: true),
+            Exit = new EnterExit(Dy: UR.RowExitDy, Opacity: 0f, Active: true),
+            Layout = LayoutTransition.Slide,
+            Children =
+            [
+                new BoxEl { Width = Px(UR.HistoryArtCol * h), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, HitTestVisible = false, Children = [ArtTile(text.Art, art, (int)Px(UR.ArtDecode))] },
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, HitTestVisible = false, Children = [title, artists] },
+                new BoxEl
+                {
+                    Width = Px(UR.HistoryWhenW * h), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                    Children = [new TextEl(When(row.PlayedAtMs, nowMs))
+                        { Size = Px(UR.HistoryMetaSize * h), LineHeight = Px(UR.HistoryMetaLine * h), Color = Ink.InkTertiary, Wrap = TextWrap.Wrap }],
+                },
+            ],
+        };
+    }
+
+    /// <summary>"4 min ago" / "2 h ago" / "yesterday" / a weekday / "23 Sep" for a play that started at <paramref name="playedMs"/> (the Home's own ladder, so the two say it alike).</summary>
+    static string When(long playedMs, long nowMs)
+        => WhenCaption.Of(playedMs, nowMs, playingNow: false, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture);
 
     /// <summary>"Nothing up next": the one sentence under an empty list.</summary>
     Element EmptySentence() => new BoxEl

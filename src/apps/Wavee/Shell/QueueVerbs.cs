@@ -100,6 +100,17 @@ public static partial class Shell
             Playback.PlayNow(Queue.RefAt(cursor), context, cursor);
         }
 
+        public void PlayHistory(QueueHistoryRow row)
+        {
+            if (row.Uri.Length == 0) return;
+            EntityId track = EntityId.Parse(row.Uri.AsSpan());
+            if (!track.IsPlayable) return;
+            // In the context it was played from (an album plays on from that track), else on its own. The queue's user rows stay, like any play.
+            EntityId context = row.Context.Length > 0 ? EntityId.Parse(row.Context.AsSpan()) : default;
+            if (context.IsEmpty || context.IsPlayable) Playback.PlayContext(track);
+            else Playback.PlayContext(context, track);
+        }
+
         public void Remove(ulong itemId, int index, EntityRef row)
         {
             int at = Locate(itemId, index, row);

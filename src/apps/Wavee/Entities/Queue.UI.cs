@@ -214,6 +214,24 @@ public static partial class Queue
         finally { ArrayPool<int>.Shared.Return(tracks); ArrayPool<int>.Shared.Return(episodes); }
     }
 
+    /// <summary>Ask the catalog for the "played before this" rows' identities (their rows are not in the queue, so <see cref="EnsureRows"/> never asked).</summary>
+    static void EnsureHistory(QueueHistoryRow[] rows)
+    {
+        int[] tracks = ArrayPool<int>.Shared.Rent(rows.Length), episodes = ArrayPool<int>.Shared.Rent(rows.Length);
+        try
+        {
+            int nt = 0, ne = 0;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (rows[i].Ref.Kind == EntityKind.Track) tracks[nt++] = rows[i].Ref.Slot;
+                else if (rows[i].Ref.Kind == EntityKind.Episode) episodes[ne++] = rows[i].Ref.Slot;
+            }
+            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability), FetchPriority.Visible);
+            if (ne > 0) Entities.Ensure(Entities.Current.Episodes, episodes.AsSpan(0, ne), (uint)EpisodeFields.Row, FetchPriority.Visible);
+        }
+        finally { ArrayPool<int>.Shared.Return(tracks); ArrayPool<int>.Shared.Return(episodes); }
+    }
+
     static string RowKey(string prefix, ulong itemId, int index) => itemId != 0 ? prefix + "i" + itemId : prefix + "e" + index;
 
     // ══ 2. THE SURFACE BOTH HOSTS SHARE: the reads, the lane, the drop ════════════════════════════════════════════════
@@ -315,6 +333,24 @@ public static partial class Queue
             QueuePlayingFrom? playingFrom = rail ? Shell.QueueModel.PlayingFromOf(ContextId, in Wire) : null;
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : Playback.Snap().Cursor.Index, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
+            if (!rail) Model = Model with { History = ReadHistory() };
+        }
+
+        // "Played before this": the play log's tail, read once per (log version, deck row), and its rows asked of the catalog (the queue's own rows are asked
+        // by EnsureRows; these are other rows).
+        int _historyVersion = -1;
+        EntityRef _historyNow;
+        QueueHistoryRow[] _history = [];
+
+        QueueHistoryRow[] ReadHistory()
+        {
+            int version = Shell.PlayLog.Version.Value;
+            if (version == _historyVersion && _historyNow == Current) return _history;
+            _historyVersion = version;
+            _historyNow = Current;
+            _history = Shell.QueueModel.ReadHistory(Current);
+            if (_history.Length > 0) EnsureHistory(_history);
+            return _history;
         }
 
         /// <summary>Realize this render's slots: the headers, the rows of each section up to its page, and the "Show more" rows.</summary>

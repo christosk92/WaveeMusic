@@ -105,7 +105,7 @@ public static partial class Diagnostics
         /// single-track recipe: BuildContextQueue, Queue.Replace, Playback.PlayNow). False when the uri does not parse.</summary>
         /// <summary><paramref name="next"/> more seeded tracks (the fake catalogue's `tr<k+1>`, `tr<k+2>`, ... after a `spotify:track:tr<k>`) follow it in the
         /// same context, so "up next" has rows; 0 plays the track alone. <paramref name="video"/> plays it as a video.</summary>
-        public static bool Play(string uri, int fromMs = 0, int next = 0, bool video = false)
+        public static bool Play(string uri, int fromMs = 0, int next = 0, bool video = false, int agoMin = 0)
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
             EntityRef row = Entities.Ref(id);
@@ -120,6 +120,8 @@ public static partial class Diagnostics
             int n = Headless.BuildContextQueue(members.ToArray(), 0, refs, rows);
             Queue.Replace(refs[..n], rows[..n]);
             Playback.PlayNow(row, id, Queue.CursorOf(0), video ? Playback.PlayableKind.Video : Playback.PlayableKind.Audio, fromMs);
+            // The harness has no play report, so the play log (the Up next page's "played before this") is fed here; `agoMin` backdates the play.
+            Shell.RecordPlay(id, id, DateTimeOffset.UtcNow.AddMinutes(-agoMin).ToUnixTimeMilliseconds());
             return true;
         }
 
