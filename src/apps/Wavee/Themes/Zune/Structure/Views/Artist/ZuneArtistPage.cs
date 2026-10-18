@@ -180,7 +180,7 @@ internal static class ZuneArtistPage
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
         if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
-        column.Add(Magazine([chartShape], lay));
+        column.Add(Magazine([ZuneArtistSections.PopularSkeleton(chartShape, lay)], lay));
         return new BoxEl { Direction = 1, Children = column.ToArray() };
     }
 }
