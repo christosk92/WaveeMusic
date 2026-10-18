@@ -49,11 +49,28 @@ public sealed class TunedRowsMountedTests(ShellHost host)
     /// <summary>The ROW cells of one lane on the page on screen: the lane's keyed cells that hold content (the header's cell
     /// of the same key is an empty box with no child), under no hidden or transparent ancestor (a kept-alive page — Home's
     /// eager rows, the page before — stays mounted).</summary>
+    /// <para>A hover affordance mounts on the row's first hover or focus (<c>Track.Affordance</c>, the row node diet): until then
+    /// the cell holds its component anchor over an empty placeholder and draws nothing. Such a cell yields
+    /// <see cref="NodeHandle.Null"/> here — an ABSENT affordance — and a mounted one yields the affordance itself (the anchor is
+    /// looked through).</para>
     static List<NodeHandle> RowCells(Shell.HeadlessShell shell, string key)
     {
         var scene = shell.Host.Scene;
         return shell.FindPrefix(key).Where(k => k.Key == key && !scene.FirstChild(k.Node).IsNull && OnScreen(scene, k.Node))
-            .Select(k => scene.FirstChild(k.Node)).ToList();
+            .Select(k => Content(scene, scene.FirstChild(k.Node))).ToList();
+    }
+
+    const ushort ComponentAnchor = 3, ShowBoundary = 7;   // ComponentEl / ShowEl element type ids
+
+    static NodeHandle Content(SceneStore scene, NodeHandle node)
+    {
+        while (!node.IsNull && scene.ElementTypeId(node) == ComponentAnchor)
+        {
+            var child = scene.FirstChild(node);
+            if (child.IsNull || (scene.ElementTypeId(child) == ShowBoundary && scene.FirstChild(child).IsNull)) return NodeHandle.Null;
+            node = child;
+        }
+        return node;
     }
 
     static bool OnScreen(SceneStore scene, NodeHandle cell)
@@ -63,7 +80,13 @@ public sealed class TunedRowsMountedTests(ShellHost host)
         return true;
     }
 
-    static bool Shown(SceneStore scene, NodeHandle node) => (scene.Flags(node) & NodeFlags.Visible) != 0;
+    static bool Shown(SceneStore scene, NodeHandle node) => !node.IsNull && (scene.Flags(node) & NodeFlags.Visible) != 0;
+
+    /// <summary>A hover reveal at rest: not mounted yet, or mounted transparent with a hover opacity of 1.</summary>
+    static bool RestingReveal(SceneStore scene, NodeHandle node)
+        => node.IsNull || (scene.Paint(node).Opacity == 0f && scene.Paint(node).HoverOpacity == 1f);
+
+    static float OpacityOf(SceneStore scene, NodeHandle node) => node.IsNull ? 0f : scene.Paint(node).Opacity;
 
     [Theory]
     [InlineData(0)]
@@ -91,15 +114,10 @@ public sealed class TunedRowsMountedTests(ShellHost host)
             Open(shell, s_waterfall, "the waterfall album's rows");
             var hearts = RowCells(shell, Track.CellKey.Heart);
             Assert.NotEmpty(hearts);
-            Assert.All(hearts, h => Assert.Equal(1f, scene.Paint(h).HoverOpacity));
-            Assert.All(hearts, h => Assert.Equal(0f, scene.Paint(h).Opacity));   // an unliked song: no outline at rest
+            Assert.All(hearts, h => Assert.True(RestingReveal(scene, h)));   // an unliked song: no outline at rest
             var more = RowCells(shell, Track.CellKey.More);
             Assert.NotEmpty(more);
-            Assert.All(more, m =>
-            {
-                Assert.Equal(0f, scene.Paint(m).Opacity);
-                Assert.Equal(1f, scene.Paint(m).HoverOpacity);
-            });
+            Assert.All(more, m => Assert.True(RestingReveal(scene, m)));
 
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
             Until(shell, () => Shell.Shown.Peek().Kind == Shell.RouteKind.Liked && RowCells(shell, Track.CellKey.HeartTrailing).Count > 0,
@@ -109,8 +127,8 @@ public sealed class TunedRowsMountedTests(ShellHost host)
             // (or focused) row shows it; there is no leading heart lane.
             var liked = RowCells(shell, Track.CellKey.HeartTrailing);
             Assert.NotEmpty(liked);
-            Assert.All(liked, h => Assert.Equal(1f, scene.Paint(h).HoverOpacity));
-            Assert.True(liked.Count(h => scene.Paint(h).Opacity > 0f) <= 1, "at rest no heart shows (a focused row may)");
+            Assert.All(liked, h => Assert.True(h.IsNull || scene.Paint(h).HoverOpacity == 1f));
+            Assert.True(liked.Count(h => OpacityOf(scene, h) > 0f) <= 1, "at rest no heart shows (a focused row may)");
             Assert.Empty(RowCells(shell, Track.CellKey.Heart));
         }), widthDip: 1600f, heightDip: 900f);
 
@@ -136,8 +154,8 @@ public sealed class TunedRowsMountedTests(ShellHost host)
             shell.RunFrames(30);
 
             // al14's rows are unliked: only the focused row offers its outline heart and its "…" at rest.
-            Assert.Single(RowCells(shell, Track.CellKey.Heart), h => scene.Paint(h).Opacity == 1f);
-            Assert.Single(RowCells(shell, Track.CellKey.More), m => scene.Paint(m).Opacity == 1f);
+            Assert.Single(RowCells(shell, Track.CellKey.Heart), h => OpacityOf(scene, h) == 1f);
+            Assert.Single(RowCells(shell, Track.CellKey.More), m => OpacityOf(scene, m) == 1f);
         }), widthDip: 1600f, heightDip: 900f);
 
     [Theory]
