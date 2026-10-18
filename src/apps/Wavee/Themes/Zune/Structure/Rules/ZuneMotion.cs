@@ -53,6 +53,22 @@ public static class ZuneMotion
     public static readonly LayoutTransition ColumnCollapse = new(
         TransitionChannels.Position | TransitionChannels.Size, TransitionDynamics.Tween(ColumnCollapseMs, Easing.SmoothOut), SizeMode.Reveal);
 
+    /// <summary>A block whose HEIGHT a crossing (or a docked panel that narrows the content tier) changes while the content below it must not jump:
+    /// a hero, the air above or below its copy, the body's top. The height eases through real layout (a size channel: the engine's reflow-shove
+    /// rule snaps a position slide that commits beside a live reflow, and the panel's dock IS one), so the copy parked by a spring rides the
+    /// block's foot and everything after it rides the re-solve. Padding cannot ease, so such air is a spacer carrying this.</summary>
+    public static readonly LayoutTransition HeightResize = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>The slot of a panorama title whose size step changes inside a <see cref="HeightResize"/> block: its height eases with the content
+    /// riding its FOOT (the trailing anchor), so the title's baseline never leaves the copy under it while the glyphs scale (<see cref="TitleScale"/>
+    /// on the hugging title inside, from its bottom-left: <see cref="TitleOriginX"/>, <see cref="TitleOriginY"/>).</summary>
+    public static readonly LayoutTransition TitleSlot = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Height);
+
+    /// <summary>The panorama title's scale origin inside its <see cref="TitleSlot"/>: its left edge and its foot.</summary>
+    public const float TitleOriginX = 0f, TitleOriginY = 1f;
+
     /// <summary>The grid cross-fade's duration (the shared tier swap's ~160 ms).</summary>
     public const float GridCrossFadeMs = 160f;
 

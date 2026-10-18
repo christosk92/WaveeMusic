@@ -194,13 +194,14 @@ public static class ZuneArtistRules
 
     /// <summary>The page's column (`zune-artist-page:<route>`), its scroller, the body child, the hero, its name, its caption, its actions, the
     /// popular band, the rail, a section holder (`zune-artist-sec:<key>`), an anchor holder (`zune-artist-anchor:<key>`), a facet heading, the
-    /// discography link.</summary>
+    /// discography link, and the easing air (`zune-artist-air:top` / `:foot` in the hero, `:body` over the magazine).</summary>
     public const string PagePrefix = "zune-artist-page:", ScrollPrefix = "zune-artist-scroll:", BodyPrefix = "zune-artist-body:",
         HeroKey = "zune-artist-hero", NameKey = "zune-artist-name", EyebrowKey = "zune-artist-eyebrow", CaptionKey = "zune-artist-caption",
         ActionsKey = "zune-artist-actions", PopularKey = "zune-artist-popular", RailKey = "zune-artist-rail",
         SectionPrefix = "zune-artist-sec:", AnchorPrefix = "zune-artist-anchor:", FacetHeadPrefix = "zune-artist-facet-head:",
         DiscographyLinkPrefix = "zune-artist-disco-link:", AboutKey = "zune-artist-about", WashKey = "zune-artist-wash:",
-        LightboxKey = "zune-artist-lightbox", DiscoPageKey = "zune-discography-page", DiscoHeadKey = "zune-discography-head";
+        LightboxKey = "zune-artist-lightbox", DiscoPageKey = "zune-discography-page", DiscoHeadKey = "zune-discography-head",
+        AirPrefix = "zune-artist-air:";
 
     // ── the hero ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
