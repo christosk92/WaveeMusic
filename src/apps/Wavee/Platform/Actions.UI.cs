@@ -291,7 +291,7 @@ public static partial class Actions
             for (int i = 0; i < inline; i++)
             {
                 var target = ordered[i];   // fresh capture per row — each deposits into its OWN playlist
-                items.Add(new MenuFlyoutItem(target.Name, default, canAdd, () => deposit(target)));
+                items.Add(new MenuFlyoutItem(target.Name, default, canAdd, () => deposit(target)) { Literal = true });
             }
             items.Add(Separator);
             items.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.MorePlaylists), default,
@@ -374,7 +374,7 @@ public static partial class Actions
             for (int i = 0; i < artists.Count; i++)
             {
                 var route = artists[i].Route;
-                items[i] = new MenuFlyoutItem(artists[i].Name, default, go is not null, () => go?.Invoke(route));
+                items[i] = new MenuFlyoutItem(artists[i].Name, default, go is not null, () => go?.Invoke(route)) { Literal = true };
             }
             return SubMenu(Loc.Get(Strings.Menu.GoToArtists), items, ActionIcons.Artist);
         }

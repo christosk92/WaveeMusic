@@ -747,7 +747,7 @@ public readonly partial struct Track
                 for (int i = 0; i < slots.Length; i++)
                 {
                     var artist = new Artist(slots[i]);   // fresh per row: each navigates to its OWN artist
-                    items[i] = new MenuFlyoutItem(artist.Name, default, artist.Uri.IsValid, () => GoToArtist(artist));
+                    items[i] = new MenuFlyoutItem(artist.Name, default, artist.Uri.IsValid, () => GoToArtist(artist)) { Literal = true };
                 }
                 var opened = svc.Open(
                     () => anchor.Value,

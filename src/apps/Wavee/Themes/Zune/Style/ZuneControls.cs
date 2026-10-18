@@ -201,7 +201,7 @@ public static class ZuneControls
         ItemPadding = new Edges4(16f, 8f, 16f, 9f),
         ItemRadius = 0f,
         ItemHoverFill = Ink(ZuneTokens.HoverA), ItemPressedFill = Ink(ZuneTokens.PressedA),
-        LabelSize = 14f,
+        LabelSize = 14f, ShowIcons = false, LabelCase = TextCase.Lower,   // Z-Overlays: a menu is lowercase words (a name, `MenuFlyoutItem.Literal`, keeps its case)
         SeparatorColor = Tok.StrokeDividerDefault, SeparatorThickness = 1f,
         SeparatorMargin = new Edges4(16f, 5f, 16f, 5f),
     };
