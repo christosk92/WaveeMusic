@@ -304,8 +304,9 @@ internal sealed class ZuneBand : Component
         return new BoxEl
         {
             Key = ZuneBandRules.PinsKey, Direction = 0, AlignItems = FlexAlign.Start, Gap = ZuneBandRules.PinGap, Shrink = 0f,
-            // The pins come and go with the tier (Standard and Huge show them): they fade, never pop.
-            Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+            // The pins come and go with the tier (Standard and Huge show them): they fade and open their width (a reflow), so the pivot run beside
+            // them glides to its new width instead of snapping.
+            Animate = Design.Reduced ? null : ZuneBandRules.PinsMotion, ClipToBounds = true,
             Children = kids,
         };
     }
