@@ -83,6 +83,8 @@ public static partial class Entities
         [
             "The Build Trap", "Latency, Honestly", "On Craft", "Tape Loops", "The Quiet Release", "Edge Cases",
             "First Principles", "After Hours", "The Long Game", "Cold Start", "Postmortem", "Signal Lost",
+            // More than the longest show's fourteen, so no title repeats within one show.
+            "Dead Reckoning", "The Slow Fix", "Small Hours", "Loose Ends", "Feedback Loops", "What We Kept",
         ];
 
         /// <summary>The track drawer's four fixtures, as (album, row).</summary>

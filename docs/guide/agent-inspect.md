@@ -88,7 +88,7 @@ Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced
 | `keepRoute=true` | Keeps the current navigation. Without it, the mount starts from a fresh Home. |
 | `setup=true` or `signin` | Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). `signin` asks for the sign-in page; today the plate still opens on its first page, so click `next` to reach it. |
 | `feedback=bug` or `feature` | Opens the report form over the page. |
-| `video=fullscreen`, `docked` or `floating` | Puts the video surface up with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome shows on pointer activity). |
+| `video=fullscreen`, `docked` or `floating` | Puts the video surface up with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome is a hover band: add `chrome=shown` to draw it at rest at every tier). |
 
 The navigation args are the ones `goto` takes.
 

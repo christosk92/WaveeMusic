@@ -76,8 +76,34 @@ internal static partial class ZuneReleaseNotes
                 with { Size = R.Type.TrackMeta("").Size, LineHeight = R.Type.TrackMeta("").LineHeight, MaxLines = compact ? K.CardBodyLinesCompact : K.CardBodyLines, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis, Color = Tok.TextSecondary },
         };
         // "read more" on every non-store card, overflowing or not: a short card gives no other cue that a click opens anything. A video highlight says so.
-        if (!store)
-            body.Add(R.Type.DenseMeta(Loc.Get(Strings.WhatsNew.ReadMore) + (IsVideo(h) ? "  ▶" : "")) with { Color = R.Ink.AccentAction, MaxLines = 1 });
+        // The action word is the board's "try it →" where the note carries an action (a deep link into the app); a note with none has no action word (the card still opens the viewer).
+        if (!store && h.DeepLink is { Length: > 0 })
+            body.Add(R.Type.DenseMeta(Loc.Get(Strings.WhatsNew.TryIt) + (IsVideo(h) ? "  ▶" : "")) with { Color = R.Ink.AccentAction, MaxLines = 1 });
+        else if (!store && IsVideo(h))
+            body.Add(R.Type.DenseMeta("▶") with { Color = R.Ink.AccentAction, MaxLines = 1 });
+
+        // One column wide (Z-ReleaseNotes-Compact): the card is a ROW, the swatch, the title over its words, and the round "→" at the end where the note has an action.
+        if (layout.HighlightColumns <= 1 && !store && !compact)
+        {
+            bool action = h.DeepLink is { Length: > 0 };
+            var words = new List<Element>(2)
+            {
+                R.Type.TrackTitle(h.Title) with { Wrap = TextWrap.Wrap, MaxLines = K.CardTitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                RichTextBlock.Paragraph(ToSpans(MarkdownLite.Tokenize(h.Body), IgnoreLink), isTextSelectionEnabled: false)
+                    with { Size = R.Type.TrackMeta("").Size, LineHeight = R.Type.TrackMeta("").LineHeight, MaxLines = K.CardBodyLines, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis, Color = Tok.TextSecondary },
+            };
+            var row = new List<Element>(3)
+            {
+                new BoxEl { Direction = 1, Shrink = 0f, Children = [Media(item.Poster, store)] },
+                new BoxEl { Direction = 1, Gap = Spacing.XS, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = words.ToArray() },
+            };
+            if (action) row.Add(ZuneDiscoveryKit.Ring("zrn:card:go:" + h.Id, Icons.Forward, Loc.Get(Strings.WhatsNew.TryIt), showLabel: false, primary: false, open));
+            return new BoxEl
+            {
+                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = MathF.Max(K.CardMinHeight, layout.Target), AlignSelf = FlexAlign.Stretch,
+                Padding = Edges4.All(K.CardPad), Fill = R.Layer.FloatingPane, Grow = 1f,
+            }.Interactive(Interaction.Subtle) with { Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open, Children = row.ToArray() };
+        }
 
         var panel = new BoxEl
         {
