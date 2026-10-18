@@ -397,7 +397,8 @@ public static partial class ZuneStageGeometry
     /// the Up next column). Null elsewhere (Portrait, Compact's identity card, every other mode): the allocator's rects stand.</summary>
     public static LyricsSideRects? LyricsSide(in Stage.Layout layout, in Stage.Look look, ZuneStageLayout tier)
     {
-        if (look.Mode != Stage.Mode.Lyrics || look.IsLayout || tier.LyricsSide is not { } s) return null;
+        if (look.IsLayout || (look.Mode == Stage.Mode.Lyrics ? tier.LyricsSide : look.Mode == Stage.Mode.Queue ? tier.QueueSide : null) is not { } s) return null;
+        bool queue = look.Mode == Stage.Mode.Queue;
         if (layout.Aspect is not (Stage.Aspect.Desktop or Stage.Aspect.Ultrawide)) return null;
         float head = tier.HeadH, foot = layout.TransportTop;
         float room = MathF.Max(0f, foot - head);
@@ -406,11 +407,12 @@ public static partial class ZuneStageGeometry
         var cover = new ZuneRect(x, y, s.Cover, s.Cover);
         float ty = y + s.Cover + s.ColGap;
         var titles = new ZuneRect(x, ty, s.Cover, MathF.Max(0f, s.ColumnH - s.Cover - s.ColGap));
-        float lead = LyricsLead(in layout);
+        float lead = queue ? 0f : LyricsLead(in layout);
         float left = x + s.Cover + s.Gap;
         float right = layout.W - tier.Gutter;
-        if (layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
+        if (!queue && layout.UpNextShown(look.Mode)) right = MathF.Min(right, UpNextPaneX(in layout, tier) - tier.UpNextGap);
         float nx = left - lead;
-        return new LyricsSideRects(cover, titles, new ZuneRect(nx, head, MathF.Max(0f, right - nx), room));
+        float paneTop = queue ? head + s.PadTop : head;
+        return new LyricsSideRects(cover, titles, new ZuneRect(nx, paneTop, MathF.Max(0f, right - nx), MathF.Max(0f, foot - paneTop)));
     }
 }

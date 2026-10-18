@@ -40,7 +40,7 @@ internal static class ZuneStagePane
         // and stops short of the Up next column (`ZuneStageGeometry.PlatePane`)
         var tier = ZuneStageTiers.StageOf(in tiers);
         var pane = a.Form == ZuneStageForm.Column ? a.Pane
-            : G.LyricsSide(in L, in k, tier) is { } side && sc.Pane.Value == Stage.PaneKind.Lyrics ? side.Pane
+            : G.LyricsSide(in L, in k, tier) is { } side && sc.Pane.Value is Stage.PaneKind.Lyrics or Stage.PaneKind.Queue ? side.Pane
             : G.PlatePane(in L, in k, tier, sc.Pane.Value);
         var (x, y, w, h) = (pane.X, pane.Y, pane.W, pane.H);
         return new BoxEl

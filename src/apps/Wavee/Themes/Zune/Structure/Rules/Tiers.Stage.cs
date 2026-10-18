@@ -135,6 +135,11 @@ public static class ZuneStageTiers
     static readonly ZuneStageLyricsSide s_lyricsSideStandard = new(Cover: 300f, Gap: 80f, PadTop: 144f, Centered: false, ColGap: 14f, TitleTop: 0f,
         TitleSize: 26f, TitleLine: 32f, ArtistSize: 15f, ArtistLine: 20f, ArtistDisplay: false, TagSize: 12f, TagLine: 16f, TagTop: 0f);
 
+    /// <summary>Z-Queue-Page: the 400 cover from the 24 under the head, the 40/48 title, the 20 accent artist line, the pane 64 to its right (no tag line: the
+    /// plate says where it plays from).</summary>
+    static readonly ZuneStageLyricsSide s_queueSideStandard = new(Cover: 400f, Gap: 64f, PadTop: 24f, Centered: false, ColGap: 16f, TitleTop: 0f,
+        TitleSize: 40f, TitleLine: 48f, ArtistSize: 20f, ArtistLine: 28f, ArtistDisplay: false, TagSize: 0f, TagLine: 0f, TagTop: 0f);
+
     static readonly ZuneStageLyricsSide s_lyricsSideSmall = new(180f, 40f, 0f, true, 8f, 0f, 22f, 28f, 14f, 20f, false, 11f, 14f, 0f);
 
     static readonly ZuneStageLyricsSide s_lyricsSideHuge = new(440f, 96f, 40f, false, 8f, 18f, 40f, 48f, 22f, 28f, true, 13f, 18f, 8f);
@@ -183,7 +188,7 @@ public static class ZuneStageTiers
             WordSize = 13f, WordLine = 18f, Plate = ZunePlateKind.Full, SeekRowH = 36f, PlateRowH = 76f, PlateFootH = 0f,
             GlyphBox = 36f, Glyph = 18f, PlayGlyph = 22f, Disc = 56f, VolumeW = 128f, ClusterGap = 24f, RightGap = 8f, SourceSize = 13f, SourceLine = 18f,
             DeviceH = 36f, Card = s_cardStandard, Column = s_columnStandard, Centered = s_centeredStandard, Stack = null,
-            LyricsSide = s_lyricsSideStandard, LyricsRhythm = s_rhythmStandard,
+            LyricsSide = s_lyricsSideStandard, QueueSide = s_queueSideStandard, LyricsRhythm = s_rhythmStandard,
         },
         // Huge (Z-NowPlaying-Huge, Z-Lyrics-Huge, Z-Queue-Page-Huge)
         new()
@@ -343,6 +348,9 @@ public sealed record ZuneStageLayout
     /// null: the allocator's identity (Compact's card).</summary>
     public ZuneStageLyricsSide? LyricsSide { get; init; }
 
+    /// <summary>Queue mode's identity column at this tier (Z-Queue-Page); null: the allocator's identity.</summary>
+    public ZuneStageLyricsSide? QueueSide { get; init; }
+
     /// <summary>The stage's lyric lines' rhythm at this tier (line height, gap, the sung line's growth, the light display voice).</summary>
     public ZuneStageLyricsRhythm? LyricsRhythm { get; init; }
 
@@ -401,7 +409,7 @@ public sealed record ZuneStageLyricsSide(float Cover, float Gap, float PadTop, b
     float ArtistSize, float ArtistLine, bool ArtistDisplay, float TagSize, float TagLine, float TagTop)
 {
     /// <summary>The column's height: the cover, the title (with its extra top), the artist line and the tag line, a gap between each.</summary>
-    public float ColumnH => Cover + ColGap + TitleTop + TitleLine + ColGap + ArtistLine + ColGap + TagTop + TagLine;
+    public float ColumnH => Cover + ColGap + TitleTop + TitleLine + ColGap + ArtistLine + (TagLine > 0f ? ColGap + TagTop + TagLine : 0f);
 }
 
 /// <summary>The stage's lyric lines at one window tier. Every row is LAID OUT at the sung line's size (the type the core hands, times

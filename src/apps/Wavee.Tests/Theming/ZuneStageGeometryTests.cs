@@ -460,8 +460,8 @@ public sealed class ZuneStageGeometryTests
         Assert.Equal(24f, m.Cover.X);
         Assert.Equal(36f, sl.LyricsTypeSize);
 
-        // another mode, and Compact's identity card, keep the allocator's rects
-        Assert.Null(ZuneStageGeometry.LyricsSide(in std, Stage.Look.Plain(M.Queue), Standard));
+        // the Artist mode, and Compact's identity card, keep the allocator's rects
+        Assert.Null(ZuneStageGeometry.LyricsSide(in std, Stage.Look.Plain(M.Artist), Standard));
         Assert.Null(ZuneStageGeometry.LyricsSide(SeedAt(400f, 860f, ZuneStageTiers.CompactMetrics), in look, ZuneStageTiers.Stage(WidthTier.Compact)));
     }
 }
