@@ -77,11 +77,6 @@ internal static partial class ZuneLibraryPage
                         {
                             Size = LR.BoardHeadSize, LineHeight = LR.BoardHeadLine, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Case = R.Case.For(LabelKind.Label),
                         },
-                        R.Type.DenseMeta("") with
-                        {
-                            Text = Prop.Of(() => e.Count.Current() is var n && n > 0 ? Strings.Podcast.EpisodeCount(n) : ""), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-                            Case = R.Case.For(LabelKind.Label),
-                        },
                     ],
                 },
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [p.SavedEpisodes()] },

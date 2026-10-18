@@ -158,9 +158,26 @@ public sealed record LibrarySavedEpisodesProps
     /// <summary>The failed arm (the quiet failure line with its Retry).</summary>
     public required Func<Element> OnFailed { get; init; }
 
+    /// <summary>The listen-later episodes as plain rows (a reactive read), for a structure that draws its own feed instead of <see cref="Content"/>'s table (null: only the table). Contract
+    /// addition after 1.38.</summary>
+    public Func<LibraryEpisodesFeed>? Feed { get; init; }
+
+    /// <summary>Play (or toggle) the episode with this uri; open its page. Null with no <see cref="Feed"/>.</summary>
+    public Action<string>? PlayEpisode { get; init; }
+
+    /// <inheritdoc cref="PlayEpisode"/>
+    public Action<string, string>? OpenEpisode { get; init; }
+
     /// <inheritdoc />
     public bool Equals(LibrarySavedEpisodesProps? other) => ReferenceEquals(this, other);
 
     /// <inheritdoc />
     public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
+
+/// <summary>The listen-later episodes, newest published first, and their total length.</summary>
+public sealed record LibraryEpisodesFeed(IReadOnlyList<LibraryEpisodeRow> Rows, long TotalMs);
+
+/// <summary>One saved episode: its uri, title, show, cover url ("" for none), the length and left-to-go words (empty when unknown), where it stands (<see cref="Status"/>: 0 unplayed, 1 in
+/// progress, 2 played), whether it is the playing one, and the date bucket of its release (<see cref="Bucket"/>: 0 today, 1 this week, 2 earlier).</summary>
+public readonly record struct LibraryEpisodeRow(string Uri, string Title, string Show, string Cover, string Length, string Left, byte Status, byte Bucket, bool Playing);
