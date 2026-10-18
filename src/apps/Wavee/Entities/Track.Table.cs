@@ -1326,7 +1326,12 @@ public readonly partial struct Track
         /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
         /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
         static Element FocusRoot(Element slot, Action<bool> focusEdge)
-            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, Children = [slot] };
+            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, Children = [slot] };
+
+        /// <summary>The keyboard-focus ring of a row, drawn INSIDE the slot's bounds. The slot root (this box) is the focus node (the roving tab stop), not
+        /// the row's skin; the engine's default margin (WinUI's -3) pushed the ring 3 DIP outside it, where the list's viewport clipped its left and
+        /// right edges. A positive margin never shrinks the ring, so 0 puts the 2 DIP outer and 1 DIP inner strokes on the row's own edge.</summary>
+        static readonly Edges4 s_rowFocusRing = Edges4.All(0f);
 
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
