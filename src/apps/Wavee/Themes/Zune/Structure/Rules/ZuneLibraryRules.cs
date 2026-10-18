@@ -371,7 +371,7 @@ public static class ZuneLibraryTiers
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 160f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
