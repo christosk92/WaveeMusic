@@ -26,6 +26,23 @@ internal static class ZuneOverlayParts
         return icon.Glyph is { Length: > 0 } glyph ? Icon(glyph, size, ink, icon.Font) : new BoxEl { Width = size, Height = size, Shrink = 0f };
     }
 
+    /// <summary>A dialog's command as Zune draws it (Z-Dialogs): the default one is the accent ring disc with its arrow and its word ("open github", "send report"), every other
+    /// a lowercase word in the secondary ink that turns to the primary on hover. The dialog keeps the order, the focus ranking and the cancelable close.</summary>
+    public static BoxEl DialogCommand(ContentDialogCommandArgs c)
+    {
+        if (c.IsDefault)
+            return (BoxEl)ZuneDiscoveryKit.Ring("zdialog:primary", Icons.Forward, c.Text, showLabel: true, primary: true, c.Invoke, ZuneOverlayRules.DialogRing)
+                with { IsEnabled = c.IsEnabled, Opacity = c.IsEnabled ? 1f : ZuneOverlayRules.DialogDisabledOpacity };
+        return new BoxEl
+        {
+            Key = "zdialog:command:" + (int)c.Command, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            MinHeight = ZuneOverlayRules.DialogWordHeight, Padding = new Edges4(0f, 0f, ZuneOverlayRules.DialogWordPadX, 0f), Shrink = 0f,
+            Role = AutomationRole.Button, Focusable = c.IsEnabled, IsEnabled = c.IsEnabled, Cursor = c.IsEnabled ? CursorId.Hand : (CursorId?)null,
+            OnClick = c.IsEnabled ? c.Invoke : null, Opacity = c.IsEnabled ? 1f : ZuneOverlayRules.DialogDisabledOpacity,
+            Children = [ZuneText.Command(c.Text) with { Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
+        };
+    }
+
     /// <summary>The menu's hairline: 16 in, 5 above and below (the menu style's separator).</summary>
     public static Element Divider() => new BoxEl
     {
