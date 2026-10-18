@@ -614,7 +614,7 @@ internal static class ClassicTrackTable
     /// <summary>The Added-by lane (ch 01 §3): avatar + name (Modern), the bare name (Classic); empty for no adder.</summary>
     static Element BoundAddedByCell(BoundRow r, bool classic)
     {
-        var label = Prop.Of(() => Track.AddedByLabel(r.P.AddedBy));
+        var label = Prop.Of(() => Track.AddedByLabel(r));
         var ink = LaneInk(r, classic, static () => Tok.TextSecondary);
         var present = Prop.Of(() => r.P.AddedBy.Slot > 0);
         if (classic)
@@ -625,7 +625,7 @@ internal static class ClassicTrackTable
             MinWidth = 0f, ClipToBounds = true,
             Children =
             [
-                PersonPicture.Bound(label, Prop.Of(() => Controls.ArtUrl(r.P.AddedBy.ImageId) ?? ""), Spacing.XXL) with { Visible = present },
+                PersonPicture.Bound(label, Prop.Of(() => Track.AddedByImageUrl(r)), Spacing.XXL) with { Visible = present },
                 new TextEl(label)
                 {
                     Size = ClassicTrackRowLayout.CaptionSize, LineHeight = ClassicTrackRowLayout.CaptionLine, Color = ink, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1,

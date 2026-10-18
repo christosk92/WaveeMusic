@@ -96,7 +96,7 @@ internal static class ZuneTrackTable
         cells[i++] = TitleCell(r, in set);
         if (set.Artist) cells[i++] = Track.RowLeftCell(ArtistLinks(r), CellKey.Artist);
         if (set.Album) cells[i++] = Track.RowLeftCell(AlbumLink(r), CellKey.Album);
-        if (set.By) cells[i++] = Track.RowLeftCell(Factual(Prop.Of(() => Track.AddedByLabel(r.P.AddedBy)), RowInk(r, static () => Tok.TextSecondary),
+        if (set.By) cells[i++] = Track.RowLeftCell(Factual(Prop.Of(() => Track.AddedByLabel(r)), RowInk(r, static () => Tok.TextSecondary),
                                                         fill: true, visible: Prop.Of(() => r.P.AddedBy.Slot > 0)), CellKey.By);
         if (set.Date) cells[i++] = Track.RowLeftCell(Factual(Prop.Of(() => Format.DateAddedLabel(r.P.AddedAt, Track.NowUnix)),
                                                           RowInk(r, static () => Tok.TextSecondary), fill: true), CellKey.Date);

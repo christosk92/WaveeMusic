@@ -110,7 +110,7 @@ public readonly partial struct Track
     /// <c>TableHost.Present</c>; read by the structure's row template through <see cref="BoundRow"/>.</summary>
     internal readonly record struct RowPresentation(
         Track Track, int Display, RowState State, uint TrackVersion, uint AlbumVersion, ulong ArtistStamp,
-        int AddedAt, User AddedBy, uint UserVersion, byte Chart, bool Marquee, bool ShowTrackArtist,
+        int AddedAt, User AddedBy, byte Chart, bool Marquee, bool ShowTrackArtist,
         bool ShowAlbumColumn, bool Open);
 
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
@@ -189,5 +189,24 @@ public readonly partial struct Track
     {
         if (by.Slot <= 0) return "";
         return by.Knows(UserFields.Identity) ? Entities.Strings.Resolve(by.NameId) : "";
+    }
+
+    /// <summary>The Added-by name of a bound row, for a bind thunk: it subscribes to the user landing ITSELF. The adder's
+    /// data used to ride the row presentation (a <c>UserVersion</c> field), so a user's name or avatar landing changed the
+    /// whole presentation and re-ran every cell binding of every row (page-mount RCA #6: 816 binding and 192 effect runs
+    /// on the frame after a playlist mount, for the one lane that prints the adder).</summary>
+    internal static string AddedByLabel(BoundRow r)
+    {
+        var by = r.P.AddedBy;
+        if (by.IsValid) _ = Entities.Current.Users.Changed.Value;
+        return AddedByLabel(by);
+    }
+
+    /// <summary>The adder's avatar URL of a bound row, subscribing to the user landing like <see cref="AddedByLabel(BoundRow)"/>.</summary>
+    internal static string AddedByImageUrl(BoundRow r)
+    {
+        var by = r.P.AddedBy;
+        if (by.IsValid) _ = Entities.Current.Users.Changed.Value;
+        return Controls.ArtUrl(by.ImageId) ?? "";
     }
 }

@@ -2356,11 +2356,12 @@ public readonly partial struct Track
                 var artist = new Artist(a);
                 artists = Track.CreditStamp.Add(artists, a, artist.NameId.Value, artist.Uri.IsValid);
             }
+            // The adder's own data (name, avatar) is NOT an input here: the Added-by lane subscribes to it itself
+            // (Track.AddedByLabel(BoundRow)), so a user landing re-runs that lane, not every cell of every row.
             var by = orig >= 0 ? src.AddedBy(orig) : default;
-            if (by.IsValid) _ = Entities.Current.Users.Changed.Value;
             return new RowPresentation(t, display, state,
                 t.IsValid ? t.Version : 0u, t.Album.IsValid ? t.Album.Version : 0u, artists,
-                orig >= 0 ? src.AddedAt(orig) : 0, by, by.IsValid ? by.Version : 0u,
+                orig >= 0 ? src.AddedAt(orig) : 0, by,
                 orig >= 0 ? src.ChartStatus(orig) : (byte)0,
                 snap.Marquee, snap.Config.ShowTrackArtist, snap.Config.ShowAlbumColumn, IsOpen(t, display));
         }
