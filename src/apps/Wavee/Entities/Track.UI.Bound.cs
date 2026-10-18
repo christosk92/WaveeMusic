@@ -140,6 +140,46 @@ public readonly partial struct Track
         readonly IReadSignal<bool>? _focused = focused;
     }
 
+    // ══ 2b. LAZY ROW AFFORDANCES (page-mount RCA, the row node diet) ═══════════════════════════════════════════════════
+
+    /// <summary>A row affordance that draws nothing until the row is hovered or focused (the "…", the play transport over the
+    /// #, the hover cluster that overlays the duration) mounts on that first edge instead of with the row, and then stays:
+    /// a revealed affordance fades in seeded from the row's live hover progress (the engine seeds a reveal that mounts
+    /// inside a hovered scope), so the picture is the eager one. A keyboard user reaches it the same way: the focused row
+    /// mounts it, and Tab then lands in it. <paramref name="also"/> mounts it for another reason too (a saved row's resting
+    /// heart, a row with versions). Before it mounts it is one component anchor — about twenty nodes fewer per row for the
+    /// cluster, every one of them a box, a text, bindings and a hover track the row paid for on every mount.
+    /// <para><paramref name="build"/> runs once, at the first mount. Its element must not size its lane: a lane's width is the
+    /// grid's (or the ZStack's), so the cell keeps its box while the affordance is absent.</para></summary>
+    internal static Element Affordance(BoundRow r, Func<Element> build, Func<bool>? also = null)
+        => FluentGpu.Hooks.Embed.Comp(new AffordanceProps(r, build, also), static () => new LazyAffordance());
+
+    internal sealed record AffordanceProps(BoundRow Row, Func<Element> Build, Func<bool>? Also);
+
+    sealed class LazyAffordance : FluentGpu.Hooks.Component
+    {
+        // A different element TYPE from what it stands in for (a component's single-child slot ignores keys): the built
+        // affordance then MOUNTS instead of updating this node in place, and a mount is what seeds a reveal from the row's
+        // live hover (an in-place update left the transport at rest under the pointer and the cluster deaf to the exit).
+        static readonly Element s_absent = FluentGpu.Hooks.Flow.Show(static () => false, new BoxEl());
+        bool _latched;
+        Element? _built;
+
+        public override Element Render()
+        {
+            var p = UseProps<AffordanceProps>();
+            if (!_latched)
+            {
+                // Subscribing reads, until the first edge: afterwards the render tracks nothing, so the row's hover never
+                // re-renders it again.
+                bool on = p.Row.Hovered.Value || p.Row.Focused || (p.Also?.Invoke() ?? false);
+                if (!on) return s_absent;
+                _latched = true;
+            }
+            return _built ??= p.Build();
+        }
+    }
+
     internal static long NowUnix => Store.ToUnix(Entities.Now);
 
     /// <summary>Is the deck playing? The core's signal, for the equalizer a row template draws (a template never names `Playback`).</summary>

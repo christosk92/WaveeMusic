@@ -106,7 +106,7 @@ internal static class ClassicTrackTable
         // The Compact row's "…" is a 40 target shown on every row (C-RowStates-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
             ? Track.MoreCell(true, classic, CellKey.More, () => r.Focused, box: ClassicDetailTiers.CompactTarget, atRest: true)
-            : Track.MoreCell(true, classic, CellKey.More, () => r.Focused);
+            : Track.LazyMoreCell(r, classic, CellKey.More);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
@@ -137,7 +137,8 @@ internal static class ClassicTrackTable
             Children =
             [
                 BoundRestLayer(r, classic, hoverFade: true),
-                new BoxEl
+                // The transport mounts on the row's first hover / focus (Track.Affordance): it draws nothing before.
+                Track.Affordance(r, () => new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Center,
                     Opacity = 0f, HoverOpacity = 1f,
@@ -168,7 +169,7 @@ internal static class ClassicTrackTable
                             ],
                         },
                     ],
-                },
+                }),
             ],
         };
         Element restOnly = new BoxEl
@@ -256,13 +257,14 @@ internal static class ClassicTrackTable
     /// around the heart's own click target, so the hover it reads is the row skin's (the same idiom as the # cell's
     /// layers); the rest opacity is bound to the presentation and the slot's focus, so a like re-resolves it with no rebuild
     /// and the focused row shows its outline to the keyboard.</summary>
-    static Element BoundHeartReveal(BoundRow r, bool classic, bool quiet) => new BoxEl
+    // Mounts on the row's first hover / focus, or (outside a quiet list) once the row is saved — the resting filled heart.
+    static Element BoundHeartReveal(BoundRow r, bool classic, bool quiet) => Track.Affordance(r, () => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         // A quiet list (Liked Songs, D16) rests with no heart at all: every row is liked, so only the hovered or focused row shows it.
         Opacity = quiet ? Prop.Of(() => r.Focused ? 1f : 0f) : Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
         Children = [BoundHeart(r, classic)],
-    };
+    }, quiet ? null : () => r.P.State.Saved);
 
     /// <summary>The heart (ch 01 §0.3) as three glyphs under one circle: the resting filled heart, the popping filled
     /// heart (a real mount on the like EDGE, so the Enter spring replays exactly once) and the outline.</summary>
@@ -708,8 +710,9 @@ internal static class ClassicTrackTable
     /// accent while open; a recycle onto another track re-seeds it without spinning. Only a row with versions shows it
     /// (tuned Classic L1, <c>Track.HasVersions</c>); every other row keeps the lane empty and reaches its drawer through the
     /// menu's "Track details".</summary>
+    // Mounts once the row shows versions (or on its first hover / focus): most rows have none and draw nothing here.
     static Element BoundExpandCell(BoundRow r)
-        => Track.RowCenterCell(new BoxEl
+        => Track.RowCenterCell(Track.Affordance(r, () => new BoxEl
         {
             Width = Spacing.XXL, Height = Spacing.XXL, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll, HoverFill = Tok.FillControlSecondary,
@@ -722,7 +725,7 @@ internal static class ClassicTrackTable
             [
                 Sidebar.Chevron.Section(() => r.P.Open, size: ClassicTrackRowLayout.ChevronSize, identity: () => r.P.Track.Slot, accentWhenOpen: true),
             ],
-        }, CellKey.Expand);
+        }, () => r.P.Track.HasVersions()), CellKey.Expand);
 
     // ── span fills (the SpanBuffer twins of BuildLinkSpans / BuildClassicSpans) ──────────────────────────────────────
 

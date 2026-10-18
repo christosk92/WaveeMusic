@@ -236,6 +236,20 @@ public readonly partial struct Track
     /// <para><paramref name="box"/> above the 28 (the Compact row's 40 target, board C-RowStates-Compact) sizes the button, and
     /// <paramref name="atRest"/> shows it at rest on every row (a Compact row has no hover to reveal it).</para></summary>
     public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? shown = null, float box = 0f, bool atRest = false)
+        => MoreCellLane(key, MoreCellReveal(enabled, classic, shown, box, atRest));
+
+    /// <summary>The bound row's hover "…": the same lane, its reveal mounted on the row's first hover / focus
+    /// (<see cref="Affordance"/>) — before that the lane draws nothing and holds no nodes.</summary>
+    internal static Element LazyMoreCell(BoundRow r, bool classic, string? key = null)
+        => MoreCellLane(key, Affordance(r, () => MoreCellReveal(true, classic, () => r.Focused, 0f, false)));
+
+    static BoxEl MoreCellLane(string? key, Element reveal) => new()
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
+        Children = [reveal],
+    };
+
+    static BoxEl MoreCellReveal(bool enabled, bool classic, Func<bool>? shown, float box, bool atRest)
     {
         float edge = box > RowMoreBox ? box : RowMoreBox;
         var button = Controls.MoreButton(null, requestsContext: enabled) with
@@ -250,18 +264,11 @@ public readonly partial struct Track
         if (!enabled) button = button with { OnClick = null, Cursor = null, HitTestVisible = false };
         return new BoxEl
         {
-            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = enabled && atRest ? (Prop<float>)1f
-                        : enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
-                    HoverOpacity = enabled ? 1f : 0f,
-                    Children = [button],
-                },
-            ],
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Opacity = enabled && atRest ? (Prop<float>)1f
+                : enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
+            HoverOpacity = enabled ? 1f : 0f,
+            Children = [button],
         };
     }
 

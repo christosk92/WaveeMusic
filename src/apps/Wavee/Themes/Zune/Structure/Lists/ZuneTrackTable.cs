@@ -133,7 +133,8 @@ internal static class ZuneTrackTable
             Children =
             [
                 RestLayer(r, hoverFade: true, leading),
-                new BoxEl
+                // The transport mounts on the row's first hover / focus (Track.Affordance): it draws nothing before.
+                Track.Affordance(r, () => new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Center,
                     Opacity = 0f, HoverOpacity = 1f,
@@ -161,7 +162,7 @@ internal static class ZuneTrackTable
                             ],
                         },
                     ],
-                },
+                }),
             ],
         };
         Element restOnly = new BoxEl
@@ -552,7 +553,9 @@ internal static class ZuneTrackTable
             Children =
             [
                 time with { Width = Track.Lane.DurationHover, AlignSelf = FlexAlign.Stretch },
-                new BoxEl
+                // The cluster overlays the reserved time lane (this ZStack's fixed width), so mounting it on the row's first
+                // hover / focus (Track.Affordance) moves nothing: about twenty nodes the row no longer mounts up front.
+                Track.Affordance(r, () => new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
                     Opacity = Prop.Of(() => r.Focused ? 1f : 0f), HoverOpacity = 1f,
@@ -563,7 +566,7 @@ internal static class ZuneTrackTable
                         new BoxEl { Width = RowMetrics.HeartCol, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Heart(r)] },
                         new BoxEl { Width = ZuneListRules.HoverMoreBox, Direction = 0, Children = [Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused)] },
                     ],
-                },
+                }),
             ],
         };
     }
