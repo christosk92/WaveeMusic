@@ -638,7 +638,9 @@ public static partial class Entities
         /// rows (discovery itself is not faked). The playlist row is minted here if the library fixture did not carry it.</summary>
         static void LandListenLater()
         {
-            (int Show, int Index)[] picks = [(0, 0), (1, 0), (3, 0), (0, 1), (1, 1), (4, 0), (0, 4), (2, 0)];
+            // Across the feed's date groups (episode i of show s came out s + 7i days before now0): sh0 #14 today, sh1 / sh3 / sh4's newest within the week, the rest earlier; sh0 #9 is the in
+            // progress one (46 %) and #8 a played one, so every status renders.
+            (int Show, int Index)[] picks = [(0, 0), (1, 0), (3, 0), (4, 0), (0, 1), (1, 1), (0, 5), (0, 6)];
             Span<int> targets = stackalloc int[picks.Length];
             Span<PlaylistTrackEdge> payload = stackalloc PlaylistTrackEdge[picks.Length];
             for (int k = 0; k < picks.Length; k++)
