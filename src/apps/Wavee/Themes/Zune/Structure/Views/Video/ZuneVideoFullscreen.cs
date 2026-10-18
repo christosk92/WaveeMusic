@@ -46,12 +46,15 @@ internal static class ZuneStageVideoFullscreen
                     HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
                     Children =
                     [
-                        new TextEl(Loc.Get(Strings.Theme.Zune.Stage.VideoFullScreen))
-                        {
-                            Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
-                            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                        },
-                        new BoxEl { Grow = 1f, MinWidth = 0f },
+                        t.LabelShown
+                            ? new TextEl(Loc.Get(Strings.Theme.Zune.Stage.VideoFullScreen))
+                            {
+                                Size = t.LabelSize, LineHeight = t.LabelLine, Color = Tok.OnMediaSecondary, Case = R.Case.For(LabelKind.Label),
+                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                            }
+                            : new BoxEl { Width = 0f, Margin = new Edges4(-t.BarGap, 0f, 0f, 0f) },
+                        // Centred (Standard) the title has air either side; led (Small, Huge) it follows the label.
+                        t.TitleCentered ? new BoxEl { Grow = 1f, MinWidth = 0f } : new BoxEl { Width = 0f, Margin = new Edges4(-t.BarGap, 0f, 0f, 0f) },
                         // Bound REACTIVELY: the surface outlives a track change. The title keeps its own casing; the kind and the artists follow it in the secondary ink ("Nightcall · official
                         // video · Kavinsky").
                         new BoxEl

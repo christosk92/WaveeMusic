@@ -151,7 +151,7 @@ public static class ZuneStageLyricsRules
 /// <param name="TitleSize">The track's title in the bar.</param>
 /// <param name="TitleLine">Its line height.</param>
 public sealed record ZuneStageVideoLayout(WidthTier Tier, float WordH, float StripH, float GlyphBox, bool ChromeAtRest, float BarPadL, float BarPadR,
-    float BarH, float BarGap, float LabelSize, float LabelLine, float TitleSize, float TitleLine);
+    float BarH, float BarGap, float LabelSize, float LabelLine, float TitleSize, float TitleLine, bool LabelShown = true, bool TitleCentered = true);
 
 /// <summary>The video surfaces' numbers and their per-window-tier record.</summary>
 public static class ZuneStageVideoRules
@@ -166,13 +166,13 @@ public static class ZuneStageVideoRules
             BarH: 48f, BarGap: 4f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
         // Z-Video-Small
         new(WidthTier.Small, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 24f, BarPadR: 12f,
-            BarH: 48f, BarGap: 20f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
+            BarH: 48f, BarGap: 20f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f, LabelShown: false, TitleCentered: false),   // the title leads the bar, no "video · full screen"
         // Z-Video, Z-Mini (Standard)
         new(WidthTier.Standard, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 48f, BarPadR: 24f,
             BarH: 48f, BarGap: 24f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
         // Z-Video-Huge: the 56 bar, 64 / 24, 14 type, 44 targets
         new(WidthTier.Huge, WordH: 44f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 64f, BarPadR: 24f,
-            BarH: 56f, BarGap: 28f, LabelSize: 14f, LabelLine: 20f, TitleSize: 17f, TitleLine: 22f),
+            BarH: 56f, BarGap: 28f, LabelSize: 14f, LabelLine: 20f, TitleSize: 17f, TitleLine: 22f, TitleCentered: false),   // the title follows the label
         // Huge 4K (no video board: the stage's Huge 4K head): the 72 bar, 96 / 32, 17 type, 56 targets
         new(WidthTier.Huge4K, WordH: 56f, StripH: 40f, GlyphBox: 36f, ChromeAtRest: false, BarPadL: 96f, BarPadR: 32f,
             BarH: 72f, BarGap: 36f, LabelSize: 17f, LabelLine: 22f, TitleSize: 20f, TitleLine: 26f),
