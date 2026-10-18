@@ -819,7 +819,10 @@ public static partial class Shell
         // The live page plus a two-deep back stack; parked pages release their image pins.
         MaxEntries: KeepAliveSlots,
         TransitionFor: PageTransition,
-        SuppressLayoutTransitionsOnActivation: true);
+        SuppressLayoutTransitionsOnActivation: true,
+        // The page's enter/exit slide and fade are composite parameters (the page root is a composited layer): a transition
+        // re-records nothing below the page root instead of the whole page every frame of the fade (page-mount RCA #4).
+        CompositeTransitions: true);
 
 
     /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
