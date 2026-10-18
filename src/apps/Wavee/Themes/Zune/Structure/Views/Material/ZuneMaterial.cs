@@ -70,9 +70,9 @@ internal static class ZuneMaterial
         {
             kids.Add(new BoxEl
             {
-                Key = ZuneBandRules.BleedKey + ":" + bleed,
+                Key = ZuneBandRules.BleedKey + (R.IsLight ? "-light:" : ":") + bleed,
                 Height = ZuneBandRules.BleedH, AlignSelf = FlexAlign.Start, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-                Opacity = ZuneBandRules.BleedOpacity,
+                Opacity = ZuneBandRules.BleedOpacityOf(R.IsLight),
                 Enter = Fade, Exit = Fade,
                 Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade)],
             });
@@ -82,7 +82,7 @@ internal static class ZuneMaterial
         {
             int n = Math.Min(mix.Count, ZuneBandRules.MixMax);
             var covers = new Element[n];
-            string mixKey = ZuneBandRules.MixKey;
+            string mixKey = ZuneBandRules.MixKey + (R.IsLight ? "-light" : "");
             for (int i = 0; i < n; i++) mixKey += ":" + mix[i];
             for (int i = 0; i < n; i++)
                 covers[i] = new BoxEl
@@ -94,7 +94,7 @@ internal static class ZuneMaterial
             {
                 Key = mixKey,
                 Height = ZuneBandRules.MixH, AlignSelf = FlexAlign.Start, Direction = 0, ClipToBounds = true, HitTestVisible = false,
-                Opacity = ZuneBandRules.MixOpacity,
+                Opacity = ZuneBandRules.MixOpacityOf(R.IsLight),
                 Enter = Fade, Exit = Fade,
                 Children = covers,
             });

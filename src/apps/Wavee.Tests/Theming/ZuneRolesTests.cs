@@ -254,7 +254,7 @@ public sealed class ZuneRolesTests
         Assert.Equal(ZuneAccent.Orange.Light, ramp.Dark1);
         Assert.Equal(ZuneAccent.Orange.Light, ramp.Dark2);
         Assert.Equal(new[] { "ff3ca6", "ff7a1a", "60cdff", "8fd14f", "b983ff" }, ZuneAccent.Swatches.Select(p => Hex(p.Dark)));
-        Assert.Equal(new[] { "e0197f", "d65a00", "0a7fb5", "4f8f1a", "8a4fd6" }, ZuneAccent.Swatches.Select(p => Hex(p.Light)));
+        Assert.Equal(new[] { "cb1773", "b24b00", "0971a1", "427716", "844ccd" }, ZuneAccent.Swatches.Select(p => Hex(p.Light)));
     }
 
     static string Hex(ColorF c)
