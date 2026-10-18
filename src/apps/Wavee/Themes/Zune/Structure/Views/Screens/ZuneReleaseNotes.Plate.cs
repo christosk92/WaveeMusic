@@ -42,7 +42,7 @@ internal static partial class ZuneReleaseNotes
                 Direction = 1, Gap = Spacing.S, Padding = new Edges4(padX, K.PlateHeroPadTop, padX, K.PlateHeroPadBottom),
                 Children =
                 [
-                    ZuneText.Hint(Loc.Get(Strings.WhatsNew.Dialog.Updated) + "  ·  " + props.VersionRange) with { Color = R.Ink.AccentAction, FontFamily = K.Mono },
+                    ZuneText.Hint(Loc.Get(Strings.WhatsNew.Dialog.Updated) + "  ·  " + props.VersionRange) with { Color = R.Ink.AccentDecor, FontFamily = K.Mono },
                     R.Type.Heading(Strings.WhatsNew.Dialog.Welcome(props.VersionText)) with { Wrap = TextWrap.Wrap, MinWidth = 0f },
                     R.Type.DenseTitle(props.Tagline) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, MaxWidth = K.PlateTaglineMaxWidth },
                 ],

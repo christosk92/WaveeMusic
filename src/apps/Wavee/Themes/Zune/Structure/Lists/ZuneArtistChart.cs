@@ -170,7 +170,7 @@ internal static class ZuneArtistChart
         // The tier's own geometry (the policy's ArtistChartRowShape: Z-Artist's 60 / 48 / 52 at Standard, 56 / 44 / 40 Compact, 52 / 40 / 44 Small, 68 / 52 / 60 at 4K).
         float rowHeight = rowH > 0f ? rowH : ZuneListRules.ChartRowHeight;
         float rankLane = lead > 0f ? lead : ZuneListRules.ChartRankBox;
-        ColorF accent = R.Ink.AccentAction;
+        ColorF accent = R.Ink.AccentDecor;
         ColorF secondary = ZuneListRules.RowInk(isNow, accent, Tok.TextSecondary);
         ColorF tertiary = ZuneListRules.RowInk(isNow, accent, Tok.TextTertiary);
         bool hasPlays = c.PlaysCompact.Length > 0;

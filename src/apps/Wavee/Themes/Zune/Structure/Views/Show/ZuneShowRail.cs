@@ -148,7 +148,7 @@ internal static partial class ZuneShow
         float played = sum > 0 ? a.Played / (float)sum : 0f, progress = sum > 0 ? a.InProgress / (float)sum : 0f;
         TextSpan[] line = a.Fresh > 0
             ? [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo) + " · "),
-               new TextSpan(Strings.Podcast.LedgerNew(a.Fresh), Weight: 600, Color: R.Ink.AccentAction)]
+               new TextSpan(Strings.Podcast.LedgerNew(a.Fresh), Weight: 600, Color: R.Ink.AccentDecor)]
             : [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo))];
         return new BoxEl
         {

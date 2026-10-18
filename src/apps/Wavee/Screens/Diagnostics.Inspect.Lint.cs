@@ -1,5 +1,5 @@
 // ── Screens/Diagnostics.Inspect.Lint.cs — the `--inspect` lint rules: a snapshot of nodes in, findings out ───────────────────
-// gutter, right-edge, clip, trim, type, target, duplicate and rhythm over a flat list of the mounted scene's visible nodes
+// gutter, right-edge, clip, trim, type, target, duplicate, rhythm and contrast over a flat list of the mounted scene's visible nodes
 //
 // Role: CORE (pure: no engine, no host, no thread; the scene is read into a `Snapshot` by Diagnostics.Inspect.Lint.Scene.cs)
 // Spec: handoff/themes-2026-10-17/agent-inspect-plan.md lane A3; docs/guide/agent-inspect.md is the user-facing reference.
@@ -35,12 +35,12 @@ public static partial class Diagnostics
         public static class Rules
         {
             public const string Gutter = "gutter", RightEdge = "right-edge", Clip = "clip", Trim = "trim", Type = "type",
-                Target = "target", Duplicate = "duplicate", Rhythm = "rhythm";
+                Target = "target", Duplicate = "duplicate", Rhythm = "rhythm", Contrast = "contrast";
         }
 
         /// <summary>Every rule, in the order the report lists them.</summary>
         public static readonly string[] RuleNames =
-            [Rules.Gutter, Rules.RightEdge, Rules.Clip, Rules.Trim, Rules.Type, Rules.Target, Rules.Duplicate, Rules.Rhythm];
+            [Rules.Gutter, Rules.RightEdge, Rules.Clip, Rules.Trim, Rules.Type, Rules.Target, Rules.Duplicate, Rules.Rhythm, Rules.Contrast];
 
         /// <summary>How tall the ink of a line of text is, in ems: ascender to descender. A clip that cuts below this much of a line cuts descenders.</summary>
         public const float InkEm = 1.2f;
@@ -91,6 +91,9 @@ public static partial class Diagnostics
 
             /// <summary>A span run (its words live in the spans, <see cref="String"/> is empty).</summary>
             public bool Spans { get; init; }
+
+            /// <summary>The colour the run is declared in (straight alpha). Alpha 0 (the default) is "not known": the contrast rule skips the run.</summary>
+            public ColorF Color { get; init; }
         }
 
         /// <summary>One visible node. <c>Index</c> is its place in <see cref="Snapshot.Nodes"/>.</summary>
@@ -122,6 +125,12 @@ public static partial class Diagnostics
             /// <summary>It carries live animation tracks (mid-transition): skipped by the geometry rules.</summary>
             public bool Animating { get; init; }
 
+            /// <summary>The node's opacity times every ancestor's: how much of its colour reaches the screen. Default 1.</summary>
+            public float Opacity { get; init; } = 1f;
+
+            /// <summary>The node or an ancestor is disabled: its ink is dimmed on purpose and exempt from the contrast rule.</summary>
+            public bool Inert { get; init; }
+
             /// <summary>A sticky header (pinned over the rows under it on purpose).</summary>
             public bool Sticky { get; init; }
 
@@ -141,6 +150,65 @@ public static partial class Diagnostics
             public IReadOnlyList<LintEdge> Edges { get; init; } = [];
 
             public string Theme { get; init; } = "";
+
+            /// <summary>The rendered frame the contrast rule reads its backgrounds from; null when nothing was rendered (the rule then checks nothing).</summary>
+            public Pixels? Backdrop { get; init; }
+        }
+
+        // ── the rendered frame ──────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A rendered frame as tightly packed, top-down BGRA8 (premultiplied, as the offscreen surface captures it), with the pixels per DIP.</summary>
+        public sealed class Pixels
+        {
+            readonly byte[] _bgra;
+
+            public Pixels(byte[] bgra, int width, int height, float scale)
+            {
+                _bgra = bgra;
+                Width = width;
+                Height = height;
+                Scale = scale;
+            }
+
+            public int Width { get; }
+            public int Height { get; }
+            public float Scale { get; }
+
+            /// <summary>The colour most of <paramref name="rect"/> (DIP) is painted in, and the share of its pixels that colour has. A pixel within
+            /// <paramref name="tolerance"/> (0..1 per channel) of <paramref name="ignore"/> is not counted: the ink of a glyph that fills its box must
+            /// not read as its own background. False when the rect holds no pixel.</summary>
+            public bool TryBackground(RectF rect, ColorF? ignore, float tolerance, out ColorF background, out float share)
+            {
+                background = default;
+                share = 0f;
+                int x0 = Math.Clamp((int)MathF.Floor(rect.X * Scale), 0, Width), x1 = Math.Clamp((int)MathF.Ceiling(rect.Right * Scale), 0, Width);
+                int y0 = Math.Clamp((int)MathF.Floor(rect.Y * Scale), 0, Height), y1 = Math.Clamp((int)MathF.Ceiling(rect.Bottom * Scale), 0, Height);
+                if (x1 <= x0 || y1 <= y0) return false;
+                var counts = new Dictionary<int, int>();
+                int total = 0;
+                for (int y = y0; y < y1; y++)
+                    for (int x = x0; x < x1; x++)
+                    {
+                        int i = (y * Width + x) * 4;
+                        byte a = _bgra[i + 3];
+                        if (a == 0) continue;
+                        // Un-premultiply: the offscreen surface is opaque at rest, so a is 255 and this is the identity there.
+                        int r = Math.Min(255, _bgra[i + 2] * 255 / a), g = Math.Min(255, _bgra[i + 1] * 255 / a), b = Math.Min(255, _bgra[i] * 255 / a);
+                        if (ignore is { } ink
+                            && MathF.Abs(r / 255f - ink.R) <= tolerance && MathF.Abs(g / 255f - ink.G) <= tolerance && MathF.Abs(b / 255f - ink.B) <= tolerance)
+                            continue;
+                        int key = (r << 16) | (g << 8) | b;
+                        counts[key] = counts.TryGetValue(key, out int c) ? c + 1 : 1;
+                        total++;
+                    }
+                if (total == 0) return false;
+                int best = 0, bestCount = 0;
+                foreach (var (key, count) in counts)
+                    if (count > bestCount) { best = key; bestCount = count; }
+                background = new ColorF(((best >> 16) & 255) / 255f, ((best >> 8) & 255) / 255f, (best & 255) / 255f, 1f);
+                share = bestCount / (float)total;
+                return true;
+            }
         }
 
         // ── the options ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -173,6 +241,12 @@ public static partial class Diagnostics
 
             /// <summary>Key prefixes the duplicate rule skips (default: the title bar and the play bar).</summary>
             public IReadOnlyList<string> IgnoreUnder { get; init; } = DefaultIgnoreUnder;
+
+            /// <summary>The contrast body text needs (WCAG AA, 4.5 : 1).</summary>
+            public float ContrastBody { get; init; } = 4.5f;
+
+            /// <summary>The contrast large text, bold large text and icon glyphs need (3 : 1).</summary>
+            public float ContrastLarge { get; init; } = 3f;
 
             /// <summary>The most findings one rule reports.</summary>
             public int MaxPerRule { get; init; } = 100;
@@ -241,6 +315,7 @@ public static partial class Diagnostics
                     Rules.Target => TargetRule(snapshot, o, found),
                     Rules.Duplicate => DuplicateRule(snapshot, o, found),
                     Rules.Rhythm => RhythmRule(snapshot, o, found),
+                    Rules.Contrast => ContrastRule(snapshot, o, found),
                     _ => 0,
                 };
                 checks[rule] = looked;
@@ -540,6 +615,71 @@ public static partial class Diagnostics
             }
             return looked;
         }
+
+        // ── contrast ────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The WCAG contrast ratio of <paramref name="ink"/> on <paramref name="ground"/>: the ink's alpha (times <paramref name="opacity"/>)
+        /// is composited over the ground first, the ground is opaque. 1 to 21.</summary>
+        public static double ContrastOf(ColorF ink, ColorF ground, float opacity = 1f)
+        {
+            double a = Math.Clamp(ink.A * opacity, 0f, 1f);
+            double r = a * ink.R + (1 - a) * ground.R, g = a * ink.G + (1 - a) * ground.G, b = a * ink.B + (1 - a) * ground.B;
+            double lt = Luminance(r, g, b), lb = Luminance(ground.R, ground.G, ground.B);
+            return (Math.Max(lt, lb) + 0.05) / (Math.Min(lt, lb) + 0.05);
+        }
+
+        static double Luminance(double r, double g, double b)
+        {
+            static double Lin(double c) => c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
+            return 0.2126 * Lin(r) + 0.7152 * Lin(g) + 0.0722 * Lin(b);
+        }
+
+        /// <summary>The contrast a run needs: <see cref="Options.ContrastLarge"/> for an icon glyph, for 24 DIP and up and for bold 18.66 DIP and up
+        /// (the WCAG large-text sizes), <see cref="Options.ContrastBody"/> otherwise.</summary>
+        public static float ContrastNeeded(TextRun t, Options o)
+            => t.Glyph || t.Size >= 24f || (t.Size >= 18.66f && t.Weight >= 700) ? o.ContrastLarge : o.ContrastBody;
+
+        /// <summary>Each run's declared colour (and its opacity) against the colour most of its box is painted in. Runs the check cannot judge are skipped,
+        /// not passed: a disabled subtree, a node mid-animation, a fully transparent ink, a span run, a box mostly off the frame, and a box over a busy
+        /// background (art, a gradient: no colour holds half of it). No frame, no check.</summary>
+        static int ContrastRule(Snapshot s, Options o, List<Finding> into)
+        {
+            if (s.Backdrop is not { } px) return 0;
+            int looked = 0;
+            foreach (Node n in s.Nodes)
+            {
+                if (n.Text is not { } t || t.Spans || t.String.Length == 0 || n.Inert || n.Animating) continue;
+                if (t.Color.A * n.Opacity < 0.02f) continue;
+                float w = t.NaturalW > 0f ? MathF.Min(n.Rect.W, t.NaturalW + 2f) : n.Rect.W;
+                var box = new RectF(n.Rect.X, n.Rect.Y, w, n.Rect.H);
+                float x0 = MathF.Max(0f, box.X), x1 = MathF.Min(s.Width, box.Right), y0 = MathF.Max(0f, box.Y), y1 = MathF.Min(s.Height, box.Bottom);
+                if (x1 - x0 < MathF.Min(2f, w) || y1 - y0 < MathF.Min(2f, n.Rect.H) || (x1 - x0) * (y1 - y0) < 0.6f * w * n.Rect.H) continue;
+                var seen = new RectF(x0, y0, x1 - x0, y1 - y0);
+                if (!px.TryBackground(seen, null, 0f, out ColorF ground, out float share)) continue;
+                if (ContrastOf(t.Color, ground, n.Opacity) < 1.15)
+                {
+                    // The ink fills its own box (a heart, a solid glyph): look at what is left once its colour is taken out.
+                    if (!px.TryBackground(seen, t.Color, 0.03f, out ground, out share)) continue;
+                }
+                if (share < 0.45f) continue;
+                looked++;
+                double ratio = ContrastOf(t.Color, ground, n.Opacity);
+                float need = ContrastNeeded(t, o);
+                if (ratio + 0.005 >= need) continue;
+                string kind = t.Glyph ? "icon" : "text";
+                into.Add(new Finding(Rules.Contrast, Severity.Warn,
+                    $"{kind} {Q(t.String)} reads {F(ratio)} : 1 on #{Hex(ground)}, under the {F(need)} : 1 it needs", [n.Ref])
+                {
+                    Measured = [M("ratio", ratio), M("size", t.Size), M("weight", t.Weight)],
+                    Expected = [M("minRatio", need)],
+                });
+            }
+            return looked;
+        }
+
+        static string Hex(ColorF c)
+            => ((int)MathF.Round(c.R * 255f)).ToString("x2", CultureInfo.InvariantCulture) + ((int)MathF.Round(c.G * 255f)).ToString("x2", CultureInfo.InvariantCulture)
+               + ((int)MathF.Round(c.B * 255f)).ToString("x2", CultureInfo.InvariantCulture);
 
         // ── target ──────────────────────────────────────────────────────────────────────────────────────────────────
 

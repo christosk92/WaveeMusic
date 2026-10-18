@@ -61,7 +61,7 @@ internal static class ZuneTrackTable
     /// <summary>The style Zune registers under <c>StyleKeys.TrackTable</c>. Stateless: a table, a drawer and a test share it.</summary>
     public static readonly TrackListStyle Style = new(stamp: 1, modern: s_row, classic: s_row, chrome: ZuneTrackChrome.Templates);
 
-    static Prop<ColorF> RowInk(BoundRow r, Func<ColorF> rest) => Prop.Of(() => ZuneListRules.RowInk(r.P.State.IsNow, R.Ink.AccentAction, rest()));
+    static Prop<ColorF> RowInk(BoundRow r, Func<ColorF> rest) => Prop.Of(() => ZuneListRules.RowInk(r.P.State.IsNow, R.Ink.AccentDecor, rest()));
 
     static TextEl Glyph(Prop<string> glyph, float size, Prop<ColorF> color, Prop<bool>? visible = null) => new(glyph)
     {
@@ -392,7 +392,7 @@ internal static class ZuneTrackTable
                     buffer.Clear();
                     var p = r.P;
                     var d = p.Track.ForDisplay;
-                    ColorF spanInk = ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary);
+                    ColorF spanInk = ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentDecor, Tok.TextSecondary);
                     FillLinkSpans(buffer, d, ArtistCount(in p), HasContainer(in p, d) ? Track.ContainerOf(d) : default, spanInk);
                     return buffer.Current;
                 }))
@@ -469,7 +469,7 @@ internal static class ZuneTrackTable
             var p = r.P;
             var c = Track.ContainerOf(p.Track.ForDisplay);
             ColorF ink = c.Name.Length == 0 && !p.State.IsNow ? Tok.TextTertiary
-                : ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary);
+                : ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentDecor, Tok.TextSecondary);
             buffer.Add(new TextSpan(c.Name.Length > 0 ? c.Name : Format.Dash, Color: ink, IsLink: c.Uri.IsValid));
             return buffer.Current;
         }))

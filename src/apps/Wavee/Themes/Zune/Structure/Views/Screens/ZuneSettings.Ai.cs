@@ -177,7 +177,7 @@ internal static partial class ZuneSettings
                 long size = bytes[i];
                 bool have = Contains(installed, lang);
                 Element status = have
-                    ? ZuneText.Meta(Loc.Get(AiS.Lang.Installed)) with { Color = Tok.AccentDefault }
+                    ? ZuneText.Meta(Loc.Get(AiS.Lang.Installed)) with { Color = R.Ink.AccentDecor }
                     : ZuneText.Meta(AiLyrics.Rules.FormatBytes(size));
                 Element action = have
                     ? installed.Count > 1 ? k.Cmd(Loc.Get(AiS.Lang.Remove), () => AiLyrics.RemoveLanguage(lang)) : new BoxEl()

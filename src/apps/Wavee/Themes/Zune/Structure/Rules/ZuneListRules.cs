@@ -258,6 +258,24 @@ public static class ZuneListRules
     /// <summary>The lines' weight: the LyricsLine role's (Zune draws every line at line level, Z-Lyrics); the translation's (the board's 300).</summary>
     public const ushort LyricsTranslationWeight = 300;
 
+    /// <summary>A lyric row's opacity on the ground of the kind. The dark ground keeps the core ladder (the board's 1 / .45 / .24 / .14 / .11, past rows
+    /// dimmer). The same alphas read far weaker as dark ink on light (the line next to the active one measured 3.0 : 1 and the quieter ones 1.2 to 1.7 :
+    /// 1), so the light ladder lifts them: the line either side of the active one holds 3 : 1 on the stage's pink wash (a 56 DIP run, large text),
+    /// the next ring about 2 : 1 and the rest sit at a quiet 1.5 : 1, still visible. Podcast rows that do not own playback stay at 1.</summary>
+    public static float LyricRowOpacity(bool podcast, bool ownsPlayback, int emphasis, bool light)
+    {
+        if (!light || Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)) return Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+        int dist = Lyrics.Emphasis.DistOf(emphasis);
+        if (dist == 0) return 1f;
+        bool past = (emphasis & Lyrics.Emphasis.PastBit) != 0;
+        return past
+            ? dist switch { 1 => LightNeighbour, 2 => 0.32f, _ => 0.22f }
+            : dist switch { 1 => LightNeighbour, 2 => 0.34f, 3 => 0.26f, 4 => 0.22f, _ => 0.20f };
+    }
+
+    /// <summary>The light ladder's first ring (the line next to the active one, either side): 56 % of the ink reaches 3 : 1 on the darkest wash the stage paints.</summary>
+    public const float LightNeighbour = 0.56f;
+
     /// <summary>The active line's ink: the accent (Z-Lyrics: the line being sung is the accent, every other line the ink at the opacity ramp).</summary>
     public static ColorF LyricsLineInk(bool active, ColorF accent, ColorF rest) => active ? accent : rest;
 

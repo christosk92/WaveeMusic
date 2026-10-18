@@ -133,27 +133,30 @@ public static partial class Diagnostics
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = IsGlyph(value),
                 Spans = spans,
+                Color = paint.TextColor,
             };
         }
 
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's edge expectations. UI thread, between frames.</summary>
-        public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots)
+        public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, InspectLint.Pixels? pixels = null)
         {
             SceneStore scene = shell.Host.Scene;
             StringTable strings = scene.Strings ?? Entities.Strings;
             var nodes = new List<InspectLint.Node>();
-            var stack = new Stack<(NodeHandle Node, int Parent, int Depth)>();
+            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert)>();
             var children = new List<NodeHandle>();
             Span<char> path = stackalloc char[256];
-            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0));
+            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false));
             while (stack.Count > 0)
             {
-                var (node, parent, depth) = stack.Pop();
+                var (node, parent, depth, above, inertAbove) = stack.Pop();
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
                 if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0 || paint.Opacity <= 0f) continue;
                 RectF rect = scene.PresentedAbsoluteRect(node);
+                float opacity = above * paint.Opacity;
+                bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;
                 if (rect.W > 0f && rect.H > 0f)
                 {
@@ -177,13 +180,15 @@ public static partial class Diagnostics
                         Role = it.Role == AutomationRole.None ? "" : it.Role.ToString(),
                         Label = interactive ? LabelOf(scene, strings, node) : "",
                         Animating = shell.Host.Animation.HasTracks(node),
+                        Opacity = opacity,
+                        Inert = inert,
                         Sticky = (flags & NodeFlags.StickyPinned) != 0,
                         Text = paint.VisualKind == VisualKind.Text ? TextOf(shell, node, ref paint, strings) : null,
                     });
                 }
                 children.Clear();
                 for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) children.Add(c);
-                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1));
+                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert));
             }
 
             // The words under each node (a text block is a node with exactly one text run below it): children follow their parent, so one backwards pass.
@@ -209,7 +214,7 @@ public static partial class Diagnostics
                 }
                 edges = guide.Edges(new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey));
             }
-            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, Theme = InspectKit.ActiveThemeId };
+            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, Theme = InspectKit.ActiveThemeId, Backdrop = pixels };
         }
 
         // ── the report ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -287,12 +292,28 @@ public static partial class Diagnostics
 
     public sealed partial class InspectSession
     {
+        /// <summary>The frame the contrast rule reads its backgrounds from: one frame presented at rest (as `render` does), read back from the offscreen
+        /// surface. Null when the mount has no surface (`gpu=none`, headless text) or the capture is refused: the rule then checks nothing.</summary>
+        InspectLint.Pixels? RenderedFrame(Shell.HeadlessShell shell)
+        {
+            if (_surface is not { } surface) return null;
+            try
+            {
+                RunFrames(1);
+                byte[] bgra = surface.CaptureBgra(out int w, out int h);
+                float dipW = shell.Window.ClientSizePx.Width / Math.Max(0.01f, shell.Window.Scale);
+                return new InspectLint.Pixels(bgra, w, h, dipW > 0f ? w / dipW : 1f);
+            }
+            catch (InvalidOperationException) { return null; }
+        }
+
         /// <summary>`lint`: capture the mounted scene (or the subtree `root` names), run the rules, reply with the report. Reads the scene as it is: settle first.</summary>
         string Lint(int id, string name, Inspect.Args a, Shell.HeadlessShell shell)
         {
             if (!InspectLintScene.TryOptions(a, out InspectLint.Options options, out string error)) return Inspect.Reply.Fail(id, name, error);
             if (!TryRoots(a, shell, out List<NodeHandle> roots, out error)) return Inspect.Reply.Fail(id, name, error);
-            InspectLint.Snapshot snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots));
+            InspectLint.Pixels? pixels = options.Enabled(InspectLint.Rules.Contrast) ? RenderedFrame(shell) : null;
+            InspectLint.Snapshot snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels);
             InspectLint.Report report = InspectLint.Run(snapshot, options);
             return Inspect.Reply.Ok(id, name, w =>
             {

@@ -194,20 +194,30 @@ public sealed class ZuneRolesTests
         Assert.Equal(ColorF.FromRgba(0xFF, 0xFF, 0xFF) with { A = 0.05f }, l.RowHover.Resolve(ThemeKind.Dark));
         Assert.Equal(ColorF.FromRgba(0x11, 0x11, 0x11) with { A = 0.05f }, l.RowHover.Resolve(ThemeKind.Light));
         Assert.Equal(ZuneAccent.Pink.Dark with { A = 0.12f }, l.SelectedRest.Resolve(ThemeKind.Dark));
-        Assert.Equal(ZuneAccent.Pink.Light with { A = 0.12f }, l.SelectedRest.Resolve(ThemeKind.Light));
+        Assert.Equal(ZuneAccent.Pink.Light with { A = ZuneTokens.SelectedALight }, l.SelectedRest.Resolve(ThemeKind.Light));
+        Assert.Equal(0.06f, ZuneTokens.SelectedALight);
         // Hovering a selected row is strictly stronger than the selection alone.
         Assert.True(l.SelectedHover.Resolve(ThemeKind.Dark).A > l.SelectedRest.Resolve(ThemeKind.Dark).A);
     }
 
     [Fact]
-    public void The_accent_is_the_board_swatch_as_fill_and_ink_and_one_step_darker_on_light()
+    public void The_accent_is_the_board_swatch_as_fill_everywhere_and_as_ink_on_dark_and_a_darker_ink_on_light()
     {
         foreach (var pair in ZuneAccent.Swatches)
         {
             var t = ZuneRoles.For(pair, followsWindows: false, bigNumerals: true);
             Assert.Equal(pair.Dark, t.Ink.AccentAction.Resolve(ThemeKind.Dark));
             Assert.Equal(pair.Light, t.Ink.AccentAction.Resolve(ThemeKind.Light));
+            Assert.Equal(pair.Light, t.Ink.AccentSelection.Resolve(ThemeKind.Light));
             Assert.Equal(pair.Dark, t.Ink.AccentDecor.Resolve(ThemeKind.Dark));
+            Assert.Equal(pair.LightInk, t.Ink.AccentDecor.Resolve(ThemeKind.Light));
+            Assert.Equal(pair.LightInk, t.Ink.PremiumText.Resolve(ThemeKind.Light));
+            // The fill keeps the board's swatch: white on it (a glyph on the play disc) reads 3 : 1 or better.
+            Assert.True(ColorContrast.Ratio(ColorF.FromRgba(255, 255, 255), pair.Light) >= 3f, "white on the light fill: " + pair);
+            // The ink reads 4.5 : 1 on every light plate accent text sits on, and is no lighter than the fill.
+            foreach (var plate in new[] { ZuneTokens.LightGround, ZuneTokens.LightWell, ColorF.FromRgba(0xE2, 0xE2, 0xE2), ColorF.Lerp(ZuneTokens.LightGround, pair.Light, ZuneTokens.SelectedALight) })
+                Assert.True(ColorContrast.Ratio(pair.LightInk, plate) >= 4.5f, "accent ink on a light plate: " + pair);
+            Assert.True(Luma(pair.LightInk) <= Luma(pair.Light));
             Assert.Equal(pair.Dark, t.Layer.Badge.Resolve(ThemeKind.Dark));
             Assert.True(Luma(pair.Light) < Luma(pair.Dark), "the light step is darker: " + pair);
         }
@@ -242,6 +252,10 @@ public sealed class ZuneRolesTests
         var pair = ZuneAccent.PairOf(custom);
         Assert.Equal(custom, pair.Dark);
         Assert.Equal(AccentRamp.Derive(custom).Dark1, pair.Light);
+        Assert.True(ColorContrast.Ratio(pair.LightInk, ZuneTokens.LightWell) >= 4.5f, "a custom accent's ink reads 4.5 : 1 too");
+        // The ink of a swatch's fill is the pinned ink, within a byte (the table is authored, the function derives it).
+        foreach (var s in ZuneAccent.Swatches)
+            Assert.True(MathF.Abs(ZuneAccent.InkOf(s.Light).R - s.LightInk.R) < 0.02f && MathF.Abs(ZuneAccent.InkOf(s.Light).G - s.LightInk.G) < 0.02f && MathF.Abs(ZuneAccent.InkOf(s.Light).B - s.LightInk.B) < 0.02f, "the derived ink of " + s);
     }
 
     [Fact]
@@ -252,9 +266,27 @@ public sealed class ZuneRolesTests
         Assert.Equal(ZuneAccent.Orange.Dark, ramp.Light2);
         Assert.Equal(ZuneAccent.Orange.Dark, ramp.Light3);
         Assert.Equal(ZuneAccent.Orange.Light, ramp.Dark1);
-        Assert.Equal(ZuneAccent.Orange.Light, ramp.Dark2);
+        Assert.Equal(ZuneAccent.Orange.LightInk, ramp.Dark2);   // the text shade is the ink, the fill shade the board's swatch
         Assert.Equal(new[] { "ff3ca6", "ff7a1a", "60cdff", "8fd14f", "b983ff" }, ZuneAccent.Swatches.Select(p => Hex(p.Dark)));
-        Assert.Equal(new[] { "bd156b", "a94700", "086b99", "3e7115", "7e48c3" }, ZuneAccent.Swatches.Select(p => Hex(p.Light)));
+        Assert.Equal(new[] { "e0197f", "d65a00", "0a7fb5", "4f8f1a", "8a4fd6" }, ZuneAccent.Swatches.Select(p => Hex(p.Light)));
+        Assert.Equal(new[] { "bd156b", "a94700", "086b99", "3e7115", "7e48c3" }, ZuneAccent.Swatches.Select(p => Hex(p.LightInk)));
+    }
+
+    [Fact]
+    public void The_light_text_inks_hold_4_5_to_1_on_the_ground_the_well_and_a_selected_row()
+    {
+        var selected = ColorContrast.Over(ColorF.FromRgba(0, 0, 0) with { A = ZuneTokens.PressedA }, ZuneTokens.LightGround);   // the 8 % grey a selected row takes
+        foreach (var plate in new[] { ZuneTokens.LightGround, ZuneTokens.LightWell, ZuneTokens.LightPanel, selected })
+        {
+            Assert.True(ColorContrast.Ratio(ZuneTokens.LightInk, plate) >= 4.5f);
+            Assert.True(ColorContrast.Ratio(ZuneTokens.LightInkSecondary, plate) >= 4.5f);
+            Assert.True(ColorContrast.Ratio(ZuneTokens.LightInkTertiary, plate) >= 4.5f, "tertiary on " + Hex(plate));
+        }
+        Assert.True(Luma(ZuneTokens.LightInkSecondary) < Luma(ZuneTokens.LightInkTertiary), "the tertiary stays the lighter voice");
+        // The accent's own selected wash is the lighter 6 %: the tertiary ink holds on it too.
+        var accentWash = ColorContrast.Over(ZuneAccent.Pink.Light with { A = ZuneTokens.SelectedALight }, ZuneTokens.LightGround);
+        Assert.True(ColorContrast.Ratio(ZuneTokens.LightInkTertiary, accentWash) >= 4.5f);
+        Assert.True(ColorContrast.Ratio(ZuneAccent.Pink.LightInk, accentWash) >= 4.5f);
     }
 
     static string Hex(ColorF c)

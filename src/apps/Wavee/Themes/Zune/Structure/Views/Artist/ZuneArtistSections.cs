@@ -311,7 +311,7 @@ internal static class ZuneArtistSections
                     Direction = 1, Width = Rules.StubDateW, Shrink = 0f, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        K.Caption(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Prop.Of(static () => R.Ink.AccentAction) },
+                        K.Caption(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Prop.Of(static () => R.Ink.AccentDecor) },
                         R.Type.Numeral(date.Day.ToString(CultureInfo.CurrentCulture)) with { Color = Tok.TextPrimary, MaxLines = 1 },
                     ],
                 },
@@ -347,7 +347,7 @@ internal static class ZuneArtistSections
             [
                 new BoxEl { ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(R.Shape.Cover), Children = [Controls.ArtworkFill(image, R.Shape.Cover)] },
                 K.Name(name) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
-                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentAction), MaxLines = 1 },
+                R.Type.DenseMeta(price) with { Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1 },
             ],
         };
     };

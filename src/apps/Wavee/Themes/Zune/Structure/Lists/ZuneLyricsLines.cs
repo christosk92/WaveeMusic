@@ -267,7 +267,7 @@ internal sealed class ZuneLyricsRow : Component
     {
         bool podcast = _host.IsPodcast;
         bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, _emphasis.Value);
+        float to = ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, _emphasis.Value, R.IsLight);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
@@ -294,7 +294,7 @@ internal sealed class ZuneLyricsRow : Component
         if (rhythm is not null)
             m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight, SidePad = rhythm.ActiveScale > 1f ? 0f : m.SidePad };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, e, R.IsLight);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The active line is the accent: the stage's own accent signal where it hands one, else the style's. A neutral surface (a reader

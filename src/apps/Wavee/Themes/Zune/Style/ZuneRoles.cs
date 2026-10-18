@@ -2,7 +2,7 @@
 //
 // Every number and colour below is read off the Zune boards (Z-Tokens first, then the surface that draws it): the ground ladder
 // #161616 / #111111 / #1b1b1b / #242424 and its light twin #f5f5f5 / #ebebeb / #ffffff / #ffffff, the ink #fff / #a8a8a8 / #7a7a7a
-// (light #111 / #5a5a5a / #686868, the boards' #8a8a8a darkened to 4.5 : 1), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
+// (light #111 / #4c4c4c / #646464, the boards' #5a5a5a / #8a8a8a darkened so both hold 4.5 : 1), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
 // from 20 DIP up at the light weights (200 panorama, 300 titles and headings, 350 pivots at rest) and Segoe UI Variable Text below,
 // the square corners (0 everywhere, 2 on covers, full on the round metro buttons and the people), and lowercase for every word the
 // theme writes (labels, navigation, headings, commands; never a name or a title someone typed).
@@ -62,11 +62,12 @@ public static class ZuneTokens
     public static ColorF LightRaised { get; } = ColorF.FromRgba(0xFF, 0xFF, 0xFF);
     /// <summary>The light ink.</summary>
     public static ColorF LightInk { get; } = ColorF.FromRgba(0x11, 0x11, 0x11);
-    /// <summary>The light secondary ink.</summary>
-    public static ColorF LightInkSecondary { get; } = ColorF.FromRgba(0x5A, 0x5A, 0x5A);
-    /// <summary>The light tertiary ink: #686868, not the boards' #8a8a8a (2.9 to 3.2 : 1 on the light ground and well, under the 4.5 : 1 the
-    /// 11 to 13 DIP captions, dates and counts it inks need): 4.7 : 1 on the well, 5.1 : 1 on the ground, still a step lighter than the secondary.</summary>
-    public static ColorF LightInkTertiary { get; } = ColorF.FromRgba(0x68, 0x68, 0x68);
+    /// <summary>The light secondary ink: #4c4c4c (the boards' #5a5a5a, a step darker so the tertiary below it can hold 4.5 : 1 on a selected row and
+    /// still read as a lighter voice): 7.6 : 1 on the ground.</summary>
+    public static ColorF LightInkSecondary { get; } = ColorF.FromRgba(0x4C, 0x4C, 0x4C);
+    /// <summary>The light tertiary ink: #646464, not the boards' #8a8a8a (2.9 to 3.2 : 1 on the light ground and well, under the 4.5 : 1 the
+    /// 11 to 13 DIP captions, dates and counts it inks need): 5.3 : 1 on the ground, 4.8 : 1 on the well, 4.6 : 1 on a selected row's 8 % grey.</summary>
+    public static ColorF LightInkTertiary { get; } = ColorF.FromRgba(0x64, 0x64, 0x64);
 
     /// <summary>The hover wash: 5 % of the ink (white on dark, black on light; Z-Tokens, Z-Light-Album).</summary>
     public const float HoverA = 0.05f;
@@ -74,6 +75,13 @@ public static class ZuneTokens
     public const float PressedA = 0.08f;
     /// <summary>The selected wash: 12 % of the accent (Z-Tokens).</summary>
     public const float SelectedA = 0.12f;
+
+    /// <summary>The selected wash on the LIGHT ground: 6 %. At 12 % the accent's wash takes the ground to about #f2dbe7, where the tertiary ink reads
+    /// 4.2 : 1 and the accent ink 4.1 : 1; at 6 % both hold 4.5 : 1.</summary>
+    public const float SelectedALight = 0.06f;
+
+    /// <summary>The selected wash of <paramref name="kind"/>.</summary>
+    public static float SelectedAOf(ThemeKind kind) => kind == ThemeKind.Light ? SelectedALight : SelectedA;
     /// <summary>The hairline, one per surface at most: 8 % white on dark, 10 % black on light (Z-Tokens).</summary>
     public const float HairlineDarkA = 0.08f, HairlineLightA = 0.10f;
     /// <summary>A rest chip and a quiet plate: 6 % of the ink (Z-Tokens' "pop" chip).</summary>
@@ -234,17 +242,25 @@ public static class ZuneRoles
     private static ColorRole AccentRole(ZuneAccentPair accent, bool followsWindows)
         => followsWindows ? ColorRole.By(static _ => Tok.AccentDefault) : ColorRole.Pair(light: accent.Light, dark: accent.Dark);
 
+    // Accent as INK: accent-coloured words and thin glyphs. The light arm is the darker LightInk (4.5 : 1 on the light plates), the dark arm the
+    // swatch itself; the OS accent reads the ramp's text shade, which `ZuneAccent.RampOf` makes the same ink.
+    private static ColorRole AccentInkRole(ZuneAccentPair accent, bool followsWindows)
+        => followsWindows ? ColorRole.By(static _ => Tok.AccentTextPrimary) : ColorRole.Pair(light: accent.LightInk, dark: accent.Dark);
+
     private static ColorRole AccentWash(ZuneAccentPair accent, bool followsWindows)
         => followsWindows
-            ? ColorRole.By(static _ => Tok.AccentDefault with { A = ZuneTokens.SelectedA })
-            : ColorRole.Pair(light: accent.Light with { A = ZuneTokens.SelectedA }, dark: accent.Dark with { A = ZuneTokens.SelectedA });
+            ? ColorRole.By(static k => Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) })
+            : ColorRole.Pair(light: accent.Light with { A = ZuneTokens.SelectedALight }, dark: accent.Dark with { A = ZuneTokens.SelectedA });
 
     // Play, the playing row, selection, the premium line and the notification dot are all the one accent (Z-Tokens, Z-Overlays): Zune
-    // has one accent voice, as fill and as ink, and the board's swatch is legible as ink on both grounds.
+    // has one accent voice. As a FILL (the play disc, a selected chip, the progress line, an accent ring: Action and Selection) it is the
+    // board's swatch; as INK (a word, a thin glyph: Decor and PremiumText) it is the swatch on the dark ground and the darker ink on the light
+    // one, because the board's light swatch reads 3.3 to 4.2 : 1 as text.
     private static InkRoles Ink(ZuneAccentPair accent, bool followsWindows)
     {
-        var a = AccentRole(accent, followsWindows);
-        return new InkRoles(AccentAction: a, AccentSelection: a, AccentDecor: a, PremiumText: a, DataDot: ColorScience.DataDotInk);
+        var fill = AccentRole(accent, followsWindows);
+        var ink = AccentInkRole(accent, followsWindows);
+        return new InkRoles(AccentAction: fill, AccentSelection: fill, AccentDecor: ink, PremiumText: ink, DataDot: ColorScience.DataDotInk);
     }
 
     private static ColorRole Ground => ColorRole.Pair(light: ZuneTokens.LightGround, dark: ZuneTokens.DarkGround);
@@ -274,10 +290,10 @@ public static class ZuneRoles
             RowHover: hover, RowPressed: pressed, RowHoverZebra: hover, RowPressedZebra: pressed,
             SelectedRest: selected,
             SelectedHover: followsWindows
-                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.HoverA), Tok.AccentDefault with { A = ZuneTokens.SelectedA }))
+                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.HoverA), Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
                 : Over(hover, selected),
             SelectedPressed: followsWindows
-                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.PressedA), Tok.AccentDefault with { A = ZuneTokens.SelectedA }))
+                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.PressedA), Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
                 : Over(pressed, selected),
             ChromeHover: hover, ChromePressed: pressed,
             Badge: AccentRole(accent, followsWindows),

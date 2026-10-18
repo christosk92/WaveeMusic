@@ -314,7 +314,7 @@ internal static class ZuneTrackDrawer
                     [
                         R.Type.TrackTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
-                            Color = ZuneListRules.RowInk(isNow, R.Ink.AccentAction, Tok.TextPrimary),
+                            Color = ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextPrimary),
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                         },
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },

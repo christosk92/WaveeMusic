@@ -188,7 +188,7 @@ internal static class ZuneArtistBanners
                     [
                         R.Type.MicroMeta(ArtistVerbs.Text(a.TourEyebrowId)) with
                         {
-                            Color = Prop.Of(static () => R.Ink.AccentAction), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                            Color = Prop.Of(static () => R.Ink.AccentDecor), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                         },
                         R.Type.TrackTitle(ArtistVerbs.Text(a.TourHeadlineId)) with
                         {
