@@ -180,7 +180,9 @@ public static class ZuneBandRules
     /// below follows each frame; the rows are laid out at full height and clipped from the bottom). Null under reduced motion at the call site.</summary>
     public static readonly LayoutTransition HeightMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
-        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height,
+        // The page scrolling down is what folds row 2: the scroll-motion latch must not snap the fold it causes.
+        AnimateDuringScroll: true);
 
     /// <summary>The height motion while row 2 folds away: it waits for row 2's fade-out (<see cref="Row2FadeMs"/>), so the clip never cuts the row.</summary>
     public static readonly LayoutTransition HeightMotionAfterFade = HeightMotion with { DelayMs = Row2FadeMs };
