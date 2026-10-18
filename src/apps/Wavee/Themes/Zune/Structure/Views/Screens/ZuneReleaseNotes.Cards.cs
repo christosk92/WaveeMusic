@@ -187,16 +187,28 @@ internal static partial class ZuneReleaseNotes
         {
             RichTextBlock.Paragraph(spans.ToArray()) with { Size = meta.Size, LineHeight = meta.LineHeight, Grow = 1f, MinWidth = 0f, MaxWidth = float.NaN, Wrap = TextWrap.Wrap, Color = Tok.TextSecondary },
         };
-        if (refs.Count > 0)
+        // Where there is no hit-target floor (the desktop tiers) the board's row is ONE line: the sentence, then the reference chips, the initials and the first contributor's login at
+        // the end. With a target floor the chips wrap under the sentence as before.
+        bool oneLine = layout.Target <= 0f;
+        if (refs.Count > 0 && !oneLine)
             column.Add(new BoxEl { Direction = 0, Gap = K.RowRefGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = refs.ToArray() });
+        var cells = new List<Element>(4)
+        {
+            new BoxEl { Direction = 1, Gap = K.RowRefGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = column.ToArray() },
+        };
+        if (refs.Count > 0 && oneLine)
+            cells.Add(new BoxEl { Direction = 0, Gap = K.RowRefGap, Shrink = 0f, AlignItems = FlexAlign.Center, Children = refs.ToArray() });
+        cells.Add(AvatarStack(item.Contributors));
+        if (oneLine && item.Contributors.Length > 0)
+        {
+            var first = item.Contributors[0];
+            string who = first.FirstTime ? Strings.WhatsNew.FirstContribution(first.Login) : first.Login;
+            cells.Add(R.Type.MicroMeta(who) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f });
+        }
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, K.RowPadY, 0f, K.RowPadY), MinHeight = K.RowMinHeight,
-            Children =
-            [
-                new BoxEl { Direction = 1, Gap = K.RowRefGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = column.ToArray() },
-                AvatarStack(item.Contributors),
-            ],
+            Children = cells.ToArray(),
         };
     }
 

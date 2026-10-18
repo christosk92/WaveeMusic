@@ -281,6 +281,7 @@ public static partial class ReleaseNotes
             if (string.IsNullOrWhiteSpace(semver)) return null;
             semver = semver.Trim();
             if (!IsSafeVersion(semver)) return null;
+            if (Platform.Args.Fake) { Note("fake"); return FakeDocument(semver); }   // the demo never reaches GitHub
 
             // The embedded copy is THIS build's notes and nothing else: handing it back for another version is a silent lie.
             if (TryReadDocument(Path.Combine(_embeddedRoot, DocName)) is { } embedded && string.Equals(embedded.Version, semver, StringComparison.Ordinal))
@@ -356,6 +357,7 @@ public static partial class ReleaseNotes
         /// <summary>Re-read the rolling index into memory + the cache. A failure keeps whatever index we had.</summary>
         public async Task RefreshIndexAsync(CancellationToken ct)
         {
+            if (Platform.Args.Fake) { Volatile.Write(ref _index, FakeIndex()); return; }
             byte[]? bytes = await GetBytesAsync(_releasesRoot + _feedRelease + "/" + IndexName, ct).ConfigureAwait(false);
             if (bytes is null) return;
             ReleaseNotesIndex? index;
