@@ -283,7 +283,7 @@ public sealed partial class ZuneTierLayoutTests
             Shell.GoTo(route);
             UntilBackground(shell, () => !shell.Find(ZuneProfileRules.HeroKey).IsNull, "your own profile's hero");
             Assert.True(shell.Find(ZuneProfileRules.UnavailableKey).IsNull, "your own profile is not 'unavailable'");
-            UntilBackground(shell, () => ArtistChrome() is { Views.Count: > 0 }, "your profile's sections in the band's row 2");
+            UntilBackground(shell, () => ArtistChrome() is { Views.Count: > 0 } c && c.Actions.Any(a => a.Id == "open-account"), "your profile's sections in the band's row 2");
             Assert.Contains(ArtistChrome()!.Actions, a => a.Id == "open-account");
         }
         finally
