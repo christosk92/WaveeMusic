@@ -143,6 +143,29 @@ public class EntitiesFakeHomeTests
     }
 
     [Fact]
+    public void The_fake_catalogue_answers_any_query_by_name_and_leaves_one_pending()
+    {
+        Seed();
+        var wave = Entities.Search("wave".AsSpan());
+        Entities.Ensure(wave, SearchFields.All);
+        Assert.True(wave.ResultCount > 0);
+        Assert.Equal(EntityKind.Artist, wave.ResultRef(0).Kind);            // an artist named for it leads
+        for (int i = 0; i < wave.ResultCount; i++)
+            Assert.Contains("wave", FakeTitle(wave.ResultRef(i)), StringComparison.OrdinalIgnoreCase);
+
+        var none = Entities.Search("qqqqq".AsSpan());
+        Entities.Ensure(none, SearchFields.All);
+        Assert.Equal(0, none.ResultCount);
+        Assert.True(none.Knows(SearchFields.Results));                      // answered: empty, not pending
+
+        var pending = Entities.Search(Entities.FakePendingQuery.AsSpan());
+        Entities.Ensure(pending, SearchFields.All);
+        Assert.False(pending.Knows(SearchFields.Results));                  // the loading probe stays unanswered
+    }
+
+    static string FakeTitle(EntityRef hit) => hit.Kind == EntityKind.User ? "wave" : new HomeCard(hit).Title;
+
+    [Fact]
     public void Search_a_answers_its_chips_a_five_kind_top_list_every_facet_genres_and_related()
     {
         Seed();

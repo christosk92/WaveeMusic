@@ -116,6 +116,19 @@ public class InspectProtocolTests
     }
 
     [Fact]
+    public void The_state_verb_takes_its_kind_by_name_or_position()
+    {
+        Assert.Equal(I.Verb.State, I.VerbOf("state"));
+        Assert.Contains("state", I.VerbNames);
+        var named = Parse("""{"cmd":"state","args":{"kind":"empty"},"id":3}""");
+        Assert.Equal(I.Verb.State, named.Verb);
+        Assert.Equal("empty", named.Args.Str("kind"));
+        var text = Parse("state error");
+        Assert.Equal(I.Verb.State, text.Verb);
+        Assert.Equal("error", text.Args.Str("kind"));
+    }
+
+    [Fact]
     public void Every_listed_verb_name_parses_to_a_verb()
     {
         foreach (string name in I.VerbNames) Assert.NotEqual(I.Verb.None, I.VerbOf(name));
