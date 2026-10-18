@@ -219,7 +219,7 @@ public sealed class ZuneCatalogTests : IDisposable
     public void The_capabilities_are_zunes()
     {
         var caps = ZuneTheme.Create().Capabilities(ThemeOptionValues.Empty);
-        Assert.Equal(new ShellCapabilities(Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true), caps);
+        Assert.Equal(new ShellCapabilities(Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true, ContinuousPageSwap: true), caps);
         Assert.Same(ZunePolicies.Capabilities, caps);
     }
 

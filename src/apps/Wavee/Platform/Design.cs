@@ -521,23 +521,23 @@ public static partial class Design
         /// <summary>The page swap's badge-twitch travel — the 0.2.x fade-through, verbatim.</summary>
         public const float ClassicDx = Expressive.DistBase;
 
-        // CONTINUITY: sampled at the frame clock (16 ms), the Fluent cubics break the swap. FluentAccelerate ends at ~4x the average
-        // slope: the leaving page was at 0.70 on its last drawn frame and removed with a 0.70 -> 0 step. FluentDecelerate starts steeper
-        // than that: the entering page's first drawn frame (6 ms into its leg) was already at 0.23 and 1.8 DIP in, then 2.95 DIP further
-        // on the next. A linear exit finishes at the slope it started at (the last step is one frame's worth, 0.11), and the quadratic
-        // ease-out starts at a quarter of the cubic's rate (0.06 on the first frame) and still settles.
-        /// <summary>The page swap's curves, shared with whatever rides the swap's clock (Classic's masthead head).</summary>
-        public const Easing EnterEasing = Easing.EaseOut, ExitEasing = Easing.Linear;
+        // Classic's curves are the production ones, verbatim (Fluent decelerate in, accelerate out). A structure that asks for a CONTINUOUS swap
+        // (`ShellCapabilities.ContinuousPageSwap`: Zune) gets the curves below instead: sampled at the frame clock (16 ms) the Fluent cubics break
+        // the swap. FluentAccelerate ends at ~4x the average slope: the leaving page was at 0.70 on its last drawn frame and removed with a
+        // 0.70 -> 0 step. FluentDecelerate starts steeper than that: the entering page's first drawn frame (6 ms into its leg) was already at 0.23
+        // and 1.8 DIP in, then 2.95 DIP further on the next. A linear exit finishes at the slope it started at (the last step is one frame's
+        // worth, 0.11), and the quadratic ease-out starts at a quarter of the cubic's rate (0.06 on the first frame) and still settles.
+        public const Easing ContinuousEnterEasing = Easing.EaseOut, ContinuousExitEasing = Easing.Linear;
 
-        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, EnterEasing);
-        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, ExitEasing);
+        static TransitionDynamics SeqEnter(bool continuous) => TransitionDynamics.Tween(EnterDurationMs, continuous ? ContinuousEnterEasing : Easing.FluentDecelerate);
+        static TransitionDynamics SeqExit(bool continuous) => TransitionDynamics.Tween(ExitDurationMs, continuous ? ContinuousExitEasing : Easing.FluentAccelerate);
 
         /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
-        static LayoutTransition SeqTranslate(float enterDx, float exitDx) => new(
-            TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter,
+        static LayoutTransition SeqTranslate(float enterDx, float exitDx, bool continuous) => new(
+            TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter(continuous),
             Enter: new EnterExit(Dx: enterDx, Opacity: 0f, Active: true),
             Exit: new EnterExit(Dx: exitDx, Opacity: 0f, Active: true),
-            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+            ExitDynamics: SeqExit(continuous), DelayMs: EnterDelayMs, ExitDelayMs: 0f);
 
         /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
         /// overlaps the outgoing page (ZStacked on the boundary, hit-test invisible, parked once its tracks settle) when
@@ -547,11 +547,11 @@ public static partial class Design
         /// <para>CRITICAL: the translate passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c> and null means
         /// "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/> too and flash the
         /// content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion) => motion switch
+        public static LayoutTransition RecipeFor(NavTransitionKind motion, bool continuous = false) => motion switch
         {
             NavTransitionKind.Neutral => MotionRecipes.PageFade,
-            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx),
-            _ => SeqTranslate(ClassicDx, -ClassicDx),
+            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx, continuous),
+            _ => SeqTranslate(ClassicDx, -ClassicDx, continuous),
         };
 
         // ── the VIDEO-SAFE pair ──────────────────────────────────────────────────────────────────────────────────────
