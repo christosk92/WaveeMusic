@@ -251,7 +251,7 @@ public static class ZuneSettingsRules
     public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f;
 
     /// <summary>A short choice stays a row of chips up to this many (past it, a combo).</summary>
-    public const int MaxChips = 4;
+    public const int MaxChips = 4, MaxChipChars = 14;
 
     /// <summary>The gap between a hit-target chip and the next, in the wrapping row that stands in for the segmented control at Compact.</summary>
     public const float ChipGap = 8f;

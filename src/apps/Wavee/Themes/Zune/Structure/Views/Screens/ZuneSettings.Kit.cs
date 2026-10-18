@@ -89,6 +89,19 @@ internal sealed record ZuneChoice(IReadOnlyList<string> Labels, Func<int> Curren
 {
     /// <summary>The node key a choice cell mounts under: the words it was built from (a combo freezes its items).</summary>
     public string KeyFor(string id) => "zs:choice:" + id + ":" + string.Join('|', Labels);
+
+    /// <summary>The choice sits as a segmented row of chips: the call site asked for it, or it is a short fixed set (at most <see cref="ZuneSettingsRules.MaxChips"/> short
+    /// words, none disabled alone), the boards' segmented chips; a long list stays the combo.</summary>
+    public bool AsChips
+    {
+        get
+        {
+            if (Chips) return true;
+            if (Labels.Count < 2 || Labels.Count > Z.MaxChips || ItemEnabled is not null) return false;
+            for (int i = 0; i < Labels.Count; i++) if (Labels[i].Length > Z.MaxChipChars) return false;
+            return true;
+        }
+    }
 }
 
 /// <summary>What a slider cell draws and writes.</summary>
@@ -295,7 +308,7 @@ internal sealed class ZuneKit
             UseEffect(() => _selected.SetIfChanged(current), DepKey.From(current));
             bool enabled = choice.Enabled?.Invoke() ?? true;
 
-            if (choice.Chips && lay.Touch)
+            if (choice.AsChips && lay.Touch)
             {
                 // Compact (Z-Settings-Appearance-Compact): the board's chips WRAP, each a 40-tall button, the picked one on the accent. The segmented control is one row and clips
                 // four words in a 368 column, so a hit-target tier draws the same choice as buttons in a wrapping row.
@@ -313,7 +326,7 @@ internal sealed class ZuneKit
                 };
             }
 
-            if (choice.Chips)
+            if (choice.AsChips)
             {
                 var items = new SegmentedItem[choice.Labels.Count];
                 for (int i = 0; i < items.Length; i++) items[i] = new SegmentedItem(choice.Labels[i]);

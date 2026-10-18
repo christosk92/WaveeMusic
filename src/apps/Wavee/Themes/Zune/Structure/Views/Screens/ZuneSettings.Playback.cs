@@ -55,7 +55,8 @@ internal static partial class ZuneSettings
             Embed.Comp(static () => new RuntimeBlock()) with { Key = "zs:runtime" },
 
             Group(k, Tab.Playback, "Audio",
-                k.DocRow(quality, k.Choice(quality, QualityLabels(qualityRungs), chips: false, descriptions: QualityDescriptions(qualityRungs), width: Z.WideComboWidth)),
+                k.DocRow(quality, k.Choice(quality, QualityLabels(qualityRungs), chips: false, descriptions: QualityDescriptions(qualityRungs), width: Z.WideComboWidth),
+                    QualityHint(quality, QualityDescriptions(qualityRungs))),
                 // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
                 k.DocRow(metered, k.Choice(metered.Id, new ZuneChoice(QualityLabels(meteredRungs),
                     () => Platform.Network.MeteredQualityCap.Value,
@@ -103,6 +104,15 @@ internal static partial class ZuneSettings
                 _ => Strings.Settings.Playback.QualityLossless,
             });
         return labels;
+    }
+
+    /// <summary>The row's own hint, then the picked rung's line: the chips carry no per-item tooltip, so the picked one says what it is here.</summary>
+    static string QualityHint(SettingsRow row, string[] lines)
+    {
+        string own = row.DescriptionKey(SettingsFacts.Live) is { } key ? Loc.Get(key) : "";
+        if (lines.Length == 0) return own;
+        string picked = lines[Math.Clamp(row.Current is int at ? at : 0, 0, lines.Length - 1)];
+        return own.Length == 0 ? picked : own + " · " + picked;
     }
 
     static string[] QualityDescriptions(int count)
