@@ -52,7 +52,7 @@ public readonly partial struct User
         public const int ShimmerRows = 8;
     }
 
-    sealed class LibraryPlaylistsPage : Component
+    sealed partial class LibraryPlaylistsPage : Component
     {
         readonly List<SidebarLibraryEntry> _rows = new(64);
         int _playlists, _folders;
@@ -82,8 +82,17 @@ public readonly partial struct User
             };
 
             Collect(model.Rootlist);
+            // The grouped master-detail (the structure asked, and the content is not one column wide): the list column and the playlist pane share the width the flat page caps.
+            var content = tiers.Content;
+            bool master = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail && content >= WidthTier.Small && _rows.Count > 0;
             Element body;
-            if (_rows.Count == 0)
+            if (master)
+            {
+                float listW = content >= WidthTier.Huge ? LibraryPlaylistsMasterRules.ListHuge : content == WidthTier.Small ? LibraryPlaylistsMasterRules.ListSmall : LibraryPlaylistsMasterRules.ListStandard;
+                float gap = content == WidthTier.Small ? LibraryPlaylistsMasterRules.GapSmall : LibraryPlaylistsMasterRules.GapStandard;
+                body = Master(model, listW, gap);
+            }
+            else if (_rows.Count == 0)
             {
                 body = readiness switch
                 {
@@ -109,9 +118,9 @@ public readonly partial struct User
             return new BoxEl
             {
                 Key = LibraryPlaylistsRules.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                MaxWidth = LibraryPlaylistsRules.ColumnMax + 2f * gutter, AlignItems = FlexAlign.Stretch,
+                MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax + 2f * gutter, AlignItems = FlexAlign.Stretch,
                 Padding = new Edges4(gutter, LibraryPlaylistsRules.PageTop, gutter, LibraryPlaylistsRules.PageBottom),
-                Children = [Head(model), body],
+                Children = [Head(model, master ? Strings.Library.PlaylistsCount(_playlists, _folders) : null), body],
             };
         }
 
@@ -139,14 +148,22 @@ public readonly partial struct User
 
         // ── the head: the create words ──
 
-        static Element Head(NavModel model) => new BoxEl
+        static Element Head(NavModel model, string? count) => new BoxEl
         {
             Direction = 0, Height = LibraryPlaylistsRules.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 24f, MinWidth = 0f,
-            Children =
-            [
-                Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)),
-                Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)),
-            ],
+            Children = count is null
+                ?
+                [
+                    Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)),
+                    Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)),
+                ]
+                :
+                [
+                    Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)),
+                    Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)),
+                    new BoxEl { Grow = 1f, MinWidth = 0f },
+                    R.Type.DenseMeta(count) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
+                ],
         };
 
         static Element Word(string key, string text, Action go) => new BoxEl

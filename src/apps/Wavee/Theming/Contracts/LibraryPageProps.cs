@@ -119,6 +119,10 @@ public sealed record LibraryPageProps
     /// page and the page is split): the structure draws the "all artists" column from it, and the navigator already shows only the picked artist's albums.</summary>
     public LibraryGroupsProps? Groups { get; init; }
 
+    /// <summary>The podcasts page's pinned "your episodes" row (null unless the structure asked for it through <see cref="Wavee.Theming.LibraryTierPolicy.PodcastsEpisodesFirst"/>, this is the
+    /// podcasts page and the page is split). Contract addition after 1.34.</summary>
+    public LibraryEpisodesProps? Episodes { get; init; }
+
     /// <summary>The Your Episodes page, keyed by the scope epoch.</summary>
     public required Func<Element> SavedEpisodes { get; init; }
 
@@ -237,3 +241,6 @@ public sealed record LibraryGroupSet(IReadOnlyList<LibraryGroupRow> Rows, string
 /// <summary>An artist of the groups column: the route key, the name, how many of the library's albums are billed first to them, and the letter that heads their run ("" when the
 /// previous row shares it; "#" for a name that does not start with a letter).</summary>
 public readonly record struct LibraryGroupRow(string Key, string Name, int Albums, string Letter);
+
+/// <summary>The pinned "your episodes" row of the podcasts page: how many episodes are saved (0 while unknown), whether Your Episodes is the shown body (a bound read), and the verb that shows it.</summary>
+public sealed record LibraryEpisodesProps(Prop<int> Count, Func<bool> Active, Action Open);

@@ -1053,6 +1053,13 @@
     "selectShow": "Select a show to see its episodes",
     "selectAlbumTracks": "Select a release",
     "openAlbum": "Open album",
+    "openPlaylist": "Open playlist",
+    "playlistsCount": "{p, plural, one {# playlist} other {# playlists}} · {f, plural, one {# folder} other {# folders}}",
+    "playlistGroup": {
+      "madeByYou": "Made by you",
+      "madeForYou": "Made for you",
+      "followed": "Followed"
+    },
     "playAll": "Play all",
     "playAlbum": "Play {name}",
     "alsoBy": "Also by {name} in your library",

@@ -29,11 +29,12 @@ internal static partial class ZuneLibraryPage
     static Element Head(LibraryPageProps p, PageCache c)
     {
         var l = c.Layout;
-        bool saved = p.SavedEpisodesMode;
+        // (With the pinned "your episodes" row the head keeps its find field and count in both bodies.)
+        bool saved = p.SavedEpisodesMode && p.Episodes is null;
         Element lead = Lead(p, l);
         Element? find = saved ? null : Find(p, l);
         Element? count = saved ? null : Count(p, l.CountArtists);
-        Element? view = saved ? null : Embed.Comp(l, () => new ViewWords(p.View(), p.Size())) with { Key = "lib:view" };
+        Element? view = saved || p.Episodes is not null ? null : Embed.Comp(l, () => new ViewWords(p.View(), p.Size())) with { Key = "lib:view" };
 
         if (l.Single)
         {
@@ -87,7 +88,7 @@ internal static partial class ZuneLibraryPage
     /// (Podcasts keeps its mode words at every tier).</summary>
     static Element Lead(LibraryPageProps p, ZuneLibraryLayout l)
     {
-        if (p.IsPodcasts)
+        if (p.IsPodcasts && p.Episodes is null)
             return Embed.Comp(l, () => new ModeWords(p.PodcastsMode())) with { Key = "lib:lead:mode" };
         bool menu = l.SortMenu;
         Element form = menu
