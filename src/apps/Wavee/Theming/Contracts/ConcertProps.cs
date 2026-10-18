@@ -293,6 +293,17 @@ public sealed record ConcertDetailView(string Title, string DateLine, string? Do
     /// as words beside it, which a formatted <see cref="DateLine"/> cannot give it in every culture. Null for the skeleton (the view stands a seed date in).</summary>
     public DateTimeOffset? Date { get; init; }
 
+    /// <summary>The web link the page shares as (null: no share verb). Appended (contract 1.35).</summary>
+    public string? ShareUrl { get; init; }
+
+    /// <summary>Plays the lineup: the headliner's artist context (the first billed act that is a canonical artist), toggling it when it is already playing.
+    /// Null: no billed act is a playable artist. Appended (contract 1.35).</summary>
+    public Action? PlayLineup { get; init; }
+
+    /// <summary>At least one ticket offer is available online: a structure may caption the page "on sale" when the provider states no status of its own.
+    /// Appended (contract 1.35).</summary>
+    public bool OnSale { get; init; }
+
     /// <summary>The skeleton's content.</summary>
     public static readonly ConcertDetailView Seed = new(" ", "Saturday, January 1, 2030 · 20:00", "Doors open 19:00",
         "Venue name placeholder · City placeholder", null, null,

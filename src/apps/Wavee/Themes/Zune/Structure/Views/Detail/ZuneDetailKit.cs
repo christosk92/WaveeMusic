@@ -355,9 +355,12 @@ internal static class ZuneDetailKit
     }
 
     /// <summary>Copy the page's web link with the confirmation toast, where a clipboard seam exists.</summary>
-    public static Action? ShareActionFor(Detail.Identity id)
+    public static Action? ShareActionFor(Detail.Identity id) => ShareLinkAction(id.ShareUrl);
+
+    /// <summary>The same copy-the-link verb for a bare web link (a concert's).</summary>
+    public static Action? ShareLinkAction(string? shareUrl)
     {
-        if (id.ShareUrl is not { Length: > 0 } url) return null;
+        if (shareUrl is not { Length: > 0 } url) return null;
         return () =>
         {
             if (Actions.Services.Clipboard is not { } copy) return;

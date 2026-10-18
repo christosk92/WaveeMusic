@@ -76,6 +76,20 @@ public readonly partial struct Concert
             });
         }
 
+        /// <summary>The headliner's play: the first billed act whose artist is canonical plays as its artist context (null when none is).</summary>
+        static Action? LineupPlayer(ReadOnlySpan<int> slots, int count)
+        {
+            for (int i = 0; i < count && i < slots.Length; i++)
+            {
+                if (slots[i] <= Table.None) continue;
+                var artist = new Artist(slots[i]);
+                if (!artist.IsValid) continue;
+                var id = artist.Id;
+                return () => ArtistVerbs.PlayOrToggle(id);
+            }
+            return null;
+        }
+
         /// <summary>Everything the detail paints, as VALUES read off the handle.</summary>
         static ConcertDetailView DetailViewOf(Concert c, string routeTitle)
         {
@@ -127,6 +141,10 @@ public readonly partial struct Concert
                 banner ?? Controls.ArtUrl(c.ImageId) ?? avatar, c.Accent != 0 ? c.Accent : bannerAccent)
             {
                 Date = c.LocalDate,
+                ShareUrl = c.Uri.Provider == EntityProvider.Spotify && !EntityUri.IdOf(c.Uri.Text).IsEmpty
+                    ? "https://open.spotify.com/concert/" + new string(EntityUri.IdOf(c.Uri.Text)) : null,
+                PlayLineup = LineupPlayer(slots, acts.Length),
+                OnSale = Array.Exists(offers, static o => o.Url is not null && o.Availability is { Length: > 0 }),
             };
         }
     }

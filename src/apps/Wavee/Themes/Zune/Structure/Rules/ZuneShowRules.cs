@@ -396,7 +396,7 @@ public static class ZuneConcertTiers
     {
         Tier = WidthTier.Compact, TitleSize = 64f, TitleLine = 72f, NumeralSize = 64f, NumeralLine = 64f,
         DateStacked = false, DateGap = 12f, DateTop = 6f, DateWordsSize = 15f, DateWordsLine = 20f, FactsSize = 15f, FactsLine = 22f, FactsGap = 4f,
-        IdentityGap = 6f, SectionGap = 20f, HeroGap = 0f, SlabTop = 20f, TicketsW = 0f, SlabBleed = true, SlabPadX = 0f, SlabPadY = 14f,
+        IdentityGap = 6f, SectionGap = 20f, HeroGap = 0f, SlabTop = 20f, TicketsW = 0f, SlabBleed = true, BuyButton = true, SlabPadX = 0f, SlabPadY = 14f,
         SlabHeadSize = 26f, SlabHeadLine = 32f, OfferRowH = 48f, OfferSize = 15f, LineupAvatar = 48f, LineupRows = true, LineupRowH = 64f,
         RelatedColumns = 1, RelatedPlate = false, RelatedRowH = 56f, RelatedGap = 0f, RelatedDateW = 40f, RelatedDaySize = 28f, RelatedDayLine = 30f,
         Target = 40f, HubPill = 40f, GridMinColumn = 150f, ZoneGap = 24f, ScheduleWide = false, ScheduleDateW = 48f, SchedulePhotoW = 0f,
@@ -407,7 +407,7 @@ public static class ZuneConcertTiers
     public static ZuneConcertLayout Small { get; } = Compact with
     {
         Tier = WidthTier.Small, TitleSize = 40f, TitleLine = 48f, DateStacked = true, DateGap = 28f, DateTop = 4f,
-        DateWordsSize = 13f, DateWordsLine = 18f, HeroGap = 32f, TicketsW = 260f, SlabBleed = false, SlabPadX = 20f, SlabHeadSize = 22f, SlabHeadLine = 28f,
+        DateWordsSize = 13f, DateWordsLine = 18f, HeroGap = 32f, TicketsW = 260f, SlabBleed = false, BuyButton = false, SlabPadX = 20f, SlabHeadSize = 22f, SlabHeadLine = 28f,
         OfferRowH = 36f, OfferSize = 14f, LineupRowH = 56f, RelatedGap = 0f, Target = 36f, HubPill = 32f, GridMinColumn = 160f, ScheduleDateW = 48f,
         SchedulePhotoH = 180f, LinkTarget = 0f,
     };
@@ -534,6 +534,10 @@ public sealed record ZuneConcertLayout : ITierLayoutRecord
 
     /// <summary>The stacked slab bleeds to the gutters (Compact).</summary>
     public required bool SlabBleed { get; init; }
+
+    /// <summary>The slab closes with one full-width accent "buy tickets" button (Z-Concert-Compact) where an offer can be bought online; the offer rows keep their
+    /// own rings, so the choice of provider stays reachable.</summary>
+    public bool BuyButton { get; init; }
 
     /// <summary>The slab's side and vertical padding.</summary>
     public required float SlabPadX { get; init; }
