@@ -251,7 +251,13 @@ public static class ZuneSettingsRules
     public const float AsideGap = 48f, AsideBasis = 320f, AsideMax = 480f;
 
     /// <summary>A short choice stays a row of chips up to this many (past it, a combo).</summary>
-    public const int MaxChips = 4;
+    public const int MaxChips = 4, MaxChipChars = 14;
+
+    /// <summary>The Compact sections page's row and chevron, the crumb's height, the gap inside them, and the lines a section's page title may wrap to.</summary>
+    public const float SectionRowH = 56f, SectionChevron = 14f, CrumbH = 40f, SectionRowGap = 8f;
+
+    /// <inheritdoc cref="SectionRowH"/>
+    public const int SectionTitleLines = 2;
 
     /// <summary>The gap between a hit-target chip and the next, in the wrapping row that stands in for the segmented control at Compact.</summary>
     public const float ChipGap = 8f;

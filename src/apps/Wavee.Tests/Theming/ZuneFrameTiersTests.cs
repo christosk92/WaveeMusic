@@ -329,26 +329,24 @@ public sealed class ZuneFrameTiersTests
     }
 
     [Fact]
-    public void The_bar_stacks_the_times_under_a_36_disc_then_sets_them_beside_from_full()
+    public void The_bar_stacks_the_times_under_the_disc_at_every_full_level()
     {
         foreach (var level in new[] { ZuneBarLevel.Narrow, ZuneBarLevel.Medium })
         {
             var look = ZunePlayerTiers.Look(level);
-            Assert.False(look.TimesBeside);
             Assert.Equal(36f, look.Disc);
             Assert.Equal(4f, look.TimesGap);
             // 8 of air above and below the stacked cluster in the 72.
             Assert.Equal(8f, (ZuneTiers.BarReserveH - (look.Disc + look.TimesGap + ZuneTransportLayout.TimeLine)) / 2f);
         }
-        foreach (var level in new[] { ZuneBarLevel.Full, ZuneBarLevel.Wide, ZuneBarLevel.Big })
-            Assert.True(ZunePlayerTiers.Look(level).TimesBeside);
-        Assert.False(ZunePlayerTiers.Look(ZuneBarLevel.Mini).TimesBeside);
+        // Z-PlayBar / Z-PlayBar-Huge: "1:14 · -3:04" under the disc at the full, wide and big levels too (the cluster centred in the bar).
+        foreach (var level in new[] { ZuneBarLevel.Full, ZuneBarLevel.Wide })
+        {
+            var look = ZunePlayerTiers.Look(level);
+            Assert.Equal(4f, look.TimesGap);
+            Assert.True(look.Disc + look.TimesGap + ZuneTransportLayout.TimeLine <= ZuneTiers.BarReserveH);
+        }
         Assert.Equal(40f, ZuneTransportLayout.TimeSlotW);
-        Assert.Equal(16f, ZuneTransportLayout.TimeSideGap);
-        // The slot's margin tops the transport's own gap up to 16, on the side that faces the buttons.
-        Assert.Equal(new Edges4(0f, 0f, 0f, 0f), ZuneTransportLayout.TimeSideMargin(16f, remaining: false));
-        Assert.Equal(new Edges4(4f, 0f, 0f, 0f), ZuneTransportLayout.TimeSideMargin(12f, remaining: true));
-        Assert.Equal(new Edges4(0f, 0f, 4f, 0f), ZuneTransportLayout.TimeSideMargin(12f, remaining: false));
     }
 
     [Fact]

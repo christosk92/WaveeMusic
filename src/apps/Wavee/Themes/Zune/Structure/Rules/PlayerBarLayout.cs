@@ -162,18 +162,7 @@ public static class ZuneTransportLayout
     /// the " · " between the two.</summary>
     public const float TimeSize = 12f, TimeLine = 16f, TimeSlotW = 40f;
 
-    /// <summary>The times BESIDE the transport (the bar's full, wide and big levels, the T1 audit): each 16 from the button it flanks.</summary>
-    public const float TimeSideGap = 16f;
-
-    /// <summary>The margin that puts a time slot <see cref="TimeSideGap"/> from the transport button beside it, on top of the transport's
-    /// own <paramref name="transportGap"/>: on the slot's trailing side for elapsed (left of previous), its leading side for remaining.</summary>
-    public static Edges4 TimeSideMargin(float transportGap, bool remaining)
-    {
-        float extra = TimeSideGap - transportGap;
-        return remaining ? new Edges4(extra, 0f, 0f, 0f) : new Edges4(0f, 0f, extra, 0f);
-    }
-
-    /// <summary>The times row UNDER the transport (narrow, medium) carries its gap as its own top padding, so when a level change takes it
+    /// <summary>The times row UNDER the transport carries its gap as its own top padding, so when a level change takes it
     /// away its whole height (gap and line) eases out and the centred disc row glides, never jumping by the gap.</summary>
     public static Edges4 TimesRowPadding(float timesGap) => new(0f, timesGap, 0f, 0f);
 

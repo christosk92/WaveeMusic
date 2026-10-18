@@ -157,36 +157,15 @@ public sealed partial class ZuneTierLayoutTests
         Assert.Equal(s.Width - insets.Right, tools.X + tools.W, 0.5f);
         Assert.Equal(ZuneTiers.FrameOf(tiers).Gutter, s.Width - (tools.X + tools.W) + (look.Button - look.Glyph) / 2f, 1f);
 
-        // The transport cluster (T1). From full the times stand BESIDE the transport, 16 from its buttons in 40 slots, and the disc is
-        // centred in the bar; at narrow and medium they stack under the 36 disc row (the row carries the gap as its top padding), the whole
-        // cluster centred with 8 / 8 of air in the 72.
+        // The transport cluster: the times stand UNDER the disc row as one line at every level (the row carries the gap as its top padding),
+        // the whole cluster centred in the bar.
         float discTop = disc.Y - bar.Y, discBottom = barFoot - (disc.Y + disc.H);
-        if (look.TimesBeside)
-        {
-            Assert.True(MathF.Abs(discTop - discBottom) <= 1f, $"{size}: the disc has {discTop} above and {discBottom} below");
-            Assert.DoesNotContain(shell.FindPrefix("times"), f => f.Key == "times" && inBar.Contains(f.Node));
-            var elapsed = InBar("elapsed-side");
-            var remaining = InBar("remaining-side");
-            var prev = InBar("prev");
-            var next = InBar("next");
-            Assert.Equal(ZuneTransportLayout.TimeSideGap, prev.X - (elapsed.X + elapsed.W), 0.75f);
-            Assert.Equal(ZuneTransportLayout.TimeSideGap, remaining.X - (next.X + next.W), 0.75f);
-            Assert.True(elapsed.W >= ZuneTransportLayout.TimeSlotW - 0.5f, $"{size}: the elapsed slot is {elapsed.W}, under 40");
-            Assert.True(remaining.W >= ZuneTransportLayout.TimeSlotW - 0.5f, $"{size}: the remaining slot is {remaining.W}, under 40");
-            // Both times sit on the disc's centre line.
-            float discMid = disc.Y + disc.H / 2f;
-            Assert.Equal(discMid, elapsed.Y + elapsed.H / 2f, 1f);
-            Assert.Equal(discMid, remaining.Y + remaining.H / 2f, 1f);
-        }
-        else
-        {
-            var times = InBar("times");
-            Assert.Equal(disc.Y + disc.H, times.Y, 0.75f);                                   // the row starts at the disc row's foot
-            Assert.Equal(look.TimesGap + ZuneTransportLayout.TimeLine, times.H, 0.75f);     // its gap, then the 16 line
-            float bottom = barFoot - (times.Y + times.H);
-            Assert.True(MathF.Abs(discTop - bottom) <= 1f, $"{size}: the transport cluster has {discTop} above and {bottom} below");
-            Assert.True(bottom >= 8f - 0.5f, $"{size}: the times sit {bottom} from the bar's foot");
-        }
+        var times = InBar("times");
+        Assert.Equal(disc.Y + disc.H, times.Y, 0.75f);                                   // the row starts at the disc row's foot
+        Assert.Equal(look.TimesGap + ZuneTransportLayout.TimeLine, times.H, 0.75f);     // its gap, then the 16 line
+        float bottom = barFoot - (times.Y + times.H);
+        Assert.True(MathF.Abs(discTop - bottom) <= 1f, $"{size}: the transport cluster has {discTop} above and {bottom} below");
+        Assert.True(bottom >= 6f - 0.5f, $"{size}: the times sit {bottom} from the bar's foot");
     });
 
     /// <summary>The level a window <paramref name="width"/> wide reaches fresh: the highest whose start it passes, clamped to the tier's range.</summary>

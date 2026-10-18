@@ -146,12 +146,9 @@ internal static partial class ZunePlayerBar
         left = left.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
 
         // ── the transport ─────────────────────────────────────────────────────────────────────────────────────────────
-        // From the full level the times stand BESIDE the transport (T1): elapsed before the first button, remaining after the last.
-        bool beside = !mini && !ends && look.TimesBeside && v.OwnsTransport;
         var transport = new List<Element>(7);
         if (v.OwnsTransport)
         {
-            if (beside && v.ShowTimesElapsed) transport.Add(SideTime(props, "elapsed-side", remaining: false, look));
             if (v.Episode && !mini) transport.Add(StepWord(props, -L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-back-10" });
             if (!v.Episode && v.ShowPrevNext && !mini)
                 transport.Add(ToolTip.Wrap(Glyph(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Previous)) with { Key = "prev" });
@@ -160,7 +157,6 @@ internal static partial class ZunePlayerBar
                 transport.Add(ToolTip.Wrap(Glyph(Icons.Next, () => verbs.Next(), v.NextEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Next)) with { Key = "next" });
             if (v.Episode) transport.Add(StepWord(props, L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-forward-10" });
             if (v.Episode && !mini) transport.Add(Embed.Comp(new SpeedProps(props, look.WordSize, look.Button), static () => new ZuneEpisodeSpeed()) with { Key = "episode-speed" });
-            if (beside && v.ShowTimesRemaining) transport.Add(SideTime(props, "remaining-side", remaining: true, look));
         }
         // The row is the disc's height (36 narrow and medium: the 40 targets overhang it by 2 each way, so the stacked cluster is 36 + 4 + 16
         // with 8 / 8 of air in the 72; 40 / 48 alone and centred from full).
@@ -183,7 +179,7 @@ internal static partial class ZunePlayerBar
         else
         {
             var centreKids = new List<Element>(2) { transportRow };
-            if (!ends && !beside && v.OwnsTransport && (v.ShowTimesElapsed || v.ShowTimesRemaining)) centreKids.Add(TimesRow(props, v, look));
+            if (!ends && v.OwnsTransport && (v.ShowTimesElapsed || v.ShowTimesRemaining)) centreKids.Add(TimesRow(props, v, look));
             var centre = new BoxEl
             {
                 // No gap: the times row under the transport carries its own (its top padding), so it eases out whole on a level change.
@@ -388,14 +384,4 @@ internal static partial class ZunePlayerBar
             Padding = T.TimesRowPadding(look.TimesGap), Animate = L.ItemMotion, Children = kids.ToArray(),
         };
     }
-
-    /// <summary>A time BESIDE the transport (full, wide, big): a 40 slot 16 from the button it flanks, elapsed right-aligned before previous,
-    /// remaining left-aligned after next, so the two slots balance and the disc stays the bar's centre. Enters and leaves with a fade and an
-    /// eased width (a level change from medium brings it from under the disc).</summary>
-    static Element SideTime(PlayerBarProps props, string key, bool remaining, ZuneBarLook look) => new BoxEl
-    {
-        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = remaining ? FlexJustify.Start : FlexJustify.End,
-        MinWidth = T.TimeSlotW, Shrink = 0f, Margin = T.TimeSideMargin(look.TransportGap, remaining), Animate = L.ItemMotion,
-        Children = [props.TimeText(remaining)],
-    };
 }
