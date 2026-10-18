@@ -218,7 +218,9 @@ public sealed class RootScopeTests(ShellHost host)
                     b.RunFrames(10);
                     Assert.Equal(Shell.RouteKind.Settings, Shell.Current.Peek().Kind);
                     Assert.NotSame(settingsOverlayA, SettingsContext.Overlay);
-                    Assert.Equal((int)Settings.Tab.General, ((Signal<int>)RootScope.Current.Peek(State("Settings.Tab"))!).Peek());
+                    // The open section is the ROUTE's (contract 1.35: the settings route carries it), and the route is process state: the page opens on the pivot the route names,
+                    // on a fresh slot of the new root (never the old root's signal).
+                    Assert.Equal((int)Settings.Tab.Appearance, ((Signal<int>)RootScope.Current.Peek(State("Settings.Tab"))!).Peek());
                     Assert.Equal(new Shell.OmnibarFacts(false, false, -1), Shell.OmnibarFactsForTests());
                     Assert.Equal(0, OverlayService.Shared.OpenCount);
                     AssertProcessState();
