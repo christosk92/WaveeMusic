@@ -143,9 +143,9 @@ public sealed partial class ZuneTierLayoutTests
             shell.RunFrames(40);
             Assert.Equal(PanelPlacement.Float, Shell.Ui.PanelPlacement.Peek());
 
-            // A page with row 2: the band's full height.
+            // A page with row 2: the band's full height (a Short window rests with row 2 folded away, Z-Shell-Short: it is row 1 alone, and the panel hangs from that).
             Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryArtists));
-            Until(shell, () => !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
+            if (height >= ZuneDetailRules.RegularFrom) Until(shell, () => !shell.Find(ZuneBandRules.Row2Key).IsNull, "row 2 on a library route");
             shell.RunFrames(40);
             Assert.Equal(Foot(), PanelTop(), 0.5f);
 
