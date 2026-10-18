@@ -67,6 +67,9 @@ public static class ZuneLibraryRules
     /// <summary>The pinned row's label weight (semibold).</summary>
     public const ushort EpisodesLabelWeight = 600;
 
+    /// <summary>The new-episode dot beside a followed show.</summary>
+    public const float NewDot = 6f;
+
     // ── the albums' artist groups (Z-Library-Albums*: the "all artists" column, then the picked artist's albums, then the songs) ──
 
     /// <summary>The column's node key, the rows (34 tall in a 28 letter lane), the "all artists" head, the count lane, and the picked row's weight.</summary>
