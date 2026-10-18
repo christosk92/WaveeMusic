@@ -889,6 +889,36 @@ public static partial class Shell
         return Compose(IaArms(route, label), origin, label, route);
     }
 
+    /// <summary>A detail page's trail: the journey's origin when the page was opened from somewhere (a search, another entity), else the information
+    /// architecture's parents (<c>library › playlists › name</c>). Empty for a kind with no trail.</summary>
+    public static IReadOnlyList<Crumb> DetailTrail(in Route route, string name, NavOrigin? origin)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return [];
+        var current = new Crumb(name.Trim(), null);
+        IReadOnlyList<Crumb> ia;
+        switch (route.Kind)
+        {
+            case RouteKind.Playlist:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryPlaylists)), new Crumb(Loc.Get(Strings.Sidebar.Playlists), new Route(RouteKind.LibraryPlaylists)), current];
+                break;
+            case RouteKind.Album:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryAlbums)), new Crumb(Loc.Get(Strings.Nav.Albums), new Route(RouteKind.LibraryAlbums)), current];
+                break;
+            case RouteKind.Artist:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryArtists)), new Crumb(Loc.Get(Strings.Nav.Artists), new Route(RouteKind.LibraryArtists)), current];
+                break;
+            case RouteKind.Show:
+            case RouteKind.Episode:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryPodcasts)), new Crumb(Loc.Get(Strings.Nav.Podcasts), new Route(RouteKind.LibraryPodcasts)), current];
+                break;
+            case RouteKind.Search:
+                return [new Crumb(Loc.Get(Strings.Nav.Search), null), current];
+            default:
+                return [];
+        }
+        return Compose(ia, origin, current.Label, route);
+    }
+
     static IReadOnlyList<Crumb> IaArms(in Route route, string label)
     {
         if (route.Kind == RouteKind.HomeSection)
