@@ -103,6 +103,9 @@ The navigation args are the ones `goto` takes.
 If the offscreen surface cannot be created (no D3D12 or WARP), `devices` reads `headless-gpu+dwrite (<reason>)`. The
 text is still true, but `render` answers `ok:false`.
 
+`mount` also takes the fullscreen stage's preferences: `stage=lyrics|visualizer|queue|artist`, `layout=card|large|centered|artist`
+and `gallery=on|off` (set before the mount, the first-run tip marked seen), so `key f11` opens the stage straight on that look.
+
 ### `goto {route, arg?} | {uri} | {deeplink}`
 
 - `route` is a route key, the same string a pin or `wavee://open?route=` uses: `home`, `browse`, `search` (with
@@ -169,10 +172,12 @@ key enter
 Turns the mouse wheel at the target: `dy` notches, positive toward the end of the content (3 by default). With `key`,
 the reply carries `scroll {offset, max}` of the first scroll viewport under that node.
 
-### `play {uri, fromMs?}`
+### `play {uri, fromMs?, next?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
-`Queue.Replace`, then `Playback.PlayNow`.
+`Queue.Replace`, then `Playback.PlayNow`. `next=N` (a `spotify:track:tr<k>` uri) adds the N tracks `tr<k+1>`... to the same context, so the
+stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
+track follows its lyrics: render the stage while playing, no pause needed.
 
 ### `theme {id}`
 

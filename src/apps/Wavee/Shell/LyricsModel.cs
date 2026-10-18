@@ -259,13 +259,13 @@ public sealed class LyricsModel
         {
             _lastSampleStamp = snap.PosQpc;
             _lastSamplePos = snap.PosMs;
-            long sampleQpc = Lyrics.SampleClock.SampleQpc(snap.PosQpc, Playback.FrameNowMs(), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
+            long sampleQpc = Lyrics.SampleClock.SampleQpc(snap.PosQpc, Playback.FrameNowMs(), Lyrics.SampleClock.NowQpc(), Stopwatch.Frequency);
             if (Clock.OnSample(snap.PosMs, sampleQpc, playing, snap.ContentRate)) jumped = true;
         }
         else if (playing != Clock.Playing)
         {
             // The play state flipped with no fresh sample: feed the EDGE at the authoritative position NOW.
-            if (Clock.OnSample(auth, Stopwatch.GetTimestamp(), playing, snap.ContentRate)) jumped = true;
+            if (Clock.OnSample(auth, Lyrics.SampleClock.NowQpc(), playing, snap.ContentRate)) jumped = true;
         }
         return playing ? Clock.At(FrameTime.NowQpc) : auth;
     }

@@ -82,7 +82,7 @@ internal static class ZuneStageIdentity
                 gap = 0f;
                 bottom = true;
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
-                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
+                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking, bleed: true));   // the big column title bleeds off the stage's edge, never "…"
                 break;
             }
             case ZuneStageForm.Centered or ZuneStageForm.Stack when v is not null:
@@ -170,10 +170,10 @@ internal static class ZuneStageIdentity
     }
 
     /// <summary>A title in an arrangement's voice: the display face, one line.</summary>
-    static TextEl Title(string title, float size, float line, ushort weight, float tracking) => new(title)
+    static TextEl Title(string title, float size, float line, ushort weight, float tracking, bool bleed = false) => new(title)
     {
         Size = size, LineHeight = line, Weight = weight, FontFamily = R.Type.DisplayFace, CharSpacing = tracking, Color = Ink.Ink,
-        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = bleed ? TextTrim.None : TextTrim.CharacterEllipsis, MinWidth = 0f,
     };
 
     /// <summary>The Card arrangement's display title over the face at Huge and Huge 4K (Z-NowPlaying-Huge: 150/160 at 200 in the ink at

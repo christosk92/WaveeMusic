@@ -482,7 +482,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Play:
                     {
                         string uri = a.Str("uri");
-                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
+                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
                     }
@@ -596,6 +596,7 @@ public static partial class Diagnostics
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
+            if (!StagePrefs(a, out error)) return false;
             _shell = MountOn(w0, h0, scale, gpu);
             _frames++;
             mounted = true;
@@ -620,6 +621,29 @@ public static partial class Diagnostics
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
                 Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
+            return true;
+        }
+
+        /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set
+        /// before the mount (the stage reads them as it opens: `key f11` then opens it on that mode, layout and gallery, with the first-run tip already seen).</summary>
+        static bool StagePrefs(Inspect.Args a, out string error)
+        {
+            error = "";
+            if (!(a.Has("stage") || a.Has("layout") || a.Has("gallery"))) return true;
+            if (a.Has("stage"))
+            {
+                int mode = a.Str("stage").ToLowerInvariant() switch { "lyrics" => 0, "visualizer" => 1, "queue" => 2, "artist" => 3, _ => -1 };
+                if (mode < 0) { error = "stage is lyrics, visualizer, queue or artist"; return false; }
+                Prefs.Stage.SetMode(mode);
+            }
+            if (a.Has("layout"))
+            {
+                int layout = a.Str("layout").ToLowerInvariant() switch { "card" => 0, "large" => 1, "centered" => 2, "artist" => 3, _ => -1 };
+                if (layout < 0) { error = "layout is card, large, centered or artist"; return false; }
+                Prefs.Stage.SetLayout(layout);
+            }
+            if (a.Has("gallery")) Prefs.Stage.SetGalleryOpen(a.Str("gallery").ToLowerInvariant() is "on" or "true" or "1");
+            Prefs.Stage.SetTipSeen();
             return true;
         }
 

@@ -162,6 +162,9 @@ public static class ZuneTransportLayout
     /// the " · " between the two.</summary>
     public const float TimeSize = 12f, TimeLine = 16f, TimeSlotW = 40f;
 
+    /// <summary>The stage's time labels hug their digits down to this floor ("0:00" at 12/16: the boards' 22), so the seek line starts 16 after the digits.</summary>
+    public const float TimeSlotMediaMinW = 22f;
+
     /// <summary>The times row UNDER the transport carries its gap as its own top padding, so when a level change takes it
     /// away its whole height (gap and line) eases out and the centred disc row glides, never jumping by the gap.</summary>
     public static Edges4 TimesRowPadding(float timesGap) => new(0f, timesGap, 0f, 0f);

@@ -45,7 +45,8 @@ internal static class ZuneStageLyrics
         var host = props.Host;
         Element content = props.Message is { } text
             ? ctx.StyleOf(StyleKeys.LyricsLines).Message(host, text)
-            : Layers(props, host, ZuneStageTiers.StageOf(in tiers).TargetH);
+            : Layers(props, host, ZuneStageTiers.StageOf(in tiers).TargetH,
+                host.OnStage && ZuneStageTiers.StageOf(in tiers).LyricsRhythm is { ActiveScale: > 1f } ? 0f : host.Metrics.SidePad);
         return host.OnStage ? StageColumn(host, content) : content;
     }
 
@@ -68,13 +69,13 @@ internal static class ZuneStageLyrics
         ],
     };
 
-    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH)
+    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH, float sidePad)
     {
         // The frame stepper stays UNMOUNTED while the host's gate is up, so a surface that cannot step costs no frames.
         var kids = new List<Element>(6);
         if (props.Body is { } body) kids.Add(body);
         if (props.Ticker is { } ticker) kids.Add(ticker);
-        kids.Add(InterludeDots(host));
+        kids.Add(InterludeDots(host, sidePad));
         kids.Add(ResyncOverlay(host, targetMinH));
         kids.Add(VideoNote(host));
         if (props.Debug is { } debug) kids.Add(debug);
@@ -175,7 +176,7 @@ internal static class ZuneStageLyrics
     /// <summary>The instrumental break's three breathing dots: an overlay, not a row (a pseudo-row would put a conditional off-by-one into every
     /// index mapping). Two empty Grow spacers split the panel at the band and the row's bottom margin buys the rest, exact at every viewport size.
     /// Decorative: <c>HitTestVisible = false</c> on the whole subtree, so the lyrics stay scrollable and clickable straight through it.</summary>
-    static Element InterludeDots(ILyricsHost host)
+    static Element InterludeDots(ILyricsHost host, float sidePad)
     {
         bool large = host.Large;
         float band = host.Band;
@@ -192,7 +193,7 @@ internal static class ZuneStageLyrics
                 {
                     // Enter/exit owner. The breath lives on the CHILD (one transform owner per node).
                     Direction = 0, Shrink = 0f,
-                    Margin = new Edges4(host.Metrics.SidePad, 0f, 0f, Lyrics.Interlude.AnchorMargin(large, band)),
+                    Margin = new Edges4(sidePad, 0f, 0f, Lyrics.Interlude.AnchorMargin(large, band)),
                     Enter = new EnterExit(Sx: LR.DotsEnterScale, Sy: LR.DotsEnterScale, Opacity: 0f, Active: true),
                     Exit = new EnterExit(Sx: LR.DotsEnterScale, Sy: LR.DotsEnterScale, Opacity: 0f, Active: true),
                     Layout = LayoutTransition.Fade,
