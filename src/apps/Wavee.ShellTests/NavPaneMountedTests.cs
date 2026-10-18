@@ -423,6 +423,8 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 Until(shell, () => PlaylistRowHeights(shell, mode).Contains(SidebarGeometry.TwoLineRowHeight), "a two-line cover row");
                 var list = ScrollUnder(shell, mode);
                 Assert.True(shell.Host.Scene.TryGetScroll(list, out var withCovers));
+                // --fake pins playlists too, and a pinned row keeps its two-line shape whatever the playlists section draws: count the tall rows.
+                int tallWithCovers = TallRows(shell, mode);
 
                 _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.ShowCoversQualifiedId, false));
                 shell.RunFrames(30);
@@ -430,8 +432,8 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 Assert.False(ShellPolicy.Now.NavPane.ShowCovers);
                 Assert.Equal(SidebarRowShape.EntityText, Sidebar.Doc.Find(SidebarSectionKind.Playlists)!.Shape);
                 Assert.Equal(mode, Node(shell, "sidebar.classic"));   // the same pane: the option never remounts it
-                Until(shell, () => PlaylistRowHeights(shell, mode) is { Count: > 0 } h && !h.Contains(SidebarGeometry.TwoLineRowHeight)
-                    && h.Contains(SidebarGeometry.RowHeight), "36-tall text rows");
+                Until(shell, () => PlaylistRowHeights(shell, mode) is { Count: > 0 } h && h.Contains(SidebarGeometry.RowHeight)
+                    && TallRows(shell, mode) < tallWithCovers, "36-tall text rows");
                 Assert.True(shell.Host.Scene.TryGetScroll(list, out var text));
                 Assert.True(text.ContentH < withCovers.ContentH, $"text rows did not shrink the list: {withCovers.ContentH} → {text.ContentH}");
 
@@ -493,6 +495,9 @@ public sealed class NavPaneMountedTests(ShellHost host)
         var inPane = Subtree(shell.Host.Scene, mode).ToHashSet();
         return shell.FindPrefix(SidebarPinId.PlaylistPrefix).Where(f => inPane.Contains(f.Node)).ToList();
     }
+
+    static int TallRows(Shell.HeadlessShell shell, NodeHandle mode)
+        => PlaylistRows(shell, mode).Count(r => MathF.Round(shell.Host.Scene.AbsoluteRect(r.Node).H) == SidebarGeometry.TwoLineRowHeight);
 
     static HashSet<float> PlaylistRowHeights(Shell.HeadlessShell shell, NodeHandle mode)
         => PlaylistRows(shell, mode).Select(r => MathF.Round(shell.Host.Scene.AbsoluteRect(r.Node).H)).Where(h => h > 0f).ToHashSet();
