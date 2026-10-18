@@ -74,13 +74,15 @@ public sealed record PageAction(string Id, string Label, Action Invoke, PageActi
 /// head, or the covers a "mix" background blends. Image references are the same uri strings every other props record carries.</summary>
 /// <param name="Bleed">The one image the page bleeds (an artist's header, an album's cover); null = none.</param>
 /// <param name="Mix">The images a "mix" background blends (a playlist's or a home zone's covers); null or empty = none.</param>
-public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = null)
+/// <param name="TallWash">The page is a cover page (album, playlist, liked songs): a theme that draws the cover's tint as a wash draws it tall enough
+/// to sit behind the page's hero, not only behind the band (contract 1.50). False = the band-height wash.</param>
+public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = null, bool TallWash = false)
 {
     /// <summary>Claims nothing.</summary>
     public static PageBackdrop None { get; } = new(Bleed: null);
 
     /// <summary>Nothing is claimed.</summary>
-    public bool IsNone => Bleed is null && (Mix is null || Mix.Count == 0);
+    public bool IsNone => Bleed is null && (Mix is null || Mix.Count == 0) && !TallWash;
 }
 
 /// <summary>What a page publishes for row 2 through its <see cref="PageChromeSink"/> (contract 1.26).</summary>

@@ -434,7 +434,7 @@ public static class ZuneHomeTiers
             ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
             HistoryRows = true,
             DaylistForm = ZuneDaylistForm.Row, DaylistH = 168f, DaylistArtW = 112f, DaylistArtAspect = 0.67f, DaylistArtMaxW = 144f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 3,
-            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 12f, PlayAtEnd = false,
+            DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 10f, PlayAtEnd = false,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,

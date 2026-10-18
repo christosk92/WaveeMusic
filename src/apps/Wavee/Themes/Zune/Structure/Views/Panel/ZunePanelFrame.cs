@@ -61,7 +61,7 @@ internal static class ZunePanel
     };
 
     /// <summary>The pivot head: the words (but the bodies the linked panes beside it show), then the close glyph (none on a linked pane).</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, PanelHeadNodes? nodes = null)
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, PanelHeadNodes? nodes = null, ZunePanelInk? ink = null)
     {
         var words = new List<Element>(5);
         if (props.ShowMode is { } show)
@@ -70,11 +70,11 @@ internal static class ZunePanel
             {
                 if (mode == PanelMode.Friends && !friends) continue;
                 if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
-                words.Add(Pivot(mode, mode == body, show, nodes));
+                words.Add(Pivot(mode, mode == body, show, nodes, ink));
             }
-            if (body == PanelMode.Video) words.Add(Pivot(PanelMode.Video, current: true, show, nodes));
+            if (body == PanelMode.Video) words.Add(Pivot(PanelMode.Video, current: true, show, nodes, ink));
         }
-        else words.Add(Pivot(body, current: true, show: null, nodes));
+        else words.Add(Pivot(body, current: true, show: null, nodes, ink));
 
         var row = new List<Element>(2)
         {
@@ -101,11 +101,11 @@ internal static class ZunePanel
         };
     }
 
-    private static Element Pivot(PanelMode mode, bool current, Action<PanelMode>? show, PanelHeadNodes? nodes)
+    private static Element Pivot(PanelMode mode, bool current, Action<PanelMode>? show, PanelHeadNodes? nodes, ZunePanelInk? ink)
     {
         var text = R.Type.Heading(Word(mode)) with
         {
-            Color = current ? Tok.TextPrimary : Tok.TextTertiary, HoverColor = Tok.TextPrimary,
+            Color = current ? Tok.TextPrimary : ink?.Tertiary ?? Tok.TextTertiary, HoverColor = Tok.TextPrimary,
             Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
         };
         // The word's box is the head's whole height (44): the touch floor of 40 holds at every tier, the word centred in it.
@@ -301,7 +301,7 @@ internal sealed class ZunePanelFrame : Component
 
         _surfaceFill ??= () => props.InlineAndOpen() ? ColorF.Transparent : R.Layer.FloatingPane;
         _onBounds ??= r => props.BodyHeightChanged(r.H);
-        var wash = ZunePanelWash.Layers(props.CoverUrl?.Invoke());
+        var wash = ZunePanelWash.Layers(props.CoverUrl?.Invoke(), out var ink);
 
         Element bodySlot = new BoxEl
         {
@@ -312,10 +312,10 @@ internal sealed class ZunePanelFrame : Component
         // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
         // of the hero instead.
         if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, view, body, friends, _headNodes));
+        column.Add(ZunePanel.Head(props, view, body, friends, _headNodes, ink));
         column.Add(bodySlot);
 
-        return new BoxEl
+        return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = R.Shape.All(ShapeRole.Overlay),
             HitTestVisible = open,                                             // a closed panel is laid out off-canvas and unhittable
@@ -327,7 +327,7 @@ internal sealed class ZunePanelFrame : Component
                 new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, Fill = Prop.Of(_surfaceFill), OnBoundsChanged = _onBounds, Children = wash },
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
-        };
+        });
     }
 }
 

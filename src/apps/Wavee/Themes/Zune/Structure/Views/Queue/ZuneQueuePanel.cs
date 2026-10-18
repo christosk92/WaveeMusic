@@ -49,6 +49,7 @@ internal sealed class ZuneQueuePanelView : Component
     Func<QueueSlot, float>? _extentOf;
     Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _clear;
     WidthTier _window = WidthTier.Standard;
+    ZunePanelInk? _ink;   // the panel's ink while its cover wash is drawn (null: the roles' own)
 
     float ExtentOf(QueueSlot slot) => slot.Kind switch
     {
@@ -63,6 +64,7 @@ internal sealed class ZuneQueuePanelView : Component
         var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
         var tiers = facts.Value.Tiers;
         _window = tiers.Policy is null ? WidthTier.Standard : tiers.Window;
+        _ink = UseContext(ZunePanelInk.Current);
         var queue = props.Queue;
         var lane = props.Lane;
         _toggleShuffle ??= props.Player.ToggleShuffle;
@@ -72,8 +74,8 @@ internal sealed class ZuneQueuePanelView : Component
         lane.SetMetrics(Q.RowExtent, _extentOf ??= ExtentOf);
 
         var content = new List<Element>(4);
-        if (queue.PlayingFrom is { } src) content.Add(PlayingFrom(src.Name, props.OpenPlayingFrom));
-        if (!queue.NowPlaying.IsNone) content.Add(NowRow(props));
+        if (queue.PlayingFrom is { } src) content.Add(PlayingFrom(src.Name, props.OpenPlayingFrom, _ink));
+        if (!queue.NowPlaying.IsNone) content.Add(NowRow(props, _ink));
         if (lane.SlotCount > 0) content.Add(lane.List(Upcoming(props), "lane:upcoming"));
         if (queue.NothingPlaying)
             content.Add(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
@@ -97,9 +99,9 @@ internal sealed class ZuneQueuePanelView : Component
                     Key = ZuneQueue.ModesKey, Height = modeH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.ModeRowPadding,
                     Children =
                     [
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize) with { Key = "mode:shuffle" },
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize) with { Key = "mode:repeat" },
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize) with { Key = "mode:autoplay" },
+                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
+                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
+                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
                     ],
                 },
                 new ScrollEl { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll, Content = body },
@@ -116,7 +118,7 @@ internal sealed class ZuneQueuePanelView : Component
             int item = lane.ItemAt(i);
             var slot = lane.SlotAt(item);
             if (slot.Kind == QueueSlotKind.Header) { kids[i] = Header(props, slot.Section); continue; }
-            if (slot.Kind == QueueSlotKind.More) { kids[i] = ShowMore(props, slot.Section); continue; }
+            if (slot.Kind == QueueSlotKind.More) { kids[i] = ShowMore(props, slot.Section, _ink); continue; }
             kids[i] = props.Queue.TryRow(slot.Section, slot.Pos, out var row)
                 ? lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index))
                 : new BoxEl();
@@ -181,19 +183,19 @@ internal sealed class ZuneQueuePanelView : Component
     }
 
     /// <summary>"playing from" (cased) and the context's name (its own casing), at the foot of its 28; it opens the context when it has a page.</summary>
-    static Element PlayingFrom(string source, Action? open) => new BoxEl
+    static Element PlayingFrom(string source, Action? open, ZunePanelInk? ink) => new BoxEl
     {
         Key = "qp:ctx", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, Gap = ZunePlayerLayout.FromGap,
         Cursor = open is null ? null : CursorId.Hand, Role = open is null ? AutomationRole.None : AutomationRole.Hyperlink, Focusable = open is not null, OnClick = open,
         Children =
         [
-            new TextEl(Loc.Get(Strings.Theme.Zune.Player.PlayingFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f },
-            new TextEl(source) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, HoverColor = open is null ? Tok.TextTertiary : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+            new TextEl(Loc.Get(Strings.Theme.Zune.Player.PlayingFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Tertiary ?? Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f },
+            new TextEl(source) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Tertiary ?? Tok.TextTertiary, HoverColor = open is null ? ink?.Tertiary ?? Tok.TextTertiary : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
         ],
     };
 
     /// <summary>The now-playing row: keyed by the track, so a track change enters with a fade (the cross-fade a row cannot do).</summary>
-    static Element NowRow(QueuePanelProps props)
+    static Element NowRow(QueuePanelProps props, ZunePanelInk? ink)
     {
         var current = props.Queue.NowPlaying;
         var text = props.Lane.TextOf(current);
@@ -205,10 +207,10 @@ internal sealed class ZuneQueuePanelView : Component
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Q.NowLinesGap,
                 Children =
                 [
-                    new TextEl(text.Title) { Size = Q.NowTitleSize, LineHeight = Q.NowTitleLine, Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    new TextEl(text.Title) { Size = Q.NowTitleSize, LineHeight = Q.NowTitleLine, Color = ink?.Accent ?? Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                     new TextEl(text.Artists)
                     {
-                        Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.AccentTextPrimary with { A = Q.NowSubA }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Accent ?? Tok.AccentTextPrimary with { A = Q.NowSubA }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                 ],
             };
@@ -238,8 +240,8 @@ internal sealed class ZuneQueuePanelView : Component
         float h = Q.Header(_window);
         if (section == QueueSection.NextUp && queue.PlayingFrom is { Name.Length: > 0 } src)
         {
-            kids.Add(new TextEl(Loc.Get(Strings.Theme.Zune.Player.NextUpFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, Case = @case, Shrink = 0f });
-            kids.Add(new TextEl(src.Name) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+            kids.Add(new TextEl(Loc.Get(Strings.Theme.Zune.Player.NextUpFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, Shrink = 0f });
+            kids.Add(new TextEl(src.Name) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
         }
         else
         {
@@ -249,7 +251,7 @@ internal sealed class ZuneQueuePanelView : Component
                 QueueSection.NextUp => Strings.Player.NextUp,
                 _ => Strings.Player.Autoplay,
             });
-            kids.Add(new TextEl(title) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, Case = @case, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+            kids.Add(new TextEl(title) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
         }
         if (section == QueueSection.Queue && !queue.Viewer)
             kids.Add(new BoxEl
@@ -272,7 +274,7 @@ internal sealed class ZuneQueuePanelView : Component
         };
     }
 
-    static Element ShowMore(QueuePanelProps props, QueueSection section)
+    static Element ShowMore(QueuePanelProps props, QueueSection section, ZunePanelInk? ink)
     {
         int remaining = props.Lane.Remaining(section);
         var verbs = props.Verbs;
@@ -285,7 +287,7 @@ internal sealed class ZuneQueuePanelView : Component
             Children =
             [
                 new TextEl(Strings.Player.ShowNext(Math.Min(props.Lane.PageSize, remaining))) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = @case },
-                new TextEl("· " + Strings.Player.MoreCount(remaining)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.TextTertiary, Case = @case },
+                new TextEl("· " + Strings.Player.MoreCount(remaining)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Tertiary ?? Tok.TextTertiary, Case = @case },
             ],
         };
     }

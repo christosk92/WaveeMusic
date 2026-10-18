@@ -59,9 +59,9 @@ internal static partial class ZunePlayerBar
     };
 
     /// <summary>A tool word (lyrics, queue, devices, video): the secondary ink, the accent while latched, the command case; as tall as a target.</summary>
-    internal static BoxEl Word(string text, Action onClick, bool enabled, bool latched, float height, float size, Action<NodeHandle>? realized = null)
+    internal static BoxEl Word(string text, Action onClick, bool enabled, bool latched, float height, float size, Action<NodeHandle>? realized = null, ColorF? latchedInk = null)
     {
-        ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentTextPrimary : Tok.TextSecondary;
+        ColorF ink = !enabled ? Tok.TextDisabled : latched ? latchedInk ?? Tok.AccentTextPrimary : Tok.TextSecondary;
         return new BoxEl
         {
             Height = height, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(L.WordPadX, 0f, L.WordPadX, 0f),

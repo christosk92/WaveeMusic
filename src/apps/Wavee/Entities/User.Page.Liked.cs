@@ -273,7 +273,7 @@ public readonly partial struct User
                 new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play),
                 new("shuffle", Loc.Get(Strings.Detail.Shuffle), Shuffle, Contracts.PageActionKind.Shuffle),
             };
-            _sink.Publish(new Contracts.PageChromeRow([], actions));
+            _sink.Publish(new Contracts.PageChromeRow([], actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true)));
         }
 
         // ── the page verbs ──

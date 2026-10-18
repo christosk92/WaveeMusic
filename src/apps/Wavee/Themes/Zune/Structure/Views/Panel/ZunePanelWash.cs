@@ -21,9 +21,11 @@ internal static class ZunePanelWash
 {
     static readonly Element[] s_none = [];
 
-    /// <summary>The layers drawn over the panel's plate for the cover <paramref name="url"/>: the wash and the left edge, or none.</summary>
-    public static Element[] Layers(string? url)
+    /// <summary>The layers drawn over the panel's plate for the cover <paramref name="url"/>: the wash and the left edge, or none. <paramref name="ink"/> is the
+    /// ink the panel's text takes while the wash is drawn (null with no wash: the roles' own inks stand).</summary>
+    public static Element[] Layers(string? url, out ZunePanelInk? ink)
     {
+        ink = null;
         if (url is not { Length: > 0 } || ZuneOptions.Background() == ZuneBackground.None) return s_none;
         _ = Palette.Watch(url).Value;   // the grading may land late: this render re-runs when it does
         if (Design.SchemeFor(url) is not { } scheme) return s_none;
@@ -42,6 +44,7 @@ internal static class ZunePanelWash
             head = tint with { A = MathF.Min(1f, tint.A * ZunePanelWashRules.HeadScale) };
             foot = tint with { A = MathF.Min(1f, tint.A * ZunePanelWashRules.FootScale) };
         }
+        ink = ZunePanelInk.For(head);
         return
         [
             new BoxEl
@@ -61,6 +64,38 @@ internal static class ZunePanelWash
     }
 }
 
+/// <summary>The ink of the panel's text while its cover wash is drawn (provided to the panel's bodies by the frame; absent without a wash). The roles' own inks
+/// were measured on the wash: the tertiary words (the inactive pivots, "next up") 2.7 - 2.9 : 1 dark and 4.2 light, the accent words (the playing row, "autoplay") 3.7
+/// dark and 4.1 light, so ON the wash the tertiary words take the secondary ink and the accent lifts toward white (dark) or black (light) until it clears
+/// <see cref="ZuneFrameRules.PanelInkRatio"/> against the wash's head colour over the plate (the head is the strongest tint: the worst case on the panel).</summary>
+/// <param name="Tertiary">The ink for the words that read tertiary off the wash.</param>
+/// <param name="Accent">The accent ink, lifted.</param>
+internal sealed record ZunePanelInk(ColorF Tertiary, ColorF Accent)
+{
+    /// <summary>The ink in force in the panel's subtree.</summary>
+    public static readonly FluentGpu.Hooks.Context<ZunePanelInk?> Current = new(null);
+
+    /// <summary>The ink for a wash whose head colour (translucent) lies over the panel's plate.</summary>
+    public static ZunePanelInk For(ColorF head)
+    {
+        var plate = ColorContrast.Flatten(head, R.Layer.FloatingPane);
+        return new ZunePanelInk(Tok.TextSecondary, Lifted(Tok.AccentTextPrimary, plate, ZuneFrameRules.PanelInkLiftToward(R.IsLight)));
+    }
+
+    /// <summary>The least lift of <paramref name="ink"/> toward <paramref name="toward"/> that reads <see cref="ZuneFrameRules.PanelInkRatio"/> on <paramref name="plate"/>.</summary>
+    static ColorF Lifted(ColorF ink, ColorF plate, ColorF toward)
+    {
+        if (ColorContrast.Ratio(ink, plate) >= ZuneFrameRules.PanelInkRatio) return ink;
+        float lo = 0f, hi = 1f;
+        for (int i = 0; i < ZuneFrameRules.PanelInkLiftSteps; i++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            if (ColorContrast.Ratio(ColorF.Lerp(ink, toward, mid), plate) >= ZuneFrameRules.PanelInkRatio) hi = mid; else lo = mid;
+        }
+        return ColorF.Lerp(ink, toward, hi);
+    }
+}
+
 /// <summary>The panel wash's numbers: the tint's strength at the panel's head and foot (times the shell tint's own alpha), the edge.</summary>
 public static class ZunePanelWashRules
 {
@@ -70,4 +105,5 @@ public static class ZunePanelWashRules
 
     /// <summary>Light: the graded pale background at this strength over the plate, at the head and the foot.</summary>
     public const float LightHeadA = 0.5f, LightFootA = 0.2f;
+
 }

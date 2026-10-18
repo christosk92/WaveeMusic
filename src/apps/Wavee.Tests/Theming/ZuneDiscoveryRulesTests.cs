@@ -206,7 +206,7 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.False(c.RingLabels);
         Assert.Equal(36f, c.RingSize);
         Assert.Equal(40f, c.RingTarget);
-        Assert.Equal(16f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
+        Assert.Equal(14f, c.RingTarget - c.RingSize + c.RingsGap);   // the visible gap between discs
         Assert.Equal(ZuneDaylistTitle.Title, c.DaylistTitle);
         Assert.Equal(3, c.DaylistTitleLines);
         // The rings fit the copy beside the art at 400 (a narrower window wraps them and the strip grows).

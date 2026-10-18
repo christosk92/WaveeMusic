@@ -327,6 +327,15 @@ public static class ZuneFrameRules
     public const string PanelPivotsKey = "zune-panel-pivots";
     public const float PanelEdgeFade = 32f;
 
+    /// <summary>The panel's accent ink while its cover wash is drawn is lifted until it reads this against the wash's head colour over the plate (the text floor is
+    /// 4.5; the margin covers the window wash that shows through a docked panel's head and the text's antialiasing), in <see cref="PanelInkLiftSteps"/> bisection steps,
+    /// toward white on the dark ground and black on the light one.</summary>
+    public const float PanelInkRatio = 5.2f;
+    public const int PanelInkLiftSteps = 10;
+
+    /// <summary>The colour the accent ink lifts toward on the ground of the kind.</summary>
+    public static ColorF PanelInkLiftToward(bool light) => light ? ColorF.FromRgba(0, 0, 0) : ColorF.FromRgba(255, 255, 255);
+
     /// <summary>The pivot head's padding.</summary>
     public static readonly Edges4 PanelHeadPadding = new(24f, 12f, 8f, 6f);
 
