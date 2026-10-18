@@ -103,6 +103,12 @@ public static class ZuneFrameRules
     /// <summary>The gap between the trail's words and its separators.</summary>
     public const float CrumbGap = 6f;
 
+    /// <summary>The pill's key hint (the "ctrl f" chip): its node key and its inset from the pill's end (past the 28 query button).</summary>
+    public const string PillHintKey = "zune-search-hint";
+
+    /// <inheritdoc cref="PillHintKey"/>
+    public const float PillHintInset = 40f;
+
     /// <summary>The trail shows from a depth of two (a root page has nothing above it).</summary>
     public const int CrumbMinDepth = 2;
 

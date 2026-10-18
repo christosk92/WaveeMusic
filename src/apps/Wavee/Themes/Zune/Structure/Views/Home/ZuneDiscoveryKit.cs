@@ -27,9 +27,9 @@ internal static class ZuneDiscoveryKit
             Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
 
-    /// <summary>A quickplay group's head (the QuickplayHead role), lowercased.</summary>
+    /// <summary>A quickplay group's head (26/32 light, as Z-Home and Z-Frame-Home draw pins, history and new), lowercased.</summary>
     public static TextEl GroupText(string text)
-        => R.Type.QuickplayHead(text) with
+        => R.Type.Heading(text) with
         {
             Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 0f,
         };
