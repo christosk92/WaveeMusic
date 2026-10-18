@@ -575,6 +575,13 @@ public static partial class Diagnostics
 
             Unmount();
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
+            // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
+            if (a.Bool("setup", false))
+            {
+                Platform.Settings.Set(Platform.Keys.SetupPending, true);
+                Setup.Wizard.ResetForTests();
+                Setup.Wizard.Boot(Platform.Settings, false);
+            }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
@@ -585,6 +592,9 @@ public static partial class Diagnostics
             {
                 if (!Navigate(a, out error)) return false;
             }
+            // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
+            if (a.Has("feedback"))
+                Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
             return true;
         }
 

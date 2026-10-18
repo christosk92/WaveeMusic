@@ -86,6 +86,8 @@ Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced
 | `kind` | `dark` or `light`. |
 | `gpu` | `warp` (default) or `hardware`: the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels). |
 | `keepRoute=true` | Keeps the current navigation. Without it, the mount starts from a fresh Home. |
+| `setup=true` | Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). |
+| `feedback=bug` or `feature` | Opens the report form over the page. |
 
 The navigation args are the ones `goto` takes.
 
