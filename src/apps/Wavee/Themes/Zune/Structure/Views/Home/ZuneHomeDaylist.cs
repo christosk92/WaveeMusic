@@ -229,7 +229,8 @@ internal static class ZuneHomeDaylist
             new BoxEl
             {
                 Key = "zune-daylist-clock", Direction = 1, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
-                Width = lay.ClockW, Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = [clock],
+                Width = lay.ClockW, MaxHeight = lay.ClockW > 0f ? float.NaN : 0f,   // a tier with no clock must not let its hidden face stretch the strip
+                Padding = new Edges4(0f, 0f, lay.ClockW > 0f ? H.ClockPadRight : 0f, 0f), Children = [clock],
             },
         };
         return new BoxEl

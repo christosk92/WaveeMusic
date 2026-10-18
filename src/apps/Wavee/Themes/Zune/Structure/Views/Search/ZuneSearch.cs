@@ -86,6 +86,9 @@ internal static class ZuneSearch
             // Off the pill tiers the field is the title bar's (Compact, Z-Search-Compact: it fills the lead island beside Back), no rest width.
             bool fill = !rec.Pill;
 
+            // The key hint (Z-Part-TitleBar: a small "ctrl f" chip at the pill's end) stands while the pill is at rest and empty; a focus (the pill grows) or a
+            // typed query takes it away. It never takes a pointer, so the field under it stays one click target.
+            bool hint = !fill && !expanded && string.IsNullOrEmpty(model.QueryText);
             // A COLUMN, so the box is STRETCHED to this slot's width (a fill-mode box in a row latches its query button's width).
             return new BoxEl
             {
@@ -93,7 +96,36 @@ internal static class ZuneSearch
                 Width = fill ? float.NaN : width, Grow = fill ? 1f : 0f, MinWidth = 0f,
                 Animate = Design.Reduced || fill ? null : ZuneFrameRules.PillWidthMotion,
                 OnBoundsChanged = r => model.ReportFieldWidth(r.W, fill ? r.W : width),
-                Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
+                Children =
+                [
+                    new BoxEl
+                    {
+                        ZStack = true, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        Children =
+                        [
+                            Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup)),
+                            new BoxEl
+                            {
+                                Key = ZuneFrameRules.PillHintKey, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                                Padding = new Edges4(0f, 0f, ZuneFrameRules.PillHintInset, 0f), Visible = hint,
+                                Children =
+                                [
+                                    new BoxEl
+                                    {
+                                        Direction = 0, Padding = new Edges4(4f, 1f, 4f, 1f), BorderWidth = 1f, BorderColor = Tok.StrokeDividerDefault,
+                                        Children =
+                                        [
+                                            R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Frame.SearchHint)) with
+                                            {
+                                                Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
             };
         }
     }
