@@ -109,6 +109,17 @@ public static class ZuneHomeRules
         new GradientStop(0f, ground with { A = DaylistScrimLead }),
         new GradientStop(1f, ground with { A = DaylistScrimTail }));
 
+    /// <summary>The WIDE bled daylist's scrim (the copy a column at the strip's leading side, the art free toward its end): the ground at
+    /// <see cref="DaylistWideScrimLead"/> under the copy, still <see cref="DaylistWideScrimMid"/> at <see cref="DaylistWideScrimMidAt"/> of the width (the end of
+    /// a long title's line), thinning to <see cref="DaylistWideScrimTail"/> at the end, where the cover shows.</summary>
+    public const float DaylistWideScrimLead = 0.86f, DaylistWideScrimMid = 0.74f, DaylistWideScrimMidAt = 0.55f, DaylistWideScrimTail = 0.25f;
+
+    /// <inheritdoc cref="DaylistWideScrimLead"/>
+    public static GradientSpec DaylistWideScrim(ColorF ground) => FluentGpu.Dsl.Ui.GradientRight(
+        new GradientStop(0f, ground with { A = DaylistWideScrimLead }),
+        new GradientStop(DaylistWideScrimMidAt, ground with { A = DaylistWideScrimMid }),
+        new GradientStop(1f, ground with { A = DaylistWideScrimTail }));
+
     // ── the zones ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Two zones side by side: the gap between them.</summary>
@@ -180,6 +191,24 @@ public static class ZuneHomeRules
     /// <inheritdoc cref="DaylistRung"/>
     public const float DaylistFullFrom = 480f;
 
+    /// <summary>The CONTENT-width rung the daylist's wide strip needs (art | copy | clock): under it the strip's 320 art and 260 clock leave the copy too
+    /// little room (the title broke mid-word and the strip grew to 380 with a 480 art at a 1008 window), so the content tier's record bleeds the art
+    /// under a full-width copy instead (<see cref="ZuneHomeTiers"/>). From 1280 the copy keeps 540 (516 at the 24 hold on shrinking): the 40/48 title on two
+    /// lines, the four labelled rings on one row.</summary>
+    public const string DaylistStripRung = "home.daylist.strip";
+
+    /// <inheritdoc cref="DaylistStripRung"/>
+    public const float DaylistStripFrom = 1280f;
+
+    /// <summary>The wide bled daylist (Small, and Standard under <see cref="DaylistStripRung"/>): the copy's inset from the strip's top and foot, and the
+    /// strip's floor (the board's strip height; it grows to hug the copy).</summary>
+    public const float DaylistWideBleedPadY = 28f, DaylistWideBleedH = 176f;
+
+    /// <summary>The daylist's host (a z-stack that eases its height) and the key prefix of the form layer inside it: the strip (art | copy | clock, and the
+    /// one-row form) and the bled forms are different arrangements of the same tree, so crossing between them cross-fades two layers (each keyed by its
+    /// family) instead of snapping the art's width, the copy's inset and the clock column.</summary>
+    public const string DaylistHostKey = "zune-home-daylist-host", DaylistFormPrefix = "zune-home-daylist-form:";
+
     /// <summary>A discovery page's CHAPTER (a zone, a band, a section, the daylist strip) whose height changes on a crossing or in place: the layout
     /// lands once at the final height, the presented extent tweens from the old one and everything below rides the difference (the engine's flow
     /// reveal, vertical only; `Design.Reveal.Resize`'s cut). A tier crossing runs frame reflows (the band's inset, the title bar's pill) beside the
@@ -206,9 +235,11 @@ public enum ZuneDaylistForm : byte
     /// <summary>Art | copy | play in ONE 56 row (a window too short for the strip: Z-Shell-Short).</summary>
     OneRow,
 
-    /// <summary>The art is the strip's ground (Compact, the owner's i8 option C): it bleeds the whole strip under a scrim of the theme's ground, and the
-    /// copy runs the full width over it: the eyebrow with the play ring at its row's end, the 40/48 title wrapping (never cut), then the countdown with
-    /// the shuffle, save and "…" rings ending its row. The same tree as the other forms: the strip, the copy and the rings row turn into z-stacks.</summary>
+    /// <summary>The art is the strip's ground (the owner's i8 option C): it bleeds the whole strip under a scrim of the theme's ground, and the copy runs
+    /// the full width over it. Compact PARKS the rings (<see cref="ZuneHomeLayout.DaylistRingsParked"/>): the eyebrow with the play ring at its row's
+    /// end, the 40/48 title wrapping (never cut), then the countdown with the shuffle, save and "…" rings ending its row; the strip, the copy and the
+    /// rings row turn into z-stacks. The wide form (Small, and Standard under <see cref="ZuneHomeRules.DaylistStripRung"/>) keeps the copy a column:
+    /// the eyebrow, the title on up to two lines, the meta line, the countdown, then the labelled rings row. The same tree as the other forms.</summary>
     Bleed,
 }
 
@@ -312,6 +343,13 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
 
     /// <summary>The art bleeds under the whole strip (<see cref="ZuneDaylistForm.Bleed"/>).</summary>
     public bool DaylistBleed => DaylistForm == ZuneDaylistForm.Bleed;
+
+    /// <summary>The bled form parks its rings over the copy (Compact: the play ring ends the eyebrow's row, the others the countdown's) instead of
+    /// standing them in a row under it (the wide bled form).</summary>
+    public bool DaylistRingsParked { get; init; }
+
+    /// <summary>The bled copy's inset from the strip's top and foot.</summary>
+    public float DaylistPadY { get; init; } = ZuneHomeRules.DaylistBleedPadY;
 
     /// <summary>The bled form's ring row under the title: the shuffle, save and "…" targets and the gaps between them, the countdown's room ending there.</summary>
     public float DaylistTailRingsW => 3f * MathF.Max(RingSize, RingTarget) + 2f * RingsGap;
@@ -446,6 +484,16 @@ public static class ZuneHomeTiers
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,
     };
 
+    // The wide bled daylist (Small; Standard under the strip's content rung): the art the strip's ground under the scrim, the copy a full-width column
+    // (the eyebrow, the 40/48 title on up to two lines, the meta line, the countdown, then the four labelled rings in a row), 28 from the top and the
+    // foot, a 176 floor that grows with the copy. The record's own side inset (`DaylistPad`) stands.
+    private static ZuneHomeLayout WideBleed(ZuneHomeLayout r) => r with
+    {
+        DaylistForm = ZuneDaylistForm.Bleed, DaylistH = ZuneHomeRules.DaylistWideBleedH, DaylistArtW = 0f, DaylistArtAspect = 0f, ClockW = 0f,
+        DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 2, DaylistMeta = true, DaylistRings = 4, RingLabels = true, RingTarget = 0f,
+        RingsGap = ZuneHomeRules.DaylistActionsGap, PlayAtEnd = false, DaylistRingsParked = false, DaylistPadY = ZuneHomeRules.DaylistWideBleedPadY,
+    };
+
     private static readonly ZuneHomeLayout[] s_records =
     [
         // Compact (Z-Frame-Compact, Z-Home-Compact): 22 between zones; the groups in a column; four 80 pins, the history as three 56 rows (44 art),
@@ -461,21 +509,23 @@ public static class ZuneHomeTiers
             HistoryRows = true,
             DaylistForm = ZuneDaylistForm.Bleed, DaylistH = 160f, DaylistArtW = 0f, DaylistArtAspect = 0f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 0,
             DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 10f, PlayAtEnd = false,
+            DaylistRingsParked = true,
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
         },
         // Small (Z-Frame-Small, Z-Home-Small): 18 between zones; pins and history side by side, three 88 tiles each (the name alone), no new group;
-        // the daylist a 112 row (140 art, 26/32, play and shuffle with their words); the shelf five across, the wide tiles four; the release list
-        // beside "because you like" (32 apart; 52 rows, 40 art, the "when" 72), the Browse tiles four across.
-        Std(WidthTier.Small) with
+        // the shelf five across, the wide tiles four; the release list beside "because you like" (32 apart; 52 rows, 40 art, the "when" 72), the Browse
+        // tiles four across. The daylist BLEEDS, wide (owner: Z-Frame-Small's 112 row, 140 art beside a 26/32 title, read too tight): the art under the
+        // whole strip, the copy 24 in across the full width (the eyebrow, the 40/48 title on up to two lines, the meta line, the countdown, the four
+        // labelled rings), the strip growing from 176 to hug it.
+        WideBleed(Std(WidthTier.Small) with
         {
             ZoneGap = 18f, QuickGroupGap = 32f, QuickPins = 3, PinTileW = 88f, QuickTiles = 3, QuickTileW = 88f, QuickFresh = 0, QuickSubs = false,
-            DaylistForm = ZuneDaylistForm.Row, DaylistH = 112f, DaylistArtW = 140f, DaylistArtAspect = 1.25f, DaylistArtMaxW = 210f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Heading,
-            DaylistPad = 24f, DaylistMeta = false, DaylistRings = 2, RingsGap = 18f,
+            DaylistPad = 24f,
             PairBeside = true, PairGap = 32f, ShelfCols = 5, ShelfMinW = 100f, WideCols = 4, WideMinW = 120f, ClusterCols = 1, TileCols = 4,
             ReleaseRowH = 52f, ReleaseArt = 40f, ReleaseWhenW = 72f, ClusterRowH = 52f, ClusterArt = 40f, ChartsBeside = false,
-        },
+        }),
         // Standard (Z-Home): the tuned page (the defaults).
         Std(WidthTier.Standard),
         // Huge (Z-Frame-Huge, Z-Home-Huge): 36 between zones; pins six 180, history four 140 and new three 140 with their lines, the groups 48 apart;
@@ -509,12 +559,20 @@ public static class ZuneHomeTiers
         return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };
     }
 
+    // Standard under the strip's content rung: the same page, its daylist the wide bled form.
+    private static readonly ZuneHomeLayout s_standardBleed = WideBleed(For(WidthTier.Standard));
+
     private static ZuneHomeLayout OfContent(in TierFacts facts)
     {
         if (facts.Policy is null) return For(WidthTier.Standard);
         int i = Math.Clamp((int)facts.Content, 0, s_records.Length - 1);
-        return DaylistFits(in facts) ? s_records[i] : s_oneRow[i];
+        if (!DaylistFits(in facts)) return s_oneRow[i];
+        return facts.Content == WidthTier.Standard && !StripFits(in facts) ? s_standardBleed : s_records[i];
     }
+
+    /// <summary>The content is wide enough for the daylist's wide strip (art | copy | clock): its content rung is crossed (or the policy declares none).</summary>
+    public static bool StripFits(in TierFacts facts)
+        => facts.Policy is null || facts.Policy.IndexOfRung(ZuneHomeRules.DaylistStripRung) < 0 || facts.Rung(ZuneHomeRules.DaylistStripRung);
 
     /// <summary>The window is tall enough for the daylist strip: its height rung is crossed (or the policy declares none).</summary>
     public static bool DaylistFits(in TierFacts facts)

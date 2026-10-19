@@ -161,9 +161,19 @@ public sealed class ZuneDiscoveryRulesTests
                 Assert.True(pins <= inner, $"{tier}: the pins ({pins}) overflow {inner}");
                 if (!home.HistoryRows) Assert.True(tiles <= inner, $"{tier}: the history ({tiles}) overflows {inner}");
             }
-            // The daylist leaves its copy room beside the art, the clock and the play ring.
+            // The daylist leaves its copy room beside the art, the clock and the play ring. The wide strip stands only from its content rung (under it
+            // Standard bleeds), so its copy is measured there (at the hold): 500 or more for the 40/48 title on two lines and the four labelled rings on one row.
             if (home.DaylistForm == ZuneDaylistForm.Strip)
-                Assert.True(home.DaylistArtW + home.ClockW + 2f * home.DaylistPad <= inner, $"{tier}: the daylist strip overflows {inner}");
+            {
+                float stripInner = MathF.Max(NarrowestOf(tier), ZuneHomeRules.DaylistStripFrom - ZuneTiers.Hold) - 2f * home.Gutter;
+                Assert.True(stripInner - home.DaylistArtW - home.ClockW - 2f * home.DaylistPad >= 500f, $"{tier}: the daylist strip's copy is under 500 of {stripInner}");
+            }
+            else if (home.DaylistBleed && !home.DaylistRingsParked)
+            {
+                // The wide bled strip: the art is the ground, the copy a column the strip's width less its insets.
+                Assert.Equal(0f, home.ClockW);
+                Assert.True(inner - 2f * home.DaylistPad >= 480f, $"{tier}: the wide bled daylist's copy is under 480 of {inner}");
+            }
             else if (home.DaylistBleed)
             {
                 // The bled strip: the art is the ground, so the copy has the strip's whole width; the countdown keeps room beside the three foot rings.
@@ -205,6 +215,8 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(0, c.QuickFresh);
         Assert.Equal(ZuneDaylistForm.Bleed, c.DaylistForm);
         Assert.True(c.DaylistBleed);
+        Assert.True(c.DaylistRingsParked);
+        Assert.Equal(ZuneHomeRules.DaylistBleedPadY, c.DaylistPadY);
         Assert.True(c.DaylistStacked);
         // i8 option C at 400: four UNLABELLED 36 rings in 40 hit boxes 10 apart (play at the eyebrow row's end, shuffle, save and "…" ending the countdown's
         // row), the title at its full 40/48 step (the Title role, as at Standard: Zune is a large typeface, so the title is not shrunk to fit) across the
@@ -236,8 +248,10 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(ZuneSearchHeroName.Above, ZuneSearchTiers.For(WidthTier.Compact).HeroName);
         Assert.Equal(40f, ZuneSearchTiers.For(WidthTier.Compact).RingSize);
 
-        // Small (Z-Frame-Small, Z-Home-Small, Z-Browse-Small, Z-Search-Small): pins beside history (three 88 tiles, the name alone), the 112 row (140 art,
-        // play and shuffle with words), the release list beside "because you like" 32 apart, the charts beside For you, the top result beside best matches.
+        // Small (Z-Frame-Small, Z-Home-Small, Z-Browse-Small, Z-Search-Small): pins beside history (three 88 tiles, the name alone), the release list beside
+        // "because you like" 32 apart, the charts beside For you, the top result beside best matches. The daylist BLEEDS wide (owner: the board's 112 row read
+        // too tight): the art the strip's ground, the copy a column (the 40/48 title on up to two lines, the meta line, the countdown, the four labelled rings),
+        // a 176 floor that grows, 24 in and 28 from the top and the foot.
         var s = ZuneHomeTiers.For(WidthTier.Small);
         Assert.False(s.QuickStacked);
         Assert.Equal(3, s.QuickPins);
@@ -245,11 +259,22 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.Equal(88f, s.QuickTileW);
         Assert.False(s.QuickSubs);
         Assert.Equal(0, s.QuickFresh);
-        Assert.Equal(ZuneDaylistForm.Row, s.DaylistForm);
-        Assert.Equal(140f, s.DaylistArtW);
-        Assert.Equal(2, s.DaylistRings);
+        Assert.Equal(ZuneDaylistForm.Bleed, s.DaylistForm);
+        Assert.False(s.DaylistRingsParked);
+        Assert.Equal(0f, s.DaylistArtW);
+        Assert.Equal(0f, s.ClockW);
+        Assert.True(s.ClockInline);
+        Assert.Equal(ZuneHomeRules.DaylistWideBleedH, s.DaylistH);
+        Assert.True(s.DaylistGrows);
+        Assert.Equal(ZuneDaylistTitle.Title, s.DaylistTitle);
+        Assert.Equal(2, s.DaylistTitleLines);
+        Assert.True(s.DaylistMeta);
+        Assert.Equal(4, s.DaylistRings);
         Assert.True(s.RingLabels);
+        Assert.Equal(0f, s.RingTarget);
         Assert.False(s.PlayAtEnd);
+        Assert.Equal(24f, s.DaylistPad);
+        Assert.Equal(ZuneHomeRules.DaylistWideBleedPadY, s.DaylistPadY);
         Assert.True(s.PairBeside);
         Assert.Equal(32f, s.PairGap);
         Assert.False(s.ChartsBeside);
@@ -328,7 +353,7 @@ public sealed class ZuneDiscoveryRulesTests
         // Zune is a large typeface (owner directive): the title is never set smaller to fit and never ellipsised on one line while it could wrap. Compact
         // sets it in the same 40/48 role as Standard; every strip tier wraps it over two lines or more and its height is a floor that grows.
         Assert.Equal(ZuneDaylistTitle.Title, ZuneHomeTiers.For(WidthTier.Compact).DaylistTitle);
-        Assert.Equal(ZuneDaylistTitle.Heading, ZuneHomeTiers.For(WidthTier.Small).DaylistTitle);
+        Assert.Equal(ZuneDaylistTitle.Title, ZuneHomeTiers.For(WidthTier.Small).DaylistTitle);
         Assert.Equal(ZuneDaylistTitle.Title, ZuneHomeTiers.For(WidthTier.Standard).DaylistTitle);
         Assert.Equal(ZuneDaylistTitle.Hero, ZuneHomeTiers.For(WidthTier.Huge).DaylistTitle);
         foreach (var tier in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
@@ -348,7 +373,7 @@ public sealed class ZuneDiscoveryRulesTests
         var policy = ZuneTiers.Policy;
         Assert.Contains(new NamedRung(ZuneHomeRules.DaylistRung, new TierEdge(ZuneHomeRules.DaylistFullFrom, NarrowHold: ZuneTiers.Hold, WidenHold: 0f), RungAxis.Height),
             policy.Rungs);
-        // Z-Shell-Short: 330 tall folds it at any width; the Small board's 600 does not (it keeps its 112 row), nor does a regular height.
+        // Z-Shell-Short: 330 tall folds it at any width; the Small board's 600 does not (it keeps its bled strip), nor does a regular height.
         var short330 = ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 330f, 800f));
         Assert.Equal(ZuneDaylistForm.OneRow, short330.DaylistForm);
         Assert.Equal(56f, short330.DaylistH);
@@ -359,7 +384,7 @@ public sealed class ZuneDiscoveryRulesTests
         Assert.True(short330.PlayAtEnd);
         Assert.False(short330.DaylistMeta);
         Assert.Equal(ZuneHomeTiers.For(WidthTier.Small).PinTileW, short330.PinTileW);
-        Assert.Equal(ZuneDaylistForm.Row, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 600f, 800f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.Bleed, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 800f, 600f, 800f)).DaylistForm);
         Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 960f, 1440f)).DaylistForm);
         Assert.Equal(ZuneDaylistForm.OneRow, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 330f, 1440f)).DaylistForm);
         // The edge commits at 480 on widening and holds 24 on shrinking (456).
@@ -431,5 +456,40 @@ public sealed class HomeChromeRowTests
         host.SyncFacetIndex();
         Assert.NotSame(first, host.ChromeRow);
         Assert.Same(first!.Views[2].Go, host.ChromeRow!.Views[2].Go);            // one Go per word id
+    }
+
+    [Fact]
+    public void Standard_content_too_narrow_for_the_strip_bleeds_the_daylist_like_small()
+    {
+        // Owner: the strip squeezed between its 320 art and 260 clock broke the title mid-word (a 1008 window: "screa / m te...", a 380 strip with a 480
+        // art) and Small's 112 row read too tight. A CONTENT rung at 1280 (held 24 on shrinking) keeps the strip where its copy has room; under it the
+        // Standard record bleeds the art under a full-width copy, as Small does. Only the daylist changes: every other fact stays Standard's.
+        var policy = ZuneTiers.Policy;
+        Assert.Contains(new NamedRung(ZuneHomeRules.DaylistStripRung, new TierEdge(ZuneHomeRules.DaylistStripFrom, NarrowHold: ZuneTiers.Hold, WidenHold: 0f), RungAxis.Content),
+            policy.Rungs);
+        var std = ZuneHomeTiers.For(WidthTier.Standard);
+        foreach (float content in new[] { 1008f, 1100f, 1279f })
+        {
+            var lay = ZuneHomeTiers.Of(WindowTiers.Resolve(policy, content, 960f, content));
+            Assert.Equal(WidthTier.Standard, lay.Tier);
+            Assert.Equal(ZuneDaylistForm.Bleed, lay.DaylistForm);
+            Assert.False(lay.DaylistRingsParked);
+            Assert.Equal(std.DaylistPad, lay.DaylistPad);
+            Assert.Equal(4, lay.DaylistRings);
+            Assert.True(lay.DaylistMeta);
+            Assert.Equal(std.PinTileW, lay.PinTileW);
+            Assert.Equal(std.ShelfCardW, lay.ShelfCardW);
+        }
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1280f, 960f, 1280f)).DaylistForm);
+        // A panel docked beside a 1440 window narrows the content to 1100: the bled form; the same window without it keeps the strip.
+        Assert.Equal(ZuneDaylistForm.Bleed, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 960f, 1100f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1440f, 960f, 1440f)).DaylistForm);
+        // The rung holds 24 on shrinking.
+        var from1440 = WindowTiers.Resolve(policy, 1440f, 960f, 1440f);
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1256f, 960f, 1256f, previous: from1440)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.Bleed, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1255f, 960f, 1255f, previous: from1440)).DaylistForm);
+        // Huge is never under the rung; a window too short for any strip still folds to one row.
+        Assert.Equal(ZuneDaylistForm.Strip, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1920f, 1080f, 1920f)).DaylistForm);
+        Assert.Equal(ZuneDaylistForm.OneRow, ZuneHomeTiers.Of(WindowTiers.Resolve(policy, 1100f, 330f, 1100f)).DaylistForm);
     }
 }

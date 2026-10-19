@@ -53,7 +53,8 @@ internal static class ZuneHomeDaylist
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
     {
         var lay = ZuneHomeTiers.Of(ctx.Tier());
-        // The strip's own height (a wrapped title grows it): the art's width follows it, so the cover keeps its shape.
+        // The strip's own height (a wrapped title grows it): the art's width follows it, so the cover keeps its shape. Only a form with an art COLUMN
+        // writes it: the bled forms' height (the art is their ground) would hand the strip, on the crossing back, an art sized for a taller strip.
         var stripH = ctx.Hooks.UseSignal(lay.DaylistH);
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
@@ -80,13 +81,31 @@ internal static class ZuneHomeDaylist
 
         var root = Strip(props.Eyebrow, title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
                          DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
-                         ArtWidth(lay, stripH), r => { if (MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; })
+                         ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; })
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
             };
-        return menu is not null && host is not null ? root.WithContextMenu(host, menu) : root;
+        return Swap(menu is not null && host is not null ? root.WithContextMenu(host, menu) : root, lay);
     }
+
+    /// <summary>The strip inside its host: a z-stack whose height eases (<see cref="ZuneHomeRules.DaylistResize"/>), the strip under a layer keyed by its form's
+    /// family (the strip, art | copy | clock, or the bled art). A crossing within a family keeps every node (the strip's own height glides, the rings slide);
+    /// a crossing between them (the strip's content rung, Small &lt;-&gt; Standard at a docked panel) fades the old layer out over the new one (`SwapFade`)
+    /// instead of snapping the art's width, the copy's inset and the clock column, and the host's height carries the page below.</summary>
+    static Element Swap(Element strip, ZuneHomeLayout lay) => new BoxEl
+    {
+        Key = H.DaylistHostKey, Direction = 1, ZStack = true, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+        Layout = Design.Reduced ? null : H.DaylistResize,
+        Children =
+        [
+            new BoxEl
+            {
+                Key = H.DaylistFormPrefix + (lay.DaylistBleed ? "bleed" : "strip"), Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = [strip],
+            },
+        ],
+    };
 
     /// <summary>The cold-load shape: the same builders over placeholder words and stand-in rings, the art's placeholder slot, a static clock.</summary>
     internal static Element Skeleton(ZuneHomeLayout lay)
@@ -103,8 +122,8 @@ internal static class ZuneHomeDaylist
         Element clock = Clock(StaticLine(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0)), lay.DaylistBleed), (int)current, null, lay.ClockBarW,
                               lay.ClockInline);
         string eyebrow = Loc.Get(Strings.Home.YourDaylist);
-        return Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay,
-                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null);
+        return Swap(Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay,
+                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null), lay);
     }
 
     /// <summary>The art's width: the strip's height times the tier's aspect, between the board's width and the tier's cap (a fixed width where the
@@ -199,6 +218,7 @@ internal static class ZuneHomeDaylist
                        Prop<float> artWidth, Action<RectF>? onBounds)
     {
         bool bleed = lay.DaylistBleed;
+        bool parked = bleed && lay.DaylistRingsParked;   // Compact's bled form: the rings stand over the copy, at its rows' ends
         float target = MathF.Max(lay.RingSize, lay.RingTarget);
         int shown = Math.Min(rings.Length, lay.DaylistRings);
         var inCopy = new List<Element>(shown);
@@ -206,11 +226,11 @@ internal static class ZuneHomeDaylist
 
         var textKids = new List<Element>(3)
         {
-            // The eyebrow's row: in the bled form it is the play ring's height and stops short of it (the ring ends the row).
+            // The eyebrow's row: where the rings are parked it is the play ring's height and stops short of it (the ring ends the row).
             new BoxEl
             {
-                Key = "zune-daylist-eyebrow-row", Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, MinHeight = bleed ? target : float.NaN,
-                Padding = bleed ? new Edges4(0f, 0f, target + H.DaylistBleedRowGap, 0f) : default,
+                Key = "zune-daylist-eyebrow-row", Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, MinHeight = parked ? target : float.NaN,
+                Padding = parked ? new Edges4(0f, 0f, target + H.DaylistBleedRowGap, 0f) : default,
                 Children =
                 [
                     R.Type.DenseMeta(eyebrow) with
@@ -229,32 +249,32 @@ internal static class ZuneHomeDaylist
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
         // Where the tier has no clock column the countdown stands here, one line under the title (the clock is a feature: it moves, it is not dropped).
-        // Its row: in the bled form it is the rings' height and stops short of them (the shuffle, save and "…" rings end the row).
+        // Its row: where the rings are parked it is the rings' height and stops short of them (the shuffle, save and "…" rings end the row).
         if (lay.ClockInline)
             textKids.Add(new BoxEl
             {
-                Key = "zune-daylist-clock-row", Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, MinHeight = bleed ? target : float.NaN,
-                Padding = bleed ? new Edges4(0f, 0f, lay.DaylistTailRingsW + H.DaylistBleedRowGap, 0f) : default,
+                Key = "zune-daylist-clock-row", Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, MinHeight = parked ? target : float.NaN,
+                Padding = parked ? new Edges4(0f, 0f, lay.DaylistTailRingsW + H.DaylistBleedRowGap, 0f) : default,
                 Children = [clock],
             });
 
         // The copy: ONE box, the rings row its last child in every form. A column under the strip's forms (the text block, then the rings row 8 below
-        // it); a row in the one-row form (the text block grows, the rings row, the play ring alone, ends it); a z-stack in the bled form (the text block
-        // with the rings row over it, each ring parked by its slot). The rings row slides to its place.
+        // it, the wide bled form's too); a row in the one-row form (the text block grows, the rings row, the play ring alone, ends it); a z-stack where the
+        // rings are parked (Compact's bled form: the text block with the rings row over it, each ring parked by its slot). The rings row slides to its place.
         bool end = lay.PlayAtEnd;
         var copyKids = new Element[]
         {
             new BoxEl
             {
                 Key = "zune-daylist-text", Direction = 1, Gap = H.DaylistCopyGap, MinWidth = 0f,
-                Justify = bleed ? FlexJustify.SpaceBetween : FlexJustify.Center,
+                Justify = parked ? FlexJustify.SpaceBetween : FlexJustify.Center,
                 Grow = end ? 1f : 0f, Shrink = 1f, Basis = end ? 0f : float.NaN, Children = textKids.ToArray(),
             },
             new BoxEl
             {
-                Key = "zune-daylist-actions", Direction = 0, Wrap = !end && !bleed, ZStack = bleed, HitTestPassThrough = bleed, Gap = lay.RingsGap,
+                Key = "zune-daylist-actions", Direction = 0, Wrap = !end && !parked, ZStack = parked, HitTestPassThrough = parked, Gap = lay.RingsGap,
                 AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Shrink = end ? 0f : 1f, Margin = end || bleed ? default : new Edges4(0f, H.DaylistActionsTop, 0f, 0f),
+                Shrink = end ? 0f : 1f, Margin = end || parked ? default : new Edges4(0f, H.DaylistActionsTop, 0f, 0f),
                 Animate = Design.Reduced ? null : ZuneMotion.PivotSlide, Children = inCopy.ToArray(),
             },
         };
@@ -268,15 +288,15 @@ internal static class ZuneHomeDaylist
                 Children =
                 [
                     Controls.CoverFill(art, 0f, H.DaylistArtDecodePx, focusY: H.DaylistArtFocusY),
-                    new BoxEl { Key = "zune-daylist-scrim", HitTestVisible = false, MinWidth = 0f, Gradient = bleed ? H.DaylistScrim(Tok.FillSolidBase) : null },
+                    new BoxEl { Key = "zune-daylist-scrim", HitTestVisible = false, MinWidth = 0f, Gradient = parked ? H.DaylistScrim(Tok.FillSolidBase) : bleed ? H.DaylistWideScrim(Tok.FillSolidBase) : null },
                 ],
             },
             new BoxEl
             {
-                Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), ZStack = bleed, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                Justify = end || bleed ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
+                Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), ZStack = parked, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Justify = end || parked ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
                 Gap = end ? lay.DaylistPad : H.DaylistCopyGap,
-                Padding = bleed ? new Edges4(lay.DaylistPad, H.DaylistBleedPadY, lay.DaylistPad, H.DaylistBleedPadY) : new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
+                Padding = bleed ? new Edges4(lay.DaylistPad, lay.DaylistPadY, lay.DaylistPad, lay.DaylistPadY) : new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
                 Children = copyKids,
             },
             new BoxEl
@@ -290,20 +310,20 @@ internal static class ZuneHomeDaylist
         {
             Key = H.DaylistKey, Direction = 0, ZStack = bleed, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, OnBoundsChanged = onBounds,
             Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
-            // The strip's own height (176 / 160 / 112 / 56 across the tiers and the height rung) glides on a SIZE channel, so it holds a track on the crossing
-            // frame whatever the chapter around it does (a position-only slide would snap beside a live reflow).
-            Layout = H.DaylistResize,
+            // The strip's own height (176 / 160 / 112 / 56 across the tiers and the height rung) lands at once: its HOST (`Swap`) glides it on a SIZE channel,
+            // so it holds a track on the crossing frame whatever the chapter around it does (a position-only slide would snap beside a live reflow), and one
+            // track carries both a crossing inside a form and the cross-fade between forms (a second track here left the host short of the new height).
             Fill = Prop.Of(static () => Tok.FillCardDefault), Corners = R.Shape.All(ShapeRole.Card),
             Children = kids.ToArray(),
         };
     }
 
-    /// <summary>A ring's slot (in every form, so a crossing never re-parents the ring): a plain cell of the rings row, or, in the bled form, a layer of
+    /// <summary>A ring's slot (in every form, so a crossing never re-parents the ring): a plain cell of the rings row, or, where the rings are parked, a layer of
     /// the rings' z-stack parked at its place: the play ring (the first) at the top end, the eyebrow's row; the others at the foot's end, the countdown's
     /// row, the last one at the very end and each earlier one a target and a gap further in.</summary>
     static Element RingSlot(Element ring, int i, int shown, ZuneHomeLayout lay, float target)
     {
-        bool bleed = lay.DaylistBleed;
+        bool bleed = lay.DaylistBleed && lay.DaylistRingsParked;
         float inset = bleed && i > 0 ? (shown - 1 - i) * (target + lay.RingsGap) : 0f;
         return new BoxEl
         {
