@@ -35,7 +35,10 @@ public static class ClassicRoles
 
     /// <summary>Classic's role table. One immutable instance: the style publishes it on its definition and every read of
     /// <c>R</c> before a definition is installed falls back to it.</summary>
-    public static WaveeStyleRoles Table { get; } = new(Type(), Ink(), Layer(), Shape(), Space(), OnMedia(), StageArm(), Wash(), Lyrics(), Motion(), Case());
+    public static WaveeStyleRoles Table { get; } = new(Type(), Ink(), Layer(), Shape(), Space(), OnMedia(), StageArm(), Wash(), Lyrics(), Motion(), Case())
+    {
+        Controls = ClassicControlRoles.Table,
+    };
 
     /// <summary>Registers this table as the roles a read uses while no installed definition carries any (the boot steps ahead of
     /// the appearance seed, and a unit-test process that never boots the shell). Runs when the assembly loads, so core code

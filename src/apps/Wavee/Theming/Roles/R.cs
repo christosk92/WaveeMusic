@@ -80,6 +80,9 @@ public static class R
     /// <summary>How the style cases the words it writes.</summary>
     public static CaseRoles Case => Current.Case;
 
+    /// <summary>The control roles: the button, toggle and plate each purpose is under the active style (<c>R.Controls.ButtonStyle(ControlRole.PrimaryAction)</c>).</summary>
+    public static ControlReads Controls => new(Current);
+
     /// <summary>The theme kind (light or dark) the roles are being read for: the polarity of the active theme mode. A view that needs the kind
     /// as an ARGUMENT to a pure function (a graded cover's light or dark half, a contrast solve) reads it here; a colour or an alpha that
     /// differs by kind is a role and is read from its family instead of branched on this.</summary>
