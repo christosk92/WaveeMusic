@@ -54,7 +54,11 @@ public static class SurfaceParts
     // ══ 2. A CARD'S INNER WIDTH ════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A shelf card's inner width (the card less its 2 × 8 plate padding); NaN for a fluid grid card.</summary>
-    public static float InnerOf(float width) => float.IsNaN(width) ? float.NaN : width - 2f * SurfaceGeometry.ShelfPlatePad;
+    public static float InnerOf(float width) => InnerOf(width, flush: false);
+
+    /// <summary>A shelf card's inner width for a cover that is <paramref name="flush"/> with its cell (<see cref="SurfaceShape.Flush"/>: the whole width).</summary>
+    public static float InnerOf(float width, bool flush)
+        => float.IsNaN(width) ? float.NaN : width - 2f * SurfaceGeometry.PlateInsetX(flush);
 
     // ══ 3. THE ROW TITLE'S RUNG ════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -83,7 +87,8 @@ public static class SurfaceParts
     static BoxEl StackSeed(in SurfaceShape s, float width, bool circular)
     {
         bool shelf = !float.IsNaN(width);
-        float inner = InnerOf(width);
+        float inner = InnerOf(width, s.Flush);
+        float padX = SurfaceGeometry.PlateInsetX(s.Flush);
         var corners = CornerRadius4.All(circular ? Radii.Full : Radii.Card);
         Element cover = shelf
             ? new BoxEl
@@ -100,7 +105,9 @@ public static class SurfaceParts
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, IsEnabled = false,
             Gap = shelf ? SurfaceGeometry.ShelfPlatePad : Spacing.S,
-            Padding = shelf ? Edges4.All(SurfaceGeometry.ShelfPlatePad) : new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
+            Padding = shelf
+                ? new Edges4(padX, SurfaceGeometry.ShelfPlatePad, padX, SurfaceGeometry.ShelfPlatePad)
+                : new Edges4(s.Flush ? 0f : Spacing.S, Spacing.S, s.Flush ? 0f : Spacing.S, Spacing.M),
             Children = [cover, SeedLines(in s, SurfaceGeometry.CardTitleLineH, SurfaceGeometry.CardLabelGap)],
         };
     }

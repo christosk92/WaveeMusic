@@ -66,10 +66,12 @@ public static partial class HomeCards
     /// <para><paramref name="coverAspect"/> (width ÷ height) is the cover's ratio for THIS cell — 1 is the square every
     /// entity card has; a wide cell takes the item's <see cref="ShelfItem.WideArt"/> when it has one. The shape reserves
     /// what the card shows (its caption lines, its separate meta line), so its seed face is the live card's height; the
-    /// shelf's own extent stays the caller's <c>cardHeight</c>.</para></summary>
+    /// shelf's own extent stays the caller's <c>cardHeight</c>.</para>
+    /// <para><paramref name="flush"/> sets <see cref="SurfaceShape.Flush"/>: the cover meets the cell's edges (the caller's
+    /// <c>cardHeight</c> must then read <c>SurfaceGeometry.ShelfHeight(..., flush: true)</c>).</para></summary>
     public static Element ShelfCell(in ShelfItem item, float cardW, Action onNav, Action onPlay,
                                     DragSource? drag, IOverlayService? menuHost, Func<ContextMenuModel?>? menu,
-                                    float coverAspect = 1f)
+                                    float coverAspect = 1f, bool flush = false)
     {
         bool hasMenu = menu is not null && !Controls.IsNullOverlay(menuHost);
         int lines = item.CaptionLines < 1 ? 1 : item.CaptionLines;
@@ -87,7 +89,7 @@ public static partial class HomeCards
             Menu = hasMenu ? menu : null,
         };
         bool metaLine = !item.MetaInline && item.Meta is { Length: > 0 };
-        return Controls.Surface(data, Shape.Shelf(lines, metaLine), cardW);
+        return Controls.Surface(data, Shape.Shelf(lines, metaLine) with { Flush = flush }, cardW);
     }
 
     /// <summary>The GRID surface's data for a Home/Browse card — the one adapter every HomeCard grid uses (the drill page's

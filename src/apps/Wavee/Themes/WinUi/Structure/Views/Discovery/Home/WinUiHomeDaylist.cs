@@ -145,14 +145,17 @@ internal static class WinUiHomeDaylist
     /// actions to the foot.</summary>
     static Element Triple(Parts p, WinUiDaylistLayout dl) => new BoxEl
     {
-        Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Key = "daylist-row", Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
         [
             p.Cover,
-            Copy(p, dl, eyebrowTrail: null) with { Grow = 1f, Shrink = 1f, Basis = 0f },
+            Copy(p, dl, eyebrowTrail: null) with { Key = "daylist-copy", Grow = 1f, Shrink = 1f, Basis = 0f },
             new BoxEl
             {
                 Key = "daylist-clock-col", Direction = 0, Width = dl.ClockW, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                // A crossing re-places the clock (Small: one line at the eyebrow's end): the arriving form FADES IN. No exit fade: a leaving node's ghost
+                // keeps its layout slot until it has faded, which would hold the card at the old height and then drop the page 158 DIP at once.
+                Enter = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
                 Children =
                 [
                     new BoxEl { Width = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
@@ -169,8 +172,8 @@ internal static class WinUiHomeDaylist
     /// <summary>Small: [cover | copy], the clock a line at the eyebrow's end.</summary>
     static Element Pair(Parts p, WinUiDaylistLayout dl) => new BoxEl
     {
-        Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-        Children = [p.Cover, Copy(p, dl, eyebrowTrail: p.Clock) with { Grow = 1f, Shrink = 1f, Basis = 0f }],
+        Key = "daylist-row", Direction = 0, Gap = dl.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+        Children = [p.Cover, Copy(p, dl, eyebrowTrail: p.Clock) with { Key = "daylist-copy", Grow = 1f, Shrink = 1f, Basis = 0f }],
     };
 
     /// <summary>Compact: the cover beside the eyebrow, title and meta, then the tags, the actions and the clock footer, each at the card's width.</summary>
@@ -203,27 +206,38 @@ internal static class WinUiHomeDaylist
     static BoxEl Copy(Parts p, WinUiDaylistLayout dl, Element? eyebrowTrail)
     {
         bool pair = dl.Form == WinUiDaylistForm.Pair;
+        // KEYED children: a Triple <-> Pair crossing drops the meta line, and position-matched children would remount the actions (and the save heart).
         var kids = new List<Element>(6)
         {
             pair
                 ? new BoxEl
                 {
-                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Children = [Eyebrow() with { Grow = 1f, Shrink = 1f }, eyebrowTrail ?? new BoxEl()],
+                    Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = eyebrowTrail is null
+                        ? [Eyebrow() with { Grow = 1f, Shrink = 1f }]
+                        : [Eyebrow() with { Grow = 1f, Shrink = 1f }, ClockLine(eyebrowTrail)],
                 }
-                : Eyebrow(),
-            Title(p.Title, dl),
-            p.Tags,
+                : Eyebrow() with { Key = "daylist-eyebrow" },
+            Title(p.Title, dl) with { Key = "daylist-title" },
+            p.Tags with { Key = "daylist-tags" },
         };
-        if (!pair) kids.Add(MetaLine(p.Meta, small: false));
-        kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-        kids.Add(p.Actions);
+        if (!pair) kids.Add(MetaLine(p.Meta, small: false) with { Key = "daylist-meta" });
+        kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f });
+        kids.Add(p.Actions with { Key = "daylist-actions" });
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Gap = pair ? WinUiHomeRules.CopyGapSmall : WinUiHomeRules.CopyGapLarge, Children = kids.ToArray(),
         };
     }
+
+    /// <summary>Small's clock line at the eyebrow's end, in a host that fades in with a crossing (the Triple column's twin; no exit ghost, see there).</summary>
+    static Element ClockLine(Element clock) => new BoxEl
+    {
+        Key = "daylist-clock-line", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
+        Enter = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Children = [clock],
+    };
 
     /// <summary>The eyebrow: caption 12/16 in the secondary ink, "Your daylist".</summary>
     static TextEl Eyebrow()

@@ -151,7 +151,7 @@ internal static class WinUiSurface
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, Grow = 1f,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
+                Padding = new Edges4(s.Flush ? 0f : Spacing.S, Spacing.S, s.Flush ? 0f : Spacing.S, Spacing.M),
                 Children =
                 [
                     new BoxEl
@@ -164,7 +164,8 @@ internal static class WinUiSurface
             };
         }
 
-        float inner = SurfaceParts.InnerOf(width);
+        float inner = SurfaceParts.InnerOf(width, s.Flush);
+        float padX = SurfaceGeometry.PlateInsetX(s.Flush);   // 0 on a Flush shape: the cover meets the cell's edges (the section title's line)
         // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
         bool square = d.CoverAspect == 1f;
         float coverH = SurfaceGeometry.CoverHeight(inner, d.CoverAspect);
@@ -174,7 +175,7 @@ internal static class WinUiSurface
         return new BoxEl
         {
             Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f,
-            Padding = Edges4.All(SurfaceGeometry.ShelfPlatePad),
+            Padding = new Edges4(padX, SurfaceGeometry.ShelfPlatePad, padX, SurfaceGeometry.ShelfPlatePad),
             Children = [Controls.CardCover(art, inner, coverH, circular, fab, corner), labels ?? Labels(d, in s, inner)],
         };
     }
