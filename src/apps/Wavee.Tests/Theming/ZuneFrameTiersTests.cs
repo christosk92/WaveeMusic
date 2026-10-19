@@ -117,9 +117,9 @@ public sealed class ZuneFrameTiersTests
     }
 
     [Theory]
-    [InlineData(400f, 860f, true)]     // Compact
-    [InlineData(800f, 960f, true)]     // Small: collapse at the first scroll
-    [InlineData(1440f, 960f, true)]    // Standard
+    [InlineData(400f, 860f, true)]     // Compact: row 2 is scroll-tied
+    [InlineData(800f, 960f, false)]    // Small: pinned (owner decision 2026-10-20)
+    [InlineData(1440f, 960f, false)]   // Standard: pinned
     [InlineData(2560f, 1440f, false)]  // Huge: there is room
     [InlineData(3840f, 2160f, false)]  // Huge 4K
     [InlineData(800f, 330f, true)]     // Z-Shell-Short
@@ -135,7 +135,8 @@ public sealed class ZuneFrameTiersTests
     public void A_band_mounted_alone_collapses_by_its_record()
     {
         Assert.False(ZuneBandTiers.Collapses(ZuneBandRules.Band(WidthTier.Huge), TierFacts.Unknown));
-        Assert.True(ZuneBandTiers.Collapses(ZuneBandRules.Band(WidthTier.Standard), TierFacts.Unknown));
+        Assert.False(ZuneBandTiers.Collapses(ZuneBandRules.Band(WidthTier.Standard), TierFacts.Unknown));
+        Assert.True(ZuneBandTiers.Collapses(ZuneBandRules.Band(WidthTier.Compact), TierFacts.Unknown));
     }
 
     [Fact]

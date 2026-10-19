@@ -151,6 +151,11 @@ public static partial class Diagnostics
             return new Palette.Graded(dark, light, HasLight: true, BestFitIsLight: false);
         }
 
+        /// <summary>A hueless grade (a black-and-white cover): every role grey, dark and light.</summary>
+        public static readonly Palette.Graded GreyScheme = new(
+            new Scheme(0xFF3A3A3Au, 0xFF555555u, 0xFFFFFFFFu, 0xFFC8C8C8u, 0xFFFFFFFFu),
+            new Scheme(0xFFEDEDEDu, 0xFFDDDDDDu, 0xFF000000u, 0xFF404040u, 0xFF000000u), HasLight: true, BestFitIsLight: false);
+
         static uint Hsv(float h, float s, float v)
         {
             float c = v * s, x = c * (1f - MathF.Abs(h / 60f % 2f - 1f)), m = v - c;

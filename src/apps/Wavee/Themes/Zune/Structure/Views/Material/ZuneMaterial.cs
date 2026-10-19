@@ -55,21 +55,14 @@ internal static class ZuneMaterial
             },
         };
 
-        if (background == ZuneBackground.ArtworkWash && state.Tint is { } tint)
+        if (ZunePageWash.Of(state, backdrop, ctx.Tier().Window) is { } wash)
         {
-            var top = tint with { A = MathF.Min(1f, tint.A * ZuneBandRules.WashTopScale) };
-            // A cover page (album, playlist, liked) asks for the boards' tall wash: ONE window-fixed gradient, three stops, per-tier height.
-            // Anything else (Home, the artist) keeps the band-height one.
-            bool tall = backdrop.TallWash;
-            var mid = tint with { A = top.A * ZuneBandRules.CoverWashMidShare };
             kids.Add(new BoxEl
             {
                 // Keyed on the colour (and the height): a new tint mounts a fresh band that fades in over the old one (a gradient cannot brush-fade).
-                Key = ZuneBandRules.WashKey + (tall ? "-tall:" : ":") + tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                Height = tall ? ZuneBandRules.CoverWashH(ctx.Tier().Window) : ZuneBandRules.WashH, AlignSelf = FlexAlign.Start, HitTestVisible = false,
-                Gradient = tall
-                    ? GradientDown(new GradientStop(0f, top), new GradientStop(ZuneBandRules.CoverWashMidAt, mid), new GradientStop(1f, tint with { A = 0f }))
-                    : GradientDown(new GradientStop(0f, top), new GradientStop(1f, tint with { A = 0f })),
+                Key = ZuneBandRules.WashKey + (wash.Tall ? "-tall:" : ":") + wash.Tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+                Height = wash.Height, AlignSelf = FlexAlign.Start, HitTestVisible = false,
+                Gradient = GradientDown(wash.Stops),
                 Enter = Fade, Exit = Fade,
             });
         }
@@ -201,5 +194,60 @@ internal sealed class ZuneCoverTint : Component
         UseActivation(onActivated: () => Publish(isClaim: true));
 
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+    }
+}
+
+/// <summary>The page's artwork wash as data: the window-fixed gradient the material layer draws from the window's top (the published cover tint;
+/// the tall three-stop one on a cover page), so the side panel can continue it under its scrim where it is a card over the page (floating, or
+/// sliding out) instead of drawing a plate of its own.</summary>
+/// <param name="Tint">The published tint.</param>
+/// <param name="Tall">The cover pages' tall wash.</param>
+/// <param name="Height">The gradient's height from the window's top.</param>
+/// <param name="Stops">Its stops over that height (top to clear).</param>
+internal sealed record ZunePageWash(ColorF Tint, bool Tall, float Height, GradientStop[] Stops)
+{
+    /// <summary>The wash under the artwork-wash background with a published tint; null otherwise (the ground alone).</summary>
+    public static ZunePageWash? Of(ShellMaterialState state, PageBackdrop backdrop, WidthTier tier)
+    {
+        if (ZuneOptions.Background() != ZuneBackground.ArtworkWash || state.Tint is not { } tint) return null;
+        var top = tint with { A = MathF.Min(1f, tint.A * ZuneBandRules.WashTopScale) };
+        // A cover page (album, playlist, liked) asks for the boards' tall wash: ONE window-fixed gradient, three stops, per-tier height.
+        // Anything else (Home, the artist) keeps the band-height one.
+        bool tall = backdrop.TallWash;
+        var clear = tint with { A = 0f };
+        return tall
+            ? new ZunePageWash(tint, true, ZuneBandRules.CoverWashH(tier),
+                [new GradientStop(0f, top), new GradientStop(ZuneBandRules.CoverWashMidAt, tint with { A = top.A * ZuneBandRules.CoverWashMidShare }), new GradientStop(1f, clear)])
+            : new ZunePageWash(tint, false, ZuneBandRules.WashH, [new GradientStop(0f, top), new GradientStop(1f, clear)]);
+    }
+
+    /// <summary>The wash's colour <paramref name="y"/> DIP below the window's top (clear past its height).</summary>
+    public ColorF At(float y)
+    {
+        float t = Height > 0f ? y / Height : 1f;
+        if (t <= Stops[0].Offset) return Stops[0].Color;
+        for (int i = 1; i < Stops.Length; i++)
+        {
+            if (t > Stops[i].Offset) continue;
+            var (a, b) = (Stops[i - 1], Stops[i]);
+            float span = b.Offset - a.Offset;
+            return ColorF.Lerp(a.Color, b.Color, span > 0f ? (t - a.Offset) / span : 1f);
+        }
+        return Stops[^1].Color;
+    }
+
+    /// <summary>The part of the wash below <paramref name="top"/> DIP, as a gradient for a box whose top edge lies there (its height
+    /// <see cref="Height"/> less <paramref name="top"/>); null when the wash is spent above it.</summary>
+    public (float Height, GradientStop[] Stops)? Below(float top)
+    {
+        float h = Height - top;
+        if (!(h > 1f)) return null;
+        var stops = new List<GradientStop>(Stops.Length) { new(0f, At(top)) };
+        foreach (var s in Stops)
+        {
+            float y = s.Offset * Height - top;
+            if (y > 0f) stops.Add(new GradientStop(y / h, s.Color));
+        }
+        return (h, stops.ToArray());
     }
 }

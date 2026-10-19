@@ -129,6 +129,16 @@ Boards: Z-Frame-Home, Z-Frame-Panel, Z-Frame-Narrow, Z-Part-TitleBar, Z-Part-Pan
   with row 2) and is one title (40/48/300) otherwise: the ancestors are the title bar's trail.
 - **The panel frame** (`Views\Panel\ZunePanelFrame.cs`): the pivot head (queue · lyrics · now playing · friends, 26/32/300 lowercase, the
   current word in the primary ink) and ✕, over the body of the mode on show; the bodies are the player lane's keys and core hosts.
+- **The panel's surface** (owner decision 2026-10-20, design "B, one surface"; `Views\Panel\ZunePanelWash.cs`, numbers in
+  `Rules\ZunePanelWashRules.cs`): no plate of its own. The page's wash (the material's artwork wash, `ZunePageWash`) runs on under the panel
+  and a scrim dims it (dark: near-black at 0.42; light: a faint dark veil), so page and panel read as one sheet with a slightly darker panel
+  zone and a 1-DIP divider down its left edge. A hued cover adds its glow at the head over the scrim (cross-fading on a track change); a
+  hueless cover, or nothing playing, shows the page's colour through the scrim. DOCKED the surface is a full-height column
+  (`ZunePanelSurface`, mounted by the frame under the title bar and the body, as wide as the docked reservations): it runs from the window's
+  top edge, so the title bar's bell, captions and the end of the search pill sit on it and no horizontal seam runs under the title bar; the
+  layout does not change (the reservations are unpainted). FLOATING (and the sheet, and a docked panel sliding out) the panel is a card: it
+  paints the same picture itself, opaque, picking the page wash up below its own top edge. The panel's inks (`ZunePanelInk`) are judged on
+  the surface's colour where the head lies.
 
 Tests: `Wavee.ShellTests\ZuneFrameMountedTests.cs`.
 
@@ -146,8 +156,13 @@ Registered by `ZuneStructure.Band.cs`; numbers in `Rules\ZuneBandRules.cs` (reco
 - **Heights**: row 1 44 + row 2 32 + 8 = 84 at Standard (Compact 92, Huge 4K 112); row 1 + 8 = 52 without row 2 or collapsed (Huge 4K
   72). The band's root eases its own height over 250 ms (a reflow on the height axis, `ZuneBandRules.HeightMotion`); the rows keep their
   height and are clipped, so nothing jumps.
-- **Collapse** (`collapseBand`, Compact, Small and Standard): row 2 folds while the page last scrolled down (`BandProps.Scroll`) and comes
-  back on the way up or at the top. Huge and Huge 4K never collapse.
+- **Row 2 on scroll** (`collapseBand`; owner decision 2026-10-20): PINNED at Small, Standard, Huge and Huge 4K: a scroll never moves it.
+  At Compact it is scroll-TIED: the band gives back clamp(offset, 0, row 2) of its height (`ZuneBandRules.TiedFold`, from
+  `BandProps.Scroll`'s offset) and row 2 slides up under row 1's foot and fades by the same share, so it scrolls away with the page and
+  returns as the page reaches the top, continuously; no direction is read and nothing is timed, so it cannot snap or oscillate (the old
+  fold on "last scrolled down" snapped the page at the end of its fade and fed its own height change back into the direction detector).
+  While tied and off the top the band slot follows the band exactly (no ease); the last step back to the top eases. A Short window rests
+  with row 2 folded, static. A page with no row 2 still eases the band 84 <-> 52 on navigation.
 - **Overflow** (`pivotOverflow`): EdgeFadeScroll scrolls the pivot run under an edge fade (Compact also rotates the lit pivot to the front,
   the words sliding); MoreMenu, at Compact and Small, keeps the lit pivot and folds the rest (and the hub's profile and settings) into a
   "more" menu. Row 2 scrolls under a fade at Compact and Small.
@@ -573,17 +588,18 @@ The frame, the title bar, the search and the band at every window tier, from Z-F
 Z-Shell-Short, Z-Part-TitleBar, Z-Part-Band and Z-Sizes-Breakpoints. The records are `Rules\Tiers.cs` (`ZuneFrameLayout`),
 `Rules\Tiers.Frame.cs` (`ZuneFrameTiers`) and `Rules\Tiers.Band.cs` (`ZuneBandTiers`).
 
-| tier | title bar | search | trail | band (row 2 / collapsed) | band type | collapses |
+| tier | title bar | search | trail | band (row 2 / collapsed) | band type | row 2 on scroll |
 |---|---|---|---|---|---|---|
-| Compact 300-639 | 48, 40 targets | magnifier | no | 92 / 52, pivots rotate (lit first), row 2 40 | role | first scroll down |
-| Small 640-1007 | 48 | magnifier | yes | 84 / 52, rows under a fade, no pins | role | first scroll down |
-| Standard 1008-1919 | 48 | pill 220 | yes | 84 / 52, pins | role | first scroll down |
-| Huge 1920-3199 | 48 | pill 320 | yes | 84 / 52, pins | role | never (Regular height) |
-| Huge 4K from 3200 | 56 | pill 400 x 40 | yes, 15 | 112 / 72, pins 40 | pivots 40/48, row 2 15/20 | never (Regular height) |
+| Compact 300-639 | 48, 40 targets | magnifier | no | 92 / 52, pivots rotate (lit first), row 2 40 | role | scroll-tied |
+| Small 640-1007 | 48 | magnifier | yes | 84 / 52, rows under a fade, no pins | role | pinned |
+| Standard 1008-1919 | 48 | pill 220 | yes | 84 / 52, pins | role | pinned |
+| Huge 1920-3199 | 48 | pill 320 | yes | 84 / 52, pins | role | pinned |
+| Huge 4K from 3200 | 56 | pill 400 x 40 | yes, 15 | 112 / 72, pins 40 | pivots 40/48, row 2 15/20 | pinned |
 
 - **One band height source.** `ZuneFrameLayout.BandH` / `BandCollapsedH` are read from the band's record, and the floating panel hangs
   from the band slot's measured foot (84, 52 collapsed or without row 2, easing between), not from a constant.
-- **Short (below 700 tall).** The band collapses to row 1 on the first scroll down at every width, Huge and Huge 4K included. ShortFloor is
+- **Short (below 700 tall).** The band rests collapsed to row 1 at every width, Huge and Huge 4K included, static (a scroll neither folds
+  nor returns it). ShortFloor is
   126 (330 less 48, 84 and 72).
 - **Crossings.** They commit on the first frame that is not resized and move: the title bar's height eases (48 <-> 56), the band's height,
   lead inset ease (a reflow the rows ride), the pivots slide, the pill's width eases (220 / 320 / 400), the trail, the bell, the pins and the actions fade in and out, and the

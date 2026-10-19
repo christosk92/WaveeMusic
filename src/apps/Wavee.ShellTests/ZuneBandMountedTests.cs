@@ -108,12 +108,15 @@ public sealed class ZuneBandMountedTests(ShellHost host)
         Assert.Equal(0, ZuneBandRules.Step(2, 4, ZuneBandRules.TabKey.First));
         Assert.Equal(3, ZuneBandRules.Step(0, 4, ZuneBandRules.TabKey.Last));
         Assert.Equal(-1, ZuneBandRules.Step(0, 4, ZuneBandRules.TabKey.First));
-        // Collapse: only scrolling down, only where the tier collapses and the parameter is on.
-        var down = new PageScroll(200f, PageScrollDirection.Down);
-        Assert.True(ZuneBandRules.Collapsed(standard, parameter: true, down));
-        Assert.False(ZuneBandRules.Collapsed(standard, parameter: false, down));
-        Assert.False(ZuneBandRules.Collapsed(standard, parameter: true, new PageScroll(200f, PageScrollDirection.Up)));
-        Assert.False(ZuneBandRules.Collapsed(ZuneBandRules.Band(WidthTier.Huge), parameter: true, down));
+        // Row 2 on scroll (owner decision 2026-10-20): scroll-tied at Compact only, pinned from Small up; the fold is a pure function of the offset.
+        Assert.True(ZuneBandRules.Band(WidthTier.Compact).Collapses);
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.False(ZuneBandRules.Band(tier).Collapses);
+        Assert.Equal(0f, ZuneBandRules.TiedFold(0f, 40f));
+        Assert.Equal(0f, ZuneBandRules.TiedFold(-12f, 40f));     // an overscroll above the top
+        Assert.Equal(25f, ZuneBandRules.TiedFold(25f, 40f));
+        Assert.Equal(40f, ZuneBandRules.TiedFold(400f, 40f));
+        Assert.Equal(0f, ZuneBandRules.TiedFold(float.NaN, 40f));
     }
 
     // ── row 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -239,8 +242,12 @@ public sealed class ZuneBandMountedTests(ShellHost host)
 
     // ── the collapse ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void The_band_collapses_to_row_one_while_the_page_scrolls_down_easing_and_comes_back()
+    [Theory]
+    [InlineData(400f, 860f)]     // Compact: scroll-tied
+    [InlineData(800f, 860f)]     // Small: pinned
+    [InlineData(1440f, 960f)]    // Standard: pinned
+    [InlineData(2560f, 1440f)]   // Huge: pinned
+    public void Row_two_is_scroll_tied_at_compact_and_pinned_from_small_up(float width, float height)
     {
         var scroll = new Signal<PageScroll>(PageScroll.Top);
         var views = new PageView[]
@@ -269,32 +276,29 @@ public sealed class ZuneBandMountedTests(ShellHost host)
                 Hub = () => destinations,
             },
         };
-        var standard = ZuneBandRules.Band(WidthTier.Standard);
         ViewHarness.With(host, ViewKeys.ShellNavPane, props, harness =>
         {
             harness.RunFrames(10);
+            var band = ZuneBandRules.BandOf(harness.Facts.Peek().Tiers);
+            bool tied = band.Collapses;
+            Assert.Equal(width < 640f, tied);
             float Height() => harness.AbsoluteBounds(harness.Node(ZuneBandRules.BandKey)).H;
-            Assert.Equal(standard.ExpandedH, Height(), 0.5f);
+            Assert.Equal(band.ExpandedH, Height(), 0.5f);
             Assert.True(harness.Contains(ZuneBandRules.Row2Key), "row 2 is drawn");
 
-            scroll.Value = new PageScroll(240f, PageScrollDirection.Down);
-            bool between = false;
-            for (int i = 0; i < 60; i++)
+            // Down, a partial step, further, back up a little, then the top: the height follows the position (no direction, nothing timed).
+            foreach (var (offset, dir) in new[] { (12f, PageScrollDirection.None), (24f, PageScrollDirection.Down), (240f, PageScrollDirection.Down),
+                         (30f, PageScrollDirection.Up), (0f, PageScrollDirection.Up) })
             {
-                harness.RunFrames(1);
-                float h = Height();
-                if (h > standard.CollapsedH + 0.5f && h < standard.ExpandedH - 0.5f) between = true;
+                scroll.Value = new PageScroll(offset, dir);
+                harness.RunFrames(40);
+                float want = band.ExpandedH - (tied ? ZuneBandRules.TiedFold(offset, band.Row2H) : 0f);
+                Assert.True(MathF.Abs(want - Height()) < 0.5f, $"at offset {offset} the band stands {want} (it stands {Height()})");
+                // Pinned: it stays put frame after frame (no fade that ends in a fold, no late return).
+                harness.RunFrames(60);
+                Assert.True(MathF.Abs(want - Height()) < 0.5f, $"at offset {offset} the band still stands {want} a second later (it stands {Height()})");
             }
-            Assert.Equal(standard.CollapsedH, Height(), 0.5f);
-            if (!Design.Reduced) Assert.True(between, "the band eased to 52 (a frame between 84 and 52), never jumped");
-
-            scroll.Value = new PageScroll(180f, PageScrollDirection.Up);
-            harness.RunFrames(60);
-            Assert.Equal(standard.ExpandedH, Height(), 0.5f);
-
-            scroll.Value = PageScroll.Top;
-            harness.RunFrames(30);
-            Assert.Equal(standard.ExpandedH, Height(), 0.5f);
-        }, new ViewHarnessOptions { Composition = ZuneTheme.Create(), WidthDip = W, HeightDip = H });
+            Assert.True(harness.Contains(ZuneBandRules.Row2Key), "row 2 is drawn at the top again");
+        }, new ViewHarnessOptions { Composition = ZuneTheme.Create(), WidthDip = width, HeightDip = height });
     }
 }

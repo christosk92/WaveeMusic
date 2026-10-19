@@ -8,7 +8,8 @@ namespace Wavee.Themes.Zune;
 /// the shape of its fall, the edge.</summary>
 public static class ZunePanelWashRules
 {
-    public const string WashKey = "zune-panel-wash", EdgeKey = "zune-panel-edge";
+    public const string WashKey = "zune-panel-wash", EdgeKey = "zune-panel-edge", ScrimKey = "zune-panel-scrim", CardWashKey = "zune-panel-card-wash",
+        SurfaceKey = "zune-panel-surface";
 
     public const float EdgeW = 1f;
 
@@ -29,6 +30,11 @@ public static class ZunePanelWashRules
 
     /// <summary>Light: a clear pastel of the hue over the pale plate.</summary>
     public const float LightGlowS = 0.45f, LightGlowV = 1f, LightGlowA = 0.5f;
+
+    /// <summary>The panel zone's scrim (design "B, one surface"): the page's own wash runs on under the panel and this dims it, so the page and the panel read
+    /// as one sheet with a slightly darker panel zone. Dark: near-black at 42 % (the owner's mock, `rgba(10,10,12,.42)`). Light: a faint dark veil, so the
+    /// zone stays a shade under the pale page and the inks keep their contrast.</summary>
+    public static ColorF ScrimOf(bool light) => light ? ColorF.FromRgba(20, 20, 24, 12) : ColorF.FromRgba(10, 10, 12, 107);
 
     /// <summary>The glow's peak colour for the cover's <paramref name="hue"/> on the ground of the kind.</summary>
     public static ColorF GlowOf(float hue, bool light) => light

@@ -619,9 +619,19 @@ public static partial class Diagnostics
             if (!StagePrefs(a, out error)) return false;
             // `grade=hue`: every cover grades to a hue taken from its uri (the fake catalogue's covers are local files the provider cannot grade), so a surface that tints
             // from the playing cover renders in colour offline
-            Palette.SchemeSeam = a.Str("grade").Equals("hue", StringComparison.OrdinalIgnoreCase)
-                ? static (uri, light) => { var g = InspectKit.GradeOf(uri); return light ? g.Light : g.Dark; }
-                : null;
+            // `grade=grey`: every cover grades to a hueless grey (a black-and-white cover), so the surfaces that tint from it show their no-hue arm
+            Palette.SchemeSeam = a.Str("grade").ToLowerInvariant() switch
+            {
+                "hue" => static (uri, light) => { var g = InspectKit.GradeOf(uri); return light ? g.Light : g.Dark; },
+                "grey" or "gray" => static (_, light) => light ? InspectKit.GreyScheme.Light : InspectKit.GreyScheme.Dark,
+                // `grade=greynow`: the playing track's cover is grey, every other cover takes its hue (a tinted page beside a black-and-white cover)
+                "greynow" => static (uri, light) =>
+                {
+                    var g = string.Equals(uri, Wavee.Rail.NowArtUrl(), StringComparison.Ordinal) ? InspectKit.GreyScheme : InspectKit.GradeOf(uri);
+                    return light ? g.Light : g.Dark;
+                },
+                _ => null,
+            };
             _shell = MountOn(w0, h0, scale, gpu);
             _frames++;
             mounted = true;

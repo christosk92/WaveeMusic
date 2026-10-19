@@ -5,12 +5,12 @@
 // only here, in `Rules\**`.
 //
 //   THE BAND (Z-Part-Band), per WINDOW tier (`ZuneBandLayout`):
-//     tier       inset  row 1  row 2  under  pivot gap  pins  pin art  row-2 gap  row-2 end  title+actions  collapses  narrow
-//     Compact    16     44     40     8      24         no    -        22         0          no             yes        rotate + fade
-//     Small      24     44     32     8      24         no    -        20         24         yes            yes        fade
-//     Standard   48     44     32     8      24         yes   32       20         48         yes            yes        -
-//     Huge       48     44     32     8      24         yes   32       20         48         yes            no         -
-//     Huge 4K    64     64     40     8      32         yes   40       20         64         yes            no         -
+//     tier       inset  row 1  row 2  under  pivot gap  pins  pin art  row-2 gap  row-2 end  title+actions  row 2      narrow
+//     Compact    16     44     40     8      24         no    -        22         0          no             tied       rotate + fade
+//     Small      24     44     32     8      24         no    -        20         24         yes            pinned     fade
+//     Standard   48     44     32     8      24         yes   32       20         48         yes            pinned     -
+//     Huge       48     44     32     8      24         yes   32       20         48         yes            pinned     -
+//     Huge 4K    64     64     40     8      32         yes   40       20         64         yes            pinned     -
 //   The band is row 1 + row 2 + the 8 under them: 84 at Standard (92 at Compact, 112 at Huge 4K); collapsed it keeps row 1 and the 8:
 //   52 (72 at Huge 4K). The inset is the frame's gutter (`ZuneFrameLayout.Gutter`), so the first pivot stands on the page's x.
 //   THE PAGE COLUMN (the T1 audit's A1, A2): the rows sit in the pages' column (`ZuneFrameRules.PageRow`): a leading inset (the gutter),
@@ -24,9 +24,11 @@
 //   ROW 2: the page's views (Library's kinds, Browse's bands, a page's in-page tabs), 20 apart; a detail page (no lit pivot) leads with
 //   its title and a hairline, and its current view takes the accent underline instead of the weight; then the page's actions at the end:
 //   the 28 play disc, the 28 shuffle ring and the word actions as 28-tall outlined pills, 14 apart.
-//   COLLAPSE (`collapseBand`): row 2 folds away while the page scrolls down and comes back as it scrolls up or reaches the top, the
-//   band's own height easing 84 <-> 52 over the pivot slide's 250 ms (the slot hugs it, so the page below follows, never a jump). Huge and
-//   Huge 4K never collapse: there is room (Z0's frame record).
+//   ROW 2 ON SCROLL (owner decision, 2026-10-20; `collapseBand`): pinned at Small, Standard, Huge and Huge 4K (it never moves on a scroll).
+//   At Compact it is scroll-TIED: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same share, so it scrolls
+//   away with the page and returns as the page reaches the top, continuously, with no direction detection and no timed fade (the old fold on
+//   "last scrolled down" snapped the page at the fade's end and fed its own height change back into the direction detector). A Short window
+//   rests with row 2 folded, static. A page with no row 2 eases the band 84 <-> 52 on navigation, as before.
 //
 //   THE MATERIAL: the flat ground (the style's shell ground, #161616 / #f5f5f5), then by the `background` option:
 //     artwork wash   the published cover tint as a band from the top of the window that fades out by the band's foot (180: the
@@ -62,7 +64,7 @@ namespace Wavee.Themes.Zune;
 /// <param name="Row2End">The rows' trailing inset (the pins and row 2's last action end on it): the frame's gutter from Small up (24 / 48 /
 /// 48 / 64, the page's right content edge; A2), 0 at Compact, where row 1 and row 2 scroll to the window's edge under their fade.</param>
 /// <param name="TitleAndActions">Row 2 leads with a detail page's title and ends with its actions.</param>
-/// <param name="Collapses">The band folds row 2 away while the page scrolls down.</param>
+/// <param name="Collapses">Row 2 is scroll-tied: it scrolls away with the page (Compact; pinned elsewhere).</param>
 /// <param name="Rotate">The current pivot leads row 1 (the run rotates; Compact).</param>
 /// <param name="Fade">Row 1 and row 2 scroll under an edge fade when they overflow (Compact and Small; at every tier under the
 /// <see cref="PivotOverflow.EdgeFadeScroll"/> parameter the run still scrolls rather than clip).</param>
@@ -96,7 +98,7 @@ public static class ZuneBandRules
     /// <summary>The band's root, its two rows, the pivot run, a pivot (`zune-band-pivot:<id>`), the "more" word, the pins cluster, a pin
     /// (`zune-band-pin:<id>`), a pin's play affordance, a row-2 view (`zune-band-view:<id>`), a row-2 action (`zune-band-action:<id>`),
     /// the row-2 title.</summary>
-    public const string BandKey = "zune-band", Row1Key = "zune-band-row1", Row2Key = "zune-band-row2", PivotRunKey = "zune-band-pivots",
+    public const string BandKey = "zune-band", Row1Key = "zune-band-row1", Row2Key = "zune-band-row2", Row2HolderKey = "zune-band-row2-holder", PivotRunKey = "zune-band-pivots",
         PivotKeyPrefix = "zune-band-pivot:", MoreKey = "zune-band-more", PinsKey = "zune-band-pins", PinKeyPrefix = "zune-band-pin:",
         PinPlayKeyPrefix = "zune-band-pin-play:", ViewKeyPrefix = "zune-band-view:", ActionKeyPrefix = "zune-band-action:",
         Row2TitleKey = "zune-band-title";
@@ -112,9 +114,9 @@ public static class ZuneBandRules
         new(WidthTier.Compact, Inset: 16f, Row1H: 44f, Row2H: 40f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
             Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true, ViewMinW: 40f),
         new(WidthTier.Small, Inset: 24f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
-            Row2Gap: 20f, Row2End: 24f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: true, Narrow: true),
+            Row2Gap: 20f, Row2End: 24f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: true, Narrow: true),
         new(WidthTier.Standard, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,
-            Row2Gap: 20f, Row2End: 48f, TitleAndActions: true, Collapses: true, Rotate: false, Fade: false, Narrow: false),
+            Row2Gap: 20f, Row2End: 48f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
         new(WidthTier.Huge, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,
             Row2Gap: 20f, Row2End: 48f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: false, Narrow: false),
         new(WidthTier.Huge4K, Inset: 64f, Row1H: 64f, Row2H: 40f, UnderH: 8f, PivotGap: 32f, RowGap: 24f, Pins: true, PinArt: 40f,
@@ -130,9 +132,9 @@ public static class ZuneBandRules
     /// <summary>The pins show: the tier shows them (decision 4) and the `bandPins` option is on.</summary>
     public static bool ShowPins(ZuneBandLayout band, bool option) => band.Pins && option;
 
-    /// <summary>Row 2 is folded away: the band collapses in this tier, the `collapseBand` parameter is on and the page last scrolled down.</summary>
-    public static bool Collapsed(ZuneBandLayout band, bool parameter, in PageScroll scroll)
-        => band.Collapses && parameter && scroll.Direction == PageScrollDirection.Down;
+    /// <summary>How much of row 2 a scroll-tied band has given back at the page's scroll <paramref name="offset"/>: clamp(offset, 0, <paramref name="row2H"/>).
+    /// A pure function of the position (never of the direction), so the band follows the scroll continuously and cannot oscillate.</summary>
+    public static float TiedFold(float offset, float row2H) => float.IsFinite(offset) ? Math.Clamp(offset, 0f, row2H) : 0f;
 
     /// <summary>Row 2 is drawn: the page has views (or, on a detail page, a title or actions to carry) and the band is not collapsed.</summary>
     public static bool Row2Shown(bool hasRow2, bool collapsed) => hasRow2 && !collapsed;
