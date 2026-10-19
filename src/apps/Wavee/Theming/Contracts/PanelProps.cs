@@ -126,6 +126,10 @@ public sealed record PanelView
     /// <summary>This is a docked pane that opens and closes with the primary panel (contract 1.29, Zune's queue | lyrics · friends): it
     /// draws no close of its own. False for the primary and for Classic's independent queue pane.</summary>
     public bool Linked { get; init; }
+
+    /// <summary>The docked pane's own tab group (P6 WK, <c>DockedPane.Tabs</c>: the WinUI board's Huge, Queue + Now playing | Lyrics + Friends): the bodies its
+    /// pivot offers, <see cref="Body"/> the one on show. Empty for the primary (its pivot is every body minus <see cref="Beside"/>) and for a one-body pane.</summary>
+    public PanelModeSet Tabs { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.ShellPanel"/>.</summary>
@@ -168,6 +172,10 @@ public sealed record PanelProps
     /// <summary>Show another body in this panel (the Compact now-playing sheet's Lyrics and Queue doors); null where the panel offers none
     /// (contract 1.15).</summary>
     public Action<PanelMode>? ShowMode { get; init; }
+
+    /// <summary>A docked pane's tab click (P6 WK): show that body of its tab group (<see cref="PanelView.Tabs"/>) in THIS pane; a body it does not offer is
+    /// ignored. Null on the primary panel (its pivot uses <see cref="ShowMode"/> or the shell's doors).</summary>
+    public Action<PanelMode>? ShowPaneTab { get; init; }
 
     /// <summary>Turn the docked video back into the art ("switch to audio").</summary>
     public required Action ShowArt { get; init; }

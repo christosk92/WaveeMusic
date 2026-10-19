@@ -36,7 +36,8 @@ public static partial class Settings
     {
         Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => PageFor(route));
         // `wavee://open?route=settings&arg=<slug>`: the arg is an AREA slug (the old tab slugs are aliases), never a place of its own (plan D4).
-        Shell.OnSettingsTabRequested = static slug => Open(AreaFromSlug(slug));
+        // The slug resolves through the structure's grouping (P6 WK): a tab's own slug lands on its first area; the default grouping is AreaFromSlug.
+        Shell.OnSettingsTabRequested = static slug => Open(ShellPolicy.Now.Settings.AreaFromSlug(slug));
         ReleaseNotes.InstallUi();
         Feedback.InstallUi();
         Setup.InstallWizard();
@@ -80,6 +81,9 @@ public static partial class Settings
 
     /// <summary>The pivot's cell as the props carry it (a writable cell travels as a <c>Func</c>: WVTH006).</summary>
     static readonly Func<Signal<int>> s_tabCell = static () => s_tab;
+
+    /// <summary>A grouped pivot's tab click (P6 WK): the area cell moves to the tab's first home area, so the tab on show is that tab.</summary>
+    static readonly Action<int> s_openGroup = static g => s_tab.Value = (int)ShellPolicy.Now.Settings.HomeAreaOf(g);
 
     /// <summary>The tab the NEXT mounted root's pivot opens on, or -1 for the first. A theme pick sets it to Appearance before the
     /// root remounts (owner Q26: the remounted page is a fresh navigation, to Settings › Appearance, picker first); the new
@@ -141,7 +145,9 @@ public static partial class Settings
             int revision = s_epoch.Value + Prefs.PlayerBar.Epoch.Value + Prefs.Stage.Epoch.Value;
             string arg = UseProps<HostProps>().Arg;
             bool section = arg.Length > 0;
-            int argTab = (int)AreaFromSlug(arg);
+            // The structure's grouping (P6 WK): which tab the open area lives in, and where a tab's own slug lands. Tracked: a theme switch regroups.
+            var grouping = ShellPolicy.Tracked.Settings;
+            int argTab = (int)grouping.AreaFromSlug(arg);
             // A route that names a section (history, a restored session) opens the pivot on it.
             UseEffect(() => { if (section && s_tab.Peek() != argTab) s_tab.Value = argTab; }, DepKey.From(argTab, section ? 1 : 0));
             int area = Math.Clamp(s_tab.Value, 0, AreaSlugs.Length - 1);
@@ -151,6 +157,9 @@ public static partial class Settings
             return Slots.View(ViewKeys.SettingsPage, new SettingsPageProps
             {
                 Area = area,
+                Grouping = grouping,
+                Group = grouping.GroupOf((Area)area),
+                OpenGroup = s_openGroup,
                 Revision = revision,
                 AreaCell = s_tabCell,
                 OpenSection = section,

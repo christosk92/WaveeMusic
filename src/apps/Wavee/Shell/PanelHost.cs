@@ -306,6 +306,26 @@ public static partial class Shell
         /// <summary>A docked pane's width (tracked): the tier's floor, never under the panel default.</summary>
         public float PaneWidth() => FrameRules.SecondWidth(Cells.Floor.Value);
 
+        /// <summary>The tab each docked pane's tab group shows (P6 WK, <c>DockedPane.Tabs</c>): a <c>PanelMode</c> value, or -1 for the pane's first tab.
+        /// Session state: a fresh panel opens every pane on its first tab.</summary>
+        readonly Signal<int>[] _paneTabs = [new(-1), new(-1)];
+
+        /// <summary>The body docked pane <paramref name="index"/> shows (tracked): its tab group's pick, else its one body.</summary>
+        public Theming.Contracts.PanelMode PaneBody(int index, Theming.DockedPane pane)
+            => (uint)index < (uint)_paneTabs.Length ? pane.BodyFor(_paneTabs[index].Value) : pane.Mode;
+
+        /// <summary><see cref="PaneBody"/> without subscribing.</summary>
+        public Theming.Contracts.PanelMode PaneBodyNow(int index, Theming.DockedPane pane)
+            => (uint)index < (uint)_paneTabs.Length ? pane.BodyFor(_paneTabs[index].Peek()) : pane.Mode;
+
+        /// <summary>A docked pane's tab click (P6 WK): show <paramref name="mode"/> in pane <paramref name="index"/> where its tab group offers it.</summary>
+        public void ShowPaneTab(int index, Theming.Contracts.PanelMode mode)
+        {
+            if ((uint)index >= (uint)_paneTabs.Length) return;
+            if (PanesNow().At(index) is not { } pane || !pane.Bodies.Contains(mode)) return;
+            _paneTabs[index].Value = (int)mode;
+        }
+
         /// <summary>The second docked pane is on screen (tracked): Classic's queue beside the primary at a tier that docks two while the
         /// primary is not already showing it; a linked arrangement's second pane while the panel is open.</summary>
         public bool SecondOpen() => PaneOpen(0);
@@ -364,6 +384,14 @@ public static partial class Shell
             if (panes.Linked)
             {
                 var asked = (Theming.Contracts.PanelMode)(byte)mode;
+                // A docked pane with a tab group of its own (P6 WK) that offers the body but shows another: the door picks that tab (and opens the panel).
+                int holder = panes.IndexHolding(asked);
+                if (holder >= 0 && panes.At(holder) is { HasTabs: true } tabbed && PaneBodyNow(holder, tabbed) != asked)
+                {
+                    _paneTabs[holder].Value = (int)asked;
+                    Cells.Open.Value = true;
+                    return;
+                }
                 bool onScreen = panes.Holds(asked) || (byte)panes.Presented((Theming.Contracts.PanelMode)(byte)current) == (byte)mode;
                 if (open && onScreen) { Cells.Open.Value = false; return; }
                 SetMode(mode);

@@ -364,7 +364,11 @@ public static partial class Stage
 
             // ── the layout axis, derived (each effect reads only what the previous wrote): the effective layout, whether the caption
             //    line shows, the ONE Look the geometry takes, the pane region's pane, and the lyrics view's visibility gate ──
-            UseSignalEffect(() => ctx.Effective.SetIfChanged(LayoutRules.Effective(ctx.LayoutPref.Value, ctx.Layout.Value.Aspect, ctx.HeroFact.Value)));
+            UseSignalEffect(() =>
+            {
+                var layout = ctx.Layout.Value;   // the window tier's allowed layouts ride on it (P6 WK), so a tier crossing re-decides
+                ctx.Effective.SetIfChanged(LayoutRules.Effective(ctx.LayoutPref.Value, layout.Aspect, ctx.HeroFact.Value, layout.AllowedLayouts));
+            });
             // A row-identity stage too short for the Lyrics caption keeps its art, title and controls and drops the caption (Layout.CaptionFits).
             UseSignalEffect(() => ctx.CaptionOn.SetIfChanged(LayoutRules.ShowsCaption(ctx.Mode.Value, ctx.Effective.Value, ctx.LyricsOverlay.Value,
                 ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value) && ctx.Layout.Value.CaptionFits(ctx.Mode.Value)));

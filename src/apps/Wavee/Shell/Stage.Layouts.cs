@@ -64,6 +64,21 @@ public static partial class Stage
         public static VizLayout Effective(VizLayout stored, Aspect aspect, HeroState hero)
             => aspect == Aspect.Compact ? VizLayout.Card : stored == VizLayout.Artist && hero == HeroState.None ? VizLayout.LargeArt : stored;
 
+        /// <summary><see cref="Effective(VizLayout, Aspect, HeroState)"/> within the window tier's allowed layouts (P6 WK,
+        /// <see cref="Theming.StageTierMetrics.Layouts"/>): a layout outside the set draws its nearest allowed one, Centered and Artist
+        /// stepping down to Large art and Large art to Card (Card is always allowed). <see cref="Theming.StageLayouts.All"/> is the rule above.</summary>
+        public static VizLayout Effective(VizLayout stored, Aspect aspect, HeroState hero, Theming.StageLayouts allowed)
+        {
+            var eff = Effective(stored, aspect, hero);
+            if (Allows(allowed, eff)) return eff;
+            return eff != VizLayout.LargeArt && Allows(allowed, VizLayout.LargeArt) ? VizLayout.LargeArt : VizLayout.Card;
+        }
+
+        /// <summary>The set <paramref name="allowed"/> holds <paramref name="layout"/> (Card always: it is every layout's fallback). The options popover may
+        /// read it to offer only the allowed layouts.</summary>
+        public static bool Allows(Theming.StageLayouts allowed, VizLayout layout)
+            => layout == VizLayout.Card || ((int)allowed & (1 << (int)layout)) != 0;
+
         /// <summary>The WHAT-IS-DRAWN value for a mode: the layout applies only in Visualizer mode; elsewhere (and in Card) it is
         /// the plain look of the mode.</summary>
         public static Look LookOf(Mode mode, VizLayout effective, SpectrumStyle storedSpectrum, bool heroLyricsPref, bool caption)

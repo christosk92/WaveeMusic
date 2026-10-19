@@ -687,6 +687,30 @@ public static partial class Shell
             return new TabNavResult(TabNavIntent.Push, route, at);
         }
 
+        /// <summary>Open a new tab on <paramref name="route"/> BEHIND the active one (P6 WK, tabs Off with the workspace kept): the tab joins
+        /// the workspace where <see cref="Open"/> would put it, but the active tab, its page and the back stack do not move. Never a route
+        /// intent (<see cref="TabNavIntent.None"/>; the active index is re-reported, as an insert before it may shift it). Collapsed: refused
+        /// (there is no workspace to add to).</summary>
+        public TabNavResult OpenInBackground(Route route, bool pinned = false)
+        {
+            if (_parked is not null) return None();
+            var tab = new WorkspaceTab(_nextId++, route, pinned);
+            int at = pinned ? PinnedBoundary() : _tabs.Count;
+            _tabs.Insert(at, tab);
+            if (pinned) PinnedRevision++;
+            return None();
+        }
+
+        /// <summary>Ctrl+Tab / Ctrl+Shift+Tab (P6 WK): activate the tab <paramref name="delta"/> places from the active one, wrapping at
+        /// both ends. A one-tab workspace (or a collapsed one) answers <see cref="TabNavIntent.None"/>.</summary>
+        public TabNavResult Cycle(int delta)
+        {
+            int n = _tabs.Count;
+            if (n <= 1 || delta == 0) return None();
+            int next = ((ActiveIndex + delta) % n + n) % n;
+            return Activate(next);
+        }
+
         /// <summary>Make the tab at <paramref name="index"/> active. The index is whatever the caller has in hand (the
         /// strip's click index, a spring-load's id lookup) — never trusted as "already selected": only
         /// <see cref="ActiveId"/> decides that. Out of range → <see cref="TabNavIntent.None"/>.</summary>
