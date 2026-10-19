@@ -2983,6 +2983,11 @@
         "setupBack": "Back"
       },
       "states": {}
+    },
+    "winui": {
+      "$comment": "WinUI (P6, Developer-only). W0 owns name and description; each family lane writes only inside its own object below.",
+      "name": "WinUI",
+      "description": "Fluent navigation view, title-bar tabs and Mica"
     }
   },
   "setup": {
