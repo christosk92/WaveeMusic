@@ -74,33 +74,7 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Video.Pip"] = "W4c",  // ViewKeys.VideoPip
         ["Video.PlacementMenu"] = "W4c",  // ViewKeys.VideoPlacementMenu
         ["Video.PopOut"] = "W4c",  // ViewKeys.VideoPopOut
-        // W5: discovery (26)
-        ["Browse.Charts"] = "W5",  // ViewKeys.BrowseCharts
-        ["Home.Charts"] = "W5",  // ViewKeys.HomeCharts
-        ["Home.Daylist"] = "W5",  // ViewKeys.HomeDaylist
-        ["Home.DaylistClock"] = "W5",  // ViewKeys.HomeDaylistClock
-        ["Home.FacetRow"] = "W5",  // ViewKeys.HomeFacetRow
-        ["Home.Zone.BrowseTiles"] = "W5",  // ViewKeys.HomeZoneBrowseTiles
-        ["Home.Zone.ClusterCards"] = "W5",  // ViewKeys.HomeZoneClusterCards
-        ["Home.Zone.ContinueEpisodes"] = "W5",  // ViewKeys.HomeZoneContinueEpisodes
-        ["Home.Zone.CoverShelf"] = "W5",  // ViewKeys.HomeZoneCoverShelf
-        ["Home.Zone.EmptyFacet"] = "W5",  // ViewKeys.HomeZoneEmptyFacet
-        ["Home.Zone.EpisodeLead"] = "W5",  // ViewKeys.HomeZoneEpisodeLead
-        ["Home.Zone.EpisodeRows"] = "W5",  // ViewKeys.HomeZoneEpisodeRows
-        ["Home.Zone.MixedCovers"] = "W5",  // ViewKeys.HomeZoneMixedCovers
-        ["Home.Zone.PodcastGroups"] = "W5",  // ViewKeys.HomeZonePodcastGroups
-        ["Home.Zone.RadioShelf"] = "W5",  // ViewKeys.HomeZoneRadioShelf
-        ["Home.Zone.RecentGrid"] = "W5",  // ViewKeys.HomeZoneRecentGrid
-        ["Home.Zone.ReleaseList"] = "W5",  // ViewKeys.HomeZoneReleaseList
-        ["Home.Zone.ShowGrid"] = "W5",  // ViewKeys.HomeZoneShowGrid
-        ["Home.Zone.VideoTiles"] = "W5",  // ViewKeys.HomeZoneVideoTiles
-        ["Home.Zone.WideTiles"] = "W5",  // ViewKeys.HomeZoneWideTiles
-        ["Pages.Browse"] = "W5",  // ViewKeys.BrowseDirectory
-        ["Pages.BrowseCategory"] = "W5",  // ViewKeys.BrowseCategory
-        ["Pages.BrowseSection"] = "W5",  // ViewKeys.BrowseSection
-        ["Pages.Home"] = "W5",  // ViewKeys.HomePage
-        ["Pages.HomeSection"] = "W5",  // ViewKeys.HomeSection
-        ["Pages.Search"] = "W5",  // ViewKeys.SearchPage
+        // W5: discovery (all landed)
         // W6a: album and artist (21)
         ["Album.ArtistFlyout"] = "W6a",  // ViewKeys.AlbumArtistFlyout
         ["Album.ArtistLine"] = "W6a",  // ViewKeys.AlbumArtistLine
