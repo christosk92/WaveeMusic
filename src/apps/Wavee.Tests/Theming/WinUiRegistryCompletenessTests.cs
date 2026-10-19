@@ -30,19 +30,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
     /// (`winui.*`) or a Common block's. A family lane deletes its lines in the PR that registers its keys; W9 empties the list (P6 exit 1).</summary>
     static readonly Dictionary<string, string> DeliberateStandIns = new(StringComparer.Ordinal)
     {
-        // W2a: the frame (12)
-        ["Page.Head"] = "W2a",  // ViewKeys.PageHead
-        ["Shell.CommandPalette"] = "W2a",  // ViewKeys.ShellCommandPalette
-        ["Shell.ContentState"] = "W2a",  // ViewKeys.ShellContentState
-        ["Shell.CoverScrim"] = "W2a",  // ViewKeys.ShellCoverScrim
-        ["Shell.DragChip"] = "W2a",  // ViewKeys.ShellDragChip
-        ["Shell.FileDrop"] = "W2a",  // ViewKeys.ShellFileDrop
-        ["Shell.Frame"] = "W2a",  // ViewKeys.ShellFrame
-        ["Shell.HistoryMenu"] = "W2a",  // ViewKeys.ShellHistoryMenu
-        ["Shell.Masthead"] = "W2a",  // ViewKeys.ShellMasthead
-        ["Shell.Search"] = "W2a",  // ViewKeys.ShellSearch
-        ["Shell.SearchSuggestions"] = "W2a",  // ViewKeys.ShellSearchSuggestions
-        ["Shell.TitleBar"] = "W2a",  // ViewKeys.ShellTitleBar
         // W2b: the nav pane (12)
         ["Shell.Material"] = "W2b",  // ViewKeys.ShellMaterialLayer
         ["Shell.Material.ArtistBlend"] = "W2b",  // ViewKeys.ShellCoverBlend

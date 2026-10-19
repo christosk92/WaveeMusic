@@ -95,8 +95,12 @@ public sealed class WinUiCatalogTests : IDisposable
         var structure = new WinUiStructure();
         var on = structure.Capabilities(Structure(tabs: true));
         var off = structure.Capabilities(Structure(tabs: false));
-        Assert.True(on.Tabs);
-        Assert.False(off.Tabs);
+        // Tabs off hides the strip and keeps the workspace (owner Q1, WK (a)); Ctrl+Tab cycles either way.
+        Assert.True(on.ShowsTabStrip);
+        Assert.True(off.Tabs);
+        Assert.True(off.HiddenTabStrip);
+        Assert.False(off.ShowsTabStrip);
+        Assert.True(on.CyclesTabs && off.CyclesTabs);
         foreach (var c in new[] { on, off })
         {
             Assert.True(c.NavTree);
