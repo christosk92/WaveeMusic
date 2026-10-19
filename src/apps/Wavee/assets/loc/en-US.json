@@ -3054,6 +3054,21 @@
         "previewTitle": "Preview",
         "cycleTabs": "Next tab",
         "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden."
+      },
+      "player": {
+        "$comment": "W4a: the play bar, the side panes and their bodies (boards Shell-Player, W-Queue, W-PaneLyrics, W-PaneNowPlaying, W-Shell-*).",
+        "thisPc": "This PC",
+        "devices": "Devices",
+        "wherePlayVideo": "Where to play the video",
+        "closePane": "Close pane",
+        "friends": "Friends",
+        "grabber": "Drag down to close",
+        "nowPlaying": "Now playing",
+        "deckStyle": "Now playing style",
+        "playingFrom": "Playing from",
+        "showLyrics": "Show lyrics",
+        "from": "from",
+        "translate": "Translate"
       }
     }
   },

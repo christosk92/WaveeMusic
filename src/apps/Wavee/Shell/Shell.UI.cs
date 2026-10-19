@@ -160,6 +160,15 @@ public static partial class Shell
     /// capped by the rule's MaxDocked (the structure clamps that by its own option, Zune's `maxDockedPanes`).</summary>
     static void PublishPanelTier(Theming.PanelTierRule rule, float viewportWidth)
     {
+        // A tier with a dock line (P6 W4a, WinUI) docks only where the page keeps its floor beside the nav pane and the panel; below it the
+        // panel floats at the same width (held on the way back while it is OPEN, so a resize never chatters at the line; a closed panel docks at the line itself). Read live: the nav pane's presented
+        // width (a hamburger docks or undocks the panel) and the committed panel width (a seam drag commits on release, never mid-gesture).
+        if (rule.Docks && rule.DockContentFloor > 0f)
+        {
+            var placed = rule.PlacementAt(viewportWidth, Sidebar.PresentedWidth.Value, Ui.RailWidth.Value,
+                dockedNow: !Ui.RailOpen.Peek() || Ui.PanelPlacement.Peek() == Theming.Contracts.PanelPlacement.Dock);
+            if (placed != rule.Placement) rule = rule with { Placement = placed };
+        }
         float floor = rule.FloorFor(viewportWidth);
         var panes = rule.Arrangement;
         Ui.PanelPlacement.SetIfChanged(rule.Placement);

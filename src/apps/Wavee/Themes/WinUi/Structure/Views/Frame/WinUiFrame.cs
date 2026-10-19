@@ -73,7 +73,12 @@ internal static class WinUiFrame
                             Children =
                             [
                                 ContentRegion(props, in ctx, tiers),
-                                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = WinUiFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
+                                new BoxEl
+                                {
+                                    // The bar's slot is the box the page above yields to: its 64 <-> 72 change at the 641 crossing eases through real layout.
+                                    Key = WinUiFrameLayout.PlayerBarKey, Direction = 1, Shrink = 0f, Visible = Prop.Of(props.ChromeMounted),
+                                    Animate = reduced ? null : WinUiPlayerTiers.SlotMotion, Children = [ctx.View(ViewKeys.PlayerBar, props.PlayerBar)],
+                                },
                             ],
                         },
                         PanelLayer(props, in ctx, tiers, reduced),
@@ -149,9 +154,14 @@ internal static class WinUiFrame
             // The panel's breathing room exists only while the panel is docked inline.
             new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.RailGapWidth) },
             Reservation(props.RailReservedWidth),
-            new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.SecondGapWidth ?? s_zero) },
-            Reservation(props.SecondReservedWidth ?? s_zero),
         };
+        // Classic's one second pane (`SecondPanel`) is the first of the core's docked panes: a frame that draws the panes draws it once (P6 W4a:
+        // Huge's two panes were reserved and mounted twice).
+        if (props.DockedPanes is null)
+        {
+            row.Add(new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.SecondGapWidth ?? s_zero) });
+            row.Add(Reservation(props.SecondReservedWidth ?? s_zero));
+        }
         foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth));
         return ZStack(
             // The row never moves on a toggle: the content card FLIPs relative to it.
@@ -258,7 +268,7 @@ internal static class WinUiFrame
             Embed.Comp(props.Panel, static () => new WinUiPanelScrim()),
             PrimaryHost(props, in ctx, tiers, placement, panes, reduced),
         };
-        if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
+        if (props.DockedPanes is null && props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
         foreach (var pane in panes) kids.Add(PaneHost(props, pane, panes, in ctx, tiers, reduced));
         return new BoxEl
         {
@@ -274,7 +284,7 @@ internal static class WinUiFrame
     {
         bool before = pane is not null && pane.Side() == PaneSide.Before;
         float right = pane is null
-            ? (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f)
+            ? (props.DockedPanes is null ? (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f) : 0f)
             : before ? props.RailGapWidth() + props.RailReservedWidth() : 0f;
         foreach (var other in panes)
         {
