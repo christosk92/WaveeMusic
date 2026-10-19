@@ -52,7 +52,7 @@ public static partial class Lyrics
         float LyricsContracts.ILyricsHost.TypeScale => TypeScale;
         Ink LyricsContracts.ILyricsHost.Ink => InkMode;
         IReadSignal<ColorF>? LyricsContracts.ILyricsHost.Accent => Accent;
-        float LyricsContracts.ILyricsHost.Band => _band;
+        float LyricsContracts.ILyricsHost.Band => Band;
 
         // ── what is on screen ───────────────────────────────────────────────────────────────────────────────────────
 

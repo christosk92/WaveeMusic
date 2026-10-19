@@ -200,7 +200,7 @@ internal static class WinUiStageTransport
         BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
         OnClick = () => verbs.TogglePlay("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
+        Children = [new TextEl(playing ? WinUiStageGeometry.PauseSolid : WinUiStageGeometry.PlaySolid) { Size = glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
     };
 
     /// <summary>A plateless glyph button (the subtle plate on hover).</summary>

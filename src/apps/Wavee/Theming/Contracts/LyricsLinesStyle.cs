@@ -58,4 +58,18 @@ public sealed class LyricsLinesStyle
     /// Default false: the stage never depth-blurs (its depth cue is the scrim and the pill, and the per-line blur layers are its largest per-frame
     /// cost); the rail and the reader follow the setting either way.</summary>
     public bool StageDepthBlur { get; init; }
+
+    /// <summary>Fix lane (optional): the fullscreen stage's MUSIC rows take the structure's own type, focal band and depth ladder instead of the
+    /// core's (the WinUI board's W-Lyrics: a 7-line column centred in its band, 28 / 34 at 600, far lines blurred gently). Null (the default):
+    /// the core's <c>Lyrics.Surface.Timed</c> metrics, <c>Lyrics.Surface.FocalBand</c> and <c>Lyrics.Fx.StageSigma</c>, unchanged. The rail,
+    /// the reader and a podcast transcript never read it.</summary>
+    public LyricsStageRows? StageRows { get; init; }
 }
+
+/// <summary>The stage's music rows as a structure draws them (<see cref="LyricsLinesStyle.StageRows"/>).</summary>
+/// <param name="Metrics">The row type and rhythm for the stage's type scale (<c>Stage.Layout.LyricsTypeScale</c>, 1 = the core's 36 DIP stage
+/// type): what the rows lay out at AND what the wipe's run length is measured at, so the two never disagree.</param>
+/// <param name="FocalBand">Where the active row's content centres, as a fraction of the viewport (the core's stage band is 0.38).</param>
+/// <param name="Sigma">The depth-of-field σ for a ring distance (0 = the active line; already clamped to <c>Lyrics.Emphasis.MaxBucket</c>), at
+/// full strength: the user's blur strength still scales it and 0 turns it off.</param>
+public sealed record LyricsStageRows(Func<float, Lyrics.RowMetrics> Metrics, float FocalBand, Func<int, float> Sigma);

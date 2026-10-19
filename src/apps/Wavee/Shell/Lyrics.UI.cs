@@ -202,7 +202,17 @@ public static partial class Lyrics
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
-        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        internal RowMetrics Metrics => StageRows is { } rows ? rows.Metrics(TypeScale) : Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        /// <summary>The structure's own stage rows (<c>LyricsLinesStyle.StageRows</c>): the stage's music rows only; null everywhere else and for a
+        /// style that leaves it unset (the core's metrics, band and ladder).</summary>
+        Wavee.Theming.Contracts.LyricsStageRows? StageRows => OnStage && !IsPodcast ? _linesStyle?.StageRows : null;
+        /// <summary>The focal band the follow centres the active row on: the structure's stage band, else the surface's.</summary>
+        internal float Band => StageRows?.FocalBand ?? _band;
+        /// <summary>The σ line <paramref name="index"/> is driven to (<see cref="DofRamp.Target"/>, through the structure's stage ladder when it has one).</summary>
+        float DofTarget(int index, int active, bool suppressed)
+            => StageRows is { } rows
+                ? suppressed || active < 0 ? 0f : rows.Sigma(Math.Min(Math.Abs(index - active), Emphasis.MaxBucket)) * _dofScale
+                : DofRamp.Target(index, active, Large, _dofScale, suppressed);
         /// <summary>The stage's type scale over the authored stage metrics (<see cref="Stage.Layout.LyricsTypeScale"/>); 1 on the rail and
         /// the reader. LIVE (tuned R1): a read inside a render subscribes it, so a row reading <see cref="Metrics"/> re-renders at the new
         /// type on a stage step while the view stays mounted.</summary>
@@ -793,8 +803,9 @@ public static partial class Lyrics
         internal MeasuredLayout EnsureLayout()
         {
             float estimate = Metrics.Estimate;
-            if (_layout is null || MathF.Abs(_layout.Band - _band) > 0.001f || MathF.Abs(_layout.Estimate - estimate) > 0.5f)
-                _layout = new MeasuredLayout(estimate, _band);
+            float band = Band;
+            if (_layout is null || MathF.Abs(_layout.Band - band) > 0.001f || MathF.Abs(_layout.Estimate - estimate) > 0.5f)
+                _layout = new MeasuredLayout(estimate, band);
             return _layout;
         }
 
@@ -911,7 +922,7 @@ public static partial class Lyrics
             if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback)) return 0f;
             float cur = (uint)index < (uint)_dofCurrent.Length ? _dofCurrent[index] : float.NaN;
             if (!float.IsNaN(cur)) return cur;
-            return DofRamp.Target(index, _activeLine.Peek(), Large, _dofScale, SuppressesDof(Follow_.Peek()));
+            return DofTarget(index, _activeLine.Peek(), SuppressesDof(Follow_.Peek()));
         }
 
         /// <summary>The σ line <paramref name="index"/>'s node CARRIES: <see cref="DofDeclaredFor"/>, or 0 while no pixel of the
@@ -996,7 +1007,7 @@ public static partial class Lyrics
             var hidden = _dofHidden;
             for (int i = 0; i < cur.Length; i++)
             {
-                float target = DofRamp.Target(i, active, Large, _dofScale, suppress);
+                float target = DofTarget(i, active, suppress);
                 float c = DofRamp.Step(cur[i], target, dt, out bool landed);
                 if (!landed) moving = true;
                 cur[i] = c;
@@ -1268,7 +1279,7 @@ public static partial class Lyrics
             // This target runs outside layout: feed the newest published viewport first.
             layout.SetViewport(sc.ViewportH, sc.ViewportW);
             RectF item = layout.ItemRect(active, sc.ViewportW);
-            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, _band);
+            float target = Follow.Target(item.Y, item.H, ReserveOf(active), sc.ViewportH, sc.ContentH, Band);
 
             if (!_scrollSnapped && intent == FollowIntent.Normal)
             {

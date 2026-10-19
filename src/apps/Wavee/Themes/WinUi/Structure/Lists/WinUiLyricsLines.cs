@@ -42,7 +42,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiLyricsLines
 {
     /// <summary>The style WinUI registers under <c>StyleKeys.LyricsLines</c>. Stateless: the rail, the stage and the reader share it.</summary>
-    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline, StageDepthBlur = true };
+    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline, StageDepthBlur = true, StageRows = WinUiLyricsRules.StageRows };
 
     // ── the state line and the loading bars ─────────────────────────────────────────────────────────────────────────
 
@@ -332,11 +332,21 @@ internal sealed class WinUiLyricsRow : Component
     {
         bool podcast = _host.IsPodcast;
         bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, _emphasis.Value);
+        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
     }
+
+    /// <summary>The row's opacity rung: the stage's music rows take the board's fade over the ring (<see cref="WinUiLyricsRules.StageOpacity"/>,
+    /// transparent past it), every other surface the core's ladder.</summary>
+    static float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
+        => BoardRows(host, podcast) && !Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)
+            ? WinUiLyricsRules.StageOpacity(Lyrics.Emphasis.DistOf(emphasis))
+            : Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+
+    /// <summary>The stage's music rows draw the board (W-Lyrics): the type, fade, scale and ink of <see cref="WinUiLyricsRules.StageRows"/>.</summary>
+    static bool BoardRows(ILyricsHost host, bool podcast) => host.OnStage && !podcast;
 
     public override Element Render()
     {
@@ -360,8 +370,11 @@ internal sealed class WinUiLyricsRow : Component
         // Distance is carried by OPACITY + DoF; scale is a flat 0.98, left-anchored. Reduced motion is a VALUE folded into the
         // spring key, so the first render after an OS flip retargets.
         bool reduce = Design.Reduced;
-        float scale = neutral ? 1f : Lyrics.Surface.ScaleFor(isActive, reduce);
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
+        bool board = BoardRows(host, podcast);
+        // The board's rows lay out at the ACTIVE size and an inactive row scales down to the line size (28 under 34): the step glides on the
+        // scale spring, the row never relayouts.
+        float scale = neutral ? 1f : board ? (isActive || reduce ? 1f : WinUiLyricsRules.StageInactiveScale) : Lyrics.Surface.ScaleFor(isActive, reduce);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.
@@ -386,6 +399,7 @@ internal sealed class WinUiLyricsRow : Component
                 : ink.Primary;
             ColorF unsung = neutral ? ink.Secondary
                 : podcast ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: false))
+                : board && !isActive ? sung   // the board's far lines are plain ink at their row's fade; only the active line dims its unsung part
                 : sung with { A = Lyrics.Wipe.UnsungAlpha };
             var mainWipe = new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: softness, Lift: lift);
             Element main = LineText(line.Text, sung, mainWipe, _onLine);
@@ -412,7 +426,7 @@ internal sealed class WinUiLyricsRow : Component
             // sung/"Before" rung, there is no wipe). Music keeps its plain active/inactive split.
             ColorF lineInk = podcast
                 ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: false))
-                : isActive ? ink.Primary : ink.Secondary;
+                : isActive || board ? ink.Primary : ink.Secondary;
             Element main = LineText(line.Text, lineInk, null, _onLine) with
             {
                 BrushTransitionMs = Design.Motion.Fast,   // the Secondary<->Primary flip never snaps in one frame

@@ -11,7 +11,11 @@
 //     line-synced line has no wipe and fades in whole. No other line is blurred.
 //   - A real instrumental break (and a long intro) shows the lyrics view's three breathing dots in the active slot.
 //   - Every slot is KEYED by its role + line index (+ the document's generation), so a hand-off plays the Exit (up and out) on the
-//     outgoing line and the Enter (up from below) on the incoming one - StandardEnter; reduced motion keeps only the cross-fade.
+//     outgoing line and the Enter (up from below) on the incoming one; reduced motion keeps only the fade. The hand-off is SEQUENCED,
+//     never a cross-fade: the outgoing slot is painted at its old rect (it leaves the flow) and the incoming one takes the same slot, so
+//     overlapping the two drew one line through the other (the ghost behind the active line). The exit runs StandardExit (200 ms) and
+//     the enter waits it out (`WinUiStageCaptionGeometry.HandOffMs`) before its StandardEnter.
+//   - Nothing is ellipsised: every line wraps (the block is bottom-anchored, so a longer line grows the block upward).
 // The root layer is the stage's own `Stage.Layer`; the root places it under a `Flow.Show(CaptionOn)` with a RepaintBoundary.
 
 using FluentGpu.Animation;
@@ -77,22 +81,21 @@ internal static class WinUiStageCaption
 
     static ColorF Shade(float a) => Ink.Veil with { A = a };
 
-    static EnterExit SlotEnter => new(Dy: Design.Reduced ? 0f : Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
+    static EnterExit SlotEnter => new(Dy: Design.Reduced ? 0f : Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true, DelayMs: WinUiStageCaptionGeometry.HandOffMs);
 
     static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
 
-    /// <summary>A context line (previous / next): small, one line, the stage ink at a low alpha — never blurred.</summary>
+    /// <summary>A context line (previous / next): small, wrapped, the stage ink at a low alpha — never blurred.</summary>
     static Element ContextLine(string text, string key, StageCaptionProps p, float alpha) => new BoxEl
     {
         Key = key, Direction = 1, AlignItems = FlexAlign.Center, MaxWidth = p.Width, HitTestVisible = false,
-        Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+        Enter = SlotEnter, Exit = SlotExit,
         Children =
         [
             new TextEl(text)
             {
                 Size = p.ContextSize, LineHeight = p.ContextLineHeight, Weight = WinUiStageCaptionGeometry.LineWeight, FontFamily = R.Type.DisplayFace,
-                Color = Ink.Ink with { A = alpha }, Wrap = TextWrap.Wrap, MaxLines = WinUiStageCaptionGeometry.ContextMaxLines,
-                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Color = Ink.Ink with { A = alpha }, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, MinWidth = 0f,
             },
         ],
     };
@@ -122,9 +125,9 @@ internal static class WinUiStageCaption
         return new BoxEl
         {
             Key = key, Direction = 1, AlignItems = FlexAlign.Center, Gap = WinUiStageCaptionGeometry.SecondaryGap, MaxWidth = p.Width, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+            Enter = SlotEnter, Exit = SlotExit,
             Children = p.Secondary is { Length: > 0 } secondary
-                ? [stack, new TextEl(secondary) { Size = p.ContextSize, LineHeight = p.ContextLineHeight, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = WinUiStageCaptionGeometry.SecondaryMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
+                ? [stack, new TextEl(secondary) { Size = p.ContextSize, LineHeight = p.ContextLineHeight, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, MinWidth = 0f }]
                 : [stack],
         };
     }
@@ -132,7 +135,7 @@ internal static class WinUiStageCaption
     static TextEl LineText(string text, float size, float line, ColorF color) => new(text)
     {
         Size = size, LineHeight = line, Weight = WinUiStageCaptionGeometry.LineWeight, FontFamily = R.Type.DisplayFace, Color = color,
-        Wrap = TextWrap.Wrap, MaxLines = Stage.Layout.CaptionActiveMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, MinWidth = 0f,
     };
 
     /// <summary>The break's three breathing dots in the active slot (the lyrics view's dots: size, gap, ink); one active
@@ -144,7 +147,7 @@ internal static class WinUiStageCaption
         return new BoxEl
         {
             Key = key, Height = p.ActiveLineHeight, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
+            Enter = SlotEnter, Exit = SlotExit,
             Children =
             [
                 new BoxEl

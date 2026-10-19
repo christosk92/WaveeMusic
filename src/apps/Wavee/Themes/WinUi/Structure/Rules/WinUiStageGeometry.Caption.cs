@@ -17,11 +17,8 @@ internal static class WinUiStageCaptionGeometry
     /// <summary>The weight of every caption line (context and active).</summary>
     public const int LineWeight = 600;
 
-    /// <summary>A context line (previous / next) is one line.</summary>
-    public const int ContextMaxLines = 1;
-
-    /// <summary>The translation / romanization under the active line holds two lines.</summary>
-    public const int SecondaryMaxLines = 2;
+    /// <summary>A slot's enter waits this long, the outgoing slot's exit (StandardExit, 200 ms): the two never share the slot.</summary>
+    public const float HandOffMs = 200f;
 
     /// <summary>The gap between the active line and its secondary line.</summary>
     public const float SecondaryGap = 4f;
