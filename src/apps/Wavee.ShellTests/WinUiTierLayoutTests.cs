@@ -262,6 +262,8 @@ public sealed partial class WinUiTierLayoutTests(ShellHost host)
         var excluded = new HashSet<NodeHandle>();
         foreach (var (chip, _) in shell.FindPrefix("chrome-profile"))
             foreach (var n in Subtree(scene, chip)) excluded.Add(n);
+        foreach (var (chip, _) in shell.FindPrefix(WinUiFrameRules.AvatarKey))   // WinUI's identity slot holds the same chip (W2a)
+            foreach (var n in Subtree(scene, chip)) excluded.Add(n);
         foreach (var n in Subtree(scene, title))
         {
             if (excluded.Contains(n) || scene.InCollapsedSubtree(n)) continue;

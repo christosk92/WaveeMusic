@@ -25,10 +25,11 @@ public static class WinUiFrameRules
     /// <summary>The frame's one duration: the pane's width, the content card's FLIP, the strip row (W-Tiers, the option's "Live" apply).</summary>
     public const float FrameMs = 167f;
 
-    /// <summary>The nav pane's column: its width eases (laid out at the final width, a clip and a translate ease) on the pane curve.</summary>
-    public static readonly LayoutTransition NavColumnAnim = new(TransitionChannels.Size | TransitionChannels.Position,
-        TransitionDynamics.Tween(FrameMs, Easing.FluentPane), SizeMode.Reveal,
-        ExitDynamics: TransitionDynamics.Tween(FrameMs, Easing.FluentPane), SuppressDescendantTransitions: true);
+    /// <summary>The nav pane's column: its width eases THROUGH REAL LAYOUT on the pane curve (a reflow anchored at its leading edge: the pane's
+    /// right edge sweeps), so the content card beside it follows frame by frame. A Reveal (laid out at the final width, a clip easing) left the
+    /// card at its final x on the first frame, covering the closing pane at once (W2b: "the rail <-> pane change flips instantly").</summary>
+    public static readonly LayoutTransition NavColumnAnim = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(FrameMs, Easing.FluentPane), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
     /// <summary>The content card: position and size FLIP on the pane's dynamics (relative to the content row, which never moves).</summary>
     public static readonly LayoutTransition ContentCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
@@ -80,6 +81,21 @@ public static class WinUiFrameRules
 
     /// <summary>A toolbar button: 40 wide, 36 tall, the control radius (Shell-Top `tool`).</summary>
     public const float ToolW = 40f, ToolH = 36f;
+
+    /// <summary>A toolbar button at Compact: 40 x 40 (the touch floor).</summary>
+    public const float CompactToolH = 40f;
+
+    /// <summary>The Compact strip's tab and "+" height: the whole 40 row (the touch floor).</summary>
+    public const float CompactTabH = 40f;
+
+    /// <summary>The search field's width across a tier crossing (520 -> 640, or the Small field following the window): a reflow, so the
+    /// centred field re-centres every tick.</summary>
+    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>The identity's width when the name joins the avatar at Huge: a reflow anchored at its end, so the bell, Friends and pin glide.</summary>
+    public static readonly LayoutTransition IdentityWidthMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Width);
 
     /// <summary>The toolbar clusters: 4 between buttons, 4 before the first, 8 after the last.</summary>
     public const float ToolGap = 4f, LeadInset = 4f, TrailInset = 8f;
@@ -224,7 +240,7 @@ public static class WinUiFrameRules
 
     /// <summary>The title bar's parts: the tab strip, the toolbar's buttons, the search, the mark.</summary>
     public const string StripKey = "winui.titlebar.strip", BackKey = "winui.titlebar.back", ForwardKey = "winui.titlebar.forward",
-        SearchFieldKey = "winui.titlebar.search", SearchButtonKey = "winui.titlebar.search-button", PinKey = "winui.titlebar.pin",
+        SearchFieldKey = "winui.titlebar.field", SearchButtonKey = "winui.titlebar.search-button", PinKey = "winui.titlebar.pin",
         FriendsKey = "winui.titlebar.friends", BellKey = "winui.titlebar.bell", MoreKey = "winui.titlebar.more",
         AvatarKey = "winui.titlebar.avatar", MarkKey = "winui.titlebar.mark", ToolbarKey = "winui.titlebar.toolbar", TabRowKey = "winui.titlebar.tabs";
 }

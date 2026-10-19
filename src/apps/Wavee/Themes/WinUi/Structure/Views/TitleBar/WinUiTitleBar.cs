@@ -40,7 +40,6 @@ internal static class WinUiTitleBar
         return Embed.Comp(() => Bar(props, tiers, facts));
     }
 
-    private static IconButton.Style ToolStyle => WinUiSearch.ToolStyle;
 
     private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<ThemeFacts> facts)
     {
@@ -62,10 +61,8 @@ internal static class WinUiTitleBar
             Rows = Prop.Of(() => Strip() ? 2 : 1),
             TopRowHeight = WinUiTiers.TabStripH,
             BarHeight = WinUiTiers.ToolbarH,
-            // A one-row bar would seat the tabs island in the toolbar: with the strip hidden it holds nothing (no client region, 0 wide).
-            Tabs = () => Strip()
-                ? Embed.Comp(() => BuildStrip(props, tiers)) with { Key = WinUiFrameRules.StripKey }
-                : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false },
+            // The strip's host decides, per render, which strip stands (the bar hands its tabs island a child it never re-pushes).
+            Tabs = () => Embed.Comp(() => new StripHost(props, tiers)),
             TabsVersion = props.TabsVersion,
             ContentVersion = props.ContentVersion,
             Lead = () => LeadItems(props, Tier()),
@@ -97,12 +94,13 @@ internal static class WinUiTitleBar
 
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static TabStrip BuildStrip(ShellTitleBarProps props, Func<TierFacts> tiers) => new()
+    private static TabStrip BuildStrip(ShellTitleBarProps props, Func<TierFacts> tiers, bool touch) => new()
     {
+        Parts = touch ? s_touchParts : null,
         // WinUI's TabView: Chrome tabs (the selected tab joins the toolbar's Mica), the tier's form against the bar's tab lane.
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
-        TabHeight = WinUiFrameRules.TabH,
+        TabHeight = touch ? WinUiFrameRules.CompactTabH : WinUiFrameRules.TabH,
         TextFontSize = WinUiFrameRules.MarkTextSize,
         SelectedFill = Prop.Of(static () => Tok.FillSolidBase),
         IsAddTabButtonVisible = true,
@@ -115,6 +113,32 @@ internal static class WinUiTitleBar
         OnTabCloseRequested = props.OnCloseTab,
         ScrollMetricsChanged = m => props.OnTabExtent(m.ContentExtent),
     };
+
+    /// <summary>The tabs island's child: nothing while the strip is hidden (a one-row bar would seat the island in the toolbar), the Compact
+    /// touch strip (its tabs and "+" fill the 40 row: a crossing of 641 re-mounts it), or the ladder strip.</summary>
+    private sealed class StripHost(ShellTitleBarProps props, Func<TierFacts> tiers) : Component
+    {
+        public override Element Render()
+        {
+            var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value;
+            if (!facts.Capabilities.ShowsTabStrip) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            // A keyed child of a box (a component's root is matched by type, never by key): the swap re-mounts the strip.
+            Element strip = WinUiTiers.TitleBarOf(facts.Tiers).TouchStrip
+                ? Embed.Comp(() => BuildStrip(props, tiers, touch: true)) with { Key = WinUiFrameRules.StripKey + ":touch" }
+                : Embed.Comp(() => BuildStrip(props, tiers, touch: false)) with { Key = WinUiFrameRules.StripKey };
+            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, Shrink = 1f, MinWidth = 0f, Children = [strip] };
+        }
+    }
+
+    /// <summary>The Compact strip's "+": the 40 x 40 touch target.</summary>
+    private static readonly TemplateParts s_touchParts = TouchParts();
+
+    private static TemplateParts TouchParts()
+    {
+        var p = new TemplateParts();
+        p[TabStrip.PartAddButton] = static b => b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH };
+        return p;
+    }
 
     // ── the toolbar's clusters ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -133,17 +157,15 @@ internal static class WinUiTitleBar
         if (tier.PinAndFriends)
         {
             items.Add(new TitleBarItem("pin", () => Embed.Comp(() => new PinButton(props)) with { Key = WinUiFrameRules.PinKey }));
-            items.Add(new TitleBarItem("friends", () => Tool(Icons.Friends, props.ToggleFriends, Loc.Get(Strings.Shell.Friends), WinUiFrameRules.FriendsKey)));
+            items.Add(new TitleBarItem("friends", () => Embed.Comp(() => new FriendsButton(props)) with { Key = WinUiFrameRules.FriendsKey }));
         }
         items.Add(new TitleBarItem("bell", () => Embed.Comp(() => new BellButton(props)) with { Key = WinUiFrameRules.BellKey }));
         if (tier.More) items.Add(new TitleBarItem("more", () => Embed.Comp(() => new MoreButton(props)) with { Key = WinUiFrameRules.MoreKey }));
-        // The name rides the avatar at Huge: a different key, so the chip re-mounts in its named form on the crossing.
-        items.Add(new TitleBarItem(tier.Name ? "avatar-name" : "avatar", () => Embed.Comp(() => new Identity(props)) with { Key = WinUiFrameRules.AvatarKey }));
+        // The name joins the avatar at Huge (the core's chip, `ShowName`); the identity eases its width, so the cluster glides.
+        items.Add(new TitleBarItem("avatar", () => Embed.Comp(() => new Identity(props)) with { Key = WinUiFrameRules.AvatarKey }));
         return items;
     }
 
-    private static Element Tool(string glyph, Action onClick, string tooltip, string key)
-        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ToolStyle) with { Key = key }, tooltip);
 
     /// <summary>The Wavee mark (tabs off, Shell-Top `appMark`): a 16 accent square and the app's name in Caption, 8 after Forward.</summary>
     private static Element Mark() => new BoxEl
@@ -172,6 +194,7 @@ internal static class WinUiTitleBar
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
+            var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
 
             void OpenHistory(ContextRequestEventArgs _)
             {
@@ -186,7 +209,7 @@ internal static class WinUiTitleBar
                 h.ClosedAction = () => handle.Value = null;
             }
 
-            var button = IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? props.GoForward : props.GoBack, ToolStyle, isEnabled: canDo)
+            var button = IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? props.GoForward : props.GoBack, style, isEnabled: canDo)
                 with { OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
             return ToolTip.Wrap(button, Loc.Get(forward ? Strings.Theme.Winui.Frame.Forward : Strings.Theme.Winui.Frame.Back));
         }
@@ -204,7 +227,7 @@ internal static class WinUiTitleBar
 
             void Toggle() => props.ToggleNotifications(overlay, () => anchor.Value, handle);
 
-            var style = ToolStyle;
+            var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
             var button = IconButton.Create(Icons.Bell, Toggle, style) with { OnRealized = h => anchor.Value = h };
             float w = style.Size, h = style.Height ?? style.Size;
             BoxEl content = new()
@@ -237,8 +260,19 @@ internal static class WinUiTitleBar
         public override Element Render()
         {
             var pin = props.Pin();
-            if (pin is null) return IconButton.Create(Icons.Pin, static () => { }, ToolStyle, isEnabled: false);
-            return ToolTip.Wrap(IconButton.Create(pin.Glyph, pin.Invoke, ToolStyle), pin.Label);
+            var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
+            if (pin is null) return IconButton.Create(Icons.Pin, static () => { }, style, isEnabled: false);
+            return ToolTip.Wrap(IconButton.Create(pin.Glyph, pin.Invoke, style), pin.Label);
+        }
+    }
+
+    /// <summary>Friends: toggles the friends pane.</summary>
+    private sealed class FriendsButton(ShellTitleBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
+            return ToolTip.Wrap(IconButton.Create(Icons.Friends, props.ToggleFriends, style), Loc.Get(Strings.Shell.Friends));
         }
     }
 
@@ -250,6 +284,7 @@ internal static class WinUiTitleBar
             var overlay = UseContext(Overlay.Service);
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
+            var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
 
             void Open()
             {
@@ -265,7 +300,7 @@ internal static class WinUiTitleBar
                 h.ClosedAction = () => handle.Value = null;
             }
 
-            return ToolTip.Wrap(IconButton.Create(Icons.More, Open, ToolStyle) with { OnRealized = h => anchor.Value = h },
+            return ToolTip.Wrap(IconButton.Create(Icons.More, Open, style) with { OnRealized = h => anchor.Value = h },
                 Loc.Get(Strings.Theme.Winui.Frame.More));
         }
     }
@@ -274,7 +309,14 @@ internal static class WinUiTitleBar
     /// "Connecting" caption, or the accent Sign in / Reconnect.</summary>
     private sealed class Identity(ShellTitleBarProps props) : Component
     {
-        public override Element Render() => props.Layout().Chip switch
+        public override Element Render() => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Animate = Design.Reduced ? null : WinUiFrameRules.IdentityWidthMotion,
+            Children = [Chip()],
+        };
+
+        Element Chip() => props.Layout().Chip switch
         {
             ChromeChipForm.Profile => props.ProfileChip(),
             ChromeChipForm.Connecting => new BoxEl

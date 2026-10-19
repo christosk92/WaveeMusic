@@ -44,7 +44,8 @@ internal static class WinUiSearch
         => Embed.Comp(() => new SuggestionsPopup(props));
 
     /// <summary>A toolbar button (Shell-Top `tool`): 40 x 36, the control radius.</summary>
-    internal static IconButton.Style ToolStyle => IconButton.DefaultStyle with { Size = WinUiFrameRules.ToolW, Height = WinUiFrameRules.ToolH };
+    internal static IconButton.Style ToolStyleFor(in TierFacts tiers)
+        => IconButton.DefaultStyle with { Size = WinUiFrameRules.ToolW, Height = WinUiTiers.TitleBarOf(in tiers).ToolH };
 
     private sealed class SearchField(ShellSearchProps props) : Component
     {
@@ -75,10 +76,20 @@ internal static class WinUiSearch
 
             // The title bar's width (tracked): the tier's 520 / 640, or the middle at Small. A column, so the box is STRETCHED to it.
             float width = props.FieldWidth();
+            // Only a tier crossing that moves the field's own width (520 -> 640) eases it; a resize that moves the measured centre snaps with
+            // the clusters, so a wider box never overruns them for the motion's length. A re-render keeps a motion in flight.
+            float tierW = WinUiTiers.TitleBarOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers).SearchW;
+            var lastTierW = UseRef(tierW);
+            var lastWidth = UseRef(width);
+            var motion = UseRef<LayoutTransition?>(null);
+            if (lastTierW.Value != tierW) motion.Value = Design.Reduced ? null : WinUiFrameRules.FieldWidthMotion;
+            else if (lastWidth.Value != width) motion.Value = null;
+            lastTierW.Value = tierW;
+            lastWidth.Value = width;
             return new BoxEl
             {
                 Key = WinUiFrameRules.SearchFieldKey, Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width,
+                Width = width, Animate = motion.Value,
                 OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
                 Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
             };
@@ -95,6 +106,7 @@ internal static class WinUiSearch
             var overlay = UseContext(Overlay.Service);
             var viewport = UseContext(Viewport.Size);
             var model = props.Model;
+            var style = ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
             float flyoutWidth = MathF.Max(0f, MathF.Min(WinUiFrameRules.SearchFlyoutMaxW, viewport.Width - 2f * WinUiFrameRules.SearchFlyoutMargin));
 
             void CloseFlyout()
@@ -144,7 +156,7 @@ internal static class WinUiSearch
             }
 
             return ToolTip.Wrap(
-                IconButton.Create(Icons.Search, Toggle, ToolStyle) with { Key = WinUiFrameRules.SearchButtonKey, OnRealized = h => anchor.Value = h },
+                IconButton.Create(Icons.Search, Toggle, style) with { Key = WinUiFrameRules.SearchButtonKey, OnRealized = h => anchor.Value = h },
                 Loc.Get(Strings.Theme.Winui.Frame.Search));
         }
     }
