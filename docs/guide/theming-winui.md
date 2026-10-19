@@ -130,7 +130,7 @@ lead is empty (the hero owns Play and Shuffle: W6a); the unavailable-songs bar i
 
 **Lyrics.** `LyricsLinesStyle.StageDepthBlur = true` (the stage's far lines blur); the wipe and the romanization line are the core's.
 
-**Core seams added (contract 1.52, additive).** `DetailTableTier.HeartTrailing`, `KeepDuration` and `VersionsLane`; `Track.ColumnSet.DurationKept`.
+**Core seams added (contract 1.52, additive).** `DetailTableTier.HeartTrailing`, `KeepDuration`, `VersionsLane` and `DurationWidth` (the 72 / 80 time lane); `Track.ColumnSet.DurationKept` and `DurationWidth`.
 
 **Tests.** `Wavee.Tests\Theming\WinUiListsTests.cs` (the ladder and its holds, the policies, the table records, the density, the styles) and
 `Wavee.ShellTests\WinUiTierLayoutTests.Lists.cs` (the table mounted at Compact, Small, Standard: header, lanes, row heights, the Row size request).

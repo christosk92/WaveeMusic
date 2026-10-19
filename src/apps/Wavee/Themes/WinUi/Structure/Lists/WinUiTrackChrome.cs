@@ -83,6 +83,8 @@ internal static class WinUiTrackChrome
         var tier = TierOf(a.Tiers);
         bool compact = tier == WidthTier.Compact;
         var meta = R.Type.DenseTitle("");
+        // The core's inset is the Modern plates' 8; WinUI's plates are flush with the list, so the bar is too (the hero arm's gutter keeps what it adds).
+        float inset = MathF.Max(0f, a.InsetX - RowMetrics.RowInset);
         Element bar = new BoxEl
         {
             Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, MinWidth = 0f,
@@ -105,7 +107,7 @@ internal static class WinUiTrackChrome
         {
             Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
             Height = a.Shown ? WinUiListRules.UnavailableExtent(tier) : 0f,
-            Padding = new Edges4(a.InsetX, 0f, a.InsetX, 0f),
+            Padding = new Edges4(inset, 0f, inset, 0f),
             Animate = Design.Reduced ? null : Design.Reveal.Resize,
             Children = [bar],
         };

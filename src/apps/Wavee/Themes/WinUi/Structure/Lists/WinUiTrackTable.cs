@@ -334,6 +334,7 @@ internal static class WinUiTrackTable
     static Element TitleCell(BoundRow r, in ColumnSet set, bool oneLine)
     {
         bool setArtist = set.Artist, compact = set.Compact;
+        bool oneLineMark = oneLine || !set.Thumb && !compact;
         var role = R.Type.TrackTitle("");
         Prop<bool> plainVisible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee));
         var title = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
@@ -354,12 +355,14 @@ internal static class WinUiTrackTable
                 new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] },
                 WinUiRowCells.ExplicitMark() with { Visible = Prop.Of(() => r.P.Track.ForDisplay.IsExplicit) },
                 film,
+                // A row with no subline of its own (an album's one-line rows) wears the "on this PC" ring after its title.
+                .. oneLineMark ? new Element[] { WinUiRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with { Visible = Prop.Of(() => r.P.State.OnThisPc) } } : []
             ],
         };
         var column = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = WinUiListRules.TitleGap,
-            Children = oneLine ? [line] : [line, Subline(r, setArtist, compact)],
+            Children = oneLine ? [line] : [line, Subline(r, setArtist, compact, oneLineMark)],
         };
         return new BoxEl
         {
@@ -371,7 +374,7 @@ internal static class WinUiTrackTable
     /// <summary>The subline: [EPISODE] · the "on this PC" ring · the linked artists as one bound span run that collapses when it has nothing to say. The Compact
     /// form (W-Album-Compact, W-Playlist-Compact, W-MultiSelect-Compact) always names the artists and closes the line with what the lanes dropped: the album on a
     /// list, "598.9M plays" on an album.</summary>
-    static Element Subline(BoundRow r, bool setArtist, bool compact)
+    static Element Subline(BoundRow r, bool setArtist, bool compact, bool oneLineMark)
     {
         var buffer = new SpanBuffer();
         var meta = R.Type.TrackMeta("");
@@ -387,7 +390,7 @@ internal static class WinUiTrackTable
             Visible = Prop.Of(() =>
             {
                 var p = r.P;
-                return p.State.OnThisPc || compact || Track.ArtistInTitle(in p, setArtist) || p.Track.ForDisplay.IsPodcast;
+                return (p.State.OnThisPc && !oneLineMark) || compact || Track.ArtistInTitle(in p, setArtist) || p.Track.ForDisplay.IsPodcast;
             }),
             Children =
             [
@@ -398,7 +401,7 @@ internal static class WinUiTrackTable
                     Visible = Prop.Of(() => r.P.Track.ForDisplay.IsPodcast),
                 },
                 // The "on this PC" ring leads the subline. A Visible flip, not a mount: an absent mount would still cost the subline's gap.
-                WinUiRowCells.OnThisPcMark(ink) with { Visible = Prop.Of(() => r.P.State.OnThisPc) },
+                WinUiRowCells.OnThisPcMark(ink) with { Visible = Prop.Of(() => r.P.State.OnThisPc && !oneLineMark) },
                 new SpanTextEl(Prop.Of(() =>
                 {
                     buffer.Clear();
@@ -539,7 +542,7 @@ internal static class WinUiTrackTable
         var reason = new TextEl(label)
         {
             Size = WinUiListRules.ReasonSize, LineHeight = R.Type.DenseMeta("").LineHeight,
-            Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,   // never ellipsised: the reason ("Unavailable", a release date) grows leftwards over the lane's air
         };
         return new BoxEl
         {

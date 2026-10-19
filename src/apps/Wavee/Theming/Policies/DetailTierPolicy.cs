@@ -92,10 +92,11 @@ public static class DetailLadders
 /// (the Modern row's) and not only on a quiet list (Liked Songs). Ignored by the Compact form, which always trails it. Appended (contract 1.52, P6 W3).</param>
 /// <param name="KeepDuration">The Compact row form keeps its duration LANE (WinUI's two-line row at Compact: title over "artist - plays", then the time, the heart and the "..."),
 /// where the Modern Compact form folds the time into the subline. Appended (contract 1.52, P6 W3).</param>
+/// <param name="DurationWidth">The time lane's width where the structure widens it past the core's 52 (WinUI: 72, 80 at Huge, so a withheld row's "Unavailable" or release date fits); 0 keeps the core's. Appended (contract 1.52, P6 W3).</param>
 /// <param name="VersionsLane">The versions chevron's lane may show (false: never at this tier, whatever the width: WinUI's Small band has none). Appended (contract 1.52, P6 W3).</param>
 public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool PlaysColumn, bool DateColumn,
     float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f, bool ListIndex = true, bool HoverActions = false, float OneLineTrim = 0f,
-    bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true)
+    bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true, float DurationWidth = 0f)
 {
     /// <summary>Every lane the width admits, the density's rows.</summary>
     public static DetailTableTier Standard { get; } = new(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true);

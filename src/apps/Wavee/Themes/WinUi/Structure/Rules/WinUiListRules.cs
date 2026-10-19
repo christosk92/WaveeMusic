@@ -220,20 +220,23 @@ public static class WinUiListRules
     /// Album, Date and Plays below 860.</summary>
     public static DetailTierLayout Small { get; } = new(
         new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true,
-                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim),
+                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard (W-Album, W-Playlist, W-MultiSelect, W-Unavailable): every lane the list column admits, the density's rows; an album's numbered rows one line.</summary>
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
-        Table = DetailTableTier.Standard with { HeartTrailing = true, OneLineTrim = AlbumRowTrim },
+        Table = DetailTableTier.Standard with { HeartTrailing = true, OneLineTrim = AlbumRowTrim, DurationWidth = TimeLane },
     };
 
     /// <summary>Huge (W-Playlist-Huge): the cozy rows, 72 with a 64 cover, the same lanes; an album's one-line rows 72 less the trim stay the two-line row's height less 8.</summary>
     public static DetailTierLayout Huge { get; } = Standard with
     {
-        Table = Standard.Table with { ModernRow = HugeModernRow, ClassicRow = HugeClassicRow, Art = HugeArt, OneLineTrim = HugeAlbumRowTrim },
+        Table = Standard.Table with { ModernRow = HugeModernRow, ClassicRow = HugeClassicRow, Art = HugeArt, OneLineTrim = HugeAlbumRowTrim, DurationWidth = HugeTimeLane },
     };
+
+    /// <summary>The time lane (W-Album: 72; W-Playlist-Huge: 80): wide enough for a withheld row's "Unavailable" at 12.</summary>
+    public const float TimeLane = 72f, HugeTimeLane = 80f;
 
     /// <summary>The Huge rows: the board's 72-tall rows with a 64 cover (the one-line Classic skin 56); an album's numbered rows 56.</summary>
     public const float HugeModernRow = 72f, HugeClassicRow = 56f, HugeArt = 64f, HugeAlbumRowTrim = 16f;

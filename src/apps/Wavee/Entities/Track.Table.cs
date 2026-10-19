@@ -704,7 +704,8 @@ public readonly partial struct Track
                 // A list's Modern row drops its "#" where the tier says so (C-TrackList compact); an album's track number and the Classic row keep it.
                 IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album,
                 HoverActions: hover,
-                DurationKept: compact && form.KeepDuration);
+                DurationKept: compact && form.KeepDuration,
+                DurationWidth: compact ? 0f : form.DurationWidth);
         }
 
         int ReliefStepFor(in ColumnSet s)

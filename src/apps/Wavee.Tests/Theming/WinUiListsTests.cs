@@ -71,6 +71,10 @@ public sealed class WinUiListsTests : IDisposable
         Assert.Equal(56f, compact.ModernRow);
         Assert.Equal(40f, compact.Art);
         Assert.False(tiers.For(WidthTier.Small).Table.VersionsLane);
+        // The time lane is the boards' 72 (80 at Huge), wide enough for "Unavailable"; the Compact row keeps the core's.
+        Assert.Equal(72f, tiers.For(WidthTier.Standard).Table.DurationWidth);
+        Assert.Equal(80f, tiers.For(WidthTier.Huge).Table.DurationWidth);
+        Assert.Equal(0f, compact.DurationWidth);
         Assert.True(tiers.For(WidthTier.Standard).Table.VersionsLane);
         foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge })
             Assert.True(tiers.For(tier).Table.HeartTrailing);
