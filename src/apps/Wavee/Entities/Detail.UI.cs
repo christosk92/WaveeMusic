@@ -548,6 +548,8 @@ public static partial class Detail
         bool _restOpenNow;
         InputHooks? _inputHooks;
         string _sheetRoute = "\0";
+        /// <summary>The hero arm docks the aside this render (`DetailTierLayout.AsideInHero`): what it holds leaves the vertical trailing body.</summary>
+        bool _heroAside;
         bool _sheetHosts;
         //    The FACTS LATCH (InsightsSheet.FactsSettled): the page's bento slot is derived from a scan of the live row
         //    source, which reads empty while the list's open holds its reveal — so an absent slot is "not answered yet",
@@ -795,8 +797,15 @@ public static partial class Detail
             // ── mode 3: the vertical / hero system ──
             if (vertical)
             {
-                return Ctx.Provide(AsideDocked, false, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                // The ASIDE of the hero arm (contract 1.53, `DetailTierLayout.AsideInHero`: WinUI Huge, a column beside the hero and the list): the same slots the two-column
+                // arm docks, so what the aside holds leaves the band under the rows (`AsideDocked`). A structure that sets nothing gets none, as before.
+                bool heroAside = _heroAside = verticalTracks && tierLayout.AsideInHero && tierLayout.AsideDocked && (spec.Slots.Aside is not null || _sheetHosts);
+                Contracts.DetailAsideProps? asideProps = heroAside
+                    ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
+                    : null;
+                return Ctx.Provide(AsideDocked, heroAside, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
                 {
+                    Aside = asideProps,
                     Vertical = true, VerticalTracks = verticalTracks, PageAccent = _pageAccent, OnMeasured = _measure,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
@@ -979,7 +988,7 @@ public static partial class Detail
             if (spec is not null)
             {
                 if (spec.Identity.UpcomingAtUnixSeconds > 0 && spec.Slots.PreRelease is { } pre) preRelease = pre();
-                if (spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release) releasePanel = release(true);
+                if (!_heroAside && spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release) releasePanel = release(true);
                 if (spec.Config.HasTrailing && spec.Slots.Trailing is { } trailing) trailingBand = trailing();
             }
             return ViewSlots.View(Contracts.ViewKeys.DetailVerticalTrailing, new Contracts.DetailVerticalTrailingProps(preRelease, releasePanel, trailingBand));

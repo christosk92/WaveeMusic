@@ -100,6 +100,11 @@ public class ArtistTierPolicy
     /// where the structure draws its band outside the viewport (Zune). The artist and the profile pages both read it.</summary>
     public virtual float BandClearance(in TierFacts facts) => Detail.BandLayout.Height;
 
+    /// <summary>The pivot gives "Appears on" and the biography ("About") a tab of their own, instead of folding everything after Compilations into one "Details" destination
+    /// (contract 1.53, additive: WinUI's SelectorBar Overview · Albums · Singles &amp; EPs · Compilations · Appears on · About). The other late sections (videos, playlists,
+    /// concerts, merch, gallery, related) then render in place without a tab. Default false: one "Details" tab, the shell as it shipped.</summary>
+    public virtual bool SplitDetailTabs(in TierFacts facts) => false;
+
     /// <summary>The profile list grid's narrowest card in the tiers <paramref name="facts"/>.</summary>
     public virtual float ProfileListMinCell(in TierFacts facts) => 176f;
 }

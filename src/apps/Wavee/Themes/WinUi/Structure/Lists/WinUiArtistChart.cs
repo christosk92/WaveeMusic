@@ -67,7 +67,9 @@ internal static class WinUiArtistChart
     /// <summary>The standard selection bar, standalone, 8 up from the chart's bottom.</summary>
     static Element Bar(int count, Func<int, Element> lane) => Controls.SelectionBar(count, lane, standalone: true, bottomPadding: Spacing.S);
 
-    static Element Header(string title, ColorF accent) => Controls.AccentHeader(title, accent);
+    /// <summary>The chart's title (W-Artist): "Popular" in Subtitle 20/28, no accent rule (the pager rides the shelf's header row beside it). The core's own title ("Top tracks") is
+    /// the Classic word; WinUI says what the board says.</summary>
+    static Element Header(string title, ColorF accent) => R.Type.RailHeader(Loc.Get(Strings.Artist.Popular)) with { MaxLines = 1, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis };
 
     static Element Row(ArtistChartRowArgs a)
     {

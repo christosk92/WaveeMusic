@@ -3032,6 +3032,31 @@
       "lists": {
         "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
       },
+      "detail": {
+        "$comment": "W6a (P6): the detail pages and the artist family under WinUI (boards W-Album, W-Artist, W-Discography). The album's own words and the artist's keep their shared keys; these are the words only WinUI draws.",
+        "aboutAlbum": "About this album",
+        "copyright": "Copyright",
+        "artistsOnAlbum": "Artists on this album",
+        "monthlyListeners": "{count} monthly listeners",
+        "featuredOn": "Featured on {title}",
+        "overview": "Overview",
+        "about": "About",
+        "seeMore": "See more",
+        "showAllAlbums": "Show all {count, plural, one {# album} other {# albums}}",
+        "showAll": "Show all",
+        "newest": "Newest",
+        "oldest": "Oldest",
+        "popular": "Popular",
+        "sortBy": "Sort by",
+        "typeFilter": "Release type",
+        "latestRelease": "Latest release",
+        "discography": "Discography",
+        "readMore": "Read more",
+        "viewGrid": "Grid",
+        "viewList": "List",
+        "verifiedArtist": "Verified artist",
+        "artistRadio": "Artist radio"
+      },
       "screens": {
         "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
         "tabGeneral": "General",

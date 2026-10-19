@@ -122,9 +122,20 @@ public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool Pl
 /// (<c>Detail.AsideDocked</c>). Appended (contract 1.21).</param>
 /// <param name="InsightsRestOpen">The insights pane rests OPEN where it is a column of the page (docked, or in the aside) until the user moves it; never
 /// over the list as a sheet (tuned Classic I1: a sheet never opens by itself). Appended (contract 1.21).</param>
+/// <param name="PageInsetX">The hero arm's page inset, left and right, for the LIST under the hero (the track table's chrome, rows, trailing band): the structure's page
+/// gutter, applied as padding on the outer scroller's content so the scroller itself (and its scroll bar) keeps the card's edge. The hero is the structure's own view and
+/// insets itself. 0 keeps the shell as it shipped (the table's own gutter). Appended (contract 1.53, P6 W6a).</param>
+/// <param name="BandHeight">The pinned context band's height the hero collapses into (the table's chrome sticks under it and its rows clip at it); 0 keeps the shell's 56
+/// (<see cref="Detail.VerticalLayout.CompactIdentityHeight"/>). Appended (contract 1.53, P6 W6a).</param>
+/// <param name="AsideInHero">The HERO arm docks the aside too (a right column beside the hero and the list, WinUI Huge: W-Album-Huge's 420 About / Artists / More by), where the
+/// two-column arm does under <see cref="AsideDocked"/>; the page's aside body then leaves the band under the rows. Appended (contract 1.53, P6 W6a).</param>
+/// <param name="FansInBand">While the aside is docked the album's "Fans also like" stays in the band UNDER THE LIST (W-Album-Huge) instead of moving into the aside with the rest. Appended (contract 1.53).</param>
 public sealed record DetailTierLayout(DetailTableTier Table, bool InsightsDocked, float RailRest, float HeroActionExtra,
-    bool AsideDocked = false, bool InsightsRestOpen = false)
+    bool AsideDocked = false, bool InsightsRestOpen = false, float PageInsetX = 0f, float BandHeight = 0f, bool AsideInHero = false, bool FansInBand = false)
 {
+    /// <summary>The band height of this layout: its own, else the shell's 56.</summary>
+    public float BandOf => BandHeight > 0f ? BandHeight : Detail.VerticalLayout.CompactIdentityHeight;
+
     /// <summary>The shell as it shipped: the density's rows, the sheet, the kinds' own rail widths, the nominal action row.</summary>
     public static DetailTierLayout Standard { get; } = new(DetailTableTier.Standard, InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 }
