@@ -74,29 +74,7 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Video.Pip"] = "W4c",  // ViewKeys.VideoPip
         ["Video.PlacementMenu"] = "W4c",  // ViewKeys.VideoPlacementMenu
         ["Video.PopOut"] = "W4c",  // ViewKeys.VideoPopOut
-        // W5: discovery (all landed)
-        // W6a: album and artist (21)
-        ["Album.ArtistFlyout"] = "W6a",  // ViewKeys.AlbumArtistFlyout
-        ["Album.ArtistLine"] = "W6a",  // ViewKeys.AlbumArtistLine
-        ["Album.Aside"] = "W6a",  // ViewKeys.AlbumAside
-        ["Album.Countdown"] = "W6a",  // ViewKeys.AlbumCountdown
-        ["Album.ReleasePanel"] = "W6a",  // ViewKeys.AlbumReleasePanel
-        ["Album.Sections"] = "W6a",  // ViewKeys.AlbumSections
-        ["Album.TrailStack"] = "W6a",  // ViewKeys.AlbumTrailStack
-        ["Album.Trailing"] = "W6a",  // ViewKeys.AlbumTrailing
-        ["Album.Unresolved"] = "W6a",  // ViewKeys.AlbumUnresolved
-        ["Artist.Lightbox"] = "W6a",  // ViewKeys.ArtistLightbox
-        ["Detail.CompactRail"] = "W6a",  // ViewKeys.DetailCompactRail
-        ["Detail.Frame"] = "W6a",  // ViewKeys.DetailFrame
-        ["Detail.Hero"] = "W6a",  // ViewKeys.DetailHero
-        ["Detail.Insights"] = "W6a",  // ViewKeys.DetailInsights
-        ["Detail.InsightsToggle"] = "W6a",  // ViewKeys.DetailInsightsToggle
-        ["Detail.Notice"] = "W6a",  // ViewKeys.DetailNotice
-        ["Detail.Rail"] = "W6a",  // ViewKeys.DetailRail
-        ["Detail.ShowHeader"] = "W6a",  // ViewKeys.DetailShowHeader
-        ["Detail.VerticalTrailing"] = "W6a",  // ViewKeys.DetailVerticalTrailing
-        ["Pages.Artist"] = "W6a",  // ViewKeys.ArtistPage
-        ["Pages.Discography"] = "W6a",  // ViewKeys.Discography
+        // W6a: album and artist (0: the detail frame, the album, the artist and the discography are WinUI's own, `WinUiStructure.Detail.cs`)
         // W6b: the other entities (35)
         ["Concert.PlacePicker"] = "W6b",  // ViewKeys.ConcertPlacePicker
         ["Concert.Tail"] = "W6b",  // ViewKeys.ConcertTail

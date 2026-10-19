@@ -211,7 +211,7 @@ public static class WinUiListRules
         new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false,
                             ModernRow: CompactModernRow, ClassicRow: CompactClassicRow, Art: CompactArt, ListIndex: true,
                             HeartTrailing: true, KeepDuration: true, VersionsLane: false),
-        InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
+        InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 16f, BandHeight: WinUiDetailRules.BandHeight);
 
     /// <summary>The Compact row (W-RowStates-Compact: "track row, 56 px, two-line, ... always shown"; W-MultiSelect-Compact: a 40 cover).</summary>
     public const float CompactModernRow = 56f, CompactClassicRow = 48f, CompactArt = 40f;
@@ -221,18 +221,20 @@ public static class WinUiListRules
     public static DetailTierLayout Small { get; } = new(
         new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true,
                             HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane),
-        InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
+        InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 24f, BandHeight: WinUiDetailRules.BandHeight);
 
     /// <summary>Standard (W-Album, W-Playlist, W-MultiSelect, W-Unavailable): every lane the list column admits, the density's rows; an album's numbered rows one line.</summary>
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
         Table = DetailTableTier.Standard with { HeartTrailing = true, OneLineTrim = AlbumRowTrim, DurationWidth = TimeLane },
+        PageInsetX = 36f, BandHeight = WinUiDetailRules.BandHeight,
     };
 
     /// <summary>Huge (W-Playlist-Huge): the cozy rows, 72 with a 64 cover, the same lanes; an album's one-line rows 72 less the trim stay the two-line row's height less 8.</summary>
     public static DetailTierLayout Huge { get; } = Standard with
     {
         Table = Standard.Table with { ModernRow = HugeModernRow, ClassicRow = HugeClassicRow, Art = HugeArt, OneLineTrim = HugeAlbumRowTrim, DurationWidth = HugeTimeLane },
+        PageInsetX = 48f, AsideDocked = true, AsideInHero = true, FansInBand = true,
     };
 
     /// <summary>The time lane (W-Album: 72; W-Playlist-Huge: 80): wide enough for a withheld row's "Unavailable" at 12.</summary>

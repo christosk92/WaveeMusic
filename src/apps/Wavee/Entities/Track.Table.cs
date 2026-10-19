@@ -429,6 +429,13 @@ public readonly partial struct Track
 
         /// <summary>The window tiers this table is drawn in, read TRACKED.</summary>
         global::Wavee.Theming.TierFacts TiersNow() => (_facts ?? global::Wavee.Theming.ThemeHost.Facts).Value.Tiers;
+
+        /// <summary>The structure's pinned band the hero collapses into (`DetailTierLayout.BandHeight`: the shell's 56 where it names none). A tracked read, so a window
+        /// crossing re-renders the table on the frame it commits.</summary>
+        float BandNow() => ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandOf;
+
+        /// <summary>The structure's page inset for the list under the hero (`DetailTierLayout.PageInsetX`; 0: none, the table's own gutter).</summary>
+        float PageInsetNow() => ShellPolicy.Tracked.DetailTiers.For(TiersNow()).PageInsetX;
         Detail.Config Cfg => ConfigOf(_latest);
 
         /// <summary>The config the host actually lays out with. An EMBEDDED table has no trailing band by default — the
@@ -734,8 +741,12 @@ public readonly partial struct Track
             }
             bool measured = _tierMeasured.Peek();
             // The tier ladder's source (value-gated). Its crossing is the host's: pending until the first non-resized frame, then animated.
-            if (r.W != _listW.Peek()) _listW.Value = r.W;
-            int relief = TableRules.ReliefFor(in _reliefLanes, r.W, _reliefGap, _reliefPad, _relief.Peek(), measured);
+            // The list column's own width: the table's, less the structure's page inset on both sides (the hero arm's list stands inside it).
+            float listW = VerticalArm && Cfg.HasTrailing
+                ? MathF.Max(1f, r.W - 2f * ShellPolicy.Now.DetailTiers.For((_facts ?? global::Wavee.Theming.ThemeHost.Facts).Peek().Tiers).PageInsetX)
+                : r.W;
+            if (listW != _listW.Peek()) _listW.Value = listW;
+            int relief = TableRules.ReliefFor(in _reliefLanes, listW, _reliefGap, _reliefPad, _relief.Peek(), measured);
             if (relief != _relief.Peek()) _relief.Value = relief;
             if (!measured) _tierMeasured.Value = true;
         }
@@ -1130,7 +1141,7 @@ public readonly partial struct Track
             Element? lens = P.LensHeader?.Invoke();
             // The unavailable-songs bar rides the pinned chrome while it is on (contract 1.22): the rows clip under it too.
             float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
-            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set));
+            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), BandNow());
             _placeBand = vertical ? stickyInset : 0f;
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
@@ -1473,17 +1484,23 @@ public readonly partial struct Track
                     EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
                     Children = [listKeyed],
                 }.StickyClip(stickyInset);
+                // The structure's page inset (WinUI): the list under the hero sits inside the page's gutter while the scroller (and its bar) keeps the card's edge.
+                float pageInset = PageInsetNow();
+                var insetPad = pageInset > 0f ? new Edges4(pageInset, 0f, pageInset, 0f) : default;
                 Element tableBlock = new BoxEl
                 {
-                    Direction = 1, ScrollScope = TableBlockScope,
+                    Direction = 1, ScrollScope = TableBlockScope, Padding = insetPad,
                     Children =
                     [
-                        Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableBlockScope, engaged: _compactInteractive),
+                        Chrome(in shape, chips, lens).Sticky(BandNow(), TableBlockScope, engaged: _compactInteractive),
                         listBlock,
                     ],
                 };
-                Element trailBlock = new BoxEl { Direction = 1, Children = kids.ToArray() }
-                    .StickyClip(Detail.VerticalLayout.TrailingClipInset);
+                Element trailBlock = new BoxEl { Direction = 1, Padding = insetPad, Children = kids.ToArray() }
+                    .StickyClip(BandNow());
+                // A structure with its own band (WinUI's opaque 48 bar) also clips the block at the band's line: the chrome that the block's end pushes up must
+                // not paint over the bar it passes under. The shell's transparent 56 band leaves it as it was.
+                if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(BandNow());
                 children = [TrailHero(spec), tableBlock, trailBlock];
             }
             else
@@ -1531,7 +1548,7 @@ public readonly partial struct Track
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
             }
             .Sticky(0f, TrailScope)
-            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
         }
 
         /// <summary>The hero's spec with its shuffle satellite pointed at THIS table's <see cref="Shuffle"/> (G-264): the
@@ -1602,7 +1619,7 @@ public readonly partial struct Track
             float heroH = HeroHeightFor(spec, colW);
             return Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))
                 .Sticky(0f, TableScope)
-                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
         }
 
         /// <summary>Item 1: chips · lens · column header, sticky at the compact band (56) against <see cref="TableScope"/>
@@ -1613,7 +1630,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
+            return Chrome(in shape, chips, lens).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
         }
 
         internal Element EmptyItem()

@@ -496,11 +496,17 @@ public readonly partial struct Artist
             sections = new ArtistSectionSlot[n];
             int pivots = 0, hash = 17;
             bool detailsAssigned = false;
+            // The structure may give "Appears on" and the biography a tab each (WinUI): then no section of the group folds into "Details".
+            bool split = ShellPolicy.Now.ArtistTiers.SplitDetailTabs((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers);
             for (int i = 0; i < n; i++)
             {
                 var s = _plan[i];
                 bool isDest;
-                if (ArtistSections.IsDetailsGroup(s))
+                if (split && ArtistSections.IsDetailsGroup(s))
+                {
+                    isDest = s is ArtistSection.AppearsOn or ArtistSection.Biography;
+                }
+                else if (ArtistSections.IsDetailsGroup(s))
                 {
                     isDest = !detailsAssigned;
                     detailsAssigned = true;

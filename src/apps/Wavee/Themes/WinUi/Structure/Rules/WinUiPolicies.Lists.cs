@@ -17,5 +17,9 @@ public static partial class WinUiPolicies
     static partial void ListsPolicy(WinUiParameters parameters, ref ListPolicy lists) => lists = WinUiListRules.ListsFor(parameters.ArtworkInRows);
 
     static partial void DetailPolicyFor(WinUiParameters parameters, ref DetailPolicy detail, ref DetailTierPolicy detailTiers)
-        => detailTiers = WinUiListRules.DetailTiers;
+    {
+        // W6a: the hero over the table at every width (the board draws no rail), and the records with the page inset, the 48 band and the Huge aside.
+        detail = new DetailPolicy(DetailPageLayout.Hero, RailUniform: false);
+        detailTiers = WinUiListRules.DetailTiers;
+    }
 }

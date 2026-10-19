@@ -1,0 +1,187 @@
+// ── Themes/WinUi/Structure/Views/Artist/WinUiArtistHero.cs — WinUI's artist hero card (themes plan 6.2; P6 W6a) ───────────────────────────────────────
+//
+// Board W-Artist (and -Compact / -Small / -Huge / -Huge4K): a r8 CARD inside the page's inset, 200 / 220 / 260 / 420 tall (the tier record, `WinUiArtistRules`), not a
+// full-bleed banner: the photograph under a 180-tall veil, the copy at the bottom-left (the Verified line, the name in Display 68, the meta "20,577,457 monthly
+// listeners · #112 in the world") and, right-aligned on the same baseline, the actions: Play (accent), Follow, Shuffle, Artist radio and "..." on a 70 % dark
+// plate. Shuffle and radio are glyphs alone below Huge; at Compact the actions are a row UNDER the card at the 40 targets. The hero scrolls away with the page (the
+// sticky piece of this page is the pivot, `WinUiArtistPage`), so there is no collapse arithmetic and no band.
+//
+// The page view builds the card for the live page AND for the derived shimmer (the skeleton deriver cannot run a view slot): a null `play` is the skeleton arm, whose
+// text runs are bars at their line boxes and whose actions are shapes.
+
+using System.Globalization;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using Wavee.Theming;
+using static FluentGpu.Dsl.Ui;
+
+namespace Wavee.Themes.WinUi;
+
+/// <summary>WinUI's artist hero card.</summary>
+internal static class WinUiArtistHero
+{
+    static readonly Action s_noop = static () => { };
+
+    /// <summary>The hero's verbs (all null on the skeleton arm).</summary>
+    internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
+
+    /// <summary>The card for a <paramref name="cardW"/>-wide band in window tier <paramref name="tier"/>: the photograph (flat neutral without one), the veil, the copy
+    /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActions"/>, the page's row under the card.</summary>
+    public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts)
+    {
+        var form = WinUiArtistRules.HeroOf(tier);
+        float height = form.Height;
+        bool compact = tier == WidthTier.Compact;
+        bool shimmer = acts.Play is null;
+        float w = MathF.Max(1f, cardW);
+
+        Element photo = photoUrl is { Length: > 0 } src
+            ? Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode) with { Key = "heroart:" + uri }
+            : new BoxEl { Width = w, Height = height, Fill = Design.WatchedPlaceholder(photoUrl) };
+        Element veil = new BoxEl
+        {
+            Width = w, Height = form.Veil, AlignSelf = FlexAlign.End, HitTestVisible = false,
+            Gradient = GradientDown(new GradientStop(0f, WinUiArtistRules.VeilClear), new GradientStop(1f, WinUiArtistRules.VeilEdge)),
+        };
+
+        Element copy = Copy(in text, uri, form, shimmer);
+        var bottom = new List<Element>(2) { new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [copy] } };
+        if (!compact)
+            bottom.Add(new BoxEl
+            {
+                Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, WinUiArtistRules.ActionsBottom),
+                Children = [Actions(text.Name, uri, acts, WinUiDetailRules.Target, words: tier >= WidthTier.Huge, plated: true)],
+            });
+        Element overlay = new BoxEl
+        {
+            Width = w, Height = height, Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Start, Gap = WinUiArtistRules.ActionsGap,
+            Padding = new Edges4(form.InsetX, 0f, form.InsetX, form.Bottom),
+            Children = bottom.ToArray(),
+        };
+        return new BoxEl
+        {
+            Key = "artist-hero", Width = w, Height = height, ZStack = true, ClipToBounds = true,
+            Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), Fill = Prop.Of(static () => Tok.FillCardDefault),
+            Children = [photo, veil, overlay],
+        };
+    }
+
+    /// <summary>The Compact page's actions row under the card: Play, Follow, Shuffle, radio, then "..." at the row's end, every target 40.</summary>
+    public static Element CompactActions(string name, string uri, in Acts acts) => new BoxEl
+    {
+        Key = "artist-actions", Direction = 0, MinWidth = 0f,
+        Margin = new Edges4(0f, WinUiArtistRules.ActionsRowTop, 0f, 0f),
+        Children = [Actions(name, uri, acts, WinUiDetailRules.CompactTarget, words: false, plated: false)],
+    }.Skeletonized(false);
+
+    // ── the copy ──
+
+    static Element Copy(in Artist.HeroText text, string uri, WinUiArtistHeroForm form, bool shimmer)
+    {
+        Element verified = text.Verified
+            ? new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiArtistRules.SealGap,
+                Children =
+                [
+                    Seal(),
+                    Lines(new TextEl(Loc.Get(Strings.Artist.Verified))
+                    {
+                        Size = WinUiArtistRules.VerifiedSize, LineHeight = WinUiArtistRules.VerifiedLine, Color = Tok.TextPrimary,
+                    }, shimmer),
+                ],
+            }
+            : new BoxEl();
+        TextEl name = R.Type.ArtistDisplay(text.Name) with
+        {
+            Size = form.NameSize, LineHeight = form.NameLine, MinSize = WinUiArtistRules.NameFloor, Weight = 600,
+            Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Key = "artist-hero-copy", Direction = 1, Gap = WinUiArtistRules.CopyGap, MinWidth = 0f, MaxWidth = WinUiArtistTiers.CopyMax,
+            Children = [verified, Lines(name, shimmer), Meta(in text, form, shimmer)],
+        };
+    }
+
+    /// <summary>The accent seal with its check (the board: a 14 round accent with a black check).</summary>
+    static Element Seal() => new BoxEl
+    {
+        Width = WinUiArtistRules.SealSize, Height = WinUiArtistRules.SealSize, Shrink = 0f, Corners = CornerRadius4.All(WinUiArtistRules.SealSize / 2f),
+        Fill = Prop.Of(static () => Tok.AccentDefault), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Children = [Icon(Icons.Accept, WinUiArtistRules.SealGlyph, ColorContrast.PickContrast(Tok.AccentDefault))],
+    };
+
+    /// <summary>"20,577,457 monthly listeners · #112 in the world": Body 14 in Text 1; a zero stat drops its run.</summary>
+    static Element Meta(in Artist.HeroText text, WinUiArtistHeroForm form, bool shimmer)
+    {
+        var parts = new List<string>(3);
+        if (text.Monthly > 0)
+            parts.Add(Strings.Theme.Winui.Detail.MonthlyListeners(count: text.Monthly.ToString("N0", CultureInfo.CurrentCulture)));
+        if (text.Rank > 0 && form.RankInMeta) parts.Add(Strings.Artist.WorldRank(text.Rank.ToString(CultureInfo.CurrentCulture)));
+        if (text.Monthly == 0 && text.Followers > 0)
+            parts.Add(text.Followers.ToString("N0", CultureInfo.CurrentCulture) + " " + Loc.Get(Strings.Artist.MetaFollowers).ToLowerInvariant());
+        if (parts.Count == 0) return new BoxEl();
+        return Lines(new TextEl(string.Join(WinUiDetailRules.MetaLead, parts))
+        {
+            Size = form.MetaSize, LineHeight = form.MetaLine, Color = Tok.TextPrimary,
+            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        }, shimmer);
+    }
+
+    /// <summary>The skeleton arm states a run as its line box (the deriver paints a bar per text leaf at 0.72 of its size, which came out short of the loaded copy).</summary>
+    static Element Lines(Element run, bool shimmer)
+    {
+        if (!shimmer || run is not TextEl t) return run;
+        return new BoxEl { Height = float.IsNaN(t.LineHeight) ? t.Size : t.LineHeight, MinWidth = 0f, Width = WinUiArtistRules.ShimmerLineW, Corners = CornerRadius4.All(WinUiDetailRules.BoneRadius) };
+    }
+
+    // ── the actions ──
+
+    /// <summary>Play · Follow · Shuffle · Artist radio · "...". <paramref name="plated"/>: each non-accent action rides the 70 % dark plate with its hairline (over the photograph).
+    /// <paramref name="words"/>: Shuffle and radio carry their words (Huge). Never skeleton content: the row stands as shapes only through its Play.</summary>
+    static Element Actions(string name, string uri, in Acts acts, float target, bool words, bool plated)
+    {
+        var size = target > WinUiDetailRules.Target ? ControlSize.Large : ControlSize.Medium;
+        Element play = Controls.PlayButton(Tok.AccentDefault, acts.Play ?? s_noop, size, Loc.Get(Strings.Artist.Play));
+        Element follow = uri.Length == 0
+            ? Controls.FollowToggle.SkeletonShape()
+            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Size = size }) with { Key = "artist-follow:" + uri };
+        Element shuffle = Control(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), acts.Shuffle, target, words, plated);
+        Element radio = Control(Icons.RadioTower, Loc.Get(Strings.Theme.Winui.Detail.ArtistRadio), acts.Radio, target, words, plated);
+        var kids = new List<Element>(6) { play, follow, shuffle, radio };
+        if (acts.Menu is { } menu) kids.Add(WinUiDetailKit.MoreButton(menu, target) with { Key = "artist-more:" + uri });
+        else kids.Add(new BoxEl { Width = target, Height = target, Shrink = 0f });
+        if (!plated) kids.Insert(kids.Count - 1, new BoxEl { Key = "artist-actions:spring", Grow = 1f, MinWidth = 0f });
+        return new BoxEl
+        {
+            Key = "artist-hero-actions", Direction = 0, Gap = WinUiArtistRules.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Grow = plated ? 0f : 1f, Children = kids.ToArray(),
+        }.Skeletonized(false);
+    }
+
+    /// <summary>A secondary action: the glyph and its word (Huge) or the glyph alone, on the control fill (plated: the 70 % plate over the photograph).</summary>
+    static Element Control(string glyph, string label, Action? onClick, float target, bool word, bool plated)
+    {
+        Action click = onClick ?? s_noop;
+        BoxEl box = word
+            ? Button.Create(label, click, ButtonAppearance.Standard, glyph: glyph) with { Height = target, MinWidth = 0f, Shrink = 0f }
+            : Controls.IconAction(glyph, click, size: target) with
+            {
+                Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+                BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
+            };
+        if (plated)
+            box = box with
+            {
+                Fill = Prop.Of(static () => R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha }),
+                BorderBrush = GradientSpec.Solid(WinUiArtistRules.PlateStroke),
+            };
+        return Controls.Named(box, label);
+    }
+}

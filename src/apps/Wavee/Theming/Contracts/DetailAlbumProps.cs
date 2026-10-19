@@ -138,6 +138,13 @@ public sealed record AlbumAsideProps
     /// <summary>The "More by" list section (a keyed `Album.StackHost`), or null.</summary>
     public Element? MoreBy { get; init; }
 
+    /// <summary>EVERY billed artist whose name is known, lead first (WinUI's "Artists on this album": a portrait, the name, the listeners or "Featured on", Follow).
+    /// Appended (contract 1.53, P6 W6a); empty where the host names none.</summary>
+    public IReadOnlyList<Artist> Artists { get; init; } = [];
+
+    /// <summary>The album's title (the "Featured on {title}" line of a non-lead artist). Appended (contract 1.53).</summary>
+    public string AlbumTitle { get; init; } = "";
+
     /// <inheritdoc />
     public bool Equals(AlbumAsideProps? other) => ReferenceEquals(this, other);
 

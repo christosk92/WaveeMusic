@@ -990,6 +990,8 @@ public readonly partial struct Album
             bool asideDocked = UseContext(Detail.AsideDocked);
             bool asideArm = p.Aside;
             bool leaveOut = asideDocked && !asideArm;
+            // WinUI keeps "Fans also like" under the list while the rest of the sections dock in the aside (`DetailTierLayout.FansInBand`).
+            bool fansStay = asideDocked && ShellPolicy.Tracked.DetailTiers.For(Wavee.Theming.ThemeHost.Facts.Value.Tiers).FansInBand;
             // The gate (W2-A2): the twelve counters are subscribed inside the memo; the section data below — seven sections, each a card or a keyed stack — is
             // rebuilt only when the stamp moved.
             _ = UseComputed(_stamp).Value;
@@ -997,7 +999,7 @@ public readonly partial struct Album
             var e = Entities.Current.Edges;
 
             var a = new Album(p.AlbumSlot);
-            if (!a.IsValid) return asideArm ? MountAside(a, null, [], null) : Mount(false, [], false, null, null, [], []);
+            if (!a.IsValid) return asideArm ? MountAside(a, null, [], null, []) : Mount(false, [], false, null, null, [], []);
             var memberSlots = a.TrackSlots;
             var members = MemoryMarshal.Cast<int, Track>(memberSlots);
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
@@ -1020,14 +1022,20 @@ public readonly partial struct Album
             int similar = e.AlbumSimilar.Count(slot), moreBy = e.AlbumMoreBy.Count(slot);
             if (asideArm)
             {
-                var asideFans = new TrailCardData[fanCount];
+                var asideFans = new TrailCardData[fansStay ? 0 : fanCount];
                 for (int i = 0; i < asideFans.Length; i++) asideFans[i] = FanCard(new Artist(fans[i]));
                 Element? moreByStack = moreBy > 0 && billed.Length > 0
                     ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)))
                     : null;
-                return MountAside(a, about ? lead : null, asideFans, moreByStack);
+                var billedArtists = new List<Artist>(billed.Length);
+                for (int i = 0; i < billed.Length; i++)
+                {
+                    var billedArtist = new Artist(billed[i]);
+                    if (billedArtist.IsValid && billedArtist.Knows(ArtistFields.Name)) billedArtists.Add(billedArtist);
+                }
+                return MountAside(a, about ? lead : null, asideFans, moreByStack, billedArtists);
             }
-            if (leaveOut) { about = false; fanCount = 0; moreBy = 0; }
+            if (leaveOut) { about = false; if (!fansStay) fanCount = 0; moreBy = 0; }
             if (!PageRules.HasTrailingSections(videos.Length > 0, about, fanCount, featured, merch, similar, moreBy, billed.Length))
                 return Mount(false, [], false, null, null, [], []);   // nothing to show: the region eases to zero
 
@@ -1060,10 +1068,11 @@ public readonly partial struct Album
 
         /// <summary>The aside arm's view: the release facts (always: the rail no longer carries them), then whichever of the artist, the fans and "More by"
         /// are present.</summary>
-        static Element MountAside(Album a, Artist? about, IReadOnlyList<TrailCardData> fans, Element? moreBy)
+        static Element MountAside(Album a, Artist? about, IReadOnlyList<TrailCardData> fans, Element? moreBy, IReadOnlyList<Artist> artists)
             => ViewSlots.View(ViewKeys.AlbumAside, new AlbumAsideProps
             {
                 Release = a.IsValid ? ReleasePanel(a, false) : null, About = about, Fans = fans, MoreBy = moreBy,
+                Artists = artists, AlbumTitle = a.IsValid && a.Knows(AlbumFields.Title) ? a.Title : "",
             });
 
         static string Signature(string prefix, int count, ReadOnlySpan<int> targets)

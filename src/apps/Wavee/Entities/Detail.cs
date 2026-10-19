@@ -534,8 +534,8 @@ public static partial class Detail
                 eyebrow, attribution, meta, description, pulse, chart);
 
         /// <summary>Scroll distance over which the expanded hero becomes the 56-DIP band.</summary>
-        public static float CollapseDistance(float expandedHeight)
-            => MathF.Max(1f, expandedHeight - CompactIdentityHeight);
+        public static float CollapseDistance(float expandedHeight, float band = CompactIdentityHeight)
+            => MathF.Max(1f, expandedHeight - band);
 
         /// <summary>The pinned list-chrome extent: the table's REAL column-header height (Modern 36 / Classic 32 —
         /// <c>Track.TableRules.HeaderHeightFor</c>), its divider, and the optional Liked filter rail.</summary>
@@ -543,8 +543,8 @@ public static partial class Detail
             => headerHeight + ChromeDividerHeight + MathF.Max(0f, contentFilterExtent);
 
         /// <summary>The rows' clip inset under the band (56 + header + 1, + the filter rail).</summary>
-        public static float StickyClipInset(float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
-            => CompactIdentityHeight + ChromeExtent(contentFilterExtent, headerHeight);
+        public static float StickyClipInset(float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight, float band = CompactIdentityHeight)
+            => band + ChromeExtent(contentFilterExtent, headerHeight);
 
         /// <summary>The trailing shelves' own clip inset (the album "Also by" / release-panel band under the rows,
         /// Track.Table.cs's <c>TrailingBody</c>): the same line the hero collapses to, so a shelf cannot show through
