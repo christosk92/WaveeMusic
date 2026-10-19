@@ -146,7 +146,7 @@ public readonly partial struct Track
         if (RowMetrics.ShowTempo(in set)) arr[i++] = TrackSize.Px(Lane.Tempo);
         // The trailing ♥ — the SAME gate the cell reads, and it sits IMMEDIATELY before the duration (the reader's
         // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
-        if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(Lane.HeartTrailing);
+        if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(set.HeartWidth > 0f ? set.HeartWidth : Lane.HeartTrailing);
         if (RowMetrics.ShowDuration(in set)) arr[i++] = TrackSize.Px(set.HoverActions ? Lane.DurationHover : set.DurationWidth > 0f ? set.DurationWidth : Lane.Duration);
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
         if (set.Expand) arr[i++] = TrackSize.Px(Lane.Expand);

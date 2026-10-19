@@ -68,6 +68,21 @@ public sealed class TableColumnsPrefTests : IDisposable
         Assert.False(TableColumnsPref.Tempo());
     }
 
+    [Fact]
+    public void A_structure_with_a_tempo_scope_reads_its_own_setting_off_by_default()
+    {
+        // WinUI: no board draws BPM · Key, so the column rests off there whatever the shared (Classic, Zune) setting says, and turning it on under WinUI
+        // writes WinUI's own key.
+        var scoped = new Wavee.Theming.ListPolicy(TrackArtwork: true) { TempoColumnScope = "winui" };
+        _store.Set(Platform.Keys.TempoColumn, true);
+
+        var key = TableColumnsPref.TempoKey(scoped);
+        Assert.Equal("detail.tempoColumn.winui", key.Name);
+        Assert.False(_store.Get(key));
+        Assert.Equal(Platform.Keys.TempoColumn, TableColumnsPref.TempoKey(Wavee.Theming.ListPolicy.Default));   // no scope: the shared key, as before
+        Assert.True(TableColumnsPref.Tempo());                                                              // the default policy keeps reading the shared key
+    }
+
     [Theory]
     [InlineData(true, false, false, true)]       // a page that always shows plays
     [InlineData(true, true, false, true)]

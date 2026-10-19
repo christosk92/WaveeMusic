@@ -28,6 +28,17 @@ public sealed record ListPolicy(bool TrackArtwork, TrackRowStyle RowStyle = Trac
     /// <summary>The shell as it shipped before themes: artwork shown.</summary>
     public static ListPolicy Default { get; } = new(TrackArtwork: true);
 
+    /// <summary>Where the optional BPM · Key column's on/off lives: null (the default) the shared <c>detail.tempoColumn</c> setting every structure has read since
+    /// the column shipped; a name gives this structure a setting of its own, <c>detail.tempoColumn.&lt;name&gt;</c>, OFF until the user turns it on from the list's
+    /// column menu (WinUI: no board draws the column, so it rests off whatever the user chose under Classic). Appended (P6 playlist-load lane).</summary>
+    public string? TempoColumnScope { get; init; }
+
+    /// <summary>The hero arm's rows reveal TOGETHER: every mounted row holds its own shimmer (the row grid over an empty track) while the table's reveal gate is
+    /// closed or the row has no face yet, and cross-dissolves to its real grid when the gate opens, so the list swaps in as one block (no lone cached row, no hole,
+    /// no blank frame; covers fade in inside rows already laid out). False (the default) keeps the shipped per-row placeholder and the warm reveal ramp. WinUI
+    /// sets it (the owner's recording of its playlist loads). Appended (P6 playlist-load lane).</summary>
+    public bool RowsRevealTogether { get; init; }
+
     /// <summary>The Classic row skin is on: what the core's lane sets and chart keys branch on.</summary>
     public bool ClassicRows => RowStyle == TrackRowStyle.Classic;
 }

@@ -24,8 +24,21 @@ public static class TableColumnsPref
     public static bool Tempo()
     {
         _ = Prefs.Appearance.Epoch.Value;
-        return Platform.Settings.Get(Platform.Keys.TempoColumn);
+        return Platform.Settings.Get(TempoKey(ShellPolicy.Tracked.Lists));
     }
+
+    /// <summary>The setting the Tempo column reads: the shared key, or the active structure's own (<see cref="Theming.ListPolicy.TempoColumnScope"/>, off by
+    /// default). <see cref="Tempo"/> passes the tracked policy (a theme switch re-reads it); a verb or a menu builder the untracked one.</summary>
+    public static SettingKey<bool> TempoKey(Theming.ListPolicy lists)
+    {
+        if (lists.TempoColumnScope is not { Length: > 0 } scope) return Platform.Keys.TempoColumn;
+        var cached = s_scopedTempo;
+        if (cached.Scope != scope)
+            s_scopedTempo = cached = (scope, new SettingKey<bool>(Platform.Keys.TempoColumn.Name + "." + scope, false));
+        return cached.Key;
+    }
+
+    static (string? Scope, SettingKey<bool> Key) s_scopedTempo;
 
     /// <summary>Reactive read: is the Plays column switched on?</summary>
     public static bool Plays()
@@ -36,7 +49,7 @@ public static class TableColumnsPref
 
     /// <summary>The store's answer without joining the epoch — for a menu builder or an event handler, which is not a
     /// render and must not subscribe.</summary>
-    public static bool TempoNow() => Platform.Settings.Get(Platform.Keys.TempoColumn);
+    public static bool TempoNow() => Platform.Settings.Get(TempoKey(ShellPolicy.Now.Lists));
 
     /// <summary>The Plays column's store answer, without joining the epoch (see <see cref="TempoNow"/>).</summary>
     public static bool PlaysNow() => Platform.Settings.Get(Platform.Keys.PlaysColumn);
@@ -49,7 +62,7 @@ public static class TableColumnsPref
     // ── verbs ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Switch the Tempo column on or off: persist, then ONE epoch bump.</summary>
-    public static void SetTempo(bool on) => Prefs.Appearance.Set(Platform.Keys.TempoColumn, on);
+    public static void SetTempo(bool on) => Prefs.Appearance.Set(TempoKey(ShellPolicy.Now.Lists), on);
 
     /// <summary>Switch the Plays column on or off: persist, then ONE epoch bump.</summary>
     public static void SetPlays(bool on) => Prefs.Appearance.Set(Platform.Keys.PlaysColumn, on);

@@ -166,7 +166,6 @@ internal static class WinUiTrackChrome
     {
         var set = a.Set;
         var sort = a.Sort;
-        bool vertical = a.Vertical;
         var cells = new List<Element>(a.Tracks.Length);
         void Add(string key, Element cell) => cells.Add(cell with { Key = key });
 
@@ -175,8 +174,8 @@ internal static class WinUiTrackChrome
         if (set.Thumb) Add(CellKey.Art, new BoxEl());
         var sortSignal = a.SortSignal;
         bool artistLane = set.Artist;
-        Element title = Embed.Comp(() => new LabelComponent(sortSignal, vertical, artistLane))
-            with { Key = "sort-label:w" + (artistLane ? ":a" : "") + (vertical ? ":song" : "") };
+        Element title = Embed.Comp(() => new LabelComponent(sortSignal, artistLane))
+            with { Key = "sort-label:w" + (artistLane ? ":a" : "") };
         Add(CellKey.Title, SortCell(a, title, SortColumn.Title, sort, FlexJustify.Start, artistLane));
         if (set.Artist)
             Add(CellKey.Artist, SortCell(a, HLabel(Loc.Get(Strings.Detail.Column.Artist), SortColumn.Artist, sort), SortColumn.Artist, sort, FlexJustify.Start, artistColumn: true));
@@ -298,14 +297,14 @@ internal static class WinUiTrackChrome
     }
 
     /// <summary>"Title" (the hero arm's "Song"), or "Artist" while the title lane owns an artist sort; the word swap rises and fades.</summary>
-    sealed class LabelComponent(IReadSignal<SortSpec> sort, bool song, bool artistColumn) : Component
+    sealed class LabelComponent(IReadSignal<SortSpec> sort, bool artistColumn) : Component
     {
         public override Element Render()
         {
             var col = sort.Value.Column;
             string text = !artistColumn && col == SortColumn.Artist
                 ? Loc.Get(Strings.Detail.Column.Artist)
-                : Loc.Get(song ? Strings.Detail.Column.Song : Strings.Detail.Column.Title);
+                : Loc.Get(Strings.Detail.Column.Title);   // "Title" in both arms (W-Playlist, W-LikedSongs, W-Album): never the hero arm's "Song"
             UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.SmoothOut, text);
             UseTransition(AnimChannel.TranslateY, WinUiListRules.LabelRise, 0f, Expressive.Fast, Easing.SmoothOut, text);
             return Word(text, TableRules.HeaderActive(SortColumn.Title, col, artistColumn) ? Tok.TextPrimary : Tok.TextSecondary);

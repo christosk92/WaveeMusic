@@ -94,9 +94,14 @@ public static class DetailLadders
 /// where the Modern Compact form folds the time into the subline. Appended (contract 1.52, P6 W3).</param>
 /// <param name="DurationWidth">The time lane's width where the structure widens it past the core's 52 (WinUI: 72, 80 at Huge, so a withheld row's "Unavailable" or release date fits); 0 keeps the core's. Appended (contract 1.52, P6 W3).</param>
 /// <param name="VersionsLane">The versions chevron's lane may show (false: never at this tier, whatever the width: WinUI's Small band has none). Appended (contract 1.52, P6 W3).</param>
+/// <param name="ListVersionsLane">A LIST's rows (a playlist, Liked Songs: anything but an album) may show the versions chevron's lane too (false: an album's rows alone keep it,
+/// WinUI's W-Playlist / W-LikedSongs draw none; the drawer stays reachable through the row menu). Appended (P6 playlist-load lane).</param>
+/// <param name="HeartWidth">The trailing heart's lane where the structure widens it past the core's 28 (WinUI Compact: 40, the owner's Compact target); 0 keeps the
+/// core's. Appended (P6 playlist-load lane).</param>
 public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool PlaysColumn, bool DateColumn,
     float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f, bool ListIndex = true, bool HoverActions = false, float OneLineTrim = 0f,
-    bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true, float DurationWidth = 0f)
+    bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true, float DurationWidth = 0f, bool ListVersionsLane = true,
+    float HeartWidth = 0f)
 {
     /// <summary>Every lane the width admits, the density's rows.</summary>
     public static DetailTableTier Standard { get; } = new(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true);

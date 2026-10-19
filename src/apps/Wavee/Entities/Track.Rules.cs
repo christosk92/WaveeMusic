@@ -117,7 +117,8 @@ public readonly partial struct Track
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false,
-                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false, bool DurationKept = false, float DurationWidth = 0f);
+                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false, bool DurationKept = false, float DurationWidth = 0f,
+                                            float HeartWidth = 0f);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>

@@ -362,18 +362,12 @@ internal static class WinUiRowCells
     /// <summary>The Added-by name once identity is known, else nothing (never a uri fragment).</summary>
     static string AddedByName(User by) => by.Slot > 0 && by.Knows(UserFields.Identity) ? Track.AddedByLabel(by) : "";
 
-    /// <summary>"[swatch] 101.5 · 8B", empty until the audio facts land.</summary>
+    /// <summary>"101.5 · 8B", empty until the audio facts land: a plain WinUI column, no Classic key swatch.</summary>
     static Element TempoCell(Track t, ColorF? ink)
     {
         if (!t.Knows(TrackFields.Audio) || t.Tempo == 0) return new BoxEl();
         string? key = Format.CamelotLabel(t.Camelot) ?? Format.KeyLabel(t.Key);
-        var parts = new List<Element>(4);
-        if (t.CamelotColor != 0)
-            parts.Add(new BoxEl
-            {
-                Width = WinUiListRules.TempoDot, Height = WinUiListRules.TempoDot, Opacity = WinUiListRules.TempoDotOpacity,
-                Fill = R.Ink.DataDot(t.CamelotColor), AlignSelf = FlexAlign.Center,
-            });
+        var parts = new List<Element>(3);
         parts.Add(Factual(Format.TempoLabel(t.Tempo), ink ?? Tok.TextSecondary));
         if (key is not null)
         {
