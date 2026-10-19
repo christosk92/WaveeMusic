@@ -30,19 +30,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
     /// (`winui.*`) or a Common block's. A family lane deletes its lines in the PR that registers its keys; W9 empties the list (P6 exit 1).</summary>
     static readonly Dictionary<string, string> DeliberateStandIns = new(StringComparer.Ordinal)
     {
-        // W2b: the nav pane (12)
-        ["Shell.Material"] = "W2b",  // ViewKeys.ShellMaterialLayer
-        ["Shell.Material.ArtistBlend"] = "W2b",  // ViewKeys.ShellCoverBlend
-        ["Shell.Material.ArtistVeil"] = "W2b",  // ViewKeys.ShellCoverVeil
-        ["Shell.Material.PageTone"] = "W2b",  // ViewKeys.ShellCoverTone
-        ["Shell.Material.TintBinder"] = "W2b",  // ViewKeys.ShellCoverTint
-        ["Shell.NarrowDrawer"] = "W2b",  // ViewKeys.ShellNarrowDrawer
-        ["Shell.NavEdit"] = "W2b",  // ViewKeys.ShellNavEdit
-        ["Shell.NavEmpty"] = "W2b",  // ViewKeys.ShellNavEmpty
-        ["Shell.NavFolderFlyout"] = "W2b",  // ViewKeys.ShellNavFolderFlyout
-        ["Shell.NavLibraryHead"] = "W2b",  // ViewKeys.ShellNavLibraryHead
-        ["Shell.NavPane"] = "W2b",  // ViewKeys.ShellNavPane
-        ["Shell.NavSectionFlyout"] = "W2b",  // ViewKeys.ShellNavSectionFlyout
         // W3: the lists (0)
         // W4a: the player and the panel (16)
         ["Panel.Friends"] = "W4a",  // ViewKeys.PanelFriends

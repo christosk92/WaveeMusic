@@ -146,3 +146,36 @@ back); the harness's Compact 40-DIP rule is live for the title bar (the identity
 **Open (engine / other lanes).** The strip's tab widths snap on a ladder change (engine `TabStrip.Form`); the search's 520 <-> 640 change at
 the 1920 edge snaps on widening and keeps its final x on narrowing (a reflow inside the bar's hugging centre island); the 1008 crossing moves
 the bell by the ⋯ slot's 44; the avatar chip (32) is under 40 at Compact (W8a's `Overlay.ProfileChip`); the play bar's height (Mini 64) is W4a's.
+
+## W2b: the nav pane
+
+NavigationView's pane under WinUI: the 280 list, the 48 rail and the overlay. Files: `Themes\WinUi\Structure\WinUiStructure.Nav.cs` (`RegisterNav`: twelve keys),
+`Views\Nav\*` (the kit `WinUiNavRows`, the row slot `WinUiNavRow`, the row primitive `WinUiEntityRow`, the heads, the Settings footer, the flyouts, the Edit outline),
+`Views\Drawer\WinUiDrawer.cs` (the overlay), `Views\Material\WinUiMaterial.cs`, `Rules\WinUiNavGeometry.cs` (every number, from the board `Shell-Nav`),
+`Rules\WinUiNavPlanner.cs`, `Rules\WinUiNavDrawerRules.cs`, `Rules\WinUiPolicies.Nav.cs`. A theme may not reference another theme (WVTH001), so the planner, the row and the
+flyouts are derived copies of Classic's, retuned; Classic is untouched.
+
+**The list.** Every row is one line: 36 tall in a 4,2 margin, a 16 glyph or a 16 r2 thumbnail at slot x 12, the label at slot x 44 (pane 48), folder indents of 28, the
+3x16 pill at the row's own left edge. The layout document's row shape (Classic's density) never reaches WinUI. Home holds Home and Browse under no header; the
+Collections section is titled "Library" (`theme.winui.nav.library`); section heads are static (no chevron: sections never collapse, a section collapsed under Classic still
+shows its rows); a folder is the one disclosure (the chevron turns down to up). No counts, no pin marks, no hover "...": the context menu is the right-click. The rail has no
+heads, only 1-px rules between the sections; its folder and section tiles open the flyouts. Edit, drag and drop, the reorder bands and the menus are the core pane's and work as
+under Classic.
+
+**The footer.** Settings is a fixed row under the scrolling list (`NavRowKit.Footer`, a core seam: null for Classic and Zune). It shows while the layout document's Settings section
+is not hidden (the Outline's Show box lands live), takes the pill by the live route, and is a 40 x 36 tile in the rail.
+
+**Modes.** From `navigationPane` and the window tier: Compact = minimal (the 280 overlay from the hamburger), Small = the 48 rail plus the overlay, Standard and Huge = docked 280
+(the user may collapse it to the rail). `navigationPane = Compact` holds the rail at every tier: `NavPanePolicy.WideMode` (default `Expanded` = today's behaviour) says what the Wide
+band forces. The pane is a fixed 280 (bounds [280, 280], content floor 0), so an Expanded pane at 641 docks at 280.
+
+**The overlay.** `WinUiDrawer`: a light scrim (a click closes) under a 280 acrylic pane with the flyout shadow, sliding in on the pane spline from the toolbar down to the player, in the
+frame's content region, so it never pushes the page. Focus is trapped while it is open; Escape closes (the core host). No account row: WinUI's toolbar carries the account.
+
+**Touch.** At the Compact window tier the drawer's pane mounts the touch kit (`WinUiNavRows.TouchKit`): rows 40 tall and flush (the same 40 pitch), the head "+" and the folder "+"
+40 wide, so every nav target clears 40 x 40.
+
+**Material.** WinUI paints no wash: the material layer and the tone and blend leaves draw nothing, the veil is neutral, the tint binder publishes "no colour".
+
+**Tests.** `Wavee.Tests\Theming\WinUiNavTests.cs` (planner, ladder, touch metrics, the seam, the registry) and `Wavee.ShellTests\WinUiTierLayoutTests.Nav.cs` (the footer, the rail's tiles, the
+overlay never pushing the page, the Compact option holding the rail, the Compact targets).

@@ -518,8 +518,9 @@ public static partial class Sidebar
 
         // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The layer's children, top to bottom: the mode head and the body (the padded list or the empty hint). There
-        /// is no footer: Settings lives in the profile menu and the palette, the pane menu on the pane's right-click.</summary>
+        /// <summary>The layer's children, top to bottom: the mode head and the body (the padded list or the empty hint), then the
+        /// structure's footer when it has one (<see cref="NavRowKit.Footer"/>; Classic has none: Settings lives in the profile menu and the palette,
+        /// the pane menu on the pane's right-click).</summary>
         Element[] PaneChildren(int rows, bool compact, bool editing)
         {
             // Edit mode (expanded only) swaps the head and the list for the Outline; the list is unmounted and its state stays
@@ -533,6 +534,9 @@ public static partial class Sidebar
             Element body = rows == 0
                 ? ViewSlots.View(ViewKeys.ShellNavEmpty, compact ? NavEmptyProps.Rail : NavEmptyProps.Pane) with { Key = "empty" }
                 : (_paddedList ??= PaddedList());
+            // The structure's footer (a fixed row under the list; null for none, the default): not in Edit mode (the Outline carries Settings).
+            Element? footer = Kit.Footer(this, compact);
+            if (footer is not null) return modeHead is { } mh2 ? [mh2, body, footer] : [body, footer];
             return modeHead is { } mh ? [mh, body] : [body];
         }
 

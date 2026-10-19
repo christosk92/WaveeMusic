@@ -3024,6 +3024,10 @@
         "back": "Back",
         "forward": "Forward",
         "more": "More"
+      },
+      "nav": {
+        "$comment": "W2b: the navigation pane. The Collections section is called Library under WinUI (board Shell-Nav); Settings is the route's own title.",
+        "library": "Library"
       }
     }
   },
