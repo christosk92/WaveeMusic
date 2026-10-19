@@ -3016,6 +3016,9 @@
         "densityCompact": "Compact",
         "useWindowsAccent": "Use the Windows accent colour",
         "useWindowsAccentSub": "Off uses Wavee’s own blue"
+      },
+      "lists": {
+        "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
       }
     }
   },

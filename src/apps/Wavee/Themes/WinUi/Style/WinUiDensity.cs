@@ -60,11 +60,11 @@ public static class WinUiDensityOption
     /// <summary>The gap between cards: 16, 12 when compact.</summary>
     public static float CardGap(WinUiDensity density) => density == WinUiDensity.Compact ? 12f : 16f;
 
-    /// <summary>The track rows at <paramref name="density"/>. The Modern skin is the two-line row with a 32 cover (48, compact 40); the Classic skin
+    /// <summary>The track rows at <paramref name="density"/>. The Modern skin is the two-line row with a 40 cover (48, compact 40 with a 32 cover: W-Playlist, W-MultiSelect and W-Unavailable draw the cover at 40 inside the 48, W-RowStates' 32 is the specimen); the Classic skin
     /// is the one-line row (40, compact 32) with a 32 (compact 24) cover; episode rows keep the core's 96 (compact 88) and narrow arm.</summary>
     public static TrackRowMetrics Rows(WinUiDensity density) => density == WinUiDensity.Compact
         ? new(Rung: 0, ModernRow: 40f, ModernArt: 32f, ClassicRow: 32f, ClassicArt: 24f, EpisodeRow: 88f, NarrowEpisode: true)
-        : new(Rung: 1, ModernRow: 48f, ModernArt: 32f, ClassicRow: 40f, ClassicArt: 32f, EpisodeRow: 96f, NarrowEpisode: true);
+        : new(Rung: 1, ModernRow: 48f, ModernArt: 40f, ClassicRow: 40f, ClassicArt: 32f, EpisodeRow: 96f, NarrowEpisode: true);
 
     /// <summary>The density a published rung names (<c>TrackRowMetrics.Rung</c>: 0 compact, 1 standard); an unknown rung is the default. How a
     /// structure reads the density without touching the option cell.</summary>

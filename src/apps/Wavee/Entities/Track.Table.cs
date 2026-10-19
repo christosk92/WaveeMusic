@@ -690,20 +690,21 @@ public readonly partial struct Track
                 Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3 && form.PlaysColumn,
                 // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
-                Heart: tier < 5 && !cfg.QuietRows && !compact && !hover,
+                Heart: tier < 5 && !cfg.QuietRows && !compact && !hover && !form.HeartTrailing,
                 Thumb: identity.Thumb,
                 Actions: (trailing.Actions && !hover) || compact,
                 Tier: tier,
                 Tempo: cfg.ShowTempo && s.TempoColumn && !compact,
-                Expand: trailing.Expand && !compact && !hover,
+                Expand: trailing.Expand && !compact && !hover && form.VersionsLane,
                 Artist: identity.Artist && !compact,
                 Classic: s.Classic,
-                HeartTrailing: compact || (tier < 5 && cfg.QuietRows && !hover),
+                HeartTrailing: compact || (tier < 5 && (cfg.QuietRows || form.HeartTrailing) && !hover),
                 Quiet: cfg.QuietRows,
                 Compact: compact,
                 // A list's Modern row drops its "#" where the tier says so (C-TrackList compact); an album's track number and the Classic row keep it.
                 IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album,
-                HoverActions: hover);
+                HoverActions: hover,
+                DurationKept: compact && form.KeepDuration);
         }
 
         int ReliefStepFor(in ColumnSet s)

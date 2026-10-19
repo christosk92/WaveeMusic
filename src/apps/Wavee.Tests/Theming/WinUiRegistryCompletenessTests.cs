@@ -56,7 +56,7 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Shell.NavLibraryHead"] = "W2b",  // ViewKeys.ShellNavLibraryHead
         ["Shell.NavPane"] = "W2b",  // ViewKeys.ShellNavPane
         ["Shell.NavSectionFlyout"] = "W2b",  // ViewKeys.ShellNavSectionFlyout
-        // W3: the lists (0)
+        // W3: the lists (0: the seven list styles are WinUI's own, `WinUiStructure.Lists.cs`)
         // W4a: the player and the panel (16)
         ["Panel.Friends"] = "W4a",  // ViewKeys.PanelFriends
         ["Panel.LyricsHeader"] = "W4a",  // ViewKeys.PanelLyricsHeader

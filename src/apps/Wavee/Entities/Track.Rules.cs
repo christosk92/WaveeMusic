@@ -117,7 +117,7 @@ public readonly partial struct Track
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false,
-                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false);
+                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false, bool DurationKept = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -397,7 +397,7 @@ public readonly partial struct Track
 
         /// <summary>Does the set lay out a duration LANE? Every set but a Modern one in the Compact row form, whose subline states the duration
         /// ("artist · 3:20", board C-TrackList compact). The width track, the cell count, the cell and the header all read this one gate.</summary>
-        public static bool ShowDuration(in ColumnSet set) => !(set.Compact && !set.Classic);
+        public static bool ShowDuration(in ColumnSet set) => set.DurationKept || !(set.Compact && !set.Classic);
 
         /// <summary>The x of the row's ARTWORK CENTRE from the skin's left edge — the leading lanes (# · ♥) and their gaps
         /// plus half the art. DERIVED from the lane table, not a constant: the leading cluster is # alone, # + ♥, or
