@@ -411,13 +411,14 @@ public sealed class ClassicRolesTests
 
     static IEnumerable<PropertyInfo> FloatMembers(Type record) => Members(record).Where(p => p.PropertyType == typeof(float));
 
-    /// <summary>The styles the app ships (Classic and Zune; each new style's table joins this list and its switch below).</summary>
-    public static TheoryData<string> Styles => new() { "Classic", "Zune" };
+    /// <summary>The styles the app ships (Classic, Zune and WinUI; each new style's table joins this list and its switch below).</summary>
+    public static TheoryData<string> Styles => new() { "Classic", "Zune", "WinUi" };
 
     static WaveeStyleRoles TableOf(string style) => style switch
     {
         "Classic" => ClassicRoles.Table,
         "Zune" => Wavee.Themes.Zune.ZuneRoles.Table,
+        "WinUi" => Wavee.Themes.WinUi.WinUiRoles.Table,
         _ => throw new ArgumentOutOfRangeException(nameof(style), style, null),
     };
 

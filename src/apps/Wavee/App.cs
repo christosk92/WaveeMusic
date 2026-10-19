@@ -228,13 +228,14 @@ public static class App
     }
 
     /// <summary>The ids of the themes this app ships, in picker order (what the `--inspect` server's `mount theme=` accepts).</summary>
-    public static readonly string[] ShippedThemeIds = [Wavee.Themes.Classic.ClassicTheme.Id, Wavee.Themes.Zune.ZuneTheme.Id];
+    public static readonly string[] ShippedThemeIds = [Wavee.Themes.Classic.ClassicTheme.Id, Wavee.Themes.Zune.ZuneTheme.Id, Wavee.Themes.WinUi.WinUiTheme.Id];
 
     /// <summary>Installs the shipped compositions and activates the stored one (<c>theme.id</c>): the boot's one call, and what
     /// the `--inspect` server repeats to switch theme between mounts (Screens/Diagnostics.Inspect.Kit.cs). App.cs is where
     /// WVTH001 lets core name the theme packages.</summary>
     public static void InstallThemes()
-        => Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create());
+        => Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create(),
+            Wavee.Themes.WinUi.WinUiTheme.Create());
 
     [STAThread]
     static int Main(string[] args)
