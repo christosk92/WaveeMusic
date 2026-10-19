@@ -31,23 +31,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
     static readonly Dictionary<string, string> DeliberateStandIns = new(StringComparer.Ordinal)
     {
         // W3: the lists (0: the seven list styles are WinUI's own, `WinUiStructure.Lists.cs`)
-        // W4a: the player and the panel (16)
-        ["Panel.Friends"] = "W4a",  // ViewKeys.PanelFriends
-        ["Panel.LyricsHeader"] = "W4a",  // ViewKeys.PanelLyricsHeader
-        ["Panel.NextUp"] = "W4a",  // ViewKeys.PanelNextUp
-        ["Player.Bar"] = "W4a",  // ViewKeys.PlayerBar
-        ["Player.ChapterTip"] = "W4a",  // ViewKeys.ChapterTip
-        ["Player.DeckStyleFlyout"] = "W4a",  // ViewKeys.DeckStyleFlyout
-        ["Player.DevicePicker"] = "W4a",  // ViewKeys.DevicePicker
-        ["Player.LyricsPeek"] = "W4a",  // ViewKeys.LyricsPeek
-        ["Player.NowPlayingHero"] = "W4a",  // ViewKeys.NowPlayingHero
-        ["Player.OnMediaTransport"] = "W4a",  // ViewKeys.OnMediaTransport
-        ["Player.SeekChapters"] = "W4a",  // ViewKeys.SeekChapters
-        ["Player.SeekRail"] = "W4a",  // ViewKeys.SeekRail
-        ["Player.SeekReadout"] = "W4a",  // ViewKeys.SeekReadout
-        ["Player.TimeLabel"] = "W4a",  // ViewKeys.TimeLabel
-        ["Queue.Panel"] = "W4a",  // ViewKeys.QueuePanel
-        ["Shell.Panel"] = "W4a",  // ViewKeys.ShellPanel
         // W4c: the rest of the stage (11)
         ["Lyrics.View"] = "W4c",  // ViewKeys.LyricsView
         ["Queue.StagePane"] = "W4c",  // ViewKeys.QueueStagePane

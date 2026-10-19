@@ -112,6 +112,27 @@ public readonly record struct PanelTierRule(
     /// Classic's queue beside the primary where <see cref="MaxDocked"/> is 2 or more.</summary>
     public PanelArrangement Panes { get; init; }
 
+    /// <summary>A docking tier's DOCK LINE (P6 W4a, the WinUI board's one rule: "a pane docks when nav width + 340 + 480 fits the window"): the
+    /// content width the page must keep beside the nav pane and the panel for the panel to dock. Where the window is narrower the panel floats
+    /// over the page at the same width instead, and docks again once the page has the floor back plus <see cref="DockHold"/> (a resize never
+    /// chatters at the line). 0 (the default): the tier's <see cref="Placement"/> as declared, every width. Appended (P6 W4a).</summary>
+    public float DockContentFloor { get; init; }
+
+    /// <summary>How far past <see cref="DockContentFloor"/> a floating panel waits before it docks again (the board's 24). Appended (P6 W4a).</summary>
+    public float DockHold { get; init; }
+
+    /// <summary>The placement in a window <paramref name="viewportWidth"/> wide beside a nav pane <paramref name="navWidth"/> wide, for a panel
+    /// <paramref name="panelWidth"/> wide, given whether it is docked now (<paramref name="dockedNow"/>: narrowing keeps it docked down to the
+    /// floor itself, widening docks it only past the floor plus the hold). The declared placement where the tier has no dock line or does not
+    /// dock (P6 W4a).</summary>
+    public PanelPlacement PlacementAt(float viewportWidth, float navWidth, float panelWidth, bool dockedNow)
+    {
+        if (!Docks || !(DockContentFloor > 0f) || !float.IsFinite(viewportWidth)) return Placement;
+        float content = viewportWidth - MathF.Max(0f, navWidth) - MathF.Max(0f, panelWidth);
+        float line = DockContentFloor + (dockedNow ? 0f : MathF.Max(0f, DockHold));
+        return content >= line ? PanelPlacement.Dock : PanelPlacement.Float;
+    }
+
     /// <summary>The panel docks beside the page.</summary>
     public bool Docks => Placement == PanelPlacement.Dock;
 
@@ -228,6 +249,8 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
                 // A floor above MaxWidth is not an error: the docked width honours it (Zune docks its 340 panel at 360 at Huge, ZT2).
                 if (!float.IsFinite(r.FloorW) || r.FloorW < 0f || !float.IsFinite(r.FloorMaxW) || r.FloorMaxW < 0f)
                     problems.Add($"Panel.Tiers[{i}]'s floor must be zero or more and finite");
+                if (!float.IsFinite(r.DockContentFloor) || r.DockContentFloor < 0f || !float.IsFinite(r.DockHold) || r.DockHold < 0f)
+                    problems.Add($"Panel.Tiers[{i}]'s dock line must be zero or more and finite");
             }
         }
         var pip = Pip;
