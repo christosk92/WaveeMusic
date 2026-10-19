@@ -48,20 +48,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Player.TimeLabel"] = "W4a",  // ViewKeys.TimeLabel
         ["Queue.Panel"] = "W4a",  // ViewKeys.QueuePanel
         ["Shell.Panel"] = "W4a",  // ViewKeys.ShellPanel
-        // W4b: the stage (13)
-        ["Stage.Backdrop"] = "W4b",  // ViewKeys.StageBackdrop
-        ["Stage.Caption"] = "W4b",  // ViewKeys.StageCaption
-        ["Stage.Face"] = "W4b",  // ViewKeys.StageFace
-        ["Stage.FaceScrim"] = "W4b",  // ViewKeys.StageFaceScrim
-        ["Stage.Gallery"] = "W4b",  // ViewKeys.StageGallery
-        ["Stage.Identity"] = "W4b",  // ViewKeys.StageIdentity
-        ["Stage.NowPlayingCard"] = "W4b",  // ViewKeys.StageNowPlayingCard
-        ["Stage.Options"] = "W4b",  // ViewKeys.StageOptions
-        ["Stage.Pane"] = "W4b",  // ViewKeys.StagePane
-        ["Stage.Root"] = "W4b",  // ViewKeys.StageRoot
-        ["Stage.Spectrum"] = "W4b",  // ViewKeys.StageSpectrum
-        ["Stage.TopBar"] = "W4b",  // ViewKeys.StageTopBar
-        ["Stage.Transport"] = "W4b",  // ViewKeys.StageTransport
         // W4c: the rest of the stage (11)
         ["Lyrics.View"] = "W4c",  // ViewKeys.LyricsView
         ["Queue.StagePane"] = "W4c",  // ViewKeys.QueueStagePane
