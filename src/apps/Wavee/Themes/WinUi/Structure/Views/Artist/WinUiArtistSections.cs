@@ -391,7 +391,7 @@ internal static class WinUiArtistSections
         CityEdge[] cities = a.TopCities.ToArray();
         var kids = new List<Element>(3)
         {
-            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand) with { Key = "about:" + a.Uri.Text },
+            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand, static (uri, name) => WinUiDetailKit.Follow(uri, name)) with { Key = "about:" + a.Uri.Text },
         };
         if (links.Length > 0) kids.Add(LinkPills(links));
         if (cities.Length > 0) kids.Add(CityBars(cities, p.Accent));

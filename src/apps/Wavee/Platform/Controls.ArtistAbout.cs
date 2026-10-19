@@ -31,19 +31,22 @@ public enum AboutLayout : byte { Rail, Page, Aside }
 public static partial class Controls
 {
     /// <summary>The about-the-artist card. Props freeze at mount, so a caller keys it on the artist. <paramref name="bandHeight"/> is the
-    /// <see cref="AboutLayout.Aside"/> card's image band (the structure's, per tier); the other layouts ignore it.</summary>
-    public static Element ArtistAboutCard(Artist artist, AboutLayout layout, float bandHeight = 0f)
+    /// <see cref="AboutLayout.Aside"/> card's image band (the structure's, per tier); the other layouts ignore it. <paramref name="follow"/> builds the
+    /// card's Follow toggle from (uri, name) in the structure's own look (appended, P6 detail polish); null is the shared <see cref="FollowToggle"/>.</summary>
+    public static Element ArtistAboutCard(Artist artist, AboutLayout layout, float bandHeight = 0f, Func<string, string, Element>? follow = null)
     {
         string name = artist.Name;
         string artistUri = artist.Uri.Text;
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
         Action open = () => Track.GoToArtist(artist);
-        Element follow = Embed.Comp(() => new FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri };
+        Element followEl = (follow is null
+            ? Embed.Comp(() => new FollowToggle { Uri = artistUri, Name = name })
+            : follow(artistUri, name)) with { Key = "follow:" + artistUri };
         return layout switch
         {
-            AboutLayout.Rail => RailAbout(artist, name, mode, open, follow),
-            AboutLayout.Aside => AsideAbout(artist, name, mode, open, follow, bandHeight),
-            _ => PageAbout(artist, name, mode, open, follow),
+            AboutLayout.Rail => RailAbout(artist, name, mode, open, followEl),
+            AboutLayout.Aside => AsideAbout(artist, name, mode, open, followEl, bandHeight),
+            _ => PageAbout(artist, name, mode, open, followEl),
         };
     }
 

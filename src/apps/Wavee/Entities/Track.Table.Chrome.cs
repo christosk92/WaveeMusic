@@ -65,6 +65,11 @@ public readonly partial struct Track
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.
         (float Available, CommandBarFit Fit)? _searchOpenFit;
         int _selectionPrevCount;
+        // A structure's worded Find and inline Select (ITrackCommandKit.FindCommand / SelectCommand): their measured widths join the fit's budget (the
+        // first frame resolves against the nominals), and an inline Select leaves the "…" menu.
+        float _findWordW = FindWordNominal, _selectW = SelectNominal;
+        bool _inlineSelect;
+        const float FindWordNominal = 72f, SelectNominal = 64f;
 
         Func<float, Element> _buildToolbar = null!;
         Func<int, Element> _selectionCommands = null!;
@@ -195,6 +200,14 @@ public readonly partial struct Track
             var widths = new CommandWidths(w[0], w[1], pageBar ? 0f : w[2], w[3], w[4]);
             float pane = HeldPane(MathF.Max(0f, available - ToolbarPaneInset));
             float fitPane = chips is null ? pane : MathF.Max(0f, pane - CommandBarLayout.InlineChipsMin - CommandBarLayout.InlineChipsTrail);
+            // A structure's worded Find and inline Select take their measured room before the ladder runs (the fit itself reserves the 32-DIP glyph).
+            bool findWord = !explicitSearch && Kit.FindCommand("", false, _openSearch, _captureSearchButton) is not null;
+            Element? select = Cfg.Selection != ItemsSelectionMode.None
+                ? Kit.SelectCommand(Loc.Get(Strings.Detail.Select), false, () => SetMultiSelect(!_multi.Peek()))
+                : null;
+            _inlineSelect = select is not null;
+            if (findWord) fitPane = MathF.Max(0f, fitPane - MathF.Max(0f, _findWordW - CommandBarLayout.SearchIconWidth));
+            if (select is not null) fitPane = MathF.Max(0f, fitPane - CommandBarLayout.Gap - _selectW);
             var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
             if (pageBar) fit = fit with { Inline = fit.Inline | InlineCommand.Shuffle };
             if (!explicitSearch) _searchOpenFit = null;
@@ -232,10 +245,22 @@ public readonly partial struct Track
             var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
             Element more = Embed.Comp(() => new TableMoreButton(this, overflow))
                 with { Key = "cmd:more:" + (int)overflow + ":" + _contextText };
-            Element[] tail = insights is null ? [more] : [Detail.InsightsBarButton(insights), more];
+            var tailList = new List<Element>(3);
+            if (insights is not null) tailList.Add(Detail.InsightsBarButton(insights));
+            if (select is not null)
+                tailList.Add(Kit.Command("cmd:select", select, w => MeasureExtra(ref _selectW, w)));
+            tailList.Add(more);
+            Element[] tail = tailList.ToArray();
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
                 with { Key = "search-host" };
+            if (findWord)
+                search = new BoxEl
+                {
+                    Key = "search-host:worded", Direction = 1, Shrink = 0f,
+                    OnBoundsChanged = r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); },
+                    Children = [search],
+                };
             return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail, chips));
         }
 
@@ -283,6 +308,13 @@ public readonly partial struct Track
         Element FilterCommandSlot(bool labelled)
             => MeasuredCommand(labelled ? 4 : -1, "cmd:filter",
                 Embed.Comp(new FilterCommandProps(labelled), () => new TableFilterButton(this, textMode: false, command: true)));
+
+        void MeasureExtra(ref float slot, float width)
+        {
+            if (width <= 1f || MathF.Abs(slot - width) <= 0.5f) return;
+            slot = width;
+            _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
+        }
 
         void MeasureToolbarCommand(int slot, float width)
         {
@@ -412,11 +444,22 @@ public readonly partial struct Track
                 if (!expanded) width = MathF.Max(width, edge);
                 bool queryActive = h._query.Value.Length > 0;
                 bool focused = expanded && h._searchFocused.Value;
+                // A structure's worded Find (ITrackCommandKit.FindCommand) sizes to its word at rest; the open field keeps the fit's width.
+                Element? word = !expanded && !p.Compact
+                    ? h.Kit.FindCommand(Loc.Get(Strings.Detail.Filter.Find), queryActive, h._openSearch, h._captureSearchButton)
+                    : null;
+                if (word is not null) width = float.NaN;
                 Element query = expanded
                     ? new BoxEl
                     {
                         Key = "search:field", Direction = 1, Height = edge, Animate = s_searchSwap,
                         Children = [Embed.Comp(() => new TableSearchField(h, band: p.Compact))],
+                    }
+                    : word is not null
+                    ? new BoxEl
+                    {
+                        Key = "search:word", Direction = 1, Height = edge, JustifySelf = FlexAlign.Start, Animate = s_searchSwap,
+                        Children = [ToolTip.Wrap(word, Loc.Get(Strings.Detail.Filter.SearchThisList))],
                     }
                     : new BoxEl
                     {
@@ -643,7 +686,7 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
                             () => TableColumnsPref.SetPlays(!playsOn)));
                     }
-                    if (cfg.Selection != ItemsSelectionMode.None)
+                    if (cfg.Selection != ItemsSelectionMode.None && !h._inlineSelect)
                     {
                         bool selecting = h._multi.Peek();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.Select), selecting, () => h.SetMultiSelect(!selecting)));

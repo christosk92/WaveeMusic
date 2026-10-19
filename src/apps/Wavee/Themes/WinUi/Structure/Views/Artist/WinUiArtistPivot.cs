@@ -63,6 +63,16 @@ internal static class WinUiArtistPivot
         public override int GetHashCode() => HashCode.Combine(Labels.Length, Active, Inset);
     }
 
+    /// <summary>The item's word centred in the 40 and the pill parted from it, at the board's foot (W-Artist: the bar 3 tall, 4 above the item's bottom). The stock
+    /// item stacks the pill right under the label box, where it read as an underline on the word.</summary>
+    static readonly TemplateParts s_items = new()
+    {
+        [SelectorBar.PartItem] = static e => e with
+        {
+            Justify = FlexJustify.End, Gap = WinUiArtistRules.PivotPillGap, Padding = new Edges4(0f, 0f, 0f, WinUiArtistRules.PivotPillLift),
+        },
+    };
+
     sealed class PivotHost : Component, IPropsHost
     {
         PivotProps? _latest;
@@ -89,16 +99,18 @@ internal static class WinUiArtistPivot
                 ItemPadding = WinUiArtistRules.PivotItemPadding, ItemGap = WinUiArtistRules.PivotGap,
             };
             // A FRESH signal per render: the spy, not the control, is the truth; a click scrolls and the spy then lights the tab.
-            Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: _change, style: style);
+            Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: _change, style: style, parts: s_items);
             Element scroller = new ScrollEl
             {
                 Horizontal = true, ContentSized = true, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 SuppressScrollBar = true, AutoEdgeFade = true, EdgeCues = ScrollEdgeCues.None,
                 Content = new BoxEl { Direction = 0, Shrink = 0f, Children = [bar] },
             };
+            // NO FILL: the band paints nothing of its own (an opaque stand-in read lighter than the translucent page layer over Mica, edge to edge); the
+            // page's content cuts itself at the band's lower edge instead (`StickyClip(PivotClearance)` on the magazine, `WinUiArtistPage`).
             return new BoxEl
             {
-                Direction = 1, Fill = Prop.Of(static () => R.Layer.ContentSurface), Padding = new Edges4(p.Inset, 0f, p.Inset, 0f),
+                Direction = 1, Padding = new Edges4(p.Inset, 0f, p.Inset, 0f),
                 Children =
                 [
                     new BoxEl { Direction = 0, Height = WinUiArtistRules.PivotItemHeight, MinWidth = 0f, Children = [scroller] },

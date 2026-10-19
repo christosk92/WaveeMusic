@@ -239,22 +239,78 @@ internal static partial class WinUiDetailKit
             }
             return ToggleButton.Controlled(Loc.Get(Strings.Menu.Save), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Loc.Get(Strings.Menu.Saved),
-                style: ButtonRules.FollowStyle(Tok.AccentDefault, R.IsLight), parts: s_noShrink);
+                style: NeutralToggle(ControlSize.Medium), parts: s_noShrink);
         }
+    }
 
-        static readonly TemplateParts s_noShrink = new() { [ToggleButton.PartRoot] = static e => e with { Shrink = 0f, MinWidth = 0f } };
+    static readonly TemplateParts s_noShrink = new() { [ToggleButton.PartRoot] = static e => e with { Shrink = 0f, MinWidth = 0f } };
+
+    /// <summary>WinUI's toggled STANDARD button (W-Album "Save", W-Artist "Follow", W-Album-Huge4K "Following"): the control fill, the elevation stroke and
+    /// the primary text in both states; the checked state says itself through its word ("Saved", "Following") and its glyph (the filled heart), never an
+    /// accent tint. The shared style's label swap and reflow are kept, so the wider word eases in.</summary>
+    internal static ToggleButton.Style NeutralToggle(ControlSize size)
+    {
+        var s = ButtonRules.FollowStyle(Tok.AccentDefault, R.IsLight);
+        s = s with
+        {
+            OnBackground = s.OffBackground, OnHover = s.OffHover, OnPressed = s.OffPressed, OnDisabledBackground = s.OffDisabledBackground,
+            OnForeground = s.OffForeground, OnPressedForeground = s.OffPressedForeground, OnDisabledForeground = s.OffDisabledForeground,
+            OnBorder = s.OffBorder, OnHoverBorder = s.OffHoverBorder, OnPressedBorder = s.OffPressedBorder, OnDisabledBorder = s.OffDisabledBorder,
+            OnGlyphForeground = null, OffGlyphForeground = null, CheckedBackgroundSizing = s.BackgroundSizing,
+        };
+        if (size == ControlSize.Medium) return s;
+        var m = ControlMetrics.For(size);
+        return s with { MinHeight = m.MinHeight, Padding = m.Padding };
+    }
+
+    /// <summary>WinUI's Follow: "Follow" / "Following" on the neutral toggle (<see cref="NeutralToggle"/>; W-Artist draws no glyph). Keyed by the caller.
+    /// <paramref name="plated"/>: the artist hero's 70 % dark plate and hairline over the photograph (<see cref="WinUiArtistRules.PlateAlpha"/>).</summary>
+    public static Element Follow(string uri, string name, ControlSize size = ControlSize.Medium, bool plated = false)
+        => uri.Length == 0
+            ? ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), false, static _ => { }, style: FollowStyle(size, plated), parts: s_noShrink)
+            : Embed.Comp(() => new FollowAction { Uri = uri, Name = name, Size = size, Plated = plated });
+
+    static ToggleButton.Style FollowStyle(ControlSize size, bool plated)
+    {
+        var s = NeutralToggle(size);
+        if (!plated) return s;
+        var plate = R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha };
+        var stroke = GradientSpec.Solid(WinUiArtistRules.PlateStroke);
+        return s with { OffBackground = plate, OnBackground = plate, OffBorder = stroke, OnBorder = stroke, OffHoverBorder = stroke, OnHoverBorder = stroke };
+    }
+
+    sealed class FollowAction : Component
+    {
+        public required string Uri { get; init; }
+        public required string Name { get; init; }
+        public required ControlSize Size { get; init; }
+        public bool Plated { get; init; }
+
+        public override Element Render()
+        {
+            var lib = Controls.Library;
+            if (lib is null) return new BoxEl();
+            bool on = lib.IsSaved(Uri);
+            return ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), on, _ => lib.ToggleSaved(Uri, Name),
+                checkedLabel: Loc.Get(Strings.Artist.Following), style: FollowStyle(Size, Plated), parts: s_noShrink);
+        }
     }
 
     // ══ 4. THE MORE BUTTON, THE SAVE TARGET AND THE SHARE ACTION ════════════════════════════════════════════════════════════
 
-    /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory (ONE menu host per surface).</summary>
-    public static Element MoreButton(Func<ContextMenuModel?> menu, float size)
-        => Embed.Comp(new MoreProps(size, menu), static () => new MoreHost());
+    /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory (ONE menu host per surface).
+    /// <paramref name="look"/>: bare (the album hero, W-Album), the bordered standard button (the artist actions row, W-Artist-Compact's siblings) or the
+    /// artist hero's dark plate over the photograph (W-Artist).</summary>
+    public static Element MoreButton(Func<ContextMenuModel?> menu, float size, MoreLook look = MoreLook.Bare)
+        => Embed.Comp(new MoreProps(size, menu, look), static () => new MoreHost());
 
-    sealed record MoreProps(float Size, Func<ContextMenuModel?> Menu)
+    /// <summary>How the More button is dressed.</summary>
+    internal enum MoreLook : byte { Bare, Bordered, Plated }
+
+    sealed record MoreProps(float Size, Func<ContextMenuModel?> Menu, MoreLook Look)
     {
-        public bool Equals(MoreProps? o) => o is not null && Size == o.Size;
-        public override int GetHashCode() => Size.GetHashCode();
+        public bool Equals(MoreProps? o) => o is not null && Size == o.Size && Look == o.Look;
+        public override int GetHashCode() => HashCode.Combine(Size, Look);
     }
 
     static readonly ContextMenuOptions s_moreMenu = new()
@@ -283,6 +339,13 @@ internal static partial class WinUiDetailKit
             var p = _latest!;
             var overlay = UseContext(Overlay.Service);
             BoxEl button = Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
+            if (p.Look != MoreLook.Bare)
+                button = button with
+                {
+                    Fill = p.Look == MoreLook.Plated ? Prop.Of(static () => R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha }) : Tok.FillControlDefault,
+                    HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f,
+                    BorderBrush = p.Look == MoreLook.Plated ? GradientSpec.Solid(WinUiArtistRules.PlateStroke) : Tok.ControlElevationBorder,
+                };
             if (!Controls.IsNullOverlay(overlay)) button = ContextSheets.Attach(button, overlay, _menu, s_moreMenu);
             return ToolTip.Wrap(button, Loc.Get(Strings.Common.More));
         }

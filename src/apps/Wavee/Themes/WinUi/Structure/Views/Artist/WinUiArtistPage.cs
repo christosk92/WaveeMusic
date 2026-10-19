@@ -12,7 +12,7 @@
 //                  ├─ Content  Column [ the hero card · (Compact: the actions row) · the PIVOT (sticky) · the overview · the sections ]
 //                  └─ Shimmer  the SAME card over placeholders, the pivot's height, the overview's rows
 //
-// THE PIVOT (`WinUiArtistPivot`): a SelectorBar of Overview · Albums · Singles & EPs · Compilations · Appears on · About, sticky under the card on an opaque layer with a hairline,
+// THE PIVOT (`WinUiArtistPivot`): a SelectorBar of Overview · Albums · Singles & EPs · Compilations · Appears on · About, sticky under the card (painting nothing: the content under it cuts itself at its foot) with a hairline,
 // the lit tab the core's scroll spy's answer. Its height, 41 with the hairline, is the tier policy's `BandClearance`: a pivot click parks the section's top exactly under it
 // (`scene.BringIntoView(viewport, anchor, margin: clearance)`), and the spy's activation line is measured from the same edge. Overview scrolls home.
 //
@@ -129,7 +129,7 @@ internal static class WinUiArtistPage
             Key = "artist-magazine", Direction = 1, Gap = WinUiArtistRules.SectionGap, MinWidth = 0f,
             Padding = new Edges4(inset, WinUiArtistRules.OverviewTop, inset, R.Space.DockReserve + WinUiArtistRules.DockExtra),
             Children = [WinUiArtistOverview.Block(p, latch, tier, inset), .. sections],
-        };
+        }.StickyClip(WinUiArtistRules.PivotClearance);   // the pinned pivot paints nothing: what scrolls under it cuts itself at its lower edge
         return new BoxEl { Direction = 1, Children = [hero, WinUiArtistPivot.Bar(p, inset), magazine] };
     }
 

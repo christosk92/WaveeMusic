@@ -298,7 +298,7 @@ internal sealed class WinUiNavRow : Component
         // The pill stays at the row's own left edge at every depth, never the drop caret's gutter. An offline pin always
         // carries its reason as the tooltip (with the name when the name is cut).
         string tip = offline ? OfflineTip(label, spec.LabelTooltip || compact) : label;
-        return Indicator(Tipped(built, spec.LabelTooltip || offline, tip), selected, IndentOf(in row), height, route);
+        return Indicator(Tipped(built, spec.LabelTooltip || offline, tip), selected, IndentOf(in row), height, AnchorRoute(selected, route, sel));
     }
 
     /// <summary>The offline pin's mark (S9): the cloud-off glyph, 12 in a 24 box, tertiary, in the Unpin button's place.</summary>
@@ -482,7 +482,8 @@ internal sealed class WinUiNavRow : Component
             DropTarget = PinSpec(section, section.Id, index),
         };
         spec.LabelTooltip = LabelOverflows(title, 0, 0f, WinUiNavGeometry.LabelX(OneLine, glyph: true));
-        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
+        // The pill registers under the LIVE route when this row is an adopted anchor (an album page lights Albums: NavRowKit.AdoptiveRoute).
+        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, AnchorRoute(selected, key, sel));
     }
 
     /// <summary>The empty Pinned band while a pinnable drag is live (design V.3): 36 tall in the 4,2 margin, a dashed
@@ -597,6 +598,11 @@ internal sealed class WinUiNavRow : Component
             return R.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
         return null;
     }
+
+    /// <summary>The route a row's pill registers under: its own, or the LIVE route when the row is lit for a route it does not carry (an adopted anchor,
+    /// NavRowKit.AdoptiveRoute: an album page lights Albums), so the pill's bound read lights it.</summary>
+    static string? AnchorRoute(bool selected, string? own, string live)
+        => selected && live.Length > 0 && !string.Equals(own, live, StringComparison.Ordinal) ? live : own;
 
     /// <summary>Attach the item-owned selection pill and both drop cues. Shape-stable for recycling: a slot never
     /// inherits an animated transform from the route it represented one window earlier. The ZStack order is load-bearing
@@ -733,7 +739,10 @@ internal sealed class WinUiNavRow : Component
         int index = _scope.Index.Value;
         _ = _o.SubscribeRowEpoch(index);
         string live = _o.SelectedRoutePeek;
-        return _pillState.For(live, _o.RowSelectsRoute(index, live));
+        bool rowSelects = _o.RowSelectsRoute(index, live);
+        // An adopted anchor (an album page lights Albums) is lit for a route it does not carry: its pill reads the LIVE route, derived here rather than
+        // from the render's snapshot, which the bound read can outrun on the epoch that lights it.
+        return (_pillState with { Route = AnchorRoute(rowSelects, _pillState.Route, live) }).For(live, rowSelects);
     }
 
     /// <summary>A PINNED row is also a drop target, so dragging an entity onto the band pins it AT that position. Scoped to

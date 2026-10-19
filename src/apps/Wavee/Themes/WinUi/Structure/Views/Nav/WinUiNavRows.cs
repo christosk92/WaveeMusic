@@ -57,6 +57,9 @@ public sealed class WinUiNavRows : NavRowKit
         => WinUiNavPlanner.OwningSection(doc, in input, route, isPinned);
 
     /// <inheritdoc />
+    public override string? AdoptiveRoute(string route) => WinUiNavPlanner.AdoptiveRoute(route);
+
+    /// <inheritdoc />
     public override bool RowChanged(
         IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
         IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries, int index)

@@ -149,13 +149,14 @@ internal static class WinUiArtistHero
     {
         var size = target > WinUiDetailRules.Target ? ControlSize.Large : ControlSize.Medium;
         Element play = Controls.PlayButton(Tok.AccentDefault, acts.Play ?? s_noop, size, Loc.Get(Strings.Artist.Play));
+        // Follow is WinUI's neutral toggle (W-Artist: "Follow" on the same dark plate as Shuffle and radio over the photograph).
         Element follow = uri.Length == 0
-            ? Controls.FollowToggle.SkeletonShape()
-            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Size = size }) with { Key = "artist-follow:" + uri };
+            ? WinUiDetailKit.Follow("", name, size, plated)
+            : WinUiDetailKit.Follow(uri, name, size, plated) with { Key = "artist-follow:" + uri };
         Element shuffle = Control(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), acts.Shuffle, target, words, plated);
         Element radio = Control(Icons.RadioTower, Loc.Get(Strings.Theme.Winui.Detail.ArtistRadio), acts.Radio, target, words, plated);
         var kids = new List<Element>(6) { play, follow, shuffle, radio };
-        if (acts.Menu is { } menu) kids.Add(WinUiDetailKit.MoreButton(menu, target) with { Key = "artist-more:" + uri });
+        if (acts.Menu is { } menu) kids.Add(WinUiDetailKit.MoreButton(menu, target, plated ? WinUiDetailKit.MoreLook.Plated : WinUiDetailKit.MoreLook.Bordered) with { Key = "artist-more:" + uri });
         else kids.Add(new BoxEl { Width = target, Height = target, Shrink = 0f });
         if (!plated) kids.Insert(kids.Count - 1, new BoxEl { Key = "artist-actions:spring", Grow = 1f, MinWidth = 0f });
         return new BoxEl
