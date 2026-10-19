@@ -3064,6 +3064,19 @@
         "verifiedArtist": "Verified artist",
         "artistRadio": "Artist radio"
       },
+      "stage": {
+        "$comment": "W4b: the fullscreen stage (W-Stage, W-Lyrics): the layouts' short names, the options popover's sections, the bar's Romanization word, the Huge card's eyebrow.",
+        "layoutCard": "Card",
+        "layoutLarge": "Large art",
+        "layoutCentered": "Centered",
+        "layoutArtist": "Artist",
+        "face": "Face",
+        "layout": "Layout",
+        "backgroundBlur": "Background blur",
+        "blurOff": "0 · off",
+        "romanization": "Romanization",
+        "nowPlaying": "Now playing"
+      },
       "screens": {
         "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
         "tabGeneral": "General",

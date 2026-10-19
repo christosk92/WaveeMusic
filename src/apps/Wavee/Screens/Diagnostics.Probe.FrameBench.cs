@@ -293,6 +293,11 @@ public static partial class Diagnostics
                     if (play is null) return Skip("no track to play");
                     Base(playing: true, name == FrameBenchScenarios.StageLyrics ? word ?? line ?? play : play);
                     Prefs.Stage.SetMode((int)(name == FrameBenchScenarios.StageLyrics ? Stage.Mode.Lyrics : Stage.Mode.Visualizer));
+                    // `--bench-blur N` (0-100) and `--bench-layout card|large` (A/B of the stage's depth blur; --fake keeps both in memory).
+                    string[] av = Platform.Args.Argv;
+                    int bAt = Array.IndexOf(av, "--bench-blur"), lAt = Array.IndexOf(av, "--bench-layout");
+                    if (bAt >= 0 && bAt + 1 < av.Length && int.TryParse(av[bAt + 1], out int benchBlur)) Prefs.Lyrics.SetBlurStrength(benchBlur);
+                    if (lAt >= 0 && lAt + 1 < av.Length) Prefs.Stage.SetLayout(av[lAt + 1] == "large" ? (int)Stage.VizLayout.LargeArt : (int)Stage.VizLayout.Card);
                     Stage.Open(null, "bench");
                     Settle(1.5);
                     var r = Measure(null);
