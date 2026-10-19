@@ -122,6 +122,32 @@ public static partial class Diagnostics
             _frames++;
         }
 
+        /// <summary>`resize loop=true`: the size change the way a user's drag ends it, as `crossing` narrows: inside the OS modal size loop a keep-alive paint
+        /// at the new size, then out of the loop one more keep-alive paint, then the keep-alive commit paint where a held crossing lands. What follows
+        /// (`settle=false`, `trace=N`, `render`) sees the frames right after that commit.</summary>
+        void ResizeThroughModalLoop(Shell.HeadlessShell shell, float w, float h)
+        {
+            bool wasComposited = shell.Window.Composited;
+            shell.Window.Composited = true;
+            try
+            {
+                shell.Window.InModalLoop = true;
+                shell.Window.SizedInModalLoop = true;
+                shell.Resize(w, h);
+                KeepAlivePaint();
+                shell.Window.InModalLoop = false;
+                shell.Window.SizedInModalLoop = false;
+                KeepAlivePaint();
+                KeepAlivePaint();
+            }
+            finally
+            {
+                shell.Window.InModalLoop = false;
+                shell.Window.SizedInModalLoop = false;
+                shell.Window.Composited = wasComposited;
+            }
+        }
+
         static void WriteTierState(Utf8JsonWriter w, string name, in TierFacts t)
         {
             w.WriteStartObject(name);

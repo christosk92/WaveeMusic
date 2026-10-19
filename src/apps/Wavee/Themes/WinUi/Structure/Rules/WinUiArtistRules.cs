@@ -201,3 +201,49 @@ public static class WinUiArtistRules
     public const float TourGap = 2f;
     public const float TourChevron = 16f;
 }
+
+/// <summary>How the artist overview restacks when its column count changes (two columns <-> one: a window resize across the 1100 page edge, a pane
+/// docking at Standard). WinUI's reposition, a fade-through: the side column (the latest release, Discography, the upcoming card, the pick) fades out
+/// where it stands, Popular holds until it is gone and then resizes, the overview's height eases (the sections under it ride it), and the side column
+/// fades in at its new slot once Popular has made room. Nothing travels across other content, so no card ever passes over another card or text.</summary>
+public static class WinUiArtistMotion
+{
+    /// <summary>The restack's resize: the discovery grids' 250 ms column FLIP.</summary>
+    public const float RestackMs = WinUiDiscoveryMotion.ReflowMs;
+
+    /// <summary>The side column's fade-out where it stands (WinUI's 167 ms exit), and its fade-in at the new slot (250 ms).</summary>
+    public const float FadeOutMs = 167f, FadeInMs = 250f;
+
+    /// <summary>The share of <see cref="RestackMs"/> Popular has run before the side column starts fading in: Popular's eased edge is then inside the
+    /// column gap, so the incoming column never lies under its rows.</summary>
+    public const float FadeInLead = 0.6f;
+
+    /// <summary>The fade-in's start: the fade-out, then most of Popular's resize.</summary>
+    public const float FadeInDelayMs = FadeOutMs + RestackMs * FadeInLead;
+
+    /// <summary>A layout change of the side column outside a restack (a pane docking a frame before the column count follows it) holds this long before
+    /// it glides, so the frames between the width change and the restack show the column where it stood, not a step toward a slot it never takes.</summary>
+    public const float HoldMs = 64f;
+
+    /// <summary>The overview's height: laid out once at the new height, its PRESENTED extent eased (a flow reveal, which also clips the overview to it), so
+    /// the sections under it ride the difference.</summary>
+    public static readonly LayoutTransition OverviewHeight = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.FlowReveal, Axes: SizeAxes.Height);
+
+    /// <summary>The Popular column: it resizes (full width stacked, its weight's share beside the side column), re-laying the chart at the eased width every
+    /// tick, after the side column has faded out of the way (it never widens under the outgoing column).</summary>
+    public static readonly LayoutTransition Column = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Relayout, DelayMs: FadeOutMs);
+
+    /// <summary>The side column in one arrangement: a restack replaces it (keyed by the arrangement), so the outgoing one fades out where it stands and
+    /// the incoming one fades in at its slot once Popular has resized. Inside one arrangement its layout changes hold <see cref="HoldMs"/>, then glide.</summary>
+    public static readonly LayoutTransition Side = new(TransitionChannels.Position | TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(FadeInMs, Easing.SmoothOut), SizeMode.Reveal,
+        Enter: new EnterExit(Opacity: 0f, Active: true, DelayMs: FadeInDelayMs), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(FadeOutMs, Easing.Linear), DelayMs: HoldMs, ExitDelayMs: 0f);
+
+    /// <summary>A block inside the side column (the latest release, the upcoming card, the pick, the discography preview): it moves and resizes with the
+    /// column inside one arrangement, the size laid out at once and revealed.</summary>
+    public static readonly LayoutTransition Block = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Reveal);
+}
