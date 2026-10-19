@@ -76,22 +76,26 @@ internal static class WinUiSearch
 
             // The title bar's width (tracked): the tier's 520 / 640, or the middle at Small. A column, so the box is STRETCHED to it.
             float width = props.FieldWidth();
-            // Only a tier crossing that moves the field's own width (520 -> 640) eases it; a resize that moves the measured centre snaps with
-            // the clusters, so a wider box never overruns them for the motion's length. A re-render keeps a motion in flight.
-            float tierW = WinUiTiers.TitleBarOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers).SearchW;
-            var lastTierW = UseRef(tierW);
-            var lastWidth = UseRef(width);
-            var motion = UseRef<LayoutTransition?>(null);
-            if (lastTierW.Value != tierW) motion.Value = Design.Reduced ? null : WinUiFrameRules.FieldWidthMotion;
-            else if (lastWidth.Value != width) motion.Value = null;
-            lastTierW.Value = tierW;
-            lastWidth.Value = width;
+            // The width EASES (WinUiFrameRules.FieldWidthMotion), and the motion is declared on every render, never only on the render that
+            // changes the width: a node that gains its transition in the same commit as its new width is not captured for the FLIP and snaps
+            // (the 640 -> 520 narrowing did). A live resize (the modal size loop) snaps every projection, so the field still tracks the
+            // pointer with the clusters; a tier crossing, a maximize or a restore glides.
+            // The keyed sizer is wrapped in a HUGGING box: a component anchor mirrors its child's DECLARED width, so a reflow on the anchor's
+            // own child left the anchor (and the bar's centre island) at the final width and the field kept its final x while it eased
+            // (a 60-DIP sideways jump at the 1920 edge). Wrapped, every ancestor hugs the eased width and the field re-centres each frame.
             return new BoxEl
             {
-                Key = WinUiFrameRules.SearchFieldKey, Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width, Animate = motion.Value,
+                Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
-                Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = WinUiFrameRules.SearchFieldKey, Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
+                        Width = width, Animate = Design.Reduced ? null : WinUiFrameRules.FieldWidthMotion,
+                        Children = [Embed.Comp(() => new Omnibar(props, parts, 0f, AutoSuggestBoxSuggestionPresentation.Popup))],
+                    },
+                ],
             };
         }
     }

@@ -123,6 +123,15 @@ Reveal would leave the card at its final x on the first frame. The title bar's s
 a reflow anchored at its foot): the toolbar row stays glued to the page. Prove both with `trace` (keys `shell.nav.column`,
 `shell.content.card`, `shell.titlebar`, `winui.titlebar.toolbar`).
 
+**The title bar's crossings (W2c).** Nothing in the bar snaps at 1008 or 1920: the strip's tabs ease their width when the ladder rung changes
+(the engine's `TabStrip.FormWidthMotion`, a 167 ms reflow per cell, the selected plate following its cell, retargeted mid-flight); the search
+field's keyed sizer (`winui.titlebar.field`) eases 520 <-> 640 inside hugging ancestors, so it stays on the window's centre line every frame
+(`FieldWidthMotion`, declared on every render: a transition gained in the same commit as the new width is not captured and snaps); Small's ⋯
+lives in the bell's item in a slot (`winui.titlebar.more-slot`, `MoreSlotMotion`) that opens and closes its 44 and fades, so the bell glides.
+Prove them with `trace` on `tab#`, `selected-bg`, `winui.titlebar.field`, `winui.titlebar.more-slot`, `trail:bell` across 960 <-> 1440 and
+1880 <-> 1920. `crossing` lists the strip, `winui.titlebar.search-host` and `trail:bell` as "snapped" on the commit frame: their eased child
+carries the track, the move is that track's first step (46 of 80, 23 of 60, 17 of 44).
+
 **The title bar** (`WinUiTitleBar`, the engine's EP16 shell bar): tabs on, `Rows = 2` (the 40 Mica Alt strip with the captions over the 48
 toolbar); tabs off (`ShellCapabilities.ShowsTabStrip` false: WinUI's tabs option now sets `HiddenTabStrip`, the workspace kept, Ctrl+Tab
 cycling) one 48 bar ending in the captions, the Wavee mark after Forward from Small up. Per tier (`WinUiTitleBarLayout`): the strip's form
@@ -143,9 +152,10 @@ BreadcrumbBar over the title; Hero: the BreadcrumbBar alone), heights within the
 **Tests.** `Wavee.ShellTests\WinUiTierLayoutTests.Frame.cs` (the two rows, the clusters and the search per tier, the card's place, tabs off and
 back); the harness's Compact 40-DIP rule is live for the title bar (the identity chip, W8a's view, is excluded).
 
-**Open (engine / other lanes).** The strip's tab widths snap on a ladder change (engine `TabStrip.Form`); the search's 520 <-> 640 change at
-the 1920 edge snaps on widening and keeps its final x on narrowing (a reflow inside the bar's hugging centre island); the 1008 crossing moves
-the bell by the ⋯ slot's 44; the avatar chip (32) is under 40 at Compact (W8a's `Overlay.ProfileChip`); the play bar's height (Mini 64) is W4a's.
+**Open (engine / other lanes).** The avatar chip (32) is under 40 at Compact, and its name at the 1920 edge eases by the chip's own width
+state, not an engine track (33, 23, 14, 8 ... px a frame; `crossing` calls it snapped and the cluster left of it jumped): W8a's
+`Overlay.ProfileChip`. The 641 crossing re-mounts the Compact touch strip (its tab height is mount-time), so its tab widths do not ease there.
+Pin and Friends appear and vanish at 1008 at once (they move nothing: the cluster is end-anchored). The play bar's height (Mini 64) is W4a's.
 
 ## W2b: the nav pane
 

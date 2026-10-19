@@ -88,14 +88,21 @@ public static class WinUiFrameRules
     /// <summary>The Compact strip's tab and "+" height: the whole 40 row (the touch floor).</summary>
     public const float CompactTabH = 40f;
 
-    /// <summary>The search field's width across a tier crossing (520 -> 640, or the Small field following the window): a reflow, so the
-    /// centred field re-centres every tick.</summary>
-    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+    /// <summary>The search field's width across a tier crossing (520 -> 640), a maximize or a restore: a reflow of the field's sizer inside
+    /// hugging ancestors, so the window-centred field re-centres every tick (its x is layout's, never a FLIP of its own). A live resize snaps
+    /// it with every projection.</summary>
+    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
 
     /// <summary>The identity's width when the name joins the avatar at Huge: a reflow anchored at its end, so the bell, Friends and pin glide.</summary>
     public static readonly LayoutTransition IdentityWidthMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Width);
+
+    /// <summary>Small's ⋯ slot after the bell: it opens and closes its width (the 4 gap and the 40 button) through real layout and fades, so the
+    /// bell and everything left of it glide 44 across the 1008 edge (W-Tiers: "Nothing snaps").</summary>
+    public static readonly LayoutTransition MoreSlotMotion = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width,
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
 
     /// <summary>The toolbar clusters: 4 between buttons, 4 before the first, 8 after the last.</summary>
     public const float ToolGap = 4f, LeadInset = 4f, TrailInset = 8f;
@@ -238,6 +245,6 @@ public static class WinUiFrameRules
     /// <summary>The title bar's parts: the tab strip, the toolbar's buttons, the search, the mark.</summary>
     public const string StripKey = "winui.titlebar.strip", BackKey = "winui.titlebar.back", ForwardKey = "winui.titlebar.forward",
         SearchFieldKey = "winui.titlebar.field", SearchButtonKey = "winui.titlebar.search-button", PinKey = "winui.titlebar.pin",
-        FriendsKey = "winui.titlebar.friends", BellKey = "winui.titlebar.bell", MoreKey = "winui.titlebar.more",
+        FriendsKey = "winui.titlebar.friends", BellKey = "winui.titlebar.bell", MoreKey = "winui.titlebar.more", MoreSlotKey = "winui.titlebar.more-slot",
         AvatarKey = "winui.titlebar.avatar", MarkKey = "winui.titlebar.mark", ToolbarKey = "winui.titlebar.toolbar", TabRowKey = "winui.titlebar.tabs";
 }
