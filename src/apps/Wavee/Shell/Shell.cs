@@ -1881,6 +1881,20 @@ public static partial class Shell
         /// focus (Space is not an accelerator — the dispatcher only matches Ctrl/Alt or F-keys).</summary>
         public static bool SpaceTogglesPlayback(bool handled, bool textEditorFocused) => !handled && !textEditorFocused;
 
+        /// <summary>Ctrl+Tab's step through the workspace (P6 WK): +1 for Ctrl+Tab, -1 for Ctrl+Shift+Tab, 0 for any other chord or where the
+        /// structure does not ask for the cycle (<c>ShellCapabilities.TabCycleChord</c>; the chord then moves focus, as it always did). Tab is
+        /// not an accelerator (the dispatcher moves focus with it after offering it to the focused chain), so the frame's key handler takes it.</summary>
+        public static int TabCycleDelta(int keyCode, FluentGpu.Foundation.KeyModifiers mods, Theming.ShellCapabilities caps)
+        {
+            if (keyCode != FluentGpu.Foundation.Keys.Tab || !caps.TabCycleChord) return 0;
+            return mods switch
+            {
+                FluentGpu.Foundation.KeyModifiers.Ctrl => 1,
+                FluentGpu.Foundation.KeyModifiers.Ctrl | FluentGpu.Foundation.KeyModifiers.Shift => -1,
+                _ => 0,
+            };
+        }
+
         /// <summary>What F11 does. The fullscreen stage closes first if it is up; otherwise video fullscreen exits / enters
         /// as before; and with no video fullscreen and none to enter, F11 OPENS the stage (an empty stage is allowed — the
         /// rail's ⛶ does the same). <see cref="None"/> is the neutral zero value; <see cref="F11"/> never returns it.</summary>

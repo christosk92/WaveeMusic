@@ -60,6 +60,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// A structure that declares nothing keeps the key's own default.</summary>
     public LibraryTierPolicy LibraryTiers { get; init; } = LibraryTierPolicy.Default;
 
+    /// <summary>How the structure groups the Settings page's twelve areas into tabs (P6 WK, owner Q3; <see cref="SettingsGrouping"/>). A structure that declares
+    /// nothing draws one tab per area, as the page shipped.</summary>
+    public SettingsGrouping Settings { get; init; } = SettingsGrouping.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -77,6 +81,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (DetailTiers is null) problems.Add("DetailTiers is missing");
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
         if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
+        if (Settings is null) problems.Add("Settings is missing"); else problems.AddRange(Settings.Validate());
         return problems;
     }
 }
@@ -95,6 +100,23 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
 {
     /// <summary>Every capability on and no pin limit: what the shell is today (Classic).</summary>
     public static ShellCapabilities Unrestricted { get; } = new(true, true, true, true, true, int.MaxValue);
+
+    /// <summary>The structure offers tabs (<see cref="Tabs"/> true) but draws NO STRIP (P6 WK, the WinUI board's "tabs Off", owner Q1): the
+    /// workspace stays whole and live, the title row prices no tab island, Ctrl+T and the "+" open a page in the BACKGROUND (the page on
+    /// screen stays), and Ctrl+Tab cycles (<see cref="CyclesTabs"/> is implied). Turning it back off shows the strip with every tab in place.
+    /// Ignored without <see cref="Tabs"/> (that is the collapsed workspace of P5 ZK). Default false: the strip is drawn. Appended (P6 WK).</summary>
+    public bool HiddenTabStrip { get; init; }
+
+    /// <summary>Ctrl+Tab / Ctrl+Shift+Tab activate the next / previous tab of the workspace (P6 WK; the WinUI board: "Ctrl+Tab still cycles"),
+    /// while focus is inside the frame. Default false: the chord moves focus, as it always did. Appended (P6 WK).</summary>
+    public bool CyclesTabs { get; init; }
+
+    /// <summary>The title row draws the tab strip: tabs are offered and the strip is not hidden.</summary>
+    public bool ShowsTabStrip => Tabs && !HiddenTabStrip;
+
+    /// <summary>Ctrl+Tab cycles the workspace: tabs are offered and the structure asks for the chord, or hides the strip (the chord is then the
+    /// only way to reach a background tab).</summary>
+    public bool TabCycleChord => Tabs && (CyclesTabs || HiddenTabStrip);
 }
 
 /// <summary>The style's metrics: the row heights, the gutters and the control height a structure lays out with. A value

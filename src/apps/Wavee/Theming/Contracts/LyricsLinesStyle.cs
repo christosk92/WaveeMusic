@@ -52,4 +52,10 @@ public sealed class LyricsLinesStyle
     /// because the app is offline (<c>LyricsState.Offline</c>). The action retries the fetch. Null = the core falls back to
     /// <see cref="Message"/> with the offline sentence (a 1.0 style keeps working).</summary>
     public Func<ILyricsHost, Action, Element>? Offline { get; init; }
+
+    /// <summary>P6 WK (optional): the fullscreen stage's lyrics DEPTH-BLUR their far lines too (the WinUI board's LargeArt, NQ5), at the user's blur
+    /// strength through the stage's flatter ladder (<c>Lyrics.Fx.StageSigma</c>; <c>Lyrics.BlurPolicy.ResolveFor(setting, onStage, styleBlur)</c>).
+    /// Default false: the stage never depth-blurs (its depth cue is the scrim and the pill, and the per-line blur layers are its largest per-frame
+    /// cost); the rail and the reader follow the setting either way.</summary>
+    public bool StageDepthBlur { get; init; }
 }

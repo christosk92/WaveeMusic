@@ -96,6 +96,26 @@ public sealed record AspectThresholds(TierLadder Width, TierLadder Height, TierL
     }
 }
 
+/// <summary>The stage's visualizer layouts as a set (P6 WK): which of <c>Stage.VizLayout</c> a window tier may draw. Bit <c>1 &lt;&lt; (int)layout</c>.</summary>
+[Flags]
+public enum StageLayouts : byte
+{
+    /// <summary>The face full-bleed with the now-playing card (always allowed: it is every layout's fallback).</summary>
+    Card = 1 << 0,
+
+    /// <summary>The cover beside the lyrics.</summary>
+    LargeArt = 1 << 1,
+
+    /// <summary>A ring around the cover.</summary>
+    Centered = 1 << 2,
+
+    /// <summary>The artist's header photo full-bleed.</summary>
+    Artist = 1 << 3,
+
+    /// <summary>Every layout (the shell before themes).</summary>
+    All = Card | LargeArt | Centered | Artist,
+}
+
 /// <summary>What the stage's allocator budgets from in one WINDOW tier (the stage fills the window).</summary>
 /// <param name="TransportH">The transport card's height on the wide classes (Desktop, Ultrawide, Portrait); the Compact class keeps its
 /// own short card.</param>
@@ -127,6 +147,11 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
     /// stored flag alone (C-Stage-Compact draws none). Appended (contract 1.22).</summary>
     public bool GalleryOnDemand { get; init; }
 
+    /// <summary>The visualizer layouts this window tier may draw (P6 WK; the WinUI board's W-Tiers: Compact forces Card, Small allows Card or Large art).
+    /// A stored layout outside the set draws its nearest allowed one: Centered and Artist fall back to Large art, Large art to Card
+    /// (<c>Stage.LayoutRules.Effective</c>). The stage's own Compact class draws Card whatever this says. Default: every layout. Appended (P6 WK).</summary>
+    public StageLayouts Layouts { get; init; } = StageLayouts.All;
+
     /// <summary>Everything wrong with the metrics of <paramref name="tier"/>.</summary>
     public IReadOnlyList<string> Validate(string tier)
     {
@@ -137,6 +162,7 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
         if (!float.IsFinite(LyricsTypeMax) || LyricsTypeMax < LyricsTypeMin) problems.Add($"Stage.{tier}.LyricsTypeMax must not be below LyricsTypeMin");
         if (!float.IsFinite(UpNextW) || UpNextW < 0f) problems.Add($"Stage.{tier}.UpNextW must be zero or more (was {UpNextW})");
         if (!float.IsFinite(ArtBarsH) || ArtBarsH < 0f) problems.Add($"Stage.{tier}.ArtBarsH must be zero or more (was {ArtBarsH})");
+        if ((Layouts & StageLayouts.Card) == 0) problems.Add($"Stage.{tier}.Layouts must allow Card (every layout's fallback)");
         return problems;
     }
 }

@@ -14,7 +14,7 @@
 // line, the loading bars, the unsynced block, the synced list and its rows are the `StyleKeys.LyricsLines` style
 // (`Themes\Classic\Structure\Lists\ClassicLyricsLines.cs`). `ViewCore` below is the core host: it keeps the document slot, the clock, the
 // follow and resync machine, the cascade, the depth-of-field ramp, the word wipe and the nodes they write, and is the `ILyricsHost`
-// (`Lyrics.Host.UI.cs`) the template and the rows read. The blur strength (`Prefs.BlurStrength(OnStage)`: always 0 on the stage) is read here.
+// (`Lyrics.Host.UI.cs`) the template and the rows read. The blur strength (`Prefs.BlurStrength(OnStage, style)`: 0 on the stage unless the lines style asks for `StageDepthBlur`) is read here.
 //
 // THE READING SURFACE, and nothing that decides. One component (`ViewCore`) renders BOTH surfaces — the 340-DIP rail
 // panel (`View()`) and the immersive stage's reading column (`StagePane()`); the only differences are `large` (type,
@@ -415,7 +415,8 @@ public static partial class Lyrics
             // Writing `Secondary`/`HaloScale` here is the 0.2.9 shape on purpose: this render does not READ either, and
             // the rows that do must re-render IN THIS flush so the re-arranged extents are what the next step latches on.
             int secondary = M.SyncSecondLine();
-            int strength = Prefs.BlurStrength(OnStage);
+            // The structure's lines style may ask for the depth blur on the stage too (P6 WK, `LyricsLinesStyle.StageDepthBlur`; bound above).
+            int strength = Prefs.BlurStrength(OnStage, _linesStyle?.StageDepthBlur == true);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (newScale != _dofScale)

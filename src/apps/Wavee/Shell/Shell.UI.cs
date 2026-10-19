@@ -530,7 +530,7 @@ public static partial class Shell
                 // THE CAPABILITIES (P5 ZK): no forward button drops Forward from the budget; no tabs drops the whole tab island.
                 var caps = ShellCaps.Tracked;
                 var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value),
-                    ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps), caps.Tabs);
+                    ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps), caps.ShowsTabStrip);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
@@ -744,7 +744,14 @@ public static partial class Shell
     /// dispatcher only matches Ctrl/Alt/F-keys) and NOT KeyPreview (a single slot the overlay host re-assigns).</summary>
     static void OnShellKey(KeyEventArgs e)
     {
-        if (e.Handled || e.Mods != KeyModifiers.None) return;
+        if (e.Handled) return;
+        // Ctrl+Tab / Ctrl+Shift+Tab under a structure that cycles the workspace (P6 WK); a one-tab workspace lets the chord move focus.
+        if (FrameRules.TabCycleDelta(e.KeyCode, e.Mods, ShellCaps.Now) is var step and not 0 && CycleTab(step))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (e.Mods != KeyModifiers.None) return;
         if (e.KeyCode == Keys.Escape)
         {
             switch (FrameRules.Escape(false, PaletteOpen.Peek(), Ui.ImmersiveLyrics.Peek(),

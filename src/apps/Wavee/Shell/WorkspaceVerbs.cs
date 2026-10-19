@@ -54,11 +54,14 @@ public sealed class WorkspaceVerbs : IChromeVerbs
 
     public void ActivateTab(int index) => Shell.ActivateTab(index);
     public void ActivateTabById(int id) => Shell.ActivateTabById(id);
-    /// <summary>The strip's "+" (a new tab on <paramref name="route"/>). Refused under a structure without tabs (P5 ZK).</summary>
+    /// <summary>The strip's "+" (a new tab on <paramref name="route"/>). Refused under a structure without tabs (P5 ZK); in the background under
+    /// a hidden strip (P6 WK: a title bar without a strip may still offer the verb).</summary>
     public void OpenTab(in Shell.Route route)
     {
-        if (!ShellCaps.Now.Tabs) return;
-        Shell.OpenTab(route);
+        var caps = ShellCaps.Now;
+        if (!caps.Tabs) return;
+        if (caps.HiddenTabStrip) Shell.OpenTabInBackground(route);
+        else Shell.OpenTab(route);
     }
     public void CloseTab(int index) => Shell.CloseTab(index);
     public void CloseTabById(int id) => Shell.CloseTabById(id);

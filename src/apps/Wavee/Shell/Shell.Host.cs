@@ -1062,6 +1062,19 @@ public static partial class Shell
     public static void ActivateTab(int index) => Apply(Tabs.Activate(index));
     public static void ActivateTabById(int id) => Apply(Tabs.ActivateById(id));
     public static void OpenTab(in Route route) => Apply(Tabs.Open(route));
+
+    /// <summary>Open <paramref name="route"/> in a new tab BEHIND the active one (P6 WK: a structure that hides the strip,
+    /// <c>ShellCapabilities.HiddenTabStrip</c>): the workspace grows, the page on screen stays.</summary>
+    public static void OpenTabInBackground(in Route route) => Apply(Tabs.OpenInBackground(route));
+
+    /// <summary>Ctrl+Tab (+1) / Ctrl+Shift+Tab (-1): activate the neighbouring tab, wrapping (P6 WK). False when nothing moved (one tab).</summary>
+    public static bool CycleTab(int delta)
+    {
+        var result = Tabs.Cycle(delta);
+        if (result.Intent == TabNavIntent.None) return false;
+        Apply(result);
+        return true;
+    }
     public static void CloseTab(int index) => Apply(Tabs.Close(index));
     public static void CloseTabById(int id) => Apply(Tabs.CloseById(id));
     public static void SetTabPinned(int id, bool pinned) => Apply(Tabs.SetPinned(id, pinned));

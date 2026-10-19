@@ -223,6 +223,9 @@ public static partial class Stage
         /// <summary>The transport card's gutter to the window's edges (the window tier's: 24, 16 on a Compact or Small window).</summary>
         public float TransportInset => M.TransportInset;
 
+        /// <summary>The visualizer layouts the window tier may draw (P6 WK, <see cref="Theming.StageTierMetrics.Layouts"/>; every layout on a default layout).</summary>
+        public Theming.StageLayouts AllowedLayouts => M.Layouts;
+
         // ── the window tier's regions: the gallery to the foot, the Up next column, the bars under the cover, the identity card ─────
 
         /// <summary>The docked gallery's gap to the stage's foot: the transport card's gutter where the tier runs it to the foot (C-Stage-Huge),

@@ -162,11 +162,14 @@ public sealed class FrameVerbs : IFrameVerbs
 
     public void GoBack() => Shell.GoBack();
     public void GoForward() => Shell.GoForward();
-    /// <summary>Ctrl+T. Refused under a structure without tabs (<c>ShellCapabilities.Tabs</c> false, P5 ZK): there is no tab to open.</summary>
+    /// <summary>Ctrl+T. Refused under a structure without tabs (<c>ShellCapabilities.Tabs</c> false, P5 ZK): there is no tab to open. Under a
+    /// hidden strip (<c>ShellCapabilities.HiddenTabStrip</c>, P6 WK) the new page opens in the background and the page on screen stays.</summary>
     public void NewTab()
     {
-        if (!ShellCaps.Now.Tabs) return;
-        Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
+        var caps = ShellCaps.Now;
+        if (!caps.Tabs) return;
+        if (caps.HiddenTabStrip) Shell.OpenTabInBackground(new Shell.Route(Shell.RouteKind.Home));
+        else Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
     }
     public void TogglePalette() => Shell.PaletteOpen.Value = !Shell.PaletteOpen.Peek();
     public void FocusSearch() => Shell.FocusSearch();

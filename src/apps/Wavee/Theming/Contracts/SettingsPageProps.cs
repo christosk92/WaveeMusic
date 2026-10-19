@@ -21,6 +21,16 @@ public sealed record SettingsPageProps
     /// <see cref="Settings.Tab"/> index. A theme still written against the seven-tab pivot reads this and keeps working; the page itself is the area.</summary>
     public int Tab => (int)Settings.FirstTab((Settings.Area)Math.Clamp(Area, 0, Settings.AreaSlugs.Length - 1));
 
+    /// <summary>The structure's grouping of the areas into tabs (P6 WK, <c>ThemePolicies.Settings</c>): <see cref="SettingsGrouping.Default"/>, one tab per area,
+    /// where the structure declares none. A pivot of tabs draws <see cref="SettingsGrouping.Tabs"/> and each tab's sections (<see cref="SettingsGrouping.PartsOf"/>).</summary>
+    public SettingsGrouping Grouping { get; init; } = SettingsGrouping.Default;
+
+    /// <summary>The tab the open area lives in (P6 WK): <see cref="SettingsGrouping.GroupOf"/> of <see cref="Area"/>. Equal to <see cref="Area"/> under the default grouping.</summary>
+    public int Group { get; init; }
+
+    /// <summary>Show tab <c>i</c> of <see cref="Grouping"/> (P6 WK): the area cell moves to the tab's first home area. A pivot over the areas keeps using <see cref="AreaCell"/>.</summary>
+    public Action<int> OpenGroup { get; init; } = static _ => { };
+
     /// <summary>The page epoch plus the two foreign epochs the Appearance area reads (the player bar's and the fullscreen stage's). It only grows.</summary>
     public required int Revision { get; init; }
 

@@ -92,6 +92,7 @@ internal static class RailWiring
     internal static PanelView ReadDockedPane(int index)
     {
         var host = Shell.PanelHost.Shared;
+        var pane = PaneAt(index);
         return new PanelView
         {
             Open = host.PaneOpen(index),
@@ -99,7 +100,8 @@ internal static class RailWiring
             Floats = false,
             Placement = PanelPlacement.Dock,
             FullHeight = ShellPolicy.Tracked.Panel.FullHeight,
-            Body = PaneAt(index).Mode,
+            Body = host.PaneBody(index, pane),   // its tab group's pick (P6 WK); the one body where it has no tabs
+            Tabs = pane.HasTabs ? pane.Bodies : default,
             DockedHere = false,
             Pinned = PanelPinned.Art,
             UnmountWhenClosed = true,
@@ -419,6 +421,7 @@ internal static class RailWiring
         BodyHeightChanged = static _ => { },
         Close = static () => Shell.PanelHost.Shared.CloseQueuePane(),
         ShowMode = null,
+        ShowPaneTab = mode => Shell.PanelHost.Shared.ShowPaneTab(index, mode),
         DockedCard = static () => Shell.NoDockedCard(),
         Transport = null,
         VideoTitle = null,

@@ -28,7 +28,23 @@ namespace Wavee.Theming;
 /// <param name="Mode">The pane's one body.</param>
 /// <param name="Side">Right of the primary (<see cref="PaneSide.After"/>, Classic's queue) or left of it (<see cref="PaneSide.Before"/>,
 /// Zune's queue).</param>
-public readonly record struct DockedPane(PanelMode Mode, PaneSide Side = PaneSide.After);
+public readonly record struct DockedPane(PanelMode Mode, PaneSide Side = PaneSide.After)
+{
+    /// <summary>The other bodies this pane offers as TABS beside <see cref="Mode"/>, its first tab (P6 WK; the WinUI board's Huge: Queue + Now playing |
+    /// Lyrics + Friends, each docked pane its own tab group). Empty (the default): the pane shows <see cref="Mode"/> alone, as before. Only a LINKED
+    /// arrangement may give a pane tabs. Appended (P6 WK).</summary>
+    public PanelModeSet Tabs { get; init; }
+
+    /// <summary>Every body the pane may show: <see cref="Mode"/> and its <see cref="Tabs"/>.</summary>
+    public PanelModeSet Bodies => Tabs.With(Mode);
+
+    /// <summary>The pane offers more than one body (a tab group of its own).</summary>
+    public bool HasTabs => Bodies.Bits != default(PanelModeSet).With(Mode).Bits;
+
+    /// <summary>The body the pane shows for the tab the user picked (<paramref name="chosen"/>, a <see cref="PanelMode"/> value, or -1 for none): the
+    /// pick where the pane offers it, else <see cref="Mode"/>.</summary>
+    public PanelMode BodyFor(int chosen) => chosen >= 0 && chosen < 8 && Bodies.Contains((PanelMode)chosen) ? (PanelMode)chosen : Mode;
+}
 
 /// <summary>The panes a window tier docks beside the primary panel (contract 1.29).</summary>
 /// <param name="Second">The second pane (null: none).</param>
@@ -51,7 +67,10 @@ public readonly record struct PanelArrangement(DockedPane? Second = null, Docked
     public DockedPane? At(int index) => index switch { 0 => Second, 1 => Third, _ => null };
 
     /// <summary>A docked pane shows <paramref name="mode"/>.</summary>
-    public bool Holds(PanelMode mode) => (Second is { } s && s.Mode == mode) || (Third is { } t && t.Mode == mode);
+    public bool Holds(PanelMode mode) => (Second is { } s && s.Bodies.Contains(mode)) || (Third is { } t && t.Bodies.Contains(mode));
+
+    /// <summary>The index of the docked pane that offers <paramref name="mode"/> (0 the second pane, 1 the third), or -1 (P6 WK).</summary>
+    public int IndexHolding(PanelMode mode) => Second is { } s && s.Bodies.Contains(mode) ? 0 : Third is { } t && t.Bodies.Contains(mode) ? 1 : -1;
 
     /// <summary>The bodies the docked panes show.</summary>
     public PanelModeSet Modes
@@ -59,8 +78,8 @@ public readonly record struct PanelArrangement(DockedPane? Second = null, Docked
         get
         {
             var set = default(PanelModeSet);
-            if (Second is { } s) set = set.With(s.Mode);
-            if (Third is { } t) set = set.With(t.Mode);
+            if (Second is { } s) set = new PanelModeSet((byte)(set.Bits | s.Bodies.Bits));
+            if (Third is { } t) set = new PanelModeSet((byte)(set.Bits | t.Bodies.Bits));
             return set;
         }
     }
@@ -226,11 +245,11 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
     private static void ValidatePanes(PanelArrangement panes, int i, List<string> problems)
     {
         if (panes.Second is null && panes.Third is not null) problems.Add($"Panel.Tiers[{i}].Panes has a third pane but no second");
-        if (panes.Second is { } a && panes.Third is { } b && a.Mode == b.Mode)
-            problems.Add($"Panel.Tiers[{i}].Panes docks {a.Mode} twice");
+        if (panes.Second is { } a && panes.Third is { } b && (a.Bodies.Bits & b.Bodies.Bits) != 0)
+            problems.Add($"Panel.Tiers[{i}].Panes docks a body twice ({a.Mode} | {b.Mode} and their tabs)");
         if (panes.Holds(PanelMode.Video)) problems.Add($"Panel.Tiers[{i}].Panes docks the video beside the primary (its card lives in the primary)");
         if (panes.Count == 0) return;
-        if (!panes.Linked && (panes.Count > 1 || panes.Second is not { Mode: PanelMode.Queue }))
+        if (!panes.Linked && (panes.Count > 1 || panes.Second is not { Mode: PanelMode.Queue, HasTabs: false }))
             problems.Add($"Panel.Tiers[{i}].Panes: an independent docked pane is the queue alone; link the panes to dock others");
         if (panes.Linked && panes.Holds(panes.Fallback))
             problems.Add($"Panel.Tiers[{i}].Panes' fallback {panes.Fallback} is a docked pane's body");
