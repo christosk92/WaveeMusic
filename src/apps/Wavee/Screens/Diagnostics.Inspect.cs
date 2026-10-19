@@ -393,7 +393,8 @@ public static partial class Diagnostics
                     {
                         float w0 = a.Float("w", 0f), h0 = a.Float("h", 0f);
                         if (!(w0 >= 1f && h0 >= 1f)) return Inspect.Reply.Fail(id, name, "resize wants w and h (DIP)");
-                        shell.Resize(w0, h0);
+                        if (a.Bool("loop", false)) ResizeThroughModalLoop(shell, w0, h0);
+                        else shell.Resize(w0, h0);
                         return Settled(id, name, a);
                     }
                 case Inspect.Verb.Frames:
