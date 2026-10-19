@@ -24,7 +24,12 @@ namespace Wavee.Theming.Contracts;
 /// <param name="SecondLineActive">The chosen second layer is the one shown (the toggle's accent arm).</param>
 /// <param name="SecondLineTip">The toggle's tooltip ("" without a second layer).</param>
 /// <param name="ExpandTip">The expand button's tooltip.</param>
-public readonly record struct LyricsHeaderFacts(string Title, bool HasSecondLine, bool SecondLineActive, string SecondLineTip, string ExpandTip);
+/// <param name="TrackTitle">P6 fix (optional): the playing track's or episode's title ("" when nothing plays). A header that names the song
+/// (WinUI's W-PaneLyrics) reads it; the others keep <paramref name="Title"/>.</param>
+/// <param name="SyncLine">P6 fix (optional): how the document on screen is timed ("Synced · word by word", "Synced · line by line", "Not
+/// synced"; "" while there is no document).</param>
+public readonly record struct LyricsHeaderFacts(string Title, bool HasSecondLine, bool SecondLineActive, string SecondLineTip, string ExpandTip,
+    string TrackTitle = "", string SyncLine = "");
 
 /// <summary>The AI sparkle's verdict for one render (<c>AiLyrics.Rules.Header</c> over the status, the track and the preference).</summary>
 /// <param name="Visible">The feature can run here: the sparkle shows (hidden, it is a zero-extent box).</param>

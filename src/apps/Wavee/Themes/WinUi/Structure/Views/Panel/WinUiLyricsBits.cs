@@ -42,12 +42,20 @@ internal static class WinUiLyricsHeader
         var tiers = ctx.Tier();
         float h = P.MetaRow(tiers.Policy is null ? WidthTier.Standard : tiers.Window);
         var facts = props.Read();
+        // W-PaneLyrics: the song's name (Body Strong) over how it is timed (Caption, secondary); "Lyrics" / "Transcript" while no song names it.
+        var name = new TextEl(facts.TrackTitle is { Length: > 0 } song ? song : facts.Title)
+        {
+            Size = P.HeaderTitleSize, LineHeight = P.HeaderTitleLine, Weight = P.HeaderTitleWeight, Color = Tok.TextPrimary,
+            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
         var kids = new List<Element>(5)
         {
-            new TextEl(facts.Title)
+            new BoxEl
             {
-                Size = P.HeaderTitleSize, LineHeight = P.HeaderTitleLine, Weight = P.HeaderTitleWeight, Color = Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
+                Key = "lyrics-header-title", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, ClipToBounds = true,
+                Children = facts.SyncLine is { Length: > 0 } sync
+                    ? [name, new TextEl(sync) { Size = P.HeaderSyncSize, LineHeight = P.HeaderSyncLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
+                    : [name],
             },
         };
         if (facts.HasSecondLine)
@@ -74,7 +82,7 @@ internal static class WinUiLyricsHeader
             facts.ExpandTip) with { Key = "lyrics-expand" });
         return new BoxEl
         {
-            Key = Key, Height = h + P.HeaderRowExtra, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.MetaGap, Padding = P.Inset,
+            Key = Key, Height = h + P.HeaderRowExtra, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.MetaGap, Padding = P.HeaderPadding,
             ClipToBounds = true, Children = kids.ToArray(),
         };
     }

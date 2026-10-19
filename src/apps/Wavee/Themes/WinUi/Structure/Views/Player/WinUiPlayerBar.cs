@@ -126,7 +126,9 @@ internal static partial class WinUiPlayerBar
                     Key = PL.BarKey, Direction = 1, ZStack = true, Height = WinUiPlayerTiers.HeightOf(window), Shrink = 0f, Fill = R.Layer.PlayerBar,
                     Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                     OnRealized = node => barNode.Value = node,
-                    OnClick = () => input.FocusNode?.Invoke(barNode.Value, true),
+                    // A pointer click takes the bar's key map without drawing its focus ring round the whole bar (the board's bar has only
+                    // its top divider); Tab still lands on it with the keyboard focus visual.
+                    OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
                     OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                     Children =
                     [

@@ -175,7 +175,25 @@ internal static class RailWiring
         string secondTip = second ? Prefs.Lyrics.Tooltip(secondary) : "";
         bool secondActive = second && (available & Prefs.Lyrics.BitFor(secondary)) != 0;
         string expandTip = Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics);
-        return new LyricsHeaderFacts(title, second, secondActive, secondTip, expandTip);
+        // The song's name and how its document is timed (P6 fix: WinUI's header names the song over "Synced · word by word"). The store's
+        // publication counter subscribes the header to the document's arrival and upgrades.
+        var track = Rail.NowTrack();
+        string trackTitle = track.IsValid ? track.Title : "";
+        _ = Lyrics.Store.Changed.Value;
+        string syncLine = SyncLineOf(track.IsValid ? Lyrics.Store.Doc(track) : null);
+        return new LyricsHeaderFacts(title, second, secondActive, secondTip, expandTip, trackTitle, syncLine);
+    }
+
+    /// <summary>How a document is timed, in the header's words ("" without one).</summary>
+    internal static string SyncLineOf(Lyrics.Doc? doc)
+    {
+        if (doc is null || doc.Lines.Count == 0) return "";
+        return doc.Sync switch
+        {
+            Lyrics.SyncKind.Syllable => Loc.Get(Strings.Player.LyricsSyncedWords),
+            Lyrics.SyncKind.Line => Loc.Get(Strings.Player.LyricsSyncedLines),
+            _ => Loc.Get(Strings.Player.LyricsNotSynced),
+        };
     }
 
     static PanelLyricsHeaderProps BuildLyricsHeader() => new()

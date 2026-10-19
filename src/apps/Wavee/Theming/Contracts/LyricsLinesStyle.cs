@@ -58,4 +58,15 @@ public sealed class LyricsLinesStyle
     /// Default false: the stage never depth-blurs (its depth cue is the scrim and the pill, and the per-line blur layers are its largest per-frame
     /// cost); the rail and the reader follow the setting either way.</summary>
     public bool StageDepthBlur { get; init; }
+
+    /// <summary>P6 fix (optional): the side pane's (the rail's) own reading form. Null = the rail keeps the core's focal band and follows the
+    /// user's depth blur (Classic, Zune). Set, the rail follows the active line at <see cref="LyricsRailForm.Band"/> and, when
+    /// <see cref="LyricsRailForm.Crisp"/>, never depth-blurs; the style's <see cref="Lines"/> draws the pane's rows when
+    /// <see cref="ILyricsHost.OnRail"/> says so. The stage and the podcast reader are untouched.</summary>
+    public LyricsRailForm? Rail { get; init; }
 }
+
+/// <summary>The side pane's reading form (<see cref="LyricsLinesStyle.Rail"/>).</summary>
+/// <param name="Band">Where the active line's content centres, as a fraction of the pane's lyrics viewport (the core clamps it to 0.05..0.95).</param>
+/// <param name="Crisp">No depth blur on the pane (its distance cue is the ink), whatever the blur setting says.</param>
+public sealed record LyricsRailForm(float Band, bool Crisp = true);
