@@ -12,6 +12,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
@@ -32,7 +33,8 @@ internal static class WinUiStagePane
         var sc = props.Stage;
         var L = sc.Layout.Value;
         var k = sc.Look.Value;
-        var pane = L.PaneRect(in k);
+        var t = WinUiStageTiers.StageOf(ctx.Tier());
+        var pane = WinUiStageGeometry.BoardLargeArt(in L, in k, t) ? WinUiStageGeometry.LargeArtPaneRect(in L, in k, t) : L.PaneRect(in k);
         return new BoxEl
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, ClipToBounds = true,

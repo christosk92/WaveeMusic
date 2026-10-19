@@ -97,6 +97,9 @@ internal static class WinUiStageGeometry
     /// <summary>Huge's source column: "Playing from" at 14 / 20 and its gap to the chips.</summary>
     public const float SourceBig = 14f, SourceBigLine = 20f, SourceGap = 6f;
 
+    /// <summary>The play disc's glyphs: Segoe Fluent Icons' SOLID pair (W-Stage, W-Lyrics draw the filled triangle and the filled bars).</summary>
+    public const string PlaySolid = "", PauseSolid = "";
+
     /// <summary>The seek row's times: 12 / 16.</summary>
     public const float TimeSize = 12f;
 
@@ -116,6 +119,41 @@ internal static class WinUiStageGeometry
 
     /// <summary>The Compact stack: the times' row under the seek (12 / 16), the foot's "from ..." (12 / 16).</summary>
     public const float StackTimeLine = 16f, StackGap = 4f;
+
+    // ── Large art beside the lyrics (W-Lyrics) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>W-Lyrics' Large art: the 440 cover (never past 34 % of the stage's width or the band's height) and the lyrics column 80 to its
+    /// right, both centred in the band between the bar and the transport card's gutter, the cover alone (the card carries the titles).</summary>
+    public const float LargeArtCover = 440f, LargeArtWFrac = 0.34f, LargeArtGap = 80f;
+
+    /// <summary>The look is W-Lyrics: Lyrics mode or the Large art layout on a landscape stage whose tier draws no titles under the cover (Standard),
+    /// with no ring around it. The allocator budgets the cover with a title block under it, which sits the cover high; this look centres the cover
+    /// alone, the lyrics column beside it.</summary>
+    public static bool BoardLargeArt(in Stage.Layout l, in Stage.Look k, WinUiStageLayout t)
+        => (k.Eff == Stage.VizLayout.LargeArt || (!k.IsLayout && k.Mode == Stage.Mode.Lyrics))
+           && l.Aspect is Stage.Aspect.Desktop or Stage.Aspect.Ultrawide && !t.HeroTitles && k.Spectrum != Stage.SpectrumStyle.Ring;
+
+    /// <summary>The band the cover and the lyrics column centre in: under the tier's bar, above the transport card's gutter (or the strip).</summary>
+    static (float Top, float H) LargeArtBand(in Stage.Layout l, in Stage.Look k, WinUiStageLayout t)
+        => (t.BarH, MathF.Max(0f, l.ContentBottom(in k) - t.BarH));
+
+    /// <summary>W-Lyrics' cover: at the look's margin, centred in the band.</summary>
+    public static (float X, float Y, float Size) LargeArtCoverRect(in Stage.Layout l, in Stage.Look k, WinUiStageLayout t)
+    {
+        var band = LargeArtBand(in l, in k, t);
+        float size = Stage.Layout.Q4(MathF.Min(MathF.Min(LargeArtCover, LargeArtWFrac * l.W), band.H));
+        return (l.PadXFor(in k), band.Top + (band.H - size) * 0.5f, size);
+    }
+
+    /// <summary>W-Lyrics' lyrics column: the band's height, its text <see cref="LargeArtGap"/> right of the cover (the rows' own gutter inside it),
+    /// to the look's margin.</summary>
+    public static (float X, float Y, float W, float H) LargeArtPaneRect(in Stage.Layout l, in Stage.Look k, WinUiStageLayout t)
+    {
+        var band = LargeArtBand(in l, in k, t);
+        var cover = LargeArtCoverRect(in l, in k, t);
+        float x = cover.X + cover.Size + LargeArtGap - WinUiLyricsRules.StageSidePad;
+        return (x, band.Top, MathF.Max(0f, l.W - x - l.PadXFor(in k)), band.H);
+    }
 
     // ── the now-playing card ─────────────────────────────────────────────────────────────────────────────────────────
 

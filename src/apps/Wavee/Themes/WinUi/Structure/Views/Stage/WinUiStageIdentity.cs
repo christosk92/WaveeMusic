@@ -53,7 +53,13 @@ internal static class WinUiStageIdentity
         float coverX = L.CoverX(in k), coverY = L.CoverY(in k), titleX = L.TitleX(in k), titleY = L.TitleY(in k);
         float titleW = L.TitleW(in k);
         bool shown = true, titlesShown = (k.Mode == Stage.Mode.Visualizer && !k.IsLayout) || t.HeroTitles || k.Eff is Stage.VizLayout.Centered or Stage.VizLayout.Artist || L.IdentityCardOn(k.Mode);
-        if (card && t.Card is { } c)
+        if (!titlesShown && WinUiStageGeometry.BoardLargeArt(in L, in k, t))
+        {
+            // W-Lyrics: the cover alone, centred in the band beside the lyrics column (the transport card carries the titles)
+            var art = WinUiStageGeometry.LargeArtCoverRect(in L, in k, t);
+            size = art.Size; coverX = art.X; coverY = art.Y;
+        }
+                if (card && t.Card is { } c)
         {
             size = c.Art; coverX = c.X + c.Pad; coverY = c.Y + c.Pad;
             titleX = coverX + c.Art + c.Gap; titleW = MathF.Max(0f, c.W - 2f * c.Pad - c.Art - c.Gap);
