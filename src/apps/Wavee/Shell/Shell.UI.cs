@@ -999,6 +999,10 @@ public static partial class Shell
                 s_inspectState.Value = "";
                 GoTo(new Route(RouteKind.Search, default, Intern("zzqx")));
                 return true;
+            // The cold playlist (Entities.Fake.Cold.cs): stage a real list's load one step per command (`goto uri=` it after cold-list).
+            case "cold-list": s_inspectState.Value = ""; Entities.StageColdList(); return true;
+            case "cold-rows": Entities.StageColdRows(); return true;
+            case "cold-faces": Entities.StageColdFaces(); return true;
             default: return false;
         }
     }
