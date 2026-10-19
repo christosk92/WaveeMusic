@@ -35,9 +35,14 @@ public static class WinUiTheme
         Preview: new ThemePreview("themes/winui-light.png", "themes/winui-dark.png"),
         DescriptionKey: Strings.Theme.Winui.Description);
 
-    /// <summary>Builds the composition. <c>App.InstallThemes</c> installs it next to Classic and Zune.</summary>
-    public static ThemeComposition Create() => new(
-        Manifest,
-        new WinUiStructure(standIn: static views => new ClassicStructure().Register(views)),
-        WinUiStyle.Create());
+    /// <summary>Builds the composition. <c>App.InstallThemes</c> installs it next to Classic and Zune. It also hands the `--inspect` lint
+    /// WinUI's edge guide (the content inset per tier: <see cref="WinUiLintGuide"/>), registered once per id.</summary>
+    public static ThemeComposition Create()
+    {
+        ThemeInspection.RegisterLintGuide(Id, new WinUiLintGuide());
+        return new(
+            Manifest,
+            new WinUiStructure(standIn: static views => new ClassicStructure().Register(views)),
+            WinUiStyle.Create());
+    }
 }

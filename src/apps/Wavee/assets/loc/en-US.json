@@ -2985,9 +2985,38 @@
       "states": {}
     },
     "winui": {
-      "$comment": "WinUI (P6, Developer-only). W0 owns name and description; each family lane writes only inside its own object below.",
+      "$comment": "WinUI (P6, Developer-only). W0 owns name, description, options and style (the six W-ThemeOptions options); each family lane writes only inside its own object below.",
       "name": "WinUI",
-      "description": "Fluent navigation view, title-bar tabs and Mica"
+      "description": "Fluent navigation view, title-bar tabs and Mica",
+      "options": {
+        "navigationPane": "Navigation pane",
+        "navigationPaneSub": "Expanded, compact rail, or automatic by window width",
+        "navigationPaneExpanded": "Expanded",
+        "navigationPaneCompact": "Compact",
+        "navigationPaneAutomatic": "Automatic",
+        "tabs": "Tabs in the title bar",
+        "tabsSub": "Off hides the strip; open tabs stay and come back when it’s on",
+        "artworkInRows": "Artwork in track rows",
+        "artworkInRowsSub": "Shows a 40 px cover on playlist and liked rows",
+        "group": {
+          "window": "Window"
+        }
+      },
+      "style": {
+        "$comment": "The style's three options (WinUiStyle, W1): keys only, W0 wrote them with the structure's so the six land together.",
+        "backdrop": "Backdrop",
+        "backdropSub": "The window material behind the title bar, pane and player",
+        "backdropMica": "Mica",
+        "backdropMicaAlt": "Mica Alt",
+        "backdropAcrylic": "Acrylic",
+        "backdropNone": "None (solid)",
+        "density": "Density",
+        "densitySub": "Row and pane item height",
+        "densityStandard": "Default",
+        "densityCompact": "Compact",
+        "useWindowsAccent": "Use the Windows accent colour",
+        "useWindowsAccentSub": "Off uses Wavee’s own blue"
+      }
     }
   },
   "setup": {

@@ -9,3 +9,5 @@ pivotOverflow = EdgeFadeScroll, MoreMenu
 seekTimes = InFace, AtSliderEnds
 panelMode = InlineWhenRoom, AlwaysOverlay
 maxDockedPanes = 3, 2
+# WinUi.Structure (P6 W0, technical plan 6.2): no hidden structure parameter (its six options are user options, none is
+# opt-in or composition-only), so it adds no line. A WinUI parameter added later adds its line here.

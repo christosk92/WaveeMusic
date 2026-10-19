@@ -11,7 +11,9 @@
 //         }
 //     }
 //
-// An unimplemented registrar compiles away. `RegisterOwn` runs every registrar.
+// An unimplemented registrar compiles away. `RegisterOwn` runs every registrar, then the Common blocks every theme shares (W8b may hand
+// them its own module page through `ModulePage`) and the keys WinUI draws as Nothing (the Home quickplay strip: WinUI's pins are the nav
+// pane's, as in Classic).
 //
 // THE STAND-IN (until every key is WinUI's, P6 W9). A key no theme registers renders nothing (the engine's slot host) and a missing style
 // key throws (`ViewContext.StyleOf`), so a half-built WinUI would be a blank, broken window. The composition (`WinUiTheme.Create`) therefore
@@ -19,10 +21,14 @@
 // not draw yet from the stand-in (`ViewRegistryBuilder.AddMissing`). `new WinUiStructure()` (no stand-in) registers WinUI's own views only:
 // what the WinUI registry tests read.
 //
-// PHASE 1 (W0). No options, the core's default policies and unrestricted capabilities: W0 phase 2 adds `WinUiOptions`, `WinUiPolicies`,
-// the tiers (`Rules\Tiers.cs`) and WinUI's `ShellCapabilities`.
+// OPTIONS (technical plan 6.2, the W-ThemeOptions board; exactly six, no hidden, opt-in or composition-only member): the structure's three
+// are `navigationPane` {Expanded, Compact, Automatic} (Live: the pane's mode animates its width), `tabs` (Live: the strip's row animates)
+// and `artworkInRows` (Transaction: row extents), stored as `theme.winui.structure.<id>`. The style's three (`backdrop`, `density`,
+// `useWindowsAccent`) are `WinUiStyle`'s. The values reach the core through `WinUiPolicies.For(WinUiParameters)` and the WinUI views
+// through `WinUiOptions`.
 
 using FluentGpu.Theming;
+using Wavee.Themes.Common;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -78,6 +84,14 @@ public sealed partial class WinUiStructure : IStructureLayer
         RegisterEntities(views);
         RegisterCollection(views);
         RegisterOverlays(views);
+
+        // The Common blocks every theme shares: history, the Home customizer, the frame-rate overlay, diagnostics, logs, the module page.
+        ViewTemplate<ModulePageProps>? module = null;
+        string moduleId = "common.module.page";
+        ModulePage(ref module, ref moduleId);
+        CommonBlocks.Register(views, module, moduleId);
+        // No quickplay strip on Home: WinUI's pins are the nav pane's Pinned section (W-Home; W5 replaces this line if it draws one).
+        CommonNothing.Register(views, ViewKeys.HomeQuickplay);
     }
 
     // The registrars, one per family lane (P6-plan §4): each is implemented in `Structure\WinUiStructure.<Family>.cs`.
@@ -119,19 +133,54 @@ public sealed partial class WinUiStructure : IStructureLayer
     /// <summary>W8a: the overlays and the dialogs.</summary>
     static partial void RegisterOverlays(ViewRegistryBuilder views);
 
-    // ── the layer (phase 1: neutral until W0 phase 2) ─────────────────────────────────────────────────────────────────────
+    /// <summary>W8b: WinUI's own module page, when it draws one in its page column (the Common block's otherwise).</summary>
+    static partial void ModulePage(ref ViewTemplate<ModulePageProps>? module, ref string templateId);
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Empty;
+    // ── the options (W-ThemeOptions) ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Navigation pane: expanded, the compact rail, or automatic by window width (NavigationView's 641 / 1008). Live: the pane's
+    /// width animates over 167 ms (W2b).</summary>
+    public static SelectOption<WinUiNavigationPane> NavigationPane { get; } = new(
+        Id: "navigationPane", TitleKey: Strings.Theme.Winui.Options.NavigationPane, DescriptionKey: Strings.Theme.Winui.Options.NavigationPaneSub,
+        Group: Strings.Theme.Winui.Options.Group.Window, Default: WinUiNavigationPane.Automatic,
+        Choices:
+        [
+            new SelectChoice<WinUiNavigationPane>(WinUiNavigationPane.Expanded, Strings.Theme.Winui.Options.NavigationPaneExpanded),
+            new SelectChoice<WinUiNavigationPane>(WinUiNavigationPane.Compact, Strings.Theme.Winui.Options.NavigationPaneCompact),
+            new SelectChoice<WinUiNavigationPane>(WinUiNavigationPane.Automatic, Strings.Theme.Winui.Options.NavigationPaneAutomatic),
+        ],
+        Picker: PickerStyle.Combo);
+
+    /// <summary>Tabs in the title bar. Off hides the 40 strip in every tier and leaves the 48 toolbar row; the other tabs stay open in the
+    /// background and return in place when it is on again (owner Q1: the board). Live: the strip's row animates (W2a).</summary>
+    public static ToggleOption Tabs { get; } = new(
+        Id: "tabs", TitleKey: Strings.Theme.Winui.Options.Tabs, DescriptionKey: Strings.Theme.Winui.Options.TabsSub,
+        Group: Strings.Theme.Winui.Options.Group.Window, Default: true);
+
+    /// <summary>Artwork in track rows: playlist, Liked and search rows show a 40 cover over two lines (48); off, one 40 line. Album rows never
+    /// show covers. Transaction (the row extents change).</summary>
+    public static ToggleOption ArtworkInRows { get; } = new ToggleOption(
+        Id: "artworkInRows", TitleKey: Strings.Theme.Winui.Options.ArtworkInRows, DescriptionKey: Strings.Theme.Winui.Options.ArtworkInRowsSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackLists, Default: true) with { Apply = ApplyMode.Transaction };
+
+    /// <summary>The layer-qualified ids Settings and the palette know the options by.</summary>
+    public const string NavigationPaneQualifiedId = "structure.navigationPane", TabsQualifiedId = "structure.tabs",
+        ArtworkInRowsQualifiedId = "structure.artworkInRows";
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(NavigationPane, Tabs, ArtworkInRows);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
-    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Default;
+    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => WinUiPolicies.For(WinUiParameters.From(structure));
 
     /// <inheritdoc />
-    public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
+    public ShellCapabilities Capabilities(OptionValues structure) => WinUiPolicies.CapabilitiesFor(WinUiParameters.From(structure));
 
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
+
+    /// <summary>None: every WinUI option is a declared option (WinUI binds no legacy key).</summary>
+    public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } = [];
 }
