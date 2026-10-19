@@ -62,7 +62,10 @@ internal static class WinUiTitleBar
             Rows = Prop.Of(() => Strip() ? 2 : 1),
             TopRowHeight = WinUiTiers.TabStripH,
             BarHeight = WinUiTiers.ToolbarH,
-            Tabs = () => Embed.Comp(() => BuildStrip(props, tiers)) with { Key = WinUiFrameRules.StripKey },
+            // A one-row bar would seat the tabs island in the toolbar: with the strip hidden it holds nothing (no client region, 0 wide).
+            Tabs = () => Strip()
+                ? Embed.Comp(() => BuildStrip(props, tiers)) with { Key = WinUiFrameRules.StripKey }
+                : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false },
             TabsVersion = props.TabsVersion,
             ContentVersion = props.ContentVersion,
             Lead = () => LeadItems(props, Tier()),
@@ -146,7 +149,7 @@ internal static class WinUiTitleBar
     private static Element Mark() => new BoxEl
     {
         Key = WinUiFrameRules.MarkKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiFrameRules.MarkGap,
-        Padding = new Edges4(WinUiFrameRules.MarkLeadPad, 0f, 0f, 0f), HitTestVisible = false,
+        Padding = new Edges4(WinUiFrameRules.MarkLeadPad, 0f, WinUiFrameRules.MarkLeadPad, 0f), HitTestVisible = false,
         Children =
         [
             new BoxEl

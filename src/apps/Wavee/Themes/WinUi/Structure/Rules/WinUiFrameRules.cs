@@ -41,7 +41,7 @@ public static class WinUiFrameRules
     /// <summary>The title bar's slot across tabs on / off: its height runs through real layout (the page follows), the bar inside anchored
     /// to the slot's foot so the toolbar row never moves relative to the page.</summary>
     public static readonly LayoutTransition TitleSlotAnim = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(FrameMs, Easing.FluentDecelerate),
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Height);
 
     /// <summary>The content row's shared-layout group: the content card FLIPs relative to the row.</summary>
