@@ -3031,6 +3031,29 @@
       },
       "lists": {
         "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
+      },
+      "screens": {
+        "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
+        "tabGeneral": "General",
+        "tabAppearance": "Appearance",
+        "tabPlayback": "Playback",
+        "tabNotifications": "Notifications",
+        "tabStorage": "Storage & cache",
+        "tabPrivacy": "Privacy & diagnostics",
+        "tabAbout": "About",
+        "themeSection": "Theme",
+        "themeSectionSub": "Which theme draws Wavee, and the options that theme defines",
+        "themeTitle": "Theme",
+        "themeSub": "Changes everything that is presentation: pages, player and navigation. Core features stay the same.",
+        "optionsTitle": "{name} theme options",
+        "on": "On",
+        "off": "Off",
+        "navNoteMinimal": "Now minimal: the window is {width} wide. The rail returns from {rail}, the full pane from {pane}.",
+        "navNoteRail": "Now the rail: the window is {width} wide. The full pane returns from {pane}.",
+        "navNoteExpanded": "Now the full pane: the window is {width} wide.",
+        "previewTitle": "Preview",
+        "cycleTabs": "Next tab",
+        "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden."
       }
     }
   },

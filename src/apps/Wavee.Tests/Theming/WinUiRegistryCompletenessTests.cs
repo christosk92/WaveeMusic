@@ -184,22 +184,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Overlay.RuntimeBanner"] = "W8a",  // ViewKeys.OverlayRuntimeBanner
         ["Overlay.Toast"] = "W8a",  // ViewKeys.OverlayToast
         ["State.Vacancy"] = "W8a",  // ViewKeys.StateVacancy
-        // W8b: the screens (15)
-        ["Dialog.Crash"] = "W8b",  // ViewKeys.DialogCrash
-        ["Dialog.Feedback"] = "W8b",  // ViewKeys.DialogFeedback
-        ["Pages.Settings"] = "W8b",  // ViewKeys.SettingsPage
-        ["Pages.WhatsNew"] = "W8b",  // ViewKeys.WhatsNewPage
-        ["ReleaseNotes.AfterUpdatePlate"] = "W8b",  // ViewKeys.ReleaseNotesAfterUpdatePlate
-        ["ReleaseNotes.Viewer"] = "W8b",  // ViewKeys.ReleaseNotesViewer
-        ["Settings.ThemeOptions"] = "W8b",  // ViewKeys.SettingsThemeOptions
-        ["Settings.ThemePicker"] = "W8b",  // ViewKeys.SettingsThemePicker
-        ["Setup.LocalPlayback"] = "W8b",  // ViewKeys.SetupLocalPlayback
-        ["Setup.RuntimeCard"] = "W8b",  // ViewKeys.SetupRuntimeCard
-        ["Setup.SignIn"] = "W8b",  // ViewKeys.SetupSignIn
-        ["Setup.SignInDoor"] = "W8b",  // ViewKeys.SetupSignInDoor
-        ["Setup.Terms"] = "W8b",  // ViewKeys.SetupTerms
-        ["Setup.Theme"] = "W8b",  // ViewKeys.SetupTheme
-        ["Setup.Wizard"] = "W8b",  // ViewKeys.SetupWizard
     };
 
     static List<(string Name, string Id, Type Arg, object Key)> Declared(Type keys)
