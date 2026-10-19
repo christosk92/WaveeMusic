@@ -113,6 +113,14 @@ internal interface ITrackCommandKit
     /// <summary>The "…" button's fixed 32-DIP slot: <paramref name="more"/> with the filter count as a corner badge when one rides here.</summary>
     Element MoreSlot(Element more, int filterCount);
 
+    /// <summary>The search affordance at rest as a WORDED command (the glyph and <paramref name="label"/>, "Find"), or null for the 32-DIP glyph button
+    /// (<see cref="IconButton"/>). A worded Find is measured: the bar's fit reserves its width. Appended (P6 detail polish); null keeps every existing bar.</summary>
+    Element? FindCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized) => null;
+
+    /// <summary>The multi-select toggle as a bar command ("Select", before "…"), or null to keep it in the "…" menu only. A non-null command is measured
+    /// like the other commands and leaves the menu. Appended (P6 detail polish).</summary>
+    Element? SelectCommand(string label, bool active, Action onClick) => null;
+
     // The row-size control (M3): the structure owns the density option (the style's), so the "…" menu's "Row size" rows come from here (tuned
     // Classic D3 keeps Row size in "…" only); the core owns where the submenu sits.
 

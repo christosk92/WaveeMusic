@@ -33,8 +33,10 @@ internal static class WinUiArtistPick
     /// collapsed to nothing, and the band only mounts once the image is Ready — growing open (height on the rail arm,
     /// width on the band arm) and fading in. While pending the card is just header + comment + footer, and on a real
     /// failure it stays that way: no flat placeholder block ever stands in for a photo that may never come (the grey
-    /// slab a stuck decode used to leave behind).</para></summary>
-    public static Element Card(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay, SurfaceStyle? surface, float buttonTarget = WinUiDetailRules.Target)
+    /// slab a stuck decode used to leave behind).</para>
+    /// <para><paramref name="photo"/> false: the compact card (head, quote, footer) with no photograph band at all (the overview column).</para></summary>
+    public static Element Card(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay, SurfaceStyle? surface, float buttonTarget = WinUiDetailRules.Target,
+                               bool photo = true)
     {
         if (surface is null) return new BoxEl();   // no registry: the page logged it (T8c: the panel's clickable shell is the structure's)
         ColorF tint = accent();
@@ -107,7 +109,7 @@ internal static class WinUiArtistPick
             ],
         };
         // Props freeze at mount: the photo embed is keyed on the url it waits for (the arm is already the card's key).
-        Element? photo = background is { Length: > 0 } bgUrl
+        Element? band = photo && background is { Length: > 0 } bgUrl
             ? Embed.Comp(() => new PickPhoto { Url = bgUrl, Band = horizontal }) with
               {
                   Key = "pick-photo:" + bgUrl,
@@ -155,9 +157,9 @@ internal static class WinUiArtistPick
         {
             Direction = 1,
             Grow = horizontal ? 1f : 0f, Basis = horizontal ? 0f : float.NaN, MinWidth = horizontal ? 0f : float.NaN,
-            Children = !horizontal && photo is not null ? [head, quote, photo, foot] : [head, quote, foot],
+            Children = !horizontal && band is not null ? [head, quote, band, foot] : [head, quote, foot],
         };
-        Element content = horizontal && photo is not null ? new BoxEl { Direction = 0, Children = [copy, photo] } : copy;
+        Element content = horizontal && band is not null ? new BoxEl { Direction = 0, Children = [copy, band] } : copy;
 
         // The panel keeps its own tree (a quote over a footer), but its clickable shell is the shared one: the plate's
         // hover/press reveal, the Button role, the tab stop and the hand cursor all come from the structure's surface shell and

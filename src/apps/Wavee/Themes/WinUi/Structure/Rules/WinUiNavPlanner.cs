@@ -249,6 +249,21 @@ public static class WinUiNavPlanner
         return null;
     }
 
+    /// <summary>The route prefixes a WinUI library item owns (W-Album selects Albums on an album page, W-Artist Artists on an artist page and its discography).</summary>
+    static readonly (string Prefix, string Owner)[] s_adoptions =
+    [
+        ("album:", "albums"), ("prerelease:", "albums"),
+        ("artist:", "artists"), ("disco:", "artists"),
+    ];
+
+    /// <summary>The nav item that owns an entity page with no row of its own (the boards light the owning section's item), or null.</summary>
+    public static string? AdoptiveRoute(string route)
+    {
+        foreach (var (prefix, owner) in s_adoptions)
+            if (route.StartsWith(prefix, System.StringComparison.Ordinal)) return owner;
+        return null;
+    }
+
     static bool ItemsHold(IReadOnlyList<string> items, string route)
     {
         for (int i = 0; i < items.Count; i++)

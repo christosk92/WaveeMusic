@@ -107,7 +107,8 @@ internal static class WinUiHomePage
         };
     }
 
-    /// <summary>The greeting: Title Large 40/52 (Title 28/36 below Standard), one line, keyed for the inset lint. The words are a bound read of the host's greeting.</summary>
+    /// <summary>The greeting: Title Large 40/52 (Title 28/36 below Standard), keyed for the inset lint. The words are a bound read of the host's greeting.
+    /// A name too long for the row WRAPS (owner rule: display type never shrinks or ellipsises to fit; W-Home-Compact keeps the 28/36 rung).</summary>
     static TextEl Greeting(HomePageProps props, WinUiHomeLayout layout)
     {
         var greet = props.Greeting;
@@ -116,7 +117,7 @@ internal static class WinUiHomePage
         {
             Key = WinUiFrameLayout.PageTitleKey,
             Text = Prop.Of(() => greet?.Invoke() ?? ""),
-            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            MaxLines = 0, Wrap = TextWrap.Wrap, Trim = TextTrim.None, MinWidth = 0f,
         };
     }
 

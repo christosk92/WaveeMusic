@@ -502,6 +502,16 @@ internal static class WinUiTrackChrome
             return Plate(active, onClick, onRealized) with { Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad, Children = kids };
         }
 
+        /// <summary>Find as a word at Standard and up (W-Album, W-Album-Huge: the glyph and "Find"); the glyph alone below (W-Album-Small).</summary>
+        public Element? FindCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized)
+            => WinUiListRules.WordedBar(_tier) ? Labeled(Icons.Search, label, active, onClick, onRealized, null) : null;
+
+        /// <summary>"Select" as a flat word on the bar at Standard and up (W-Album: no glyph, before "..."); in "..." below.</summary>
+        public Element? SelectCommand(string label, bool active, Action onClick)
+            => WinUiListRules.WordedBar(_tier)
+                ? Plate(active, onClick, null) with { Padding = WinUiListRules.CommandPad, Children = [CommandWord(label, Tok.TextPrimary) with { Color = Ink(active) }] }
+                : null;
+
         public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized)
             => Plate(active, onClick, onRealized) with { Width = Edge, Children = [Icon(glyph, WinUiListRules.CommandGlyph) with { Color = Ink(active) }] };
 

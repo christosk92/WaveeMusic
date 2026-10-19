@@ -80,6 +80,9 @@ public static class WinUiArtistRules
 
     /// <summary>The pivot's height (the SelectorBar's 40 items) and its hairline: the sticky bar is 41 tall, which is the clearance a section parks under.</summary>
     public const float PivotItemHeight = 40f, PivotHairline = 1f, PivotGap = 4f;
+    /// <summary>The pill's place in a pivot item (W-Artist: 3 tall, 4 above the 40's foot, under a word centred in the 40). The SelectorBar pads its items 4 down
+    /// inside the 40 row, so the lift is the board's 4 plus that 4; the gap parts the pill from the word's line box.</summary>
+    public const float PivotPillLift = 8f, PivotPillGap = 4f;
 
     /// <summary>A tab's padding (the board: 0 12 in a 40 item).</summary>
     public static readonly Edges4 PivotItemPadding = new(12f, 0f, 12f, 0f);

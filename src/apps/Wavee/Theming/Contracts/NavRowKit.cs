@@ -77,6 +77,11 @@ public abstract class NavRowKit
     public abstract string? OwningSection(SidebarLayoutDoc doc, in SidebarProjectionInput input, string route,
         Func<string?, bool> isPinned);
 
+    /// <summary>The nav item that OWNS <paramref name="route"/> when no row carries it (an album page lights "albums", an artist page "artists"), or null
+    /// (the default: no adoption). The pill takes the owner's row only after the route's own row, its folder and its section header all miss. Appended
+    /// (P6 detail polish).</summary>
+    public virtual string? AdoptiveRoute(string route) => null;
+
     /// <summary>Does row <paramref name="index"/> of the new plan render differently from the same slot of the old?</summary>
     public abstract bool RowChanged(
         IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,

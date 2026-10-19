@@ -2,7 +2,7 @@
 //
 // Board W-Artist: under the pivot the OVERVIEW is two columns 36 apart, Popular (the chart, weight 1.2) | the latest release card over the Discography preview (weight 1),
 // stacking below a 1100-wide page (the column count is `WinUiArtistTiers.OverviewColumns`, held 24 once two); at Huge (W-Artist-Huge) three: Popular | Discography | the latest
-// release (and the upcoming card and the pick under it). The Discography preview is three covers of the chosen type under two combos (type, order) and "Show all N albums"; at Huge it
+// release (and the upcoming card and the compact pick under it; at two columns and one they follow Discography). The Discography preview is three covers of the chosen type under two combos (type, order) and "Show all N albums"; at Huge it
 // is two titled rows (Albums, Singles & EPs) under "Newest" and "Show all". The full facets (the core's grid and album drawer) follow as the Albums, Singles & EPs and Compilations sections.
 //
 // About and Fans stay sections under the overview (their pivot anchors live there): the Huge board stacks them in the third column; here the third column holds the latest release alone.
@@ -43,41 +43,37 @@ internal static class WinUiArtistOverview
         {
             int columns = latch.Columns = WinUiArtistTiers.OverviewColumnsOf(rung, tier);
             Element? chart = popular ? new BoxEl { Key = "ov:chart", Direction = 1, MinWidth = 0f, Children = [Artist.Chart(a, accentSignal)] } : null;
-            var side = new List<Element>(4);
+            // W-Artist: the latest release, then Discography; the upcoming card and the artist's pick (no board draws one) follow under Discography, the pick
+            // compact (no photograph band) so it never outweighs the column.
             float target = WinUiDetailRules.TargetOf(tier);
-            if (latest) side.Add(LatestCard(a, target) with { Layout = WinUiArtistMotion.Block });
+            Element? latestCard = latest ? LatestCard(a, target) with { Layout = WinUiArtistMotion.Block } : null;
+            var after = new List<Element>(2);
             if (upcoming)
-                side.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), WinUiArtistBanners.UpcomingCard(a, accentFn, wide: false))
+                after.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), WinUiArtistBanners.UpcomingCard(a, accentFn, wide: false))
                     with { Key = "ov:upcoming", Layout = WinUiArtistMotion.Block });
-            // The pick is a different composition per arrangement (the photo a band under the comment beside Popular, a right column stacked), so the two
-            // cross-fade inside one slot that moves and resizes with the restack.
+            // The compact pick is one composition in every arrangement, so it moves with the restack like any other block.
             if (a.HasPick)
-            {
-                bool flat = columns == 1;
-                side.Add(new BoxEl
-                {
-                    Key = "ov:pick", Direction = 1, MinWidth = 0f, Layout = WinUiArtistMotion.Block,
-                    Children =
-                    [
-                        WinUiArtistPick.Card(a, accentFn, horizontal: flat, overlay, surface, target)
-                            with { Key = flat ? "ov:pick:band" : "ov:pick:rail", Enter = WinUiArtistMotion.Swap, Exit = WinUiArtistMotion.Swap },
-                    ],
-                });
-            }
+                after.Add(WinUiArtistPick.Card(a, accentFn, horizontal: false, overlay, surface, target, photo: false) with { Key = "ov:pick", Layout = WinUiArtistMotion.Block });
             // The preview's covers are sized from its column's width, worked out here from the slot and the arrangement (not measured by the preview), so
             // the commit that restacks lays the side column out at its final height and the overview's eased height aims at the right number.
             Element preview = Embed.Comp(new PreviewProps(a, stamp, columns >= 3, target, PreviewWidth(slot, columns)), static () => new PreviewHost()) with { Key = "ov:preview" };
 
+            var side = new List<Element>(4);
+            if (latestCard is not null) side.Add(latestCard);
             if (columns >= 3)
+            {
+                side.AddRange(after);
                 return Grid(0, WinUiArtistRules.HugeColumnGap,
                     Column(PopularKey, WinUiArtistRules.PopularGrow, chart is null ? [] : [chart]),
                     Column("ov:col:discography", WinUiArtistRules.PopularGrow, [preview]),
                     Column("ov:col:side", WinUiArtistRules.OtherGrow, side.ToArray()));
+            }
 
             // One column and two are ONE tree: the grid turns from a row into a column and the two columns keep their nodes (and the blocks theirs), so a
-            // restack FLIPs every block from where it stood instead of re-parenting it (a re-parented node remounts and cannot glide). Stacked, the columns
-            // stop growing and stack at their content's height: Popular, then the side column, one section gap apart (the board's stacked order).
+            // restack keeps every node instead of re-parenting it (a re-parented node remounts). Stacked, the columns stop growing and stack at their
+            // content's height: Popular, then the side column, one section gap apart (the board's stacked order).
             side.Add(new BoxEl { Key = "ov:preview:slot", Direction = 1, MinWidth = 0f, Layout = WinUiArtistMotion.Block, Children = [preview] });
+            side.AddRange(after);
             bool two = columns == 2;
             float grow = two ? 1f : 0f;
             Element sideColumn = Column("ov:col:side", grow * WinUiArtistRules.OtherGrow, side.ToArray());

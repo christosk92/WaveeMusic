@@ -218,6 +218,21 @@ public class SurfaceRulesTests
         Assert.Equal(SurfaceGeometry.ShelfHeight(cardW), SurfaceGeometry.StackExtent(Shape.Shelf(2), cardW, 1f));
     }
 
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(188f)]
+    public void A_flush_shelf_card_grows_by_the_plate_inset_only(float cardW)
+    {
+        // Flush (WinUI's Home shelves): the square cover is the whole card width, 16 taller than the inset cover; nothing else moves.
+        Assert.False(Shape.Shelf().Flush);
+        var flush = Shape.Shelf() with { Flush = true };
+        Assert.Equal(cardW + 50f + 2f * SurfaceGeometry.ShelfPlatePad, SurfaceGeometry.StackExtent(flush, cardW, 1f));
+        Assert.Equal(SurfaceGeometry.ShelfHeight(cardW, 1f, 1, false, flush: true), SurfaceGeometry.StackExtent(flush, cardW, 1f));
+        Assert.Equal(cardW, SurfaceParts.InnerOf(cardW, flush: true));
+        Assert.Equal(SurfaceParts.InnerOf(cardW), SurfaceParts.InnerOf(cardW, flush: false));
+        Assert.Equal(0f, SurfaceGeometry.PlateInsetX(true));
+    }
+
     [Fact]
     public void A_wide_shelf_tile_extent_is_unchanged()
         => Assert.Equal(232f + 84f, SurfaceGeometry.StackExtent(Shape.Shelf(1, metaLine: true), 428f, R.Space.WideTileAspect));

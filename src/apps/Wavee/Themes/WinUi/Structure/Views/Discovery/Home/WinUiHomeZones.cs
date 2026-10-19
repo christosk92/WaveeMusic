@@ -301,7 +301,7 @@ internal static class WinUiHomeZones
         {
             var c = item.Card;
             return HomeCards.ShelfCell(in item, cellW, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                                       HomeCardNav.DragOf(in c), host, HomeCardNav.MenuOf(in c), coverAspect);
+                                       HomeCardNav.DragOf(in c), host, HomeCardNav.MenuOf(in c), coverAspect, flush: true);
         }
 
         float squareAspect = wide ? R.Space.WideTileAspect : 1f;
@@ -336,11 +336,12 @@ internal static class WinUiHomeZones
     internal static WinUiShelfBand ShelfBandOf(ZoneKind kind, WinUiHomeLayout layout)
         => kind is ZoneKind.WideTiles or ZoneKind.VideoTiles ? layout.WideShelf : layout.Shelf;
 
-    // The shelf extents as cached delegates (one per shape, never a per-render closure).
+    // The shelf extents as cached delegates (one per shape, never a per-render closure). Every Home cover is FLUSH (W-Home: the first cover on the section
+    // title's line, no 8-px plate inset), so the extents read the flush cover too.
     static readonly Func<float, float> s_wideCardHeight =
-        static w => SurfaceGeometry.ShelfHeight(w, R.Space.WideTileAspect, captionLines: 1, metaLine: true);
-    static readonly Func<float, float> s_coverCardHeight1 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
-    static readonly Func<float, float> s_coverCardHeight2 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
+        static w => SurfaceGeometry.ShelfHeight(w, R.Space.WideTileAspect, captionLines: 1, metaLine: true, flush: true);
+    static readonly Func<float, float> s_coverCardHeight1 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false, flush: true);
+    static readonly Func<float, float> s_coverCardHeight2 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 2, metaLine: false, flush: true);
 
     static readonly Dictionary<int, Func<float, float>> s_coverCardHeightN = new();
 
@@ -349,7 +350,7 @@ internal static class WinUiHomeZones
         if (captionLines <= 1) return s_coverCardHeight1;
         if (captionLines == 2) return s_coverCardHeight2;
         if (!s_coverCardHeightN.TryGetValue(captionLines, out var height))
-            s_coverCardHeightN[captionLines] = height = w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines, metaLine: false);
+            s_coverCardHeightN[captionLines] = height = w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines, metaLine: false, flush: true);
         return height;
     }
 

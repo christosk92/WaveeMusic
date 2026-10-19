@@ -187,10 +187,11 @@ public sealed record WinUiHomeLayout
     /// <summary>"Because you like" and "Continue listening" share one row, a half each (Huge).</summary>
     public required bool ClustersBeside { get; init; }
 
-    /// <summary>A cover shelf (the square cards).</summary>
+    /// <summary>A cover shelf (the square cards). Its covers are FLUSH with the section title (<see cref="SurfaceShape.Flush"/>: no 8-px plate inset).</summary>
     public required WinUiShelfBand Shelf { get; init; }
 
-    /// <summary>The first cover of a shelf may span two cells (E21) while the shelf has at least three columns.</summary>
+    /// <summary>The first cover of a shelf may span two cells (E21) while the shelf has at least three columns. Off at every WinUI tier: the boards
+    /// (W-Home "Made for you") draw equal tiles, and a double-wide first tile read as broken.</summary>
     public required bool ShelfLead { get; init; }
 
     /// <summary>A wide shelf (the 16:9 tiles).</summary>
@@ -298,7 +299,7 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Line, Ring = 16f, LabelW = 0f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(120f, 9999f, 4, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = true,
+        Shelf = new WinUiShelfBand(120f, 9999f, 4, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = false,
         WideShelf = new WinUiShelfBand(180f, 9999f, 3, FixedCardW: 0f, Gap: 12f, Pager: true),
         Recents = WinUiGridBand.Fixed(2), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
         Releases = new WinUiGridBand(280f, 2), Clusters = new WinUiGridBand(260f, 2), Tiles = new WinUiGridBand(180f, 3),
@@ -318,7 +319,7 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(150f, 9999f, 6, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = true,
+        Shelf = new WinUiShelfBand(150f, 9999f, 6, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = false,
         WideShelf = new WinUiShelfBand(220f, 9999f, 4, FixedCardW: 0f, Gap: CoverGap, Pager: true),
         Recents = new WinUiGridBand(240f, 4), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
         Releases = new WinUiGridBand(320f, 2), Clusters = new WinUiGridBand(300f, 3), Tiles = new WinUiGridBand(220f, 4),
@@ -339,7 +340,7 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = true, ClustersBeside = true,
-        Shelf = new WinUiShelfBand(190f, 9999f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = true,
+        Shelf = new WinUiShelfBand(190f, 9999f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = false,
         WideShelf = new WinUiShelfBand(300f, 9999f, 8, FixedCardW: 0f, Gap: 20f, Pager: true),
         Recents = new WinUiGridBand(300f, 6), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
         Releases = WinUiGridBand.Fixed(1), Clusters = new WinUiGridBand(260f, 3), Tiles = new WinUiGridBand(220f, 7),
