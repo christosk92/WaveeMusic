@@ -133,6 +133,7 @@ public sealed class HomeScreen : Component
             RetryFirstLoad = _host.RetryFirstLoad,
             Overlay = overlay,
             Wash = BuildWash(() => model.Value),
+            Greeting = DaylistCard.Greeting,
         });
     }
 

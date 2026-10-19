@@ -76,15 +76,28 @@ public sealed class DaylistCard : Component
     /// page has no greeting headline: this eyebrow is the greeting.</summary>
     static string Eyebrow()
     {
-        string part = DateTime.Now.Hour switch
-        {
-            >= 4 and < 12 => Loc.Get(Strings.Home.GoodMorning),
-            >= 12 and < 17 => Loc.Get(Strings.Home.GoodAfternoon),
-            _ => Loc.Get(Strings.Home.GoodEvening),
-        };
+        string part = GreetingPart();
         string? who = GreetedName();
         string yours = Loc.Get(Strings.Home.YourDaylist);
         return who is null ? part + " · " + yours : Strings.Home.HeroEyebrow(part, who, yours);
+    }
+
+    /// <summary>The local-clock part of the greeting: "Good morning" / "Good afternoon" / "Good evening".</summary>
+    static string GreetingPart() => DateTime.Now.Hour switch
+    {
+        >= 4 and < 12 => Loc.Get(Strings.Home.GoodMorning),
+        >= 12 and < 17 => Loc.Get(Strings.Home.GoodAfternoon),
+        _ => Loc.Get(Strings.Home.GoodEvening),
+    };
+
+    /// <summary>The page greeting, "Good evening, Chris" (the bare part while no account name is known). A SUBSCRIBING read like
+    /// the card's eyebrow (contract 1.53: <see cref="Wavee.Theming.Contracts.HomePageProps.Greeting"/>), so a structure that draws a
+    /// greeting headline binds it and a late login re-describes it.</summary>
+    public static string Greeting()
+    {
+        string part = GreetingPart();
+        string? who = GreetedName();
+        return who is null ? part : Strings.Home.Greeting(part, who);
     }
 
     /// <summary>The signed-in account's greetable name, or null. A SUBSCRIBING read (the users table + the scope), so

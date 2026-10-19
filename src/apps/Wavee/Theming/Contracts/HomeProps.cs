@@ -64,6 +64,10 @@ public sealed record HomePageProps
     /// <summary>The shell tint claim (`Palette.ShellTint` over the first zone's art): a zero-size leaf the page keeps in its tree so the
     /// window chrome follows the page. The core decides the claim and the accent; the Classic material view draws the washes.</summary>
     public required Element Wash { get; init; }
+
+    /// <summary>The page greeting, "Good evening, Chris" (contract 1.53): a subscribing read (the account's name), for a structure that draws a greeting
+    /// headline (WinUI). Null where the host offers none (a test mount); Classic and Zune do not read it.</summary>
+    public Func<string>? Greeting { get; init; }
 }
 
 /// <summary>The props of every `Home.Zone.{Kind}` body key whose body needs nothing but the zone.</summary>
