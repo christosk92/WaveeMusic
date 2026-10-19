@@ -82,19 +82,23 @@ internal static partial class WinUiDetailFrame
 
     // ══ THE ASIDE ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The slot where no aside docks: a bound 0 (<see cref="AsideSlot"/> keeps the channel's shape in every form).</summary>
+    static readonly Prop<float> NoSlot = Prop.Of(static () => 0f);
+
     /// <summary>The aside's slot, the row's last child at every tier: width 0 where none docks; else the column (440, 480 from 3200) on the page's inset with its own
-    /// scroller. An aside that holds only the insights follows their toggle (0 closed), the slot easing its width.</summary>
+    /// scroller. An aside that holds only the insights follows their toggle (0 closed), the slot easing its width. The Width is BOUND in every form: the
+    /// slot is one reused node and the engine wires a bind at mount only, so a static-to-bound flip would keep the mounted form (Classic's AsideSlot).</summary>
     static Element AsideSlot(DetailFrameProps p, WinUiDetailTier tier, in TierFacts facts)
     {
         if (p.Aside is not { } aside)
-            return new BoxEl { Key = "detail:aside", Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = WinUiDetailRules.DockReveal };
+            return new BoxEl { Key = "detail:aside", Width = NoSlot, Shrink = 0f, MinHeight = 0f, Animate = WinUiDetailRules.DockReveal };
         float columnW = WinUiDetailTiers.AsideWidthOf(in facts);
         float slotW = columnW + tier.InsetX;
         var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
         var kids = new List<Element>(2);
         if (aside.Body is { } body) kids.Add(body);
         if (insights is { } i) kids.Add(WinUiInsights.AsideSection(i.Toggle, i.Facts!, columnW));
-        Prop<float> width = slotW;
+        Prop<float> width = Prop.Of(() => slotW);
         if (aside.Body is null && insights is { } only)
         {
             var open = only.Toggle.Open;

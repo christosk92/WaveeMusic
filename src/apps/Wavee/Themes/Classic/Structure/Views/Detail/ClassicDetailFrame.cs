@@ -255,13 +255,19 @@ internal static partial class ClassicDetailFrame
     static BoxEl Inset(BoxEl right, DetailFrameProps p, ClassicDetailTier tier)
         => p.Aside is not null && tier.Aside is { } g ? right with { Padding = new Edges4(0f, 0f, g.ListInset, 0f) } : right;
 
+    /// <summary>The slot where no aside docks: a bound 0 (<see cref="AsideSlot"/> keeps the channel's shape in every form).</summary>
+    static readonly Prop<float> NoSlot = Prop.Of(static () => 0f);
+
     /// <summary>The aside's slot, the row's last child at every tier: width 0 where no aside docks, else the hairline (24 over it, 16 each side) and the
     /// column (C-Album-Huge 520 / -Huge4K 640, C-Playlist-Huge 440, C-PlaylistFollowed-Huge 400) with its own scroller. An aside that holds only the
-    /// insights follows their toggle (0 closed), the slot easing its width with the insights dock's dynamics, so the list yields instead of jumping.</summary>
+    /// insights follows their toggle (0 closed), the slot easing its width with the insights dock's dynamics, so the list yields instead of jumping.
+    /// <para>The slot's Width is BOUND in every form (none, the full slot, the toggle's): the slot is one reused node across the forms, and the engine
+    /// wires a bind at mount only, so a static-to-bound flip keeps the mounted form (FluentGpu `Reconciler.Rewire.cs`). A playlist whose facts landed
+    /// after its first Huge frame kept the "none" slot's static 0 with the insights column inside it and its toggle open.</para></summary>
     static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier)
     {
         if (p.Aside is not { } aside || tier.Aside is not { } g)
-            return new BoxEl { Key = "detail:aside", Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
+            return new BoxEl { Key = "detail:aside", Width = NoSlot, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
         bool body = aside.Body is not null;
         var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
         float columnW = g.WidthFor(aside.Kind, body);
@@ -271,7 +277,7 @@ internal static partial class ClassicDetailFrame
         var kids = new List<Element>(2);
         if (aside.Body is { } b) kids.Add(b);
         if (insights is { } i) kids.Add(ClassicInsights.AsideSection(i.Toggle, i.Facts!, content, g.InsightsGap));
-        Prop<float> width = slotW;
+        Prop<float> width = Prop.Of(() => slotW);
         if (!body && insights is { } only)
         {
             var open = only.Toggle.Open;

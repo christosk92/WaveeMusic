@@ -142,7 +142,8 @@ public sealed class PlayerBarMountedTests(ShellHost host)
             foreach (string slot in new[] { "shuffle", "repeat", "volume", "volume-slider", "lyrics", "queue", "devices", "more" })
                 Assert.False(shell.Find(slot).IsNull, slot + " slot");
             Assert.True(shell.Find("expand").IsNull);
-            Assert.True(shell.Find("video").IsNull);
+            // No video split: nothing is playing (the host puts the deck back between facts; FactIsolationTests).
+            Assert.True(shell.Find("video").IsNull, "a video split for the deck's " + Playback.CurrentId.Peek());
         });
 
     [Fact]
