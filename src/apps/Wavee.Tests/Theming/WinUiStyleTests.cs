@@ -35,16 +35,17 @@ public sealed class WinUiStyleTests
     public void The_options_are_the_backdrop_the_density_and_the_windows_accent_with_their_apply_modes()
     {
         var all = Style.Options.All;
-        Assert.Equal(new[] { "backdrop", "density", "useWindowsAccent" }, all.Select(o => o.Id));
+        Assert.Equal(new[] { "backdrop", "rowDensity", "useWindowsAccent" }, all.Select(o => o.Id));
         Assert.Equal(ApplyMode.Transaction, Style.Options.Find("backdrop")!.Apply);
-        Assert.Equal(ApplyMode.Transaction, Style.Options.Find("density")!.Apply);
+        Assert.Equal(ApplyMode.Transaction, Style.Options.Find("rowDensity")!.Apply);
         Assert.Equal(ApplyMode.Live, Style.Options.Find("useWindowsAccent")!.Apply);
         Assert.Equal(WinUiBackdrop.Mica, WinUiStyle.BackdropOption.Default);
         Assert.Equal(WinUiDensity.Standard, WinUiStyle.DensityOption.Default);
         Assert.True(WinUiStyle.UseWindowsAccentOption.Default);
         Assert.Equal(new byte[] { 0, 1, 2, 3 }, Enum.GetValues<WinUiBackdrop>().Select(b => (byte)b));   // persisted: never renumber
         Assert.Equal(new byte[] { 0, 1 }, Enum.GetValues<WinUiDensity>().Select(d => (byte)d));
-        Assert.Equal("style.density", WinUiDensityOption.QualifiedId);
+        Assert.Equal("style.rowDensity", WinUiDensityOption.QualifiedId);
+        Assert.NotEqual(ClassicDensity.Option.Id, WinUiDensityOption.Option.Id);   // never Classic's cell (the stand-in reads it typed RowDensity)
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public sealed class WinUiStyleTests
     {
         Assert.Same(WinUiStyle.DefaultDefinition, Def(OptionValues.Empty));
         Assert.Same(WinUiStyle.DefaultDefinition, Def(OptionValues.Empty.With("useWindowsAccent", false)));   // no OS ramp read: the same blue
-        Assert.Same(WinUiStyle.DefaultDefinition, Def(OptionValues.Empty.With("density", WinUiDensity.Compact)));
+        Assert.Same(WinUiStyle.DefaultDefinition, Def(OptionValues.Empty.With("rowDensity", WinUiDensity.Compact)));
         Assert.Same(WinUiRoles.Table, Roles(WinUiStyle.DefaultDefinition));
         Assert.Same(Def(OptionValues.Empty.With("backdrop", WinUiBackdrop.Acrylic)), Def(OptionValues.Empty.With("backdrop", WinUiBackdrop.Acrylic)));
     }
@@ -121,7 +122,7 @@ public sealed class WinUiStyleTests
     [InlineData(WinUiDensity.Compact, 32f, 40f, 32f, 12f, 0)]
     public void The_metrics_follow_the_density(WinUiDensity density, float single, float dbl, float paneItem, float cardGap, int rung)
     {
-        var m = Style.Metrics(OptionValues.Empty.With("density", density));
+        var m = Style.Metrics(OptionValues.Empty.With("rowDensity", density));
         Assert.Equal(m, WinUiStyle.MetricsFor(density));
         Assert.Equal((single, dbl, dbl, paneItem, cardGap, rung), (m.RowSingle, m.RowDouble, m.RowWithArt, m.PaneItem, m.CardGap, m.TrackRows.Rung));
         Assert.Equal(dbl, m.TrackRows.ModernRow);

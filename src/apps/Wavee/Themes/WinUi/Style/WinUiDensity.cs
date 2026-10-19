@@ -1,13 +1,14 @@
 // ── Themes/WinUi/Style/WinUiDensity.cs — the density of the WinUI style (themes plan 6.2, W1) ─────────────────────────────────
 //
-// `style.density`: a ComboBox with two choices, "Default" and "Compact" (W-ThemeOptions: "Rows 40/48 → 32/40, pane items 36 → 32, card gaps
+// `style.rowDensity`: a ComboBox with two choices, "Default" and "Compact" (W-ThemeOptions: "Rows 40/48 → 32/40, pane items 36 → 32, card gaps
 // 16 → 12. Nothing else moves."). A density is a METRICS preset (`StyleMetrics`): it moves the row heights, the pane item, the card gap and the
 // track rows the core's table sizes from (`StyleMetrics.TrackRows`) together, so it applies on the theme transaction, never live.
 //
-// THE DENSITY CELL IS THE STYLE'S OWN (the Z1 trap). Every style that has a density names its option `density`, and the engine keeps ONE option
-// cell per id with ONE value type (`OptionStore.Cell` throws on a second type). So a view that reads the cell typed as ANOTHER style's enum
-// (Classic's `RowDensity`, Zune's `ZuneDensity`) while this style is active, or a view that reads it typed `WinUiDensity` while another style is,
-// throws. Nothing outside `WinUiStyle` reads this option's cell: a structure reads the density from the PUBLISHED metrics
+// THE DENSITY CELL IS THE STYLE'S OWN (the Z1 trap). The engine keeps ONE option cell per id with ONE value type (`OptionStore.Cell` throws on a
+// second type), and Classic and Zune both name their density option `density`. While WinUI draws through Classic's stand-in views, Classic's track
+// table reads `density` typed `RowDensity` (its "Row size" menu), which threw once WinUI's Settings row had made the cell a `WinUiDensity`. So the
+// WinUI option's id is `rowDensity` (WinUI never shipped: nothing is persisted under the old id; the loc keys keep the `density` names), and
+// nothing outside `WinUiStyle` reads this option's cell: a structure reads the density from the PUBLISHED metrics
 // (`StyleMetrics.TrackRows.Rung`, through `WinUiDensityOption.OfRung`) and asks for a change by the layer-qualified id (`QualifiedId`), which
 // `ThemeHost.Apply` type-checks against the active option (`SelectOption.TryCoerce`), so a request typed for another style is dropped, not stored.
 
@@ -30,11 +31,11 @@ public enum WinUiDensity : byte
 public static class WinUiDensityOption
 {
     /// <summary>The layer-qualified id a structure requests a density by (the style's <c>density</c> option).</summary>
-    public const string QualifiedId = "style.density";
+    public const string QualifiedId = "style.rowDensity";
 
     /// <summary>The option: a ComboBox in the track lists group ("Default", "Compact"), applied on the theme transaction.</summary>
     public static SelectOption<WinUiDensity> Option { get; } = new(
-        Id: "density",
+        Id: "rowDensity",
         TitleKey: Strings.Theme.Winui.Style.Density,
         DescriptionKey: Strings.Theme.Winui.Style.DensitySub,
         Group: Strings.Settings.ThemeOptions.Group.TrackLists,

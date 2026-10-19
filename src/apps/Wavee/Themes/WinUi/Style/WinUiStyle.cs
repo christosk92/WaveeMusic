@@ -67,7 +67,7 @@ public sealed class WinUiStyle : IStyleLayer
         Apply = ApplyMode.Transaction,
     };
 
-    /// <summary><c>style.density</c>: Default or Compact (<see cref="WinUiDensityOption"/>). Transaction.</summary>
+    /// <summary><c>style.rowDensity</c>: Default or Compact (<see cref="WinUiDensityOption"/>). Transaction.</summary>
     public static SelectOption<WinUiDensity> DensityOption => WinUiDensityOption.Option;
 
     /// <summary><c>style.useWindowsAccent</c>: the OS accent ramp (on, the default) or the theme's own #0078d4 ramp. Live (colour only).</summary>

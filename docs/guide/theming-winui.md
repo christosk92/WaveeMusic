@@ -54,7 +54,7 @@ stored as `theme.winui.structure.<id>`:
 | `tabs` | Toggle | on | Live (the strip's row animates) | `ShellCapabilities.Tabs` |
 | `artworkInRows` | Toggle | on | Transaction (row extents) | `ListPolicy.TrackArtwork` |
 
-The style's three (`backdrop` {Mica, MicaAlt, Acrylic, None} Transaction, `density` {Standard, Compact} Transaction, `useWindowsAccent`
+The style's three (`backdrop` {Mica, MicaAlt, Acrylic, None} Transaction, `rowDensity` {Standard, Compact} Transaction (not `density`: Classic's stand-in views read that cell typed `RowDensity`), `useWindowsAccent`
 Live) are `WinUiStyle`'s (W1); their loc keys are already under `theme.winui.style`. A view reads the structure options through
 `WinUiOptions` (tracked); a policy hook gets them as `WinUiParameters`.
 
