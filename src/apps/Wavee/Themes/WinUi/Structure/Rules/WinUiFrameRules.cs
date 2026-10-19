@@ -90,8 +90,8 @@ public static class WinUiFrameRules
 
     /// <summary>The search field's width across a tier crossing (520 -> 640, or the Small field following the window): a reflow, so the
     /// centred field re-centres every tick.</summary>
-    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
 
     /// <summary>The identity's width when the name joins the avatar at Huge: a reflow anchored at its end, so the bell, Friends and pin glide.</summary>
     public static readonly LayoutTransition IdentityWidthMotion = new(TransitionChannels.Size,
