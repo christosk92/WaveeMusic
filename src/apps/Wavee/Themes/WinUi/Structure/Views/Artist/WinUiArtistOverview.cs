@@ -2,7 +2,7 @@
 //
 // Board W-Artist: under the pivot the OVERVIEW is two columns 36 apart, Popular (the chart, weight 1.2) | the latest release card over the Discography preview (weight 1),
 // stacking below a 1100-wide page (the column count is `WinUiArtistTiers.OverviewColumns`, held 24 once two); at Huge (W-Artist-Huge) three: Popular | Discography | the latest
-// release (and the upcoming card and the pick under it). The Discography preview is three covers of the chosen type under two combos (type, order) and "Show all N albums"; at Huge it
+// release (and the upcoming card and the compact pick under it; at two columns and one they follow Discography). The Discography preview is three covers of the chosen type under two combos (type, order) and "Show all N albums"; at Huge it
 // is two titled rows (Albums, Singles & EPs) under "Newest" and "Show all". The full facets (the core's grid and album drawer) follow as the Albums, Singles & EPs and Compilations sections.
 //
 // About and Fans stay sections under the overview (their pivot anchors live there): the Huge board stacks them in the third column; here the third column holds the latest release alone.
@@ -44,26 +44,33 @@ internal static class WinUiArtistOverview
         {
             int columns = latch.Columns = WinUiArtistTiers.OverviewColumns(w + 2f * inset, tier, latch.Columns);
             Element? chart = popular ? new BoxEl { Key = "ov:chart", Direction = 1, MinWidth = 0f, Children = [Artist.Chart(a, accentSignal)] } : null;
-            var side = new List<Element>(4);
+            // W-Artist: the latest release, then Discography; the upcoming card and the artist's pick (no board draws one) follow under Discography, the pick
+            // compact (no photograph band) so it never outweighs the column.
             float target = WinUiDetailRules.TargetOf(tier);
-            if (latest) side.Add(LatestCard(a, target));
-            if (upcoming) side.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), WinUiArtistBanners.UpcomingCard(a, accentFn, wide: false)));
-            if (a.HasPick) side.Add(WinUiArtistPick.Card(a, accentFn, horizontal: columns == 1, overlay, surface, target) with { Key = "ov:pick" });
+            Element? latestCard = latest ? LatestCard(a, target) : null;
+            var after = new List<Element>(2);
+            if (upcoming) after.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), WinUiArtistBanners.UpcomingCard(a, accentFn, wide: false)));
+            if (a.HasPick) after.Add(WinUiArtistPick.Card(a, accentFn, horizontal: false, overlay, surface, target, photo: false) with { Key = "ov:pick" });
+            var side = new List<Element>(3);
+            if (latestCard is not null) side.Add(latestCard);
+            side.AddRange(after);
             Element preview = Embed.Comp(new PreviewProps(a, stamp, columns >= 3, target), static () => new PreviewHost()) with { Key = "ov:preview" };
 
             if (columns <= 1)
             {
                 var all = new List<Element>(6);
                 if (chart is not null) all.Add(chart);
-                all.AddRange(side);
+                if (latestCard is not null) all.Add(latestCard);
                 all.Add(preview);
+                all.AddRange(after);
                 return new BoxEl { Direction = 1, Gap = WinUiArtistRules.SectionGap, MinWidth = 0f, Children = all.ToArray() };
             }
             if (columns == 2)
             {
                 var right = new List<Element>(5);
-                right.AddRange(side);
+                if (latestCard is not null) right.Add(latestCard);
                 right.Add(preview);
+                right.AddRange(after);
                 return Row(WinUiArtistRules.ColumnGap,
                     Column("ov:col:popular", WinUiArtistRules.PopularGrow, chart is null ? [] : [chart]),
                     Column("ov:col:side", WinUiArtistRules.OtherGrow, right.ToArray()));

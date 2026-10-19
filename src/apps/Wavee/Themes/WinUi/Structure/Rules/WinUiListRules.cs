@@ -136,6 +136,10 @@ public static class WinUiListRules
     /// <summary>The command edge at a window tier: the 32, or the Compact 40 target.</summary>
     public static float CommandEdgeFor(WidthTier window) => window == WidthTier.Compact ? CompactTarget : CommandHeight;
 
+    /// <summary>Does the list bar word Find and carry Select at this window tier? W-Album and W-Album-Huge draw "Find" and "Select"; W-Album-Small keeps the
+    /// glyph in the header and Select in "...".</summary>
+    public static bool WordedBar(WidthTier window) => window >= WidthTier.Standard;
+
     /// <summary>The command's own radius (W-Tokens: controls r4).</summary>
     public const float CommandRadius = 4f;
 

@@ -13,7 +13,7 @@ using System.Collections.Generic;
 namespace Wavee;
 
 /// <summary>Where the one selection pill sits (design V.5).</summary>
-public enum SidebarPillAnchor : byte { None = 0, Row = 1, AncestorFolder = 2, SectionHeader = 3 }
+public enum SidebarPillAnchor : byte { None = 0, Row = 1, AncestorFolder = 2, SectionHeader = 3, Adopted = 4 }
 
 /// <summary>The pill's plan index and why it is there. <see cref="None"/> ⇒ no pill (the route is in a hidden section,
 /// or nowhere in the sidebar).</summary>

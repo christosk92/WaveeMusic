@@ -1285,6 +1285,12 @@ public static partial class Sidebar
             SidebarPillRules.AncestorFolders(Model.Rootlist, route, _ancestorScratch);
             _pillTarget = SidebarPillRules.Resolve(Plan.Rows, Plan.Entries, _rowRouteOf ??= RowRouteOf, route, _ancestorScratch,
                 Kit.OwningSection(Doc, Model.Projection, route, _isPinned ??= IsPinned));
+            // (5) the structure's owning nav item (NavRowKit.AdoptiveRoute: an album page lights Albums), only when nothing above placed the pill.
+            if (_pillTarget.PlanIndex < 0 && !string.IsNullOrEmpty(route) && Kit.AdoptiveRoute(route) is { Length: > 0 } owner)
+            {
+                int at = SidebarPlanQueries.IndexOfRoute(Plan.Rows.Count, _rowRouteOf, owner);
+                if (at >= 0) _pillTarget = new SidebarPillTarget(at, SidebarPillAnchor.Adopted);
+            }
             bool onRow = _pillTarget.PlanIndex >= 0;
             if (onRow != _pillOnRow)
             {

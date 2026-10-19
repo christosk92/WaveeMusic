@@ -123,7 +123,7 @@ internal static class WinUiAlbumTrailing
                         },
                     ],
                 },
-                Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "aside:follow:" + uri, },
+                WinUiDetailKit.Follow(uri, name) with { Key = "aside:follow:" + uri, },
             ],
         };
     }
@@ -220,12 +220,15 @@ internal static class WinUiAlbumTrailing
         ],
     };
 
+    /// <summary>The About card's Follow: WinUI's neutral toggle, not the shared accent-tinted one.</summary>
+    static readonly Func<string, string, Element> s_follow = static (uri, name) => WinUiDetailKit.Follow(uri, name);
+
     /// <summary>"About the artist": the shared <see cref="Controls.ArtistAboutCard"/> in its page row layout (the link is the focusable click owner; Follow is
     /// its sibling, never nested inside it). The card is at least the skeleton's reserve (<see cref="PageRules.SkelAboutH"/>): a bio-less artist's card would
     /// otherwise land shorter than the skeleton it replaces and pull the sections under it up.</summary>
     static Element AboutSection(Artist artist)
     {
-        var card = Controls.ArtistAboutCard(artist, AboutLayout.Page);
+        var card = Controls.ArtistAboutCard(artist, AboutLayout.Page, follow: s_follow);
         if (card is BoxEl box) card = box with { MinHeight = PageRules.SkelAboutH };
         return new BoxEl
         {
