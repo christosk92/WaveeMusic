@@ -20,7 +20,9 @@
 //   FADE   at Compact and Small rows 1 and 2 scroll under an edge fade of max(48, 16 % of the band's width) (A7, the board's 84 % mask).
 //   HEIGHT row 1 + row 2 + 8 (84 at Standard), row 1 + 8 (52) with no row 2 or collapsed: the root's height eases between them (a reflow
 //          on the height axis, so the page under it follows frame by frame, never a jump); the rows keep their full height and are clipped
-//          from the bottom. COLLAPSE (`collapseBand`, the tiers that collapse): row 2 folds while the page last scrolled down.
+//          from the bottom. SCROLL-TIED (`collapseBand`, Compact): row 2 scrolls away with the page, its height given back as
+//          clamp(offset, 0, row 2) and its opacity following, then returns as the page reaches the top: no direction, no timed fade. Small,
+//          Standard and Huge keep it pinned; a Short window rests with it folded, static.
 //   KEYS   each row is a tab list: one tab stop (the lit word), Left / Right / Home / End move the focus along it, Enter opens.
 
 using FluentGpu.Controls;
@@ -78,10 +80,6 @@ internal sealed class ZuneBand : Component
         var chromeSig = frameChrome ?? band.Chrome;
         // In the frame, the band slot eases the height (ZuneFrame.BandSlot) and clips this root's foot; mounted alone the root does it itself.
         bool inFrame = frameChrome is not null;
-        // Navigation rate: the memo flips only when the page's last direction crosses down / not down.
-        var scrolledDown = UseComputed(() => _scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
-        // At rest (the top, no direction yet): a SHORT window starts with row 2 folded away (Z-Shell-Short) and gets it back as the page scrolls up.
-        var atRest = UseComputed(() => _scroll is not { } s || s.Value.Direction == PageScrollDirection.None);
         // The fade tiers' edge fade follows the band's width (A7; at Compact and Small the panel floats, so the band spans the window). A memo
         // in 4-DIP steps: a live resize re-renders the band per step of fade, and never at the tiers that do not fade.
         var viewport = UseContextSignal(Viewport.Size);
@@ -95,15 +93,20 @@ internal sealed class ZuneBand : Component
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
         var pins = pinsShown ? band.Pins() : s_noPins;
         var overflow = ZuneOptions.Overflow();
-        // The record's tiers collapse, and a Short window at any width (Z-Shell-Short, ZT1).
-        // A Short window (below the Regular height rung) rests collapsed: row 2 returns on a scroll up, as it does after any scroll down.
-        bool collapsed = ZuneBandTiers.Collapses(rec, tiers) && ZuneOptions.CollapseBand()
-            && (scrolledDown.Value || (ZuneBandTiers.RestsCollapsed(tiers) && atRest.Value));
+        // A Short window (below the Regular height rung) rests with row 2 folded away, static (Z-Shell-Short, ZT1). No direction is read: row 2
+        // never folds or returns on a scroll's direction (the owner's video: a fold that moved the page fed the direction detector back).
+        bool collapsed = ZuneBandTiers.RestsCollapsed(tiers) && ZuneOptions.CollapseBand();
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
         bool hasRow2 = views.Count > 0 || actions.Count > 0;
         bool row2 = ZuneBandRules.Row2Shown(hasRow2, collapsed);
+        // SCROLL-TIED (Compact): row 2 scrolls away with the page: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same
+        // share, continuously, in step with the scroll position (bound channels: no re-render, no timed fade, nothing to toggle or snap).
+        bool tied = row2 && ZuneBandTiers.ScrollTied(rec, tiers, ZuneOptions.CollapseBand());
+        var scrollSig = _scroll;
+        float row2H = rec.Row2H, restH = rec.HeightWith(row2);
+        float Tie() => tied && scrollSig is { } sg ? ZuneBandRules.TiedFold(sg.Value.Offset, row2H) : 0f;
         // A detail page (no lit pivot) leads row 2 with its title; its current view takes the underline (the tab style).
         bool detail = current < 0;
         string? title = rec.TitleAndActions && detail && views.Count > 0 && chrome is { Title.Length: > 0 } c ? c.Title : null;
@@ -188,7 +191,22 @@ internal sealed class ZuneBand : Component
         // ── row 2 (mounted while shown: it leaves whole, fading, before the root's height folds; see Row2) ─────────────────────
         var kids = new List<Element>(2) { row1 };
         _views.Begin();
-        if (row2) kids.Add(Row2(views, actions, title, rec, type, edgeFade, OnTabKey));
+        // Row 2 sits in a holder that carries the scroll-tied motion (bound channels; at rest away from Compact): the row slides up by the fold under the
+        // holder's clip at row 1's foot and fades by the same share, so it scrolls away with the page; the row's own entrance and exit keep their channels.
+        kids.Add(new BoxEl
+        {
+            Key = ZuneBandRules.Row2HolderKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            Opacity = Prop.Of(() => 1f - Tie() / row2H),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, Shrink = 0f, MinWidth = 0f,
+                    Transform = Prop.Of(() => Affine2D.Translation(0f, -Tie())),
+                    Children = row2 ? [Row2(views, actions, title, rec, type, edgeFade, OnTabKey)] : [],
+                },
+            ],
+        });
 
         // THE INSETS (lead 16 / 24 / 48 / 48 / 64, trailing 0 / 24 / 48 / 48 / 64) are spacers, not the root's padding (ZT1): a crossing eases
         // their WIDTHS (a reflow, a size channel), so the rows ride the re-solve. A position FLIP of the rows would be snapped by the engine's
@@ -198,7 +216,7 @@ internal sealed class ZuneBand : Component
         return new BoxEl
         {
             Key = ZuneBandRules.BandKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = !inFrame,
-            Height = rec.HeightWith(row2),
+            Height = Prop.Of(() => restH - Tie()),
             Animate = inFrame || Design.Reduced ? null : ZuneBandRules.HeightMotion,
             Children =
             [

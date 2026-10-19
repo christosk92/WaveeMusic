@@ -54,6 +54,13 @@ public static class ZuneFrameContext
     /// <summary>The current page's chrome (title, trail, row 2): the core's signal, provided by the frame. Null outside the frame (a view
     /// mounted alone) or where the core hands no band data.</summary>
     public static readonly Context<IReadSignal<PageChrome?>?> PageChrome = new(null);
+
+    /// <summary>The published material (the page's wash), provided by the frame so the side panel continues the page's wash on its own surface.</summary>
+    public static readonly Context<IReadSignal<ShellMaterialState>?> Material = new(null);
+
+    /// <summary>The primary panel's top edge in DIP below the window's top (under the title bar docked; under the band floating), read live: where a panel
+    /// that paints its own surface picks the page wash up.</summary>
+    public static readonly Context<Func<float>?> PanelTop = new(null);
 }
 
 /// <summary>Zune's window frame.</summary>
@@ -77,8 +84,22 @@ internal static class ZuneFrame
             Children =
             [
                 .. props.Chords,
-                TitleBarSlot(props, in ctx, tiers, reduced),
-                Body(props, in ctx, tiers, bandH),
+                // The title bar and the body over the docked panels' full-height surface (design B): the scrim, the glow and the edge run from the
+                // window's top edge to the play bar, so the title bar's end sits on the panel's surface with no seam.
+                new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+                    Children =
+                    [
+                        Embed.Comp(new ZunePanelSurfaceProps(props.Panel, () => DockedWidth(props)), static () => new ZunePanelSurface())
+                            with { Visible = Prop.Of(props.ChromeMounted) },
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+                            Children = [TitleBarSlot(props, in ctx, tiers, reduced), Body(props, in ctx, tiers, bandH)],
+                        },
+                    ],
+                },
                 // Between the page row and the play bar: its height is the reservation under the page while a selection shows it (Z-State-Rows).
                 ZuneSelectionDock.Slot(dockHost),
                 ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ZuneFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
@@ -93,7 +114,12 @@ internal static class ZuneFrame
             Children = [ctx.View(ViewKeys.ShellMaterialLayer, props.Material), column],
         };
 
-        return Ctx.Provide(ZuneFrameContext.PageChrome, props.NavPane.Band?.Chrome, Ctx.Provide(SelectionDockHost.Context, dockHost, ZStack(
+        Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
+        Func<float> panelTop = () => ZuneTiers.FrameOf(tiers()).TitleBarH + (placement() == PanelPlacement.Float && float.IsFinite(bandH.Value)
+            ? bandH.Value : placement() == PanelPlacement.Float ? ZuneTiers.FrameOf(tiers()).BandH : 0f);
+        return Ctx.Provide(ZuneFrameContext.PageChrome, props.NavPane.Band?.Chrome,
+            Ctx.Provide(ZuneFrameContext.Material, props.Material.State, Ctx.Provide(ZuneFrameContext.PanelTop, panelTop,
+            Ctx.Provide(SelectionDockHost.Context, dockHost, ZStack(
             ground,
             // The immersive stage covers the whole frame and sits below the banner, the drop cue and the toasts.
             Flow.Show(props.ImmersiveOpen, new BoxEl
@@ -110,7 +136,7 @@ internal static class ZuneFrame
             ctx.View(ViewKeys.ShellCommandPalette, props.CommandPalette),
             ctx.View(ViewKeys.ShellCoverScrim, props.CoverScrim),
             ctx.View(ViewKeys.ShellDragChip, props.DragChip),
-            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f }));
+            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f }))));
     }
 
     /// <summary>The title bar's slot (`shell.titlebar`): the record's height (48, 56 at Huge 4K), easing across the 3200 crossing so the band
@@ -178,9 +204,10 @@ internal static class ZuneFrame
 
     /// <summary>The band's slot: it eases its own height (a reflow, anchored at the top and clipped at the foot). The band inside changes height at
     /// once; a slot that merely hugged an animating child snapped to the child's target (the page jumped by the row's 32), and the page follows the
-    /// slot frame by frame. When row 2 folds away the slot WAITS for the row's fade-out (<see cref="ZuneBandRules.HeightMotionAfterFade"/>), so the
-    /// clip never cuts it half way; when it comes back the height opens at once (the row enters after it). Only the flip of "has a row 2"
-    /// re-renders this component.</summary>
+    /// slot frame by frame. When row 2 folds away (a page without one, a Short window) the slot WAITS for the row's fade-out
+    /// (<see cref="ZuneBandRules.HeightMotionAfterFade"/>), so the clip never cuts it half way; when it comes back the height opens at once (the row
+    /// enters after it). While Compact's row 2 is scroll-TIED and the page is scrolled at all, the slot follows the band's bound height exactly (no
+    /// ease: an ease would trail the scroll). Only those flips re-render this component; the scroll position itself never does.</summary>
     sealed class BandSlot : Component
     {
         public override Element Render()
@@ -188,18 +215,19 @@ internal static class ZuneFrame
             var p = UseProps<BandSlotProps>();
             var chrome = UseContext(ZuneFrameContext.PageChrome);
             var hasRow2 = UseComputed(() => chrome?.Value is { } c && (c.Views.Count > 0 || c.Actions.Count > 0));
-            // The page scrolling down folds row 2 (the band collapses), as the page having none does: both wait for the row's fade-out.
-            var scroll = p.Scroll;
-            var scrolledDown = UseComputed(() => scroll is { } s && s.Value.Direction == PageScrollDirection.Down);
-            // A Short window rests with row 2 folded (Z-Shell-Short): its fold waits for the row's fade-out like any other.
-            var atRest = UseComputed(() => scroll is not { } s2 || s2.Value.Direction == PageScrollDirection.None);
             var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
-            bool folding = !hasRow2.Value || scrolledDown.Value || (ZuneBandTiers.RestsCollapsed(tiers) && atRest.Value);
+            bool parameter = ZuneOptions.CollapseBand();
+            bool tiedTier = ZuneBandTiers.ScrollTied(ZuneBandRules.BandOf(tiers), tiers, parameter);
+            var scroll = p.Scroll;
+            // Compact with the page off its top: the band's height is tied to the scroll, so the slot must not ease it.
+            var tiedNow = UseComputed(() => tiedTier && scroll is { } s && s.Value.Offset > 0f);
+            // A Short window rests with row 2 folded (Z-Shell-Short): its fold waits for the row's fade-out like a page without one.
+            bool folding = !hasRow2.Value || (ZuneBandTiers.RestsCollapsed(tiers) && parameter);
             var bandH = p.BandH;
             return new BoxEl
             {
                 Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-                Animate = Design.Reduced ? null : folding ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
+                Animate = Design.Reduced || (tiedNow.Value && hasRow2.Value) ? null : folding ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
                 // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
                 OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
                 Children = [p.Band],
@@ -207,14 +235,22 @@ internal static class ZuneFrame
         }
     }
 
-    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating), painted the panel's ground so the
-    /// slide-out never shows a hole.</summary>
+    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating). Unpainted: the panels' full-height surface
+    /// under the column (<see cref="ZunePanelSurface"/>, as wide as every reservation) shows through it, so the slide-in never shows a hole.</summary>
     private static Element Reservation(Func<float> width) => new BoxEl
     {
         Shrink = 0f, HitTestPassThrough = true,
         Width = Prop.Of(width),
-        Fill = Prop.Of(static () => R.Layer.FloatingPane),
     };
+
+    /// <summary>The docked reservations' width now: the primary's and every docked pane's (the panels' full-height surface spans them).</summary>
+    private static float DockedWidth(ShellFrameProps props)
+    {
+        float w = props.RailReservedWidth();
+        if (props.DockedPanes is { } panes)
+            foreach (var pane in panes) w += pane.ReservedWidth();
+        return w;
+    }
 
     // ── the panel layer ──────────────────────────────────────────────────────────────────────────────────────────────────
 

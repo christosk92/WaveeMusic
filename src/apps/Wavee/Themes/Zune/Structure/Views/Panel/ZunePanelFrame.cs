@@ -4,8 +4,9 @@
 // width, docked, floating or a sheet; the rail <-> docked-video coupling) and hands this template one decided `PanelView` per render. The
 // frame places the host (`ZuneFrame`); this template draws the panel itself:
 //
-//   surface   the panel ground (#1b1b1b; the frame's reservation paints it while the panel is docked and open, so the slide-out never
-//             shows a hole); floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
+//   surface   design B (`ZunePanelWash.cs`): no plate. Docked and open the frame's full-height surface (the page wash under a scrim, the cover
+//             glow, the edge) lies under the transparent panel; a card (floating, the sheet, sliding out) paints the same picture itself, opaque.
+//             Floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
 //   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show.
 //   head      (round G: the words are 44-tall hit boxes and sit in a horizontal scroller under an edge fade, never clipped mid-word; the current
 //             word is brought into view) the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case): queue · lyrics ·
@@ -232,7 +233,7 @@ internal sealed class ZunePanelFrame : Component
 {
     bool _motionSeeded;
     PanelPlacement _seededPlacement;
-    Func<ColorF>? _surfaceFill;
+    static readonly Element[] s_noLayers = [];
     Action<RectF>? _onBounds;
     Action<KeyEventArgs>? _onKey;
     Action? _close;
@@ -299,9 +300,19 @@ internal sealed class ZunePanelFrame : Component
             scene.BringIntoView(viewport, word, align: float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, margin: ZuneFrameRules.PanelEdgeFade);
         }, DepKey.From((int)body, open ? 1 : 0));
 
-        _surfaceFill ??= () => props.InlineAndOpen() ? ColorF.Transparent : R.Layer.FloatingPane;
         _onBounds ??= r => props.BodyHeightChanged(r.H);
-        var wash = ZunePanelWash.Layers(props.CoverUrl?.Invoke(), out var ink);
+        // Design B: docked and open, the frame's full-height surface lies under the panel (it stays transparent); a card (floating, the sheet, a docked
+        // panel sliding out) paints its own: the page wash below its top edge, the scrim, the glow, the edge.
+        bool inline = open && placement == PanelPlacement.Dock;
+        var pageWash = UseContext(ZuneFrameContext.Material) is { } material
+            ? ZunePageWash.Of(material.Value, UseContext(ZuneFrameContext.PageChrome)?.Value?.Backdrop ?? PageBackdrop.None, facts.Value.Tiers.Window)
+            : null;
+        var panelTop = UseContext(ZuneFrameContext.PanelTop);
+        float top = inline ? 0f : panelTop?.Invoke() ?? 0f;
+        var glow = ZunePanelWash.Glow(props.CoverUrl?.Invoke(), out var peak);
+        var surface = inline ? s_noLayers : ZunePanelWash.Card(pageWash, top, glow);
+        // The inks are judged where the head lies: docked, the full-height surface's top (the window's top: the strongest wash, the glow's peak).
+        var ink = ZunePanelInk.For(ZunePanelWash.HeadColour(pageWash, top, peak));
 
         Element bodySlot = new BoxEl
         {
@@ -324,7 +335,7 @@ internal sealed class ZunePanelFrame : Component
             OnKeyDown = _onKey,
             Children =
             [
-                new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, Fill = Prop.Of(_surfaceFill), OnBoundsChanged = _onBounds, Children = wash },
+                new BoxEl { Grow = 1f, ClipToBounds = true, ZStack = true, OnBoundsChanged = _onBounds, Children = surface },
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
         });

@@ -1,53 +1,97 @@
-﻿// â”€â”€ Themes/Zune/Structure/Views/Panel/ZunePanelWash.cs â€” the side panel's cover glow (owner decision over Z-Part-Panel's flat plate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+﻿// ── Themes/Zune/Structure/Views/Panel/ZunePanelWash.cs — the side panel's surface: design "B, one surface" (owner decision over Z-Part-Panel's flat plate) ──
 //
-// The panel (docked or floating) keeps the board's flat plate as its body; the playing track's cover lights only its HEAD: a soft glow of the cover's
-// hue behind the pivots and the transport-option row that eases out to nothing by `ZunePanelWashRules.GlowReach` of the panel's height, so the lyrics
-// and the queue's rows sit on the board's black (light: its pale plate). The glow takes the cover's HUE (`ColorScience.Accent`, the most saturated
-// graded role) at the rules' own saturation and value: a rich, darker tint at a low alpha, never the graded background role at a mid alpha (that is
-// what washed the whole panel a flat grey-plum). It is ONE layer for the whole panel, so switching pivots (queue, lyrics, now playing, friends) never
-// flashes. A new track mounts a fresh keyed layer that FADES IN over the old one (a gradient cannot brush-fade: the same recipe as the window's
-// wash). With nothing playing, no art, no grading yet, a neutral (hueless) cover, or the background option at "none", there is no layer and the plate
-// is the board's flat plate, unchanged.
+// The panel draws no plate of its own. The PAGE's wash (the material layer's cover tint from the window's top, `ZunePageWash`) runs on under it and a soft
+// scrim dims it (`ZunePanelWashRules.ScrimOf`), so the page and the panel read as one sheet with a slightly darker panel zone and a 1-DIP divider down the
+// panel's left edge. A hued cover adds its glow at the head (the cover's HUE at the rules' saturation and value, over the scrim, easing out by
+// `ZunePanelWashRules.GlowReach` of the panel's height); a hueless cover, nothing playing or no grading shows the page's colour through the scrim alone.
+// The background option at "none" leaves the ground under the scrim (never the old flat plate).
 //
-// The panel's edge stays readable against the page by a 1-DIP divider down its left side, drawn only while the glow is.
+//   DOCKED    a FULL-HEIGHT column: `ZunePanelSurface` (the frame mounts it under the title bar and the body) paints the scrim, the glow and the edge from
+//             the window's top edge down to the play bar, as wide as the docked reservations, so the title bar's bell, window buttons and the end of the
+//             search pill sit on the panel's surface and no horizontal seam runs under the title bar. The panel itself is transparent while docked and open.
+//   CARD      floating, the sheet, or a docked panel sliding out: the panel is a card over the page, so it paints its own surface, opaque: the ground, the
+//             part of the page wash below its own top edge (so the colour lines up with the page beside it), the scrim, the glow from its top, the edge.
+//
+// The glow is ONE layer per surface, so switching pivots never flashes; a new track mounts a fresh keyed layer that FADES IN over the old one (a gradient
+// cannot brush-fade: the same recipe as the window's wash).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>The panel surface's glow layers.</summary>
+/// <summary>The panel surface's layers.</summary>
 internal static class ZunePanelWash
 {
-    static readonly Element[] s_none = [];
-
-    /// <summary>The layers drawn over the panel's plate for the cover <paramref name="url"/>: the glow and the left edge, or none. <paramref name="ink"/> is the
-    /// ink the panel's text takes while the glow is drawn (null with no glow: the roles' own inks stand).</summary>
-    public static Element[] Layers(string? url, out ZunePanelInk? ink)
+    /// <summary>The cover glow for <paramref name="url"/> (null: no glow) and its peak colour.</summary>
+    public static Element? Glow(string? url, out ColorF? peak)
     {
-        ink = null;
-        if (url is not { Length: > 0 } || ZuneOptions.Background() == ZuneBackground.None) return s_none;
+        peak = null;
+        if (url is not { Length: > 0 } || ZuneOptions.Background() == ZuneBackground.None) return null;
         _ = Palette.Watch(url).Value;   // the grading may land late: this render re-runs when it does
-        if (Design.SchemeFor(url) is not { } scheme || Glow(scheme, R.IsLight) is not { } peak) return s_none;
-        ink = ZunePanelInk.For(peak);
-        return
-        [
-            new BoxEl
+        if (Design.SchemeFor(url) is not { } scheme || Glow(scheme, R.IsLight) is not { } p) return null;
+        peak = p;
+        return new BoxEl
+        {
+            // keyed on the colour: a new cover mounts a fresh glow that fades in over the old one
+            Key = ZunePanelWashRules.WashKey + ":" + p.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+            Gradient = Falloff(p),
+            Enter = ZuneBandRules.MaterialFade, Exit = ZuneBandRules.MaterialFade,
+        };
+    }
+
+    /// <summary>The scrim over the page wash (stretches over its surface).</summary>
+    public static Element Scrim() => new BoxEl
+    {
+        Key = ZunePanelWashRules.ScrimKey, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
+        Fill = ZunePanelWashRules.ScrimOf(R.IsLight),
+    };
+
+    /// <summary>The 1-DIP divider down the surface's left edge.</summary>
+    public static Element Edge() => new BoxEl
+    {
+        Key = ZunePanelWashRules.EdgeKey, Width = ZunePanelWashRules.EdgeW, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+        Fill = Tok.StrokeDividerDefault,
+    };
+
+    /// <summary>A card's own opaque surface whose top edge lies <paramref name="top"/> DIP below the window's top: the ground, the page wash below that line,
+    /// the scrim, the glow, the edge.</summary>
+    public static Element[] Card(ZunePageWash? wash, float top, Element? glow)
+    {
+        var kids = new List<Element>(5)
+        {
+            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Fill = R.Layer.ShellGround },
+        };
+        if (wash?.Below(top) is { } part)
+            kids.Add(new BoxEl
             {
-                // keyed on the colour: a new cover mounts a fresh glow that fades in over the old one
-                Key = ZunePanelWashRules.WashKey + ":" + peak.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                Gradient = Falloff(peak),
+                Key = ZunePanelWashRules.CardWashKey + ":" + wash.Tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+                Height = part.Height, AlignSelf = FlexAlign.Start, HitTestVisible = false,
+                Gradient = GradientDown(part.Stops),
                 Enter = ZuneBandRules.MaterialFade, Exit = ZuneBandRules.MaterialFade,
-            },
-            new BoxEl
-            {
-                Key = ZunePanelWashRules.EdgeKey, Width = ZunePanelWashRules.EdgeW, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                Fill = Tok.StrokeDividerDefault,
-            },
-        ];
+            });
+        kids.Add(Scrim());
+        if (glow is not null) kids.Add(glow);
+        kids.Add(Edge());
+        return kids.ToArray();
+    }
+
+    /// <summary>The surface's colour where the panel's head lies (its strongest tint: the worst case for the inks): the page wash at <paramref name="y"/> DIP
+    /// below the window's top over the ground, the scrim, then the glow's peak.</summary>
+    public static ColorF HeadColour(ZunePageWash? wash, float y, ColorF? glow)
+    {
+        var c = R.Layer.ShellGround;
+        if (wash is not null) c = ColorContrast.Flatten(wash.At(y), c);
+        c = ColorContrast.Flatten(ZunePanelWashRules.ScrimOf(R.IsLight), c);
+        if (glow is { } g) c = ColorContrast.Flatten(g, c);
+        return c;
     }
 
     /// <summary>The glow's colour at its peak (the panel's top) for a graded <paramref name="scheme"/>: the cover's hue at the kind's saturation, value and
@@ -60,7 +104,7 @@ internal static class ZunePanelWash
     }
 
     /// <summary>The glow's fall from <paramref name="peak"/> at the top to nothing at <see cref="ZunePanelWashRules.GlowReach"/> of the panel (an ease-out: it
-    /// holds over the head, then thins softly; the stops past the reach hold transparent, the plate shows).</summary>
+    /// holds over the head, then thins softly; the stops past the reach hold transparent, the surface shows).</summary>
     internal static GradientSpec Falloff(ColorF peak)
     {
         float reach = ZunePanelWashRules.GlowReach;
@@ -76,10 +120,47 @@ internal static class ZunePanelWash
     }
 }
 
-/// <summary>The ink of the panel's text while its cover glow is drawn (provided to the panel's bodies by the frame; absent without a glow). The head's words and
-/// the queue's first rows (the transport options, "playing from", the playing row) sit IN the glow, so the words that read tertiary take the secondary ink and
-/// the accent lifts toward white (dark) or black (light) until it clears <see cref="ZuneFrameRules.PanelInkRatio"/> against the glow's peak over the plate (the
-/// strongest tint: the worst case on the panel; below the glow the same inks read on the plain plate).</summary>
+/// <summary>The docked panels' full-height surface (design B): mounted by the frame UNDER the title bar and the body, flush right, as wide as the docked
+/// reservations (0 while closed or floating), from the window's top edge down to the play bar: the scrim over the page wash, the playing cover's glow, the
+/// left edge. Re-renders on a track change (the glow cross-fades) and the theme; the width is a bound channel that eases with the dock.</summary>
+internal sealed class ZunePanelSurface : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<ZunePanelSurfaceProps>();
+        var glow = ZunePanelWash.Glow(p.Panel.CoverUrl?.Invoke(), out _);
+        var kids = new List<Element>(3) { ZunePanelWash.Scrim() };
+        if (glow is not null) kids.Add(glow);
+        kids.Add(ZunePanelWash.Edge());
+        var width = p.Width;
+        return new BoxEl
+        {
+            Direction = 0, Grow = 1f, HitTestVisible = false, Justify = FlexJustify.End,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = ZunePanelWashRules.SurfaceKey, Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                    Width = Prop.Of(width),
+                    // The reservations' width changes at once (docking, undocking, a pane added at 1920 / 3200) while the page column and the hosts
+                    // glide over the dock's 300 ms: the surface eases its width the same way, so its edge rides with them instead of jumping.
+                    Animate = Design.Reduced ? null : ZunePanelTiers.ShiftMotion,
+                    Children = kids.ToArray(),
+                },
+            ],
+        };
+    }
+}
+
+/// <summary>The props of <see cref="ZunePanelSurface"/>.</summary>
+/// <param name="Panel">The primary panel's props (its playing cover).</param>
+/// <param name="Width">The docked reservations' width now (the primary's and every docked pane's).</param>
+internal sealed record ZunePanelSurfaceProps(PanelProps Panel, Func<float> Width);
+
+/// <summary>The ink of the panel's text on its surface (provided to the panel's bodies by the frame). The head's words and the queue's first rows (the
+/// transport options, "playing from", the playing row) sit where the surface is most tinted (the page wash's top, the glow's peak), so the words that read
+/// tertiary take the secondary ink and the accent lifts toward white (dark) or black (light) until it clears <see cref="ZuneFrameRules.PanelInkRatio"/>
+/// against that colour (the worst case on the panel; below it the same inks read on the plainer surface).</summary>
 /// <param name="Tertiary">The ink for the words that read tertiary off the wash.</param>
 /// <param name="Accent">The accent ink, lifted.</param>
 internal sealed record ZunePanelInk(ColorF Tertiary, ColorF Accent)
@@ -87,12 +168,9 @@ internal sealed record ZunePanelInk(ColorF Tertiary, ColorF Accent)
     /// <summary>The ink in force in the panel's subtree.</summary>
     public static readonly FluentGpu.Hooks.Context<ZunePanelInk?> Current = new(null);
 
-    /// <summary>The ink for a glow whose peak colour (translucent) lies over the panel's plate.</summary>
+    /// <summary>The ink for the panel whose surface reads <paramref name="head"/> (opaque) where its head lies.</summary>
     public static ZunePanelInk For(ColorF head)
-    {
-        var plate = ColorContrast.Flatten(head, R.Layer.FloatingPane);
-        return new ZunePanelInk(Tok.TextSecondary, Lifted(Tok.AccentTextPrimary, plate, ZuneFrameRules.PanelInkLiftToward(R.IsLight)));
-    }
+        => new(Tok.TextSecondary, Lifted(Tok.AccentTextPrimary, head, ZuneFrameRules.PanelInkLiftToward(R.IsLight)));
 
     /// <summary>The least lift of <paramref name="ink"/> toward <paramref name="toward"/> that reads <see cref="ZuneFrameRules.PanelInkRatio"/> on <paramref name="plate"/>.</summary>
     static ColorF Lifted(ColorF ink, ColorF plate, ColorF toward)

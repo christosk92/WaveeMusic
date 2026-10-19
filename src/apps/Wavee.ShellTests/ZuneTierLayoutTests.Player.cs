@@ -389,8 +389,9 @@ public sealed partial class ZuneTierLayoutTests
         return open;
     }
 
-    /// <summary>The host glides on the crossing frame: it, an ancestor, a box beside it in its row (the spacer that places it) or a box beside
-    /// its row (the floating panel's top spacer) holds animation tracks.</summary>
+    /// <summary>The host glides on the crossing frame: it, an ancestor, a box beside it in its row (the spacer that places it), a box beside
+    /// its row (the floating panel's top spacer) or the slot it wraps, up to three levels down (the play bar's view root: its slot eases its own height, 72 <-> 88) holds
+    /// animation tracks.</summary>
     static bool Glides(Shell.HeadlessShell shell, NodeHandle host)
     {
         var scene = shell.Host.Scene;
@@ -403,6 +404,13 @@ public sealed partial class ZuneTierLayoutTests
             for (var c = scene.FirstChild(parent); !c.IsNull; c = scene.NextSibling(c))
                 if (anim.HasTracks(c)) return true;
         }
-        return false;
+        return SlotGlides(host, 3);
+
+        bool SlotGlides(NodeHandle n, int depth)
+        {
+            for (var c = scene.FirstChild(n); !c.IsNull; c = scene.NextSibling(c))
+                if (anim.HasTracks(c) || (depth > 1 && SlotGlides(c, depth - 1))) return true;
+            return false;
+        }
     }
 }

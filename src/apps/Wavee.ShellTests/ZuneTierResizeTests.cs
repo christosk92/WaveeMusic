@@ -1,4 +1,4 @@
-// ── Wavee.ShellTests/ZuneTierResizeTests.cs — Zune's tiers under a resize, and the band's tier rules alone (themes plan 3.3; P5 ZT1) ──
+﻿// ── Wavee.ShellTests/ZuneTierResizeTests.cs — Zune's tiers under a resize, and the band's tier rules alone (themes plan 3.3; P5 ZT1) ──
 //
 // The app under Zune resized across and inside its edges, and the band mounted alone at the sizes its tier rules turn on:
 //
@@ -107,11 +107,11 @@ public sealed class ZuneTierResizeTests(ShellHost host)
     }
 
     [Theory]
-    [InlineData(2560f, 660f, true)]     // Huge, Short: collapses on the first scroll down (Z-Shell-Short)
+    [InlineData(2560f, 660f, true)]     // Huge, Short: rests folded (Z-Shell-Short), static
     [InlineData(800f, 330f, true)]      // Small, Short: the board's own window
     [InlineData(2560f, 1440f, false)]   // Huge, Regular: never (there is room)
     [InlineData(3840f, 2160f, false)]   // Huge 4K, Regular: never
-    public void The_band_collapses_on_the_first_scroll_wherever_the_window_is_short(float width, float height, bool collapses)
+    public void The_band_rests_folded_and_static_wherever_the_window_is_short(float width, float height, bool collapses)
     {
         var (props, scroll) = BandFixture();
         ViewHarness.With(host, ViewKeys.ShellNavPane, props, harness =>
@@ -126,9 +126,10 @@ public sealed class ZuneTierResizeTests(ShellHost host)
             harness.RunFrames(60);
             Assert.Equal(collapses ? band.CollapsedH : band.ExpandedH, Height(), 0.5f);
 
+            // No direction is read: a scroll back up neither returns row 2 on a Short window nor folds it on a Regular one.
             scroll.Value = new PageScroll(60f, PageScrollDirection.Up);
             harness.RunFrames(60);
-            Assert.Equal(band.ExpandedH, Height(), 0.5f);
+            Assert.Equal(collapses ? band.CollapsedH : band.ExpandedH, Height(), 0.5f);
         }, new ViewHarnessOptions { Composition = ZuneTheme.Create(), WidthDip = width, HeightDip = height });
     }
 
