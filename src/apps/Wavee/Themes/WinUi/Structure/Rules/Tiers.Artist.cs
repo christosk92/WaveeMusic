@@ -14,6 +14,7 @@
 //
 // Public, so `Wavee.Tests` pins the records.
 
+using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -49,11 +50,17 @@ public static class WinUiArtistTiers
     /// <summary>The overview's column count for a <paramref name="pageWidth"/>-wide page in window tier <paramref name="tier"/>: one below 1100 (held 24 once two),
     /// two from 1100, three at Huge. <paramref name="previous"/> 0 is a fresh resolve.</summary>
     public static int OverviewColumns(float pageWidth, WidthTier tier, int previous)
-    {
-        float edge = previous >= 2 ? WinUiArtistRules.TwoColumnFrom - WinUiArtistRules.ColumnHold : WinUiArtistRules.TwoColumnFrom;
-        if (!(pageWidth >= edge)) return 1;
-        return tier >= WidthTier.Huge ? 3 : 2;
-    }
+        => OverviewColumnsOf(OverviewLadder.Resolve(pageWidth, previous <= 0 ? -1 : previous >= 2 ? 1 : 0), tier);
+
+    /// <summary>The overview's column rung over the page width: 0 (one column) below 1100, 1 from 1100, held down to 1076 once over. The view resolves it
+    /// with the engine's tier hook, so a crossing found after mount commits on the first frame that is not resized, right before FLIP capture (a measured
+    /// width written straight into a signal rebuilt the overview in an in-frame flush with no capture: the restack snapped).</summary>
+    public static TierLadder OverviewLadder { get; } = TierLadder.Of(
+        new TierEdge(WinUiArtistRules.TwoColumnFrom, NarrowHold: WinUiArtistRules.ColumnHold, WidenHold: 0f));
+
+    /// <summary>The overview's column count for column rung <paramref name="rung"/> of <see cref="OverviewLadder"/> in window tier <paramref name="tier"/>:
+    /// one, two, three at Huge.</summary>
+    public static int OverviewColumnsOf(int rung, WidthTier tier) => rung <= 0 ? 1 : tier >= WidthTier.Huge ? 3 : 2;
 
     /// <summary>The chart's widest column count in window tier <paramref name="tier"/>: one, two at Small.</summary>
     public static int ChartColumnsOf(WidthTier tier) => tier == WidthTier.Small ? 2 : 1;

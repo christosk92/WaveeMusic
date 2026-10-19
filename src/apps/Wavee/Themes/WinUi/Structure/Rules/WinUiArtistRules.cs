@@ -198,3 +198,34 @@ public static class WinUiArtistRules
     public const float TourGap = 2f;
     public const float TourChevron = 16f;
 }
+
+/// <summary>How the artist overview restacks when its column count changes (two columns <-> one: a window resize across the 1100 page edge, a pane
+/// docking at Standard). The columns and the blocks in them keep their nodes in both arrangements, so they FLIP from where they stood to where the new
+/// arrangement lays them; the overview's height eases through real layout, so the sections under it ride it instead of jumping.</summary>
+public static class WinUiArtistMotion
+{
+    /// <summary>The restack's duration: the discovery grids' 250 ms column FLIP.</summary>
+    public const float RestackMs = WinUiDiscoveryMotion.ReflowMs;
+
+    /// <summary>The overview's height: laid out once at the new height, its PRESENTED extent eased (a flow reveal), so the sections under it ride the
+    /// difference. Not a reflow: a reflow row aims at a fixed height, so a resize that changed the overview's height on the frame before the restack left
+    /// it flying to that stale number and snapping to the restacked height when it settled. Known gap: on the commit frame that ends a narrowing OS size
+    /// loop (inspect `crossing`, narrowing) the sections under the overview still land at once; a dock, a widening and a resize outside the loop glide.</summary>
+    public static readonly LayoutTransition OverviewHeight = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.FlowReveal, Axes: SizeAxes.Height);
+
+    /// <summary>The Popular column: it resizes (full width stacked, its weight's share beside the side column), re-laying the chart at the eased width every
+    /// tick (a reveal would lay the rows out at the final width at once, so their trailing durations would jump). Only for a block whose height does not
+    /// follow its width: a relayout eases toward the height measured on the commit frame, and a responsive child that re-measures later lands after it.</summary>
+    public static readonly LayoutTransition Column = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Relayout);
+
+    /// <summary>The side column (it goes under Popular and back) and each block in it (the latest release, the upcoming card, the pick, the discography
+    /// preview: they move within the column as the pick turns horizontal): position and size tween, the size laid out at once and revealed (a clip).</summary>
+    public static readonly LayoutTransition Block = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Reveal);
+
+    /// <summary>A block the other arrangement draws as a different composition (the pick: its photo a band under the comment, or a right column) enters
+    /// and leaves on its opacity alone, inside a slot that carries <see cref="Block"/>.</summary>
+    public static readonly EnterExit Swap = WinUiDiscoveryMotion.SwapFade;
+}
