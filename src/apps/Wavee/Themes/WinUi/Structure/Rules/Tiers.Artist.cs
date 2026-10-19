@@ -26,9 +26,6 @@ public readonly record struct WinUiDiscoLayout(float MinColumn, float Gap, int D
     public Album.DrawerShape Drawer => new(DrawerColumns, DrawerPitch, DrawerHead);
 }
 
-/// <summary>The shelves' fit (the card range, the column cap, the gap, the pager).</summary>
-public readonly record struct WinUiShelfBand(float MinCardW, float MaxCardW, int MaxColumns, float FixedCardW, float Gap, bool Pager);
-
 /// <summary>WinUI's artist tier policy and records.</summary>
 public static class WinUiArtistTiers
 {
