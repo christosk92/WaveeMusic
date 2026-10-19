@@ -64,7 +64,9 @@ internal sealed class WinUiNavRow : Component
     Action<NodeHandle>? _tileRealize;
     Func<NodeHandle>? _tileAnchor;
 
-    public WinUiNavRow(INavRowHost owner, RowScope scope) { _o = owner; _scope = scope; }
+    readonly WinUiNavMetrics _m;
+
+    public WinUiNavRow(INavRowHost owner, RowScope scope, WinUiNavMetrics metrics) { _o = owner; _scope = scope; _m = metrics; }
 
     public override Element Render()
     {
@@ -148,7 +150,7 @@ internal sealed class WinUiNavRow : Component
             create = Embed.Comp(() => new WinUiNavCreateButton(
                 owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
                 dropActive: () => owner.HeaderCreateDropActive.Value,
-                box: WinUiNavGeometry.HeaderButton, glyph: WinUiNavGeometry.HeaderPlusGlyph)) with { Key = "tree-create" };
+                box: _m.HeaderButton, glyph: WinUiNavGeometry.HeaderPlusGlyph)) with { Key = "tree-create" };
 
         BoxEl head = WinUiNavHead.Header(WinUiNavText.TitleOf(section), create);
         if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu) head = head.WithContextMenu(svc, menu);
@@ -221,7 +223,7 @@ internal sealed class WinUiNavRow : Component
         bool reordering = _o.TryBandOf(index, out _);
         var (playing, animated) = _o.RowPlayState(index);
         var shape = OneLine;
-        float height = WinUiNavGeometry.HeightOf(shape);
+        float height = _m.RowHeight;
 
         var snapshot = entry;   // an `in` parameter cannot be captured — copy the record struct for the closures
         Action? click = null;
@@ -329,7 +331,7 @@ internal sealed class WinUiNavRow : Component
         var entry = entries[row.EntryIndex];
         string folderId = entry.FolderId;
         bool expanded = _o.Model.IsFolderExpanded(folderId);
-        float height = WinUiNavGeometry.HeightOf(OneLine);
+        float height = _m.RowHeight;
 
         // A synced folder pin the rootlist no longer carries renders visible-but-disabled, never vanishes.
         if (entry.Missing) return MissingFolderRow(section, in entry, in row, height);
@@ -373,6 +375,7 @@ internal sealed class WinUiNavRow : Component
             Depth = IndentOf(in row),
             Shape = shape,
             Height = height,
+            MarginY = _m.MarginY,
             Glyph = Icons.Folder,
             // NavigationViewItem: the down chevron at rest, turned up while the folder is open (the board `Shell-Nav`).
             DisclosureChevron = Sidebar.Chevron.Section(_folderOpen ??= FolderOpenLive, WinUiNavGeometry.ChevronGlyph, identity: _folderIdentity ??= FolderIdentity),
@@ -389,7 +392,7 @@ internal sealed class WinUiNavRow : Component
         };
         if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
         // The chevron column replaces the trailing pad; the folder's own "+" is laid out before it (S8).
-        float folderSlot = spec.Trailing is not null ? WinUiNavGeometry.FolderPlusBox : 0f;
+        float folderSlot = spec.Trailing is not null ? _m.FolderPlus : 0f;
         spec.LabelTooltip = LabelOverflows(label, row.Depth, WinUiNavGeometry.FolderTrail
             + WinUiNavGeometry.TrailingWidth(false, false, folderSlot), WinUiNavGeometry.LabelX(shape, glyph: true));
         // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
@@ -414,6 +417,7 @@ internal sealed class WinUiNavRow : Component
             Tile = _o.CompactPlan,
             Shape = OneLine,
             Height = height,
+            MarginY = _m.MarginY,
             Glyph = Icons.Folder,
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
@@ -451,7 +455,7 @@ internal sealed class WinUiNavRow : Component
     {
         var dest = _o.DestOf(key);
         bool selected = _o.RowSelectsRoute(index, sel);
-        float height = WinUiNavGeometry.HeightOf(OneLine);
+        float height = _m.RowHeight;
         string title = dest.Title;
         // A durable application destination is a pin drag source unless a Reorderable already owns the drag;
         // SidebarPinId centrally excludes editor/tooling routes.
@@ -468,6 +472,7 @@ internal sealed class WinUiNavRow : Component
             Depth = 0,
             Shape = OneLine,
             Height = height,
+            MarginY = _m.MarginY,
             Glyph = dest.Glyph,
             Tile = _o.CompactPlan,
             OnClick = () => _o.Navigate(key, null),
@@ -484,8 +489,8 @@ internal sealed class WinUiNavRow : Component
     /// 1-px AccentDefault ring, r4, "Drop here to pin"; the drop pins at position 0.</summary>
     Element DropBandRow(SidebarSection section, int index) => new BoxEl
     {
-        Key = "pin-drop-band", Height = WinUiNavGeometry.RowHeight, Shrink = 0f,
-        Margin = new Edges4(0f, WinUiNavGeometry.RowMarginY, 0f, WinUiNavGeometry.RowMarginY),
+        Key = "pin-drop-band", Height = _m.RowHeight, Shrink = 0f,
+        Margin = new Edges4(0f, _m.MarginY, 0f, _m.MarginY),
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
         BorderWidth = 1f, BorderColor = Tok.AccentDefault, BorderDashOn = WinUiNavGeometry.DropBandDashOn, BorderDashOff = WinUiNavGeometry.DropBandDashOff,
         DropTarget = _o.ResourceDropSpec(section.Id, 0, null, null, rootPlanIndex: index),
@@ -567,7 +572,7 @@ internal sealed class WinUiNavRow : Component
             drop: owner.FolderCreateDropSpec(folderId, name, active),
             dropActive: () => active.Value,
             revealOpacity: reveal,
-            box: WinUiNavGeometry.FolderPlusBox, glyph: WinUiNavGeometry.FolderPlusGlyph)) with { Key = "folder-create" };
+            box: _m.FolderPlus, glyph: WinUiNavGeometry.FolderPlusGlyph)) with { Key = "folder-create" };
         return plus;
     }
 
@@ -598,12 +603,12 @@ internal sealed class WinUiNavRow : Component
     /// — plate UNDER the row (text never tinted), pill over it, insertion line on top.</summary>
     Element Indicator(Element row, bool selected, int depth, float height, string? route)
     {
-        if (!float.IsFinite(height) || height <= 0f) height = WinUiNavGeometry.HeightOf(SidebarRowShape.EntityTwoLine);
+        if (!float.IsFinite(height) || height <= 0f) height = _m.RowHeight;
         _pillState = new SidebarPillState(
             Route: route,
             Selected: selected,
             Indent: WinUiNavGeometry.PillX(depth),
-            Top: WinUiNavGeometry.PillTop(height));
+            Top: _m.MarginY + (height - WinUiNavGeometry.PillH) * 0.5f);
         var owner = _o;
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
         return ZStack(DropPlate(), row, Embed.Comp(() => new WinUiSelectionPill(owner, probe)), InsertionLine());
@@ -616,8 +621,8 @@ internal sealed class WinUiNavRow : Component
     Element DropPlate() => new BoxEl
     {
         Key = "drop-plate",
-        // The plate covers the row, not the row's 2-px vertical margin.
-        Margin = new Edges4(0f, WinUiNavGeometry.RowMarginY, 0f, WinUiNavGeometry.RowMarginY),
+        // The plate covers the row, not the row's vertical margin.
+        Margin = new Edges4(0f, _m.MarginY, 0f, _m.MarginY),
         Corners = CornerRadius4.All(WinUiNavGeometry.DropPlateRadius),
         BorderWidth = WinUiNavGeometry.DropPlateBorderWidth,
         Fill = Prop.Of(_plateFill ??= CuePlateFill),

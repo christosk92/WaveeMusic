@@ -258,4 +258,24 @@ public static class WinUiNavGeometry
         => kind is SidebarDropKind.Before or SidebarDropKind.EndOfList
             ? 0f
             : MathF.Max(0f, rowHeight - DropLineThickness);
+
+    // ── the touch ladder (the Compact window tier: targets are at least 40) ──
+
+    /// <summary>A touch row: 40 tall and flush (the same 40 pitch as 36 + 2 + 2), so the hit target clears the Compact floor.</summary>
+    public const float TouchRowHeight = 40f, TouchMarginY = 0f;
+
+    /// <summary>A touch section head's "+" is the head's whole 40.</summary>
+    public const float TouchHeaderButton = 40f;
+}
+
+/// <summary>The row height and vertical margin of one pane: <see cref="Standard"/> 36 + 2 (the board), <see cref="Touch"/> 40 + 0 (the Compact tier). The
+/// pitch is 40 either way, so the planner's extents and the reorder bands do not care which a pane draws.</summary>
+public readonly record struct WinUiNavMetrics(float RowHeight, float MarginY, float HeaderButton, float FolderPlus)
+{
+    public static WinUiNavMetrics Standard { get; } = new(WinUiNavGeometry.RowHeight, WinUiNavGeometry.RowMarginY, WinUiNavGeometry.HeaderButton, WinUiNavGeometry.FolderPlusBox);
+
+    public static WinUiNavMetrics Touch { get; } = new(WinUiNavGeometry.TouchRowHeight, WinUiNavGeometry.TouchMarginY, WinUiNavGeometry.TouchHeaderButton, WinUiNavGeometry.TouchRowHeight);
+
+    /// <summary>The pill's y inside a slot whose row is <see cref="RowHeight"/> tall: centred on the row, below its top margin.</summary>
+    public float PillTop => MarginY + (RowHeight - WinUiNavGeometry.PillH) * 0.5f;
 }

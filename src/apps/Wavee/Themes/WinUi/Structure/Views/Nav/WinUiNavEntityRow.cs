@@ -41,7 +41,7 @@ internal struct WinUiRowSpec
     public WinUiRowSpec()
     {
         Key = ""; Label = ""; Subtitle = null; Selected = false; Enabled = true; Depth = 0;
-        Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN; Ink = null;
+        Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN; MarginY = WinUiNavGeometry.RowMarginY; Ink = null;
         ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; OnUnpin = null; Trailing = null;
         Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
         MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropCue = null; Animate = null;
@@ -76,6 +76,8 @@ internal struct WinUiRowSpec
     /// <summary>PIN the height (NaN ⇒ derive). A section pins it so a Reorderable pitch and the extent table see ONE
     /// height per section.</summary>
     public float Height;
+    /// <summary>The row's top and bottom margin (the pane's metrics: 2, or 0 on the touch ladder).</summary>
+    public float MarginY;
     /// <summary>Art-slot edge. NaN ⇒ <c>WinUiNavGeometry.ArtOf(Shape)</c>.</summary>
     public float ArtSize;
 
@@ -201,7 +203,7 @@ internal static class WinUiEntityRow
             {
                 Key = spec.Key, Animate = spec.Animate, OnRealized = spec.OnRealized,
                 Width = WinUiNavGeometry.TileWidth, Height = height, Shrink = 0f,
-                Margin = new Edges4(0f, WinUiNavGeometry.RowMarginY, 0f, WinUiNavGeometry.RowMarginY),
+                Margin = new Edges4(0f, spec.MarginY, 0f, spec.MarginY),
                 Corners = Radii.ControlAll, AlignItems = FlexAlign.Center,
                 Children = [iconColumn],
             }, enabled, selected, activate, checksVisible);
@@ -292,7 +294,7 @@ internal static class WinUiEntityRow
             OnRealized = spec.OnRealized,
             ZStack = overflow,
             Direction = 0, Height = height, AlignItems = FlexAlign.Center,
-            Margin = new Edges4(0f, WinUiNavGeometry.RowMarginY, 0f, WinUiNavGeometry.RowMarginY),
+            Margin = new Edges4(0f, spec.MarginY, 0f, spec.MarginY),
             Padding = new Edges4(WinUiNavGeometry.IndentFor(spec.Depth), 0f, chevron ? 0f : WinUiNavGeometry.TrailingPad, 0f),
             Corners = Radii.ControlAll,
             Children = rowChildren,

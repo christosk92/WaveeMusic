@@ -18,9 +18,14 @@ namespace Wavee.Themes.WinUi;
 public sealed class WinUiNavRows : NavRowKit
 {
     /// <summary>The one instance: the kit holds no state, so a pane, a drawer and a test share it.</summary>
-    public static readonly WinUiNavRows Kit = new();
+    public static readonly WinUiNavRows Kit = new(WinUiNavMetrics.Standard);
 
-    WinUiNavRows() { }
+    /// <summary>The touch kit: the same list at the 40 target the Compact window tier asks for (the pane in the drawer).</summary>
+    public static readonly WinUiNavRows TouchKit = new(WinUiNavMetrics.Touch);
+
+    readonly WinUiNavMetrics _metrics;
+
+    WinUiNavRows(WinUiNavMetrics metrics) => _metrics = metrics;
 
     /// <inheritdoc />
     public override NavTreeLadder TreeLadder => new(WinUiNavGeometry.TreeContentX(0), WinUiNavGeometry.IndentStep);
@@ -77,7 +82,7 @@ public sealed class WinUiNavRows : NavRowKit
     public override INavStageHold<TStage> NewStageHold<TStage>() => new WinUiNavStageHold<TStage>();
 
     /// <inheritdoc />
-    internal override Element Slot(INavRowHost host, RowScope scope) => Embed.Comp(() => new WinUiNavRow(host, scope));
+    internal override Element Slot(INavRowHost host, RowScope scope) => Embed.Comp(() => new WinUiNavRow(host, scope, _metrics));
 
     /// <inheritdoc />
     public override Element ModeHost(Element mode) => WinUiNavFrame.ModeHost(mode);
@@ -89,5 +94,5 @@ public sealed class WinUiNavRows : NavRowKit
     public override Element ListBox(Element list) => WinUiNavFrame.ListBox(list);
 
     /// <inheritdoc />
-    internal override Element? Footer(INavRowHost host, bool compact) => WinUiNavFooter.Build(host, compact);
+    internal override Element? Footer(INavRowHost host, bool compact) => WinUiNavFooter.Build(host, compact, _metrics);
 }

@@ -9,6 +9,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
@@ -17,5 +18,6 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiNavPane
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellNavPane"/>.</summary>
-    public static Element Template(NavPaneProps props, in ViewContext ctx) => props.Mount(WinUiNavRows.Kit);
+    public static Element Template(NavPaneProps props, in ViewContext ctx)
+        => props.Mount(props.InDrawer && ctx.Tier().Window == WidthTier.Compact ? WinUiNavRows.TouchKit : WinUiNavRows.Kit);
 }

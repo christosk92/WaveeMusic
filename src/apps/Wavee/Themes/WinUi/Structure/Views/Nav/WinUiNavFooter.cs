@@ -19,7 +19,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.WinUi;
 
 /// <summary>The footer's props: the pane and whether it presents as the rail. One record per (pane, form), so an equal re-push skips the render.</summary>
-internal sealed record WinUiNavFooterProps(INavRowHost Host, bool Compact);
+internal sealed record WinUiNavFooterProps(INavRowHost Host, bool Compact, WinUiNavMetrics Metrics);
 
 /// <summary>Builds the footer element for the pane.</summary>
 internal static class WinUiNavFooter
@@ -27,8 +27,8 @@ internal static class WinUiNavFooter
     /// <summary>The Settings route key.</summary>
     public const string SettingsRoute = "settings";
 
-    public static Element Build(INavRowHost host, bool compact)
-        => Embed.Comp(new WinUiNavFooterProps(host, compact), static () => new WinUiNavFooterRow()) with { Key = "winui-nav-footer" };
+    public static Element Build(INavRowHost host, bool compact, WinUiNavMetrics metrics)
+        => Embed.Comp(new WinUiNavFooterProps(host, compact, metrics), static () => new WinUiNavFooterRow()) with { Key = "winui-nav-footer" };
 }
 
 /// <summary>The footer row: Settings, with the pill.</summary>
@@ -47,7 +47,7 @@ internal sealed class WinUiNavFooterRow : Component
         var spec = new WinUiRowSpec
         {
             Key = "winui-nav-settings", Label = dest.Title, Glyph = dest.Glyph, Selected = selected, Tile = props.Compact,
-            Shape = SidebarRowShape.EntityOneLine, Height = WinUiNavGeometry.RowHeight, Focusable = true,
+            Shape = SidebarRowShape.EntityOneLine, Height = props.Metrics.RowHeight, MarginY = props.Metrics.MarginY, Focusable = true,
             OnActivate = _ => host.Navigate(WinUiNavFooter.SettingsRoute, null),
         };
         Element row = WinUiEntityRow.Create(in spec);
@@ -57,7 +57,7 @@ internal sealed class WinUiNavFooterRow : Component
         var pill = new BoxEl
         {
             Width = WinUiNavGeometry.PillW, Height = WinUiNavGeometry.PillH,
-            Margin = new Edges4(WinUiNavGeometry.PillX(0), WinUiNavGeometry.PillTop(WinUiNavGeometry.RowHeight), 0f, 0f),
+            Margin = new Edges4(WinUiNavGeometry.PillX(0), props.Metrics.PillTop, 0f, 0f),
             Corners = CornerRadius4.All(WinUiNavGeometry.PillRadius), Fill = Tok.AccentDefault, HitTestVisible = false,
             Opacity = Prop.Of(() => string.Equals(host.Model.Selected, WinUiNavFooter.SettingsRoute, StringComparison.Ordinal) ? 1f : 0f),
             Transition = MotionTok.ControlFaster,
