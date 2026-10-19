@@ -144,7 +144,7 @@ public static partial class Feedback
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             // VETOABLE: the body says why with a toast (still composing / no title) and the dialog stays open.
             d.PrimaryButtonClick = args => { if (!(session.Submit?.Invoke() ?? false)) args.Cancel = true; };
-        });
+        }, report: true);   // the report form's own card width (WinUI: 760 at Standard), where the structure names one
     }
 
     static ReportLabels FormLabels() => new(

@@ -250,3 +250,13 @@ says what this window width gets. Huge draws a preview column beside the cards.
 the InfoBar dismiss mark on the since-banner, the Huge preview's full window mock and nav-pane forms, and the feedback / crash bodies' board-only fields (diagnostics
 check box, report preview fold, Save as) which the core form does not have.
 
+
+## W8a: overlays and dialogs
+
+`WinUiStructure.Overlays.cs` registers the 15 overlay/dialog views; the numbers are `Rules\Tiers.Overlays.cs` (`WinUiOverlayTiers`, the policy `WinUiPolicies.Overlays.cs`), `WinUiOverlayRules`, `WinUiDialogRules`.
+
+- **Dialog widths.** ContentDialog is full screen below 641 (square plate, 20 padding, 40-tall equal commands) and capped at 588 elsewhere. The report form is 760 at Standard, 588 at Small and the two-pane 1040 at Huge; the crash prompt keeps the card. Published through `DialogFit.ReportWidth` / `PlateRadius` and `OverlayFit.ShowForm(report: true)`; W8b's bodies read `OverlayFit.Layout.Dialog.FormBodyWidth(nominal, viewport, report)`.
+- **Offline strip** is the W-Offline Warning InfoBar drawn by hand (the engine InfoBar flips to vertical for a 60+ character notice beside an action): 48 tall, r4, title and notice on one line; at Compact the title stacks over the notice and Retry is 40.
+- **Profile chip** is a 40 x 40 target at Compact (`ChipTarget`; the chrome budget's `ProfileChipW` is 40 there). Its name joins at Huge inside `IdentityWidthMotion` (a trailing-anchored size reflow), so `crossing` at 1920 reports nothing in the title bar.
+- **MenuFlyout** rows are 36 apart (`WinUiControls.Menu`: the engine's 36-high row plus its 2 + 2 margin was 40); Large keeps 40.
+- Loc: `theme.winui.overlays.offlineStripBody`.
