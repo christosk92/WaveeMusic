@@ -303,7 +303,8 @@ internal sealed class WinUiQueuePanelView : Component
                             new TextEl(Loc.Get(Strings.Player.AutoplayHint)) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f },
                         ],
                     },
-                    ToggleSwitch.Create(on, set, onContent: "", offContent: ""),
+                    // The bare switch (no 154 content column), so it ends at the pane's content edge (W-Queue).
+                    ToggleSwitch.Create(on, set, onContent: "", offContent: "", style: ToggleSwitch.DefaultStyle with { MinWidth = 0f }),
                 ],
             },
         ],

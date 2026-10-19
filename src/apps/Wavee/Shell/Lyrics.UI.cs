@@ -208,7 +208,10 @@ public static partial class Lyrics
         /// type on a stage step while the view stays mounted.</summary>
         internal float TypeScale => _typeScale?.Value ?? 1f;
         readonly IReadSignal<float>? _typeScale;
-        readonly float _band;
+        float _band;   // the ctor's surface band; a rail under a style's `LyricsRailForm` takes the form's (Render)
+
+        /// <summary>The side pane's mount: neither the stage nor the podcast reader (P6 fix, <c>ILyricsHost.OnRail</c>).</summary>
+        internal bool OnRail => !Large && !OnStage && !_readerEpisode.IsValid;
 
         /// <summary>The surface's MODEL (C5): the document slot, the clock, the active / voice lines, the follow state machine,
         /// the interlude bookkeeping, the second line, the AI state and the verbs. This view draws and drives nodes from it.</summary>
@@ -417,6 +420,13 @@ public static partial class Lyrics
             int secondary = M.SyncSecondLine();
             // The structure's lines style may ask for the depth blur on the stage too (P6 WK, `LyricsLinesStyle.StageDepthBlur`; bound above).
             int strength = Prefs.BlurStrength(OnStage, _linesStyle?.StageDepthBlur == true);
+            // The structure's rail form (P6 fix, `LyricsLinesStyle.Rail`): its band, and a crisp pane never depth-blurs.
+            if (OnRail && _linesStyle?.Rail is { } railForm)
+            {
+                _band = Math.Clamp(railForm.Band, 0.05f, 0.95f);
+                if (railForm.Crisp) strength = 0;
+            }
+            else if (OnRail) _band = Surface.FocalBand(Large);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (newScale != _dofScale)

@@ -70,6 +70,10 @@ public interface ILyricsHost
     /// <summary>The focal band (where the active row's content centres, as a fraction of the viewport).</summary>
     float Band { get; }
 
+    /// <summary>P6 fix: this mount is the side pane's (the rail's: neither the stage nor the podcast reader). A style with a
+    /// <see cref="LyricsLinesStyle.Rail"/> form draws the pane's rows here. Default false.</summary>
+    bool OnRail => false;
+
     // ── what is on screen (live: reads subscribe the caller) ───────────────────────────────────────────────────────
 
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>

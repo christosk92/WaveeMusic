@@ -208,6 +208,7 @@ internal sealed class WinUiPanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     bool _escapes;
+    static readonly Action s_absorb = static () => { };
 
     public override Element Render()
     {
@@ -288,6 +289,9 @@ internal sealed class WinUiPanelFrame : Component
             Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
             Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
             BlocksBackgroundScroll = open && floating,
+            // An overlay or a sheet swallows a click on its own empty room (the current tab, the gaps between rows): it must never fall through
+            // to the frame's scrim underneath and close the pane.
+            OnClick = open && floating ? s_absorb : null,
             Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,       // no shadow docked
             OnKeyDown = _onKey,
             Children =

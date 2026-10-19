@@ -42,7 +42,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiLyricsLines
 {
     /// <summary>The style WinUI registers under <c>StyleKeys.LyricsLines</c>. Stateless: the rail, the stage and the reader share it.</summary>
-    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline, StageDepthBlur = true };
+    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline, StageDepthBlur = true, Rail = WinUiPaneLyricsRules.Form };
 
     // ── the state line and the loading bars ─────────────────────────────────────────────────────────────────────────
 
@@ -149,6 +149,7 @@ internal static class WinUiLyricsLines
     /// <summary>A timed document: the measured virtual list over the host's layout, one keyed row per line.</summary>
     static Element Lines(ILyricsHost host, Lyrics.Doc doc)
     {
+        if (host.OnRail) return WinUiPaneLyrics.Lines(host, doc);   // the side pane's own crisp form (W-PaneLyrics)
         var lines = doc.Lines;
         var layout = host.EnsureLayout();
         return Virtual.Custom(

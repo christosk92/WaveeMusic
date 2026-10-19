@@ -86,6 +86,12 @@ public static class WinUiPanelBodies
 
     public const ushort HeaderTitleWeight = 600;
 
+    /// <summary>The header row's inset (W-PaneLyrics: 16 at the title, 8 after the last button) and its "Synced · word by word" line (Caption
+    /// 12/16, secondary) under the song's name.</summary>
+    public static readonly Edges4 HeaderPadding = new(16f, 0f, 8f, 0f);
+
+    public const float HeaderSyncSize = 12f, HeaderSyncLine = 16f;
+
     public static readonly Edges4 TranslatePadding = new(12f, 0f, 12f, 0f);
 
     /// <summary>The sparkle's breath while the track is being timed, and its settle.</summary>

@@ -103,7 +103,7 @@ internal sealed class WinUiHeroTile : Component
         float box = compact ? P.TouchButton : P.HeadButton;
         var kids = new List<Element>(2)
         {
-            new TextEl(Loc.Get(Strings.Theme.Winui.Player.NowPlaying)) { Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f },
+            new TextEl(Loc.Get(Strings.Theme.Winui.Player.NowPlaying)) { Size = P.HeroAlbumSize, LineHeight = P.HeroAlbumLine, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f },
         };
         if (styleVisible)
             kids.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.Settings, () => props.Style.ToggleStyleFlyout(), true, false, box, box, P.MetaGlyph),
