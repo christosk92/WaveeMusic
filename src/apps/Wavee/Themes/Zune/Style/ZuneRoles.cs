@@ -134,7 +134,10 @@ public static class ZuneRoles
         Wash: s_wash,
         Lyrics: s_lyrics,
         Motion: s_motion,
-        Case: s_case);
+        Case: s_case)
+    {
+        Controls = ZuneControlRoles.Table,
+    };
 
     // ═════════════════════════════════════════════ TYPE ═════════════════════════════════════════════════════════════════════
     //

@@ -35,6 +35,11 @@ public sealed record WaveeStyleRoles(
     OnMediaLadder OnMedia, StageArmTable StageArm, WashRoles Wash, LyricsInkRoles Lyrics,
     MotionRoles Motion, CaseRoles Case) : IAppRoles
 {
+    /// <summary>The control roles (PrimaryAction, SecondaryAction, Transport, Follow, ListBackplate, command label modes): which button,
+    /// toggle or plate each purpose is under this style (<c>R.Controls.ButtonStyle(ControlRole.PrimaryAction)</c>). Contract 1.27 (lane
+    /// WR) adds it as an init member, so a style that publishes none gets <see cref="ControlRoleTable.Fluent"/>.</summary>
+    public ControlRoleTable Controls { get; init; } = ControlRoleTable.Fluent;
+
     /// <summary>True when <paramref name="other"/> differs only in colour roles: every non-colour role (type, shape, space, motion,
     /// case) is equal and the colour roles (ink, layer, on-media, stage arm, wash, lyrics ink) may differ. That is the engine's question
     /// while it decides between the live cross-fade path (colours only) and an atomic application. An <paramref name="other"/> of
@@ -45,5 +50,6 @@ public sealed record WaveeStyleRoles(
         && this.Shape.Equals(o.Shape)
         && this.Space.Equals(o.Space)
         && this.Motion.Equals(o.Motion)
-        && this.Case.Equals(o.Case);
+        && this.Case.Equals(o.Case)
+        && this.Controls.Equals(o.Controls);
 }
