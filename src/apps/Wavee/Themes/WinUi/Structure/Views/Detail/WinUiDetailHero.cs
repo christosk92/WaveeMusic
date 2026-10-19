@@ -95,13 +95,22 @@ internal static partial class WinUiDetailFrame
             if (form.Eyebrow && id.Eyebrow.Length > 0)
                 rows.Add(Block("hero-eyebrow", WinUiDetailKit.EyebrowRun(id.Eyebrow, form) with { AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Auto }, late: true));
             rows.Add(Block("hero-title", TitleOf(spec, form)));
+            // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
+            // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
+            // later fact (the duration) fills in place. Nothing above or below it ever moves.
+            var faces = FacesOf(id);
+            bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
             if (form.Stacked)
             {
-                if (id.Artists is { Count: > 0 } artists) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(artists, measure), late: true));
-                if (id.Meta is { Length: > 0 } meta) rows.Add(Block("hero-meta", MetaRun(meta, form), late: true));
+                if (faces is { Count: > 0 }) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(faces, measure), late: true));
+                if (metaLine) rows.Add(Block("hero-meta", Reserved(id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, form.Stacked)));
             }
-            else if (id.Artists is { Count: > 0 } || id.Meta is { Length: > 0 })
-                rows.Add(Block("hero-attribution", WinUiDetailKit.AttributionLine(id.Artists, id.Meta, form.Avatar, measure), late: true));
+            else if (faces is { Count: > 0 } || metaLine)
+            {
+                bool filled = faces is { Count: > 0 } || id.Meta is { Length: > 0 };
+                rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, form.Avatar, measure) : null,
+                    WinUiDetailRules.AttributionRow(form.Avatar), form.Stacked)));
+            }
             rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
@@ -151,6 +160,25 @@ internal static partial class WinUiDetailFrame
     {
         Key = key, Direction = 1, Layout = WinUiDetailKit.Shove, Enter = late ? WinUiDetailKit.FadeUp : (EnterExit?)null, Children = [child],
     };
+
+    /// <summary>A reserved line: a FIXED box of <paramref name="height"/> whether or not its words have landed; the words (keyed) fade up inside it when they arrive,
+    /// and a later change of them (a fact appended) fills in place.</summary>
+    static BoxEl Reserved(Element? words, float height, bool center) => new()
+    {
+        Direction = 1, Height = height, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
+        AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch,
+        Children = words is null ? [] : [new BoxEl { Key = "hero-line:words", Direction = 1, MinWidth = 0f, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Enter = WinUiDetailKit.FadeUp, Children = [words] }],
+    };
+
+    /// <summary>The faces the attribution line leads with: the billed artists, or a playlist's owner (W-Playlist: the owner's portrait and name, a link, before the
+    /// facts).</summary>
+    static IReadOnlyList<Controls.Face>? FacesOf(Detail.Identity id)
+    {
+        if (id.Artists is { Count: > 0 } artists) return artists;
+        if (id.Kind == DetailKind.Playlist && id.OwnerName is { Length: > 0 } owner)
+            return [new Controls.Face(owner, id.OwnerImageUrl, id.Owner.IsValid ? DetailVerbs.OpenOwner(id.Owner, owner) : null)];
+        return null;
+    }
 
     /// <summary>The title: Title Large (40/52; 28/36 stacked and short), semibold, wrapping to at most two lines.</summary>
     static Element TitleOf(VerticalSpec spec, WinUiHeroForm form)
@@ -314,6 +342,8 @@ internal static partial class WinUiDetailFrame
         rows.Add(Bone(WinUiDetailRules.SkelTitleW(form), form.TitleLine, form.Stacked));
         rows.Add(new BoxEl
         {
+            // The loaded hero's reserved attribution box, to the DIP (WinUiDetailRules.AttributionRow): the swap to the loaded hero moves nothing.
+            Height = form.Stacked ? float.NaN : WinUiDetailRules.AttributionRow(form.Avatar),
             Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.AvatarGap, AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Start,
             Children =
             [

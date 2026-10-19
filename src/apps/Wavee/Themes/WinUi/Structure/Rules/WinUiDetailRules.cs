@@ -139,6 +139,10 @@ public static class WinUiDetailRules
     /// <summary>The attribution line (14/20) and the meta line it carries (12/16 stacked, in Text 3).</summary>
     public const float AttributionSize = 14f, AttributionLine = 20f, MetaSize = 12f, MetaLine = 16f;
 
+    /// <summary>The attribution row's FIXED box: the ringed portrait where the form draws portraits (24 + 2 x 2 = 28; 32 at Huge), else the 20 line. The row is reserved
+    /// at this height from the first frame (the skeleton, a meta still loading, the facts arriving one by one), so nothing in the hero moves when its words land.</summary>
+    public static float AttributionRow(float avatar) => avatar > 0f ? MathF.Max(avatar + 2f * AvatarRing, AttributionLine) : AttributionLine;
+
     /// <summary>The Play SplitButton: the label half's padding (0 14: the board's, 0 20 at Compact), the 32 chevron half, the 1-px divider at 20 %.</summary>
     /// <summary>Segoe Fluent Icons' SOLID transport pair (the boards draw the filled triangle and the bars).</summary>
     public const string PlaySolid = "", PauseSolid = "";
