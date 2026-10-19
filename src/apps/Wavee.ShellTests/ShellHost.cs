@@ -8,7 +8,8 @@
 // ISOLATION. xUnit v3 runs the classes in a different order on every run, and the host is ONE process: whatever a fact
 // leaves in process state is what the next fact starts from. `FactIsolation` (assembly attribute below) puts back,
 // before every fact, the process state a fact cannot be expected to restore because production keeps it on purpose:
-// the navigation (a remount opens on the page the last root showed), the window tiers (`ThemeHost.Facts.Tiers` is the
+// the navigation (a remount opens on the page the last root showed), the playback deck (a stop keeps the stopped row, whose
+// face, lyrics and video split the next fact's bar would draw), the window tiers (`ThemeHost.Facts.Tiers` is the
 // last mounted window's until the next root resolves its own) and, as a guard, Classic's option values.
 //
 // THE BOOT LOG. The app log is a 4096-entry ring and a full run writes well over that, so the boot's own lines are gone
@@ -71,7 +72,8 @@ public sealed class ShellHost : IDisposable
     static (int, int, int) OptionStamps()
         => (ThemeHost.Values.Structure.Stamp, ThemeHost.Values.Style.Stamp, ThemeHost.Values.Composition.Stamp);
 
-    /// <summary>Between facts (UI thread, nothing mounted): the navigation back to a fresh session's Home, the window tiers back
+    /// <summary>Between facts (UI thread, nothing mounted): the navigation back to a fresh session's Home, the deck and the queue
+    /// back to the boot's (nothing playing), the window tiers back
     /// to the boot's, and Classic, alone and with the options the boot left, as the active theme. Every fact that changes an
     /// option or installs a theme puts it back itself; the theme half only catches one that did not. The tiers are put back
     /// because every mount leaves its window's: a frame or an installed-theme harness republishes its own, but a view drawn
@@ -81,6 +83,7 @@ public sealed class ShellHost : IDisposable
         => Run(() =>
         {
             Shell.Headless.ResetNavigation();
+            Shell.Headless.ResetPlayback();
             if (!ThemeHost.Current.Peek().Manifest.Id.Equals(ClassicTheme.Id, StringComparison.Ordinal) || ThemeCatalog.Installed.Count != 1)
                 ClassicAlt.RestoreClassic();
             if (OptionStamps() != _bootOptions) ThemeHost.ResetOptions(ClassicTheme.Id);

@@ -197,7 +197,8 @@ public sealed partial class TierLayoutTests
         float[] widths = [g.AlbumWidth, g.PlaylistWidth, g.InsightsWidth];
         Assert.True(widths.Any(w => MathF.Abs(w - column.W) <= 0.5f), $"{size.Name}: the aside column is {column.W}, none of the board's {string.Join(" / ", widths)}");
         var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
-        Assert.True(column.X + column.W <= card.X + card.W + 0.5f, $"{size.Name}: the aside runs past the card ({column} in {card})");
+        var slotRect = scene.AbsoluteRect(Node(shell, "detail:aside"));
+        Assert.True(column.X + column.W <= card.X + card.W + 0.5f, $"{size.Name}: the aside runs past the card ({column} in {card}, its slot {slotRect.W} wide)");
         // The rows keep their inset: the list column ends 16 (the hairline's margin) before the hairline, its rows 8 inside that.
         var list = scene.AbsoluteRect(Node(shell, "right:tracks"));
         var hairline = scene.AbsoluteRect(Node(shell, "aside:hairline"));

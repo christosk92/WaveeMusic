@@ -96,6 +96,29 @@ public static partial class Shell
             Wavee.Palette.Post = ParkOrRun;
             Lyrics.Store.ToUi = ParkOrRun;
             Diagnostics.StoreShot.ToUi = ParkOrRun;
+            s_bootDeck = Playback.Snap();
+            s_bootQueueKnown = Queue.State != EdgeState.Unknown;
+            s_bootPlaysEmpty = PlayLog.Entries.Count == 0 && PlayLog.Recency.Count == 0;
+        }
+
+        /// <summary>The deck, whether the queue had answered and whether the play log was empty, as the boot left them (<see cref="ResetPlayback"/>).</summary>
+        static Playback.State s_bootDeck;
+        static bool s_bootQueueKnown, s_bootPlaysEmpty;
+
+        /// <summary>Put playback back where a fresh session starts: the deck as the boot left it (no row, nothing loaded), the
+        /// queue as the boot left it and, on a profile that booted with none, no plays in the play log (a play stamps the recency
+        /// the library panes sort on and the Up next page's history). Between mounts only. The deck is PROCESS state and a stop keeps its row on purpose (the bar
+        /// holds the stopped track's face), so the shell test host calls this between FACTS: a fact that mounts after one that
+        /// played a track would otherwise draw the bar of that track (its video split, its lyrics face, its heart).</summary>
+        public static void ResetPlayback()
+        {
+            RequireUiThread();
+            if (s_mounted is not null) throw new InvalidOperationException("Reset playback between mounts, not under one.");
+            RunParked(static a => a());   // a pool thread's late post (the previous fact's audio chain) lands before the reset, not after it
+            Playback.ResetDeckForTests(in s_bootDeck);
+            if (s_bootQueueKnown) Queue.Replace(default(ReadOnlySpan<int>), default);
+            else Queue.Clear();
+            if (s_bootPlaysEmpty) PlayLog.Clear();
         }
 
         static readonly ConcurrentQueue<Action> s_parked = new();
