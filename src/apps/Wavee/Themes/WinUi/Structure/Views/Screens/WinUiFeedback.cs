@@ -63,35 +63,28 @@ internal static class WinUiFeedback
         };
     }
 
-    /// <summary>The kind switch: the stock segmented strip, or at a hit target (Compact) a wrapping pill of buttons that tall, so four labels never clip in a narrow card.</summary>
+    /// <summary>The kind switch (W-Feedback): four radio buttons in one wrapping row, Bug · Feature · Question · Idea, each a hit target tall at Compact (where they sit two by
+    /// two, an equal share of the row each).</summary>
     static Element KindSwitch(Signal<int> kindIndex, WinUiScreenDialogShape shape)
     {
         string[] labels =
         [
             Loc.Get(Strings.Report.KindBug), Loc.Get(Strings.Report.KindFeature), Loc.Get(Strings.Report.KindQuestion), Loc.Get(Strings.Report.KindIdea),
         ];
-        if (!shape.Layout.Touch)
-        {
-            var items = new SegmentedItem[labels.Length];
-            for (int i = 0; i < labels.Length; i++) items[i] = new SegmentedItem(labels[i]);
-            return Segmented.Create(items, kindIndex);
-        }
-
         var buttons = new Element[labels.Length];
         int selected = kindIndex.Value;
         for (int i = 0; i < labels.Length; i++)
         {
             int at = i;
-            buttons[i] = Button.Create(labels[i], () => kindIndex.Value = at, at == selected ? ButtonAppearance.Accent : ButtonAppearance.Subtle, ControlSize.Large) with
+            var style = shape.Layout.Touch ? RadioButton.DefaultStyle with { MinHeight = shape.Layout.Target } : RadioButton.DefaultStyle;
+            buttons[i] = RadioButton.Create(labels[i], at == selected, () => kindIndex.Value = at, style) with
             {
-                Key = "report-kind:" + at, Grow = 1f, Basis = WinUiScreenDialogTiers.KindMinWidth, MinWidth = 0f, Justify = FlexJustify.Center,
+                Key = "report-kind:" + at, Grow = shape.Layout.Touch ? 1f : 0f, Basis = shape.Layout.Touch ? WinUiScreenDialogTiers.KindBasis(shape.FormWidth) : float.NaN, MinWidth = 0f,
             };
         }
         return new BoxEl
         {
-            Key = "report-kinds", Direction = 0, Wrap = true, Gap = WinUiScreenDialogTiers.KindGap, Width = shape.FormWidth, Shrink = 0f,
-            Padding = Edges4.All(WinUiScreenDialogTiers.KindPad), Corners = Radii.ControlAll, Fill = Tok.FillControlDefault,
-            BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, Children = buttons,
+            Key = "report-kinds", Direction = 0, Wrap = true, Gap = WinUiScreenDialogTiers.KindGap, Width = shape.FormWidth, Shrink = 0f, Children = buttons,
         };
     }
 

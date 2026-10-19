@@ -153,7 +153,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(Strings.Settings.Feedback.HoldsTitle),
                 Description = Loc.Get(Strings.Report.Subtitle),
-                HeaderIcon = Icons.Shield,
+                HeaderIcon = null,
                 Items =
                 [
                     Item(Loc.Get(Strings.Settings.Feedback.HoldsWrite), null, icon: Icons.Accept),

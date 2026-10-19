@@ -89,8 +89,11 @@ public static class WinUiScreenDialogTiers
     /// <summary>The kind switch's items at Compact are at least this wide before they wrap to a second row (the board's <c>flex: 1 1 64px</c>).</summary>
     public const float KindMinWidth = 64f;
 
+    /// <summary>One of two equal columns of the kind radios at a hit target (Compact: Bug and Feature over Question and Idea) in a form <paramref name="formWidth"/> wide.</summary>
+    public static float KindBasis(float formWidth) => MathF.Floor((formWidth - KindGap) / 2f) - 1f;
+
     /// <summary>The kind switch's gap between its items at Compact, and its padding.</summary>
-    public const float KindGap = 2f, KindPad = 2f;
+    public const float KindGap = 20f, KindPad = 2f;
 
     /// <summary>The Compact preview row's padding either side and its gap.</summary>
     public const float FoldPadX = 12f, FoldGap = 8f;

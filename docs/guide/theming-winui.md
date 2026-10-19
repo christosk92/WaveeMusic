@@ -101,3 +101,31 @@ and the frame records) and `WinUiRegistryCompletenessTests.cs` (above). `Wavee.S
 lane extends: the app under WinUI (`WinUiHost`) at the boards' sizes and every edge (640/641, 617/616 from above, 1007/1008, 984/983,
 1919/1920, 1896/1895, heights 719/720, 696/695), asserting the first-frame tier, WinUI's records and capabilities, the nav pane's width
 per tier, the three regions and the ShortFloor. A lane adds its page fixtures in `WinUiTierLayoutTests.<Family>.cs`.
+
+## W8b: the screens
+
+Settings, the theme picker and WinUI's six options, the setup wizard, the What's-new page and the report and crash dialogs' bodies (boards `W-Settings`
+(-Compact, -Small, -Huge), `W-SettingsSections`, `W-ThemeOptions`, `W-Setup`, `W-ReleaseNotes`, `W-Feedback`, `W-Crash`).
+
+**Files.** `Structure\WinUiStructure.Screens.cs` (`RegisterScreens`: 15 keys), `Structure\Views\Screens\WinUiSettings*.cs`, `WinUiSetup*.cs`,
+`WinUiReleaseNotes*.cs`, `WinUiFeedback.cs`, `WinUiCrash.cs`; `Structure\Rules\Tiers.Screens.cs` (the `winui.screens.stack` rung and the screens' motion),
+`Tiers.Screens.Settings.cs` / `.Setup.cs` / `.ReleaseNotes.cs` / `.Dialogs.cs` (the records), `WinUiSettingsRules.cs` and the other `WinUi*Rules.cs`, and
+`WinUiSettingsGrouping.cs`. Loc is `theme.winui.screens`. WinUI cannot name Classic (WVTH001), so these are WinUI's own views, written from the shared document
+(`SettingsDoc`) and the core hosts, in WinUI's row grammar.
+
+**Settings.** The seven tabs are the grouping WinUI publishes (`WinUiPolicies` -> `ThemePolicies.Settings` = `WinUiSettingsGrouping.Seven`): General (account,
+devices, keyboard and the window rows), Appearance (+ lyrics), Playback (+ audio), Notifications, Storage & cache, Privacy & diagnostics (+ feedback), About. The page
+draws `props.Grouping.PartsOf(props.Group)`; a tab click calls `props.OpenGroup(i)`. Every old slug lands (`WinUiScreensTests` pins each). Title 28 / 36 at Compact and
+Small, 40 / 52 above; inset = the frame's; the SettingsCards cap at 1000 (1200 at Huge) on the left edge; below 560 CONTENT width a card puts its control under the label
+(`WinUiScreenRules.StackRung`, a content-axis rung). Rows carry no glyphs except the Theme, App mode and Zoom cards. Toggles show their On / Off word. The keyboard list
+gets a Ctrl+Tab row where the structure cycles tabs (`ShellCaps.Tracked.TabCycleChord`).
+
+**The Theme card.** One SettingsExpander (current theme name in its header): the picker (four fluid columns at Standard and Huge, one row at Small, a two-up grid at
+Compact) and "WinUI theme options": exactly the six, flattened and ordered as the board (`WinUiScreenRules.OptionOrder`). Backdrop, Density and Artwork apply by
+transaction; Navigation pane, Tabs and the Windows accent apply live (the schema declares the mode; the view only writes through the row). Navigation pane's Automatic
+says what this window width gets. Huge draws a preview column beside the cards.
+
+**Not built (board vs app).** "Browse community themes" (nothing installs a theme from a folder), the tab-count note under Tabs (the theme contract has no open-tab list),
+the InfoBar dismiss mark on the since-banner, the Huge preview's full window mock and nav-pane forms, and the feedback / crash bodies' board-only fields (diagnostics
+check box, report preview fold, Save as) which the core form does not have.
+

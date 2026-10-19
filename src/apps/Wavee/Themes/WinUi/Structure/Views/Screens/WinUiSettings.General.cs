@@ -213,7 +213,7 @@ internal static partial class WinUiSettings
         {
             Header = TopicLabel(topic),
             Description = TopicSub(topic),
-            HeaderIcon = TopicGlyph(topic),
+            HeaderIcon = null,
             Content = dial,
             Items =
             [

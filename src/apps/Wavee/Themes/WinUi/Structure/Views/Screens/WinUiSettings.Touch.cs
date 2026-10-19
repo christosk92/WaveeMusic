@@ -15,6 +15,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using FluentGpu.Localization;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Themes.Common;
@@ -50,7 +51,7 @@ internal static partial class WinUiSettings
         return new BoxEl
         {
             Key = ToggleKey, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children = [ToggleSwitch.Create(isOn, onChange, isEnabled: isEnabled, style: style)],
+            Children = [ToggleSwitch.Create(isOn, onChange, onContent: Loc.Get(Strings.Theme.Winui.Screens.On), offContent: Loc.Get(Strings.Theme.Winui.Screens.Off), isEnabled: isEnabled, style: style)],
         };
     }
 

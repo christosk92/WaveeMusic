@@ -87,6 +87,12 @@ public sealed record WinUiReleaseNotesLayout
     /// <summary>The least hit target of every control on the page: 40 at Compact, 0 (each control's own size) elsewhere.</summary>
     public required float Target { get; init; }
 
+    /// <summary>The page title's size: Title 28 at Compact and Small, Title Large 40 at Standard and Huge (W-ReleaseNotes).</summary>
+    public float TitleSize => Tier is WidthTier.Compact or WidthTier.Small ? 28f : 40f;
+
+    /// <summary>The title's line height (36 / 52).</summary>
+    public float TitleLine => Tier is WidthTier.Compact or WidthTier.Small ? 36f : 52f;
+
     /// <summary>The title row carries the tag glyph (every tier but Compact).</summary>
     public required bool TitleGlyph { get; init; }
 
@@ -198,9 +204,9 @@ public static class WinUiReleaseNotesTiers
     /// <summary>The record for <paramref name="facts"/>: the content tier's, the Short variant when the window is Short. Standard's where no frame resolved the tiers
     /// (a view mounted alone).</summary>
     public static WinUiReleaseNotesLayout Of(in TierFacts facts)
-        => facts.Policy is null ? For(WidthTier.Standard, short_: false) : For(facts.Content, facts.Height == HeightTier.Short);
+        => facts.Policy is null ? For(WidthTier.Standard, short_: false) : For(facts.Window, facts.Height == HeightTier.Short);
 
-    /// <summary>The record for content tier <paramref name="content"/> (Huge 4K reads Huge's).</summary>
+    /// <summary>The record for window tier <paramref name="content"/> (the frame's insets follow the window; Huge 4K reads Huge's).</summary>
     public static WinUiReleaseNotesLayout For(WidthTier content, bool short_)
         => s_pages[Math.Min((int)content, (int)WidthTier.Huge) * 2 + (short_ ? 1 : 0)];
 
@@ -211,9 +217,9 @@ public static class WinUiReleaseNotesTiers
     {
         Tier = WidthTier.Compact, Short = false,
         RailForm = WinUiReleaseRailForm.Picker, RailWidth = 0f, FrameGap = 0f, PickerInTitleRow = false, PickerHeight = 40f,
-        Target = 40f, TitleGlyph = false, PageTop = 12f, TitleBottom = 8f,
+        Target = 40f, TitleGlyph = false, PageTop = 16f, TitleBottom = 8f,
         BodyMaxW = float.NaN, BodyGap = 12f,
-        HeadlineSize = 24f, HeroPadding = Edges4.All(16f), HeroActions = WinUiReleaseHeroActions.GridBelow, ActionSize = ControlSize.Large, HeroMeta = true,
+        HeadlineSize = 20f, HeroPadding = default, HeroActions = WinUiReleaseHeroActions.RowBelow, ActionSize = ControlSize.Large, HeroMeta = true,
         HighlightForm = WinUiReleaseHighlightForm.Column, HighlightsHeading = false, HighlightGap = 8f, RowTitleSize = 14f, RowTitleLine = 20f,
         SectionColumns = 1, SectionColumnGap = 0f, RowMinH = 44f,
     };
@@ -222,9 +228,9 @@ public static class WinUiReleaseNotesTiers
     {
         Tier = WidthTier.Small, Short = false,
         RailForm = WinUiReleaseRailForm.Picker, RailWidth = 0f, FrameGap = 0f, PickerInTitleRow = true, PickerHeight = 32f,
-        Target = 0f, TitleGlyph = true, PageTop = 16f, TitleBottom = 12f,
+        Target = 0f, TitleGlyph = false, PageTop = 20f, TitleBottom = 12f,
         BodyMaxW = float.NaN, BodyGap = 12f,
-        HeadlineSize = 28f, HeroPadding = new Edges4(20f, 16f, 20f, 16f), HeroActions = WinUiReleaseHeroActions.RowBelow, ActionSize = ControlSize.Medium, HeroMeta = true,
+        HeadlineSize = 20f, HeroPadding = default, HeroActions = WinUiReleaseHeroActions.RowBeside, ActionSize = ControlSize.Medium, HeroMeta = true,
         HighlightForm = WinUiReleaseHighlightForm.Grid2, HighlightsHeading = false, HighlightGap = 12f, RowTitleSize = 13.5f, RowTitleLine = 18f,
         SectionColumns = 1, SectionColumnGap = 0f, RowMinH = 40f,
     };
@@ -234,9 +240,9 @@ public static class WinUiReleaseNotesTiers
     {
         Tier = WidthTier.Standard, Short = false,
         RailForm = WinUiReleaseRailForm.Rail, RailWidth = 208f, FrameGap = 14f, PickerInTitleRow = false, PickerHeight = 0f,
-        Target = 0f, TitleGlyph = true, PageTop = 16f, TitleBottom = 12f,
+        Target = 0f, TitleGlyph = false, PageTop = 24f, TitleBottom = 12f,
         BodyMaxW = float.NaN, BodyGap = 16f,
-        HeadlineSize = 30f, HeroPadding = new Edges4(24f, 22f, 24f, 20f), HeroActions = WinUiReleaseHeroActions.StackBeside, ActionSize = ControlSize.Small, HeroMeta = true,
+        HeadlineSize = 28f, HeroPadding = default, HeroActions = WinUiReleaseHeroActions.RowBeside, ActionSize = ControlSize.Small, HeroMeta = true,
         HighlightForm = WinUiReleaseHighlightForm.Strip, HighlightsHeading = false, HighlightGap = 10f, RowTitleSize = 13.5f, RowTitleLine = 18f,
         SectionColumns = 1, SectionColumnGap = 0f, RowMinH = 0f,
     };
@@ -245,9 +251,9 @@ public static class WinUiReleaseNotesTiers
     {
         Tier = WidthTier.Huge, Short = false,
         RailForm = WinUiReleaseRailForm.Rail, RailWidth = 280f, FrameGap = 32f, PickerInTitleRow = false, PickerHeight = 0f,
-        Target = 0f, TitleGlyph = true, PageTop = 24f, TitleBottom = 12f,
+        Target = 0f, TitleGlyph = false, PageTop = 32f, TitleBottom = 12f,
         BodyMaxW = 1600f, BodyGap = 20f,
-        HeadlineSize = 30f, HeroPadding = new Edges4(24f, 22f, 24f, 20f), HeroActions = WinUiReleaseHeroActions.RowBeside, ActionSize = ControlSize.Medium, HeroMeta = true,
+        HeadlineSize = 28f, HeroPadding = default, HeroActions = WinUiReleaseHeroActions.RowBeside, ActionSize = ControlSize.Medium, HeroMeta = true,
         HighlightForm = WinUiReleaseHighlightForm.Strip, HighlightsHeading = true, HighlightGap = 16f, RowTitleSize = 13.5f, RowTitleLine = 18f,
         SectionColumns = 3, SectionColumnGap = 24f, RowMinH = 40f,
     };

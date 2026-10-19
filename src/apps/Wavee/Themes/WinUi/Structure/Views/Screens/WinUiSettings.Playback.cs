@@ -138,7 +138,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(Strings.Settings.Common.Ready),
                 Description = Loc.Get(Strings.Settings.Playback.RuntimeReadySub),
-                HeaderIcon = Icons.StatusSuccess,
+                HeaderIcon = null,
                 Content = StdButton(Loc.Get(Strings.Settings.Common.Manage), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()),
                 Items =
                 [
@@ -304,7 +304,7 @@ internal static partial class WinUiSettings
         {
             Header = Loc.Get(Strings.Settings.Sound.Equalizer),
             Description = Loc.Get(Strings.Settings.Sound.EqualizerSub),
-            HeaderIcon = RowGlyph(Tab.Playback, "equalizer"),
+            HeaderIcon = null,
             Content = RowToggle(D(Tab.Playback, "equalizer")),
             InitiallyExpanded = eqOn,
             Items =
@@ -374,7 +374,7 @@ internal static partial class WinUiSettings
         {
             Header = Loc.Get(Strings.Settings.Sound.Crossfade),
             Description = Loc.Get(Strings.Settings.Sound.CrossfadeSub),
-            HeaderIcon = RowGlyph(Tab.Playback, "crossfade"),
+            HeaderIcon = null,
             Content = RowToggle(D(Tab.Playback, "crossfade")),
             InitiallyExpanded = crossOn,
             Items =

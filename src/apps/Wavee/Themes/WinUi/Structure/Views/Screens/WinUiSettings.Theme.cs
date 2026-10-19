@@ -145,7 +145,7 @@ internal static partial class WinUiSettings
 
     /// <summary>The group's grid in the tier's form: the same nodes in every form, only their props differ. The cards are fluid (each column an equal share), the gap
     /// the record's.</summary>
-    static TemplateParts PickerParts(WinUiSettingsLayout layout) => layout.Picker == WinUiThemePickerForm.Grid ? s_gridParts : layout.Picker == WinUiThemePickerForm.Row ? s_rowParts : s_cardParts;
+    static TemplateParts PickerParts(WinUiSettingsLayout layout) => layout.Picker == WinUiThemePickerForm.Grid ? s_gridParts : layout.Picker == WinUiThemePickerForm.Row ? s_rowParts : CardParts(layout.PickerCardMaxW);
 
     /// <summary>Compact: two columns that wrap (a line drops whole cards).</summary>
     static readonly TemplateParts s_gridParts = new()
@@ -161,12 +161,20 @@ internal static partial class WinUiSettings
         [RadioButtons.PartColumn] = c => c with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
     };
 
-    /// <summary>Standard and Huge: one line of four equal columns (the board's `repeat(4, 1fr)`): three themes leave the fourth empty, so the cards keep the board's width.</summary>
-    static readonly TemplateParts s_cardParts = new()
+    static readonly Dictionary<float, TemplateParts> s_cardParts = new();
+
+    /// <summary>Standard and Huge: one line of equal columns (the board's `repeat(4, 1fr)`: three themes leave the fourth empty), each card at most <paramref name="cap"/> so the
+    /// three keep the width four would have. Fluid in the flex pass itself: right in the first frame.</summary>
+    static TemplateParts CardParts(float cap)
     {
-        [RadioButtons.PartGrid] = g => g with { Wrap = false, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch },
-        [RadioButtons.PartColumn] = c => c with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = float.NaN },
-    };
+        if (!s_cardParts.TryGetValue(cap, out var parts))
+            s_cardParts[cap] = parts = new TemplateParts
+            {
+                [RadioButtons.PartGrid] = g => g with { Wrap = false, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch },
+                [RadioButtons.PartColumn] = c => c with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = cap },
+            };
+        return parts;
+    }
 
     static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy, WinUiSettingsLayout layout, float gridCardWidth)
     {
@@ -224,7 +232,7 @@ internal static partial class WinUiSettings
             Animate = WinUiScreenMotion.Reflow,   // a crossing re-forms the picker: the card glides into its new box
             Children = kids,
         };
-        return float.IsNaN(gridCardWidth) ? shell with { Grow = 1f, Basis = 0f } : shell;
+        return float.IsNaN(gridCardWidth) ? shell with { Grow = 1f, Basis = 0f, MaxWidth = layout.PickerCardMaxW } : shell;
     }
 
     static Element DeveloperTag() => new BoxEl

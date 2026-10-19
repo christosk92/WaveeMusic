@@ -53,7 +53,7 @@ internal static class WinUiSettingsRules
     public const float CaptionSize = 12f;
 
     /// <summary>The pill tags' text (Active, Developer).</summary>
-    public const float TagSize = 9f;
+    public const float TagSize = 11f;
 
     /// <summary>An expander item's text column starts here (the glyph's column plus its gap): group labels, report rows, footers.</summary>
     public const float TextColumnInset = 58f;

@@ -243,7 +243,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(AiS.Title),
                 Description = description,
-                HeaderIcon = RowGlyph(Tab.Appearance, "aiLyrics"),
+                HeaderIcon = null,
                 Content = AiSwitch(true, enabled: true),
                 IsExpanded = expanded,
                 Items =
@@ -309,7 +309,7 @@ internal static partial class WinUiSettings
             {
                 Header = header,
                 Description = description,
-                HeaderIcon = RowGlyph(Tab.Appearance, "aiLyrics"),
+                HeaderIcon = null,
                 Content = content,
                 IsActionIconVisible = false,
                 Parts = parts,

@@ -71,7 +71,7 @@ internal static partial class WinUiSettings
     {
         Header = Loc.Get(PvFacts.WhatLeaves),
         Description = Loc.Get(PvFacts.WhatLeavesSub),
-        HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "whatLeaves"),
+        HeaderIcon = null,
         Content = ValueTag(Loc.Get(PvFacts.NoTelemetry)),
         Items =
         [
@@ -99,7 +99,7 @@ internal static partial class WinUiSettings
         {
             Header = Loc.Get(PvFacts.CrashReports),
             Description = Loc.Get(PvFacts.CrashReportsSub),
-            HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashReports"),
+            HeaderIcon = null,
             Content = ValueTag(Loc.Get(PrivacyRules.ModeKey(effective))),
             Items =
             [
@@ -165,7 +165,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(PvFacts.YourData),
                 Description = PvFacts.YourDataSub(PrivacyRules.ShortInstallId(fullId)),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashService"),
+                HeaderIcon = null,
                 Content = HStack(Spacing.S,
                     SubtleButton(Loc.Get(PvFacts.CopyId), () => D(Tab.PrivacyDiagnostics, "crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0),
                     StdButton(Loc.Get(PvFacts.DeleteMyData), OnDelete, isEnabled: configured)),
@@ -217,7 +217,7 @@ internal static partial class WinUiSettings
                     ? Loc.Get(PvReports.SavedNone)
                     : PvReports.SavedSummary(tally.Sent.ToString(CultureInfo.InvariantCulture),
                         tally.NotSent.ToString(CultureInfo.InvariantCulture), tally.Closed.ToString(CultureInfo.InvariantCulture)),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "savedReports"),
+                HeaderIcon = null,
                 Content = ValueTag(tally.Total == 1
                     ? PvReports.SavedCountOne(PrivacyRules.Mb(tally.Bytes))
                     : PvReports.SavedCount(tally.Total.ToString(CultureInfo.InvariantCulture), PrivacyRules.Mb(tally.Bytes))),
@@ -420,7 +420,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(PvLogs.Viewer),
                 Description = _line.Peek(),   // non-empty, so the card builds the description node the part binds
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "logViewer"),
+                HeaderIcon = null,
                 IsClickEnabled = true,
                 IsActionIconVisible = true,
                 OnClick = static () => D(Tab.PrivacyDiagnostics, "logViewer").Writer.Run!(),
@@ -457,7 +457,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(PvLogs.DetailLevel),
                 Description = Loc.Get(PvLogs.DetailLevelSub),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "detailLevel"),
+                HeaderIcon = null,
                 Content = ValueTag(PvLogs.DetailLevelValue(Diagnostics.LogView.LevelNames[viewerIndex], Diagnostics.LogView.LevelNames[fileIndex])),
                 Items =
                 [
@@ -494,7 +494,7 @@ internal static partial class WinUiSettings
     {
         Header = Loc.Get(PvTools.Capture),
         Description = Loc.Get(PvTools.CaptureSub),
-        HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "realtimeCapture"),
+        HeaderIcon = null,
         Content = RowToggle(D(Tab.PrivacyDiagnostics, "realtimeCapture")),
         Items =
         [
@@ -528,7 +528,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(PvDev.Mode),
                 Description = Loc.Get(PvDev.ModeSub),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "developerMode"),
+                HeaderIcon = null,
                 Content = Toggle(new Signal<bool>(dev), onChange: static on =>
                 {
                     // The Appearance / Notifications developer-only rows are page-composed, so the writer asks the page to re-read.

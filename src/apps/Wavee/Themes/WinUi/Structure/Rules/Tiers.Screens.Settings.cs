@@ -46,6 +46,7 @@ public enum WinUiThemePickerForm : byte
 /// <param name="ColumnMaxW">The cards' column cap (1000; 1200 at Huge; NaN at Compact where the column fills).</param>
 /// <param name="Picker">The theme picker's form.</param>
 /// <param name="PickerThumbH">The preview's height for the grid form (the fluid forms keep 16:9).</param>
+/// <param name="PickerCardMaxW">A fluid card's widest (the board's fourth of the card, so three themes keep the width four would have; NaN: no cap).</param>
 /// <param name="PickerShowsText">The card carries the theme's description under its name.</param>
 /// <param name="PickerGap">The gap between picker cards.</param>
 /// <param name="PickerPad">The padding of the expander body the picker sits in.</param>
@@ -55,7 +56,7 @@ public enum WinUiThemePickerForm : byte
 /// <param name="SectionBottom">The space between a section header and its first card.</param>
 public sealed record WinUiSettingsLayout(
     WidthTier Tier, float InsetX, float InsetTop, float TitleSize, float TitleLine, float PageGap, float Target, bool StacksControls, float TabHeight, bool TabsScroll,
-    float ColumnMaxW, WinUiThemePickerForm Picker, float PickerThumbH, bool PickerShowsText, float PickerGap, float PickerPad, float PickerIndent, bool Aside,
+    float ColumnMaxW, WinUiThemePickerForm Picker, float PickerThumbH, float PickerCardMaxW, bool PickerShowsText, float PickerGap, float PickerPad, float PickerIndent, bool Aside,
     float SectionTop, float SectionBottom)
 {
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
@@ -78,20 +79,20 @@ public static class WinUiSettingsTiers
     [
         // Compact (W-Settings-Compact, W-ThemeOptions-Compact): 16 inset, a 28 title, 44-tall scrolling tabs, the rows stack, the picker is a 2-up grid.
         new(WidthTier.Compact, InsetX: 16f, InsetTop: 16f, TitleSize: 28f, TitleLine: 36f, PageGap: 16f, Target: 40f, StacksControls: false, TabHeight: 44f, TabsScroll: true,
-            ColumnMaxW: float.NaN, WinUiThemePickerForm.Grid, PickerThumbH: 72f, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f, PickerIndent: 0f, Aside: false,
+            ColumnMaxW: float.NaN, WinUiThemePickerForm.Grid, PickerThumbH: 72f, PickerCardMaxW: float.NaN, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f, PickerIndent: 0f, Aside: false,
             SectionTop: 20f, SectionBottom: 8f),
         // Small (W-Settings-Small): 24 / 20, the 28 title, 40-tall tabs, the picker one row of thumbnail + name cards.
         new(WidthTier.Small, InsetX: 24f, InsetTop: 20f, TitleSize: 28f, TitleLine: 36f, PageGap: 12f, Target: 0f, StacksControls: false, TabHeight: 40f, TabsScroll: true,
-            ColumnMaxW: 1000f, WinUiThemePickerForm.Row, PickerThumbH: 32f, PickerShowsText: false, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
+            ColumnMaxW: 1000f, WinUiThemePickerForm.Row, PickerThumbH: 32f, PickerCardMaxW: float.NaN, PickerShowsText: false, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
             SectionTop: 20f, SectionBottom: 8f),
         // Standard (W-Settings, W-SettingsSections): 36 / 24, the 40 title, the 1000 column, four preview cards.
         new(WidthTier.Standard, InsetX: 36f, InsetTop: 24f, TitleSize: 40f, TitleLine: 52f, PageGap: 16f, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false,
-            ColumnMaxW: 1000f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
-            SectionTop: 24f, SectionBottom: 8f),
+            ColumnMaxW: 1000f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerCardMaxW: 223f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
+            SectionTop: 20f, SectionBottom: 8f),
         // Huge (W-Settings-Huge): 48 / 32, the 1200 column, the preview column beside the Appearance cards.
         new(WidthTier.Huge, InsetX: 48f, InsetTop: 32f, TitleSize: 40f, TitleLine: 52f, PageGap: 16f, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false,
-            ColumnMaxW: 1200f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: true,
-            SectionTop: 24f, SectionBottom: 8f),
+            ColumnMaxW: 1200f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerCardMaxW: 271f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: true,
+            SectionTop: 20f, SectionBottom: 8f),
     ];
 
     private static readonly WinUiSettingsLayout[] s_stacked = Array.ConvertAll(s_records, r => r with { StacksControls = true });

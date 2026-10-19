@@ -11,6 +11,9 @@ namespace Wavee.Themes.WinUi;
 /// <summary>The tier-invariant geometry of Classic's setup wizard.</summary>
 public static class WinUiSetupGeometry
 {
+    /// <summary>The footer's buttons keep at least this width (board: Back 54, Close 60) and sit this far apart.</summary>
+    public const float FooterButtonMinWidth = 54f, FooterButtonGap = 8f;
+
     /// <summary>The page frame's header pull and its bottom gap.</summary>
     public const float HeaderTopPull = 4f, HeaderBottomGap = 4f;
 

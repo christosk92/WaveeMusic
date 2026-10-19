@@ -163,14 +163,14 @@ internal static partial class WinUiReleaseNotes
     static Element SinceBanner(WhatsNewPageProps props, ReleaseEntry[] releases, WinUiReleaseNotesLayout layout) => new BoxEl
     {
         Direction = 0, Gap = K.SinceGap, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-        Padding = new Edges4(12f, 8f, 12f, 8f), Corners = CornerRadius4.All(6f),
-        Fill = Tok.AccentSubtle, BorderWidth = 1f, BorderColor = Tok.AccentDefault,
+        Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S), Corners = CornerRadius4.All(Radii.Control),
+        Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
         Children =
         [
-            Icon(Icons.RefineSparkle, 14f, Tok.AccentTextPrimary),
+            Icon(Icons.Info, K.SinceGlyph, Tok.AccentTextPrimary),
             R.Type.DenseMeta(Strings.WhatsNew.Since(releases.Length, releases[^1].Doc.Version, releases[0].Doc.Version))
                 with { Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
-            Btn(Loc.Get(Strings.WhatsNew.OnlyLatest), props.ShowOnlyLatest, ButtonAppearance.Subtle, ControlSize.Small, layout.Target) with { Shrink = 0f },
+            Btn(Loc.Get(Strings.WhatsNew.OnlyLatest), props.ShowOnlyLatest, ButtonAppearance.Standard, ControlSize.Medium, layout.Target) with { Shrink = 0f },
         ],
     };
 
@@ -182,7 +182,7 @@ internal static partial class WinUiReleaseNotes
     {
         var title = new List<Element>(2);
         if (layout.TitleGlyph) title.Add(Icon(Icons.Tag, 22f, Tok.TextPrimary));
-        title.Add(R.Type.SurfaceDisplay(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f });
+        title.Add(R.Type.PageHero(Loc.Get(Strings.WhatsNew.Title)) with { Size = layout.TitleSize, LineHeight = layout.TitleLine, Grow = 1f, LineStacking = LineStacking.BlockLineHeight });
 
         bool switcher = !layout.HasRail;                         // Compact and Small switch releases with a picker
         bool under = switcher && !layout.PickerInTitleRow;       // Compact: the picker sits under the title
@@ -190,7 +190,7 @@ internal static partial class WinUiReleaseNotes
         {
             new BoxEl
             {
-                Key = "rn:title", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                Key = WinUiFrameLayout.PageTitleKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
                 Margin = new Edges4(0f, 0f, 0f, under ? layout.TitleBottom : 0f),
                 Children = title.ToArray(),
             },
@@ -267,10 +267,6 @@ internal static partial class WinUiReleaseNotes
         var openUrl = props.OpenUrl;
         var copy = props.CopyLink;
         string release = doc.Links.Release is { Length: > 0 } r ? r : Links.ReleaseTagUrl(doc.Version);
-        var pills = new List<Element>(3);
-        if (isLatest) pills.Add(Pill(Loc.Get(Strings.WhatsNew.Latest), accent: true));
-        pills.Add(Pill(Loc.Get(string.Equals(doc.Channel, "beta", StringComparison.OrdinalIgnoreCase) ? Strings.WhatsNew.Beta : Strings.WhatsNew.Stable)));
-        if (doc.PackageVersion is { Length: > 0 } quad) pills.Add(Pill(quad, mono: true));
 
         var meta = new List<Element>(3);
         if (ReleaseDate(doc.Date) is { Length: > 0 } released) meta.Add(MetaItem(Loc.Get(Strings.WhatsNew.Released), released));
@@ -283,19 +279,17 @@ internal static partial class WinUiReleaseNotes
         bool beside = layout.ActionsBeside;
         var copyKids = new List<Element>(4)
         {
-            new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = true, AlignItems = FlexAlign.Center, Children = pills.ToArray() },
-            new TextEl(headline) { Size = layout.HeadlineSize, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
+            new TextEl(headline) { Size = layout.HeadlineSize, LineHeight = layout.HeadlineSize + 8f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
             new TextEl(doc.Tagline) { Size = K.BodySize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = K.HeroTaglineMaxWidth },
         };
         if (layout.HeroMeta)
-            copyKids.Add(new BoxEl { Direction = 0, Gap = K.HeroMetaGap, Wrap = true, Margin = new Edges4(0f, 4f, 0f, 0f), Children = meta.ToArray() });
+            copyKids.Add(new BoxEl { Direction = 0, Gap = K.HeroMetaGap, Wrap = true, Children = meta.ToArray() });
 
         return new BoxEl
         {
             Key = "rn:hero",
             Direction = beside ? (byte)0 : (byte)1, Gap = Spacing.M, AlignItems = beside ? FlexAlign.End : FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-            Padding = layout.HeroPadding, Corners = CornerRadius4.All(12f),
-            Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Padding = layout.HeroPadding,
             Children =
             [
                 new BoxEl
@@ -313,51 +307,18 @@ internal static partial class WinUiReleaseNotes
     static Element HeroActions(WinUiReleaseNotesLayout layout, Action openRelease, Action copyLink)
     {
         string openLabel = Loc.Get(Strings.WhatsNew.OpenOnGitHub), copyLabel = Loc.Get(Strings.WhatsNew.CopyLink);
+        bool beside = layout.ActionsBeside;
         float target = layout.Target;
-        ControlSize size = layout.ActionSize;
-        switch (layout.HeroActions)
+        // W-ReleaseNotes: two hyperlinks, "Open on GitHub  Copy link", at the end of the headline's row (Small up) or under the meta line (Compact).
+        return new BoxEl
         {
-            case WinUiReleaseHeroActions.StackBeside:
-                return new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.End,
-                    Children =
-                    [
-                        Btn(openLabel, openRelease, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:open" },
-                        Btn(copyLabel, copyLink, ButtonAppearance.Subtle, size, target) with { Key = "rn:hero:copy" },
-                    ],
-                };
-            case WinUiReleaseHeroActions.RowBeside:
-                return new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Btn(openLabel, openRelease, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:open" },
-                        Btn(copyLabel, copyLink, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:copy" },
-                    ],
-                };
-            case WinUiReleaseHeroActions.RowBelow:
-                return new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Margin = new Edges4(0f, Spacing.XS, 0f, 0f), AlignSelf = FlexAlign.Start, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Btn(openLabel, openRelease, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:open" },
-                        Btn(copyLabel, copyLink, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:copy" },
-                    ],
-                };
-            default:   // GridBelow: two equal columns
-                return new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Margin = new Edges4(0f, Spacing.XS, 0f, 0f), AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                    Children =
-                    [
-                        Btn(openLabel, openRelease, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:open", Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
-                        Btn(copyLabel, copyLink, ButtonAppearance.Standard, size, target) with { Key = "rn:hero:copy", Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
-                    ],
-                };
-        }
+            Direction = 0, Gap = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, AlignSelf = beside ? FlexAlign.Auto : FlexAlign.Start,
+            Children =
+            [
+                HyperlinkButton.Create(openLabel, openRelease) with { Key = "rn:hero:open", MinHeight = target },
+                HyperlinkButton.Create(copyLabel, copyLink) with { Key = "rn:hero:copy", MinHeight = target },
+            ],
+        };
     }
 
     static Element MetaItem(string label, string value) => new BoxEl

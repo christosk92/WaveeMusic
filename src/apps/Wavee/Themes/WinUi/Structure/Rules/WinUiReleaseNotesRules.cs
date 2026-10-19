@@ -19,6 +19,7 @@ public static class WinUiReleaseNotesRules
     // ── the page's frame, states and since banner ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>The since banner's gap. (The frame's gap to the rail is the tier record's: <c>WinUiReleaseNotesLayout.FrameGap</c>.)</summary>
+    public const float SinceGlyph = 16f;
     public const float SinceGap = 10f;
 
     /// <summary>The loading ring and the empty state's text measure.</summary>
