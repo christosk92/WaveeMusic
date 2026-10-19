@@ -156,8 +156,9 @@ internal static class WinUiTitleBar
             items.Add(new TitleBarItem("pin", () => Embed.Comp(() => new PinButton(props)) with { Key = WinUiFrameRules.PinKey }));
             items.Add(new TitleBarItem("friends", () => Embed.Comp(() => new FriendsButton(props)) with { Key = WinUiFrameRules.FriendsKey }));
         }
-        items.Add(new TitleBarItem("bell", () => Embed.Comp(() => new BellButton(props)) with { Key = WinUiFrameRules.BellKey }));
-        if (tier.More) items.Add(new TitleBarItem("more", () => Embed.Comp(() => new MoreButton(props)) with { Key = WinUiFrameRules.MoreKey }));
+        // The bell's item carries Small's ⋯ after it (one keyed child): the ⋯ slot eases its width in and out, so the bell glides 44 at the 1008
+        // edge instead of jumping (a keyed item of its own would come and go with its slot in one frame).
+        items.Add(new TitleBarItem("bell", () => Embed.Comp(() => new BellCluster(props))));
         // The name joins the avatar at Huge (the core's chip, `ShowName`); the identity eases its width, so the cluster glides.
         items.Add(new TitleBarItem("avatar", () => Embed.Comp(() => new Identity(props)) with { Key = WinUiFrameRules.AvatarKey }));
         return items;
@@ -270,6 +271,33 @@ internal static class WinUiTitleBar
         {
             var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
             return ToolTip.Wrap(IconButton.Create(Icons.Friends, props.ToggleFriends, style), Loc.Get(Strings.Shell.Friends));
+        }
+    }
+
+    /// <summary>The bell and, at Small, the ⋯ after it (`WinUiFrameRules.MoreSlotMotion`): the ⋯ mounts in a slot that eases its width
+    /// 0 <-> 44 (the cluster gap and the button) and fades, so the bell and everything left of it glide across the 1008 edge.</summary>
+    private sealed class BellCluster(ShellTitleBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            bool more = WinUiTiers.TitleBarOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers).More;
+            Element bell = Embed.Comp(() => new BellButton(props)) with { Key = WinUiFrameRules.BellKey };
+            if (!more) return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [bell] };
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    bell,
+                    new BoxEl
+                    {
+                        Key = WinUiFrameRules.MoreSlotKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                        Padding = new Edges4(WinUiFrameRules.ToolGap, 0f, 0f, 0f),
+                        Animate = Design.Reduced ? null : WinUiFrameRules.MoreSlotMotion,
+                        Children = [Embed.Comp(() => new MoreButton(props)) with { Key = WinUiFrameRules.MoreKey }],
+                    },
+                ],
+            };
         }
     }
 
