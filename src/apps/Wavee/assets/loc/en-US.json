@@ -3028,6 +3028,9 @@
       "nav": {
         "$comment": "W2b: the navigation pane. The Collections section is called Library under WinUI (board Shell-Nav); Settings is the route's own title.",
         "library": "Library"
+      },
+      "lists": {
+        "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
       }
     }
   },

@@ -179,3 +179,36 @@ frame's content region, so it never pushes the page. Focus is trapped while it i
 
 **Tests.** `Wavee.Tests\Theming\WinUiNavTests.cs` (planner, ladder, touch metrics, the seam, the registry) and `Wavee.ShellTests\WinUiTierLayoutTests.Nav.cs` (the footer, the rail's tiles, the
 overlay never pushing the page, the Compact option holding the rail, the Compact targets).
+
+## W3: the lists
+
+The track table (rows and chrome), the eager row, the episode row, the media surface, the lyrics lines, the artist chart and the track drawer: the seven
+list styles of `StyleKeys` (`Structure\WinUiStructure.Lists.cs`, pictures in `Structure\Lists\WinUi*.cs`, numbers in `Rules\WinUiListRules.cs` and the
+`WinUi*Layout.cs` records). They are STYLES the core hosts build from, not views, so none is a `DeliberateStandIns` line.
+
+**The rows.** Two skins, one per `artworkInRows`: ON the Modern two-line row (title over its artists, a cover, 48), OFF the Classic one-line 40 row with the
+artist in a lane of its own (`WinUiListRules.ListsFor`). An album's numbered rows are one line with no cover (40: the two-line row less
+`AlbumRowTrim`). The plate is a full-width r4 backplate: bare at rest, subtle fill 1 (6 %) on hover, fill 2 pressed, SELECTED = fill 1 plus the 3 x 16 accent
+pill (the pill stays while the check lane is in), selected-and-hovered fill 3, the playing row the accent text and the accent bars, a withheld row at 45 % that
+says "Unavailable" in the time lane, a drop target a 2-px accent line on the top edge. The cover is 40 in the 48 (W-Playlist, W-MultiSelect, W-Unavailable draw
+40; W-RowStates' 32 is the specimen), so `WinUiDensityOption.Rows` publishes `ModernArt` 40 (compact density 32 in the 40).
+
+**The lanes and the tiers.** The lanes are the core's; WinUI states the heart in its own lane before the time (`DetailTableTier.HeartTrailing`). The list
+column's table ladder (`Rules\Tiers.Lists.cs`, `WinUiListTiers`): below 560 the table is the two-line row, 560-859 drops Plays, Date and Album, from 860 every
+lane (Added-by never: no WinUI board draws it), each edge held 24 on widening. The window's own bands (`WinUiListRules.DetailTiers`, the record W6a extends):
+Compact < 641 the Compact row form (56 tall, a 40 cover, no column header, title over "artists - album" or "artists - 598.9M plays" on an album, the time, the
+heart and a 40 "..." on every row, `KeepDuration`), Small no versions chevron lane (`VersionsLane`), Huge the board's 72 rows with a 64 cover.
+
+**Row size.** The "..." menu's "Row size" rows (`WinUiTrackChrome.CommandKit.DensityItems`) read the PUBLISHED rung and request `style.rowDensity` for the WinUI
+composition (`ThemeHost.Apply(new OptionChange(WinUiTheme.Id, ...))`); Classic's stand-in sent Classic's `density` and was a no-op under WinUI.
+
+**Chrome.** Header Caption 12 in the secondary ink (the sorted lane primary), "#" a word and a sort target; the bar reads Find, [play next / shuffle], then the
+order, Filter, Select as flat Body 14 words with r4 hover plates; the selection mode is the card (white 5 %, r8), the accent tint at Compact; the page bar's
+lead is empty (the hero owns Play and Shuffle: W6a); the unavailable-songs bar is the InfoBar card.
+
+**Lyrics.** `LyricsLinesStyle.StageDepthBlur = true` (the stage's far lines blur); the wipe and the romanization line are the core's.
+
+**Core seams added (contract 1.52, additive).** `DetailTableTier.HeartTrailing`, `KeepDuration`, `VersionsLane` and `DurationWidth` (the 72 / 80 time lane); `Track.ColumnSet.DurationKept` and `DurationWidth`.
+
+**Tests.** `Wavee.Tests\Theming\WinUiListsTests.cs` (the ladder and its holds, the policies, the table records, the density, the styles) and
+`Wavee.ShellTests\WinUiTierLayoutTests.Lists.cs` (the table mounted at Compact, Small, Standard: header, lanes, row heights, the Row size request).
