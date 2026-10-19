@@ -176,7 +176,7 @@ internal static class WinUiRowCells
             {
                 Width = Track.RowTransportBox, Height = Track.RowTransportBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 PressScale = R.Motion.ScaleEmphatic.Press,
-                Children = [Icon(st.IsNow && st.IsPlaying ? Icons.Pause : Icons.Play, WinUiListRules.TransportGlyph,
+                Children = [Icon(st.IsNow && st.IsPlaying ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid, WinUiListRules.TransportGlyph,
                                  st.IsNow ? accent : Tok.TextPrimary)],
             };
         Element revealed = onPlay is null
@@ -324,7 +324,8 @@ internal static class WinUiRowCells
         Width = WinUiListRules.OnPcMark, Height = WinUiListRules.OnPcMark, Shrink = 0f, Corners = Radii.Circle(WinUiListRules.OnPcMark),
         BorderWidth = WinUiListRules.OnPcRing, BorderColor = ink, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Margin = new Edges4(0f, 0f, WinUiListRules.OnPcAfter, 0f),
-        Children = [new TextEl(WinUiListRules.OnPcArrow) { Size = WinUiListRules.OnPcGlyph, LineHeight = WinUiListRules.OnPcGlyph + 2f, Weight = 700, Color = ink }],
+        // The arrow is an ICON (Segoe Fluent's download glyph), not a word: a Unicode "↓" at 8 DIP read as text under the 11 DIP type floor.
+        Children = [Icon(Icons.Download, WinUiListRules.OnPcGlyph) with { Color = ink }],
     }, Loc.Get(Strings.Track.OnThisPc));
 
     /// <summary>The explicit "E" (W-Album): a 16 plate in the secondary ink with 2-px corners, the letter 10 bold in the inverse ink.</summary>

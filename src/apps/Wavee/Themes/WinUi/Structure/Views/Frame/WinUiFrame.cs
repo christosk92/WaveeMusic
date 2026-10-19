@@ -178,6 +178,8 @@ internal static class WinUiFrame
             {
                 Direction = 1, ClipToBounds = true,
                 Width = Prop.Of(props.RailSeamWidth),
+                // A closed (or undocked) panel presents the seam 0 wide: out of the tree then, so its 16-wide grip is no hit target nobody can see.
+                Visible = Prop.Of(() => props.RailSeamWidth() > 0f),
                 Transform = Prop.Of(() => Affine2D.Translation(props.RailSeamX(), 0f)),
                 Children = [props.RailSeam()],
             },
