@@ -113,9 +113,6 @@ public static class WinUiFrameRules
     /// <summary>The centred search's width at Standard (520) and Huge (640); Small fills the middle up to 520.</summary>
     public const float SearchW = 520f, SearchHugeW = 640f;
 
-    /// <summary>The narrowest the Small field goes before the toolbar would crowd it (its placeholder still reads "Search").</summary>
-    public const float SearchMinW = 160f;
-
     /// <summary>The flyout the Compact search button opens: the window less 12 either side, at most 520.</summary>
     public const float SearchFlyoutMaxW = 520f, SearchFlyoutMargin = 12f;
 

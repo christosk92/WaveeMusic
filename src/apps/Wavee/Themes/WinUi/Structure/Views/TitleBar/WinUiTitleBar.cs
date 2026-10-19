@@ -68,7 +68,7 @@ internal static class WinUiTitleBar
             Lead = () => LeadItems(props, Tier()),
             Wordmark = () => !Strip() && Tier().Mark ? Mark() : new BoxEl { Width = 0f, Height = 0f },
             TrailingItems = () => TrailItems(props, Tier()),
-            CenterAlign = Prop.Of(() => Tier().CenterAlign),
+            CenterAlign = Prop.Of(() => Tier().AlignWith(Strip())),
             RowSpacing = () => new TitleBarSpacing(WinUiFrameRules.LeadPad, Tier().DragStrip),
             ToolbarSpacing = static () => new TitleBarToolbarSpacing(WinUiFrameRules.ToolGap, WinUiFrameRules.LeadInset, WinUiFrameRules.TrailInset),
             Parts = parts,
@@ -82,15 +82,10 @@ internal static class WinUiTitleBar
         return bar;
     }
 
-    /// <summary>The field's width: the tier's (520 / 640), never wider than the centre the bar measured; at Small the middle up to 520 and
-    /// never under the floor. Before the first measure (NaN or infinite), the tier's.</summary>
+    /// <summary>The field's width: the tier's (520 / 640, Small's widest), never wider than the centre the bar measured (the clusters always win:
+    /// a crowded row narrows the field, it never overlaps them). Before the first measure (NaN or infinite), the tier's.</summary>
     private static float FieldWidth(WinUiTitleBarLayout tier, float avail)
-    {
-        if (!float.IsFinite(avail) || avail <= 0f) return tier.SearchW;
-        return tier.SearchFills
-            ? Math.Clamp(avail, WinUiFrameRules.SearchMinW, tier.SearchW)
-            : MathF.Min(tier.SearchW, avail);
-    }
+        => float.IsFinite(avail) ? Math.Clamp(avail, 0f, tier.SearchW) : tier.SearchW;
 
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -103,6 +98,8 @@ internal static class WinUiTitleBar
         TabHeight = touch ? WinUiFrameRules.CompactTabH : WinUiFrameRules.TabH,
         TextFontSize = WinUiFrameRules.MarkTextSize,
         SelectedFill = Prop.Of(static () => Tok.FillSolidBase),
+        // Shell-Top: only the selected tab carries its close button at rest (the others show it under the pointer).
+        CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver,
         IsAddTabButtonVisible = true,
         OnAddTabButtonClick = () => { props.OnNewTab(); return null; },
         ItemsSource = props.TabItems,

@@ -10,9 +10,10 @@
 //                                              pin, Friends, bell, avatar
 //   Huge       Ladder(240)                     the same with a 640 search and the profile name after the avatar     the Wavee mark after Forward
 //
-// The tab form is the engine strip's (`TabStripForm`, Chrome appearance), resolved against the bar's measured tab lane. Every tier centres the
-// search on the window's centre line (the Small field fills the widest centred span up to 520): one toolbar shape at every tier, so a crossing
-// never re-mounts the toolbar's buttons. COMPACT IS THE TOUCH TIER (owner rule, W-Tiers "Compact hit targets are 40 minimum"): the board's 36
+// The tab form is the engine strip's (`TabStripForm`, Chrome appearance), resolved against the bar's measured tab lane. From Small up the
+// search sits on the window's centre line (the Small field fills the widest centred span up to 520): one toolbar shape, so the 1008 and 1920
+// crossings never re-mount the toolbar's buttons. Compact has no field and, tabs off, ends in the caption buttons: its clusters sit at the
+// edges (BetweenClusters), so the 641 crossing re-mounts the toolbar's buttons (it re-sizes them for touch anyway). COMPACT IS THE TOUCH TIER (owner rule, W-Tiers "Compact hit targets are 40 minimum"): the board's 36
 // icon tabs, 36 tabs and 40 x 36 buttons grow to 40 (the icon tabs 40 wide, the tabs and "+" the 40 row, the buttons 40 x 40).
 
 using FluentGpu.Controls;
@@ -25,7 +26,7 @@ public static partial class WinUiTiers
 {
     private static readonly WinUiTitleBarLayout[] s_titleBars =
     [
-        new(WidthTier.Compact, TabStripForm.Compact(140f, 40f), TitleBarCenterAlign.Window,
+        new(WidthTier.Compact, TabStripForm.Compact(140f, 40f), TitleBarCenterAlign.BetweenClusters,
             SearchField: false, SearchW: 0f, Forward: false, PinAndFriends: false, More: false, Name: false, Mark: false,
             DragStrip: WinUiFrameRules.CompactDragStrip, ToolH: WinUiFrameRules.CompactToolH),
         new(WidthTier.Small, TabStripForm.Ladder(160f, 110f), TitleBarCenterAlign.Window,
@@ -64,6 +65,10 @@ public sealed record WinUiTitleBarLayout(WidthTier Tier, TabStripForm TabForm, T
 {
     /// <summary>The field fills the centred span up to <see cref="SearchW"/> (Small) instead of standing at it.</summary>
     public bool SearchFills { get; init; }
+
+    /// <summary>Where the search sits with the strip shown or hidden: with tabs off the caption buttons end the toolbar, and at Small the window's
+    /// centre line leaves no room beside them (the mark, the captions): the clusters sit at the edges and the field fills the middle.</summary>
+    public TitleBarCenterAlign AlignWith(bool strip) => !strip && SearchFills ? TitleBarCenterAlign.BetweenClusters : CenterAlign;
 
     /// <summary>The Compact strip: the tabs and "+" fill the 40 row (the touch floor) instead of the 36 tab under a 4 gap.</summary>
     public bool TouchStrip => Tier == WidthTier.Compact;
