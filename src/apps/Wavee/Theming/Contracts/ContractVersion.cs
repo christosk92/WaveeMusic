@@ -157,6 +157,7 @@
 // 1.50 (Zune cover wash): `PageBackdrop.TallWash` (a cover page asks for the tall single wash the boards draw behind its hero; Home and the rest keep the band-height one).
 // 1.51 (P6 wave 1): `ControlRole`/`ControlRoleTable`/`CommandButtonStyle.LabelMode` and `WaveeStyleRoles.Controls` (WR); `ShellCapabilities.HiddenTabStrip`/`CyclesTabs`, `SettingsGrouping`/`ThemePolicies.Settings` and `SettingsPageProps.Grouping/Group/OpenGroup`, `LyricsLinesStyle.StageDepthBlur` and `BlurPolicy.ResolveFor(setting, onStage, styleBlur)`, `StageTierMetrics.Layouts`, `DockedPane.Tabs` and `PanelProps.ShowPaneTab` (WK).
 // 1.52 (P6 wave 2): `NavPanePolicy.WideMode` and `NavRowKit.Footer` (W2b); `DetailTableTier.HeartTrailing`/`KeepDuration`/`VersionsLane`/`DurationWidth` and `Track.ColumnSet.DurationKept`/`DurationWidth` (W3).
+// 1.53 (P6 wave 3 + fixes): `HomePageProps.Greeting` (W5); `DetailTierLayout.PageInsetX`/`BandHeight`/`AsideInHero`/`FansInBand`/`BandOf`, `AlbumAsideProps.Artists`/`AlbumTitle`, `ArtistTierPolicy.SplitDetailTabs` (W6a); `DialogFit.ReportWidth`/`PlateRadius` and the `report` parameter on `FormCardWidthFor`/`FormBodyWidth`/`OverlayFit.ShowForm` (W8a); `PanelTierRule.DockContentFloor`/`DockHold`/`PlacementAt` (W4a); `SurfaceShape.Flush`, `SurfaceGeometry.ShelfHeight(.., flush)`/`PlateInsetX`, `SurfaceParts.InnerOf(.., flush)`, `HomeCards.ShelfCell(.., flush)`; `ITrackCommandKit.FindCommand`/`SelectCommand`, `NavRowKit.AdoptiveRoute` and `SidebarPillAnchor.Adopted`, `Controls.ArtistAboutCard(.., follow:)`; `LyricsHeaderFacts.TrackTitle`/`SyncLine`, `LyricsLinesStyle.Rail`/`LyricsRailForm`, `ILyricsHost.OnRail`; `LyricsLinesStyle.StageRows`/`LyricsStageRows`.
 // `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
 // `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
 //
@@ -174,7 +175,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 52;
+    public const int Minor = 53;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
