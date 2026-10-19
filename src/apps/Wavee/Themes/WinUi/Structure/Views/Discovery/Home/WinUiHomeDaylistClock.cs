@@ -166,9 +166,9 @@ internal static class WinUiHomeDaylistClock
         for (int i = 0; i < rows.Length; i++)
         {
             Element fill = face == DaylistClockFace.Face.Updating && i == next ? ProgressBar.Indeterminate(bar)
-                : i < current ? ProgressBar.Determinate(1f, bar, parts: DoneParts)
-                : segs is not null ? ProgressBar.Create(segs[i], bar)
-                : ProgressBar.Determinate(face == DaylistClockFace.Face.Counting ? 0f : DaypartTimeline.Fill(i, current, 1f), bar);
+                : i < current ? Bar(bar, 1f, done: true)
+                : segs is not null ? Bar(bar, segs[i], done: false)
+                : Bar(bar, face == DaylistClockFace.Face.Counting ? 0f : DaypartTimeline.Fill(i, current, 1f), done: false);
             string label = Loc.Get(DaypartTimeline.LabelKey(i));
             rows[i] = new BoxEl
             {
@@ -187,13 +187,27 @@ internal static class WinUiHomeDaylistClock
         };
     }
 
-    /// <summary>A finished daypart's bar: the fill in the quiet grey (W-Home: white at 30 %) instead of the accent.</summary>
-    static readonly TemplateParts DoneParts = MakeDoneParts();
+    /// <summary>A daypart bar as W-Home draws it: a 4-px r2 track in the divider ink (white 8.4 %) for every row, the fill on top — the quiet grey
+    /// (W-Home: white at 30 %; the strong-fill disabled ink, 25 %) for a finished daypart, the accent for the current one, none for a future one.</summary>
+    static Element Bar(float width, float value, bool done)
+        => BarShape(width, Math.Clamp(value, 0f, 1f) * width, done);
 
-    static TemplateParts MakeDoneParts()
+    /// <summary>The current daypart's LIVE bar: the fill's width is a bind on the host's signal, so the tick re-renders nothing.</summary>
+    static Element Bar(float width, FloatSignal value, bool done)
+        => BarShape(width, Prop.Of(() => Math.Clamp(value.Value, 0f, 1f) * width), done);
+
+    static Element BarShape(float width, Prop<float> fillW, bool done) => new BoxEl
     {
-        var parts = new TemplateParts();
-        parts.Set<BoxEl>(ProgressBar.PartFill, f => f with { Fill = Tok.TextTertiary });
-        return parts;
-    }
+        ZStack = true, Width = width, Height = WinUiHomeRules.DaypartBarH, Shrink = 0f, Role = AutomationRole.ProgressBar,
+        Corners = CornerRadius4.All(WinUiHomeRules.DaypartBarR), Fill = Tok.StrokeDividerDefault,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = fillW, Height = WinUiHomeRules.DaypartBarH, AlignSelf = FlexAlign.Start,
+                Corners = CornerRadius4.All(WinUiHomeRules.DaypartBarR),
+                Fill = done ? Tok.FillControlStrongDisabled : Tok.AccentDefault,
+            },
+        ],
+    };
 }

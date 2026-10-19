@@ -92,6 +92,9 @@ public static class WinUiHomeRules
     /// label / bar gap (12), the card's divider (the clock column's left hairline) and its inset.</summary>
     public const float ClockGap = 12f, DaypartGap = 10f, DaypartTop = 4f, DaypartBarH = 4f, DaypartLabelGap = 12f;
 
+    /// <summary>A daypart bar's corner (W-Home: `border-radius: 2px` on the 4-px track and its fill).</summary>
+    public const float DaypartBarR = 2f;
+
     /// <summary>The Compact footer's gap above the clock (12 and a hairline).</summary>
     public const float FooterPad = 12f;
 

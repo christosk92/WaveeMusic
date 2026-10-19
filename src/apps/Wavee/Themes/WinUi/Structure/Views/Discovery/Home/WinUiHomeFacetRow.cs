@@ -7,7 +7,8 @@
 //
 // ── The band (element tree) ───────────────────────────────────────────────────────────────────────────────────────────
 //   column  Height = BandH (48)  ZStack  .Sticky(0, scope: PageScope, engaged: stuck)
-//   ├─ HStack  padding (inset, 4, inset, 4)  h = 40  [ SelectorBar · spacer · Following (Standard, Huge) / the divider and Following (Compact) ]
+//   ├─ HStack  padding (inset, 4, inset, 4)  h = 40  [ SelectorBar · spacer · Following ] (Standard, Huge; Small: the words alone)
+//      Compact: a sideways ScrollView to the window's edge  [ SelectorBar · hairline · Following ]  (W-Home-Compact: the strip bleeds, the edge fades)
 //   ├─ 3-px slot at the foot { the busy ProgressBar, fading in and out }    (the slot never moves)
 //   └─ the hairline at the foot, visible while the band is pinned (the `engaged` edge)
 //
@@ -68,30 +69,41 @@ internal static class WinUiHomeFacetRow
         bool afterDivider = layout.Following == WinUiFollowingPlace.FacetRowAfterDivider;
 
         // The Friend activity button is Classic's Compact answer; WinUI's toolbar carries Friends (W2a), so the row ends with Following alone.
-        // Compact: the words yield to the button (the board's `margin-right: -16px; overflow: hidden`): their box shrinks and clips, its trailing edge faded.
-        bool yieldWords = afterDivider;
+        // Compact (W-Home-Compact: `margin-right: -16px; overflow: hidden; white-space: nowrap`): the words, the hairline and Following are ONE strip that
+        // runs to the window's edge, so no word is ever cut by the button; the strip scrolls sideways (the button stays reachable) and its overflowing edge
+        // fades (the scroller's own edge cue). Every other tier: the words, a spacer and Following at the row's end.
+        bool strip = afterDivider;
         var bar = SelectorBar.Create(labels, p.Index(), onChange: OnWord, style: R.Type.FacetCompactStyle with { ShowPill = true });
-        Element row = new BoxEl
+        Element wordBox = new BoxEl
         {
-            Key = "home:facet:row",
-            Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Gap = Spacing.XS,
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "home:facet:words",
-                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = yieldWords ? 1f : 0f,
-                    ClipToBounds = yieldWords,
-                    EdgeFade = yieldWords ? new EdgeFadeSpec(EdgeMask.Right, WinUiHomeRules.DividerH + Spacing.S) : null,
-                    Children = [bar],
-                },
-                new BoxEl { Grow = 1f, MinWidth = 0f },
-                afterDivider
-                    ? new BoxEl { Width = WinUiHomeRules.DividerW, Height = WinUiHomeRules.DividerH, Shrink = 0f, Margin = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Fill = Tok.StrokeDividerDefault }
-                    : new BoxEl(),
-                following ? Following(p, layout) : new BoxEl(),
-            ],
+            Key = "home:facet:words",
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 0f,
+            Children = [bar],
         };
+        Element row = strip
+            ? Ui.ScrollView(new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, Gap = Spacing.XS,
+                    Padding = new Edges4(0f, 0f, inset, 0f),   // the strip's last pixel rests one inset from the window's edge once scrolled to the end
+                    Children =
+                    [
+                        wordBox,
+                        new BoxEl { Width = WinUiHomeRules.DividerW, Height = WinUiHomeRules.DividerH, Shrink = 0f, Margin = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Fill = Tok.StrokeDividerDefault },
+                        Following(p, layout),
+                    ],
+                }, horizontal: true) with
+                {
+                    Key = "home:facet:row", Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 0f,
+                }
+            : new BoxEl
+            {
+                Key = "home:facet:row",
+                Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Gap = Spacing.XS,
+                // Small leaves the button out (the greeting's row has it): no stand-in, so the host LEAVES (its exit fade) instead of being reused empty.
+                Children = following
+                    ? [wordBox, new BoxEl { Key = "home:facet:spacer", Grow = 1f, MinWidth = 0f }, Following(p, layout)]
+                    : [wordBox, new BoxEl { Key = "home:facet:spacer", Grow = 1f, MinWidth = 0f }],
+            };
 
         // The busy bar: a FIXED 3-px slot along the band's foot, always laid out, so the band never moves; the indeterminate bar inside it only FADES in and
         // out with Switch.Bar (a Show swap with an opacity Enter/Exit), without re-rendering the row.
@@ -130,7 +142,7 @@ internal static class WinUiHomeFacetRow
                 new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Center,
-                    Padding = new Edges4(inset, 0f, inset, 0f),
+                    Padding = new Edges4(inset, 0f, strip ? 0f : inset, 0f),   // the Compact strip bleeds to the window's edge
                     Children = [row],
                 },
                 busy,
@@ -149,8 +161,14 @@ internal static class WinUiHomeFacetRow
     /// <summary>The Following toggle: a stock ToggleButton with the people glyph, mounted only while there is a sub-chip to drive (a component, so the page's
     /// greeting row at Small reads the same machine without re-rendering the page). Value-controlled: the checked state is the switch machine's own
     /// resolution. Off returns to the selected word.</summary>
-    public static Element Following(FacetRowProps p, WinUiHomeLayout layout)
-        => new BoxEl { Shrink = 0f, Children = [Embed.Comp(() => new FollowingView(p, layout)) with { Key = "home:facet:following" }] };
+    /// <para>A tier crossing that MOVES the button (the facet row's end at Standard, the greeting's row at Small) cannot keep the node: the old host fades
+    /// out and the new one fades in (<see cref="WinUiDiscoveryMotion.SwapFade"/>), so the button never pops.</para>
+    public static Element Following(FacetRowProps p, WinUiHomeLayout layout) => new BoxEl
+    {
+        Key = "home:following", Shrink = 0f,
+        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+        Children = [Embed.Comp(() => new FollowingView(p, layout)) with { Key = "home:facet:following" }],
+    };
 
     sealed class FollowingView(FacetRowProps p, WinUiHomeLayout layout) : Component
     {
