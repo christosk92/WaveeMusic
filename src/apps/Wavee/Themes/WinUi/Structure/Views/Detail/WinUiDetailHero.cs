@@ -91,30 +91,45 @@ internal static partial class WinUiDetailFrame
             bool wordsStacked = form.Stacked;   // Compact: glyphs alone
 
             // ── the words' column, row by row (each keyed; a late row fades up, every row FLIPs) ──
-            var rows = new List<Element>(5);
-            if (form.Eyebrow && id.Eyebrow.Length > 0)
-                rows.Add(Block("hero-eyebrow", WinUiDetailKit.EyebrowRun(id.Eyebrow, form) with { AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Auto }, late: true));
-            rows.Add(Block("hero-title", TitleOf(spec, form)));
+            // A LIST's stacked hero (W-Playlist-Compact, W-PlaylistFollowed-Compact) keeps the cover centred and starts its words at the gutter; an album's centres both.
+            bool center = Centered(form, id.Kind);
+            float avatar = form.AvatarFor(id.Kind);
+            var rows = new List<Element>(6);
+            string description = HomeCards.PlainText(id.DescriptionHtml);
+            if (form.Eyebrow && EyebrowOf(id, form, description) is { Length: > 0 } eyebrow)
+                rows.Add(Block("hero-eyebrow", ChipRow(id, spec.Config)
+                    ? WinUiDetailKit.EyebrowWithChip(eyebrow, form, WinUiDetailKit.SaveTargetOf(id).Text, center)
+                    : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true));
+            rows.Add(Block("hero-title", TitleOf(spec, form, center)));
+            // The description under the title (W-Playlist: the owner's own list edits it in place, "Add an optional description" while empty; W-PlaylistFollowed: the
+            // list's own words). It lands with the header, as the title does.
+            if (form.Description && id.Kind == DetailKind.Playlist)
+            {
+                if (id.EditableMetadata && spec.Slots.Description is { } editDescription)
+                    rows.Add(Block("hero-description", editDescription(measure), late: true));
+                else if (description.Length > 0)
+                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true));
+            }
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
             // later fact (the duration) fills in place. Nothing above or below it ever moves.
             var faces = FacesOf(id);
             bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
-            if (form.Stacked)
+            if (center)
             {
                 if (faces is { Count: > 0 }) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(faces, measure), late: true));
-                if (metaLine) rows.Add(Block("hero-meta", Reserved(id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, form.Stacked)));
+                if (metaLine) rows.Add(Block("hero-meta", Reserved(id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, center)));
             }
             else if (faces is { Count: > 0 } || metaLine)
             {
                 bool filled = faces is { Count: > 0 } || id.Meta is { Length: > 0 };
-                rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, form.Avatar, measure) : null,
-                    WinUiDetailRules.AttributionRow(form.Avatar), form.Stacked)));
+                rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, avatar, measure) : null,
+                    WinUiDetailRules.AttributionRow(avatar), center)));
             }
-            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words)));
+            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
-            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form));
+            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center);
 
             Element expanded = new BoxEl { Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure, Children = [hero] };
 
@@ -161,6 +176,24 @@ internal static partial class WinUiDetailFrame
         Key = key, Direction = 1, Layout = WinUiDetailKit.Shove, Enter = late ? WinUiDetailKit.FadeUp : (EnterExit?)null, Children = [child],
     };
 
+    /// <summary>Are the stacked hero's words centred? An album's, a show's, an episode's (W-Album-Compact); a list's start at the gutter under the centred cover
+    /// (W-Playlist-Compact). The horizontal forms never centre.</summary>
+    static bool Centered(WinUiHeroForm form, DetailKind kind) => form.Stacked && kind is not (DetailKind.Playlist or DetailKind.Liked);
+
+    /// <summary>The eyebrow's words: "Playlist · public" for a public list (W-Playlist), else the page's; where the form draws no description line, a followed
+    /// list's description rides it ("Playlist · The hottest 50.", W-PlaylistFollowed-Small).</summary>
+    static string EyebrowOf(Detail.Identity id, WinUiHeroForm form, string description)
+    {
+        string eyebrow = id.Kind == DetailKind.Playlist && id.IsPublic && !id.Collaborative ? Loc.Get(Strings.Nav.PlaylistPublic) : id.Eyebrow;
+        if (!form.Description && id.Kind == DetailKind.Playlist && !id.EditableMetadata && description.Length > 0)
+            eyebrow = eyebrow.Length > 0 ? eyebrow + WinUiDetailRules.MetaLead + description : description;
+        return eyebrow;
+    }
+
+    /// <summary>Does the eyebrow carry the "Saved" chip? A playlist with no save toggle of its own in the hero (the owner's list: W-Playlist's "[✓ Saved]"); a followed
+    /// list says it with its Saved toggle instead (W-PlaylistFollowed), so the chip never repeats it.</summary>
+    static bool ChipRow(Detail.Identity id, Detail.Config cfg) => id.Kind == DetailKind.Playlist && cfg.Heart == HeartMode.None && id.Subject.Provider == EntityProvider.Spotify;
+
     /// <summary>A reserved line: a FIXED box of <paramref name="height"/> whether or not its words have landed; the words (keyed) fade up inside it when they arrive,
     /// and a later change of them (a fact appended) fills in place.</summary>
     static BoxEl Reserved(Element? words, float height, bool center) => new()
@@ -181,14 +214,14 @@ internal static partial class WinUiDetailFrame
     }
 
     /// <summary>The title: Title Large (40/52; 28/36 stacked and short), semibold, wrapping to at most two lines.</summary>
-    static Element TitleOf(VerticalSpec spec, WinUiHeroForm form)
+    static Element TitleOf(VerticalSpec spec, WinUiHeroForm form, bool center)
         => spec.Slots.Title is { } edit
             ? edit(form.TitleSize, form.TitleLine)
             : R.Type.DetailHero(spec.Identity.Title) with
             {
                 Size = form.TitleSize, LineHeight = form.TitleLine, Weight = 600, Color = Tok.TextPrimary,
                 Wrap = TextWrap.WrapWholeWords, MaxLines = WinUiDetailRules.TitleMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Auto,
+                AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto,
                 Key = "hero-title:text",
             };
 
@@ -221,7 +254,7 @@ internal static partial class WinUiDetailFrame
 
     /// <summary>The action row: the Play split, then Shuffle, Save, Share and "..." (the page's satellites replace the fixed group where it has them).</summary>
     static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, Action? playAll, WinUiDetailTier tier,
-        WinUiHeroForm form, bool words)
+        WinUiHeroForm form, bool words, bool center)
     {
         float target = tier.Target;
         Element primary = slots.Primary is { } primaryOf
@@ -229,9 +262,18 @@ internal static partial class WinUiDetailFrame
             : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target);
         IReadOnlyList<Element> fixedGroup = slots.Satellites is { } satellites
             ? satellites()
-            : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words);
-        return WinUiDetailKit.ActionRow("vhero-actions", primary, fixedGroup, form.ActionTop, center: form.Stacked);
+            : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
+                shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
+        return WinUiDetailKit.ActionRow("vhero-actions", primary, fixedGroup, form.ActionTop, center: center);
     }
+
+    /// <summary>Does the worded Shuffle wear its glyph? Not on a list's Standard and Small heroes (W-Playlist, W-PlaylistFollowed, W-LikedSongs); the Huge boards,
+    /// the albums and the glyph-only Compact keep it.</summary>
+    static bool ShuffleGlyph(WinUiDetailTier tier, DetailKind kind)
+        => !(kind is DetailKind.Playlist or DetailKind.Liked) || tier.Tier is not (WidthTier.Small or WidthTier.Standard);
+
+    /// <summary>Is a playlist's Tune the hero's action at this tier (<see cref="DetailTableTier.TuneInHero"/>; the list bar leaves it out then)?</summary>
+    static bool TuneInHero(WinUiDetailTier tier) => tier.Core.Table.TuneInHero;
 
     /// <summary>The table's list bar under the hero (Find, the order, Filter, Select), on the page inset; null reserves its row.</summary>
     static Element ToolbarOf(HeroParts parts, WinUiDetailTier tier, WinUiHeroForm form)
@@ -243,13 +285,15 @@ internal static partial class WinUiDetailFrame
         };
 
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned), or over them, both centred (stacked); then the toolbar.</summary>
-    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar)
+    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center)
     {
         Element info = new BoxEl
         {
-            Direction = 1, Gap = form.InfoGap, AlignItems = form.Stacked ? FlexAlign.Center : FlexAlign.Stretch,
+            Direction = 1, Gap = form.InfoGap, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch,
             Justify = form.Stacked ? FlexJustify.Start : FlexJustify.End,
             Grow = form.Stacked ? 0f : 1f, Basis = form.Stacked ? float.NaN : 0f, MinWidth = 0f,
+            // A stacked list hero's words span the column from the gutter (the cover alone is centred).
+            AlignSelf = form.Stacked && !center ? FlexAlign.Stretch : FlexAlign.Auto,
             Children = words,
         };
         Element row = new BoxEl
@@ -337,21 +381,27 @@ internal static partial class WinUiDetailFrame
         var form = WinUiDetailTiers.HeroOf(in tiers);
         var id = spec.Identity;
         float inset = tier.InsetX;
+        bool center = Centered(form, id.Kind);
+        float avatar = form.AvatarFor(id.Kind);
         var rows = new List<Element>(5);
-        if (form.Eyebrow) rows.Add(Bone(WinUiDetailRules.SkelEyebrowW, form.EyebrowLine, form.Stacked));
-        rows.Add(Bone(WinUiDetailRules.SkelTitleW(form), form.TitleLine, form.Stacked));
+        // The eyebrow's bone stands in the row the loaded eyebrow holds (the chip's height where the list can carry one).
+        if (form.Eyebrow)
+            rows.Add(ChipRow(id, spec.Config)
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Height = form.ChipHeight, Children = [Bone(WinUiDetailRules.SkelEyebrowW, form.EyebrowLine, center)] }
+                : Bone(WinUiDetailRules.SkelEyebrowW, form.EyebrowLine, center));
+        rows.Add(Bone(WinUiDetailRules.SkelTitleW(form), form.TitleLine, center));
         rows.Add(new BoxEl
         {
             // The loaded hero's reserved attribution box, to the DIP (WinUiDetailRules.AttributionRow): the swap to the loaded hero moves nothing.
-            Height = form.Stacked ? float.NaN : WinUiDetailRules.AttributionRow(form.Avatar),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.AvatarGap, AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Start,
+            Height = center ? float.NaN : WinUiDetailRules.AttributionRow(avatar),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.AvatarGap, AlignSelf = center ? FlexAlign.Center : FlexAlign.Start,
             Children =
             [
-                .. form.Avatar > 0f ? [new BoxEl { Width = form.Avatar, Height = form.Avatar, Shrink = 0f, Corners = CornerRadius4.All(form.Avatar / 2f) }] : Array.Empty<Element>(),
+                .. avatar > 0f ? [new BoxEl { Width = avatar, Height = avatar, Shrink = 0f, Corners = CornerRadius4.All(avatar / 2f) }] : Array.Empty<Element>(),
                 new BoxEl { Width = WinUiDetailRules.SkelNameW, Height = WinUiDetailRules.AttributionLine, Corners = CornerRadius4.All(WinUiDetailRules.BoneRadius) },
             ],
         });
-        rows.Add(SkeletonActions(spec, tier, form));
+        rows.Add(SkeletonActions(spec, tier, form, center));
         Element cover = new BoxEl
         {
             Width = form.Cover, Height = form.Cover, Shrink = 0f, Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), ClipToBounds = true,
@@ -363,7 +413,7 @@ internal static partial class WinUiDetailFrame
             Padding = new Edges4(inset, 0f, inset, 0f), Height = VerticalLayout.ToolbarRowHeight,
             Children = [SkeletonToolbar(columnWidth - 2f * inset)],
         };
-        return new BoxEl { Key = "detail-skeleton:hero", Direction = 1, Children = [Compose(form, inset, cover, rows.ToArray(), toolbar)] };
+        return new BoxEl { Key = "detail-skeleton:hero", Direction = 1, Children = [Compose(form, inset, cover, rows.ToArray(), toolbar, center)] };
     }
 
     static BoxEl Bone(float width, float height, bool center) => new()
@@ -372,17 +422,18 @@ internal static partial class WinUiDetailFrame
     };
 
     /// <summary>The action row while loading: the split's box, then exactly the buttons the loaded row will lay out.</summary>
-    static Element SkeletonActions(VerticalSpec spec, WinUiDetailTier tier, WinUiHeroForm form)
+    static Element SkeletonActions(VerticalSpec spec, WinUiDetailTier tier, WinUiHeroForm form, bool center)
     {
         float h = tier.Target;
         var kids = new List<Element>(5)
         {
             new BoxEl { Width = WinUiDetailRules.SkelPlayW, Height = h, Shrink = 0f, Corners = Radii.ControlAll },
         };
-        int count = WinUiDetailKit.FixedActionCount(spec.Identity, spec.Config.Heart != HeartMode.None, spec.Actions);
+        int count = WinUiDetailKit.FixedActionCount(spec.Identity, spec.Config.Heart != HeartMode.None, spec.Actions,
+            invite: spec.Actions.Invite is not null, tune: spec.Actions.Tune is not null && TuneInHero(tier));
         for (int i = 0; i < count; i++)
             kids.Add(new BoxEl { Width = i < 2 && !form.Stacked ? WinUiDetailRules.SkelShuffleW : h, Height = h, Shrink = 0f, Corners = Radii.ControlAll });
-        return WinUiDetailKit.ActionRow("vhero-skel-actions", kids[0], kids.GetRange(1, kids.Count - 1), form.ActionTop, center: form.Stacked);
+        return WinUiDetailKit.ActionRow("vhero-skel-actions", kids[0], kids.GetRange(1, kids.Count - 1), form.ActionTop, center: center);
     }
 
     /// <summary>The list bar's reserved row while loading: Find on the left, the order, Filter and Select on the right.</summary>

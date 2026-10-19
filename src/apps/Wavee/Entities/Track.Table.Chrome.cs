@@ -190,7 +190,8 @@ public readonly partial struct Track
 
             bool vertical = VerticalArm;
             bool pageBar = PageBar;
-            bool hasTune = P.Tune is not null;
+            // A structure that draws Tune in its hero at this tier (DetailTableTier.TuneInHero, WinUI) leaves it off the bar: one home per verb.
+            bool hasTune = P.Tune is not null && !(VerticalArm && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.TuneInHero);
             var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;

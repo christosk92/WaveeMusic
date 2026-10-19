@@ -57,7 +57,7 @@ public sealed partial class WinUiTierLayoutTests
         }, 1440f, 960f);
 
     [Fact]
-    public void A_playlist_draws_two_line_rows_at_48_with_the_trailing_heart_and_no_added_by()
+    public void A_playlist_draws_two_line_rows_at_a_50_pitch_with_the_trailing_heart_and_no_added_by()
         => Mounted(shell =>
         {
             OpenList(shell, s_listsPlaylist, "the playlist's rows under WinUI");
@@ -68,7 +68,8 @@ public sealed partial class WinUiTierLayoutTests
             Assert.Empty(shell.FindPrefix(Track.CellKey.By));
             Assert.NotEmpty(shell.FindPrefix(Track.CellKey.Album));
             Assert.NotEmpty(shell.FindPrefix(Track.CellKey.Date));
-            Assert.InRange(FirstListRowHeight(shell), 47f, 49f);
+            // W-Playlist: the 48 row and the 2 of air under the one before it (WinUiListRules.ListRowAir).
+            Assert.InRange(FirstListRowHeight(shell), 49f, 51f);
         }, 1440f, 960f);
 
     [Fact]
@@ -119,7 +120,7 @@ public sealed partial class WinUiTierLayoutTests
                     UntilBackground(shell, () => shell.FindPrefix(ListDropKey).Count > 0, "the rows after the density change");
                     shell.RunFrames(20);
                     Assert.Equal(WinUiDensityOption.Rows(density).Rung, ThemeHost.Metrics.Peek().TrackRows.Rung);
-                    float expected = WinUiDensityOption.RowDouble(density);
+                    float expected = WinUiDensityOption.RowDouble(density) + WinUiListRules.ListRowAir;   // a list's rows keep the density's step plus their air
                     Assert.InRange(FirstListRowHeight(shell), expected - 1f, expected + 1f);
                 }
             }

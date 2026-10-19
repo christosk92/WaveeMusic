@@ -436,6 +436,17 @@ public readonly partial struct Track
 
         /// <summary>The structure's page inset for the list under the hero (`DetailTierLayout.PageInsetX`; 0: none, the table's own gutter).</summary>
         float PageInsetNow() => ShellPolicy.Tracked.DetailTiers.For(TiersNow()).PageInsetX;
+
+        /// <summary>The page inset the hero arm's VIRTUALISED list stands in (<see cref="Theming.ListPolicy.InsetHeroList"/>; 0 where the structure keeps it full
+        /// width, or the page has a trailing band, which pads itself). Tracked: a tier crossing re-pads.</summary>
+        internal float HeroListInset() => VerticalArm && !ConfigOf(_latest).HasTrailing && ShellPolicy.Tracked.Lists.InsetHeroList ? PageInsetNow() : 0f;
+
+        /// <summary><paramref name="e"/> on the hero list's inset (<see cref="HeroListInset"/>); itself where there is none.</summary>
+        internal Element InsetHeroItem(Element e)
+        {
+            float inset = HeroListInset();
+            return inset > 0f ? new BoxEl { Direction = 1, Padding = new Edges4(inset, 0f, inset, 0f), Children = [e] } : e;
+        }
         Detail.Config Cfg => ConfigOf(_latest);
 
         /// <summary>The config the host actually lays out with. An EMBEDDED table has no trailing band by default — the
@@ -672,6 +683,8 @@ public readonly partial struct Track
             float rowH = form.RowFor(set.Classic, set.Classic ? rows.ClassicRow : rows.ModernRow);
             // An album's numbered rows are one line with no art lane: a structure may stand them under the density's two-line row.
             if (form.OneLineTrim > 0f && !set.Compact && !set.Thumb && snap.Config.Kind == DetailKind.Album) rowH = MathF.Max(0f, rowH - form.OneLineTrim);
+            // A list's two-line rows may add air of their own (DetailTableTier.ListRowAir: WinUI's 2, a 50 pitch at the standard density); albums and the Classic skin keep theirs.
+            if (form.ListRowAir > 0f && !set.Classic && !set.Compact && snap.Config.Kind != DetailKind.Album) rowH += form.ListRowAir;
             return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode);
         }
 
@@ -743,7 +756,7 @@ public readonly partial struct Track
             bool measured = _tierMeasured.Peek();
             // The tier ladder's source (value-gated). Its crossing is the host's: pending until the first non-resized frame, then animated.
             // The list column's own width: the table's, less the structure's page inset on both sides (the hero arm's list stands inside it).
-            float listW = VerticalArm && Cfg.HasTrailing
+            float listW = VerticalArm && (Cfg.HasTrailing || ShellPolicy.Now.Lists.InsetHeroList)
                 ? MathF.Max(1f, r.W - 2f * ShellPolicy.Now.DetailTiers.For((_facts ?? global::Wavee.Theming.ThemeHost.Facts).Peek().Tiers).PageInsetX)
                 : r.W;
             if (listW != _listW.Peek()) _listW.Value = listW;
@@ -1635,7 +1648,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return Chrome(in shape, chips, lens).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
+            return InsetHeroItem(Chrome(in shape, chips, lens)).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
         }
 
         internal Element EmptyItem()
@@ -1644,7 +1657,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             int visible = _rowItems!.Count.Value;
             var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
-            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [Placeholder(state, in shape)] };
+            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetHeroItem(Placeholder(state, in shape))] };
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
@@ -1748,8 +1761,8 @@ public readonly partial struct Track
                 Children =
                 [
                     _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow()) ?? new BoxEl(),
-                    Chrome(in shape, chips, lens),
-                    RowsShimmer(in shape),
+                    InsetHeroItem(Chrome(in shape, chips, lens)),
+                    InsetHeroItem(RowsShimmer(in shape)),
                 ],
             };
         }
@@ -2750,9 +2763,11 @@ public readonly partial struct Track
                     var host = _host;
                     var scope = _scope;
                     bool narrate = _narrate;
+                    // The structure's list inset (ListPolicy.InsetHeroList): the row and its hover plate on the page's gutter.
+                    float inset = host.HeroListInset();
                     return new BoxEl
                     {
-                        Key = "vitem:row", Direction = 1,
+                        Key = "vitem:row", Direction = 1, Padding = inset > 0f ? new Edges4(inset, 0f, inset, 0f) : default,
                         Children = [Embed.Comp(() => new TableSlot(host, scope, prefix, narrate))],
                     };
                 }
@@ -2763,7 +2778,7 @@ public readonly partial struct Track
                     return new BoxEl
                     {
                         Key = section is null ? "vitem:blank" : "vitem:recs", Direction = 1,
-                        Children = section is null ? [] : [section],
+                        Children = section is null ? [] : [_host.InsetHeroItem(section)],
                     };
                 }
                 default:

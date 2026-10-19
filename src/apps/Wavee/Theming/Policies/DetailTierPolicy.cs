@@ -98,10 +98,15 @@ public static class DetailLadders
 /// WinUI's W-Playlist / W-LikedSongs draw none; the drawer stays reachable through the row menu). Appended (P6 playlist-load lane).</param>
 /// <param name="HeartWidth">The trailing heart's lane where the structure widens it past the core's 28 (WinUI Compact: 40, the owner's Compact target); 0 keeps the
 /// core's. Appended (P6 playlist-load lane).</param>
+/// <param name="TuneInHero">A playlist's Tune is the HERO's action at this tier (WinUI, W-Playlist: Play · Shuffle · Invite · Tune · Share), so the list bar leaves
+/// it out (false: the list bar keeps it, as it always has). Appended (P6 playlist-load lane).</param>
+/// <param name="ListRowAir">The air a LIST's two-line rows add to the density's row (a playlist, Liked Songs; never an album's one-line rows nor the Classic skin):
+/// WinUI's 2 at Small and Standard (W-Playlist, W-PlaylistFollowed, W-LikedSongs: a 48 row 2 under the last, a 50 pitch), so every density keeps its own step;
+/// 0 leaves the density's row. Appended (P6 playlist-load lane).</param>
 public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool PlaysColumn, bool DateColumn,
     float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f, bool ListIndex = true, bool HoverActions = false, float OneLineTrim = 0f,
     bool HeartTrailing = false, bool KeepDuration = false, bool VersionsLane = true, float DurationWidth = 0f, bool ListVersionsLane = true,
-    float HeartWidth = 0f)
+    float HeartWidth = 0f, bool TuneInHero = false, float ListRowAir = 0f)
 {
     /// <summary>Every lane the width admits, the density's rows.</summary>
     public static DetailTableTier Standard { get; } = new(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true);

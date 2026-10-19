@@ -173,7 +173,7 @@ internal static class WinUiTrackTable
                                     Visible = Prop.Of(() => !r.P.State.IsBuffering),
                                     Children =
                                     [
-                                        Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? Icons.Pause : Icons.Play),
+                                        Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid),
                                               WinUiListRules.TransportGlyph, Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary)),
                                     ],
                                 },

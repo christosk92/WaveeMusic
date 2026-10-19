@@ -99,6 +99,9 @@ public static partial class Detail
         public IReadOnlyList<Controls.Face>? Artists { get; init; }
         public IReadOnlyList<Controls.Face>? Collaborators { get; init; }
         public bool Collaborative { get; init; }
+        /// <summary>The list's visibility is KNOWN and public (a playlist; false while unknown, private, or not a playlist). WinUI's eyebrow says "Playlist ·
+        /// public" from it (W-Playlist). Appended (P6 playlist-load lane).</summary>
+        public bool IsPublic { get; init; }
         public string? DescriptionHtml { get; init; }
         public int ChartNewEntries { get; init; }
         public long ChartUpdatedAtMs { get; init; }
@@ -128,7 +131,7 @@ public static partial class Detail
                 && string.Equals(OwnerImageUrl, o.OwnerImageUrl, StringComparison.Ordinal)
                 && Owner.Equals(o.Owner)
                 && FacesEqual(Artists, o.Artists) && FacesEqual(Collaborators, o.Collaborators)
-                && Collaborative == o.Collaborative
+                && Collaborative == o.Collaborative && IsPublic == o.IsPublic
                 && string.Equals(DescriptionHtml, o.DescriptionHtml, StringComparison.Ordinal)
                 && ChartNewEntries == o.ChartNewEntries && ChartUpdatedAtMs == o.ChartUpdatedAtMs
                 && DaylistExpiresAtMs == o.DaylistExpiresAtMs && DaylistCreatedAtMs == o.DaylistCreatedAtMs
@@ -248,10 +251,17 @@ public static partial class Detail
         public Func<DragPayload, int?, bool>? DepositOnPage { get; init; }
         /// <summary>The notice strip's action (the "albums" route); null ⇒ no button.</summary>
         public Action? GoLibrary { get; init; }
+        /// <summary>Invite collaborators (an owner who can administrate the permissions, on a live edit path); null ⇒ absent. A structure that draws an Invite
+        /// action in its hero (WinUI, W-Playlist) reads it; the rest keep it in the menus. Appended (P6 playlist-load lane).</summary>
+        public Action? Invite { get; init; }
+        /// <summary>The playlist's Tune flyout, where the list has a tune choice; null ⇒ absent. Drawn in the hero where the tier's table says so
+        /// (<see cref="Theming.DetailTableTier.TuneInHero"/>), else the list bar keeps it (<c>TableProfile.Tune</c>). Appended (P6 playlist-load lane).</summary>
+        public Action? Tune { get; init; }
 
         internal int Mask()
             => (Shuffle is null ? 0 : 1) | (More is null ? 0 : 2) | (CoverClick is null ? 0 : 4)
-             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32);
+             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32)
+             | (Invite is null ? 0 : 64) | (Tune is null ? 0 : 128);
 
         public bool Equals(FrameActions? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();

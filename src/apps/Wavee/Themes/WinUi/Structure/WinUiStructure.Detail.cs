@@ -8,6 +8,8 @@
 //   Detail.Rail / Detail.CompactRail                         NOTHING: WinUI has one composition (the hero over the table), its page-mode ladder never answers the
 //                                                            two-column arm that mounts them (`Tiers.Detail.cs`)
 //   Album.*                                                  `Views\Detail\WinUiAlbum*.cs`
+//   Playlist.Editor                                          `Views\Detail\WinUiPlaylistEditor.cs` (the hero's title and description, W-Playlist)
+//   Liked.ChipBar                                            `Views\Detail\WinUiLikedChipBar.cs` (40 chips at Compact, W-LikedSongs-Compact)
 //   Pages.Artist, Artist.Lightbox, Pages.Discography         `Views\Artist\*`, `Views\Pages\*`
 
 using FluentGpu.Theming;
@@ -29,6 +31,8 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.DetailInsightsToggle, WinUiInsights.ToggleTemplate, "winui.detail.insights-toggle");
         views.Add(ViewKeys.DetailNotice, WinUiDetailSeam.NoticeTemplate, "winui.detail.notice");
         views.Add(ViewKeys.DetailVerticalTrailing, WinUiDetailSeam.VerticalTrailingTemplate, "winui.detail.vertical-trailing");
+        views.Add(ViewKeys.PlaylistEditor, WinUiPlaylistEditor.Template, "winui.playlist.editor");
+        views.Add(ViewKeys.LikedChipBar, WinUiLikedChipBar.Template, "winui.liked.chip-bar");
         CommonNothing.Register(views, ViewKeys.DetailRail);
         CommonNothing.Register(views, ViewKeys.DetailCompactRail);
 

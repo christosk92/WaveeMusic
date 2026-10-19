@@ -39,6 +39,11 @@ public sealed record ListPolicy(bool TrackArtwork, TrackRowStyle RowStyle = Trac
     /// sets it (the owner's recording of its playlist loads). Appended (P6 playlist-load lane).</summary>
     public bool RowsRevealTogether { get; init; }
 
+    /// <summary>The hero arm's VIRTUALISED list (a playlist, Liked Songs: no trailing band) stands inside the page inset too (<c>DetailTierLayout.PageInsetX</c>), as the
+    /// trailing band's list always has: its chrome, rows, shimmer, empty state and appended section are padded by it, and the lane ladder measures the inset width.
+    /// False (the default) keeps the list full width. WinUI sets it (W-Playlist: the list on the page's 36 gutter). Appended (P6 playlist-load lane).</summary>
+    public bool InsetHeroList { get; init; }
+
     /// <summary>The Classic row skin is on: what the core's lane sets and chart keys branch on.</summary>
     public bool ClassicRows => RowStyle == TrackRowStyle.Classic;
 }
