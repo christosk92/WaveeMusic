@@ -108,6 +108,7 @@ public static partial class WinUiPolicies
             DetailTiers = detailTiers,
             ArtistTiers = artistTiers,
             LibraryTiers = libraryTiers,
+            Settings = WinUiSettingsGrouping.Seven,   // W8b: the board's seven tabs over the twelve areas
         };
     }
 
