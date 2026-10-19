@@ -32,9 +32,12 @@ namespace Wavee.Theming;
 /// each growing from its own label.</param>
 /// <param name="TitleSize">The title's size where the band sets its own (null: the style's): Zune's Compact sheet draws it at 40.</param>
 /// <param name="CloseMark">The title's row ends in a close mark (the theme draws it; the dialog's close action): Zune's Compact and Huge dialogs.</param>
+/// <param name="ReportWidth">The card width of the report-a-problem form alone (<c>OverlayFit.ShowForm(report: true)</c>), where it differs from the crash prompt's: WinUI's
+/// report card is 760 at Standard and 588 at Small while the crash prompt keeps its opener's rung (W-Feedback, W-Crash). Null: the report takes the form width.</param>
+/// <param name="PlateRadius">The card's corner radius where the band sets its own (WinUI's full-screen Compact dialog is square: 0); null keeps the engine's.</param>
 public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float EdgeY, Edges4? ContentPadding = null, Edges4? CommandPadding = null,
     float? FormWidth = null, ControlSize CommandSize = ControlSize.Medium, float CommandMinWidth = DialogFit.EngineButtonMinWidth, bool UniformCommands = false,
-    float? TitleSize = null, bool CloseMark = false)
+    float? TitleSize = null, bool CloseMark = false, float? ReportWidth = null, float? PlateRadius = null)
 {
     /// <summary>The engine's card with the window caps only: the opener's rung, never wider than the window less the inset.</summary>
     public static DialogFit Stock { get; } = new(Fill: false, Inset: 16f, MaxWidth: 548f, EdgeY: 24f);
@@ -49,13 +52,14 @@ public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float Edg
 
     /// <summary>The card's width for a FORM dialog: <see cref="FormWidth"/> (never wider than the window less the inset) where the band names one, else
     /// <see cref="WidthFor"/> of <paramref name="requested"/>.</summary>
-    public float FormCardWidthFor(float requested, float viewportWidth)
-        => FormWidth is { } form ? MathF.Min(form, MathF.Max(1f, viewportWidth - 2f * Inset)) : WidthFor(requested, viewportWidth);
+    public float FormCardWidthFor(float requested, float viewportWidth, bool report = false)
+        => report && ReportWidth is { } wide ? MathF.Min(wide, MathF.Max(1f, viewportWidth - 2f * Inset))
+            : FormWidth is { } form ? MathF.Min(form, MathF.Max(1f, viewportWidth - 2f * Inset)) : WidthFor(requested, viewportWidth);
 
     /// <summary>The widest a FORM dialog's body may be: the whole text region of its card where the band names a <see cref="FormWidth"/>, else <see cref="BodyWidth"/>.</summary>
-    public float FormBodyWidth(float nominal, float viewportWidth)
-        => FormWidth is { } form
-            ? MathF.Max(1f, MathF.Min(form, MathF.Max(1f, viewportWidth - 2f * Inset)) - (ContentPadding?.Horizontal ?? 2f * EnginePadding))
+    public float FormBodyWidth(float nominal, float viewportWidth, bool report = false)
+        => report && ReportWidth is { } || FormWidth is not null
+            ? MathF.Max(1f, FormCardWidthFor(nominal, viewportWidth, report) - (ContentPadding?.Horizontal ?? 2f * EnginePadding))
             : BodyWidth(nominal, viewportWidth);
 
     /// <summary>The card's tallest height in a window <paramref name="viewportHeight"/> tall.</summary>

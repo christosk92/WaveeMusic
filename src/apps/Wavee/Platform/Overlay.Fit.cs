@@ -62,13 +62,14 @@ public static class OverlayFit
 
     /// <summary>Open a FORM dialog (the report and the crash prompt: a body with its own fields and, where the band has the room, a second pane for the live preview).
     /// <paramref name="configure"/> sets the title, the body and the commands as for <c>ContentDialog.Show</c>; this then fits the card as <see cref="Dialog"/> does,
-    /// at the band's form width (<see cref="DialogFit.FormWidth"/>, else <paramref name="requestedWidth"/>). Returns the open dialog's handle.</summary>
-    public static OverlayHandle ShowForm(IOverlayService overlay, float requestedWidth, Action<ContentDialog> configure)
+    /// at the band's form width (<see cref="DialogFit.FormWidth"/>, else <paramref name="requestedWidth"/>); the report form (<paramref name="report"/>) takes the band's
+    /// <see cref="DialogFit.ReportWidth"/> first where it names one. Returns the open dialog's handle.</summary>
+    public static OverlayHandle ShowForm(IOverlayService overlay, float requestedWidth, Action<ContentDialog> configure, bool report = false)
         => ContentDialog.Show(overlay, d =>
         {
             configure(d);
             var fit = Layout.Dialog;
-            Fit(d, fit, fit.FormCardWidthFor(requestedWidth, Viewport.Width));
+            Fit(d, fit, fit.FormCardWidthFor(requestedWidth, Viewport.Width, report));
         });
 
     /// <summary>The card's part modifiers, width and command buttons: the shared half of <see cref="Dialog"/> and <see cref="ShowForm"/>.</summary>
@@ -89,6 +90,7 @@ public static class OverlayFit
         {
             Width = width, MinWidth = 0f, MaxWidth = width,
             MinHeight = MathF.Min(plate.MinHeight, height), MaxHeight = MathF.Min(plate.MaxHeight, height),
+            Corners = fit.PlateRadius is { } radius ? CornerRadius4.All(radius) : plate.Corners,
         };
         // A body taller than the card must never push the command row out of it: the text region gives way (and clips), the buttons keep their place.
         parts[ContentDialog.PartContent] = content => content with

@@ -39,7 +39,7 @@ internal static class WinUiFeedback
         TierFacts tiers = ctx.Tier();   // a read, so the template follows the facts; the shape below is the dialog's own, frozen at open
         var viewport = hooks.UseContextSignal(Viewport.Size);
         var shapeRef = hooks.UseRef<WinUiScreenDialogShape?>(null);
-        WinUiScreenDialogShape shape = shapeRef.Value ??= WinUiScreenDialogTiers.Open(in tiers, viewport.Peek().Width);
+        WinUiScreenDialogShape shape = shapeRef.Value ??= WinUiScreenDialogTiers.Open(in tiers, viewport.Peek().Width, report: true);
 
         bool isCrash = props.InitialKind == Feedback.ReportKind.Crash;
         var kindIndex = hooks.UseSignal(Feedback.ReportKindIndex.IndexOf(props.InitialKind));

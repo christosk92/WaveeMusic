@@ -3054,6 +3054,10 @@
         "previewTitle": "Preview",
         "cycleTabs": "Next tab",
         "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden."
+      },
+      "overlays": {
+        "$comment": "W8a: the overlays and the dialogs. The offline strip is an InfoBar: the title is common.offlineTitle, the body is this.",
+        "offlineStripBody": "Cached content still works; playback and edits resume when you're back."
       }
     }
   },

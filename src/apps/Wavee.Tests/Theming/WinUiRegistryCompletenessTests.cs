@@ -168,22 +168,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Pages.ProfileList"] = "W7",  // ViewKeys.ProfileListPage
         ["Pages.Recents"] = "W7",  // ViewKeys.RecentsPage
         ["Pages.User"] = "W7",  // ViewKeys.ProfilePage
-        // W8a: the overlays (15)
-        ["Dialog.FolderPicker"] = "W8a",  // ViewKeys.DialogFolderPicker
-        ["Dialog.LogoutConfirm"] = "W8a",  // ViewKeys.DialogLogoutConfirm
-        ["Dialog.PlayLink"] = "W8a",  // ViewKeys.DialogPlayLink
-        ["Dialog.Sheet"] = "W8a",  // ViewKeys.DialogSheet
-        ["Dialog.Signature"] = "W8a",  // ViewKeys.DialogSignature
-        ["Menu.Context"] = "W8a",  // ViewKeys.MenuContext
-        ["Overlay.ContextSheet"] = "W8a",  // ViewKeys.OverlayContextSheet
-        ["Overlay.Notifications"] = "W8a",  // ViewKeys.OverlayNotifications
-        ["Overlay.OfflineStrip"] = "W8a",  // ViewKeys.OverlayOfflineStrip
-        ["Overlay.OfflineVacancy"] = "W8a",  // ViewKeys.OverlayOfflineVacancy
-        ["Overlay.ProfileChip"] = "W8a",  // ViewKeys.OverlayProfileChip
-        ["Overlay.ProfileMenu"] = "W8a",  // ViewKeys.OverlayProfileMenu
-        ["Overlay.RuntimeBanner"] = "W8a",  // ViewKeys.OverlayRuntimeBanner
-        ["Overlay.Toast"] = "W8a",  // ViewKeys.OverlayToast
-        ["State.Vacancy"] = "W8a",  // ViewKeys.StateVacancy
     };
 
     static List<(string Name, string Id, Type Arg, object Key)> Declared(Type keys)

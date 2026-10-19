@@ -28,7 +28,7 @@ public static partial class WinUiPolicies
         };
         chrome = new ChromePolicy(standard)
         {
-            Compact = standard with { TabsAsCount = false, TrailingInDrawer = false, ForwardEnterW = Never, TabMaxW = 140f, TabMinW = 36f },
+            Compact = standard with { ProfileChipW = 40f, TabsAsCount = false, TrailingInDrawer = false, ForwardEnterW = Never, TabMaxW = 140f, TabMinW = 36f },
             Small = standard with { TabMaxW = 160f, TabMinW = 110f },
             Huge = standard with { NameEnterW = 0f, SearchMaxW = WinUiFrameRules.SearchHugeW, TabMaxW = 240f },
         };

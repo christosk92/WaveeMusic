@@ -117,16 +117,16 @@ public static class WinUiScreenDialogTiers
     public static WinUiScreenDialogLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Window);
 
     /// <summary>The body's width in a window <paramref name="viewportWidth"/> wide: the text region of the card the tier's overlay fit gives it.</summary>
-    public static float BodyWidth(WinUiScreenDialogLayout layout, float viewportWidth)
-        => OverlayFit.Layout.Dialog.FormBodyWidth(layout.NominalBodyWidth, viewportWidth);
+    public static float BodyWidth(WinUiScreenDialogLayout layout, float viewportWidth, bool report = false)
+        => OverlayFit.Layout.Dialog.FormBodyWidth(layout.NominalBodyWidth, viewportWidth, report);
 
     /// <summary>The shape a body mounts with: the record for <paramref name="facts"/> and the body width in a window <paramref name="viewportWidth"/> wide (the live layout
     /// viewport; the facts' own where none is known; the nominal width where neither is).</summary>
-    public static WinUiScreenDialogShape Open(in TierFacts facts, float viewportWidth)
+    public static WinUiScreenDialogShape Open(in TierFacts facts, float viewportWidth, bool report = false)
     {
         var layout = Of(facts);
         float window = viewportWidth > 0f ? viewportWidth : facts.ViewportWidth;
-        return new WinUiScreenDialogShape(layout, window > 0f ? BodyWidth(layout, window) : layout.NominalBodyWidth);
+        return new WinUiScreenDialogShape(layout, window > 0f ? BodyWidth(layout, window, report) : layout.NominalBodyWidth);
     }
 
     /// <summary>A two-pane body's preview pane width: what the form pane, the two gaps and the divider leave of <paramref name="bodyWidth"/>.</summary>
