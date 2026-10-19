@@ -31,8 +31,12 @@ public sealed partial class WinUiTierLayoutTests
             var layout = WinUiSettingsTiers.Of(tiers);
             var content = scene.AbsoluteRect(Node(shell, WinUiFrameLayout.ContentKey));
 
-            // The title is on the frame's inset: the lint's edge (content card left + the tier's inset).
-            var title = scene.AbsoluteRect(Node(shell, WinUiFrameLayout.PageTitleKey));
+            // The title is on the frame's inset: the lint's edge (content card left + the tier's inset). Every WinUI page keys its title alike, so a parked page
+            // (Home, kept alive behind Settings) has one too: Settings' is the one inside the content card.
+            var titles = shell.FindPrefix(WinUiFrameLayout.PageTitleKey).Where(f => f.Key == WinUiFrameLayout.PageTitleKey)
+                .Select(f => scene.AbsoluteRect(f.Node)).Where(r => r.X >= content.X - 0.5f && r.Y >= content.Y - 0.5f).ToList();
+            Assert.True(titles.Count == 1, $"{size}: {titles.Count} page titles inside the content card");
+            var title = titles[0];
             Assert.True(MathF.Abs(title.X - (content.X + layout.InsetX)) <= 1.5f, $"{size}: the title is at {title.X}, the inset edge is {content.X + layout.InsetX}");
             Assert.True(title.H >= layout.TitleLine - 0.5f, $"{size}: the title's box is {title.H}, under its {layout.TitleLine} line");
 

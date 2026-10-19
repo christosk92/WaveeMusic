@@ -134,9 +134,9 @@ public sealed partial class ZuneTierLayoutTests
         AssertWithin(sizeName, "the play ring in the copy", play, copyRect.X, copyRect.X + copyRect.W);
         var titleRect = scene.AbsoluteRect(Node(shell, "zune-daylist-title"));
         if (lay.PlayAtEnd) Assert.True(play.X + play.W >= copyRect.X + copyRect.W - lay.DaylistPad - 1f, $"{sizeName}: the play ring ends the one-row copy");
-        else if (lay.DaylistBleed)
+        else if (lay.DaylistBleed && lay.DaylistRingsParked)
         {
-            // The bled form: play ends the eyebrow's row (above the title, at the copy's end); shuffle, save and "…" end the countdown's row under the
+            // Compact's bled form, the rings parked: play ends the eyebrow's row (above the title, at the copy's end); shuffle, save and "…" end the countdown's row under the
             // title, side by side, the "…" at the copy's end; the title runs the copy's whole width, uncut.
             var eyebrowRow = scene.AbsoluteRect(Node(shell, "zune-daylist-eyebrow-row"));
             Assert.True(play.Y + play.H <= titleRect.Y + 0.5f, $"{sizeName}: the play ring stands above the title");
@@ -154,6 +154,7 @@ public sealed partial class ZuneTierLayoutTests
                 x = ring.X - lay.RingsGap;
             }
         }
+        // The strip and the wide bled form (Small, and Standard under the strip's rung): the rings row stands under the text block.
         else Assert.True(play.Y >= titleRect.Y, $"{sizeName}: the play ring stands under the title");
 
         // The quickplay strip: the pins capped by the record (one tile at its art), no new group where the tier has none, the history in its arm.

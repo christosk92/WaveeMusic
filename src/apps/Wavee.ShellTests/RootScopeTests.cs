@@ -82,8 +82,15 @@ public sealed class RootScopeTests(ShellHost host)
         {
             shell.RunFrames(5);
             _ = OverlayService.Shared;   // declares the overlay set's slot (its owner initializes on first use)
+            // Declare every slot in the assembly, not just the ones this mount touched: a theme that copies another's view (WinUI's copies of Classic's)
+            // must not reuse its slot names, and without this the clash only showed when an earlier test had loaded both themes.
+            foreach (var type in typeof(RootState).Assembly.GetTypes())
+                if (type.GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+                        .Any(f => typeof(RootState).IsAssignableFrom(f.FieldType)))
+                    System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type.TypeHandle);
             var names = RootState.All.Select(s => s.Name).ToList();
-            Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count());
+            var clashes = names.GroupBy(n => n, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            Assert.True(clashes.Count == 0, "root slots declared twice: " + string.Join(", ", clashes));
             Assert.Contains("Shell.Scene", names);
             Assert.Contains("Shell.TransientOverlays", names);
         });

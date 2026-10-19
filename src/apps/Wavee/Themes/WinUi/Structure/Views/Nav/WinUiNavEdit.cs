@@ -38,7 +38,7 @@ internal sealed class WinUiEditPane : Component
     public WinUiEditPane(INavEditHost owner) => this.owner = owner;
 
     /// <summary>The mounted pane: the section chip's titles read its band through this static resolver.</summary>
-    static readonly RootState<WinUiEditPane?> s_activeState = new("Sidebar.EditPane");
+    static readonly RootState<WinUiEditPane?> s_activeState = new("WinUi.Sidebar.EditPane");
     static WinUiEditPane? s_active { get => s_activeState.Value; set => s_activeState.Value = value; }
     static readonly Func<DragState, DragChipSpec?> s_sectionChip = SectionChip;
     static readonly DragVisualStyle s_stationary = new() { Lift = DragLift.Stationary, Opacity = FluentGpu.Controls.Drag.SourceDimOpacity };
