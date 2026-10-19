@@ -3016,6 +3016,10 @@
         "densityCompact": "Compact",
         "useWindowsAccent": "Use the Windows accent colour",
         "useWindowsAccentSub": "Off uses Wavee’s own blue"
+      },
+      "nav": {
+        "$comment": "W2b: the navigation pane. The Collections section is called Library under WinUI (board Shell-Nav); Settings is the route's own title.",
+        "library": "Library"
       }
     }
   },

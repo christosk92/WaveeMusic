@@ -110,4 +110,10 @@ public abstract class NavRowKit
     /// <summary>The box around the virtualized list: the pane's one inset (<see cref="ListInset"/>) and nowhere else (P3). Built once
     /// per pane: <paramref name="list"/> is mount-stable.</summary>
     public abstract Element ListBox(Element list);
+
+    /// <summary>The pane's FOOTER (P6 W2b, appended): a fixed row under the list that does not scroll with it (WinUI's Settings item), or null for
+    /// none (the default: Classic has no footer). The pane appends it to the layer after the body, never in Edit mode (the Outline carries its own
+    /// Settings row). <paramref name="compact"/> is the rail's form. Called from the pane's render; the template is a Component that reads the
+    /// host's tracked facts (<see cref="INavRowHost.Model"/>'s <c>Selected</c>) itself.</summary>
+    internal virtual Element? Footer(INavRowHost host, bool compact) => null;
 }

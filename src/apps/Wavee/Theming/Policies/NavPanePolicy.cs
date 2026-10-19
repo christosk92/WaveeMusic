@@ -104,12 +104,17 @@ public sealed record NavPanePolicy(
     /// <see cref="DefaultWidth"/> (clamped) when the pane is not resizable.</summary>
     public float ExpandedWidthFor(float preferred) => ClampWidth(Resizable ? preferred : DefaultWidth);
 
-    /// <summary>What a band forces: Wide forces nothing (the user decides), Narrow and Tiny answer the policy.</summary>
+    /// <summary>What the Wide band forces. <see cref="NavPaneMode.Expanded"/> (the default, today's behaviour) forces nothing: the user's own
+    /// collapse decides. <see cref="NavPaneMode.Compact"/> holds the 48 rail whatever the user did (the toggle opens the overlay pane), the way a
+    /// WinUI NavigationView in LeftCompact does at any width; <see cref="NavPaneMode.Overlay"/> holds no pane at all. Opt-in, appended (P6 wave 2, W2b).</summary>
+    public NavPaneMode WideMode { get; init; } = NavPaneMode.Expanded;
+
+    /// <summary>What a band forces: Wide forces <see cref="WideMode"/> (nothing, by default: the user decides), Narrow and Tiny answer the policy.</summary>
     public NavPaneMode ForcedModeOf(SidebarWindowBand band) => band switch
     {
         SidebarWindowBand.Narrow => NarrowMode,
         SidebarWindowBand.Tiny => TinyMode,
-        _ => NavPaneMode.Expanded,
+        _ => WideMode,
     };
 
     /// <summary>What a window width tier forces: the tier's band (<see cref="SidebarPaneModeRules.BandOf(WidthTier)"/>) through
@@ -137,6 +142,7 @@ public sealed record NavPanePolicy(
         if (DefaultWidth < MinWidth || DefaultWidth > MaxWidth) problems.Add("NavPane.DefaultWidth must lie inside [MinWidth, MaxWidth]");
         if (!Enum.IsDefined(NarrowMode)) problems.Add("NavPane.NarrowMode is not a NavPaneMode");
         if (!Enum.IsDefined(TinyMode)) problems.Add("NavPane.TinyMode is not a NavPaneMode");
+        if (!Enum.IsDefined(WideMode)) problems.Add("NavPane.WideMode is not a NavPaneMode");
         if (!Enum.IsDefined(Layout)) problems.Add("NavPane.Layout is not a SidebarLayoutId");
         if (!Enum.IsDefined(Density)) problems.Add("NavPane.Density is not a SidebarDensity");
         return problems;
