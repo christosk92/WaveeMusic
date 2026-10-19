@@ -56,13 +56,13 @@ internal static partial class WinUiDetailFrame
                 AlignSelf = form.Stacked ? FlexAlign.Center : FlexAlign.Auto, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             }, late: true));
         if (slots.Ledger is { } ledger) rows.Add(Block("hero-ledger", ledger(line), late: true));
-        rows.Add(Block("hero-actions", Actions(id, spec.Config, p.Actions, slots, p.Play, tier, form, words: !form.Stacked)));
+        rows.Add(Block("hero-actions", Actions(id, spec.Config, p.Actions, slots, p.Play, tier, form, words: !form.Stacked, center: form.Stacked)));
 
         Element cover = Cover(id, slots, p.Actions, form);
         return new BoxEl
         {
             Key = "detail:show-header", Direction = 1, Shrink = 0f,
-            Children = [Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap })],
+            Children = [Compose(form, inset, cover, rows.ToArray(), new BoxEl { Height = form.ListGap }, center: form.Stacked)],
         };
     }
 }

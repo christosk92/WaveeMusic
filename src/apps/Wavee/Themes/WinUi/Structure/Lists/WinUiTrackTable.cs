@@ -13,7 +13,7 @@
 //   #        the number (Body 14, tertiary), the accent bars on the playing row (keyed "winui.row.now"), the ring while buffering, the play / pause glyph on
 //            hover (none on a withheld row);
 //   art      the row's cover at the control radius (r4) where the lane set has a thumb (a list's rows; an album's have none);
-//   title    Body 14 (the accent text on the playing row, the marquee on the playing row when the core asks), the explicit "E" and the film glyph after it;
+//   title    Body 14 (the accent text on the playing row, the marquee on the playing row when the core asks), the explicit "E" after it (no film glyph);
 //   subline  Caption 12 in the secondary ink: the linked artists (the Compact form adds " · album", or " · 598.9M plays" on an album: W-Album-Compact);
 //   lanes    album, added by, date, plays and time in Body 14 and the secondary ink, a withheld row says "Unavailable" in the time lane (the long reason in its
 //            tooltip) and steps back as a whole (45 %);
@@ -173,7 +173,7 @@ internal static class WinUiTrackTable
                                     Visible = Prop.Of(() => !r.P.State.IsBuffering),
                                     Children =
                                     [
-                                        Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? Icons.Pause : Icons.Play),
+                                        Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid),
                                               WinUiListRules.TransportGlyph, Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary)),
                                     ],
                                 },
@@ -276,7 +276,7 @@ internal static class WinUiTrackTable
         Prop<ColorF> filled = Prop.Of(() => WinUiListRules.HeartInk(r.P.State.IsNow, R.Ink.AccentAction, Tok.TextPrimary));
         return new BoxEl
         {
-            Width = RowMetrics.HeartCol, Height = compact ? WinUiListRules.CompactTarget : RowMetrics.HeartCol,   // the Compact row's 40 target
+            Width = compact ? WinUiListRules.CompactTarget : RowMetrics.HeartCol, Height = compact ? WinUiListRules.CompactTarget : RowMetrics.HeartCol,   // the Compact row's 40 x 40 target (its lane: DetailTableTier.HeartWidth)
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = CornerRadius4.All(WinUiListRules.RowRadius),
             Cursor = CursorId.Hand, OnClick = r.Like, Role = AutomationRole.Button,
@@ -346,7 +346,6 @@ internal static class WinUiTrackTable
         };
         var marquee = Flow.Show(() => r.P.State.IsNow && r.P.Marquee,
             Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), Track.s_rowMarqueeStyle));
-        var film = Glyph(Icons.Movie, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary), Prop.Of(() => r.P.Track.HasVideo)) with { Shrink = 0f };
         var line = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.ExplicitGap, MinWidth = 0f, ClipToBounds = true,
@@ -354,7 +353,7 @@ internal static class WinUiTrackTable
             [
                 new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] },
                 WinUiRowCells.ExplicitMark() with { Visible = Prop.Of(() => r.P.Track.ForDisplay.IsExplicit) },
-                film,
+                // No film glyph after the title (W-Playlist, W-Album, W-LikedSongs draw none): a song's video is the drawer's fact and the play bar's toggle.
                 // A row with no subline of its own (an album's one-line rows) wears the "on this PC" ring after its title.
                 .. oneLineMark ? new Element[] { WinUiRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with { Visible = Prop.Of(() => r.P.State.OnThisPc) } } : []
             ],
@@ -496,7 +495,8 @@ internal static class WinUiTrackTable
             }),
             RowInk(r, static () => Tok.TextSecondary));
 
-    /// <summary>"[swatch] 101.5 · 8B": empty until the audio facts land.</summary>
+    /// <summary>"101.5 · 8B" in the factual rung, empty until the audio facts land: a plain WinUI column (the optional BPM · Key lane, off by default), no Classic
+    /// key swatch (no WinUI board has one).</summary>
     static Element TempoCell(BoundRow r)
     {
         static string? KeyOf(Track t) => Format.CamelotLabel(t.Camelot) ?? Format.KeyLabel(t.Key);
@@ -507,13 +507,6 @@ internal static class WinUiTrackTable
             Visible = Prop.Of(() => r.P.Track.Knows(TrackFields.Audio) && r.P.Track.Tempo != 0),
             Children =
             [
-                new BoxEl
-                {
-                    Width = WinUiListRules.TempoDot, Height = WinUiListRules.TempoDot, Opacity = WinUiListRules.TempoDotOpacity, AlignSelf = FlexAlign.Center,
-                    Corners = CornerRadius4.All(1.5f),
-                    Fill = Prop.Of(() => R.Ink.DataDot(r.P.Track.CamelotColor)),
-                    Visible = Prop.Of(() => r.P.Track.CamelotColor != 0),
-                },
                 Factual(Prop.Of(() => Track.s_tempoLabels.Get(r.P.Track.Tempo, Track.s_tempoFormat)), RowInk(r, static () => Tok.TextSecondary)),
                 Factual("·", RowInk(r, static () => Tok.TextTertiary), visible: hasKey),
                 Factual(Prop.Of(() => KeyOf(r.P.Track) ?? ""), RowInk(r, static () => Tok.TextTertiary), visible: hasKey),

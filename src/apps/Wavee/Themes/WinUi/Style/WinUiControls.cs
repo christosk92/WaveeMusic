@@ -32,7 +32,16 @@ public static class WinUiControls
     /// <summary>The table the WinUI definition carries.</summary>
     public static ControlStyleTable Table { get; } = ControlStyleTable.FluentDefault
         .With(ControlStyles.SelectorBarStyle, Selector)
-        .With(ControlStyles.MenuFlyoutStyle, Menu);
+        .With(ControlStyles.MenuFlyoutStyle, Menu)
+        .With(ControlStyles.PersonPictureStyle, Avatar);
+
+    /// <summary>The least initials size of an imageless avatar: WinUI's type floor (a 24 attribution portrait's 42 % is 10.08).</summary>
+    public const float InitialsFloor = 11f;
+
+    static readonly PersonPicture.Style s_avatar = new() { InitialsFloor = InitialsFloor };
+
+    /// <summary>The PersonPicture: the stock avatar, its initials never under <see cref="InitialsFloor"/> (where that fits in half the circle).</summary>
+    public static PersonPicture.Style Avatar() => s_avatar;
 
     /// <summary>The MenuFlyout: rows 36 apart (no vertical margin), the 4 side inset kept.</summary>
     public static MenuFlyout.Style Menu() => MenuFlyout.FluentStyle() with { ItemMargin = new Edges4(4f, 0f, 4f, 0f) };

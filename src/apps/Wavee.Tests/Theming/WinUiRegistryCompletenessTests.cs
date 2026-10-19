@@ -63,7 +63,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Episode.ReactionRoster"] = "W6b",  // ViewKeys.EpisodeReactionRoster
         ["Episode.Reader"] = "W6b",  // ViewKeys.EpisodeReader
         ["Episode.Save"] = "W6b",  // ViewKeys.EpisodeSave
-        ["Liked.ChipBar"] = "W6b",  // ViewKeys.LikedChipBar
         ["Liked.Cover"] = "W6b",  // ViewKeys.LikedCover
         ["Liked.CoverPicker"] = "W6b",  // ViewKeys.LikedCoverPicker
         ["Liked.CoverStyleFlyout"] = "W6b",  // ViewKeys.LikedCoverStyleFlyout
@@ -74,7 +73,6 @@ public sealed class WinUiRegistryCompletenessTests : IDisposable
         ["Playlist.CoverArt"] = "W6b",  // ViewKeys.PlaylistCoverArt
         ["Playlist.CoverEditor"] = "W6b",  // ViewKeys.PlaylistCoverEditor
         ["Playlist.Daylist"] = "W6b",  // ViewKeys.PlaylistDaylist
-        ["Playlist.Editor"] = "W6b",  // ViewKeys.PlaylistEditor
         ["Playlist.MembersFlyout"] = "W6b",  // ViewKeys.PlaylistMembersFlyout
         ["Playlist.Owner"] = "W6b",  // ViewKeys.PlaylistOwner
         ["Playlist.RecRow"] = "W6b",  // ViewKeys.PlaylistRecRow

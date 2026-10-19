@@ -436,6 +436,17 @@ public readonly partial struct Track
 
         /// <summary>The structure's page inset for the list under the hero (`DetailTierLayout.PageInsetX`; 0: none, the table's own gutter).</summary>
         float PageInsetNow() => ShellPolicy.Tracked.DetailTiers.For(TiersNow()).PageInsetX;
+
+        /// <summary>The page inset the hero arm's VIRTUALISED list stands in (<see cref="Theming.ListPolicy.InsetHeroList"/>; 0 where the structure keeps it full
+        /// width, or the page has a trailing band, which pads itself). Tracked: a tier crossing re-pads.</summary>
+        internal float HeroListInset() => VerticalArm && !ConfigOf(_latest).HasTrailing && ShellPolicy.Tracked.Lists.InsetHeroList ? PageInsetNow() : 0f;
+
+        /// <summary><paramref name="e"/> on the hero list's inset (<see cref="HeroListInset"/>); itself where there is none.</summary>
+        internal Element InsetHeroItem(Element e)
+        {
+            float inset = HeroListInset();
+            return inset > 0f ? new BoxEl { Direction = 1, Padding = new Edges4(inset, 0f, inset, 0f), Children = [e] } : e;
+        }
         Detail.Config Cfg => ConfigOf(_latest);
 
         /// <summary>The config the host actually lays out with. An EMBEDDED table has no trailing band by default — the
@@ -672,6 +683,8 @@ public readonly partial struct Track
             float rowH = form.RowFor(set.Classic, set.Classic ? rows.ClassicRow : rows.ModernRow);
             // An album's numbered rows are one line with no art lane: a structure may stand them under the density's two-line row.
             if (form.OneLineTrim > 0f && !set.Compact && !set.Thumb && snap.Config.Kind == DetailKind.Album) rowH = MathF.Max(0f, rowH - form.OneLineTrim);
+            // A list's two-line rows may add air of their own (DetailTableTier.ListRowAir: WinUI's 2, a 50 pitch at the standard density); albums and the Classic skin keep theirs.
+            if (form.ListRowAir > 0f && !set.Classic && !set.Compact && snap.Config.Kind != DetailKind.Album) rowH += form.ListRowAir;
             return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode);
         }
 
@@ -702,7 +715,7 @@ public readonly partial struct Track
                 Actions: (trailing.Actions && !hover) || compact,
                 Tier: tier,
                 Tempo: cfg.ShowTempo && s.TempoColumn && !compact,
-                Expand: trailing.Expand && !compact && !hover && form.VersionsLane,
+                Expand: trailing.Expand && !compact && !hover && form.VersionsLane && (form.ListVersionsLane || cfg.Kind == DetailKind.Album),
                 Artist: identity.Artist && !compact,
                 Classic: s.Classic,
                 HeartTrailing: compact || (tier < 5 && (cfg.QuietRows || form.HeartTrailing) && !hover),
@@ -712,7 +725,8 @@ public readonly partial struct Track
                 IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album,
                 HoverActions: hover,
                 DurationKept: compact && form.KeepDuration,
-                DurationWidth: compact ? 0f : form.DurationWidth);
+                DurationWidth: compact ? 0f : form.DurationWidth,
+                HeartWidth: form.HeartWidth);
         }
 
         int ReliefStepFor(in ColumnSet s)
@@ -742,7 +756,7 @@ public readonly partial struct Track
             bool measured = _tierMeasured.Peek();
             // The tier ladder's source (value-gated). Its crossing is the host's: pending until the first non-resized frame, then animated.
             // The list column's own width: the table's, less the structure's page inset on both sides (the hero arm's list stands inside it).
-            float listW = VerticalArm && Cfg.HasTrailing
+            float listW = VerticalArm && (Cfg.HasTrailing || ShellPolicy.Now.Lists.InsetHeroList)
                 ? MathF.Max(1f, r.W - 2f * ShellPolicy.Now.DetailTiers.For((_facts ?? global::Wavee.Theming.ThemeHost.Facts).Peek().Tiers).PageInsetX)
                 : r.W;
             if (listW != _listW.Peek()) _listW.Value = listW;
@@ -1123,7 +1137,11 @@ public readonly partial struct Track
                 && !TableRules.RowsPending(snap.State, snap.Count, total, _hotSettled!.Value))
             {
                 _rampDecided = true;
-                if (_sawUnknown || trailing) { _rampPending = true; _rampEpoch++; }
+                // Where the structure reveals the hero arm's rows together (ListPolicy.RowsRevealTogether), they are already mounted, each holding its own
+                // shimmer on the gate (TableRowContent), so a ramp there would only turn rows past the first chunk back into blank placeholders for a frame:
+                // the arm releases every row at once instead.
+                bool together = vertical && !trailing && ShellPolicy.Tracked.Lists.RowsRevealTogether;
+                if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; }
             }
             UseLayoutEffect(ArmRamp, DepKey.From(_rampEpoch));
 
@@ -1630,7 +1648,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return Chrome(in shape, chips, lens).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
+            return InsetHeroItem(Chrome(in shape, chips, lens)).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
         }
 
         internal Element EmptyItem()
@@ -1639,7 +1657,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             int visible = _rowItems!.Count.Value;
             var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
-            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [Placeholder(state, in shape)] };
+            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetHeroItem(Placeholder(state, in shape))] };
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
@@ -1702,19 +1720,35 @@ public readonly partial struct Track
             Edges4 inset = !shape.Set.Classic && !VerticalArm ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
             var rows = new Element[Design.RevealRamp.Chunk];
-            var set = shape.Set;
-            var state = default(RowState);
-            var options = new GridOptions(Art: shape.Art, MoreEnabled: false);
-            var eager = _eagerStyle;
             for (int i = 0; i < rows.Length; i++)
             {
-                Element title = new TextEl("") { Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-                rows[i] = eager is null ? new BoxEl() : eager.Grid(default, i, in state, in set, shape.Tracks, shape.RowH, title, in options);
+                rows[i] = ShimmerGrid(in shape, i);
                 if (inset != default) rows[i] = new BoxEl { Direction = 1, Margin = inset, Children = [rows[i]] };
             }
             if (groups) rows[0] = new BoxEl { Direction = 1, Children = [GroupHeader(s_pendingGroupHead, in shape), rows[0]] };
             return new BoxEl { Direction = 1, Children = rows };
         }
+
+        /// <summary>One copy of the REAL row grid over an empty track: what the deriver shimmers.</summary>
+        Element ShimmerGrid(in Shape shape, int display)
+        {
+            var set = shape.Set;
+            var state = default(RowState);
+            var options = new GridOptions(Art: shape.Art, MoreEnabled: false);
+            Element title = new TextEl("") { Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+            return _eagerStyle is { } eager ? eager.Grid(default, display, in state, in set, shape.Tracks, shape.RowH, title, in options) : new BoxEl();
+        }
+
+        /// <summary>A mounted row's own shimmer (<see cref="TableRowContent"/>): the row grid over an empty track, inside the row's skin.</summary>
+        internal Element ShimmerRow(in Shape shape) => ShimmerGrid(in shape, 0);
+
+        /// <summary>Is the table's reveal gate still closed for the rows the HERO ARM has already mounted? The two-column arms hold the whole region on it (their
+        /// rows mount only once it opens); the hero arm mounts its rows with the membership's count, so each row holds on it itself. Tracked (the source and the
+        /// hot rows), so every row hears the release on the same flush.</summary>
+        internal bool RowGateClosed() => VerticalArm && !ConfigOf(_latest).HasTrailing && RowsPending();
+
+        /// <summary>Does the structure reveal the hero arm's rows together (<see cref="Theming.ListPolicy.RowsRevealTogether"/>)? Tracked.</summary>
+        internal static bool RowsTogether() => ShellPolicy.Tracked.Lists.RowsRevealTogether;
 
         /// <summary>The hero arm's shimmer IS its item sequence: the reserved hero band, the REAL chrome, then the rows — so
         /// content replaces each in place instead of appearing above them (D49).</summary>
@@ -1727,8 +1761,8 @@ public readonly partial struct Track
                 Children =
                 [
                     _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow()) ?? new BoxEl(),
-                    Chrome(in shape, chips, lens),
-                    RowsShimmer(in shape),
+                    InsetHeroItem(Chrome(in shape, chips, lens)),
+                    InsetHeroItem(RowsShimmer(in shape)),
                 ],
             };
         }
@@ -2669,8 +2703,26 @@ public readonly partial struct Track
             // (a real mount/unmount, rare). The rule is TableRules.RowHasData over TrackFields.Face, NOT the whole Identity
             // group: a disk-restored row withholds Artists until the credits edge re-lands, and a warm open must not shimmer
             // for a credit line that fills in place.
-            Element body = Flow.Show(() => { var t = row.Presentation.Value.Track; return TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)); }, grid,
-                _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)));
+            // THE ROW'S OWN GATE, where the structure reveals the hero arm's rows together (ListPolicy.RowsRevealTogether; elsewhere the shipped per-row
+            // placeholder above stays). The owner's recording: rows 1 and 4 alone, a hole where 2-3 belong, then single rows popping in. A row with no data, or
+            // any row of the hero arm while the table's reveal gate is still closed (TableRules.RowsPending: the hero arm mounts its rows the moment the
+            // membership has a count, so the region-wide gate never covered them), shimmers the row's own shape in place and cross-dissolves to the real
+            // grid. The gate opens for every row on the same frame, so the list swaps in as one block; covers then fade in inside rows already laid out.
+            var host = _host;
+            var geometry = shape;
+            Element body = !TableHost.RowsTogether()
+                ? Flow.Show(() => { var t = row.Presentation.Value.Track; return TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)); }, grid,
+                    _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)))
+                : new SkelRegionEl(
+                Pending: () =>
+                {
+                    var t = row.Presentation.Value.Track;
+                    return !TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)) || host.RowGateClosed();
+                },
+                Failed: static () => false,
+                Content: () => grid,
+                ShimmerSource: () => host.ShimmerRow(in geometry),
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             return new BoxEl
             {
                 Key = "row:real", Direction = 0, Grow = 1f, Animate = _latch == 1 ? s_rampReveal : null, Children = [body],
@@ -2711,9 +2763,11 @@ public readonly partial struct Track
                     var host = _host;
                     var scope = _scope;
                     bool narrate = _narrate;
+                    // The structure's list inset (ListPolicy.InsetHeroList): the row and its hover plate on the page's gutter.
+                    float inset = host.HeroListInset();
                     return new BoxEl
                     {
-                        Key = "vitem:row", Direction = 1,
+                        Key = "vitem:row", Direction = 1, Padding = inset > 0f ? new Edges4(inset, 0f, inset, 0f) : default,
                         Children = [Embed.Comp(() => new TableSlot(host, scope, prefix, narrate))],
                     };
                 }
@@ -2724,7 +2778,7 @@ public readonly partial struct Track
                     return new BoxEl
                     {
                         Key = section is null ? "vitem:blank" : "vitem:recs", Direction = 1,
-                        Children = section is null ? [] : [section],
+                        Children = section is null ? [] : [_host.InsetHeroItem(section)],
                     };
                 }
                 default:

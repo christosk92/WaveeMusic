@@ -103,7 +103,7 @@ public static class WinUiDetailRules
 
     /// <summary>Compact (W-Album-Compact): a 160 cover centred, 12 under it, the words centred 2 apart, Title 28/36, the actions 12 under, 12 to the list.</summary>
     public static WinUiHeroForm CompactHero { get; } = new(Stacked: true, Cover: 160f, Gap: 12f, Eyebrow: true, EyebrowSize: 12f, EyebrowLine: 16f,
-        TitleSize: 28f, TitleLine: 36f, InfoGap: 2f, Avatar: 0f, ActionTop: 12f, ListGap: 12f, TopInset: 16f);
+        TitleSize: 28f, TitleLine: 36f, InfoGap: 2f, Avatar: 0f, ActionTop: 12f, ListGap: 12f, TopInset: 16f, ListAvatar: 24f);
 
     /// <summary>Small (W-Album-Small): the horizontal hero, a 168 cover, 24 gap, 20 over it.</summary>
     public static WinUiHeroForm SmallHero { get; } = new(Stacked: false, Cover: 168f, Gap: 24f, Eyebrow: true, EyebrowSize: 12f, EyebrowLine: 16f,
@@ -119,10 +119,18 @@ public static class WinUiDetailRules
     /// <summary>The short hero (W-Tiers "Small (height 600): short hero, cover 128, Title 28"; a window under 720 tall in every tier): the 128 cover, Title 28/36, no eyebrow,
     /// the air over it 8 and 8 to the list bar.</summary>
     public static WinUiHeroForm ShortHero { get; } = new(Stacked: false, Cover: 128f, Gap: 16f, Eyebrow: false, EyebrowSize: 12f, EyebrowLine: 16f,
-        TitleSize: 28f, TitleLine: 36f, InfoGap: 2f, Avatar: 0f, ActionTop: 8f, ListGap: 8f, TopInset: 8f);
+        TitleSize: 28f, TitleLine: 36f, InfoGap: 2f, Avatar: 0f, ActionTop: 8f, ListGap: 8f, TopInset: 8f, Description: false);
 
     /// <summary>The short hero at Compact (W-Tiers: "cover 128 left, Title 28"): the same, 12 between the cover and the words.</summary>
     public static WinUiHeroForm ShortHeroCompact { get; } = ShortHero with { Gap = 12f };
+
+    /// <summary>The Small band's short hero (800 x 600: W-Playlist-Small, W-PlaylistFollowed-Small, W-LikedSongs-Small, W-Album-Small, W-Show-Small, W-Episode-Small all
+    /// draw it): the 128 cover 20 from the words, the eyebrow (its chip 18), Title 28/36, a list's 20 portrait (an album's line is text alone), the actions 10 under.
+    /// The words stay within the cover's height (18 + 2 + 36 + 2 + 24 + 10 + 32 = 124), so the short hero's band is unchanged.</summary>
+    public static WinUiHeroForm SmallShortHero { get; } = ShortHero with
+    {
+        Gap = 20f, Eyebrow = true, ListAvatar = 20f, ActionTop = 10f, Description = false, ChipHeight = 18f,
+    };
 
     /// <summary>The cover's corner radius (r8: W-Tokens' cover) and its shadow blur and alpha (the boards: 0 8 16 rgba(0,0,0,0.26)).</summary>
     public const float CoverRadius = 8f;
@@ -136,8 +144,31 @@ public static class WinUiDetailRules
     /// <summary>What joins the names to the meta ("Edward Maya, Vika Jigulina · 15 songs · 57 min").</summary>
     public const string MetaLead = " · ";
 
+    /// <summary>The eyebrow's "Saved" chip (W-Playlist): 8 after the words, 0 6 padding, the 10 check 4 from its word, r4.</summary>
+    public const float ChipAfterEyebrow = 8f, ChipPad = 6f, ChipGap = 4f, ChipCheck = 10f, ChipRadius = 4f;
+
+    /// <summary>The description line under the title (W-Playlist, W-PlaylistFollowed: 14/20).</summary>
+    public const float DescriptionSize = 14f, DescriptionLine = 20f;
+
+    /// <summary>The description's line count (one, ellipsized: the hero's heights never depend on its length).</summary>
+    public const int DescriptionLines = 1;
+
+    /// <summary>The inline editor (W-Playlist's title and description): the read arm's hover plate bleeds 8 x 4 past the words; the edit field is 40 tall for the
+    /// description, the title's size plus 12 (at least 40) for the title.</summary>
+    public const float EditBleedX = 8f, EditBleedY = 4f, DescriptionFieldH = 40f, TitleFieldMinH = 40f, TitleFieldExtra = 12f;
+
+    /// <summary>The read arm's vertical bleed at Compact: the 20 description line's plate grows to the 40 target ((40 - 20) / 2).</summary>
+    public const float EditBleedYCompact = (CompactTarget - DescriptionLine) / 2f;
+
+    /// <summary>The Liked chip line's end fade where it rides the page bar.</summary>
+    public const float ChipRailFade = 24f;
+
     /// <summary>The attribution line (14/20) and the meta line it carries (12/16 stacked, in Text 3).</summary>
     public const float AttributionSize = 14f, AttributionLine = 20f, MetaSize = 12f, MetaLine = 16f;
+
+    /// <summary>The attribution row's FIXED box: the ringed portrait where the form draws portraits (24 + 2 x 2 = 28; 32 at Huge), else the 20 line. The row is reserved
+    /// at this height from the first frame (the skeleton, a meta still loading, the facts arriving one by one), so nothing in the hero moves when its words land.</summary>
+    public static float AttributionRow(float avatar) => avatar > 0f ? MathF.Max(avatar + 2f * AvatarRing, AttributionLine) : AttributionLine;
 
     /// <summary>The Play SplitButton: the label half's padding (0 14: the board's, 0 20 at Compact), the 32 chevron half, the 1-px divider at 20 %.</summary>
     /// <summary>Segoe Fluent Icons' SOLID transport pair (the boards draw the filled triangle and the bars).</summary>

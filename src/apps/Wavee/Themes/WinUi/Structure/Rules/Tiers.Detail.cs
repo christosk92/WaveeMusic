@@ -72,7 +72,7 @@ public static class WinUiDetailTiers
     public static WinUiDetailTier Compact { get; } = new(WidthTier.Compact, WinUiDetailRules.CompactHero, WinUiDetailRules.ShortHeroCompact);
 
     /// <summary>The Small hero (W-Album-Small).</summary>
-    public static WinUiDetailTier Small { get; } = new(WidthTier.Small, WinUiDetailRules.SmallHero, WinUiDetailRules.ShortHero);
+    public static WinUiDetailTier Small { get; } = new(WidthTier.Small, WinUiDetailRules.SmallHero, WinUiDetailRules.SmallShortHero);
 
     /// <summary>The Standard hero (W-Album).</summary>
     public static WinUiDetailTier Standard { get; } = new(WidthTier.Standard, WinUiDetailRules.StandardHero, WinUiDetailRules.ShortHero);
@@ -153,5 +153,14 @@ public sealed record WinUiDetailTier(WidthTier Tier, WinUiHeroForm Tall, WinUiHe
 /// <param name="ActionTop">The air above the action row (12, 14 at Huge).</param>
 /// <param name="ListGap">The air between the hero and the list bar under it.</param>
 /// <param name="TopInset">The air over the hero (the tier's top inset; the short hero's 8).</param>
+/// <param name="ListAvatar">A LIST's attribution portrait (a playlist's owner, Liked Songs: W-Playlist-Small's 20, W-Playlist-Compact's 24) where it differs from an
+/// album's <paramref name="Avatar"/> (W-Album-Small draws none); negative: the same as <paramref name="Avatar"/>.</param>
+/// <param name="Description">A playlist's description line is drawn under the title (W-Playlist, W-PlaylistFollowed); false: the short heroes, where a followed list's
+/// description rides the eyebrow (W-PlaylistFollowed-Small) and the own list's prompt lives in the menu.</param>
+/// <param name="ChipHeight">The eyebrow's "Saved" chip (W-Playlist: 20, 18 on the Small board): the eyebrow row of a list that can carry it holds this height.</param>
 public sealed record WinUiHeroForm(bool Stacked, float Cover, float Gap, bool Eyebrow, float EyebrowSize, float EyebrowLine, float TitleSize, float TitleLine,
-    float InfoGap, float Avatar, float ActionTop, float ListGap, float TopInset);
+    float InfoGap, float Avatar, float ActionTop, float ListGap, float TopInset, float ListAvatar = -1f, bool Description = true, float ChipHeight = 20f)
+{
+    /// <summary>The attribution portrait for a page of <paramref name="kind"/>.</summary>
+    public float AvatarFor(DetailKind kind) => kind is DetailKind.Playlist or DetailKind.Liked && ListAvatar >= 0f ? ListAvatar : Avatar;
+}

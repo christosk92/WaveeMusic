@@ -160,12 +160,16 @@ internal static partial class WinUiDetailKit
     /// <summary>The fixed actions after the split: Shuffle (when the page offers it), Save (when the kind has a heart), Share (when the page has a link) and the
     /// "..." (when the page has a menu), each keyed under <paramref name="keyPrefix"/>. <paramref name="words"/>: Shuffle and Save carry their word (Small and up,
     /// W-Album); false: glyphs alone (W-Album-Compact). <paramref name="target"/> is the tier's 32 / 40.</summary>
-    public static List<Element> FixedActions(string keyPrefix, Detail.Identity id, bool heart, Detail.FrameActions acts, float target, bool words)
+    /// <para>A playlist's hero adds the board's pair (W-Playlist: Play · Shuffle · Invite · Tune · Share · ...): <paramref name="invite"/> (the people glyph and
+    /// "Invite"; the glyph alone at Compact) and <paramref name="tune"/> (the word alone); null leaves either out. <paramref name="shuffleGlyph"/> false drops the
+    /// worded Shuffle's glyph (W-Playlist, W-PlaylistFollowed, W-LikedSongs at Standard and Small; the Huge boards and the glyph-only Compact keep it).</para></summary>
+    public static List<Element> FixedActions(string keyPrefix, Detail.Identity id, bool heart, Detail.FrameActions acts, float target, bool words,
+        bool shuffleGlyph = true, Action? invite = null, Action? tune = null)
     {
-        var actions = new List<Element>(4);
+        var actions = new List<Element>(6);
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Controls.Named(BorderedAction(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, target, words) with { Key = keyPrefix + "shuffle:button" },
-                Loc.Get(Strings.Detail.Shuffle)) with { Key = keyPrefix + "shuffle" });
+            actions.Add(Controls.Named(BorderedAction(words && !shuffleGlyph ? null : Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, target, words)
+                with { Key = keyPrefix + "shuffle:button" }, Loc.Get(Strings.Detail.Shuffle)) with { Key = keyPrefix + "shuffle" });
         if (heart)
         {
             string saveUri = SaveTargetOf(id).Text;
@@ -173,6 +177,12 @@ internal static partial class WinUiDetailKit
             actions.Add(Embed.Comp(() => new SaveAction { Uri = saveUri, Name = saveName, Target = target, Word = words })
                 with { Key = keyPrefix + "save:" + saveUri + ":" + (words ? "w" : "g") });
         }
+        if (invite is not null)
+            actions.Add(Controls.Named(BorderedAction(Icons.Friends, Loc.Get(Strings.Detail.Edit.Invite), invite, target, words) with { Key = keyPrefix + "invite:button" },
+                Loc.Get(Strings.Detail.Edit.InviteCollaborators)) with { Key = keyPrefix + "invite" });
+        if (tune is not null)
+            actions.Add(Controls.Named(BorderedAction(words ? null : Icons.Equalizer, Loc.Get(Strings.Detail.Tuning.Tune), tune, target, words)
+                with { Key = keyPrefix + "tune:button" }, Loc.Get(Strings.Detail.Tuning.Tune)) with { Key = keyPrefix + "tune" });
         if (ShareActionFor(id) is { } share)
             actions.Add(Controls.Named(Controls.IconAction(Icons.Share, share, size: target) with { Key = keyPrefix + "share:button" }, Loc.Get(Strings.Menu.Share))
                 with { Key = keyPrefix + "share" });
@@ -182,8 +192,9 @@ internal static partial class WinUiDetailKit
     }
 
     /// <summary>How many buttons <see cref="FixedActions"/> lays out for the same inputs (the skeleton reserves exactly these).</summary>
-    public static int FixedActionCount(Detail.Identity id, bool heart, Detail.FrameActions acts)
-        => (acts.Shuffle is not null ? 1 : 0) + (heart ? 1 : 0) + (ShareActionFor(id) is not null ? 1 : 0) + (acts.More is not null ? 1 : 0);
+    public static int FixedActionCount(Detail.Identity id, bool heart, Detail.FrameActions acts, bool invite = false, bool tune = false)
+        => (acts.Shuffle is not null ? 1 : 0) + (heart ? 1 : 0) + (invite ? 1 : 0) + (tune ? 1 : 0) + (ShareActionFor(id) is not null ? 1 : 0)
+         + (acts.More is not null ? 1 : 0);
 
     /// <summary>The primary and the actions in ONE wrap, 8 apart; <paramref name="center"/> centres the row (the stacked hero).</summary>
     public static BoxEl ActionRow(string key, Element primary, IReadOnlyList<Element> actions, float topMargin, bool center)
@@ -202,10 +213,10 @@ internal static partial class WinUiDetailKit
     }
 
     /// <summary>A bordered standard action (W-Album: the control fill, the elevation stroke, r4, 32 / 40 tall): the glyph and its word, or the glyph alone.</summary>
-    static BoxEl BorderedAction(string glyph, string label, Action onClick, float target, bool word)
+    static BoxEl BorderedAction(string? glyph, string label, Action onClick, float target, bool word)
     {
         if (!word)
-            return Controls.IconAction(glyph, onClick, size: target) with
+            return Controls.IconAction(glyph ?? Icons.More, onClick, size: target) with
             {
                 Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
                 BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
@@ -432,6 +443,46 @@ internal static partial class WinUiDetailKit
         }
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids };
     }
+
+    /// <summary>The eyebrow row of a list that can carry the "Saved" chip (W-Playlist: "Playlist · public  [✓ Saved]"): the words, then the chip 8 after them while
+    /// <paramref name="saveUri"/> is in the library. The row holds the chip's height whether or not it shows, so saving or removing the list moves nothing.</summary>
+    public static Element EyebrowWithChip(string text, WinUiHeroForm form, string saveUri, bool center) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.ChipAfterEyebrow, Height = form.ChipHeight, MinWidth = 0f,
+        AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto,
+        Children = [EyebrowRun(text, form) with { Shrink = 1f }, Embed.Comp(() => new SavedChip { Uri = saveUri, Height = form.ChipHeight }) with { Key = "hero-chip:" + saveUri }],
+    };
+
+    /// <summary>The "Saved" chip: a 10 check and the word (12) on the control fill, 0 6 padding, r4; nothing while the list is not saved.</summary>
+    sealed class SavedChip : Component
+    {
+        public required string Uri { get; init; }
+        public required float Height { get; init; }
+
+        public override Element Render()
+        {
+            var lib = Controls.Library;
+            if (lib is null || !lib.IsSaved(Uri)) return new BoxEl();
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.ChipGap, Height = Height, Shrink = 0f,
+                Padding = new Edges4(WinUiDetailRules.ChipPad, 0f, WinUiDetailRules.ChipPad, 0f), Corners = CornerRadius4.All(WinUiDetailRules.ChipRadius),
+                Fill = Tok.FillControlDefault,
+                Children =
+                [
+                    Icon(Icons.Check, WinUiDetailRules.ChipCheck) with { Color = Tok.TextPrimary },
+                    new TextEl(Loc.Get(Strings.Menu.Saved)) { Size = WinUiDetailRules.MetaSize, LineHeight = WinUiDetailRules.MetaLine, Color = Tok.TextPrimary, MaxLines = 1 },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The description line (W-Playlist, W-PlaylistFollowed): Body 14/20 in Text 2, one line, ellipsized.</summary>
+    public static TextEl DescriptionRun(string text, bool center) => new(text)
+    {
+        Size = WinUiDetailRules.DescriptionSize, LineHeight = WinUiDetailRules.DescriptionLine, Color = Tok.TextSecondary,
+        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto,
+    };
 
     /// <summary>The eyebrow: Caption in Text 2 (the size and line are the tier's), one line.</summary>
     public static TextEl EyebrowRun(string text, WinUiHeroForm form) => new(text)

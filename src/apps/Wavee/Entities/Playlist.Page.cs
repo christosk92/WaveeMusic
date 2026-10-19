@@ -297,6 +297,8 @@ public readonly partial struct Playlist
         readonly User.LensCell _lens = new();
 
         readonly Detail.FrameActions _actions, _actionsReadOnly;
+        readonly Action _inviteAction;
+        Detail.FrameActions? _actionsShown;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
         readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes;
@@ -362,6 +364,7 @@ public readonly partial struct Playlist
                 GoLibrary = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryAlbums)),
             };
             _actionsReadOnly = _actions with { DepositOnPage = null };
+            _inviteAction = () => { var pl = _playlist; if (pl.IsValid && !Controls.IsNullOverlay(_overlay)) OpenAccessPanel(_overlay, pl, null, FlyoutPlacement.BottomEdgeAlignedLeft); };
         }
 
         public override Element Render()
@@ -506,11 +509,24 @@ public readonly partial struct Playlist
                 Config = cfg,
                 Source = _source,
                 Profile = _profile,
-                Actions = editable ? _actions : _actionsReadOnly,
+                Actions = ActionsFor(editable ? _actions : _actionsReadOnly, tune, InviteAllowed(pl)),
                 Slots = _slots,
                 RouteKey = p.RouteKey,
             });
         }
+
+        /// <summary>The frame's verbs with the hero's optional pair: Tune (the list has a tune choice) and Invite (<see cref="InviteAllowed"/>). Equality is
+        /// presence only, so the instance is kept while the presence holds.</summary>
+        Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite)
+        {
+            var next = basis with { Tune = tune ? _tune : null, Invite = invite ? _inviteAction : null };
+            if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
+            return _actionsShown = next;
+        }
+
+        /// <summary>The invite affordance's gate, the owner menu's (<see cref="AppendOwnerItems"/>): an owner who can administrate the permissions, on a live edit
+        /// path (item 58: absent under <c>--fake</c>).</summary>
+        bool InviteAllowed(Playlist pl) => !_local && pl.IsOwner && pl.Live && pl.CanAdministratePermissions && EditsLiveNow();
 
         /// <summary>Row 2's inputs for <paramref name="pl"/> (default while there is no playlist).</summary>
         ChromeInputs ChromeOf(Playlist pl)
@@ -649,6 +665,7 @@ public readonly partial struct Playlist
                 OwnerImageUrl = Controls.ArtUrl(owner.ImageId),
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
+                IsPublic = !_local && pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
                 DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription") : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,

@@ -61,7 +61,7 @@ public static class WinUiListRules
     public const float AlbumRowTrim = 8f;
 
     /// <summary>The # and the transport glyph, the heart, the film glyph and the versions chevron.</summary>
-    public const float TransportGlyph = 12f, HeartGlyph = 16f, FilmGlyph = 12f, ChevronGlyph = 12f;
+    public const float TransportGlyph = 12f, HeartGlyph = 12f, FilmGlyph = 12f, ChevronGlyph = 12f;
 
     /// <summary>The chart mark beside a chart row's number: 8 on a 12 line, 700.</summary>
     public const float ChartMarkSize = 8f, ChartMarkLine = 12f;
@@ -78,13 +78,10 @@ public static class WinUiListRules
     /// <summary>The gap between the title and its explicit mark (W-Album: 8).</summary>
     public const float ExplicitGap = 8f;
 
-    /// <summary>The "on this PC" mark that leads a row's subline: a 14 ring, 2 stroke, the 8-type arrow inside.</summary>
+    /// <summary>The "on this PC" mark that leads a row's subline: a 14 ring, 2 stroke, the 8 download glyph inside (an icon, so out of the type scale).</summary>
     public const float OnPcMark = 14f, OnPcRing = 2f, OnPcGlyph = 8f, OnPcAfter = 2f;
 
-    /// <summary>The arrow the ring carries.</summary>
-    public const string OnPcArrow = "↓";
-
-    /// <summary>The tempo lane's key swatch: a 6 DIP dot at 0.85.</summary>
+    /// <summary>The track drawer's key swatch: a 6 DIP dot at 0.85 (the table's BPM · Key lane draws none).</summary>
     public const float TempoDot = 6f, TempoDotOpacity = 0.85f;
 
     /// <summary>What leads the plays a Compact album row states in its subline ("Edward Maya · 598.9M plays", W-Album-Compact).</summary>
@@ -207,14 +204,25 @@ public static class WinUiListRules
 
     /// <summary>The list policy WinUI publishes: the artwork follows the `artworkInRows` option; ON draws the MODERN skin (the two-line row), OFF the CLASSIC skin
     /// (the one-line 40 row with the artist's own lane).</summary>
-    public static ListPolicy ListsFor(bool artworkInRows) => new(TrackArtwork: artworkInRows, RowStyle: artworkInRows ? TrackRowStyle.Modern : TrackRowStyle.Classic);
+    public static ListPolicy ListsFor(bool artworkInRows) => new(TrackArtwork: artworkInRows, RowStyle: artworkInRows ? TrackRowStyle.Modern : TrackRowStyle.Classic)
+    {
+        // No WinUI board draws BPM · Key: the column rests OFF under WinUI (its own setting, whatever Classic's says) and the list's column menu still turns it on.
+        TempoColumnScope = TempoScope,
+        // The owner's recording: a lone cached row, holes, then rows popping in one by one. WinUI's hero arm swaps the list in as one block.
+        RowsRevealTogether = true,
+        // W-Playlist, W-PlaylistFollowed, W-LikedSongs: the list (its bar, header, rows and their hover plate) on the page's gutter, as an album's already is.
+        InsetHeroList = true,
+    };
+
+    /// <summary>The name of WinUI's own BPM · Key setting (<c>detail.tempoColumn.winui</c>).</summary>
+    public const string TempoScope = "winui";
 
     /// <summary>The table form at a window tier: the Compact band's Compact row (W-RowStates-Compact, W-Album-Compact, W-MultiSelect-Compact), the Small band's
     /// header table with no chevron lane, Standard's every lane the list column admits; the Huge band's cozy rows (W-Playlist-Huge: 72 with a 64 cover).</summary>
     public static DetailTierLayout Compact { get; } = new(
         new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false,
-                            ModernRow: CompactModernRow, ClassicRow: CompactClassicRow, Art: CompactArt, ListIndex: true,
-                            HeartTrailing: true, KeepDuration: true, VersionsLane: false),
+                            ModernRow: CompactModernRow, ClassicRow: CompactClassicRow, Art: CompactArt, ListIndex: false,
+                            HeartTrailing: true, KeepDuration: true, VersionsLane: false, HeartWidth: CompactTarget),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 16f, BandHeight: WinUiDetailRules.BandHeight);
 
     /// <summary>The Compact row (W-RowStates-Compact: "track row, 56 px, two-line, ... always shown"; W-MultiSelect-Compact: a 40 cover).</summary>
@@ -224,13 +232,21 @@ public static class WinUiListRules
     /// Album, Date and Plays below 860.</summary>
     public static DetailTierLayout Small { get; } = new(
         new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true,
-                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane),
+                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane, TuneInHero: true, ListRowAir: ListRowAir),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 24f, BandHeight: WinUiDetailRules.BandHeight);
 
-    /// <summary>Standard (W-Album, W-Playlist, W-MultiSelect, W-Unavailable): every lane the list column admits, the density's rows; an album's numbered rows one line.</summary>
+    /// <summary>The air a list's two-line rows add at Small and Standard (W-Playlist, W-PlaylistFollowed, W-LikedSongs: 48 tall, 2 under the last: a 50 pitch at the
+    /// standard density; every density keeps its step). Huge's cozy 72 and the Compact 56 are their own.</summary>
+    public const float ListRowAir = 2f;
+
+    /// <summary>Standard (W-Album, W-Playlist, W-MultiSelect, W-Unavailable): every lane the list column admits, the density's rows; an album's numbered rows one line.
+    /// A list's rows carry no versions chevron (W-Playlist, W-LikedSongs: # · Title · Album · Date added · heart · Time, the "..." on hover); an album's keep it.</summary>
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
-        Table = DetailTableTier.Standard with { HeartTrailing = true, OneLineTrim = AlbumRowTrim, DurationWidth = TimeLane },
+        Table = DetailTableTier.Standard with
+        {
+            HeartTrailing = true, OneLineTrim = AlbumRowTrim, DurationWidth = TimeLane, ListVersionsLane = false, TuneInHero = true, ListRowAir = ListRowAir,
+        },
         PageInsetX = 36f, BandHeight = WinUiDetailRules.BandHeight,
     };
 
