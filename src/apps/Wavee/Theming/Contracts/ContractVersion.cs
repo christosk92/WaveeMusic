@@ -156,6 +156,7 @@
 // 1.49 (Zune panel wash): `PanelProps.CoverUrl` (the playing track's cover url, so a theme tints the panel's surface from it).
 // 1.50 (Zune cover wash): `PageBackdrop.TallWash` (a cover page asks for the tall single wash the boards draw behind its hero; Home and the rest keep the band-height one).
 // 1.51 (P6 wave 1): `ControlRole`/`ControlRoleTable`/`CommandButtonStyle.LabelMode` and `WaveeStyleRoles.Controls` (WR); `ShellCapabilities.HiddenTabStrip`/`CyclesTabs`, `SettingsGrouping`/`ThemePolicies.Settings` and `SettingsPageProps.Grouping/Group/OpenGroup`, `LyricsLinesStyle.StageDepthBlur` and `BlurPolicy.ResolveFor(setting, onStage, styleBlur)`, `StageTierMetrics.Layouts`, `DockedPane.Tabs` and `PanelProps.ShowPaneTab` (WK).
+// 1.52 (P6 wave 2): `NavPanePolicy.WideMode` and `NavRowKit.Footer` (W2b); `DetailTableTier.HeartTrailing`/`KeepDuration`/`VersionsLane`/`DurationWidth` and `Track.ColumnSet.DurationKept`/`DurationWidth` (W3).
 // `Settings.PartsOf` / `AreaSlugs` / `AreaFromSlug` / `HomeArea` / `FirstTab`, the document tabs `Tab.Account` / `.Devices` / `.Keyboard` / `.Feedback` (with their rows and
 // `Settings.Shortcuts`), and the document section "Playback" of the Playback tab. `SettingsPageProps.Tab` / `.TabCell` / `.OpenTab` stay as superseded adapters over the area.
 //
@@ -173,7 +174,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 51;
+    public const int Minor = 52;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

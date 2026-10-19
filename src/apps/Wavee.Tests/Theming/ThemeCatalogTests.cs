@@ -496,7 +496,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.48 (Settings sections): SettingsPageProps.Area / AreaCell / OpenArea (the old Tab / TabCell / OpenTab stay as adapters), Settings.Area and its Parts.
         // 1.50 (Zune cover wash): PageBackdrop.TallWash.
         // 1.51 (P6 wave 1): control roles, tabs Off, the Settings grouping, stage depth blur, per-tier stage layouts, docked pane tabs.
-        Assert.Equal("1.51", ContractVersion.Text);
+        // 1.52 (P6 wave 2): the nav pane's wide mode and footer, the detail table's heart/duration/versions lanes.
+        Assert.Equal("1.52", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -548,7 +549,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 49));
         Assert.True(ContractVersion.IsCompatible(1, 50));
         Assert.True(ContractVersion.IsCompatible(1, 51));
-        Assert.False(ContractVersion.IsCompatible(1, 52));
+        Assert.True(ContractVersion.IsCompatible(1, 52));
+        Assert.False(ContractVersion.IsCompatible(1, 53));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }
