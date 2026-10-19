@@ -48,12 +48,14 @@ public static partial class WinUiPolicies
     private static readonly NavPanePolicy s_navCompact = s_navAutomatic with { NarrowMode = NavPaneMode.Compact };
 
     private static readonly ShellCapabilities s_tabsOn = new(
-        Tabs: true, NavTree: true, FriendsPanel: true, ForwardButton: true, HistoryMenu: true, MaxBandPins: 0);
+        Tabs: true, NavTree: true, FriendsPanel: true, ForwardButton: true, HistoryMenu: true, MaxBandPins: 0) { CyclesTabs = true };
 
-    private static readonly ShellCapabilities s_tabsOff = s_tabsOn with { Tabs = false };
+    // Tabs off keeps the workspace (owner Q1, the board): the strip is hidden, not the tabs (W2a, core seam WK (a)).
+    private static readonly ShellCapabilities s_tabsOff = s_tabsOn with { HiddenTabStrip = true };
 
-    /// <summary>What the shell offers under WinUI (technical plan 6.2): tabs as the option says, the nav tree, the friends panel, Forward, the
-    /// history menu, no band pins. One instance per value.</summary>
+    /// <summary>What the shell offers under WinUI (technical plan 6.2): tabs always, the strip hidden when the `tabs` option is off (the workspace
+    /// kept, Ctrl+T opening in the background, Ctrl+Tab cycling in both), the nav tree, the friends panel, Forward, the history menu, no band
+    /// pins. One instance per value.</summary>
     public static ShellCapabilities CapabilitiesFor(WinUiParameters parameters) => parameters.Tabs ? s_tabsOn : s_tabsOff;
 
     private static readonly object s_gate = new();

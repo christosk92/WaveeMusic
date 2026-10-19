@@ -3016,6 +3016,14 @@
         "densityCompact": "Compact",
         "useWindowsAccent": "Use the Windows accent colour",
         "useWindowsAccentSub": "Off uses Wavee’s own blue"
+      },
+      "frame": {
+        "$comment": "The frame family (W2a): the two-row title bar's tooltips, the Wavee mark, the short search placeholder.",
+        "appName": "Wavee",
+        "search": "Search",
+        "back": "Back",
+        "forward": "Forward",
+        "more": "More"
       }
     }
   },

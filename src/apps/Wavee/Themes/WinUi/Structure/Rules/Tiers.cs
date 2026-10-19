@@ -208,4 +208,8 @@ public sealed record WinUiFrameLayout(WidthTier Tier, float InsetX, float InsetT
 
     /// <summary>The title bar's height: the strip over the toolbar (88) with tabs on, the one 48 bar with tabs off.</summary>
     public float TitleBarH(bool tabs) => tabs ? TabStripH + ToolbarH : ToolbarH;
+
+    /// <summary>The content layer is square and flush (W-Shell-Compact, W-Narrow: LeftMinimal, no rail beside it); from Small up it is the r8
+    /// top-left card beside the pane (W2a).</summary>
+    public bool SquareCard => Tier == WidthTier.Compact;
 }

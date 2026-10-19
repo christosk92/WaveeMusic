@@ -101,3 +101,48 @@ and the frame records) and `WinUiRegistryCompletenessTests.cs` (above). `Wavee.S
 lane extends: the app under WinUI (`WinUiHost`) at the boards' sizes and every edge (640/641, 617/616 from above, 1007/1008, 984/983,
 1919/1920, 1896/1895, heights 719/720, 696/695), asserting the first-frame tier, WinUI's records and capabilities, the nav pane's width
 per tier, the three regions and the ShortFloor. A lane adds its page fixtures in `WinUiTierLayoutTests.<Family>.cs`.
+
+## W2a: the frame
+
+The frame family (boards Shell-Top, W-Shell-Compact / Small / Huge / Short, W-Narrow, W-Flyouts, W-Tiers): `Structure\WinUiStructure.Frame.cs`
+registers `Shell.Frame`, `Shell.ContentState`, `Shell.TitleBar`, `Shell.Search`, `Shell.SearchSuggestions`, `Shell.Masthead`, `Page.Head`,
+`Shell.CommandPalette`, `Shell.HistoryMenu`, `Shell.FileDrop`, `Shell.DragChip` and `Shell.CoverScrim` (`Views\Frame`, `Views\TitleBar`,
+`Views\Search`, `Views\Masthead`, `Views\Palette`, `Views\FrameBits`). Numbers: `Rules\WinUiFrameRules.cs`; the title bar's record per tier:
+`Rules\Tiers.Frame.cs` (`WinUiTiers.TitleBar(tier)`); the allocator's budget: `Rules\WinUiPolicies.Frame.cs`.
+
+**The frame** (`WinUiFrame`): the title bar's slot (`shell.titlebar`), then the body: the content region (the nav column, the content card
+`shell.content.card`, the panel reservations, the seams and the narrow drawer's layer, so the drawer overlays the page below the title bar)
+over the play bar, with the panel layer over both (dock, float 340, the Compact sheet with its scrim; Classic's second pane and the core's
+`DockedPanes`). The content card is the content layer (`R.Layer.FileArea`) with r8 on its top left and a left+top hairline from Small up,
+square and flush at Compact (`WinUiFrameLayout.SquareCard`). Page insets (16 / 24 / 36 / 48, top 16 / 20 / 24 / 32) are the pages' and the
+masthead's (`WinUiTiers.InsetOf`), never the frame's padding: a scroller keeps its bar on the card's edge.
+
+**Motion.** The nav column's width (`ShellFrameProps.SidebarColumnWidth`) eases over 167 ms THROUGH REAL LAYOUT (`NavColumnAnim`, a reflow on
+the pane curve), so the card follows frame by frame on a mode change (the option, the tier, the hamburger) and on a 1440 -> 800 resize; a
+Reveal would leave the card at its final x on the first frame. The title bar's slot eases 88 <-> 48 when tabs turn on or off (`TitleSlotAnim`,
+a reflow anchored at its foot): the toolbar row stays glued to the page. Prove both with `trace` (keys `shell.nav.column`,
+`shell.content.card`, `shell.titlebar`, `winui.titlebar.toolbar`).
+
+**The title bar** (`WinUiTitleBar`, the engine's EP16 shell bar): tabs on, `Rows = 2` (the 40 Mica Alt strip with the captions over the 48
+toolbar); tabs off (`ShellCapabilities.ShowsTabStrip` false: WinUI's tabs option now sets `HiddenTabStrip`, the workspace kept, Ctrl+Tab
+cycling) one 48 bar ending in the captions, the Wavee mark after Forward from Small up. Per tier (`WinUiTitleBarLayout`): the strip's form
+(Ladder 240 / 200 / 160 -> 110; Compact's 140 selected + 40 icon tabs), Forward from Small, the search field on the window's centre line
+(520, 640 at Huge, Small's filling the centred span up to 520; the magnifier at Compact), pin and Friends from Standard (Small folds them
+into a ⋯ menu), the bell's badge, the avatar (the name beside it at Huge comes from the core's chip: `ChromeBudget.NameEnterW` is 0 at Huge
+only). Compact is the touch tier: the buttons are 40 x 40, the tabs and "+" fill the 40 row (the board's 36 grow to the owner's floor; the
+Compact strip is its own instance, re-mounted on the 641 crossing). Every interactive child is a keyed `TitleBarItem`; self-updating ones are
+components. From Small up the toolbar keeps one shape, so the 1008 and 1920 crossings never re-mount its buttons.
+
+**Search** (`WinUiSearch`): the stock AutoSuggestBox at the title bar's width (`ShellSearchProps.FieldWidth` overridden from the record and the
+bar's measured centre: a crowded row narrows the field, it never overlaps the clusters), no focus growth; the popup per W-Flyouts (recent
+queries with the history glyph, an edge-to-edge divider, the entity rows, Retry on failure).
+
+**Masthead / Page.Head**: the band on the tier's inset; the head by `PageHeadForm` (Title: Title Large keyed `winui.page.title`; Drill: the
+BreadcrumbBar over the title; Hero: the BreadcrumbBar alone), heights within the pages' `BrowseMastheadMetrics` reserve.
+
+**Tests.** `Wavee.ShellTests\WinUiTierLayoutTests.Frame.cs` (the two rows, the clusters and the search per tier, the card's place, tabs off and
+back); the harness's Compact 40-DIP rule is live for the title bar (the identity chip, W8a's view, is excluded).
+
+**Open (engine / other lanes).** The strip's tab widths snap on a ladder change (engine `TabStrip.Form`); the search's 520 <-> 640 change at
+the 1920 edge snaps on widening and keeps its final x on narrowing (a reflow inside the bar's hugging centre island); the 1008 crossing moves
+the bell by the ⋯ slot's 44; the avatar chip (32) is under 40 at Compact (W8a's `Overlay.ProfileChip`); the play bar's height (Mini 64) is W4a's.
