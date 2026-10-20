@@ -16,6 +16,11 @@
 //
 // NOT HERE. Hidden, parked, exiting and fully transparent subtrees never reach the snapshot (the capture skips them), so the pure half never
 // sees them; `TryGetVisibleRect` checks them itself because it starts from any live node.
+//
+// ONE RECT FOR BOTH. The pointer verbs' actionability (`InspectKit.Assess`: click, hover, scroll key=, find's onScreen) reads
+// `TryGetVisibleRect` too, so a target `click` refuses as off screen and a node `lint scope=screen` leaves out are judged alike. It is the
+// stricter of the two copies the lanes wrote: the engine's `VisibleWindowRect` folds in transforms and the node's own authored clip (the rect
+// the hit test agrees with), and a transparent ancestor hides the node.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -186,6 +191,15 @@ public static partial class Diagnostics
                 if ((scene.Flags(a) & NodeFlags.ClipsToBounds) == 0 && scene.TryGetScroll(a, out _)) cut = cut.Intersect(scene.AbsoluteTransformedRect(a));
             visible = cut;
             fraction = Fraction(painted, visible);
+            return true;
+        }
+
+        /// <summary>No node from <paramref name="node"/> up is hidden, parked, exiting or transparent: what <see cref="TryGetVisibleRect"/> asks
+        /// before it measures (a pointer verb's "shown", beside the engine's <c>SceneStore.IsShown</c>).</summary>
+        public static bool Shown(SceneStore scene, NodeHandle node)
+        {
+            for (NodeHandle a = node; !a.IsNull; a = scene.Parent(a))
+                if (Hidden(scene, a)) return false;
             return true;
         }
 

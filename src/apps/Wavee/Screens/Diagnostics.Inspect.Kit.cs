@@ -231,27 +231,8 @@ public static partial class Diagnostics
         public static Point2 CentreOf(SceneStore scene, NodeHandle node) => CentreOf(scene.PresentedAbsoluteRect(node));
 
         // ── on screen ───────────────────────────────────────────────────────────────────────────────────────────────
-        // The visible part of a node: its presented rect cut by the window, every ancestor that clips (ClipsToBounds, a scroll
-        // viewport) and every ancestor's authored clip rect (node-local, NodePaint.ClipRect). Lint has its own copy of this math
-        // (lane i3); the two are meant to become one.
-
-        /// <summary>The part of <paramref name="node"/>'s presented rect that can be seen (empty when none), in window DIP.</summary>
-        public static RectF VisibleRect(SceneStore scene, NodeHandle node, in RectF window)
-        {
-            RectF r = scene.PresentedAbsoluteRect(node).Intersect(window);
-            for (NodeHandle a = scene.Parent(node); !a.IsNull && !r.IsEmpty; a = scene.Parent(a))
-            {
-                RectF box = scene.PresentedAbsoluteRect(a);
-                if ((scene.Flags(a) & NodeFlags.ClipsToBounds) != 0 || scene.HasScroll(a)) r = r.Intersect(box);
-                RectF clip = scene.Paint(a).ClipRect;
-                if (!clip.IsInfinite) r = r.Intersect(new RectF(box.X + clip.X, box.Y + clip.Y, clip.W, clip.H));
-            }
-            return r;
-        }
-
-        /// <summary>The share of <paramref name="full"/> that <paramref name="visible"/> covers, 0..1 (0 for an empty box).</summary>
-        public static float Fraction(in RectF visible, in RectF full)
-            => full.W > 0f && full.H > 0f && !visible.IsEmpty ? Math.Clamp(visible.W * visible.H / (full.W * full.H), 0f, 1f) : 0f;
+        // The visible part of a node is the lint's (InspectVisible.TryGetVisibleRect, Diagnostics.Inspect.Visible.cs): one helper, so
+        // a target `click` refuses as off screen and a node `lint scope=screen` leaves out are judged by the same rect.
 
         /// <summary>The window's rect in DIP.</summary>
         public static RectF WindowRect(Shell.HeadlessShell shell)
@@ -279,8 +260,16 @@ public static partial class Diagnostics
         {
             SceneStore scene = shell.Host.Scene;
             RectF rect = scene.PresentedAbsoluteRect(node);
-            bool shown = scene.IsShown(node);
-            RectF visible = shown ? VisibleRect(scene, node, window) : default;   // a parked or hidden node shows nothing, wherever its rect lies
+            // Shown as the engine says (live, linked to the root, visible and opaque up the chain, a box) and as the lint says (no parked,
+            // exiting or transparent node up the chain); a node that is not shows nothing, wherever its rect lies. The visible rect is
+            // the engine's (the painted box, transforms folded in, cut by every clip the hit test honours) cut by the window.
+            bool shown = scene.IsShown(node) && InspectVisible.Shown(scene, node);
+            InspectVisible.TryGetVisibleRect(scene, node, window, out RectF visible, out float fraction);
+            if (!shown)
+            {
+                visible = default;
+                fraction = 0f;
+            }
             Point2 aim = CentreOf(visible.IsEmpty ? rect : visible);
             NodeHandle hit = shell.Host.Input.HitTest(aim);
             bool passive = (scene.Interaction(node).HandlerMask & TakesHits) == 0;
@@ -309,7 +298,7 @@ public static partial class Diagnostics
                     hitKey = PathOf(scene, hit);
                 }
             }
-            Actionability.Verdict v = Actionability.Decide(shown, Fraction(visible, rect), disabled, relation, wheel ? Actionability.Reach.None : ReachOf(scene, node),
+            Actionability.Verdict v = Actionability.Decide(shown, fraction, disabled, relation, wheel ? Actionability.Reach.None : ReachOf(scene, node),
                 aim, visible, hitKey, note);
             return wheel ? v with { Note = "" } : v;   // the wheel reaches the scroller whatever is hit: no "nothing reacts" note
         }
@@ -540,7 +529,7 @@ public static partial class Diagnostics
     public static class Actionability
     {
         /// <summary>The share of a target that must be visible.</summary>
-        public const float MinVisible = 0.5f;
+        public const float MinVisible = InspectVisible.MinFraction;
 
         /// <summary>Where the hit test at the visible centre landed, relative to the target: <see cref="Ancestor"/> also covers a
         /// sibling part of the same click owner; <see cref="Through"/> is a hit target painted beneath a passive target, which the
