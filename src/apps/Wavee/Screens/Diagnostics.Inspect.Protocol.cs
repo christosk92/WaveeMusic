@@ -105,15 +105,18 @@ public static partial class Diagnostics
         // read this table, so an arg the code reads but the table lacks is refused at the door (add it here when you add it to a
         // verb). Names are case-sensitive; an alias is rewritten to its canonical name before the verb runs.
 
-        /// <summary>What an arg holds (for `help`; the verbs parse the values themselves).</summary>
+        /// <summary>What an arg holds. `Validate` checks the value against it (an int, a number, true/false, one of an enum's or a
+        /// list's choices) and writes it back in canonical form; the verbs then parse the values themselves.</summary>
         public enum ArgType : byte { String, Int, Float, Bool, Size, Key, Path, Enum, List }
 
-        /// <summary>One declared arg: its name, type, default (null: none), choices (an enum's words), aliases and a one-line doc.</summary>
+        /// <summary>One declared arg: its name, type, default (null: none), choices (an enum's or a list's words), aliases, a one-line
+        /// doc, and <see cref="Requires"/>: the arg it only applies beside (a trace option needs `trace`, a video option `video`).</summary>
         public sealed record ArgSpec(string Name, ArgType Type, string Doc)
         {
             public string? Default { get; init; }
             public string[] Choices { get; init; } = [];
             public string[] Aliases { get; init; } = [];
+            public string? Requires { get; init; }
         }
 
         /// <summary>One verb: its canonical name, aliases, a one-line summary, one example, its positional names (bare words fill
@@ -130,11 +133,12 @@ public static partial class Diagnostics
         }
 
         /// <summary>An arg row: <paramref name="choices"/> and <paramref name="aliases"/> are `|`-separated.</summary>
-        static ArgSpec Arg(string name, ArgType type, string doc, string? def = null, string choices = "", string aliases = "") => new(name, type, doc)
+        static ArgSpec Arg(string name, ArgType type, string doc, string? def = null, string choices = "", string aliases = "", string? requires = null) => new(name, type, doc)
         {
             Default = def,
             Choices = choices.Length == 0 ? [] : choices.Split('|'),
             Aliases = aliases.Length == 0 ? [] : aliases.Split('|'),
+            Requires = requires,
         };
 
         /// <summary>The groups in order; a name a group repeats keeps its first row.</summary>
@@ -173,13 +177,20 @@ public static partial class Diagnostics
             Arg("panKind", ArgType.Enum, "the contact's device", "touchpad", "touchpad|touch"),
         ];
 
-        /// <summary>A settling verb's own args (plus <see cref="s_traceOptions"/> after `trace=N`).</summary>
+        /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` (anywhere else they would
+        /// do nothing, so they are refused).</summary>
         static readonly ArgSpec[] s_settleArgs = Join(
         [
             Arg("settle", ArgType.Bool, "false: reply at once (frames:0, settled:false) and step with frames yourself", "true"),
             Arg("max", ArgType.Int, "the settle's frame cap (with trace=N: the most nodes watched)", "600"),
             Arg("trace", ArgType.Int, "trace N frames from the action instead of settling (the trace options apply)"),
-        ], s_traceOptions);
+        ], Array.ConvertAll(s_traceOptions, static a => a with { Requires = "trace" }));
+
+        /// <summary>`theme` and `option`: one `max` caps the transaction (the apply) and, when given, the settle after it.</summary>
+        static readonly ArgSpec[] s_transactionMax =
+        [
+            Arg("max", ArgType.Int, "the frame cap of the theme transaction (option: the apply), and of the settle after it when given (else 600)", "900"),
+        ];
 
         /// <summary>Where `goto` (and `mount`, `crossing`) navigate: deeplink wins over uri, uri over route.</summary>
         static readonly ArgSpec[] s_navArgs =
@@ -190,31 +201,43 @@ public static partial class Diagnostics
             Arg("deeplink", ArgType.String, "a wavee:// payload through the OS door (never validated)"),
         ];
 
-        /// <summary>The mount's own args (`mount`, and `crossing` when it mounts).</summary>
-        static readonly ArgSpec[] s_mountArgs = Join(
+        /// <summary>The mount's own args, without the navigation (`mount`, and `crossing` only when it mounts). The theme ids are
+        /// App.ShippedThemeIds: a theme the app starts shipping is added here too, or `theme=` refuses it.</summary>
+        static readonly ArgSpec[] s_mountOwnArgs =
         [
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
             Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, "classic|zune|winui"),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
             Arg("gpu", ArgType.Enum, "warp/hardware: the offscreen D3D12 surface (render works); none: no pixels", "warp", "warp|hardware|none"),
-            Arg("keepRoute", ArgType.Bool, "keep the current navigation instead of a fresh Home", "false"),
-            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate", null, "true|signin"),
+            Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
+            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
-            Arg("player", ArgType.Enum, "with video: bind an idle engine player", null, "fake"),
-            Arg("chrome", ArgType.Enum, "Zune's video stage: the hover chrome at rest", null, "shown"),
-            Arg("fromMs", ArgType.Int, "with video: the fake track's position", "74000"),
+            Arg("player", ArgType.Enum, "bind an idle engine player to the video surface", null, "fake", requires: "video"),
+            Arg("chrome", ArgType.Enum, "Zune's video stage: the hover chrome at rest", null, "shown|hidden"),
+            Arg("fromMs", ArgType.Int, "the fake video track's position", "74000", requires: "video"),
             Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it)", null, "lyrics|visualizer|queue|artist"),
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
-            Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off"),
+            Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off|true|false"),
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
-        ], s_navArgs);
+        ];
+
+        /// <summary>The mount's args: its own and the navigation.</summary>
+        static readonly ArgSpec[] s_mountArgs = Join(s_mountOwnArgs, s_navArgs);
+
+        /// <summary>True for an arg only a mount reads (not the navigation): a `crossing` over a mount that is already up refuses them.</summary>
+        public static bool IsMountOnly(string name)
+        {
+            foreach (ArgSpec a in s_mountOwnArgs)
+                if (string.Equals(a.Name, name, StringComparison.Ordinal)) return true;
+            return false;
+        }
 
         // ── the lint args: ONE LINE PER ARG (Diagnostics.Inspect.Lint.Scene.cs `TryOptions` reads them; `lint` and `crossing` take them) ──
         static readonly ArgSpec[] s_lintArgs =
         [
-            Arg("rules", ArgType.List, "the rules to run (default: all)", null, "gutter|right-edge|clip|trim|type|target|duplicate|rhythm|contrast"),
-            Arg("min", ArgType.Enum, "leave out findings below this severity", "info", "info|warn|error"),
+            Arg("rules", ArgType.List, "the rules to run (default: all)", null, string.Join("|", InspectLint.RuleNames)),
+            Arg("min", ArgType.Enum, "leave out findings below this severity", "info", "info|warn|warning|error"),
             Arg("limit", ArgType.Int, "the most findings one rule reports", "100"),
             Arg("typeFloor", ArgType.Float, "type: text under this size (DIP) is an error", "11"),
             Arg("targetFloor", ArgType.Float, "target: the smallest hit target outside Compact (DIP)", "32"),
@@ -245,7 +268,7 @@ public static partial class Diagnostics
                 Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json")],
             },
             new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts when mounted", "status") { Aliases = ["ping"] },
-            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and clears the state vacancy, playback and queue", "mount w=400 h=860 theme=zune kind=dark route=home")
+            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, stage, tabs, playback, queue", "mount w=400 h=860 theme=zune kind=dark route=home")
             {
                 Positional = ["w", "h"],
                 Args = Join([Arg("w", ArgType.Float, "window width (DIP)", "1180"), Arg("h", ArgType.Float, "window height (DIP)", "760")], s_mountArgs, s_settleArgs),
@@ -270,7 +293,7 @@ public static partial class Diagnostics
             {
                 Positional = ["max"], NeedsMount = true, Args = [Arg("max", ArgType.Int, "the frame cap", "600")],
             },
-            new(Verb.Reset, "reset", "Unmount, reset navigation to Home, clear the state vacancy and playback, activate Classic dark", "reset"),
+            new(Verb.Reset, "reset", "Unmount, put back what the mount changed (as mount does), reset navigation to Home, activate Classic dark", "reset"),
             new(Verb.Click, "click", "Click a node's visible centre (refused unless actionable; force=true skips) or a point; then settle", "click key=zune-band-pivot:library")
             {
                 Positional = ["key"], NeedsMount = true, Acts = true,
@@ -287,7 +310,7 @@ public static partial class Diagnostics
                 Args = Join([Arg("key", ArgType.String, "enter, esc, tab, space, backspace, delete, arrows, home, end, pageup, pagedown, apps, f1..f12, a..z, 0..9 or a VK code"),
                              Arg("repeat", ArgType.Int, "presses (1..100)", "1")], s_settleArgs),
             },
-            new(Verb.Type, "type", "Type text into the focused node (text form: the rest of the line, spaces kept); then settle", "type daft punk")
+            new(Verb.Type, "type", "Type text into the focused node (text form: the rest of the line, spaces kept; quote it to add args); then settle", "type \"daft punk\" settle=false")
             {
                 Positional = ["text"], NeedsMount = true, Acts = true, Args = Join([Arg("text", ArgType.String, "the characters to type")], s_settleArgs),
             },
@@ -307,12 +330,13 @@ public static partial class Diagnostics
             {
                 Positional = ["id", "value"], Acts = true,
                 Args = Join([Arg("themeId", ArgType.String, "the theme whose options (default: the active one)", null, "", "theme"),
-                             Arg("id", ArgType.String, "the option (qualified, or plain)"), Arg("value", ArgType.String, "a choice name or index, a number, true/false or #RRGGBB[AA]")], s_settleArgs),
+                             Arg("id", ArgType.String, "the option (qualified, or plain)"), Arg("value", ArgType.String, "a choice name or index, a number, true/false or #RRGGBB[AA]")],
+                            s_transactionMax, s_settleArgs),
             },
             new(Verb.Theme, "theme", "Switch the theme: mounted, the live theme transaction; unmounted, the next mount's theme", "theme zune")
             {
                 Positional = ["id"], Acts = true,
-                Args = Join([Arg("id", ArgType.Enum, "the theme", null, "classic|zune|winui")], s_settleArgs),
+                Args = Join([Arg("id", ArgType.Enum, "the theme", null, "classic|zune|winui")], s_transactionMax, s_settleArgs),
             },
             new(Verb.Find, "find", "Nodes keyed exactly key (or starting with prefix=), in reading order, with shown, onScreen and actionable", "find see-all:home:made-for-you")
             {
@@ -414,18 +438,22 @@ public static partial class Diagnostics
 
         // ── the strict-arg check ────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Every arg of <paramref name="cmd"/> must be one its verb declares (exact case). An alias is rewritten to its
-        /// canonical name. False with "unknown arg 'rule' for lint (did you mean 'rules'?)" otherwise.</summary>
+        /// <summary>Every arg of <paramref name="cmd"/> must be one its verb declares (exact case), hold a value of its type, and
+        /// (when it <see cref="ArgSpec.Requires"/> another) stand beside that one. An alias is rewritten to its canonical name, and a
+        /// value to its canonical form (an enum word to its declared spelling, a bool word to a bool, a list to a JSON array of
+        /// strings). False with the reason otherwise: "unknown arg 'rule' for lint (did you mean 'rules'?)", "bad value 'middle'
+        /// for button (left|right)", "'keys' applies only beside trace=".</summary>
         public static bool Validate(in Command cmd, out string error)
         {
             error = "";
             if (SpecOf(cmd.Verb) is not { } spec) return true;
+            Args args = cmd.Args;
             List<(string From, string To)>? renames = null;
-            foreach (string name in cmd.Args.Names)
+            foreach (string name in args.Names)
             {
-                if (TryDeclared(spec, name, out string canonical))
+                if (ArgNamed(spec, name) is { } declared)
                 {
-                    if (!ReferenceEquals(canonical, name) && canonical != name) (renames ??= []).Add((name, canonical));
+                    if (declared.Name != name) (renames ??= []).Add((name, declared.Name));
                     continue;
                 }
                 error = "unknown arg '" + name + "' for " + spec.Name + (spec.Args.Length == 0
@@ -436,22 +464,131 @@ public static partial class Diagnostics
             if (renames is not null)
                 foreach (var (from, to) in renames)
                 {
-                    if (cmd.Args.Has(to)) { error = "'" + from + "' and '" + to + "' are the same arg of " + spec.Name; return false; }
-                    if (cmd.Args.Remove(from, out Value v)) cmd.Args.Set(to, v);
+                    if (args.Contains(to)) { error = "'" + from + "' and '" + to + "' are the same arg of " + spec.Name; return false; }
+                    if (args.Remove(from, out Value v)) args.Set(to, v);
                 }
+            foreach (ArgSpec arg in spec.Args)
+            {
+                if (!args.TryGet(arg.Name, out Value value)) continue;   // absent (or JSON null: absent too)
+                if (arg.Requires is { } need && !args.Has(need))
+                {
+                    error = "'" + arg.Name + "' applies only beside " + need + "= (" + spec.Name + " ignores it otherwise)";
+                    return false;
+                }
+                if (!TryCanonical(arg, args, value, out error)) return false;
+            }
             return true;
         }
 
-        static bool TryDeclared(VerbSpec spec, string name, out string canonical)
+        /// <summary>Check one present value against its row and write it back canonical. False with "bad value ..." otherwise.</summary>
+        static bool TryCanonical(ArgSpec arg, Args args, Value value, out string error)
+        {
+            error = "";
+            switch (arg.Type)
+            {
+                case ArgType.Int:
+                    if (args.TryNum(arg.Name, out double n) && n == Math.Floor(n) && Math.Abs(n) <= int.MaxValue) return true;
+                    error = BadValue(arg, value, "a whole number");
+                    return false;
+                case ArgType.Float:
+                    if (args.TryNum(arg.Name, out _)) return true;
+                    error = BadValue(arg, value, "a number");
+                    return false;
+                case ArgType.Bool:
+                    {
+                        bool? b = value.Kind switch
+                        {
+                            ValueKind.Bool => value.Bool,
+                            ValueKind.Number => value.Num == 1 ? true : value.Num == 0 ? false : null,
+                            ValueKind.String => value.Str.ToLowerInvariant() switch
+                            {
+                                "true" or "on" or "yes" or "1" => true,
+                                "false" or "off" or "no" or "0" => false,
+                                _ => null,
+                            },
+                            _ => null,
+                        };
+                        if (b is not { } flag) { error = BadValue(arg, value, "true or false"); return false; }
+                        args.Set(arg.Name, new Value(ValueKind.Bool, Bool: flag));
+                        return true;
+                    }
+                case ArgType.Enum:
+                    {
+                        if (arg.Choices.Length == 0) return true;
+                        if (value.Kind != ValueKind.Json && ChoiceOf(arg, value.ToString()) is { } choice)
+                        {
+                            args.Set(arg.Name, new Value(ValueKind.String, choice));
+                            return true;
+                        }
+                        error = BadValue(arg, value, string.Join("|", arg.Choices));
+                        return false;
+                    }
+                case ArgType.List:
+                    {
+                        if (value.Kind == ValueKind.Json && !value.Str.AsSpan().TrimStart().StartsWith("[", StringComparison.Ordinal))
+                        {
+                            error = BadValue(arg, value, "a list: a,b or [a,\"b c\"]");
+                            return false;
+                        }
+                        List<string> items = args.List(arg.Name);
+                        if (arg.Choices.Length > 0)
+                        {
+                            if (items.Count == 0) { error = "'" + arg.Name + "' names nothing (" + string.Join("|", arg.Choices) + ")"; return false; }
+                            for (int i = 0; i < items.Count; i++)
+                            {
+                                if (ChoiceOf(arg, items[i]) is not { } choice)
+                                {
+                                    error = "bad value '" + items[i] + "' in " + arg.Name + " (" + string.Join("|", arg.Choices) + ")";
+                                    return false;
+                                }
+                                items[i] = choice;
+                            }
+                        }
+                        // One shape for every reader: a JSON array of strings (a bracketed number or true/false is its text, so `[2024,Play]` keeps 2024).
+                        if (value.Kind == ValueKind.Json || arg.Choices.Length > 0) args.Set(arg.Name, new Value(ValueKind.Json, JsonList(items)));
+                        return true;
+                    }
+                case ArgType.String or ArgType.Key or ArgType.Path:
+                    if (value.Kind != ValueKind.Json) return true;
+                    error = BadValue(arg, value, "a single value, not a list or an object");
+                    return false;
+            }
+            return true;   // Size: the verb parses WxH, {w,h} or [w,h] itself
+        }
+
+        static string BadValue(ArgSpec arg, Value value, string want) => "bad value '" + value + "' for " + arg.Name + " (" + want + ")";
+
+        /// <summary>The declared choice <paramref name="word"/> names (any case), or null.</summary>
+        static string? ChoiceOf(ArgSpec arg, string word)
+        {
+            foreach (string c in arg.Choices)
+                if (string.Equals(c, word, StringComparison.OrdinalIgnoreCase)) return c;
+            return null;
+        }
+
+        /// <summary><paramref name="items"/> as a JSON array of strings.</summary>
+        static string JsonList(IEnumerable<string> items)
+        {
+            var buffer = new ArrayBufferWriter<byte>(64);
+            using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+            {
+                w.WriteStartArray();
+                foreach (string item in items) w.WriteStringValue(item);
+                w.WriteEndArray();
+            }
+            return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        }
+
+        /// <summary>The row <paramref name="name"/> names on <paramref name="spec"/> (its name or an alias, exact case), or null.</summary>
+        static ArgSpec? ArgNamed(VerbSpec spec, string name)
         {
             foreach (ArgSpec a in spec.Args)
             {
-                if (string.Equals(a.Name, name, StringComparison.Ordinal)) { canonical = a.Name; return true; }
+                if (string.Equals(a.Name, name, StringComparison.Ordinal)) return a;
                 foreach (string alias in a.Aliases)
-                    if (string.Equals(alias, name, StringComparison.Ordinal)) { canonical = a.Name; return true; }
+                    if (string.Equals(alias, name, StringComparison.Ordinal)) return a;
             }
-            canonical = "";
-            return false;
+            return null;
         }
 
         /// <summary>The declared arg <paramref name="name"/> was probably meant as: the same letters in another case, else the
@@ -526,6 +663,7 @@ public static partial class Diagnostics
                 if (a.Default is { } d) w.WriteString("default", d);
                 if (a.Choices.Length > 0) WriteStrings(w, "choices", a.Choices);
                 if (a.Aliases.Length > 0) WriteStrings(w, "aliases", a.Aliases);
+                if (a.Requires is { } need) w.WriteString("requires", need);
                 w.WriteString("doc", a.Doc);
                 w.WriteEndObject();
             }
@@ -537,7 +675,7 @@ public static partial class Diagnostics
         {
             w.WriteStartObject("schema");
             w.WriteNumber("version", 1);
-            w.WriteString("grammar", "one command per line: {\"cmd\",\"args\",\"id\"} or `verb k=v k=\"a b\" k=[a,\"b c\"] bare`; bare words fill `positional` in order; arg names are case-sensitive and an undeclared one is refused");
+            w.WriteString("grammar", "one command per line: {\"cmd\",\"args\",\"id\"} or `verb k=v k=\"a b\" k=[a,\"b c\"] bare`; bare words fill the `positional` names not given by name, in order; arg names are case-sensitive, and an undeclared name, a name given twice, a value not of the arg's type or choices, or an arg given without the one it `requires` is refused");
             w.WriteStartArray("verbs");
             foreach (VerbSpec s in Specs)
             {
@@ -601,6 +739,8 @@ public static partial class Diagnostics
 
             public void Set(string name, Value value) => _values[name] = value;
             public bool Remove(string name, out Value value) => _values.Remove(name, out value);
+            /// <summary>Given at all, even as JSON null (<see cref="Has"/> reads null as absent).</summary>
+            public bool Contains(string name) => _values.ContainsKey(name);
             public bool Has(string name) => _values.TryGetValue(name, out Value v) && v.Kind != ValueKind.Null;
             public bool TryGet(string name, out Value value) => _values.TryGetValue(name, out value) && value.Kind != ValueKind.Null;
 
@@ -705,7 +845,8 @@ public static partial class Diagnostics
                     {
                         if (p.Value.ValueKind == JsonValueKind.Object)
                         {
-                            foreach (JsonProperty a in p.Value.EnumerateObject()) args.Set(a.Name, ValueOf(a.Value));
+                            foreach (JsonProperty a in p.Value.EnumerateObject())
+                                if (!TryPut(args, a.Name, ValueOf(a.Value), out error)) return false;
                             continue;
                         }
                         if (p.Value.ValueKind == JsonValueKind.Array)
@@ -715,7 +856,7 @@ public static partial class Diagnostics
                             foreach (JsonElement a in p.Value.EnumerateArray())
                             {
                                 if (i >= names.Length) { error = "too many positional args for '" + name + "'"; return false; }
-                                args.Set(names[i++], ValueOf(a));
+                                if (!TryPut(args, names[i++], ValueOf(a), out error)) return false;
                             }
                             continue;
                         }
@@ -723,7 +864,7 @@ public static partial class Diagnostics
                         error = "\"args\" must be an object or an array";
                         return false;
                     }
-                    args.Set(p.Name, ValueOf(p.Value));
+                    if (!TryPut(args, p.Name, ValueOf(p.Value), out error)) return false;
                 }
                 cmd = new Command(verb, name, args, id);
                 return true;
@@ -742,10 +883,11 @@ public static partial class Diagnostics
         };
 
         /// <summary>`verb a=1 b=two k="a b" l=[x,"y z",3] bare words`: named `k=v` pairs, and bare words filling the verb's
-        /// positional names. A value in double quotes keeps its blanks and is always a string (`\"` and `\\` escape; any other
-        /// backslash stays, so Windows paths need nothing). A value in brackets is a list, kept as a JSON array exactly as the
-        /// JSON form would carry it (unquoted numbers, true and false as JSON literals, everything else a string). The `type`
-        /// verb takes the whole rest of the line as its text (spaces kept).</summary>
+        /// positional names that no `k=v` has filled yet, in order. A name given twice is refused. A value in double quotes keeps
+        /// its blanks and is always a string (`\"` and `\\` escape; any other backslash stays, so Windows paths need nothing); a
+        /// quoted value of a list arg is a one-item list, commas and all. A value in brackets is a list, kept as a JSON array
+        /// exactly as the JSON form would carry it (unquoted numbers, true and false as JSON literals, everything else a string).
+        /// The `type` verb takes the whole rest of the line as its text (spaces kept) unless it starts with a quote or `text=`.</summary>
         static bool TryParseText(ReadOnlySpan<char> line, out Command cmd, out string error)
         {
             cmd = new Command(Verb.None, "", Args.Empty);
@@ -757,12 +899,13 @@ public static partial class Diagnostics
             if (verb == Verb.None) { error = "unknown command '" + name + "' (try help)"; return false; }
             ReadOnlySpan<char> rest = sp < 0 ? default : line[(sp + 1)..].Trim();
             var args = new Args();
-            if (verb == Verb.Type && !rest.IsEmpty && !rest.StartsWith("text=", StringComparison.Ordinal))
+            if (verb == Verb.Type && !rest.IsEmpty && rest[0] != '"' && !rest.StartsWith("text=", StringComparison.Ordinal))
             {
                 args.Set("text", new Value(ValueKind.String, rest.ToString()));
                 cmd = new Command(verb, name, args);
                 return true;
             }
+            VerbSpec? spec = SpecOf(verb);
             ReadOnlySpan<string> names = PositionalNames(verb);
             int positional = 0, i = 0;
             while (true)
@@ -773,13 +916,29 @@ public static partial class Diagnostics
                 while (j < rest.Length && !IsBlank(rest[j]) && rest[j] is not ('=' or '"' or '[')) j++;
                 string? argName = j > i && j < rest.Length && rest[j] == '=' ? rest[i..j].ToString() : null;
                 if (argName is not null) i = j + 1;
+                bool quoted = i < rest.Length && rest[i] == '"';
                 if (!TryValue(rest, ref i, out Value value, out error)) { error += " in '" + rest[start..].ToString() + "'"; return false; }
                 if (i < rest.Length && !IsBlank(rest[i])) { error = "'" + rest[start..].ToString() + "': a quoted value or a list ends at a blank"; return false; }
-                if (argName is not null) { args.Set(argName, value); continue; }
-                if (positional >= names.Length) { error = "unexpected '" + rest[start..i].ToString() + "' after " + name; return false; }
-                args.Set(names[positional++], value);
+                if (argName is null)
+                {
+                    while (positional < names.Length && args.Contains(names[positional])) positional++;   // `scroll key=x 10`: 10 is dy
+                    if (positional >= names.Length) { error = "unexpected '" + rest[start..i].ToString() + "' after " + name; return false; }
+                    argName = names[positional++];
+                }
+                if (quoted && spec is not null && ArgNamed(spec, argName) is { Type: ArgType.List })
+                    value = new Value(ValueKind.Json, JsonList([value.Str]));   // `allowDuplicate="Hello, world"` is one label, not two
+                if (!TryPut(args, argName, value, out error)) return false;
             }
             cmd = new Command(verb, name, args);
+            return true;
+        }
+
+        /// <summary>Add one arg; refuses a name the line already gave ("'rules' given twice": which one was meant is not ours to guess).</summary>
+        static bool TryPut(Args args, string name, Value value, out string error)
+        {
+            error = "";
+            if (args.Contains(name)) { error = "'" + name + "' given twice"; return false; }
+            args.Set(name, value);
             return true;
         }
 

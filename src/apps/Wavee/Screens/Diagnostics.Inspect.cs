@@ -250,8 +250,9 @@ public static partial class Diagnostics
         long _frames;
         int _mounts;
         bool _acts;                 // the running verb acts (the verb table's Acts): its reply carries `after`
+        bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
         string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
-        Point2? _pointer;           // where the pointer last went (pointer verbs), for `after.hit` of the others
+        Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
         public string TextBackend => _realText ? "dwrite" : "headless";
@@ -330,8 +331,10 @@ public static partial class Diagnostics
             if (!Inspect.TryParse(line, out Inspect.Command cmd, out string error))
                 return Inspect.Reply.Fail(cmd.Id, cmd.Name.Length > 0 ? cmd.Name : line.Trim(), error);
             if (cmd.IsNone) return "";
-            quit = cmd.Verb == Inspect.Verb.Quit;
-            return Execute(in cmd);
+            string reply = Execute(in cmd);
+            quit = _quit;
+            _quit = false;
+            return reply;
         }
 
         /// <summary>Run one parsed command; never throws (a failure is an ok:false reply naming the exception). An arg the verb
@@ -362,6 +365,7 @@ public static partial class Diagnostics
                     return Help(id, name, a);
                 case Inspect.Verb.Quit:
                     Unmount();
+                    _quit = true;
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Status:
                     return Inspect.Reply.Ok(id, name, WriteStatus);
