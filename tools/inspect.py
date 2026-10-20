@@ -227,7 +227,10 @@ class Gate:
     def see(self, reply):
         if reply is None:
             return
-        obj = json.loads(reply)
+        obj = _object(reply)
+        if obj is None:
+            self.failed.append(("?", "not a JSON reply: " + (reply if len(reply) <= 200 else reply[:200] + "...")))
+            return
         if not obj.get("ok", False):
             self.failed.append((obj.get("cmd", ""), obj.get("error", "")))
             return
@@ -303,11 +306,13 @@ def main():
                          "not counted), 2 on any ok:false reply, else 0; prints a one-line summary last")
     args = ap.parse_args()
 
-    server = Server(find_exe(args.exe), args.pipe, args.profile, args.text)
-    show(json.dumps(server.ready), args.pretty)
     gate = Gate(args.gate) if args.gate else None
+    server = None
     code = 0
     try:
+        # Inside the try: under --gate a server that never comes up (no exe, a boot fault, a closed stream) is a failure, exit 2.
+        server = Server(find_exe(args.exe), args.pipe, args.profile, args.text)
+        show(json.dumps(server.ready), args.pretty)
         lines = list(args.command)
         if args.file:
             with open(args.file, encoding="utf-8") as fh:
@@ -330,16 +335,18 @@ def main():
                 break
         if left:
             sys.stderr.write("inspect.py: %d command line%s after quit not sent\n" % (left, "" if left == 1 else "s"))
-    except (SystemExit, OSError) as e:
-        # The server died or closed the stream mid-run. Without --gate this ends the run as it always did; with --gate it is a
-        # failed reply (exit 2), never a lint verdict, and the summary still prints.
+    except (SystemExit, Exception) as e:
+        # The server did not come up, died or closed the stream, or a reply did not parse. Without --gate this ends the run as it
+        # always did; with --gate it is a failed reply (exit 2), never a lint verdict, and the summary still prints.
         if gate is None:
             raise
         why = (str(e) or e.__class__.__name__).strip()
         gate.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
-        server.ended = True
+        if server is not None:
+            server.ended = True
     finally:
-        server.close()
+        if server is not None:
+            server.close()
     if gate is not None:
         print(gate.summary())
         sys.stdout.flush()
