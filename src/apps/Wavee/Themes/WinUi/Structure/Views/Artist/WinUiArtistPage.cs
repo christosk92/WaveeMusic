@@ -116,7 +116,7 @@ internal static class WinUiArtistPage
         {
             var slot = plan[i];
             if (slot.Section is ArtistSection.Popular or ArtistSection.Upcoming or ArtistSection.LatestRelease) continue;
-            Element sectionBody = WinUiArtistSections.Body(slot.Section, p, shelf);
+            Element sectionBody = WinUiArtistSections.Body(slot.Section, p, shelf, tier);
             sections.Add(new BoxEl
             {
                 Key = slot.Anchor is null ? s_secKeys[(int)slot.Section] : s_anchorKeys[(int)slot.Section], Direction = 1, MinWidth = 0f,
