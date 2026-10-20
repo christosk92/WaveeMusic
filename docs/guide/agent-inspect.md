@@ -89,7 +89,7 @@ Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced
 | `setup=true` or `signin` | Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). `signin` asks for the sign-in page; today the plate still opens on its first page, so click `next` to reach it. |
 | `feedback=bug` or `feature` | Opens the report form over the page. |
 | `marquee=on` or `off` | Sets the app's marquee setting (Settings > Appearance) before the mount. |
-| `remote=<name>` | The play bar says it is playing on a remote output of that name (`--fake` has no Connect cluster). A device that turns remote after the bar mounted does not add the WinUI bar's line today: `play` first, then mount again with `keepRoute=true`. |
+| `remote=<name>` | The play bar says it is playing on a remote output of that name (`--fake` has no Connect cluster). To turn the output remote on a live mount, use `play remote=<name>`. |
 | `panelW=<dip>` | The side panel's stored width (clamped to the theme's drag range when it opens), e.g. `panelW=280` for WinUI's narrowest pane. |
 | `video=fullscreen`, `docked` or `floating` | Puts the video surface up with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome is a hover band: add `chrome=shown` to draw it at rest at every tier). |
 
@@ -175,12 +175,16 @@ key enter
 Turns the mouse wheel at the target: `dy` notches, positive toward the end of the content (3 by default). With `key`,
 the reply carries `scroll {offset, max}` of the first scroll viewport under that node.
 
-### `play {uri, fromMs?, next?, ago?}`
+### `play {uri?, fromMs?, next?, ago?, remote?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
 `Queue.Replace`, then `Playback.PlayNow`. `next=N` (a `spotify:track:tr<k>` uri) adds the N tracks `tr<k+1>`... to the same context, so the
 stage's "up next" page has rows. The lyrics media clock runs in the harness frame clock's epoch (`Shell.Headless.Boot`), so a playing
 track follows its lyrics: render the stage while playing, no pause needed. `ago=N` backdates the play in the play log by N minutes (the Up next page's "played before this" reads it).
+
+`remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
+`uri` only the output changes. The fake load lands on the wall clock: a short burst of commands can read the bar while it is still loading;
+the remote line shows through the load as the title and artists do.
 
 ### `state {kind}` and `dialog {kind}`
 
@@ -355,7 +359,7 @@ counts, so a rule with no findings can be told apart from a rule that had nothin
 |---|---|---|
 | `gutter` | The active theme's left-edge expectations: the title-bar lead on the tier's gutter, the band's first pivot and the page column's content on the page column (Zune: `ZuneFrameRules.ColumnLead(width, gutter)` in the content column). Off by more than 1 DIP. | `error` (`warn` for an expectation the theme marks advisory, such as Back at Compact) |
 | `right-edge` | The theme's right-edge expectations: the band's last row-2 action, the page's right content edge and the play bar's last glyph agree within 1 DIP. Zune checks this from Small to Standard. | `error`, the play bar's glyph `warn` |
-| `clip` | (a) Text whose ink runs outside the nearest ancestor that clips it: clipped descenders, a title taller than its fixed box. The ink is the text box, the natural height of an unwrapped run, and the 1.2 × size a tight explicit line height needs. An axis the clipping ancestor scrolls on is allowed (a pivot row fading at the window's edge), and so is everything above it. (b) Sibling boxes that overlap by more than 1 DIP, when both carry text or a target and their parent is not a ZStack or a scroller. | (a) vertical `error`, horizontal `warn`; (b) `warn` |
+| `clip` | (a) Text whose ink runs outside the nearest ancestor that clips it: clipped descenders, a title taller than its fixed box. The ink is the text box, the natural height of an unwrapped run, and the 1.2 × size a tight explicit line height needs. An axis the clipping ancestor scrolls on is allowed (a pivot row fading at the window's edge), and so is everything above it. (b) Sibling boxes that overlap by more than 1 DIP, when both carry text or a target and their parent is not a ZStack or a scroller. | (a) vertical `error` (a cut at the top of text under a theme's designed top bleed, `IThemeLintGuide.DesignedTopBleeds` — Zune's panorama band and settings title — is `info`), horizontal `warn`; (b) `warn` |
 | `trim` | Text the engine reports trimmed (`text.trimmed`), with its natural size against its box, and whether it is ellipsised, hard-clipped or overflowing. | `warn` |
 | `type` | Every distinct size / line height / weight with its count (the type scale), and an error per size under `typeFloor`. Icon glyphs are not text here. | scale `info`; floor `error` |
 | `target` | Click targets smaller than 40 × 40 at Compact (32 elsewhere). Sliders, scroll bars, progress bars and inline links are exempt, and a target that fills its interactive parent is that parent's. | `error` at Compact, `warn` elsewhere |
@@ -430,6 +434,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
 | `wheel`, `wheelEvery`, `wheelCount`, `wheelKey`, `wheelX`, `wheelY` | Mouse-wheel input during the trace: notches (a number, or a comma list that cycles, `3,3,-6`), one event every `wheelEvery` frames, `wheelCount` events, aimed at `wheelKey`, a point, or the traced scroller. |
 | `pan`, `panFrames`, `panStart`, `panEvery`, `panCount`, `panKind` | A touchpad (or `panKind=touch`) contact: DIP per frame (cycled) for `panFrames` frames from `panStart`, then the lift (fling or edge spring). `panEvery`/`panCount` repeat it. The wheel clamps hard at the bounds; only a contact stream rubber-bands. |
+| `drag`, `dragFrames`, `dragStart`, `dragKey`, `dragX`, `dragY`, `dragDy` | A mouse drag (a splitter, a slider): the button goes down at `dragStart` on `dragKey`'s centre (or `dragX`,`dragY`), the pointer moves `drag` DIP per frame along x (cycled list) and `dragDy` down for `dragFrames` frames, then the button comes up. WinUI's pane seam: `drag=4 dragFrames=14 dragX=<pane x - 8> dragY=500` narrows the pane by 56. |
 
 Any settling verb takes `trace=N` (and the options above) to trace instead of settling: `goto route=home trace=90`. Pass
 `settle=false` (implied by `trace`) so the transition frames are visible. `click`/`scroll` start the trace on the frame the release /

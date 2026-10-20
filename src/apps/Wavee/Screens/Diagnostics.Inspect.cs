@@ -483,6 +483,18 @@ public static partial class Diagnostics
                 case Inspect.Verb.Play:
                     {
                         string uri = a.Str("uri");
+                        // `remote=<name>|off`: the output turns remote (or local again) on the live mount, as a Connect transfer does while playing;
+                        // without a uri only the output changes.
+                        if (a.Has("remote"))
+                        {
+                            string remote = a.Str("remote");
+                            Wavee.Theming.InspectSwitches.RemoteDevice = remote.Length == 0 || string.Equals(remote, "off", StringComparison.OrdinalIgnoreCase) ? null : remote;
+                            if (uri.Length == 0)
+                            {
+                                RunFrames(2);
+                                return Settled(id, name, a, w => w.WriteString("remote", Wavee.Theming.InspectSwitches.RemoteDevice ?? "off"));
+                            }
+                        }
                         if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
