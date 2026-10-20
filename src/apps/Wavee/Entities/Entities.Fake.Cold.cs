@@ -122,11 +122,17 @@ public static partial class Entities
         {
             Staging.Return(staging);
         }
+        // The credits behind the line (the TrackArtists run a real Identity answer carries): the row's artist links, one artist per row,
+        // the one its ArtistLine names.
+        Span<int> credit = stackalloc int[1];
         for (int k = 0; k < ColdRows; k++)
         {
             if (Array.IndexOf(s_coldWarm, k) >= 0) continue;
             int slot = Current.Tracks.Slot(ColdTrackUri(k).AsSpan());
-            if (slot != Table.None) Current.Tracks.Inflight[slot] = 0;
+            if (slot == Table.None) continue;
+            Current.Tracks.Inflight[slot] = 0;
+            credit[0] = ResolveSeedSlot(EntityKind.Artist, ArtistUri(Wrap(k + 7, s_artistNames.Length)));
+            if (credit[0] != Table.None) Current.Edges.TrackArtists.ReplaceRun(slot, credit, default);
         }
         Current.PublishAll();
     }
