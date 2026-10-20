@@ -26,11 +26,11 @@ public sealed class WinUiLintGuide : IThemeLintGuide
         float inset = WinUiTiers.Frame(context.Window).InsetX;
         RectF content = context.RectOf(WinUiFrameLayout.ContentKey) ?? new RectF(0f, 0f, context.WindowW, context.WindowH);
 
-        // The page title sits on the content inset (W-Tiers "Content inset": 16 / 24 / 36 / 48 left and right).
+        // The page title sits on the content inset (W-Tiers "Content inset": 16 / 24 / 36 / 48 left and right): the page column's ink line.
         return
         [
             new LintEdge(Gutter, "page.title", "the page title", LintSide.Left, content.X + inset, Tolerance,
-                Keys: [WinUiFrameLayout.PageTitleKey]),
+                Keys: [WinUiFrameLayout.PageTitleKey], Column: true),
         ];
     }
 }

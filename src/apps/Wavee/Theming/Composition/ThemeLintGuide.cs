@@ -7,6 +7,7 @@
 //   · POLICIES (intents by key prefix): what the theme MEANS where a rule would otherwise guess, each with a reason a reviewer can check
 //     against a board. "Shelf captions ellipsise" (`TrimOk`), "the panorama hangs 8 left of the column" (`Hang`), "this title never
 //     trims" (`NeverTrim`). A policy turns a finding into an intended one (outcome `suppressed`, counted in the lint head), never silence.
+//     A board draws one page: a guide scopes a page's policies by `LintContext.Route`.
 // Core cannot name a theme's records (WVTH001), so the theme describes both as DATA and registers a guide for its id (`ThemeInspection`).
 // A theme with no guide (Classic) gets no edge checks and no intents: its findings are reported, not fixed (the owner's Classic rule).
 //
@@ -39,9 +40,11 @@ public enum LintSide : byte
 /// <param name="UnderKey">When set, only nodes inside the subtree of a node with this key match.</param>
 /// <param name="GlyphsOnly">Only icon-glyph text nodes match (the "last glyph" of a bar).</param>
 /// <param name="Advisory">A miss is a warning, not an error (an expectation the theme cannot be sure of).</param>
+/// <param name="Column">The x is the page column's ink line: `align.inset` measures the page's leads against it (when at least three leads
+/// sit on it) instead of guessing the line from whatever is on screen.</param>
 public sealed record LintEdge(string Rule, string Id, string What, LintSide Side, float Expected, float Tolerance,
     IReadOnlyList<string>? Keys = null, IReadOnlyList<string>? Prefixes = null, string UnderKey = "", bool GlyphsOnly = false,
-    bool Advisory = false);
+    bool Advisory = false, bool Column = false);
 
 /// <summary>What a guide reads: the window's tiers and size, and the presented rect of a keyed node (null when none is mounted).</summary>
 /// <param name="Window">The window width tier.</param>
@@ -49,7 +52,12 @@ public sealed record LintEdge(string Rule, string Id, string What, LintSide Side
 /// <param name="WindowW">The window's width in DIP.</param>
 /// <param name="WindowH">The window's height in DIP.</param>
 /// <param name="RectOf">The presented absolute rect (window DIP) of the first live node with this key, or null.</param>
-public readonly record struct LintContext(WidthTier Window, HeightTier Height, float WindowW, float WindowH, Func<string, RectF?> RectOf);
+public readonly record struct LintContext(WidthTier Window, HeightTier Height, float WindowW, float WindowH, Func<string, RectF?> RectOf)
+{
+    /// <summary>The route's name as `status` names it (<c>home</c>, <c>album</c>; null or "" when unknown): a policy that one page's board
+    /// draws holds on that page only.</summary>
+    public string? Route { get; init; }
+}
 
 /// <summary>What a guide policy declares about the nodes under its key prefix (each names the rule it speaks to).</summary>
 public enum LintIntent : byte

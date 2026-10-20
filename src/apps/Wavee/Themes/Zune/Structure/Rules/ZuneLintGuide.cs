@@ -7,10 +7,12 @@
 // `LintEdge` data (core resolves them against the scene by key); it measures nothing and lays nothing out.
 //
 // THE POLICIES say what Zune means where a rule would guess (each reason names the board that draws it):
-//   · the Home captions ellipsise on one line: pins, history rows, the shelves' cards and descriptions, the tiles, the cluster rows and the
-//     chart captions are `nowrap` + `text-overflow: ellipsis` on Z-Home and Z-Home-Compact (`TrimOk`). A near-miss (a box a hair too
-//     narrow for its words) is still reported: the lint checks it before any intent;
-//   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album) (`Hang`).
+//   · ON HOME ONLY (the route `home`), the captions ellipsise on one line: pins, history rows, the shelves' cards and descriptions, the
+//     tiles, the cluster rows and the chart captions are `nowrap` + `text-overflow: ellipsis` on Z-Home and Z-Home-Compact (`TrimOk`). A
+//     near-miss (a box a hair too narrow for its words) and a hard clip are still reported: the lint checks both before any intent;
+//   · the page title's x is the page column's ink line (`Column`): align.inset measures the page's leads against it;
+//   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album), and the settings
+//     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings) (`Hang`).
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -55,7 +57,7 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         edges.Add(new LintEdge(Gutter, "page.column", "the page column's content", LintSide.Left,
             contentLeft - gutter, Tolerance, Keys: s_pageColumns));
         edges.Add(new LintEdge(Gutter, "page.title", "the page title", LintSide.Left,
-            contentLeft, Tolerance, Keys: [ZuneFrameRules.PageTitleKey]));
+            contentLeft, Tolerance, Keys: [ZuneFrameRules.PageTitleKey], Column: true));
 
         // Right edges agree from Small to Standard (the audit's A2); Compact's rows scroll to the window's edge, and from Huge up the page
         // column's mirror and the chrome's plain gutter part on purpose.
@@ -74,18 +76,30 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// <summary>Why Home's captions may ellipsise: the boards draw them so.</summary>
     private const string HomeCaptions = "Home captions ellipsise on one line (Z-Home, Z-Home-Compact: nowrap + text-overflow: ellipsis)";
 
+    /// <summary>The route `status` names Home by: the Home policies hold there only (the same surfaces on Library, Search and Browse follow
+    /// their own boards, and the lint's implicit class still counts a MaxLines + ellipsis caption in a repeated family as designed).</summary>
+    private const string HomeRoute = "home";
+
     /// <inheritdoc />
-    public IReadOnlyList<LintPolicy> Policies(LintContext context) =>
-    [
-        new(LintIntent.TrimOk, ZuneHomeRules.PinTilePrefix, "pin captions: " + HomeCaptions),
-        new(LintIntent.TrimOk, "zune-history:", "history rows and tiles: " + HomeCaptions),
-        new(LintIntent.TrimOk, ZuneListRules.ShelfBodyKey, "shelf card titles and descriptions: " + HomeCaptions),
-        new(LintIntent.TrimOk, "zune-shelf-card:", "shelf cards: " + HomeCaptions),
-        new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions),
-        new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions),
-        new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions),
-        new(LintIntent.Hang, ZuneDetailRules.PanoramaKey,
+    public IReadOnlyList<LintPolicy> Policies(LintContext context)
+    {
+        var policies = new List<LintPolicy>(8);
+        if (string.Equals(context.Route, HomeRoute, StringComparison.Ordinal))
+        {
+            policies.Add(new(LintIntent.TrimOk, ZuneHomeRules.PinTilePrefix, "pin captions: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "zune-history:", "history rows and tiles: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, ZuneListRules.ShelfBodyKey, "shelf card titles and descriptions: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "zune-shelf-card:", "shelf cards: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions));
+        }
+        policies.Add(new(LintIntent.Hang, ZuneDetailRules.PanoramaKey,
             "the panorama title hangs left of the column by the light face's side bearing (PanoramaNudgeX, Z-Album)",
-            Value: ZuneDetailTiers.For(context.Window).PanoramaNudgeX),
-    ];
+            Value: ZuneDetailTiers.For(context.Window).PanoramaNudgeX));
+        policies.Add(new(LintIntent.Hang, ZuneSettings.TitleKey,
+            "the settings panorama bleeds left of the gutter (ZuneSettingsRules.PanoramaBleed: Z-Settings draws it at 40 over a 48 gutter)",
+            Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneSettingsRules.PanoramaBleed)));
+        return policies;
+    }
 }
