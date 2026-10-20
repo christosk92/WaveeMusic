@@ -128,7 +128,7 @@ internal static class ClassicRowCells
         // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
         // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
         if (RowMetrics.ShowHeartTrailing(in set))
-            cells[i++] = Track.RowCenterCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.HeartTrailing);
+            cells[i++] = Track.RowControlCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.HeartTrailing);
 
         // The clock, or a withheld row's SHORT reason ("Unavailable", the release date) at the reason rung with the LONG
         // reason as its tooltip (tuned Classic L4) — the bound table's lane, word for word (`Track.DurationLabel`).

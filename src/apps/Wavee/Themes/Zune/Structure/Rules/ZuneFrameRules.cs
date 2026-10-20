@@ -195,6 +195,9 @@ public static class ZuneFrameRules
     /// <summary>A query row: 36 tall rows inset 16 (the menu rows of Z-Overlays), no margin, square.</summary>
     public const float QueryRowH = 36f;
 
+    /// <summary>The query row's height at a <paramref name="window"/>: 36, and the 40 touch floor at Compact (owner: Compact targets >= 40).</summary>
+    public static float QueryRowHFor(WidthTier window) => MathF.Max(QueryRowH, TouchTargetPolicy.FloorFor(window));
+
     /// <summary>A query row's padding.</summary>
     public static readonly Edges4 QueryRowPadding = new(16f, 0f, 16f, 0f);
 

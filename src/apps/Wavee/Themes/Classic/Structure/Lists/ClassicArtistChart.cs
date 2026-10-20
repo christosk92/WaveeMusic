@@ -163,7 +163,7 @@ internal static class ClassicArtistChart
                 with { Weight = 600, Color = Tok.TextTertiary };
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
+            Direction = 0, Gap = Wavee.Theming.TouchTargetPolicy.PagerGap(p.Window, Spacing.XS), AlignItems = FlexAlign.Center,
             Children =
             [
                 ChartChevron(Icons.ChevronLeft, p.CanPrev, p.Prev),
@@ -333,8 +333,11 @@ internal static class ClassicArtistChart
 
     /// <summary>The chart's own 28-DIP transparent chevron (not the stock 32 filled circle); a disabled one has no hover
     /// fill and a tertiary glyph.</summary>
+    /// <summary>A pager chevron; its touch slop reaches left (<see cref="TouchTargetPolicy.OneSide"/>): outward for the previous one, into the gap for the next
+    /// one, whose right side is the page's edge (a scroll bar's lane takes the side past it).</summary>
     static Element ChartChevron(string glyph, bool enabled, Action onClick) => new BoxEl
     {
+        HitSlop = Wavee.Theming.TouchTargetPolicy.OneSide(ClassicArtistChartLayout.ChevronBox, left: true),
         Width = ClassicArtistChartLayout.ChevronBox, Height = ClassicArtistChartLayout.ChevronBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = CornerRadius4.All(14f), HoverFill = enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
         HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), OnClick = enabled ? onClick : null,

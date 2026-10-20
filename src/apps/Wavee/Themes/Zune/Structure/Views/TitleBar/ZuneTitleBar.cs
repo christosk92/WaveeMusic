@@ -63,6 +63,9 @@ internal static class ZuneTitleBar
             // The Compact field's place (lead or trailing) is part of both islands' shapes: its flip re-renders the bar.
             TabsVersion = () => HashCode.Combine(props.TabsVersion(), chrome?.Value, FieldInLead(props, tiers())),
             TabsElasticLane = true,
+            // Z-Search-Compact: the field FILLS the lead island beside Back (a hugging island left it at the omnibar's 38 natural width, its suggestions
+            // flyout as narrow); the drag bands give it the free lane.
+            TabsFill = () => FieldInLead(props, tiers()),
             Trailing = () => TrailingIsland(props, tiers),
             // The tier is part of every island's shape (pill or magnifier, the bell, the gaps): a crossing re-renders the bar.
             ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers())),

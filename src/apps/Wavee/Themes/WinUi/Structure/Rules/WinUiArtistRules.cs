@@ -211,6 +211,10 @@ public static class WinUiArtistRules
     public const float TourHeadline = 16f;
     public const float TourGap = 2f;
     public const float TourChevron = 16f;
+
+    /// <summary>How far Popular's clip reaches above the column and past its end (padding in, margin out: nothing moves): the chart head's 28 chevrons'
+    /// share of the 40 touch floor (`TouchTargetPolicy.CompactFloor`), so the clip does not cut their hit slop at a Compact window.</summary>
+    public const float PopularHitRoom = 6f;
 }
 
 /// <summary>How the artist overview restacks when its column count changes (two columns <-> one: a window resize across the 1100 page edge, a pane

@@ -765,12 +765,13 @@ public readonly partial struct Artist
         public override Element Render()
         {
             var p = UseProps<ChartPagerProps>();
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal)).Value.Tiers;
             int page = p.Page;
             UseEffect(() => { if (_selected.Peek() != page) _selected.Value = page; }, DepKey.From(page));
             return p.Style.Pager(new ArtistChartPagerArgs
             {
                 Page = page, PageCount = p.PageCount, CanPrev = p.CanPrev, CanNext = p.CanNext, Prev = p.Prev, Next = p.Next,
-                GoTo = p.GoTo, Total = p.Total, Selected = _selected,
+                GoTo = p.GoTo, Total = p.Total, Selected = _selected, Window = facts.Policy is null ? Theming.Contracts.WidthTier.Standard : facts.Window,
             });
         }
     }

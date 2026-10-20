@@ -137,6 +137,24 @@ public static partial class Diagnostics
             };
         }
 
+        /// <summary>The press targets under an invisible (opacity 0) <paramref name="root"/>: hit-testable, so their real hits still beat a neighbour's slop.</summary>
+        static void CollectHitBlockers(SceneStore scene, NodeHandle root, List<RectF> into)
+        {
+            const uint press = InteractionInfo.ClickBit | InteractionInfo.PointerBit | InteractionInfo.PressedBit | InteractionInfo.DragBit | InteractionInfo.GestureBit;
+            var stack = new Stack<NodeHandle>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                NodeHandle node = stack.Pop();
+                if (node.IsNull || !scene.IsLive(node)) continue;
+                NodeFlags flags = scene.Flags(node);
+                if ((flags & (NodeFlags.Visible | NodeFlags.HitTestVisible)) != (NodeFlags.Visible | NodeFlags.HitTestVisible) || (flags & NodeFlags.Parked) != 0) continue;
+                RectF rect = scene.PresentedAbsoluteRect(node);
+                if (rect.W > 0f && rect.H > 0f && (scene.Interaction(node).HandlerMask & press) != 0 && (flags & NodeFlags.Disabled) == 0) into.Add(rect);
+                for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) stack.Push(c);
+            }
+        }
+
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's edge expectations. UI thread, between frames.</summary>
         public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, InspectLint.Pixels? pixels = null)
         {
@@ -145,6 +163,7 @@ public static partial class Diagnostics
             var nodes = new List<InspectLint.Node>();
             var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert)>();
             var children = new List<NodeHandle>();
+            var blockers = new List<RectF>();
             Span<char> path = stackalloc char[256];
             for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false));
             while (stack.Count > 0)
@@ -153,8 +172,16 @@ public static partial class Diagnostics
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
-                if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0 || paint.Opacity <= 0f) continue;
+                if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0) continue;
+                if (paint.Opacity <= 0f)
+                {
+                    // Paints nothing, but the hit test is box and clip, never paint: its targets (an auto-hidden scroll bar) still take presses.
+                    CollectHitBlockers(scene, node, blockers);
+                    continue;
+                }
                 RectF rect = scene.PresentedAbsoluteRect(node);
+                // A clipping box with no area shows nothing of its subtree (a closed seam's 0-wide strip): none of it is on screen, so none of it is linted.
+                if ((rect.W <= 0f || rect.H <= 0f) && (flags & NodeFlags.ClipsToBounds) != 0) continue;
                 float opacity = above * paint.Opacity;
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;
@@ -164,6 +191,11 @@ public static partial class Diagnostics
                     ref InteractionInfo it = ref scene.Interaction(node);
                     bool click = (it.HandlerMask & InteractionInfo.ClickBit) != 0;
                     bool interactive = (flags & NodeFlags.HitTestVisible) != 0 && (click || IsActionRole(it.Role));
+                    // What the hit test adds outside the box: only a whole-box target takes hits in its slop (InputDispatcher.Hit).
+                    const uint slopHandlers = InteractionInfo.ClickBit | InteractionInfo.PointerBit | InteractionInfo.PressedBit
+                        | InteractionInfo.DragBit | InteractionInfo.GestureBit | InteractionInfo.ContextBit;
+                    Edges4 slop = interactive && (it.HandlerMask & slopHandlers) != 0 && (flags & NodeFlags.Disabled) == 0
+                        ? shell.Host.Input.EffectiveHitSlop(node, rect.W, rect.H) : default;
                     int axis = 0;
                     if (scene.TryGetScroll(node, out ScrollState scroll)) axis = scroll.Orientation == 1 ? 1 : 2;
                     int pathLength = NodeDescriber.Describe(scene, (int)node.Raw.Index, node.Raw.Gen, path);
@@ -176,6 +208,8 @@ public static partial class Diagnostics
                         ZStack = (flags & NodeFlags.ZStack) != 0,
                         Column = scene.Layout(node).Direction == 1,
                         Interactive = interactive,
+                        Slop = slop,
+                        Pressable = (it.HandlerMask & slopHandlers) != 0,
                         Disabled = (flags & NodeFlags.Disabled) != 0,
                         Role = it.Role == AutomationRole.None ? "" : it.Role.ToString(),
                         Label = interactive ? LabelOf(scene, strings, node) : "",
@@ -215,7 +249,7 @@ public static partial class Diagnostics
                 }
                 edges = guide.Edges(new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey));
             }
-            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, TopBleeds = bleeds, Theme = InspectKit.ActiveThemeId, Backdrop = pixels };
+            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, TopBleeds = bleeds, HitBlockers = blockers, OverScrollbarLane = shell.Host.Input.IsOverScrollbarLane, Theme = InspectKit.ActiveThemeId, Backdrop = pixels };
         }
 
         // ── the report ──────────────────────────────────────────────────────────────────────────────────────────────

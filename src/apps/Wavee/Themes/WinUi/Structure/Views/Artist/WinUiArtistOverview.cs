@@ -127,6 +127,11 @@ internal static class WinUiArtistOverview
         // Popular holds its old width while the side column fades out (laid out at it when the restack widens it, presented at it when the restack
         // narrows it): the clip keeps the chart's far edge (the count, the durations) inside the held width instead of over the outgoing column.
         ClipToBounds = key == PopularKey,
+        // The clip reaches past the chart head's corner by the chevrons' touch slop, up into the gap above and out past the end (the padding takes it
+        // back, so nothing moves): the pager's next chevron sits on the column's top-right corner, and a clip flush with it would cut its hit floor at a
+        // Compact window.
+        Padding = key == PopularKey ? new Edges4(0f, WinUiArtistRules.PopularHitRoom, WinUiArtistRules.PopularHitRoom, 0f) : default,
+        Margin = key == PopularKey ? new Edges4(0f, -WinUiArtistRules.PopularHitRoom, -WinUiArtistRules.PopularHitRoom, 0f) : default,
     };
 
     /// <summary>The Popular column, <paramref name="width"/> wide beside the other columns (its weight's share of the slot; NaN stacked: the slot).
