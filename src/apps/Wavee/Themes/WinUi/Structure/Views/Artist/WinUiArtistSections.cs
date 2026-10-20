@@ -67,7 +67,7 @@ internal static class WinUiArtistSections
     public static Element SectionBlock(string title, Element body, ColorF accent) => SectionBlock(title, body, (Element?)null);
 
     /// <summary>One section's body, in the plan's order (the overview's three and the facets are the page's).</summary>
-    public static Element Body(ArtistSection s, ArtistPageProps p, WinUiShelfBand shelf)
+    public static Element Body(ArtistSection s, ArtistPageProps p, WinUiShelfBand shelf, WidthTier tier)
     {
         Artist a = p.Artist;
         ColorF accent = p.Accent;
@@ -82,7 +82,7 @@ internal static class WinUiArtistSections
             ArtistSection.Playlists => PlaylistsShelf(a, accent, shelf),
             ArtistSection.Concerts => ConcertsShelf(a, accent, shelf),
             ArtistSection.Merch => MerchShelf(a, accent, shelf),
-            ArtistSection.Biography => AboutBlock(p),
+            ArtistSection.Biography => AboutBlock(p, tier),
             ArtistSection.Gallery => GalleryShelf(p, accent, shelf),
             ArtistSection.Related => ArtistsShelf(a.RelatedSlots, accent, shelf),
             _ => ArtistsShelf(p.Fans, accent, shelf),
@@ -383,15 +383,17 @@ internal static class WinUiArtistSections
 
     // ── about ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>About: the shared artist card (the image band, the name beside Follow, the monthly listeners, a four-line bio), then the external links and the cities.</summary>
-    static Element AboutBlock(ArtistPageProps p)
+    /// <summary>About: the shared artist card (the image band, the name beside Follow, the monthly listeners, a four-line bio), then the external links and the cities.
+    /// Follow is the tier's control size: the 40 target at Compact.</summary>
+    static Element AboutBlock(ArtistPageProps p, WidthTier tier)
     {
+        ControlSize followSize = WinUiDetailRules.TargetOf(tier) > WinUiDetailRules.Target ? ControlSize.Large : ControlSize.Medium;
         Artist a = p.Artist;
         LinkEdge[] links = a.Links.ToArray();
         CityEdge[] cities = a.TopCities.ToArray();
         var kids = new List<Element>(3)
         {
-            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand, static (uri, name) => WinUiDetailKit.Follow(uri, name)) with { Key = "about:" + a.Uri.Text },
+            Controls.ArtistAboutCard(a, AboutLayout.Aside, WinUiArtistRules.AboutBand, (uri, name) => WinUiDetailKit.Follow(uri, name, followSize)) with { Key = "about:" + a.Uri.Text },
         };
         if (links.Length > 0) kids.Add(LinkPills(links));
         if (cities.Length > 0) kids.Add(CityBars(cities, p.Accent));

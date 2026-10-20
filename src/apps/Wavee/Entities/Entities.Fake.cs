@@ -103,6 +103,9 @@ public static partial class Entities
     static string Cover(int i)
         => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "cover" + Wrap(i, CoverCount).ToString("D2") + ".jpg");
 
+    /// <summary>The bundled bright header photograph (a white sky over a pale ground), as an absolute path like <see cref="Cover"/>.</summary>
+    static string BrightHeaderPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "header-bright.jpg");
+
     // ── the seed ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The demo catalog, as columns. Called once, from the app's boot sequence, only when

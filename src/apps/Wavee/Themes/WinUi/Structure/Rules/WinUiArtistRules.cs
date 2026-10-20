@@ -64,11 +64,22 @@ public static class WinUiArtistRules
     /// <summary>The Verified seal (14 round, its check 9) and the gap to its words; the lines' gap in the copy; the actions' gap and their air under the card's baseline.</summary>
     public const float SealSize = 14f, SealGlyph = 9f, SealGap = 6f, CopyGap = 2f, ActionsGap = 8f, ActionsBottom = 8f;
 
+    /// <summary>The Display face's natural line box per em: the name's box is the taller of it and its line height (what the scrim's bands measure).</summary>
+    public const float NameNaturalLine = 1.33f;
+
     /// <summary>The name's size (Display 68) and line (80), its auto-fit floor; the meta line's size and line; the Verified words'.</summary>
     public const float NameSize = 68f, NameLine = 80f, NameFloor = 40f, MetaSize = 14f, MetaLine = 20f, VerifiedSize = 12f, VerifiedLine = 16f;
 
     /// <summary>A hero action's plate: 70 % of the base with a 12 % hairline (the boards: rgba(32,32,32,0.7), rgba(255,255,255,0.12)).</summary>
     public const float PlateAlpha = 0.7f, PlateStrokeAlpha = 0.12f;
+
+    /// <summary>The plate itself: the board's rgba(32,32,32,0.7) in light AND dark. Everything on the photograph is on-media (light ink on a dark plate),
+    /// whatever the theme kind; hover and press step down the on-media scrim ramp (`Controls.OnMediaPlatePalette`).</summary>
+    public static ColorF PlateFill => ColorF.FromRgba(32, 32, 32) with { A = PlateAlpha };
+
+    /// <summary>The most the adaptive scrim (`Controls.ScrimBoost`) darkens a bright photograph over the 62 % veil: 0.6 keeps the foot under 85 % black and the
+    /// photograph's top clear, so it stays a photograph.</summary>
+    public const float BoostCeiling = 0.6f;
 
     /// <summary>The Compact actions row under the card: 12 under it; the Play word's padding.</summary>
     public const float ActionsRowTop = 12f, PlayPad = 16f;

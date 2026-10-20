@@ -275,35 +275,32 @@ internal static partial class WinUiDetailKit
     }
 
     /// <summary>WinUI's Follow: "Follow" / "Following" on the neutral toggle (<see cref="NeutralToggle"/>; W-Artist draws no glyph). Keyed by the caller.
-    /// <paramref name="plated"/>: the artist hero's 70 % dark plate and hairline over the photograph (<see cref="WinUiArtistRules.PlateAlpha"/>).</summary>
+    /// <paramref name="plated"/>: on-media over the artist hero's photograph, in light and dark: the 70 % dark plate, its hairline and the on-media ink.</summary>
     public static Element Follow(string uri, string name, ControlSize size = ControlSize.Medium, bool plated = false)
         => uri.Length == 0
             ? ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), false, static _ => { }, style: FollowStyle(size, plated), parts: s_noShrink)
-            : Embed.Comp(() => new FollowAction { Uri = uri, Name = name, Size = size, Plated = plated });
+            : Embed.Comp(new FollowProps(uri, name, size, plated), static () => new FollowAction());
 
     static ToggleButton.Style FollowStyle(ControlSize size, bool plated)
     {
         var s = NeutralToggle(size);
-        if (!plated) return s;
-        var plate = R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha };
-        var stroke = GradientSpec.Solid(WinUiArtistRules.PlateStroke);
-        return s with { OffBackground = plate, OnBackground = plate, OffBorder = stroke, OnBorder = stroke, OffHoverBorder = stroke, OnHoverBorder = stroke };
+        return plated ? Controls.OnMediaToggle(s, WinUiArtistRules.PlateFill, WinUiArtistRules.PlateStroke) : s;
     }
+
+    /// <summary>Follow's re-pushed props: a tier crossing re-sizes the live button (Compact's 40 target), it never keeps its mount size.</summary>
+    sealed record FollowProps(string Uri, string Name, ControlSize Size, bool Plated);
 
     sealed class FollowAction : Component
     {
-        public required string Uri { get; init; }
-        public required string Name { get; init; }
-        public required ControlSize Size { get; init; }
-        public bool Plated { get; init; }
-
         public override Element Render()
         {
+            var p = UseProps<FollowProps>();
             var lib = Controls.Library;
             if (lib is null) return new BoxEl();
-            bool on = lib.IsSaved(Uri);
-            return ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), on, _ => lib.ToggleSaved(Uri, Name),
-                checkedLabel: Loc.Get(Strings.Artist.Following), style: FollowStyle(Size, Plated), parts: s_noShrink);
+            bool on = lib.IsSaved(p.Uri);
+            string uri = p.Uri, name = p.Name;
+            return ToggleButton.Controlled(Loc.Get(Strings.Artist.Follow), on, _ => lib.ToggleSaved(uri, name),
+                checkedLabel: Loc.Get(Strings.Artist.Following), style: FollowStyle(p.Size, p.Plated), parts: s_noShrink);
         }
     }
 
@@ -349,13 +346,14 @@ internal static partial class WinUiDetailKit
             _ = _props.Value;
             var p = _latest!;
             var overlay = UseContext(Overlay.Service);
-            BoxEl button = Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
-            if (p.Look != MoreLook.Bare)
+            BoxEl button = p.Look == MoreLook.Plated
+                ? Controls.OnMediaIconAction(Icons.More, null, p.Size, requestsContext: true, rest: WinUiArtistRules.PlateFill, stroke: WinUiArtistRules.PlateStroke)
+                : Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
+            if (p.Look == MoreLook.Bordered)
                 button = button with
                 {
-                    Fill = p.Look == MoreLook.Plated ? Prop.Of(static () => R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha }) : Tok.FillControlDefault,
-                    HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f,
-                    BorderBrush = p.Look == MoreLook.Plated ? GradientSpec.Solid(WinUiArtistRules.PlateStroke) : Tok.ControlElevationBorder,
+                    Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f,
+                    BorderBrush = Tok.ControlElevationBorder,
                 };
             if (!Controls.IsNullOverlay(overlay)) button = ContextSheets.Attach(button, overlay, _menu, s_moreMenu);
             return ToolTip.Wrap(button, Loc.Get(Strings.Common.More));

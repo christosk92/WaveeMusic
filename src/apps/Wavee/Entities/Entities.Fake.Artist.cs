@@ -71,6 +71,9 @@ public static partial class Entities
         public static bool HasGallery(int i) => i % 3 != 2 || i == Showcase;
         public static bool HasAppearsOn(int i) => i % 2 == 1 || i == Showcase;
         public static bool IsVerified(int i) => i % 5 != 0;
+
+        /// <summary>The artist whose header is the bright photograph (<c>assets/covers/header-bright.jpg</c>): the on-media scrim's worst case.</summary>
+        public const int BrightHeader = 9;
         public static bool HasWorldRank(int i) => i % 7 != 0;
 
         /// <summary>The upcoming release's end instant: <c>now0 + 9 d 4 h</c> (ch 31 W16).</summary>
@@ -203,7 +206,8 @@ public static partial class Entities
             if (IsVerified(i)) row.Flags |= (uint)ArtistFlags.Verified;
             if (i < ArtistCount)
             {
-                row.Header = Text(s, Cover(i + 3));                         // the avatar's own picture, as 0.2.9 did
+                // the avatar's own picture, as 0.2.9 did; ar9's is a bright photograph (white sky, pale ground), the worst case for text on it
+                row.Header = Text(s, i == ArtistSeed.BrightHeader ? BrightHeaderPhoto() : Cover(i + 3));
                 row.HeaderAccent = 0;
             }
 
