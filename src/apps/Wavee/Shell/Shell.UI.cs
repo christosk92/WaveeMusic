@@ -387,11 +387,19 @@ public static partial class Shell
             UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
             // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the
             // preview equal; a CANCELLED one never commits, so the preview falls back to the committed width here.
+            // A drag that CLOSED the panel (past the minimum) leaves the preview at the width the panel closed at while it is closed, so a
+            // frame that binds the live width slides it out at that width; the preview comes back to the committed width when it opens.
             UseSignalEffect(() =>
             {
-                if (_railDragging.Value) return;
+                if (_railDragging.Value || !Ui.RailOpen.Value) return;
                 float committed = Ui.RailWidth.Peek();
                 if (Ui.RailDragWidth.Peek() != committed) Ui.RailDragWidth.Value = committed;
+            });
+            // A drag past the minimum closes the panel mid-gesture: the layout transitions the drag suppressed (the seam follows the pointer
+            // with no motion) come back for the close, so the page and the panel ease out as a button's close does, not in one frame.
+            UseSignalEffect(() =>
+            {
+                if (!Ui.RailOpen.Value && _railDragging.Peek()) FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, false);
             });
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
             UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value, Ui.QueueBeside.Value));
@@ -598,6 +606,7 @@ public static partial class Shell
             RailFade = _railFade,
             SidebarPresentedWidth = Sidebar.PresentedWidth,
             RailWidth = Ui.RailWidth,
+            RailLiveWidth = Ui.RailDragWidth,
             ChromeMounted = s_chromeMounted,
             ImmersiveOpen = static () => Ui.ImmersiveLyrics.Value,
             SidebarPaneDocked = static () => Sidebar.Mode.Value != SidebarPaneMode.Minimal,

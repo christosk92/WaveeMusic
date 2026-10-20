@@ -138,6 +138,7 @@ public class PanelHostTests
     public void A_drag_previews_on_its_own_cell_and_commits_the_width_once_on_release()
     {
         var (host, cells, store, _) = Make();
+        cells.Open.Value = true;
         cells.DragWidth.Value = 420f;
         Assert.Equal(Shell.RailDefaultW, cells.Width.Peek());  // nothing reaches the layout until the release
         host.ResizePanel();
@@ -152,6 +153,7 @@ public class PanelHostTests
     public void A_drag_past_the_bounds_commits_the_clamped_width()
     {
         var (host, cells, _, _) = Make();
+        cells.Open.Value = true;
         cells.DragWidth.Value = 9999f;
         host.ResizePanel();
         Assert.Equal(Shell.RailMaxW, cells.Width.Peek());
@@ -162,9 +164,23 @@ public class PanelHostTests
     public void A_non_finite_preview_commits_nothing()
     {
         var (host, cells, store, _) = Make();
+        cells.Open.Value = true;
         cells.DragWidth.Value = float.NaN;
         host.ResizePanel();
         Assert.Equal(Shell.RailDefaultW, cells.Width.Peek());
+        Assert.Empty(store.Writes);
+    }
+
+    [Fact]
+    public void A_drag_that_closed_the_panel_commits_nothing_so_it_reopens_at_the_width_it_had()
+    {
+        var (host, cells, store, _) = Make();
+        cells.Open.Value = true;
+        cells.Width.Value = 360f;
+        cells.DragWidth.Value = 280f;     // the release clamped the sub-minimum preview to the minimum
+        cells.Open.Value = false;         // the drag went past the minimum: the splitter closed the panel
+        host.ResizePanel();
+        Assert.Equal(360f, cells.Width.Peek());
         Assert.Empty(store.Writes);
     }
 

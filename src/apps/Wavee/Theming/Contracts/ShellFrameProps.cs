@@ -46,6 +46,11 @@ public sealed record ShellFrameProps
     /// <summary>The right rail's committed width.</summary>
     public required IReadSignal<float> RailWidth { get; init; }
 
+    /// <summary>The right rail's LIVE width: the seam drag's width while a drag is in flight, the committed width at rest; while a drag
+    /// closed the panel it holds the width the panel closed at (until it opens again). A frame that lets a drag move the panel and the page
+    /// every frame binds this; one that leaves the drag a guide line binds <see cref="RailWidth"/>. Null: the committed width.</summary>
+    public IReadSignal<float>? RailLiveWidth { get; init; }
+
     /// <summary>Is the chrome (title row, content region, player bar) mounted? False under fullscreen video or the immersive stage.</summary>
     public required Func<bool> ChromeMounted { get; init; }
 
