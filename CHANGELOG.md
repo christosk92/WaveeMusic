@@ -10,6 +10,16 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.6] - unreleased
 
+### Added
+
+- **A Zune theme.** Settings > Appearance > Theme > Zune gives Wavee the Zune HD look: big lowercase type, pivots across
+  the top, colour washes from the playing cover and the side panel as one surface with the page. It covers every page,
+  dialog and menu at every window size, in dark and light.
+- **A WinUI theme.** Settings > Appearance > Theme > WinUI gives Wavee a Windows 11 look: tabs in the title bar, a
+  navigation pane, card lists and WinUI-style controls. Settings are grouped into seven tabs, the BPM and Key column
+  is optional and off by default, long artist names shrink to fit before they are cut, and the docked side panel moves
+  with the page and resizes live while you drag its edge.
+
 ### Changed
 
 - **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
