@@ -375,6 +375,10 @@ public static partial class Diagnostics
             /// the ratio is read at this percentile of the ordered per-pixel ratios. Default 0.1 (judged against its p90 worst ground).</summary>
             public float MediaPercentile { get; init; } = 0.1f;
 
+            /// <summary>A run whose own and ancestors' opacity multiply below this is faded on purpose (the stage's distance-faded lyric lines, chrome
+            /// fading out) and is incidental text in the WCAG sense: the contrast rule skips it. Default 0.5.</summary>
+            public float IncidentalOpacity { get; init; } = 0.5f;
+
             /// <summary>The most findings one rule reports.</summary>
             public int MaxPerRule { get; init; } = 100;
 
@@ -782,7 +786,7 @@ public static partial class Diagnostics
         /// the run is judged against the rendered pixels around its glyphs at their worst (<see cref="Pixels.TryWorstContrast"/> at
         /// <see cref="Options.MediaPercentile"/>): an error over an image (<see cref="OverImage"/>; text over a photograph that does not read is a bug,
         /// whatever the declared fill says), a warning over a gradient or a wash. Runs the
-        /// check cannot judge are skipped, not passed: a disabled subtree, a node mid-animation, a fully transparent ink, a span run and a box mostly
+        /// check cannot judge are skipped, not passed: a disabled subtree, a node mid-animation, a fully transparent ink, a run faded below <see cref="Options.IncidentalOpacity"/>, a span run and a box mostly
         /// off the frame. No frame, no check.</summary>
         static int ContrastRule(Snapshot s, Options o, List<Finding> into)
         {
@@ -792,6 +796,8 @@ public static partial class Diagnostics
             {
                 if (n.Text is not { } t || t.Spans || t.String.Length == 0 || n.Inert || n.Animating) continue;
                 if (t.Color.A * n.Opacity < 0.02f) continue;
+                if (n.Opacity < o.IncidentalOpacity) continue;   // faded on purpose (a lyric's distance fade): incidental, not read
+                if (IsGlowCopy(s, n, t)) continue;                // a bloom or shadow drawn under the same words: the readable copy is judged
                 float w = t.NaturalW > 0f ? MathF.Min(n.Rect.W, t.NaturalW + 2f) : n.Rect.W;
                 var box = new RectF(n.Rect.X, n.Rect.Y, w, n.Rect.H);
                 float x0 = MathF.Max(0f, box.X), x1 = MathF.Min(s.Width, box.Right), y0 = MathF.Max(0f, box.Y), y1 = MathF.Min(s.Height, box.Bottom);
@@ -832,6 +838,25 @@ public static partial class Diagnostics
             }
             return looked;
         }
+
+        /// <summary><paramref name="n"/> is a decorative copy of another run: the same words at (nearly) the same box, in a fainter ink (a karaoke
+        /// line's accent bloom under its text). The copy with the strongest ink is the one that is read.</summary>
+        static bool IsGlowCopy(Snapshot s, Node n, TextRun t)
+        {
+            float alpha = t.Color.A * n.Opacity;
+            foreach (Node m in s.Nodes)
+            {
+                if (m.Index == n.Index || m.Text is not { } u || !string.Equals(u.String, t.String, StringComparison.Ordinal)) continue;
+                if (MathF.Abs(m.Rect.X - n.Rect.X) > GlowSlack || MathF.Abs(m.Rect.Y - n.Rect.Y) > GlowSlack
+                    || MathF.Abs(m.Rect.W - n.Rect.W) > GlowSlack || MathF.Abs(m.Rect.H - n.Rect.H) > GlowSlack) continue;
+                float other = u.Color.A * m.Opacity;
+                if (other > alpha || (other == alpha && m.Index > n.Index)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>How far (DIP) a glow copy's box may sit from its text's.</summary>
+        const float GlowSlack = 2f;
 
         /// <summary>An image paints under <paramref name="n"/>: a visible image node earlier in paint order (the snapshot is depth-first, so earlier is
         /// under) covers most of its box. Text over a photograph that does not read is an error; over a gradient or a wash, a warning.</summary>

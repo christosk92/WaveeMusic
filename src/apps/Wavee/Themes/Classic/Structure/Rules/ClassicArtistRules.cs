@@ -15,6 +15,10 @@ public static class ClassicArtistRules
     /// <summary>The share of the hero's width the copy column ends at on the photo tiers: the photograph keeps the rest.</summary>
     public const float HeroCopyShare = 0.56f;
 
+    /// <summary>The overlay arm's (Compact) vertical veil reaches its peak half way down the photograph band and holds it to the foot: the copy starts
+    /// below it (57 % of the 300 band at the Compact metrics), so every line of it is on the full veil.</summary>
+    public const float OverlayVeilHold = 0.5f;
+
     /// <summary>The copy column's floor on the photo tiers, so a narrow Medium hero still sets a readable measure.</summary>
     public const float HeroCopyFloor = 360f;
 

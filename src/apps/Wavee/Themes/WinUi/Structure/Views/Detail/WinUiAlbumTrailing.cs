@@ -139,7 +139,7 @@ internal static class WinUiAlbumTrailing
 
         var sections = new List<Element>(7);
         if (p.Videos.Count > 0) sections.Add(VideosSection(p.Videos, p.CustomVideo, p.Overlay));
-        if (p.About is { } lead) sections.Add(AboutSection(lead));
+        if (p.About is { } lead) sections.Add(AboutSection(lead, ctx.Tier().Window));
         if (p.Fans.Count > 0) sections.Add(Section(Loc.Get(Strings.Detail.FansAlsoLike), FansRow(p.Fans)));
         for (int i = 0; i < p.Lists.Count; i++) sections.Add(ListSection(p.Lists[i]));
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Children = sections.ToArray() };
@@ -220,15 +220,17 @@ internal static class WinUiAlbumTrailing
         ],
     };
 
-    /// <summary>The About card's Follow: WinUI's neutral toggle, not the shared accent-tinted one.</summary>
+    /// <summary>The About card's Follow: WinUI's neutral toggle, not the shared accent-tinted one; the 40 target at Compact.</summary>
     static readonly Func<string, string, Element> s_follow = static (uri, name) => WinUiDetailKit.Follow(uri, name);
+    static readonly Func<string, string, Element> s_followCompact = static (uri, name) => WinUiDetailKit.Follow(uri, name, ControlSize.Large);
 
     /// <summary>"About the artist": the shared <see cref="Controls.ArtistAboutCard"/> in its page row layout (the link is the focusable click owner; Follow is
     /// its sibling, never nested inside it). The card is at least the skeleton's reserve (<see cref="PageRules.SkelAboutH"/>): a bio-less artist's card would
     /// otherwise land shorter than the skeleton it replaces and pull the sections under it up.</summary>
-    static Element AboutSection(Artist artist)
+    static Element AboutSection(Artist artist, WidthTier tier)
     {
-        var card = Controls.ArtistAboutCard(artist, AboutLayout.Page, follow: s_follow);
+        var card = Controls.ArtistAboutCard(artist, AboutLayout.Page,
+            follow: WinUiDetailRules.TargetOf(tier) > WinUiDetailRules.Target ? s_followCompact : s_follow);
         if (card is BoxEl box) card = box with { MinHeight = PageRules.SkelAboutH };
         return new BoxEl
         {

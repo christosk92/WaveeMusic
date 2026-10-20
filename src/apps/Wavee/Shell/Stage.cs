@@ -549,11 +549,12 @@ public static partial class Stage
             => mode != Mode.Visualizer ? ScrimA : kind == Visualizer.Kind.Verse ? ScrimVerseA : ScrimVisualizerA;
         /// <summary>A moment's palette fade ("change with the music", viz-app-plan §3.5), and its calm length.</summary>
         public const float MomentFadeMs = 900f, MomentCalmFadeMs = 1400f;
-        /// <summary>The caption's inks: unsung glyphs, the previous and next context lines (alphas over the stage ink), the
-        /// active line's accent bloom (its layer opacity and blur σ), the soft veil's centre, and the rise every line hand-off
+        /// <summary>The caption's inks: unsung glyphs (an alpha over the stage ink; the context lines are the arm's secondary ink), the
+        /// active line's accent bloom (its layer opacity and blur σ), the soft veil's centre (0.50: at 0.40 a context line read 4 : 1 over a bright
+        /// visualizer), and the rise every line hand-off
         /// travels (in from below, out above).</summary>
-        public const float CaptionUnsungA = 0.45f, CaptionPrevA = 0.35f, CaptionNextA = 0.45f;
-        public const float CaptionBloomA = 0.55f, CaptionBloomSigma = 10f, CaptionVeilA = 0.40f, CaptionRiseDip = 16f;
+        public const float CaptionUnsungA = 0.45f;
+        public const float CaptionBloomA = 0.55f, CaptionBloomSigma = 10f, CaptionVeilA = 0.50f, CaptionRiseDip = 16f;
         /// <summary>The bottom smoke under the face so the transport card reads (prototype <c>.smk</c>).</summary>
         public const float SmokeH = 440f, SmokeA = 0.60f;
         /// <summary>The base Field's opacity: breathing under a pane, near-full under a face.</summary>

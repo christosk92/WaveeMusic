@@ -79,6 +79,12 @@ public static class DaylistForm
     public static float CopyWidth(float inner)
         => inner < SplitMin ? Math.Max(0f, inner) : Math.Clamp(inner * CopyShare, TextMin, CopyMax);
 
+    /// <summary>Where the horizontal veil's hold ends on a card <paramref name="cardWidth"/> wide whose copy is padded by <paramref name="padHorizontal"/>:
+    /// the copy column's right edge as a fraction of the card, so the veil holds its near-opaque rung under ALL of the copy (the timeline's last
+    /// labels sat on its shoulder, where the art showed through). NaN for a card with no width yet (the veil's default hold).</summary>
+    public static float VeilHold(float cardWidth, float padHorizontal)
+        => cardWidth <= 1f ? float.NaN : (padHorizontal + CopyWidth(Math.Max(0f, cardWidth - padHorizontal))) / cardWidth;
+
     /// <summary>Whether a text column <paramref name="textWidth"/> wide keeps the 40/52 hero title (inclusive at
     /// <see cref="HeroTitleMinText"/>).</summary>
     public static bool UseHeroTitle(float textWidth) => textWidth >= HeroTitleMinText;

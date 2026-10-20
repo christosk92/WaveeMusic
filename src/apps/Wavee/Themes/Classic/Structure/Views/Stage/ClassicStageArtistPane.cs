@@ -147,6 +147,10 @@ internal sealed class ClassicArtistHeader : Component
 {
     public sealed record Props(StageArtistPaneProps Pane, int Artist, float W, float H, float S);
 
+    /// <summary>Follow's label and its pressed pull-back in the arm's ink (read at its render, so it follows the arm).</summary>
+    static readonly Func<ToggleButton.Style, ToggleButton.Style> s_followOnStage =
+        static st => st with { OnForeground = Ink.Ink, OnPressedForeground = Ink.InkSecondary, OffForeground = Ink.Ink, OffPressedForeground = Ink.InkSecondary };
+
     readonly Action _go;
     readonly Func<ColorF> _accent;
     Stage.StageCtx? _ctx;
@@ -200,7 +204,8 @@ internal sealed class ClassicArtistHeader : Component
         string uri = f.Uri, name = f.Name;
         var actions = new List<Element>(2);
         if (uri.Length > 0)   // keyed on the uri: FollowToggle carries it as a mount-frozen field
-            actions.Add(Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Accent = _accent }) with { Key = "stage-follow:" + uri });
+            // "Following" in the stage arm's ink, not the page accent's text ink: over the light arm's plate on the art that read 4 : 1.
+            actions.Add(Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Accent = _accent, Restyle = s_followOnStage }) with { Key = "stage-follow:" + uri });
         actions.Add(Button.Create(Loc.Get(Strings.Stage.GoToArtist), _go, ButtonAppearance.Standard, ControlSize.Medium));
 
         float pad = K.Px(Spacing.XXL, s);
