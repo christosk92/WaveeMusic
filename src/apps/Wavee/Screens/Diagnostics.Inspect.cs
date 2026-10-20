@@ -703,15 +703,17 @@ public static partial class Diagnostics
             return true;
         }
 
-        /// <summary>What one mount must not inherit from the last (`mount` and `reset`): the `state` vacancy (a static probe signal, Shell.UI.cs), and
-        /// playback with its queue. The deck goes back to its initial state the way a sign-out empties it (the reducer's one "nothing is
-        /// loaded" door; offline, so nothing is reported anywhere), and the queue is forgotten. Not every static: a fresh process is the
-        /// only full reset, and `status` counts `mounts` so a reused server shows.</summary>
+        /// <summary>What one mount must not inherit from the last (`mount` and `reset`): the `state` vacancy (a static probe signal, Shell.UI.cs),
+        /// playback with its queue, and the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever
+        /// settling). The deck goes back to its initial state the way a sign-out empties it (the reducer's one "nothing is loaded" door;
+        /// offline, so nothing is reported anywhere), and the queue is forgotten. Not every static: a fresh process is the only full
+        /// reset, and `status` counts `mounts` so a reused server shows.</summary>
         static void ClearLeaks()
         {
             Wavee.Shell.SetInspectState("none");
             Playback.Release(Playback.ReleaseCause.Logout);
             Wavee.Queue.Clear();
+            Stage.Close(null, "inspect-mount");
         }
 
         /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set

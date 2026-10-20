@@ -112,8 +112,9 @@ Keys name the nearest keyed ancestor when the node itself has none.
 
 Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and the next mount does not inherit
 what the last one left behind: the `state` vacancy is cleared, playback stops and the deck empties (as a sign-out empties
-it), and the play queue is forgotten. Not every static is reset, so a fresh process per configuration is still the rule;
-`status` counts the `mounts` a server has done so a reused one shows. A mount without `theme` or `kind` keeps the active ones.
+it), the play queue is forgotten and the fullscreen stage closes. Not every static is reset (the video surface of a
+`video=` mount is not), so a fresh process per configuration is still the rule; `status` counts the `mounts` a server has
+done so a reused one shows. A mount without `theme` or `kind` keeps the active ones.
 
 | Arg | Values |
 |---|---|
@@ -166,8 +167,8 @@ at most `max` frames, and replies with `{"frames","settled"}` (plus `busy` at th
 
 ### `reset`
 
-Unmounts, clears the `state` vacancy, playback and the queue (as `mount` does), resets the navigation to a fresh Home, and
-makes Classic dark the active theme.
+Unmounts, clears the `state` vacancy, playback, the queue and the fullscreen stage (as `mount` does), resets the navigation
+to a fresh Home, and makes Classic dark the active theme.
 
 ### `unmount`, `status`, `help`, `quit`
 
