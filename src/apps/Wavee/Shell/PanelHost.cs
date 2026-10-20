@@ -453,6 +453,9 @@ public static partial class Shell
 
         public void ResizePanel()
         {
+            // A drag that went past the minimum closed the panel: it commits nothing. The width the user left the panel at stays the
+            // committed (and stored) one, so it reopens there, not at the minimum the release clamped the preview to.
+            if (!Cells.Open.Peek()) return;
             if (FrameRules.RailDragCommit(Cells.DragWidth.Peek(), Cells.Width.Peek(), Cells.Floor.Peek()) is not { } w) return;
             Cells.Width.Value = w;
             Cells.DragWidth.Value = w;

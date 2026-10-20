@@ -202,6 +202,7 @@ public sealed class ClassicPlayerPanelTierTests
     public void A_drag_at_huge_never_commits_under_the_floor()
     {
         var (host, cells, store) = Make(twoPanes: true);
+        cells.Open.Value = true;
         cells.Floor.Value = 380f;
         cells.Width.Value = 380f;
         cells.DragWidth.Value = 250f;

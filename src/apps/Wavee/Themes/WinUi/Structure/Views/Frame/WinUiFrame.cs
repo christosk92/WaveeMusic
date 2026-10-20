@@ -52,6 +52,7 @@ internal static class WinUiFrame
         var tiers = ctx.TierReader();
         var facts = TierContext.DrawnIn(ctx.Hooks.UseContext(ThemeFactsContext.Signal));
         bool reduced = ctx.Reduced;
+        var dock = new DockWidth(props);
         var column = new BoxEl
         {
             // Window-tall, bound: the body yields instead of shoving the play bar off the bottom.
@@ -72,7 +73,7 @@ internal static class WinUiFrame
                             Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                             Children =
                             [
-                                ContentRegion(props, in ctx, tiers),
+                                ContentRegion(props, in ctx, tiers, dock),
                                 new BoxEl
                                 {
                                     // The bar's slot is the box the page above yields to: its 64 <-> 72 change at the 641 crossing eases through real layout.
@@ -81,7 +82,7 @@ internal static class WinUiFrame
                                 },
                             ],
                         },
-                        PanelLayer(props, in ctx, tiers, reduced),
+                        PanelLayer(props, in ctx, tiers, reduced, dock),
                     ],
                 },
             ],
@@ -126,9 +127,10 @@ internal static class WinUiFrame
         Children = [ctx.View(ViewKeys.ShellTitleBar, props.TitleBar)],
     };
 
-    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers)
+    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, DockWidth dock)
     {
         var panes = props.DockedPanes ?? s_noPanes;
+        LayoutTransition? reserve = ctx.Reduced ? null : WinUiFrameRules.PanelReserveAnim;
         var row = new List<Element>(6 + panes.Count)
         {
             new BoxEl
@@ -151,18 +153,20 @@ internal static class WinUiFrame
                 ],
             },
             ContentCard(props, in ctx, tiers),
-            // The panel's breathing room exists only while the panel is docked inline.
-            new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.RailGapWidth) },
-            Reservation(props.RailReservedWidth),
+            // The panel's breathing room exists only while the panel is docked inline. It and the reservation ease on the panel's slide, through
+            // real layout, so the page's edge rides the sliding pane's edge every frame (open, close, a drag that closes it); a seam drag
+            // (transitions suppressed) moves them with the pointer.
+            new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.RailGapWidth), Animate = reserve },
+            Reservation(dock.Reserved, reserve),
         };
         // Classic's one second pane (`SecondPanel`) is the first of the core's docked panes: a frame that draws the panes draws it once (P6 W4a:
         // Huge's two panes were reserved and mounted twice).
         if (props.DockedPanes is null)
         {
-            row.Add(new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.SecondGapWidth ?? s_zero) });
-            row.Add(Reservation(props.SecondReservedWidth ?? s_zero));
+            row.Add(new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(props.SecondGapWidth ?? s_zero), Animate = reserve });
+            row.Add(Reservation(props.SecondReservedWidth ?? s_zero, reserve));
         }
-        foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth));
+        foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth, reserve));
         return ZStack(
             // The row never moves on a toggle: the content card FLIPs relative to it.
             new BoxEl { MorphId = WinUiFrameRules.ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true, Children = row.ToArray() },
@@ -241,11 +245,12 @@ internal static class WinUiFrame
     private static readonly Func<float> s_zero = static () => 0f;
     private static readonly IReadOnlyList<DockedPaneProps> s_noPanes = [];
 
-    /// <summary>A docked panel's row reservation (0 while closed or floating), its underlay the content layer so a slide never shows a hole.</summary>
-    private static Element Reservation(Func<float> width) => new BoxEl
+    /// <summary>A docked panel's row reservation (0 while closed or floating), its underlay the content layer so a slide never shows a hole.
+    /// Its width eases through real layout on the panel's slide (<paramref name="motion"/>), so the content card beside it reflows with it.</summary>
+    private static Element Reservation(Func<float> width, LayoutTransition? motion) => new BoxEl
     {
         Shrink = 0f,
-        Width = Prop.Of(width),
+        Width = Prop.Of(width), Animate = motion,
         Children =
         [
             new BoxEl
@@ -261,17 +266,17 @@ internal static class WinUiFrame
     private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
 
     /// <summary>The panels over the content region and the play bar: the sheet's scrim, the primary host, the second pane, the docked panes.</summary>
-    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, bool reduced)
+    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, bool reduced, DockWidth dock)
     {
         Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
         var panes = props.DockedPanes ?? s_noPanes;
         var kids = new List<Element>(3 + panes.Count)
         {
             Embed.Comp(props.Panel, static () => new WinUiPanelScrim()),
-            PrimaryHost(props, in ctx, tiers, placement, panes, reduced),
+            PrimaryHost(props, in ctx, tiers, placement, panes, reduced, dock),
         };
         if (props.DockedPanes is null && props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
-        foreach (var pane in panes) kids.Add(PaneHost(props, pane, panes, in ctx, tiers, reduced));
+        foreach (var pane in panes) kids.Add(PaneHost(props, pane, panes, in ctx, tiers, reduced, dock));
         return new BoxEl
         {
             Grow = 1f, ZStack = true, HitTestPassThrough = true,
@@ -282,12 +287,12 @@ internal static class WinUiFrame
 
     /// <summary>What docks right of <paramref name="pane"/> (null: the primary panel): Classic's second pane, and the panes of the core's
     /// arrangement on that side (nearest the primary first).</summary>
-    private static float RightOf(ShellFrameProps props, IReadOnlyList<DockedPaneProps> panes, DockedPaneProps? pane)
+    private static float RightOf(ShellFrameProps props, IReadOnlyList<DockedPaneProps> panes, DockedPaneProps? pane, DockWidth dock)
     {
         bool before = pane is not null && pane.Side() == PaneSide.Before;
         float right = pane is null
             ? (props.DockedPanes is null ? (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f) : 0f)
-            : before ? props.RailGapWidth() + props.RailReservedWidth() : 0f;
+            : before ? props.RailGapWidth() + dock.Reserved() : 0f;
         foreach (var other in panes)
         {
             if (ReferenceEquals(other, pane)) continue;
@@ -304,7 +309,7 @@ internal static class WinUiFrame
     /// floating 340 wide over the card's right edge from the toolbar's foot to the play bar (W-Shell-Small); a sheet the body's whole box
     /// (over the mini bar). It FLIPs when a crossing docks, floats or sheets it. The panel's own template runs the open/close slide.</summary>
     private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement,
-        IReadOnlyList<DockedPaneProps> panes, bool reduced)
+        IReadOnlyList<DockedPaneProps> panes, bool reduced, DockWidth dock)
     {
         float Top() => placement() == PanelPlacement.Float ? WinUiFrameRules.PanelFloatInset : 0f;
         float Bottom() => placement() switch
@@ -316,14 +321,14 @@ internal static class WinUiFrame
         float Right() => placement() switch
         {
             PanelPlacement.Float => WinUiFrameRules.PanelFloatInset,
-            PanelPlacement.Dock => RightOf(props, panes, null),
+            PanelPlacement.Dock => RightOf(props, panes, null, dock),
             _ => 0f,
         };
         float WidthNow() => placement() switch
         {
             PanelPlacement.Sheet => props.Viewport.Value.Width,
             PanelPlacement.Float => WinUiFrameRules.PanelFloatW,
-            _ => props.RailWidth.Value,
+            _ => dock.Host(),
         };
         CornerRadius4 CornersNow() => placement() switch
         {
@@ -401,7 +406,7 @@ internal static class WinUiFrame
     /// <summary>A pane of the core's docked arrangement (Huge's second pane): flush right above the play bar, as wide as the pane, with a spacer
     /// after it as wide as what docks right of it. Keyed by its index, so a crossing that adds or drops another pane keeps its node.</summary>
     private static Element PaneHost(ShellFrameProps props, DockedPaneProps pane, IReadOnlyList<DockedPaneProps> panes, in ViewContext ctx,
-        Func<TierFacts> tiers, bool reduced) => new BoxEl
+        Func<TierFacts> tiers, bool reduced, DockWidth dock) => new BoxEl
     {
         Direction = 1, Grow = 1f, HitTestPassThrough = true,
         Children =
@@ -420,12 +425,34 @@ internal static class WinUiFrame
                         Animate = reduced ? null : WinUiFrameRules.PanelHostAnim,
                         Children = [ctx.View(ViewKeys.ShellPanel, pane.Panel)],
                     },
-                    new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(() => RightOf(props, panes, pane)) },
+                    new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(() => RightOf(props, panes, pane, dock)) },
                 ],
             },
             new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => WinUiTiers.FrameOf(tiers()).BarH) },
         ],
     };
+}
+
+/// <summary>The docked panel's width, one source for the page's reservation and the panel's host. LIVE: the seam drag's width while a drag is
+/// in flight (the pane and the page follow the pointer every frame, as WinUI's resizable panes do), the committed width at rest. While the panel
+/// is closed the host holds the width it closed at, so a pane that a drag closed slides out at the width it had, the reservation easing from the
+/// same width to 0 beside it.</summary>
+internal sealed class DockWidth(ShellFrameProps props)
+{
+    float _held;
+
+    float Live() => (props.RailLiveWidth ?? props.RailWidth).Value;
+
+    /// <summary>The row's reservation: the live width while the panel is open and docked, else 0 (tracked).</summary>
+    public float Reserved() => props.RailReservedWidth() > 0f ? Live() : 0f;
+
+    /// <summary>The docked host's width: the live width while open, the width it closed at while closed (tracked).</summary>
+    public float Host()
+    {
+        float live = Live();
+        if (props.RailReservedWidth() > 0f || props.RailFloats() || _held <= 0f) _held = live;
+        return _held;
+    }
 }
 
 /// <summary>The Compact bottom sheet's scrim: it fades in while a sheet is open and closes the panel on a tap (W-Shell-Compact 3).</summary>

@@ -36,6 +36,13 @@ public static class WinUiFrameRules
         TransitionDynamics.Tween(FrameMs, Easing.FluentPane), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(FrameMs, Easing.FluentPane), SuppressDescendantTransitions: true);
 
+    /// <summary>A docked panel's reservation and gap in the content row: its width eases THROUGH REAL LAYOUT on the panel's own slide (its
+    /// duration and curve, `WinUiPanelLayout.SlideMs` / `SlideEasing`), so the content card beside it reflows every frame and its right edge rides
+    /// the sliding pane's left edge: no empty strip on an open, no page widening before the pane has left on a close. A seam drag suppresses
+    /// layout transitions, so the reservation follows the pointer live.</summary>
+    public static readonly LayoutTransition PanelReserveAnim = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(WinUiPanelLayout.SlideMs, WinUiPanelLayout.SlideEasing), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
     /// <summary>A docked panel's host (dock, float, sheet; the second pane opening beside it): the content card's dynamics.</summary>
     public static readonly LayoutTransition PanelHostAnim = ContentCardAnim;
 
