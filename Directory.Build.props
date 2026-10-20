@@ -58,4 +58,16 @@
     <Error Text="FluentGpu engine checkout not found at '$(EngineRoot)'. Clone https://github.com/christosk92/fluent-gpu next to this repository (C:\wavee\fluent-gpu beside C:\wavee\WaveeMusic) or set EngineRoot." />
   </Target>
 
+  <!-- Tests are banned (owner decision 2026-10-20): no unit/integration test projects, no VerticalSlice-style harnesses.
+       Verification is the app's headless inspector (Wavee.exe in inspect mode: renders, traces, crossings, lint) and screenshots.
+       This target fails any project that tries to become a test project again. -->
+  <Target Name="BanTestProjects" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <_BannedTestPackage Include="@(PackageReference)"
+                          Condition="'%(Identity)' == 'Microsoft.NET.Test.Sdk' Or $([System.String]::Copy('%(Identity)').StartsWith('xunit')) Or $([System.String]::Copy('%(Identity)').StartsWith('NUnit')) Or $([System.String]::Copy('%(Identity)').StartsWith('MSTest')) Or '%(Identity)' == 'coverlet.collector'" />
+    </ItemGroup>
+    <Error Condition="'$(IsTestProject)' == 'true' Or '@(_BannedTestPackage)' != ''"
+           Text="$(MSBuildProjectName) is a test project ('@(_BannedTestPackage)'). Tests are banned in this repo: verify with the headless inspector (Wavee.exe --inspect) and screenshots instead." />
+  </Target>
+
 </Project>
