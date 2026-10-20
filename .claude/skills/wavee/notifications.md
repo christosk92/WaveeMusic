@@ -2,7 +2,7 @@
 
 Two channels, one dial per topic. Settings → **Notifications**.
 
-Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free + tested), `App/NotificationPrefs.cs` (settings → policy, the ONE accessor), `App/ToastEscalator.cs` (live), `App/ReleaseNotifier.cs` + `App/DaylistNotifier.cs` (scheduled), `Features/Shell/SettingsPage.Notifications.cs` (the tab). Library: [wavee-native](../wavee-native/SKILL.md).
+Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free), `App/NotificationPrefs.cs` (settings → policy, the ONE accessor), `App/ToastEscalator.cs` (live), `App/ReleaseNotifier.cs` + `App/DaylistNotifier.cs` (scheduled), `Features/Shell/SettingsPage.Notifications.cs` (the tab). Library: [wavee-native](../wavee-native/SKILL.md).
 
 ## The two channels
 
@@ -72,7 +72,7 @@ A scheduled toast outlives the process, so both notifiers reconcile rather than 
 
 Every topic row expands to reveal **Send a test event**, which pushes a synthetic event down **the same code path a real one takes**. The feeds are remote and slow, so without this the dials are unfalsifiable — a correctly-silenced topic and a broken one look identical.
 
-`App/NotificationSimulator.cs` orchestrates; `Wavee.Core/Notifications/SimulatedNotifications.cs` holds the builders (engine-free, therefore tested).
+`App/NotificationSimulator.cs` orchestrates; `Wavee.Core/Notifications/SimulatedNotifications.cs` holds the builders (engine-free).
 
 ### Three shapes, matching the three real ones
 

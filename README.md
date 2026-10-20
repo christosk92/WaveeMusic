@@ -89,7 +89,6 @@ junctioned in per checkout — a checkout without it builds the public-only vari
 | `src/apps/Wavee` | the app (composition root, features, backend, platform) |
 | `src/apps/Wavee.Core` | engine-free app logic (release notes, versioning, update policy, notifications) |
 | `src/apps/Wavee.Sdk`, `src/apps/modules/*` | the playback-module SDK and the first-party modules |
-| `src/apps/Wavee.Tests` | xUnit tests (pure logic — never source-text tests) |
 | `src/apps/Wavee.ReleaseTool` | validates/renders release notes for a release |
 | `ops/build`, `ops/release` | MSIX packaging, signing, the local release runbook and its E2E harness |
 | `docs/guide`, `docs/plans` | app guides (releasing, playback modules, sidebar platform) and plans |

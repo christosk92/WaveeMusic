@@ -45,8 +45,8 @@ A refused op pushes no undo and writes no file. Callers must check `Changed`.
 ## Data and feeds
 
 **Recent or New releases fetch while hidden.** Cause: the planner asked for a feed the layout does not show. Rule: a
-feed is demanded only while its section is shown (`SidebarFeedDemands`). Adding a feed means adding its demand rule
-and a test of that rule, not a fetch in the section.
+feed is demanded only while its section is shown (`SidebarFeedDemands`). Adding a feed means adding its demand rule,
+not a fetch in the section.
 
 **The pane does not re-plan when a new input changes.** Cause: the binder's revision did not fold the new input. Rule: a
 new planner input is folded into the binder's revision (`SidebarProjectionBinder`). `SidebarReplanCensus` names which
@@ -71,8 +71,7 @@ through the store. A document over `MaxDocumentBytes` (256 KiB) is dropped whole
 in `settings.json`. The `sidebar.bootstrap.version = 2` latch prevents a second read.
 
 **A new persisted field is silently dropped.** Cause: the DTO is missing from `SidebarStoreJsonCtx`, or the mapping
-skips it. Rule: a persisted field needs the DTO, the context registration and a round-trip test in
-`SidebarStoreV3Tests`. Unknown section ids are dropped on read and returned for logging. Do not write a field the reader
+skips it. Rule: a persisted field needs the DTO and the context registration. Unknown section ids are dropped on read and returned for logging. Do not write a field the reader
 will not understand.
 
 ## Drag and drop

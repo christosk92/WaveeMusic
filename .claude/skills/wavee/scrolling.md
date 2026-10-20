@@ -55,7 +55,7 @@ Element scroll = ScrollView(body) with
   Read them in a bind or a coarse memo — a `Render()` that reads `Offset.Value` re-renders every scrolled frame. If the
   value only moves pixels, it should be a scroll effect (below), not a bind.
 - **Which section am I in** (pivot scroll-spy) is a pure, engine-free decision: `Detail.ScrollSpy.ActiveSectionOf`
-  (`Entities/Detail.ScrollSpy.cs`, tested by `ScrollSpySectionTests`) / `Detail.BandLayout.ActiveSection`, fed from the
+  (`Entities/Detail.ScrollSpy.cs`) / `Detail.BandLayout.ActiveSection`, fed from the
   handle's offset.
 
 ## Sticky, clip, collapse, parallax — declared, posed by the engine
@@ -109,12 +109,12 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
   on every frame/plan/coverage/extent row, frames carry the pre-clamp `plan=` position, plans their `dest=`, and the
   UI/render rings are clipped to their common window; record at **Trace** for plan, coverage and touchpad/touch input
   rows).
-  Decisions are `ScrollDiagRules` (tested: `ScrollDiagRulesTests`).
+  Decisions are `ScrollDiagRules`.
 - **Diagnostics ▸ Tiles card** (`Screens/Diagnostics.Tiles.cs`): the always-on `AppHost.LastTileCensus`; a nonzero
   `ExposedMissing`, `DegradedSlices`, `CoverageClamps` or resident bytes over budget is a warning (all must be 0 / within
   budget). `StaleTiles` (a VALID, un-re-rastered tile whose pixels no longer match what the stream wants) is also a
   warning row. The **GPU pass timing** toggle (`AppHost.GpuPassTimingEnabled`) is a session knob — never persisted, off on
-  every launch. Decisions: `TileDiagRules` (`TileDiagRulesTests`).
+  every launch. Decisions: `TileDiagRules`.
 - **Diagnostics ▸ Evidence card** (`Screens/Diagnostics.Evidence.cs`): the engine's evidence ledgers surfaced for a
   developer — the stale-tile invariant, `PixelQuery`'s pixel-under-cursor pick, and **Export bundle** (all ledgers +
   `keyed.tsv` + the tile census zipped via `Screens/EvidenceBundle.cs`). Developer-only; never wakes the window.
@@ -152,5 +152,4 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
 1. Is it a declaration (key, handle, effect, scope, `MeasureAll`, `WheelTarget`)? Then it's app code.
 2. Is it a behaviour (how it moves, when rows appear, what the finger feels)? Then it's the engine — record it, gate it,
    fix it there.
-3. Any new pure decision (a spy, a follow policy, a card verdict) is an engine-free class with a `Wavee.Tests` unit test
-   — never a source-text test.
+3. Any new pure decision (a spy, a follow policy, a card verdict) is an engine-free class.

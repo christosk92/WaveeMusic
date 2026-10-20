@@ -43,4 +43,3 @@ Optional nullable deps + `?? Task.CompletedTask` / `?? ""` produce **silent fals
 1. Is every `IPlaylistMutationSource` / `IMutationSource` / transport dependency **required** in the bridge/composition root?
 2. Does the fake backend use a **named** stub (`LocalPlaylistMutationSource`), not `null`?
 3. Are go-live hooks (`ScheduleDrain`, `SetHttp`, `SpclientBaseUrlHolder`) set in `LiveSessionHost` and cleared in `GoOffline`?
-4. Do tests pass an explicit spclient base URL to `OpRebaseStrategy`, not an empty default?

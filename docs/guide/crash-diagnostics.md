@@ -382,7 +382,7 @@ address), and the report gains a "Frames (RVA)" section.
 offset 8, so dbghelp read a garbage pointer, every dump with exception info failed with `ERROR_NOACCESS`,
 and the retry (`retry=noexception` in `handler.log`) wrote a dump without the exception stream. With
 `[StructLayout(LayoutKind.Sequential, Pack = 4)]` the layout is 16 bytes, `ExceptionPointers` @ 4,
-`ClientPointers` @ 12 (`Crash.Handler.ExceptionInfoLayout()` pins it in a test), and `cdb -z <dmp> -c
+`ClientPointers` @ 12 (`Crash.Handler.ExceptionInfoLayout()` reports it), and `cdb -z <dmp> -c
 ".ecxr;k;q"` lands on the faulting context. The retry stays as a net; seeing `retry=noexception` again is
 a bug.
 

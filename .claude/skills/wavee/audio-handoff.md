@@ -11,7 +11,7 @@ How one track becomes the next without a hole in the sound, and what keeps the s
 | `> 0 ms` | **Overlap.** A fades out while B fades in. | `CommitCrossfade` — `GainEnvelope.Fade` on both voices over the fade window. |
 | `0 ms` (the default) | **Butt-join.** A's last sample is followed immediately by B's first. | `CommitGaplessJoin` — B's prepared voice is added to the *live* mixer at A's natural-end frame with `GainEnvelope.Constant`. |
 
-**Never implement the 0 ms path by calling the crossfade commit with `fadeMs = 0`.** `GainEnvelope.Fade(…, fadeFrames: 0, …)` returns `Constant`, so a "zero-length fade" is two voices at *unity* for the whole tail — a doubled, summed overlap, not a join. `GaplessJoinTests` in `FluentGpu.Engine.Tests` pins both halves of this: the butt-join is sample-continuous, and the overlap counter-probe shows the summed energy you get if you take the shortcut.
+**Never implement the 0 ms path by calling the crossfade commit with `fadeMs = 0`.** `GainEnvelope.Fade(…, fadeFrames: 0, …)` returns `Constant`, so a "zero-length fade" is two voices at *unity* for the whole tail — a doubled, summed overlap, not a join. The butt-join is sample-continuous; the shortcut gives the summed energy of two voices.
 
 ### The 0 ms join, in two phases
 
@@ -22,7 +22,7 @@ If the slot is not ready by the boundary, the host **holds the `Ended` signal** 
 
 ## When the next track gets prepared
 
-`PreparedNextPolicy` (pure, unit-tested in `Wavee.Tests/Audio/PreparedNextPolicyTests.cs`) owns the rules:
+`PreparedNextPolicy` (pure) owns the rules:
 
 - **`Decide`** → *prepare?*, *may the boundary overlap?*, and the dedupe *signature*. Overlap needs music on **both** sides (episodes/podcasts prepare but never overlap), `repeat != Track`, and an Audio→Audio boundary (`MediaSwitchLogic.AllowCrossfade`). Video on either side, or a gated next, prepares nothing — a null signature is the cancel signal.
 - **`EndingSoonMarginMs`** = `overlapMs + WorstCasePrimeMs` (8 s: key + CDN + `TryOpen` + ring prefill), clamped to the full duration on tracks shorter than the margin.
@@ -58,7 +58,7 @@ The mixer graph is **fixed-rate**: `OpenAsync` opens the endpoint first and bind
 | `FluentGpu.AudioWorker` | `AboveNormal` | Seek mailbox / voice retire. |
 | the process | `PowerThrottling.OptOut()` | `PROCESS_POWER_THROTTLING_EXECUTION_SPEED` off, once, in `WasapiPcm.CreateBackend` — no EcoQoS slowdown of any audio thread when the window is minimized or on battery. |
 
-MMCSS goes through the `IRtThreadCharacteristics` **instance** seam (`Enter()` = Pro Audio, `EnterDecode()` = "Audio"; the default is a no-op for headless/tests — never a static, parallel tests build rings concurrently). `MmcssProAudio.ProAudioRegistered` tracks the RT thread only; `EnterDecode` never touches it. A device wait with a negative timeout is INFINITE, not a spin.
+MMCSS goes through the `IRtThreadCharacteristics` **instance** seam (`Enter()` = Pro Audio, `EnterDecode()` = "Audio"; the default is a no-op for headless — never a static). `MmcssProAudio.ProAudioRegistered` tracks the RT thread only; `EnterDecode` never touches it. A device wait with a negative timeout is INFINITE, not a spin.
 
 **Rings (D8).** Every voice — the live one, the prepared-next one and every seek-prepared one — is sized by one `RingSizing` (`WasapiPcm.CreateBackend`: block 10 ms, **2000 ms ahead, 4000 ms ring, 1000 ms kept behind**). The producer decodes 2 s ahead of the read head; the ring keeps 1 s of already-played audio intact *behind* it (`PcmRing(minFloats, keepBehindFloats)`, `BehindFloats` is the exactly-intact span) so a backward seek is a cursor move. `RingSizing` is a record struct: use `RingSizing.Default` (10/500/1000/0) or the full constructor — `new RingSizing()` is all zeros.
 

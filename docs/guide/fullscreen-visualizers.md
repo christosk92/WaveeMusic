@@ -201,8 +201,7 @@ level in the log viewer):
 2. **Fold it in CORE** (`Visualizer.cs`). A static fold of the normalised bands (`Model.Level` / `Peak`, the low/mid/high
    averages, the position, the beat phase) into preallocated arrays or scalars on `Visualizer.Frame`, called from
    `Model.Tick`. `System`-only, no LINQ, no closures, no allocation after the constructor. Without a live spectrum it
-   must *rest* (decay to the floor), never synthesise motion. Unit-test it in `Wavee.Tests/VisualizerModelTests.cs` —
-   pure classes only, no engine mount, and never a test that reads production source text.
+   must *rest* (decay to the floor), never synthesise motion.
 3. **Give it signals** (`Visualizer.UI.cs`). Scalars become `FloatSignal`s on `Slab`; a polyline becomes a
    `SeriesSource` (a fixed-capacity `float[]` plus a `Version` the bind thunk reads; `Publish()` bumps it). The clock
    writes them all inside its one `Runtime.Batch` with `SetIfChanged`.

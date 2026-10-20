@@ -12,8 +12,7 @@ sends back, and the invariants that keep the two from corrupting each other.
 (playlist/rootlist/permission arms), `Backend/Realtime/DealerRouter.cs`, `IPlaylistMutationSource`
 (`Wavee.Core/Sources/SeamPorts.cs:74`), or the detail page's edit/reorder/notice surfaces.
 
-Every wire shape below is **desktop-verified** against two Fiddler captures + one dealer archive (2026-08-15)
-and pinned by byte-exact goldens. Design record: `docs/plans/wavee/playlist-saz-fable5-handoff.md` (read its
+Every wire shape below is **desktop-verified** against two Fiddler captures + one dealer archive (2026-08-15). Design record: `docs/plans/wavee/playlist-saz-fable5-handoff.md` (read its
 **Errata** section first — the original body is wrong on several load-bearing points).
 
 ## 1. Outbound wire contracts
@@ -224,7 +223,7 @@ the op discarded — so "the cue says yes" and "the writer can build it" cannot 
 | decides over | the flat marker stream — `IStore.Rootlist()` |
 | answers with | `RootlistMoveCheck {Ok, Missing, SameItem, Invalid, NoOp, Cycle}` |
 | batch form | `RootlistOps.CheckMoves(entries, IReadOnlyList<RootlistMove>)` — the same enum for a whole multi-selection |
-| reached by | `RootlistDropDecision` (`Shell/NavDropRules.cs`), through `CheckMoves`; the single-move `CheckMove` is the tests' oracle for the writer-parity facts |
+| reached by | `RootlistDropDecision` (`Shell/NavDropRules.cs`), through `CheckMoves` |
 | reached from | `LibraryBridge.CheckRootlistMove` (the app-side accessor, over the attached `IStore`) · the sidebar drop cue · the rail folder tile · `RootlistTreeNav` (the "Move to folder…" picker + the menu's `HasDestinations`) |
 | UI mapping | ONE table, `RootlistDropDecision.RefusalFor`: `Ok→None`, `NoOp→NoOp`, `Cycle→IntoDescendant`, `SameItem→Self`, `Missing`/`Invalid`→`Unavailable` |
 
@@ -239,7 +238,7 @@ legal destinations.
 sent. It now throws a typed `PlaylistMutationException`: `NoOp`/`SameItem` → `PlaylistMutationFailure.NoOp` ("Already
 there", `drag.alreadyThere` for `PlaylistEditVerb.Reorder`), `Cycle`/`Invalid` → `PlaylistMutationFailure.Invalid`
 ("Can't move here", `drag.cantMoveHere`), anything else → `Conflict`. Both new kinds are **informational**, not errors
-— nothing was lost. Pinned by `RootlistMoveSeamTests` (which also pins *one legal move ⇒ exactly one POST*).
+— nothing was lost.  One legal move is exactly one POST.
 
 ### Batch moves — ONE seam, ONE delta
 
@@ -277,11 +276,11 @@ the 409 rebase attempt re-derives **every** op against the freshly bootstrapped 
 **Submission order is the caller's.** Which order a same-target batch is handed over lives in the UI
 (`RootlistBatchOrder.For`): `Before(t)` / `Inside(folder)` iterate the sources in tree order, `After(t)` / `EndOfList`
 in **reverse** tree order, so each op lands adjacent to the anchor and the selection keeps its own order. The seam
-executes the list it is given, in the order it is given. Worked examples (pinned in `RootlistFolderOpsTests`, through
+executes the list it is given, in the order it is given. Worked examples (through
 `dest = to > from ? to - Length : to`): `[A,B,C,D,E]` move `{B,D}` After E in reverse ⇒ `[A,C,E,B,D]` (forward would
 give `[A,C,E,D,B]`); Before A in tree order ⇒ `[B,D,A,C,E]`; Inside F in tree order appends before the end marker.
 
-A refused batch is a **throw**, same as N=1 (`MoveRefused(reason)`); `RootlistMoveSeamTests` pins one delta with one
+A refused batch is a **throw**, same as N=1 (`MoveRefused(reason)`); a batch is one delta with one
 MOV per item, the rollback of the whole tree on a transport fault, and the 409 re-derivation of every op.
 
 **One chokepoint.** Every rootlist move in the app**One chokepoint.** Every rootlist move in the app — a sidebar drop, a collapsed-rail folder drop, the row menu's
@@ -300,45 +299,7 @@ somewhere else. The inverse is an ordinary `MoveRootlistItemAsync` on the same s
 UI contract for the drop cue itself (resolver, geometry, refusal captions, the mid-drag freeze):
 `.claude/skills/wavee-sidebar/architecture.md` § *Rootlist drag & drop*.
 
-## 8. Test infra
-
-**Dealer replay** — `Wavee.Tests/Backend/DealerArchiveReplay.cs` loads `Fixtures/dealer/playlist-20260815.{idx.ndjson,bin}`
-(a byte-exact `hm://playlist*` subset of a real session, re-offset into its own `.bin`), runs the rows through the
-**real** `DealerFrameParser`, and pushes them into a real `DealerRouter` + `LibrarySync` over a `StubTransport` with
-a scripted server. `DealerReplayTests` pins: 75 frames / 36 rootlist / 18 distinct heads each delivered twice;
-rootlist revision is 24 B after every frame; ≤18 GETs and `RootlistPushDeduped == 18`; a head-only playlist push
-does not full-refresh a cold list; the P3 tombstone evicts it everywhere and latches the header; the two permission
-pushes flip BLOCKED→VIEWER with **zero** GETs.
-
-**SAZ goldens** — `Wavee.Tests/Fixtures/playlist-wire/*.bin`, manifest + sizes in `WireGoldenFixtures.cs`.
-Each is the raw HTTP **body** (everything after the first `\r\n\r\n`, `Content-Length` verified at extraction,
-zstd-decompressed where the capture was compressed); no headers, no bearer token — `WireGoldenTests` asserts that.
-
-| Golden | What | Byte-exact rebuild? |
-|---|---|---|
-| `a031-create-p1` | create via `/changes`, 8-B base | yes (`PlaylistCreateTests`) |
-| `a042-rootlist-add-p1` | rootlist ADD, `attrs{ts, public}` | yes |
-| `a046-add-50-tracks` | ADD `add_last`, 50 minted item_ids | yes |
-| `a143-keyed-rem-x3` | one Delta, three keyed REMs | yes |
-| `a148 / a154 / a498` | keyed MOV: after_item / add_first / add_last | yes |
-| `a164-folder-create` | two marker ADDs, one Delta, no `public` | yes |
-| `a281-rootlist-index-rem` | delete playlist: index REM | yes |
-| `b037 / b128` | folder rename (inner / outer), original ts | yes |
-| `b049-rootlist-mov` | positional `MOV{from,len,to}` | yes |
-| `b063-update-list-name` | UPDATE_LIST name | yes |
-| `b078 / b108` | `SetPermissionLevelRequest` = `08 01` / `08 02` | yes (`PlaylistPermissionTests`) |
-| `a178-create-response` | create reply: rev bookkeeping, no name/contents | parse-only |
-| `a164-folder-create-response` | rootlist reply, uncompressed, no contents | parse-only |
-| `perm-get-blocked` | `Permission{revision(8 B), BLOCKED}` | parse-only |
-
-**Regenerating**: extract the `.saz` (a zip) → `raw/{prefix}_c.txt` (request) / `_s.txt` (response), take everything
-after the first `\r\n\r\n`, verify against `Content-Length`, decompress by **magic** (not `Content-Encoding`), and
-write the body alone. Then update `RequestSizes`/`ResponseSizes`.
-
-> **The rule**: a wire change must keep the goldens byte-exact, or come with a new capture. A rebuild assertion that
-> "just needs updating" means Wavee no longer sends what desktop sends.
-
-## 9. Known gaps / not captured
+## 8. Known gaps / not captured
 
 - `Mov.add_before_item` (field 5) is declared but **never observed**; `MapOps` rejects it as `unsupported-op`
   rather than reinterpreting it (there is no way to resolve "before X" without the list).
@@ -352,7 +313,7 @@ write the body alone. Then update `RequestSizes`/`ResponseSizes`.
   the next full GET (`PlaylistFetcher.HeaderOf`), and merged forward in-process by `Store.cs:256`.
 - `DeletePlaylistAsync` still throws a raw `InvalidOperationException` when the uri is not in the rootlist —
   the one write path that has not been converted to a typed kind.
-- The **P3 UI** (create flow, folder-row menu, folder loc keys) is landing separately: the seam, the wire builders,
-  the goldens and the tests exist; the sidebar call sites and `sidebar.*folder*` strings may not yet. Rename/new-folder
+- The **P3 UI** (create flow, folder-row menu, folder loc keys) is landing separately: the seam and the wire builders
+  exist; the sidebar call sites and `sidebar.*folder*` strings may not yet. Rename/new-folder
   reuse the existing `ContainerActions.RenamePlaylist` ContentDialog rather than an inline sidebar editor (sidebar rows
   are recycled `ItemsView` slots that re-plan on every rootlist push and would lose focus mid-push).

@@ -47,13 +47,11 @@ D1 is now specified in plan section 3.3 and the EP22 test cases: storing a pendi
 
 Start P0 only, then assess the cost per PR before continuing:
 
-1. H0: headless shell host in a dedicated `Wavee.ShellTests` process; settings test seams are folded in.
-2. LP1: pin Live-option behavior on the mounted shell before any views move; depends on H0.
-3. G2: theme analyzers.
+1. G2: theme analyzers.
 
 P1 follows with the engine work, including EP22's pending-tier commit. App and engine implementation belongs in their respective repositories, in branches on existing worktrees. Keep implementation PRs within the plan's 3,000-line limit; this archival documentation package is larger and changes no production behavior.
 
-Run Debug and Release builds and tests for implementation changes; engine changes also require VerticalSlice. Add the new shell-test commands to the workspace instructions once that project exists, respecting the owner's instruction-file rules. Keep private companion code out of public repositories, avoid live-profile probes and stop only processes started for the task.
+Verify implementation changes with a clean Debug build and headless inspector renders/traces (`docs/guide/agent-inspect.md`). The test projects (H0 `Wavee.ShellTests`, LP1) the plan describes were dropped when tests were banned on 2026-10-20. Keep private companion code out of public repositories, avoid live-profile probes and stop only processes started for the task.
 
 ## Known design limits
 

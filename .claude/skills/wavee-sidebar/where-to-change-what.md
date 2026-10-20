@@ -1,35 +1,35 @@
 # Wavee sidebar — where to change what
 
-Paths are relative to `src/apps/Wavee/` unless they start with `Wavee.Tests/`. Each task lists the files to edit, in
-order, and the test file that guards it. Keep the edit order: the model comes before the planner, the planner before the
+Paths are relative to `src/apps/Wavee/`. Each task lists the files to edit, in
+order. Keep the edit order: the model comes before the planner, the planner before the
 renderer.
 
 ## Tasks
 
-| Task | Edit, in order | Guard test |
-|---|---|---|
-| Add a Collections page (a new library route) | `Shell/Sidebar.Layout.cs` (`SidebarCatalogue.ItemsOf`, the item list in `s_collectionItems`); the page's loc key in `assets/loc/en-US.json`; `Shell/Sidebar.Library.cs` if it is a Library page (`SidebarLibraryPage`) | `SidebarCatalogueTests.cs`, `SidebarLibraryHeadRulesTests.cs` |
-| Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Themes/Classic/Structure/Rules/SidebarPlanner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the header) | `SidebarCatalogueTests.cs`, `SidebarPlannerTests.cs`, `SidebarStoreV3Tests.cs` |
-| Change a row metric (height, indent, icon, label gap) | `Themes/Classic/Structure/Rules/SidebarGeometry.cs` (the one ladder; `SidebarRowExtents` in `SidebarPlanner.cs` if the extents change); core reads it only through the kit (`NavRowKit`, answered by `Views/Nav/ClassicNavRows.cs`) and `NavPanePolicy.RailWidth` | `SidebarRowGeometryTests.cs` |
-| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `NavMenuModel.Run`, `Shell/NavMenuModel.cs`) | `NavMenuModelTests.cs` |
-| Add an Edit mode key or verb | `Shell/NavEditModel.cs` (the key table and the ops); `Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs` (the Outline view and its key mapping); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs`, `NavEditModelTests.cs` |
-| Add a pane mode rule or change a band | `Shell/Sidebar.Resize.cs` (`SidebarPaneModeRules` for the band's mode; `SidebarResizeRules` for the width); where a band BEGINS is the structure's window ladder (`Themes/Classic/Structure/Rules/Tiers.cs`) | `SidebarPaneModeRulesTests.cs`, `SidebarResizeRulesTests.cs` |
-| Change the Library head, chips or toolbar | `Shell/Sidebar.Library.cs` (`SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules`, `SidebarLibraryShaper`); `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs` (the visuals; its host is `LibrarySession` in `Shell/Sidebar.UI.Library.cs`); the head's heights, insets and toolbar-shape widths are `Themes/Classic/Structure/Rules/NavLibraryHeadLayout.cs` | `SidebarLibraryHeadRulesTests.cs`, `SidebarLibraryShaperTests.cs`, `SidebarLibraryStateTests.cs` |
-| Change a pin rule or the Liked and Home guard | `Shell/Sidebar.cs` (`SidebarPinId`); `Shell/Sidebar.Rules.cs` (`SidebarPinRules`); `Shell/Sidebar.Host.cs` (`SidebarPinStore`) | `SidebarPinTests.cs` |
-| Change pin sync with Spotify | `Spotify/Spotify.Encode.cs` (`LibraryPinSync`, the write marks); `Shell/Sidebar.Store.cs` (`SidebarPinLatch`) | `SidebarPinSyncTests.cs`, `SidebarAccountStoreTests.cs` |
-| Add a persisted field | the DTO in `Shell/Sidebar.Store.cs` (v1 account) or `Shell/Sidebar.Store.V2.cs` (the v2 layout DTOs used by migration); `SidebarStoreJsonCtx` registration; the mapping in `SidebarStoreV3` (`Sidebar.Store.cs`) | `SidebarStoreV3Tests.cs` (round-trip) |
-| Change the file store (temp, rotate, `.bak`, `.corrupt`, size budget) | `Shell/Sidebar.Store.cs` (`SidebarFileStore`) | `SidebarFileStoreTests.cs` |
-| Change the v2 → v3 migration | `Shell/Sidebar.Migration.cs` (`SidebarMigrationV2`, `SidebarMigrationHost`) | `SidebarMigrationV2Tests.cs` |
-| Add a feed (a section that fetches) | `Shell/Sidebar.Feeds.cs` (`SidebarFeedDemand` and its demand rule); `Shell/Sidebar.Host.cs` (the binder input) | `SidebarFeedsTests.cs`, `SidebarProjectionTests.cs` |
-| Change how a recent item resolves its title | `Shell/Sidebar.Feeds.cs` (`SidebarRecentsRules`, `ISidebarEntityPeek`) | `SidebarFeedsTests.cs` |
-| Change a drop, the drop cue or the rootlist slot | `Shell/NavDropRules.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`, the row table); `Shell/NavModel.Drop.cs` (`Drop`, `MoveRootlist`, `DepositTracks`, refusals); `Shell/Sidebar.UI.Drop.cs` (pointer, publish); the cue pictures in `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (caret, plate, band) and `SidebarGeometry.cs` | `NavDropRulesTests.cs`, `SidebarRowGeometryTests.cs` |
-| Change what a navigation view can read or ask (a nav fact, a verb, the readiness) | `Shell/NavModel.cs` (the verbs, the stored facts), `Shell/NavModel.Binder.cs` (the projection and its pump), `Shell/NavModel.Selection.cs` (selected route, play state); the binder's readiness in `Shell/Sidebar.Host.cs` | `NavModelTests.cs` |
-| Change Your Library's drill, chip commit, search rules or empty-state facts | `Shell/NavModel.Library.cs` (`NavLibrary`); the visuals in `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs` | `NavLibraryTests.cs` |
-| Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) | `SidebarAccountStoreTests.cs` |
-| Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
-| Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
-| Change a collapsed-rail flyout | `Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs` (panel); `Shell/Sidebar.UI.Flyout.cs` (open/close) | renderer, no unit test |
-| Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`: the facts); `Themes/Classic/Structure/Views/Nav/ClassicNavGridCell.cs` (the tile's data and look) and `ClassicNavRow.cs` (the grid strip); the columns are `SidebarGeometry.GridColumns` | `SidebarCardsTests.cs` |
+| Task | Edit, in order |
+|---|---|
+| Add a Collections page (a new library route) | `Shell/Sidebar.Layout.cs` (`SidebarCatalogue.ItemsOf`, the item list in `s_collectionItems`); the page's loc key in `assets/loc/en-US.json`; `Shell/Sidebar.Library.cs` if it is a Library page (`SidebarLibraryPage`) |
+| Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Themes/Classic/Structure/Rules/SidebarPlanner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the header) |
+| Change a row metric (height, indent, icon, label gap) | `Themes/Classic/Structure/Rules/SidebarGeometry.cs` (the one ladder; `SidebarRowExtents` in `SidebarPlanner.cs` if the extents change); core reads it only through the kit (`NavRowKit`, answered by `Views/Nav/ClassicNavRows.cs`) and `NavPanePolicy.RailWidth` |
+| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `NavMenuModel.Run`, `Shell/NavMenuModel.cs`) |
+| Add an Edit mode key or verb | `Shell/NavEditModel.cs` (the key table and the ops); `Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs` (the Outline view and its key mapping); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout |
+| Add a pane mode rule or change a band | `Shell/Sidebar.Resize.cs` (`SidebarPaneModeRules` for the band's mode; `SidebarResizeRules` for the width); where a band BEGINS is the structure's window ladder (`Themes/Classic/Structure/Rules/Tiers.cs`) |
+| Change the Library head, chips or toolbar | `Shell/Sidebar.Library.cs` (`SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules`, `SidebarLibraryShaper`); `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs` (the visuals; its host is `LibrarySession` in `Shell/Sidebar.UI.Library.cs`); the head's heights, insets and toolbar-shape widths are `Themes/Classic/Structure/Rules/NavLibraryHeadLayout.cs` |
+| Change a pin rule or the Liked and Home guard | `Shell/Sidebar.cs` (`SidebarPinId`); `Shell/Sidebar.Rules.cs` (`SidebarPinRules`); `Shell/Sidebar.Host.cs` (`SidebarPinStore`) |
+| Change pin sync with Spotify | `Spotify/Spotify.Encode.cs` (`LibraryPinSync`, the write marks); `Shell/Sidebar.Store.cs` (`SidebarPinLatch`) |
+| Add a persisted field | the DTO in `Shell/Sidebar.Store.cs` (v1 account) or `Shell/Sidebar.Store.V2.cs` (the v2 layout DTOs used by migration); `SidebarStoreJsonCtx` registration; the mapping in `SidebarStoreV3` (`Sidebar.Store.cs`) |
+| Change the file store (temp, rotate, `.bak`, `.corrupt`, size budget) | `Shell/Sidebar.Store.cs` (`SidebarFileStore`) |
+| Change the v2 → v3 migration | `Shell/Sidebar.Migration.cs` (`SidebarMigrationV2`, `SidebarMigrationHost`) |
+| Add a feed (a section that fetches) | `Shell/Sidebar.Feeds.cs` (`SidebarFeedDemand` and its demand rule); `Shell/Sidebar.Host.cs` (the binder input) |
+| Change how a recent item resolves its title | `Shell/Sidebar.Feeds.cs` (`SidebarRecentsRules`, `ISidebarEntityPeek`) |
+| Change a drop, the drop cue or the rootlist slot | `Shell/NavDropRules.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`, the row table); `Shell/NavModel.Drop.cs` (`Drop`, `MoveRootlist`, `DepositTracks`, refusals); `Shell/Sidebar.UI.Drop.cs` (pointer, publish); the cue pictures in `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (caret, plate, band) and `SidebarGeometry.cs` |
+| Change what a navigation view can read or ask (a nav fact, a verb, the readiness) | `Shell/NavModel.cs` (the verbs, the stored facts), `Shell/NavModel.Binder.cs` (the projection and its pump), `Shell/NavModel.Selection.cs` (selected route, play state); the binder's readiness in `Shell/Sidebar.Host.cs` |
+| Change Your Library's drill, chip commit, search rules or empty-state facts | `Shell/NavModel.Library.cs` (`NavLibrary`); the visuals in `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs` |
+| Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) |
+| Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` |
+| Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) |
+| Change a collapsed-rail flyout | `Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs` (panel); `Shell/Sidebar.UI.Flyout.cs` (open/close) |
+| Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`: the facts); `Themes/Classic/Structure/Views/Nav/ClassicNavGridCell.cs` (the tile's data and look) and `ClassicNavRow.cs` (the grid strip); the columns are `SidebarGeometry.GridColumns` |
 
 ## One line per file
 

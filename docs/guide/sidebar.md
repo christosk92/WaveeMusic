@@ -3,7 +3,7 @@
 > **Scope.** Wavee's left sidebar: two layouts over one renderer, three pane modes driven by the window width, one
 > Edit mode, and per-account pins. This is app architecture; the engine is documented in the FluentGpu guides.
 >
-> Agent-facing companion (file map, pitfalls, test inventory): `.claude/skills/wavee-sidebar/`.
+> Agent-facing companion (file map, pitfalls): `.claude/skills/wavee-sidebar/`.
 
 ---
 
@@ -58,7 +58,7 @@ library kinds (Albums, Artists, Podcasts, Audiobooks).
 ## 3. Rows and metrics
 
 Row metrics come from the WinUI ladder, held in constants on `SidebarGeometry`
-(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and are pinned by `SidebarRowGeometryTests`. Core keeps no copy: it asks the
+(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`). Core keeps no copy: it asks the
 kit (`NavRowKit`: the tree ladder, the list inset, a row's pitch, the pill's height, the grid's columns) and the nav-pane policy
 (`NavPanePolicy.RailWidth`):
 
@@ -221,26 +221,6 @@ Shaping is done by `SidebarLibraryShaper` and `SidebarLibraryHeadRules` (`Shell/
 | Change a row metric | `SidebarGeometry` (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`); the rail's width is `NavPanePolicy.RailWidth` (`ClassicPolicies.NavPane`) |
 | Add a menu item | `SidebarMenuModel`, then `SidebarMenus.Run` |
 | Add a pane mode or band rule | `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) |
-| Add a persisted field | the DTO in `Shell/Sidebar.Store.cs`, `SidebarStoreJsonCtx`, and a round-trip test |
+| Add a persisted field | the DTO in `Shell/Sidebar.Store.cs`, `SidebarStoreJsonCtx` |
 | Add a device preference (not per layout) | a `SettingKey` in `Platform.Keys` (Platform.cs) and its signal in `Sidebar.Host.cs` |
 | Change the account pin rules | `SidebarPinStore`, `SidebarPinLatch`, `LibraryPinSync` |
-
-## 11. Tests
-
-Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/apps/Wavee.Tests/<name>.cs`) covers one area:
-
-- **Layout and model:** `SidebarCatalogueTests`, `SidebarLayoutRulesTests`, `SidebarVisibilityRulesTests`,
-  `SidebarStoreV3Tests`, `SidebarMigrationV2Tests`.
-- **Rows and geometry:** `SidebarRowGeometryTests` (incl. `SidebarGeometryKitTests`), `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
-  `SidebarSubtitleRulesTests`, `SidebarProjectionTests`.
-- **Modes and sizing:** `SidebarPaneModeRulesTests`, `SidebarResizeRulesTests`.
-- **Edit, menus and undo:** `SidebarEditRulesTests`, `NavEditModelTests`, `NavMenuModelTests`, `SidebarUndoRingTests`,
-  `NavDropRulesTests`, `SidebarTypeAheadRulesTests`.
-- **Library:** `SidebarLibraryShaperTests`, `SidebarLibraryHeadRulesTests`, `SidebarLibraryStateTests`.
-- **Pins and accounts:** `SidebarPinTests`, `SidebarPinSyncTests`, `SidebarAccountStoreTests`.
-- **Feeds and cards:** `SidebarFeedsTests`, `SidebarCardsTests`.
-- **Persistence:** `SidebarFileStoreTests` (against a temp folder).
-- **Wiring:** `SidebarWiringTests`; the mounted pane is `Wavee.ShellTests/NavPaneMountedTests.cs`.
-- **Revisions and census:** `SidebarRevisionTests`, `SidebarReplanCensusTests`.
-
-Tests assert behaviour through the pure classes. There are no source-text tests.

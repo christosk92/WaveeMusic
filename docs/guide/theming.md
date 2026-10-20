@@ -1,7 +1,7 @@
 # Theming
 
 > **Scope.** How Wavee's themes are built: the layers, the composition, the options a theme exposes, the settings that
-> store them, the migration of retired switches, the analyzers that fence it all, and how a test mounts one view. The plan
+> store them, the migration of retired switches, and the analyzers that fence it all. The plan
 > (`docs/themes/plan/technical-plan.md`) is the design; this is the working guide for the code that exists. T1
 > (`feat/theming-core`) ships the machinery with Wavee Classic as the only theme and **no user-visible change**.
 >
@@ -89,14 +89,12 @@ Case = R.Case.For(LabelKind.Navigation)                    // how the style case
 | **No role selects structure** | How a row or a pivot is *arranged* is the structure's (options, parameters, policies); how big, which colour, which casing is the style's |
 
 **Classic's table** is `Themes\Classic\Style\ClassicRoles.cs` and holds the numbers `Design.Type`, `Design.Size`, `Design.Dock` and
-`Design.Motion` held before T2a (pinned by `Wavee.Tests\Theming\ClassicRolesTests.cs`). `ClassicStyle.Definition` is `Design.Definition`
+`Design.Motion` held before T2a. `ClassicStyle.Definition` is `Design.Definition`
 carrying that table. The appearance seed installs the **active composition's** definition (`ThemeHost.ActiveDefinition`), so a
 light/dark flip keeps the active theme's roles.
 
-**The process baseline.** Before a definition with roles is installed (a few boot steps, and a unit-test process that never boots
-the shell) `R` falls back to a registered baseline. `ClassicRoles` registers itself with a module initializer, so core never names
-a theme and no read lands on an empty table. A test that needs other roles installs a definition carrying them in the shell
-test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok` may change.
+**The process baseline.** Before a definition with roles is installed (a few boot steps) `R` falls back to a registered baseline. `ClassicRoles` registers itself with a module initializer, so core never names
+a theme and no read lands on an empty table.
 
 **The pivot-and-panorama vocabulary and the shape roles (contract 1.26, P5).** A Zune-shaped structure reads type and radii Classic never
 needed. They are members of the same records, so every style defines them (S2) and Classic gives each one the value its surfaces use today:
@@ -121,8 +119,7 @@ docked side pane's width from the second-pane rung and from Huge 4K; how many do
 height) and `CardGap` (the gap between cards); a density option moves `RowSingle`, `PaneItem` and `CardGap` together. Classic publishes
 380 / 420 (its Huge panes' floor), 36 (`SidebarGeometry.RowHeight`) and 12 (`R.Space.GridGap`). No Classic view reads the new roles or
 metrics yet, so nothing Classic draws changes. A **shape is not a colour**: a table that differs in `Shape` is a transaction
-(`DiffersOnlyInColours` is false). `ClassicRolesTests` pins Classic's values against the surfaces that draw them and walks the role records by
-reflection (every style defines every role, every text role has its `R.Type` call).
+(`DiffersOnlyInColours` is false).
 
 **What stayed in `Design`.** The behaviour (`Entrance`, `Reveal`, `Nav`, `Cadence`, `Reduced`; the frame clock left for `Platform\FrameTime.cs`,
 a clock and not a token, so a `[CoreHost]` may read it), the Fluent duration ladder
@@ -159,7 +156,7 @@ the accent ramp): the engine re-derives those on every accent or palette change,
 colour. A recipe is built from a `static` lambda (equal tables share the delegate, so an unchanged table compares equal), receives the kind it is
 asked for, and reads everything else as live as the call. The numbers a style gives per polarity (a wash alpha, a tint pull) are
 `ModePair<float>(light, dark)`. The `R.*` facades (`LayerReads`, `InkReads`, `OnMediaReads`, `WashReads`, `LyricsReads`) evaluate a role for the
-**active** kind (`ColorRole.Now`); `Roles.X.Resolve(kind)` is the pure per-kind evaluation the tests use.
+**active** kind (`ColorRole.Now`); `Roles.X.Resolve(kind)` is the pure per-kind evaluation.
 
 | Rule | Why |
 |---|---|
@@ -174,10 +171,7 @@ the fallback colour as arguments and read no token. A recipe in a style calls it
 and accent (`TextInk`, `ChromeAccent(scheme)`, `ChromeFromPayload`).
 
 **Classic's colour table** is the `Layer()`, `Ink()`, `OnMedia()`, `StageArm()`, `Wash()` and `Lyrics()` recipes in `ClassicRoles.cs`: each is the body
-of the `Design` expression it replaced with the kind passed in. They are pinned against the formulas written out in the test
-(`Wavee.Tests\Theming\ClassicColourRolesTests.cs`: both kinds for every role whose formula reads no live token, the process's own kind for the rest) and
-against a flip in the shell process, where the kind may change (`Wavee.ShellTests\ColourRolesTests.cs`, which also covers the colour-only swap and a
-mounted view repainting).
+of the `Design` expression it replaced with the kind passed in.
 
 **What stayed in `Design` of colour, and why.** `SchemeFor` / `ChromeSchemeFor` / `PlaceholderFor` / `WatchedPlaceholder` (they read a cover's grading
 for the active polarity from the palette TABLE: data selection, not a look), `Design.Palette` (above), `Design.Wash`'s window-relative GEOMETRY and
@@ -203,7 +197,7 @@ gutters (Classic publishes its own from `Design`). `ThemePolicies.Tiers` carries
 
 - **Classic's numbers are `Themes\Classic\Structure\Rules\ClassicPolicies.cs`** and equal what the shell shipped with. The
   core keeps the same set as `ThemePolicies.Default` so it has a policy before a composition is installed and when a structure
-  publishes one it cannot run on; `ClassicPoliciesTests` pins the two equal (the tiers aside: core never names a theme, so `Default` carries `TierPolicy.Standard` and Classic's bundle carries `ClassicTiers.Policy`), so a tuning PR changes both on purpose.
+  publishes one it cannot run on; keep the two equal (the tiers aside: core never names a theme, so `Default` carries `TierPolicy.Standard` and Classic's bundle carries `ClassicTiers.Policy`), so a tuning PR changes both on purpose.
 - **A rule takes its policy as a trailing argument.** `null` is the active policy (`ShellPolicy.Now`, a plain read of
   `ThemeHost.Policies`); an effect or a render that must re-run when the policy changes passes `ShellPolicy.Tracked.<Member>`
   (the frame, the player-bar owner, the chrome allocation and the stage layout do). `ThemeHost.Policies` is the policy half of
@@ -236,7 +230,7 @@ T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Re
 the props the parent carries (`ShellFrameProps.PlayerBar` carries its props and the frame mounts `ctx.View(ViewKeys.PlayerBar, props.PlayerBar)`).
 A `Func<Element>` member is a core host that mounts its own keys (the content host, the narrow drawer, the overlay layer, the video layers,
 the panel's lyrics and queue bodies, the profile chip, the stage's pane and caption hosts) or a behaviour control the engine wires (the
-seams' splitters, the zero-size machinery). Since T13 every published key has a Classic or Common picture (`RegistryCompletenessTests`); what
+seams' splitters, the zero-size machinery). Since T13 every published key has a Classic or Common picture; what
 core still draws itself is listed under "What stays core" below.
 
 **What stays core, and why.** Models, state machines, signals and verbs (the sidebar band and presentation, the tiers, auto zoom,
@@ -269,12 +263,7 @@ boundary, its LRU, the page-swap transition recipe (`PageTransition`) and the sc
 the recipe is the motion's (M1 moves it to the structure), not a picture.
 
 A theme that mounts the real shell must register `Shell.Frame` and `Shell.ContentState`: a registry without them draws nothing
-(the slot logs `[view-slot] view key 'Shell.Frame' renders nothing`). A test theme that mounts the shell registers Classic's views
-(`new ClassicStructure().Register(views)`), as `ThemeOptionsMountedTests` does.
-
-**Tests.** The decision and its edges are pure (`Wavee.Tests\ContentStateTests.cs`); the mounted facts are
-`Wavee.ShellTests\ContentStateMountedTests.cs` (the registered frame is Classic's, each state stands under its key in the real
-shell, the lane comes and goes, and `ViewHarness` mounts `Shell.ContentState` alone under the Classic composition).
+(the slot logs `[view-slot] view key 'Shell.Frame' renders nothing`).
 
 ### The title bar and the search (T4b)
 
@@ -308,12 +297,6 @@ items, an item's play, menu and drag) stays in the core and reaches the popup as
 `Omnibar.AnswerMemory` (what the mounted popup last measured) in `ClassicSearch`; a root remount starts both fresh, as before. The
 strip's measured extent (`Shell.TabExtent`) feeds the allocator and stays in `Shell.UI.cs`.
 
-**Tests.** The mapping from the allocation to the view's value, with the hysteresis intact, is `Wavee.Tests\ChromeRowStateTests.cs`;
-the published ids, Classic's registration and the props equality are `TitleBarContractTests.cs`. The mounted facts are
-`Wavee.ShellTests\TitleBarMountedTests.cs`: the real shell's title row is the registered template's, narrowing swaps the field for the
-magnifier and widening brings it back, `ViewHarness` mounts the title bar with fixture props (each identity chip, the pin slot, the
-search form) and the suggestions body alone (the progress slot, the pending height, rows).
-
 ### The frame's small views (T4c)
 
 | Key | Props | Core host | Classic template |
@@ -335,13 +318,9 @@ default): see "Page chrome row 2, the band and the shell capabilities (P5 ZK)" b
 **Props that cannot carry a writable signal.** The tint binder publishes into the shell material, and a props record may not hold a `Signal<T>`
 (WVTH006), so it carries a `MaterialPort` (`Platform\ShellMaterial.cs`): one cached object per slot, compared by reference, whose `Publish` is
 `ShellMaterial.Publish`. The palette's popup is the engine control wired to the open flag by the host, so the props carry a
-`Func<Element, Func<Element>, Element>` and the template places what comes back. The decisions stay core and pinned by their tests: the hand-over
+`Func<Element, Func<Element>, Element>` and the template places what comes back. The decisions stay core: the hand-over
 rule (`TintOwnership`: a claim, an owner-only refresh, never a clear, so a navigation never flashes), the veil's pre-settlement guard
 (`VeilSettlement`), the drawer's mount decision (`NarrowDrawerMount`, the band alone), the palette's scoring and the FPS rule (developer mode only).
-
-**Tests.** `Wavee.ShellTests\FrameBitsMountedTests.cs`: Classic is the registered template of every key above, each view stands in the real
-shell or alone under `ViewHarness` with fixture props (the masthead row, the drawer's two states, the palette's rows and keyboard, the file-drop
-cue, the scrim, the HUD only in developer mode), and the cover leaves still publish the shell tint through the port.
 
 ### Page chrome row 2, the band and the shell capabilities (P5 ZK)
 
@@ -382,12 +361,6 @@ pins show at a tier, how the band collapses and how its words overflow are the s
 `HistoryMenu` and `FriendsPanel` are kept by every structure so far. A template may read the capabilities itself
 (`ctx.Hooks.UseContext(ThemeFactsContext.Signal).Value.Capabilities`), for instance to leave its own pane toggle out.
 
-**Tests.** Pure: `Wavee.Tests\PageChromeRowTests.cs` (the Library row per route, the merge, the band's lit index, the scroll rule),
-`ShellCapabilityRulesTests.cs` (the budget without Forward, the row without tabs, the workspace's collapse and expansion, the palette filter).
-Mounted: `Wavee.ShellTests\ShellCapabilitiesMountedTests.cs` under the test-only `ClassicBand` theme (Classic's views, Tabs, Forward and NavTree
-off, six band pins): no tab island and no Forward, no pane mounted, the workspace collapsed on the switch and restored on the switch back, the
-band's pins capped at six, and the current chrome carrying the Library row.
-
 ### The navigation pane's rows (T5a)
 
 The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
@@ -422,15 +395,9 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
 - **X26 is gone.** `OwningSection` (which section would hold a route: the pill's header or folder anchor) was a layout branch inside
   the "one renderer"; it is `SidebarRowPlanner.OwningSection`, next to the Library plan, and `NavModel` no longer answers it.
 - **No core copy of the ladder.** The row ladder is Classic's alone. T5a kept a pinned mirror (`SidebarRowGeometry`, with
-  `SidebarGeometryParityTests`) for the sub-surfaces that were still core; T5f, the last sidebar lane, deleted both (see "The navigation
+  a parity check) for the sub-surfaces that were still core; T5f, the last sidebar lane, deleted both (see "The navigation
   pane's Library grid (T5f)" below). What core keeps is no pixels: the plan queries (`SidebarPlanQueries`: `TrySectionBodyRange`,
   `FolderHeaderIndexOf`, ...). The band widths are `NavPanePolicy`'s (section 2a).
-
-**Tests.** The planner, the diff, the extents, the freeze and the ladder are pure (`SidebarPlannerTests`, `SidebarWiringTests`,
-`NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
-`Wavee.ShellTests\NavPaneMountedTests.cs` (the registered template is Classic's, the real shell draws the pane through the key and
-its Home row stands at the ladder's row height, the kit plans with Classic's planner, and the pane's boxes are the kit's: the menu
-shell over a childless shield only with an overlay, the inset, the mode's fade, and in the real shell the list in the layer beside the one shield).
 
 ### The navigation pane's heads (T5b)
 
@@ -459,11 +426,7 @@ T5b gives the structure the pane's **heads**: whatever stands above or between t
   `PaneMetrics.HeadBandInset`, which nothing read, is gone; the rest of the mirror went with T5f.
 - **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library head's heights, insets and
   toolbar widths are `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`, T5f: they moved out of core's `SidebarLibraryHeadRules`,
-  which keeps the decisions the pure tests pin).
-
-**Tests.** The mounted facts are in `Wavee.ShellTests\NavPaneMountedTests.cs` (Classic registers both keys, the real shell in the
-Library layout draws the head through its key with its ring, dropdown and toolbar standing, and the empty body is the sentence
-or the bare spacer); the Library head's rules stay `SidebarLibraryHeadRulesTests`, `NavLibraryTests`.
+  which keeps the decisions).
 
 ### The navigation pane's flyouts and menus (T5c)
 
@@ -485,9 +448,6 @@ T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows*
   `FolderMenu`, `PayloadOf`, `ResourceDropSpec`, `MenuOverlay`) from it. Numbers are `Rules\NavFlyoutLayout.cs`.
 - **Nothing was left to delete.** The ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) had other core readers (the row
   primitives, the drop rules), so the mirror went with T5f.
-
-**Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers both keys; the drill-in stack stays
-`SidebarFolderFlyoutNavTests` (`NavDropRulesTests.cs`).
 
 ### The navigation pane's Edit outline (T5d)
 
@@ -511,9 +471,6 @@ T5d gives the structure the **picture** of edit mode; the edit model, its ops, v
   use `ClassicNavHead.InlineButton`.
 - Rename-in-place is not part of the Outline: a row's F2 rename and the create flow are the row slots' and the pane's (T5a / T5b), unchanged.
 
-**Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers the key; the edit model's behavior is `NavEditModelTests`,
-the rules `SidebarEditRulesTests`.
-
 ### The navigation pane's drop cues (T5e)
 
 T5e gives the structure the **pictures** of a drag over the pane and the rail; the drop **facts** stay core (C12). There is no new view key: the
@@ -532,18 +489,15 @@ cues live inside the row slot and the flyout rows that T5a and T5c already moved
 - **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`: the pane hands
   the resolver the kit's `NavRowKit.TreeLadder` (T5f), so there is no core copy.
 
-**Tests.** The cue invariant is `NavDropRulesTests` (`SidebarDropCueTests`: line iff ordering, plate iff Into); the caret geometry is
-`SidebarRowGeometryTests`; the mounted pane still draws through Classic's kit (`NavPaneMountedTests`).
-
 ### The navigation pane's Library grid (T5f)
 
 T5f is the last sidebar lane. It gives the structure the Library layout's grid tile and ends the T5a mirror: **core reads the row ladder
-through the kit and the policy, and `SidebarRowGeometry` and `SidebarGeometryParityTests` are deleted.** Library data, the layout
+through the kit and the policy, and `SidebarRowGeometry` and its parity check are deleted.** Library data, the layout
 choice, persistence and the demands stay core (`NavLibrary`, the layout store, the binder).
 
 | Surface | Core keeps | Classic draws |
 |---|---|---|
-| The grid tile (one cell of a `GridStrip`) | `SidebarCardRules` (selected, activation, play, drop, drag, the title gate, pending, circular: pure facts, `SidebarCardsTests`), the verbs and specs through `INavRowHost` (`Navigate`, `Play`, `GridCellMenu`, `ResourceDropSpec`, `PayloadOf`, `DestOf`) | `Views\Nav\ClassicNavGridCell.cs`: the `CardData` the media surface renders (the cover box a no-art entry gets, its kind glyph, the subtitle's look, the cover's size in the card's plate, `SidebarGeometry.TileCover`) at `Shape.SidebarTile` |
+| The grid tile (one cell of a `GridStrip`) | `SidebarCardRules` (selected, activation, play, drop, drag, the title gate, pending, circular: pure facts), the verbs and specs through `INavRowHost` (`Navigate`, `Play`, `GridCellMenu`, `ResourceDropSpec`, `PayloadOf`, `DestOf`) | `Views\Nav\ClassicNavGridCell.cs`: the `CardData` the media surface renders (the cover box a no-art entry gets, its kind glyph, the subtitle's look, the cover's size in the card's plate, `SidebarGeometry.TileCover`) at `Shape.SidebarTile` |
 | The strip, its columns and cells | the presented pane width; `INavRowHost.GridColumns` (the planned count) | `ClassicNavRow.GridStripRow` (unchanged), `SidebarGeometry.GridColumns` / `GridFallbackColumns` / `GridCellMax` |
 | The head's rows, chips and toolbar | the session, the pages, chips, sort rules, the Tab order and ring (`SidebarLibraryHeadRules`, incl. the `ToolbarShape` vocabulary) | their heights, insets and the toolbar widths that choose the shape: `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`: `ShapeOf`, `ToolbarWidth`, `ToolbarLane`) |
 
@@ -566,10 +520,6 @@ choice, persistence and the demands stay core (`NavLibrary`, the layout store, t
   was in `SidebarCards`, moved; the layout switch, the rail form, selection and the playing indicator, drag reorder, the chips, the empty
   and signed-out states, keyboard navigation and every accessible name are untouched.
 
-**Tests.** `SidebarGeometryKitTests` (`SidebarRowGeometryTests.cs`) pins the kit's answers, the rail width, the grid columns and the label
-width; `SidebarCardsTests` the card facts; `NavDropRulesTests` drives the resolver with Classic's ladder (`DropLadder`);
-`SidebarLibraryHeadRulesTests` the head's rules and Classic's toolbar shape; `NavPaneMountedTests` that the list stands inside the kit's inset.
-
 ### The player bar (T6a)
 
 | Key | Props | Core half | Classic template |
@@ -582,8 +532,7 @@ that read it. Splitting that across a host component and a child would change wh
 effects, so the contract does not split the component: the template's first line is `props.Host.Use(ctx.Hooks)`, which runs the
 core's hooks on the slot's hook context in the order the old component ran them and answers a `PlayerBarView`; the template then
 draws that view with its own hooks (the hover signal, the captured nodes, the like pop, the face cross-fade). A theme that skipped
-the call would draw a bar with no bookkeeping. The `Host` is also the seam for a test: a fixture host returns a fixed view and the
-template draws it (`PlayerBarMountedTests`).
+the call would draw a bar with no bookkeeping.
 
 **The levels stay policy and the machine stays core.** `PlayerBarPolicy` (Classic's values in `ClassicPolicies`) is the single
 source of the six levels, the 24 DIP narrowing hold and the bar's height; `Shell.PlayerBar`/`PlayerBarLayout` resolve them. T6a adds
@@ -657,10 +606,6 @@ reel pictures are gone. The video body is the template's since T7c
 (`ClassicVideoPanelBody`; `PanelProps.SubscribeVideoBody` carries its subscriptions). The queue body (`PanelProps.QueueBody`) is the core host's builder
 (`Queue.RailPanelHost` inside its slot pin), which mounts the `Queue.Panel` key since T7d.
 
-**Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
-`Wavee.ShellTests\PanelMountedTests.cs` (the registered templates are Classic's; the real shell draws the hero's cover at the panel, a mode switch
-keeps it, a narrow window floats the panel; `ViewHarness` mounts the panel with fixture bodies, the friends faces, the picker and the strip).
-
 ### The track table's rows (T8a)
 
 A virtualized list is not a view a theme can hand back as an `Element`: recycling, selection, drag, the keyboard and scroll anchoring
@@ -689,8 +634,7 @@ surface, the artist chart and the drawer.
   A template must keep the box `Focusable = false` (the list owns the one roving tab stop) with the Button role.
 - **What stays core.** Which rows exist, the track / episode switch, the reveal gate and the shimmer row, the presentation memo and
   its equality gate, the like-edge latch, the drawer (`DrawerBox`, T8c), column sets and widths (`ColumnSet`, `TracksFor`, the relief
-  ladder), row height and density, the selection model, the keyboard map, the menu and the pure decisions (`RowCellRules`, pinned by
-  `TrackRowCellRulesTests`). The cell wrappers and navigation the eager row shares (`Track.RowCenterCell`, `MoreCell`,
+  ladder), row height and density, the selection model, the keyboard map, the menu and the pure decisions (`RowCellRules`). The cell wrappers and navigation the eager row shares (`Track.RowCenterCell`, `MoreCell`,
   `GoToArtistAt`, ...) were `internal` on `Track` until T8c moved that row: the cells are `ClassicRowCells` now (see "The list surfaces (T8c)"), and `MoreCell`, `ExpandCell` and the three lane wrappers stay on `Track` because Recents passes them in.
 - **Not yet the engine's typed channel.** EP6 (`ItemsView.CreateBound` over `BoundListProps`, a stamp-driven rebuild of every slot, the
   FGTH003 ban on components in a row template) wants the whole slot as a plain tree. The table's slot is two components today
@@ -699,15 +643,7 @@ surface, the artist chart and the drawer.
   frame is unchanged (no extra component, no extra closure per bind). `TrackListStyle.Stamp` is carried for the PR that folds the
   slot; until then a row-style change (the policy) re-keys the list (`list:<scroll>:d<N>:classic|modern`), as before.
 - **A host without a registry.** A table mounted where no registry provides `StyleKeys.TrackTable` logs once
-  (`track table: no TrackListStyle is registered`) and draws bare containers. A test that mounts a table outside the real shell
-  provides Classic's registry (`new ClassicStructure().Register(builder)`, `Ctx.Provide(ViewRegistry.Context, ...)`), as
-  `TrackRowRecycleAllocationTests` does.
-
-**Tests.** The registration and the two template pairs are `Wavee.Tests\Theming\TrackListStyleTests.cs`; the recycle budget on the real
-table (a scroll re-renders no row component and allocates at most 7 KB per recycled row) is `TrackRowRecycleAllocationTests`; the
-mounted facts in both row styles (the skin's pill and divider, the number and title lanes, the row height from the style's ladder)
-are `Wavee.ShellTests\TrackRowsMountedTests.cs`; the re-keying on the setting, the density and the hidden art stay
-`LiveOptionBehaviourTests`.
+  (`track table: no TrackListStyle is registered`) and draws bare containers.
 
 ### The track table's chrome (T8b)
 
@@ -732,9 +668,6 @@ column header, the command bar's pictures, the filter card and the placeholder r
   statics the library panes and the artist reader called with no registry) moved with those callers in T10c1: the header shim is the album pane's own picture
   (`ClassicLibraryAlbumPane`), and the placeholder row both panes draw is `ClassicTrackChrome.Placeholder`.
 - **A host without a registry** draws the placeholder and every chrome piece as an empty box (logged once with the rows).
-
-**Tests.** The chrome's registration is `Wavee.Tests\Theming\TrackListStyleTests.cs`; the mounted facts in both row styles (the keyed header,
-the browse-mode command lane, the "…" slot) are `Wavee.ShellTests\TrackChromeMountedTests.cs`.
 
 ### The list surfaces (T8c)
 
@@ -767,10 +700,6 @@ once per key and the host draws nothing), and one rule: a template reads facts a
   always the plain run (the marquee branch of the old `TitleCell` was unreachable for it; the table's now-playing marquee is
   `ClassicTrackTable`'s).
 - **A host without a registry** logs `no style is registered for <id>` once and draws nothing (the surface's seed face still draws: it is core).
-
-**Tests.** Registration, ids and the lookup are `Wavee.Tests\Theming\ListSurfaceStylesTests.cs`; the mounted facts (the eager row's lanes and
-hover container, a live surface row and its seed at one height, the cold episode row at the row's geometry, and each host drawing nothing
-without a registry) are `Wavee.ShellTests\ListSurfacesMountedTests.cs`.
 
 ### The fullscreen stage's frame (T7a1)
 
@@ -816,12 +745,6 @@ stage family's tiers below).
 (`Stage.StageCtx`'s seed palette and `SurfaceCore.PublishAccent`: polarity as an argument, not a colour); the moved views take rungs from the stage-arm
 table (`StageInk.Ink`, `GlassHover`, `Card`, `SelectedTileWash`, ...) and never ask which arm is live.
 
-**Tests.** `Wavee.Tests\StageFrameContractTests.cs` pins the keys' ids, Classic's registration and the props' cached equality;
-`StageSettingsVerbsTests.cs` pins what the option surfaces write (each verb persists and bumps the stage epoch once, a picked face survives other writes);
-`Wavee.ShellTests\StageFrameMountedTests.cs` opens the real stage under Classic and checks the registered templates, the root's stack and the chrome's
-nodes, then mounts the top bar, the transport card, the options popover and the gallery alone under `ViewHarness` with fixture props, and the pane region
-(`Stage.Pane`) with a fixture KeepAlive: the region at the allocator's pane rect, the frame's entrance run out, the empty arm.
-
 ### The fullscreen stage's layouts (T7a2)
 
 The four layouts (Card, Large art, Centered, Artist) stay a **core choice** (owner Q16: every theme draws all four): which layout is drawn
@@ -857,11 +780,6 @@ empty scroller while the facts land, and a section that has nothing takes no spa
 **Numbers.** `Rules\StageGeometry.Layers.cs` holds the identity's chips and cover corners, the card's entrance and the artist name's eyebrow;
 `StageGeometry.Artist.cs` the pane's base DIPs (times `Layout.QueueScale`, rounded by `ClassicStageArtistKit.Px`). The decisions (two columns from 1100 DIP, the
 header's height, the reading measure, how many avatars fit) are `Stage.ArtistRules`, which the pane calls.
-
-**Tests.** `Wavee.Tests\StageLayerContractTests.cs` pins the keys' ids, Classic's registration and the facts' value equality;
-`Wavee.ShellTests\StageLayersMountedTests.cs` opens the real stage and mounts the identity (the cover at the allocator's size, the bounds spring on a layout
-switch), the spectrum, the backdrop and the Artist pane (nothing playing, no facts yet, facts, the demand once per artist and track) under `ViewHarness`.
-`LiveOptionBehaviourTests` keeps pinning the spring on the real stage.
 
 ### Lyrics (T7b)
 
@@ -904,11 +822,6 @@ views (T6b)" above). The second line, the AI verdict and the peek's document and
 the stage's accent pill and the secondary weight. The metrics (`Lyrics.Surface`: row type and rhythm, the focal band, the halo sigmas, the loading
 bars) are the core's and the views read them by name.
 
-**Tests.** `Wavee.Tests\LyricsViewContractTests.cs` pins the keys' ids, Classic's registration and the style's members;
-`Wavee.ShellTests\LyricsViewMountedTests.cs` opens the real rail on lyrics (nothing playing: the centred line; a fixture track: the keyed rows and
-the layer overlays) and the real stage's column, and `LiveOptionBehaviourTests.Lyrics_blur_strength_reaches_the_rail_lines_and_never_the_stage`
-keeps pinning the blur.
-
 ### The queue (T7d)
 
 Two keys, both drawn by `Themes\Classic\Structure\Views\Queue`: `Queue.Panel` (`QueuePanelProps`, the rail's queue body: the shuffle, repeat and autoplay pills,
@@ -940,10 +853,6 @@ width travel in the stage's ambient context (`Stage.StageContext`), which the vi
 `lane:empty`, `stagelane:upcoming`, `stagelane:empty`), the header, more and "Playing from" keys, the Enter / Exit / Slide of every slot, the now-playing card's
 track-keyed remount, the hover-revealed grip and ✕ on the stage, the swipe actions and every accessibility role and name are unchanged. The `queue.panel.rows`
 diagnostic line and its capture stay in the rail host.
-
-**Tests.** `Wavee.Tests\QueueContractTests.cs` pins the ids, Classic's registration and the section tags; `QueueModelTests.cs` the projection (and `TryRow`), the
-paging and the verbs; `QueueRowRulesTests.cs` the core's decisions (the ✕, the row's own drag, no "..." button) and `ClassicQueueRulesTests.cs` the structure's
-(extents, dim, adapter, card click). `Wavee.ShellTests\QueueMountedTests.cs` mounts the real rail on the queue and the real stage's column.
 
 ### The video surfaces (T7c)
 
@@ -980,10 +889,6 @@ it none of the keys that draw in that window (the pop-out's, the poster, the on-
 **What reads the six keys.** `Video.PlacementMenu(includeFullscreen)` (core) still builds the rows (the radio checks, the reasons, the always-on-top toggle): the bar's overflow cascade and
 the on-media "more" menu nest the same rows with the aspect, quality and speed cascades (`OnMedia.MoreMenu`, core: the fit and aspect picker is T6b's on-media strip, whose rows are decided from live reads); the
 chevron's flyout is the key's presenter.
-
-**Tests.** `Wavee.Tests\VideoContractTests.cs` pins the ids, Classic's registration and the band's height; `VideoRulesTests`, `VideoSurfaceViewRulesTests`, `VideoJoinPhaseTests`,
-`PlacementMenuTests` and `RailSurfaceTests` pin the rules that stayed. `Wavee.ShellTests\VideoMountedTests.cs` mounts each view alone (the poster's states, the cap's height and reservation, the
-watch frame, the overlay's buttons and zones per placement, the pop-out, the exit chrome, the flyout).
 
 ### Home (T10a1)
 
@@ -1024,11 +929,6 @@ minimum and the customizer's row.
 **The customizer's reorderable.** A drag asks for a re-render of the component that built the rows, so the VIEW (the slot's own component) gives the
 host-owned `Reorderable` its scene, its render request and its row extent each render; the host only owns the behaviour object.
 
-**Tests.** The ids, the zone-kind map, Classic's registration and the chapter arithmetic are `Wavee.Tests\HomeContractTests.cs`; the facet machine, the dim plan
-and the layout document stay `HomeHostTests`, `FacetDimPlanTests` and `LayoutFileTests`. The mounted facts are `Wavee.ShellTests\HomeMountedTests.cs`: Classic is
-the registered template of every key, the real shell draws the page (column, pinned band, zone chapters), the band is the rule's height and the failure bar
-follows the phase, and the customizer's rows stand in document order at the row height.
-
 ### Browse and Search (T10a2)
 
 The Browse directory, its Charts band, a category page, the section drill page and the Search results page are registered Classic views (`Themes\Classic\Structure\Views\Pages`); the load verdicts, the layout and ranking rules, the readiness of
@@ -1052,10 +952,6 @@ handles, the fallback rows, the rail, the genre tiles, the related queries), so 
 (`Search.HitData`, `OpenHit`, `PlayHit`, `MenuOf`, `DragOf`, `TrailingOf`, `TitleOf`, `CoverOf`, `SubtitleOf`, `CardDataOf`, `OpenRelated`) over the one media surface;
 `SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden is Classic's own option (`ClassicOptions.HideTrackArt()`, M4): the body reads it where a hit row is built and hands it to `Search.HitData`.
 
-**Tests.** The ids, Classic's registration and the grid-facet rule are `Wavee.Tests\BrowseSearchContractTests.cs`; the column bands and the star grid are `BrowseLayoutTests`; the load gate, the facet rules and the hit decisions
-stay `BrowseLoadGateTests`, `SearchFacetRulesTests` and `SearchHitDataTests`. The mounted facts are `Wavee.ShellTests\BrowseSearchMountedTests.cs`: Classic is the registered template of every key, a tile block keys
-each tile by its destination's uri, the Search facet row is the skeleton until the first body has answered, and then carries one underline and a body keyed by the facet.
-
 ### The artist page (T10b1)
 
 The artist page is the structure's picture over a core host. The scroll column, the page's skeleton region, the hero and its collapse into the context band, the section anchors, the Top-tracks band, the shelves, the biography band, the banners and the artist pick card are one registered Classic view
@@ -1076,9 +972,6 @@ pictures own (the pick card's pieces, the magazine's dock reserve, the biography
 are the same elements with the same keys. The view keeps the page's latches (the Top band's wide arm, the biography band's mode, the resolved styles) in one hook cell of its slot; the host keeps the tier latch.
 
 **Washes.** The shell-tint claim is the host's (`Palette.ShellTint`, handed over as `Tint`); the blend wash is drawn by the view through `Palette.ArtistBlendWash` and whether it draws at all is Classic's Surfaces option (M6), read by the leaf itself: the host passes no flag.
-
-**Tests.** `Wavee.Tests\ArtistPageContractTests.cs` pins the id, Classic's registration and the value types; the plan, the pivot rules, the failure verdict and the hero tiers stay `ArtistPageRulesTests` and `ArtistHeroLayoutTests`. `Wavee.ShellTests\ArtistPageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending
-and while failed, no magazine without a body, and the size observer hearing the width.
 
 ### The rest of the artist family (T10b2)
 
@@ -1101,11 +994,6 @@ props re-push and an expanded cell re-pushes one reference.
 facet's selection and demand state, the gallery's open and index state, the chart's skeleton counts (`ArtistSections.ChartSkeletonShape`), and the drawer's
 verdict and geometry (`Album.DrawerVerdict`: the structure reads its row pitch and top gap). `Artist.ChartSkeleton` and `Artist.DiscoGap` are gone: the
 page's skeleton calls the chart style's `Skeleton` with `ArtistChartSkeletonArgs.For`, and the gap is `ClassicDiscographyRules.Gap`.
-
-**Tests.** `Wavee.Tests\ArtistMoreContractTests.cs` pins the two ids, Classic's registration and the reference-only props equality;
-`Theming\ListSurfaceStylesTests` the discography style; `ArtistPageRulesTests` the skeleton's counts; `DiscoCellPropsTests` the cell's gate (the style is
-not data). `Wavee.ShellTests\ArtistMoreMountedTests.cs` mounts the lightbox (the Escape veto wired on mount, the selected photo keyed in the pager, a core
-selection reaching it) and the discography page (no grid for an unparsed route, the core's grid at the 28-DIP inset).
 
 ### The concert surfaces and the module page (T10b3)
 
@@ -1131,8 +1019,6 @@ The Concerts hub, an artist's tour dashboard and the event page are registered C
 **What a concert view may call.** The WVTH002 fence applies (no `Shell`, `Entities`, `Playback`, `Spotify`, `Store`, `Prefs`). The handles (`Concert`, `Playlist`, `Artist`, `Track.GoToArtist`), the pure rules (`ConcertHub`, `ConcertScheduleShaping`, `ConcertCopy`, `ConcertPlaces`, `ConcertTime`) and `Actions.Services.OpenExternal` are called directly. The overlay options of the flyouts are `Concert.FlyoutOptions` (focus trap, light dismiss).
 
 **The module page.** The `module:` page, the one page a playback module describes, is a Common block (`Themes\Common\CommonModulePage.cs`, numbers in `Themes\Common\Rules\CommonModuleRules.cs`; namespace `Wavee.Themes.Common`). It is written once and registered by every structure, Classic included, under the template id `common.module.page`; the route parse, the load, the stage-playable claim and the verbs stay core (`Modules.PageHost`, `Platform\Modules.Page.cs`, with `Modules.PlayOrToggle`, `OpenUrl`, `Navigate`, `InvokeFor` and `PlayingModuleUri` as the view's verbs and reads). The view draws the masthead reserve column, the stage slot (an EMPTY keyed box for a non-watch document, and always a sibling ABOVE the scroller: the stage hosts the app's one composited video, so no ancestor may carry an opacity, a transition or an edge fade), the scroller over the `Skel.Region` (the derived loading shimmer, the failed body with Retry and "Open in browser", the unparsed-route vacancy), the entity reading (hero, actions, text / facts / playables / cards / links sections under the shared item budget, unknown kinds skipped) and the watch reading (title, live badge and meta, channel row, chips with the inert Playing capsule, description card, 16:9 shelf). Its motion (the sections' fade-up and shove, the soft reveal) and keys are the old tree's.
-
-**Tests.** The ids, Classic's registration (and the Common module block's), the props identities and the skeleton's silhouette are `Wavee.Tests\ConcertContractTests.cs` and `ModulePageContractTests.cs`; the shaping, the hub's decisions, the offers and the ladders stay `ConcertSchedulePageTests`, `ConcertHubModelTests`, `ConcertDetailModelTests` and `ConcertLayoutTests` (the ladders now over `ClassicConcertTiers`). The mounted facts are `Wavee.ShellTests\ConcertMountedTests.cs` (Classic is the registered template of every key; the filter bar is the keyed pinned card at rest and fuses its pill from the host's signal; a feed body mounts the host's tail under the block's key; a pending schedule or event page reads no model; a ready one keys its board, offers and acts; the picker's rows) and `ModulePageMountedTests.cs`.
 
 ### The library and its panes (T10c1)
 
@@ -1161,7 +1047,7 @@ Classic view compares a width with a number (WVTH013). The numbers within a layo
 
 **Column widths (M13).** `library.<kind>.leftw/midw` are Classic's theme *state* (`theme.classic.state.library.<kind>.leftw|midw`, owner Q6: per theme), one `StateKey` per kind and column declared by the core host that
 writes them (`LibraryViewPrefs.LeftWKey/MidWKey`; default 340, 280 for artists, and 440; clamped on every read and write to the grips' range, which core spells as `LibraryViewPrefs.LeftMin` / `LeftMax` / `MidMin` / `MidMax`
-and a test pins equal to `ClassicLibraryRules`). `LibraryViewPrefs` (`Read`, `SetLeftW`, `SetMidW`) keeps the door; the view only receives the two signal instances and the commit verbs. The `LibraryColumnWidths`
+and equal to `ClassicLibraryRules`). `LibraryViewPrefs` (`Read`, `SetLeftW`, `SetMidW`) keeps the door; the view only receives the two signal instances and the commit verbs. The `LibraryColumnWidths`
 `ThemeBootstrap` step copies the eight stored widths once.
 
 **What a Library view may call.** The WVTH002 fence applies. The navigator's data adapters stay core and are called by the rows (`LibraryRows`, `User.NavSubtitleText`, `User.ArtOf`, `User.DragOf`, `User.HitDrag`,
@@ -1171,10 +1057,6 @@ retry, the ⋯ menu) arrive as props. The numbers are `Rules\ClassicLibraryRules
 
 **Skeletons.** The navigator's eight shimmer rows cross-dissolve into the rows (`SkelReveal.StaggerRows`); the album pane's header skeleton states the real header's height, so the crossfade is a dissolve and never a reflow; its
 counted shimmer is the table's own lanes and row pitch under the header shim; Your Episodes seeds with the structure's episode rows; the reader's blocks keep their analytic extents.
-
-**Tests.** The ids, Classic's registration, the by-reference props and the pane arithmetic are `Wavee.Tests\LibraryContractTests.cs`; the ladder and the records `LibraryTiersTests`; the search row shapes `LibrarySearchRowTests`;
-the pane header's budget `AlbumPageRulesTests`; the "Also by" strip `AlbumSurfaceRulesTests`; the reader's chrome `ArtistReaderChromeTests`. The mounted facts (Classic is the registered template of every key, the wide arm's keyed
-columns, the page's width reported to the host, the kind chips over the root rung and the crumb bar over a leaf of the depth-keyed drill, the header skeleton at the stated height, the show pane's arm keys) are `Wavee.ShellTests\LibraryMountedTests.cs`.
 
 ### The Recents page (T10c2)
 
@@ -1189,8 +1071,6 @@ The Recents page is the structure's picture over a core host. The masthead, the 
 **Motion is the page's, unchanged.** The masthead's two lines 45 ms apart, the underline's scaleX enter, the body FLIP (a value under reduced motion), the drawer's spring reveal, the zoom's 1.08 / 0.94 crossfade, the brush glide of every accent consumer (bound `Prop`s over the page's thunks), the pinned band's quantized push (a bound transform: a scroll frame never re-renders it) are the same elements with the same keys. The skeleton source is the real day headers and the row's real geometry over the pending seed rows, so the shimmer matches the real heights.
 
 **Numbers.** The card's art, the Saved stack's tiles, the child lanes and the single-play lanes are `Rules\ClassicRecentsRules.cs`; the grouped layout's own geometry (the day header and row heights, the calendar's cell and card sizes, the sticky push quantum) stays in the core `RecentsLayout` because the layout, the rail and the calendar grid read it. There is no width threshold in the page: the calendar's columns come from the engine's GridFit, and the tier's numbers are `ClassicRecentsTiers.Of(facts)` (see "The collection at every tier (TC7)").
-
-**Tests.** The id, Classic's registration, the unknown facts and a shape over the pending seed are `Wavee.Tests\RecentsContractTests.cs`; the grouping, the time buckets and the layout arithmetic are the existing `RecentsView` / `RecentsLayout` tests. `Wavee.ShellTests\RecentsMountedTests.cs` mounts the view over a fixture host: Classic is the registered template, a pending page keeps the pivot strip and the core leaves and mounts no surface, an answered empty relation shows the vacancy, an answered relation mounts the keyed semantic surface with its list and rail.
 
 ### The profile page (T10c2)
 
@@ -1214,8 +1094,6 @@ The profile page (your own profile and another person's, route `user`) is the st
 
 **Skeletons.** The shimmer is the SAME hero over a placeholder (no band, the action row a `Skeletonized(false)` spacer), the divider and two seed shelves at the magazine's real width (own: Top artists + Public playlists; other: Public playlists + Recently played artists), each at the shelf's real fit.
 
-**Tests.** The id, Classic's registration and the value types are `Wavee.Tests\ProfilePageContractTests.cs`; the plan, the stats and the tiers stay `ProfilePageRulesTests`. `Wavee.ShellTests\ProfilePageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending, the 404 and failed faces without a magazine, and a ready own page with its keyed anchor, section and no Follow.
-
 ### The profile list pages (T10c2)
 
 The Following / Followers "See all" page (`people:<facet>:<user uri>`) is a registered Classic view (`Themes\Classic\Structure\Views\Pages\ClassicProfileList.cs` and `.Cards.cs`). The demand and its retries, the pooled entry model (the filing order, the All / Artists / People chip and the find box), the load rule that picks the face, the grid plan, the flat letter projection with its pinned extents, the sticky-letter watch and the list's mount cache stay core.
@@ -1227,8 +1105,6 @@ The Following / Followers "See all" page (`people:<facet>:<user uri>`) is a regi
 **Every face is a keyed child of one stable root**, and the region's delegates (content, shimmer, failure, the row template, the chip clicks) plus the sticky letter and the strip live in one cache per mounted template (`ctx.Hooks.UseRef`), so keys, binds and mounts are the old tree's and a fresh delegate never re-arms the skeleton region.
 
 **What the view may call.** The WVTH002 fence applies. A card opens, plays and menus an artist through `HomeCardNav`; a person card opens through `ProfileListVerbs.OpenPerson`, and the "N followers" lines are `ProfileListVerbs.ArtistSubtitle` / `PersonSubtitle` (`Entities\Profile.Lists.Verbs.cs`). The grid fit's arithmetic (`ProfileGridFit`: columns, the card row, the action line) stays core; where the strip and the side-by-side tools appear (the list ladder) and the narrowest card per tier are the structure's (TC6); the shimmer's bones and row count are `Rules\ClassicProfileListRules.cs`.
-
-**Tests.** The id, Classic's registration, the by-reference props and the shape's value equality are `Wavee.Tests\ProfileListContractTests.cs`; the load rule, the model, the grid and the letter rows stay `ProfileListRulesTests` / `ProfileListRouteTests`. `Wavee.ShellTests\ProfileListMountedTests.cs` mounts the page under Classic: each settled face is one keyed child, the tools stay mounted for a find that matched nothing on both facets, and a pending list shows only the shimmer.
 
 ### The detail frame (T9a)
 
@@ -1247,7 +1123,7 @@ episode) own the per-kind slot builders and their sub-contract keys; the frame p
 | `Detail.Insights` | `DetailInsightsProps` (the page, the toggle, the latched facts builder, the page width, the route key, the close edge) | the frame host: the toggle, the facts latch, the focus return | `ClassicInsights.SheetTemplate`: the engine `SplitView` (Overlay x Right) with the scrim, the cast, the frosted pane |
 | `Detail.InsightsToggle` | `DetailInsightsToggleProps` (the toggle and its `Form`) | the hero's toolbar row, and `Detail.InsightsBandAction` for the table's pinned band | `ToggleTemplate`: the glyph button, or the band's plateless word (its own component) |
 
-**What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core, pure and unit-tested: the
+**What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core and pure: the
 breakpoint ladder (`Breakpoints`), the rail's width bands (`RailPolicy`) and the persistence of its remembered sizes (`DetailRailPrefs`, theme state since M8),
 the hero arithmetic (`VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`, `Detail.FlagsOf`, `Detail.HeroBandHeight`), the notice rules,
 `InsightsSheet` (which arm hosts the facts, the sheet's width), `Identity` / `Config` / `FrameSlots`, the shell-tint and page-tone claims, and the
@@ -1300,10 +1176,7 @@ C-Album-Huge 520 (the 270 artist band, 96 fans four to a row), C-Playlist-Huge 4
 toggle). **Huge 4K** is a rung (`ClassicDetailTiers.HugeWideRung`, window width from 3200, held 40 narrowing) to `ClassicDetailTiers.Huge4K`
 (C-Album-Huge4K: the 360 rail with its 336 art, the 640 aside, the 360 band and 120 fans); the core reads it as `DetailTierPolicy.HugeWide`. The
 2400 page cap stays at 4K (the plan's rule). The bar's fit slack (`ToolbarPaneInset`) is now
-named from the lane it describes (twice the surface's horizontal pad). Tests: `Wavee.Tests\Theming\ClassicDetailTiersTests.cs` (the ladders, their
-holds, the board sizes' modes, the records, the rail's Huge rest, the Compact row form's lanes) and `Wavee.ShellTests\TierLayoutTests.Detail.cs`
-(Album at every size including 3840, Playlist, Liked, Show and Episode at the page sizes and edges: the record in use, the arm, the header, the dock,
-the Compact targets).
+named from the lane it describes (twice the surface's horizontal pad).
 
 **The remaining Compact and Small board items (contract 1.22).** Compact (C-Playlist-Compact, C-Liked-Compact, C-Album-Compact): a LIST's Modern row has no
 "#" lane (`DetailTableTier.ListIndex` false; the core sets `ColumnSet.IndexHidden` for a Modern row of any kind but an album, and the width tracks,
@@ -1318,12 +1191,6 @@ rows drop the duration. Small (C-Album-Small, C-Playlist-Small, C-Liked-Small): 
 `ClassicDetailRail` (padding 16 / 12, rows 10 apart, the 224 rail keeping its 200 cover, and the Play row breaking after Play: a keyed zero-height break
 the width of the column follows the split in `ClassicDetailKit.ActionRow`, loaded and shimmering alike, so the actions shove into their own line on a
 crossing). Standard and Huge keep the tuned rail (`ClassicDetailRail.Standard`: `ClassicTiers.RailPadding`, the row model's 14).
-
-**Tests.** The ids, the registration (every key and the hero style, distinct template ids), the equality promises and the shared toggle are
-`Wavee.Tests\DetailContractTests.cs`; the arithmetic stays `DetailRailPolicyTests`, `DetailSkeletonGeometryTests`, `DetailInsightsSheetTests`. The mounted
-facts are `Wavee.ShellTests\DetailFrameMountedTests.cs`: Classic is the registered template of every key, the real shell draws the two-column arm at a wide
-window and the vertical arm under the overlay at a narrow one, the rail's cover fills the column less the side pads with the rows in the row model's
-order, the collapsed strip is 96 DIP, and the insights toggle's button mounts through its own key.
 
 ### The Liked Songs page (T9c)
 
@@ -1349,11 +1216,6 @@ constants in `Rules\ClassicLikedRules.cs`.
 (`User.LensHeader`, `User.FactsPanel`: the playlist page mounts the same two, so they are T9b's seam), the empty state (`Controls.Vacancy`, shared) and
 the table's filter. `Detail.Config.SlimHead` / `HoverHeart` / `PlainRows` (PR 205) are not on this branch, so there was nothing to move.
 
-**Tests.** The ids, the registration and the equality are `Wavee.Tests\LikedContractTests.cs`; the pure rules stay `LikedCoverRulesTests`,
-`LikedPageRulesTests`, `LikedFactsRulesTests`. The mounted facts are `Wavee.ShellTests\LikedMountedTests.cs`: Classic is the registered template of every
-key, a treatment mounts its canvas keyed by its style (and its leaves), an unfed Wall below the floor is not a treatment, the stock cover has no canvas,
-the picker mounts the cover under its pill, and the chip rail stands "All" first in title order.
-
 ### The podcast show page (T9c)
 
 The show page is the shared detail frame (T9a) with a rail of podcast slots on the left and the episode reader on the right. Its pictures are ONE style, not views:
@@ -1364,7 +1226,7 @@ skeleton deriver cannot run a view slot), so the core hosts keep every hook and 
 |---|---|---|---|
 | `StyleKeys.ShowReader` (`Show.Reader`) | `ShowReaderStyle`: the rail slots `Primary`, `Ledger`, `Rating`, `Badges`, `Topics`, `Publisher`, `Satellites`; the reader's `Toolbar`, `HeadShell`, `Head`, `EpisodesHeader`, `Group`, `StickyMonth`, `YearStrip`, `YearReserve`, `Foot`, `Seed` | `Show.PageHost` (the frame spec, the demand, the persisted view, the slot sets by presence), the rail slot components (`PrimarySlot`, `LedgerSlot`, `RatingSlot` with the rate flyout's handle, `BadgesSlot`, `TopicsSlot`: tone memo, facts, verbs), `Show.ReaderHost` (the model and its one snapshot, the toolbar stage and its measures, the selection, the date index and sticky month, the analytic extents and `CheckExtent`, the reveal gates), `RailBody`, `VisitHead`, `EpisodesHeader`, `ReaderFoot` (stamps and args), `Show.Pane` (the selection signal, the memo pair, the demand and the reader's key; its picture is the `Library.ShowPane` view, T10c1) | `ClassicShow` (`Views\Show\ClassicShowReader.cs`, `ClassicShowHead.cs`, `ClassicShowRail.cs`) over `Rules\ClassicShowRules.cs` |
 
-- **What stayed core, and why.** The decisions the list, the skeleton and the rows must agree on row for row are core, pure and unit-tested: `ShowReaderRules` (the head, the primary, the
+- **What stayed core, and why.** The decisions the list, the skeleton and the rows must agree on row for row are core and pure: `ShowReaderRules` (the head, the primary, the
   results mode, the item list with its marks, the head columns, the gutters, the strip's column, the rail / header / month extents and every seed), `ShowToolbarLayout`, `ShowDateIndex`,
   `ShowCadence`, `ListenNext`, the follow write (`Controls.Library`), the trailer, `Show.MonthWordOf` (culture text shared by the month header and the sticky month) and `Show.MetaOf` (the meta
   line's words). The sticky root of the toolbar is a RAW element in the host: a sticky root returned from a component never pins.
@@ -1373,9 +1235,6 @@ skeleton deriver cannot run a view slot), so the core hosts keep every hook and 
 - **Episodes in the head.** The head's doors, hero and up-next cards sit behind `Episode.Reveal` (card once the identity is there, a shimmer while it comes, "unavailable - retry" on a failed ask), and
   the new-since rows are the episode row style (`StyleKeys.EpisodeRow`) over a fixed scope; both are the core's gate over the structure's pictures.
 - **A host without a registry** logs `no style is registered for Show.Reader` once and draws nothing.
-
-**Tests.** The registration and id are `Wavee.Tests\ShowContractTests.cs`; the arithmetic stays `ShowReaderTests`, `ShowReaderShapeTests`, `PodcastShowToolbarTests`. The mounted facts (one-row toolbar,
-the reserved year strip, the pinned month, the keyed satellites) are `Wavee.ShellTests\ShowMountedTests.cs`.
 
 Also in the T9a section: "What the pages keep calling" no longer lists `PlayButton` (dropped: a one-line forward to `Controls.PlayButton`) or `RailSatellite*` (moved to
 `Views\Detail\ClassicDetailKit.cs`, the shared kit T9b also appends to).
@@ -1404,10 +1263,6 @@ discussion's signals, resources, composer and reaction verbs, the reaction sessi
 **Loading and failure stay the host's.** The seed is the live card's frame (`Episode.CommentSeed`), the thread, the roster and the chapters sit inside the
 hosts' `Skel.Region`, `Failed` + retry and `Quiet` stay the shared core helpers (the lyrics transcript and the saved-episodes page build the same lines).
 **Numbers** are `Themes\Classic\Structure\Rules\ClassicEpisodeRules.cs`.
-
-**Tests.** The ids and Classic's registration are `Wavee.Tests\EpisodeContractTests.cs`; the pure rules stay `DiscussionLayoutTests` and
-`PodcastReactionTests`. The mounted facts (registered templates, the thread's order, the reply rail only when handed a thread, the reader's anchors and
-section order, the chapter rows) are `Wavee.ShellTests\EpisodeMountedTests.cs`.
 
 ### The album and playlist sub-contracts (T9b)
 
@@ -1444,13 +1299,6 @@ the popup and the dialog, and travel on the props.
 leftovers lane P3 and kept them off WVTH008 (the rule fences every `Design.*` read). The clock is a platform fact, not a token: it is `FrameTime`
 (`Platform\FrameTime.cs`) now, the same clock every model and per-frame driver reads, and both hosts are guarded like the rest.
 
-**Tests.** The ids, the registration, the equality promises and the numbers the pictures own against the reserves the core's skeleton states
-(`ClassicAlbumLayout` against `Album.PageRules.Skel*`, the reserved owner row, the invite pill's arm) are `Wavee.Tests\AlbumPlaylistContractTests.cs`; the rules stay
-`AlbumPageRulesTests`, `AlbumSurfaceRulesTests`, `PlaylistHeaderRulesTests`, `PlaylistTuneMenuModelTests`, `Daylist*Tests`. The mounted facts are
-`Wavee.ShellTests\AlbumPlaylistMountedTests.cs`: the billed-artist line's three modes and its chevron, the notice strip, About this release (facts, outer padding,
-nothing without a fact), the keyed rows of a stack, the one trailing region, the video hero and the list sections, the vertical arm's trailing rows, the editor's
-read / edit / status states and the keyed field, the copy-invite call to action, the flip cells while counting, and a smoke mount of the views with no keyed output.
-
 ### The overlays and the dialog bodies (T11a)
 
 | Key | Props | Core half | Classic template |
@@ -1480,11 +1328,6 @@ nothing to move (the stage's one first-visit tip is an engine `TeachingTip` conf
 playlist or a folder) and "reset everything" are `ContentDialog` configurations (`Controls.Confirm`, `Prompt`, `Sheet`; `SidebarMenus.ConfirmResetEverything`) with no
 element tree of the app's own: the destructive verb on the left, Cancel on the right as the default, the width ladder (320 / 480 / 548) and busy states are the shell's and
 the opener's. `Dialog.Feedback` and `Dialog.Crash` are T11c's, the setup and release-notes dialogs T11b's and T11c's.
-
-**Tests.** The ids, the registration and the header builder are `Wavee.Tests\OverlayContractTests.cs`; the decisions stay `OverlayGatesTests`, `NotifyPanelRulesTests`,
-`PlayLinkRulesTests`, `ActionMenuRulesTests` and `TrackDrawerRulesTests`. The mounted facts are `Wavee.ShellTests\OverlaysMountedTests.cs`: the chip is one button and
-reports its node, one menu row per decided row, a card per notification under its key and the expanded wrapper, the banner's buttons only while shown, the offline
-strip's retry, the two cards' buttons, the picker's keyed rows and the credits and signature sheets.
 
 ### The stage, lyrics, video and queue at every tier (P3t, TC3)
 
@@ -1522,11 +1365,7 @@ The views read `ClassicStageTiers.StageOf(ctx.Tier())` (`ClassicStageLayout`: th
 48 disc and 88 volume slider) and the panel views read `ClassicStageTiers.PanelOf(...)` (`ClassicPanelContentLayout`): the queue, lyrics and
 video views are fluid at every panel width the frame gives them (200-500), and on a Compact window every target is at least 40 x 40 (the queue's
 hearts, remove buttons, toggles, "Clear", whose header grows with the lane's slot maths, and "Playing from"; the lyrics' Resync pill; the video
-chrome's 40 buttons on a 40 strip, shown at rest, with full screen on the mini player, C-Video-Compact). Tests: `Wavee.Tests\Theming\StageTiersTests`
-(the ladders, their holds, the boards' sizes in the boards' classes, the metrics, the 330-tall geometry, the records, the Huge gallery and card, the
-4K column and bars and their lease, the Compact card, chip and gallery-on-request) and `Wavee.ShellTests\TierLayoutTests.Stage.cs` (the real stage at every
-plan 3.5 size and edge, 3840 x 2160 included, with the Compact card and the 4K column and bars; the Compact visualizer's card, chip and absent sheet; the
-queue panel; the mini player).
+chrome's 40 buttons on a 40 strip, shown at rest, with full screen on the mini player, C-Video-Compact).
 
 ### Overlays, dialogs, toasts and states at every tier (P3t, TC9)
 
@@ -1572,10 +1411,6 @@ release past 160 DIP or 30 % of its height, or a downward fling of 900 DIP/s, sl
 a press mid-slide catches it, and mouse, pen and touch drive the same `OnDrag` capture. The context sheet's drag moves the card's carrier (the card's entry and exit compose with it); the
 card and the scrim are no tab stops and keep the wheel off the page (`BlocksBackgroundScroll`).
 
-**Tests.** `Wavee.Tests\ClassicOverlayTiersTests.cs` pins the records, the band mapping and the arithmetic. `Wavee.ShellTests\ClassicOverlayTierTests.cs` mounts each surface at 400 x 860,
-300 x 330, 1440 x 960 and 2560 x 1440: inside the window, Compact targets at least 40, the card's width per band, a sheet's rows and strip, a sub-menu page, and an engine dialog fitted by
-`OverlayFit.Dialog` keeping its command row in the window.
-
 ### The Settings page (T11b)
 
 Settings is the structure's picture over the core's document (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`). `SettingsDoc` (tabs, sections, rows: kind, title, value, writer, enablement and its reason, visibility, glyph name,
@@ -1595,11 +1430,8 @@ decides what is shown and the view only draws it. The numbers are `Rules\Classic
 
 **Controls that freeze their inputs stay what they were.** A ComboBox, Slider or NumberBox binds one signal for its life, so each is seeded from the document when the page mounts (the template's mount effect) and re-synced by the child
 component that owns it; the video-override flyout and its anchor are root-lifetime state torn down when the Playback tab is left or the route is parked. The tab body swaps with the page cross-fade (Classic tuning T2, Q38: the lane `settings:tab:<slug>` carries the neutral page swap) and the scroller is keyed, per tab
-(`settings:scroll:<slug>`), so each tab keeps its own offset. The keys the mounted tests read (`settings:theme:picker`, `settings:theme:card:<id>`, `settings:theme:options`, `opt:group:<title>`, `legacy:<row>`, `appearance.zoom:<percent>`,
+(`settings:scroll:<slug>`), so each tab keeps its own offset. The keys `--inspect` reads (`settings:theme:picker`, `settings:theme:card:<id>`, `settings:theme:options`, `opt:group:<title>`, `legacy:<row>`, `appearance.zoom:<percent>`,
 `appearance.ai-lyrics`) are unchanged. A row deep link with scroll-into-view is not production behaviour today and is not part of this move.
-
-**Tests.** The ids, Classic's registration, the props' equality, `row.Current` and the option grouping are `Wavee.Tests\SettingsPageContractTests.cs` (the document itself stays `SettingsDocTests`); the mounted facts (a tab opens in
-its own keyed lane, the deep link, and the three shared surfaces mounted through their keys) are `Wavee.ShellTests\SettingsMountedTests.cs`, next to `ThemeOptionsMountedTests` (the Appearance tab and the wizard step).
 
 ### The setup screens (T11c)
 
@@ -1621,8 +1453,6 @@ The first-run wizard, the sign-in door and the playback runtime card are the str
 
 **Motion is the wizard's, unchanged.** The page swap recipe (`Design.Nav.RecipeFor` of the session's direction), the body's 6 / -4 slide, the Busy ladder's staggered rungs and scale-popped marks, the reflow-eased ladder bar, the 1 Hz pairing countdown on its own component (the page and its hero never re-render) are the same elements with the same keys.
 
-**Tests.** `Wavee.Tests\SetupWizardTests.cs` (the plate geometry and the recolour now over `SetupGeometry` and `SetupRecolor`; the footer table, the gating and the folds are unchanged); `Wavee.ShellTests\SetupMountedTests.cs`: Classic is the registered template of the seven keys, the plate shows the session's page with Back only where a page has one, the icon column is the window's breakpoint, the consent card shows on a first run and a terms re-arm and not on a re-auth, the door body keeps one tree for the cards and one each for Busy and Done, the wizard's Sign in page keys its body by facet, and the runtime card's command row asks the host for the diagnostics page. `ThemeOptionsMountedTests` still mounts `Setup.ThemeStep()`.
-
 ### The release notes (T11c)
 
 The What's-new page, the highlight viewer and the after-update plate are the structure's picture over core hosts. The page (hero, highlight strip and cards, changelog sections / rows / issue chips / avatars, the release rail, the since banner, the loading and empty states), the viewer (veil, plate, band with its chrome, pager, text) and the plate (welcome, highlight row, footer) are registered Classic views (`Themes\Classic\Structure\Views\Screens\ClassicReleaseNotes*.cs`, numbers in `Rules\ClassicReleaseNotesRules.cs`); the load, last-seen, the issue-state republish, the after-update gate / latch / load, the overlays and every verb stay core.
@@ -1635,11 +1465,9 @@ The What's-new page, the highlight viewer and the after-update plate are the str
 
 **Pure rules stay core.** The after-update gate, the range, `HighlightVisibility`, `HighlightMax`, the rail markers, the chip states and `HighlightPaging` (the viewer's clamped, no-wrap stepping and the direction a slide travels) are `Screens\ReleaseNotes.cs` / `.Host.cs`; `Wavee.ReleaseTool` compiles `ReleaseNotes.cs` by name and none of them names an engine type. `ReleaseNotes.Pill` stays a core door because Settings › About and the setup wizard's terms page draw it too (Classic's hero calls it as well).
 
-**Numbers.** The highlight card's geometry and the plate's height budget (was `ReleaseNotes.HighlightCardMetrics`) and the viewer plate's geometry (was the geometry half of `HighlightViewerLayout`) are `ClassicReleaseNotesRules.Card` and `.Viewer`; the plate renders from them and `ReleaseNotesTests` holds the 620 DIP cap against them. The viewer's fixed colours, shadows, pager and the page's sizes are the rest of that file.
+**Numbers.** The highlight card's geometry and the plate's height budget (was `ReleaseNotes.HighlightCardMetrics`) and the viewer plate's geometry (was the geometry half of `HighlightViewerLayout`) are `ClassicReleaseNotesRules.Card` and `.Viewer`; the plate renders from them. The viewer's fixed colours, shadows, pager and the page's sizes are the rest of that file.
 
 **Motion is the surfaces', unchanged.** The viewer's directional enter (±24 DIP + fade, 250 ms) over a direction-free 120 ms exit, the pips' Reflow width tween, the circle chrome's dim-in-place at an end, the sizer ZStack that keeps the plate's box final from frame one, the card's edge fade and press spring are the same elements with the same keys.
-
-**Tests.** The arithmetic and stepping are `Wavee.Tests\ReleaseNotesTests.cs` (`ClassicReleaseNotesRules.Card` / `.Viewer`, `HighlightPaging`, `HighlightViewerMotion`); `Wavee.ShellTests\ReleaseNotesMountedTests.cs` mounts the three keys under Classic: the registered templates, a loading / empty page without a rail, a loaded page with its rail rows and highlight cards, the viewer's stable chrome and one pip per highlight, the plate's cards.
 
 ### The diagnostics pages and the log viewer (T11c, Common blocks)
 
@@ -1659,8 +1487,6 @@ The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Co
 **The log viewer keeps its picture and its view-only state, the core keeps the session model.** `LogsPage.Sessions` owns the folder walk (never latches, a thrown walk is a caption), the load of a past session, the picker's labels and caption, where a selection lands after a re-list, the export through the Save As picker, Verbose, Clear view and the verbs; it publishes the picker's selection, the refresh bump and the session list's revision as signals. The view owns the filter text, the level strip, the category, the order, the grouping, the wrap, the page cap, the expanded row, the list's controller and the menu, and runs the mount walk, the activation walk and the 750 ms live tail itself (so the effect timing is the old component's).
 
 **What stayed core:** every report and decision (`Diagnostics.cs`: the runtime report text, `LogView`, the frame watch, the lyrics inspector's rules), the capture store and its pure scanners, `TileDiagRules`, `ScrollDiagRules`, `ScrollProbePrefs`, `EvidenceReport`, `LogStore`, `LogsPage.Rules`, the install and the probes. The lyrics inspector dialog stays in `Screens\Diagnostics.UI.cs` (a dialog, not a page).
-
-**Tests.** The ids, Classic's registration of the four keys under the Common template ids and the records' value equality (the widgets' skip) are `Wavee.Tests\CommonDiagnosticsContractTests.cs`; the pure rules are the existing `LogsPageRulesTests`, `TileDiagRulesTests`, `ScrollDiagRulesTests` and `DiagnosticsCoreTests`. `Wavee.ShellTests\CommonDiagnosticsMountedTests.cs` mounts the views under Classic: a page builds its document in the render and the three cards stand under `scroll-card`, `tiles-card` and `evidence-card`, the page poll re-renders only while its gate holds, and the viewer stands its frame, shows the empty and loading states and mounts the keyed list for a session with rows.
 
 ### The Common blocks (T11c)
 
@@ -1683,7 +1509,7 @@ No theme draws a board for the Common blocks, so under owner Q18 each is built f
 decides by what is true of every ladder: it reads the **content** tier (`ctx.Tier().Content`, or `CommonTierComponent.ReadTier()` in a component: the region the page is laid out in, whatever edges the
 host theme drew) and the height tier, never an edge and never a number of pixels. The per-tier layout records and their few numbers are `Themes\Common\Rules\Tiers.cs` (`CommonDiagnosticsLayout`,
 `CommonLogsLayout`, `CommonHistoryLayout`, `CommonCustomizeLayout`, `CommonModuleLayout`, `CommonNotFoundLayout`; `CommonTiers` holds what they share); each is a value built where it is used (the spacing
-roles are read live), asserted on the record by `Wavee.Tests\CommonTiersTests.cs`. The one rule everywhere:
+roles are read live). The one rule everywhere:
 
 | Tier | What a Common block does |
 |---|---|
@@ -1724,7 +1550,7 @@ cells): 2 at the 340 default and at Compact, 4 at Huge's 560. **The navigator's 
 
 **The grid's gaps per tier** (contract addition after 1.22, `LibraryTierPolicy.GridGapsFor(content)` / `LibraryGridGaps(Column, Row)`, Classic `ClassicLibraryLayout.GridGaps`): the boards' `gap: row column` (C-Library 8 8, -Compact 16 12, -Small 12 16, -Huge 16 8). The host mints them into `LibraryNavMount.Gap` / `RowGap` beside the cell floor, never into the key; the mount cache swaps the `GridFit` value (`.WithRowGap`) and the engine re-fits the mounted grid's floor AND both gaps live (`GridVirtualLayout.SetFit`, the anchor row kept). The shimmer draws the record's gaps.
 
-**The head's sort button and word rail share one slot** (`lib:picker`, `MinHeight = ControlH`): the sort button (Compact, Small) and the word rail (Standard, Huge) are different trees, so a crossing between them swaps under `ClassicTierMotion.SwapFade` in that slot (the entering form fades in, the leaving one fades out beside it) and the head's rows glide (`ClassicTierMotion.Shove`) when the row gap changes (10 at Small, 8 at Standard). Artists and Podcasts keep one form at every tier and do not swap. Held by `TierLayoutTests.LibraryPicker.cs`.
+**The head's sort button and word rail share one slot** (`lib:picker`, `MinHeight = ControlH`): the sort button (Compact, Small) and the word rail (Standard, Huge) are different trees, so a crossing between them swaps under `ClassicTierMotion.SwapFade` in that slot (the entering form fades in, the leaving one fades out beside it) and the head's rows glide (`ClassicTierMotion.Shove`) when the row gap changes (10 at Small, 8 at Standard). Artists and Podcasts keep one form at every tier and do not swap.
 
 **Small and the grid's cell floor** (contract 1.22): the policy also rests the navigator at Small (`LibraryTierPolicy.SmallNavWidth` / `SmallReaderNavWidth`, Classic 240, C-Library-Small / C-LibraryList-Small) and moves the full grid's size-S
 cell floor there (`SmallCardCellMin`, Classic 96: the 116 floor would fit one column in 240). The host reads it through `CardCellMinFor(content)` into `LibraryNavMount.For(..., fullBase)`: the floor moves `CellMin`, never the mount key,
@@ -1740,11 +1566,6 @@ and the heart and the "..." take the 40 box.
 its own "Overview" head, the heat key and two columns of plated month cards (`ClassicRecentsOverview`: the calendar's month card in a card plate, its own list and scroll, never the zoom's controller). The masthead's Overview
 button becomes the aside's toggle (pressed while it shows, per mounted page); a day in it brings the list to that day (`IRecentsHost.JumpIn` only zooms in when the zoom is out). The aside is in the row at every tier, width 0
 below Huge, so a crossing eases it; the semantic zoom's calendar stays the zoomed-out view (a day header still zooms out to it).
-
-**Tests.** `Wavee.Tests\LibraryTiersTests.cs` pins the ladder (the 600 edge, the 24 holds both ways, the policy's named ladder, a structure with none is always split), the records and the 16 inset;
-`Wavee.ShellTests\TierLayoutTests.Collection.cs` mounts the albums library (a list at every size including 3840, and a grid), the artists library, Recents and Local files at the plan 3.5 sizes and every threshold edge, with a
-width stored before each library fact that a tier must leave alone; it also checks the tinted navigator, the album pane's aside slot (0 below Huge, never past the card), the Small grid's floor and Recents' list cap and
-aside per tier.
 
 ### The artist and people pages at every tier (P3t, TC6)
 
@@ -1788,11 +1609,6 @@ always mounted: its height tweens between 55 and 0 and its row fades, and the ma
 every tier: their fit is a live prop (PagedShelf's band, `LazyGridFit`), so a crossing re-fits the same nodes (their page, the chart's selection, the open album
 drawer and the page's scroll survive); only the chart's rows are a frozen shelf configuration, so the Huge 4K crossing remounts the chart shelf under its
 `chart-rows` holder, the selection model surviving it. The lightbox (no board) takes 40 targets at Compact and its filmstrip scrolls sideways where it outruns the window.
-
-**Tests.** `Wavee.Tests\ClassicPeopleTiersTests.cs` (the records per tier against the boards, the Short caps, the ladders), `ArtistHeroLayoutTests` /
-`ProfileHeroLayoutTests` (the tuned Standard numbers and the collapse), `ArtistReaderHeadLayoutTests` (the reader ladder), `ProfileListRulesTests`, the concert ladder
-tests; `Wavee.ShellTests\TierLayoutTests.Artist.cs` mounts the artist page (3840 too: the hero's copy on the magazine's column, the section row, the More button, the
-Compact strip), the discography (the drawer's geometry), the concert hub (the 40 pills) and event page, the profile and the profile list at the plan 3.5 sizes and edges.
 
 ### Discovery at every tier (TC4)
 
@@ -1838,8 +1654,6 @@ The dialog **chrome** (the stock `ContentDialog`: title, buttons, the vetoable p
 | `Dialog.Feedback` | `Feedback.OpenDialog` (the chrome and the veto) and `Screens\Feedback.Form.cs`: `FormModel` (one per fixed kind: the off-thread compose, the live preview, the crash form's three header states, the submit gate with its toasts, the GitHub door, Copy, Save As) behind `IFeedbackForm`; `DialogSession` behind `IFeedbackDialog` | `ClassicFeedback`: the subtitle, the kind `Segmented` (never in crash mode) and the card, a nested component keyed by the kind (a switch remounts the form, so every signal is seeded once). The field signals are the view's; the card installs its submit on the dialog while mounted and drops it on unmount |
 | `Dialog.Crash` | `Crash.OpenPrompt` (the chrome, `PromptProps`: the header message, the lead, the dump label, the compose factory, `CrashConsent.Submit`); the launch decision, the upload queue and the outcome toasts | `ClassicCrash`: the header bar, the lead, the "what is sent" box with the scrubbed preview, the dump and always-send boxes, the privacy and GitHub links. Send is vetoed with a "preparing" toast until the pool-thread preview has been posted back |
 
-**Tests.** `Wavee.Tests\CommonTiersTests.cs` pins the layout records per tier; `Wavee.ShellTests\CommonBlocksTierTests.cs` mounts every block at 300x640, 400x860, 300x330 (and the 210 and 126 page heights a 330-tall window leaves Classic and Zune), 1440x960, 2560x1440 and 3840x2160 (no page-level horizontal overflow, the record in use, Compact targets >= 40, the column under its max width, nothing laid out below the page). `Wavee.Tests\CommonBlocksContractTests.cs` pins the ids, Classic's template ids and the empty history model; `Wavee.ShellTests\CommonBlocksMountedTests.cs` mounts the history page over a fixture projection (it projects under its own states and again when the version moves; an empty projection mounts the vacancy), the feedback card over a fixture form (one form, one compose, the submit held while mounted) and the crash card over fixture props (compose prepared, Send waits for the preview).
-
 ### Screens at every tier (P3t, TC8)
 
 Settings, the setup wizard, the release notes and the report / crash dialogs are tiered by records, never by a width comparison (WVTH013). Compact follows the `-Compact` boards, Small the `-Small`, Huge the `-Huge`; Standard is the tuned design, unchanged.
@@ -1851,8 +1665,6 @@ Settings, the setup wizard, the release notes and the report / crash dialogs are
 **Release notes** (`Rules\Tiers.ReleaseNotes.cs`): `ClassicReleaseNotesLayout` per content tier (rail 208 / 280 at Standard and Huge, a 40 picker at Compact and a 32 one at Small, the highlight form, the 1600 left-aligned cap and three changelog columns at Huge) and `ClassicReleaseOverlayLayout` per window tier for the viewer and the after-update plate. The rail and the picker are keyed fading wrappers, so a crossing cross-fades them.
 
 **Report and crash dialogs** (`Rules\Tiers.Dialogs.cs`, `ClassicScreenDialogTiers`): form dialogs open through `OverlayFit.ShowForm`. A structure sets `DialogFit.FormWidth` (the card width for those two dialogs beyond the 548 every other dialog keeps; contract 1.17); their command buttons are the engine's own at the band's `DialogFit.CommandSize` like every dialog's (contract 1.19). Compact fills the window less 16 and folds the preview behind a 40 row; Small and Standard keep the 548 card; Huge is a two-pane 1040 card with the live report beside the form. A body reads its record and the width its card left it once, at open.
-
-**Tests.** `Wavee.Tests\ClassicSettingsTiersTests.cs`, `ClassicSetupTiersTests.cs`, `ClassicReleaseNotesTiersTests.cs`, `ClassicScreenDialogTiersTests.cs` pin the records; `Wavee.ShellTests\TierLayoutTests.Settings.cs`, `.Setup.cs`, `.ReleaseNotes.cs`, `.Dialogs.cs` mount each screen at the plan 3.5 sizes and edges.
 
 ## 3. Options
 
@@ -1895,7 +1707,6 @@ Transaction ones in one transaction.
 
 - **Nothing is carried** (owner Q26): the remounted pages mount like a fresh navigation (find text, drawers, disclosures reset;
   route, panel, stage and every core model stay; scroll lands where `ScrollPositionMemory` puts a fresh navigation).
-  `SwitchResetsStateTests` pins it.
 - **Failure:** a template of the new theme that throws (or an `Apply` that throws) is rolled back under the same freeze: the previous
   composition is re-activated and the root swapped back, the frame thaws with a cut, and a toast says the theme could not be
   applied (`Strings.Settings.ThemePicker.SwitchFailed`).
@@ -1903,15 +1714,11 @@ Transaction ones in one transaction.
 - **Appearance:** light/dark stays live. Only when the active definition changes more than colours with the kind (a different
   window material per kind) does `Appearance` take the transaction (`ThemeHost.SwitchKind`), with no live cross-fade.
 - **The runner:** the frame root binds its window's `InputHooks.RunThemeTransaction` (`ThemeHost.BindTransactions`); with none
-  bound (the boot before the window, unit tests) a change applies at once.
+  bound (the boot before the window) a change applies at once.
 - **The video presenter** is `Flow.Persist(Video.PresenterPersistKey)` (`"video.presenter"`): the new root adopts the playing
   picture's subtree (its surface and binding) instead of re-creating it.
 - **Not built yet:** a Transaction-mode slider or colour picker must apply on release (plan 8.2); no such option exists and the
   engine `Slider` has no release callback, so it lands with the first one.
-- Tests: `ThemeTransactionMountedTests` (the test-only `ClassicAlt` theme, `Wavee.ShellTests/ClassicAlt.cs`, switches live and
-  back; a Transaction option applies in place; navigation waits; 100 switches over Home, Artist, Search, Concert, Browse, Show and
-  the stage with lyrics playing end with 0 settle timeouts), `SwitchResetsStateTests`, `LiveOptionBehaviourTests` (a Live option
-  never freezes), `AppearanceTests`.
 
 `ThemeRoot.Wrap` (called by both `RootHost` and the headless root through `Shell.RootFrame`) provides
 `ViewRegistry.Context`, `OptionStore.Context` and `ThemeFactsContext.Signal` around the frame, and renders the frame in an
@@ -1959,9 +1766,7 @@ new ThemeBootstrapStep("SidebarDensity",
 Rules (plan 7.1): steps are **named** (never numbered), record `theme.bootstrap.done.<Name>` when they have run, **copy**
 (write the new key only when it is absent and the legacy key is present; legacy keys stay as inert data), and declare their
 read and write sets so `ThemeBootstrap.Disjointness` can prove the merge order is irrelevant. A step that throws is logged
-and retried next launch. `Platform.Boot` runs the shipped steps right after `ZoomAutoPolicy.MigrateMode`. The tests
-(`Wavee.Tests\Theming\ThemeBootstrapTests.cs`) run every permutation of the shipped steps over a legacy store: seed their
-legacy keys there and a new step is covered without a new test. Add the retired names to
+and retried next launch. `Platform.Boot` runs the shipped steps right after `ZoomAutoPolicy.MigrateMode`. Add the retired names to
 `src\apps\Wavee\analyzer-input\WVTH010.legacy.txt` in the same PR (section 5).
 
 A switch that is *deleted* rather than moved (M1, page motion) needs no step: its stored value has no replacement, so nothing
@@ -2072,8 +1877,7 @@ cards as the miniature rows it always drew (`ClassicSettings.OptionChoiceCard`) 
 
 The row-size button keeps its overlay in the core (`TableDensityButton`: open, close, the word it holds while the panel is open) and asks the command kit for the
 word, the panel and the radio rows. What the lists draw is unchanged, and so is the live re-key: a density change moves the list key's `d<N>` segment, a hide-art change drops the
-artwork from the rows without re-keying the list (`LiveOptionBehaviourTests`). The facts are in `ClassicDensityAndArtTests`, including every stored value and the
-existing-choice-wins rule. The old keys are listed in `WVTH010.legacy.txt`; `Prefs.Appearance.RowDensity` / `TrackArtworkHidden` and `Platform.Keys.RowDensity` / `HideTrackArtwork` are gone.
+artwork from the rows without re-keying the list. The old keys are listed in `WVTH010.legacy.txt`; `Prefs.Appearance.RowDensity` / `TrackArtworkHidden` and `Platform.Keys.RowDensity` / `HideTrackArtwork` are gone.
 
 ### Worked example: row style (M2)
 
@@ -2092,8 +1896,7 @@ structure option (WVTH005), which is why `ClassicDensity.Rows` keeps publishing 
 
 **Left in the core, on purpose.** `ColumnSet.Classic` and the `classic` arguments of `Track.TableRules` (`IdentityColumns`, `TrailingColumns`, `HeaderHeightFor`, the relief ladder)
 and of `ArtistChartStyle.Metrics` / `Skeleton` are the core's lane decisions over a skin the structure names; the plan's longer-term move of the lane table into the Classic rules
-(a second structure with its own lanes) waits for the structure that needs it. The facts are in `ClassicRowStyleTests`; the re-key and both skins mounted are
-`LiveOptionBehaviourTests`, `TrackRowsMountedTests` and `TrackChromeMountedTests`.
+(a second structure with its own lanes) waits for the structure that needs it.
 
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 
@@ -2116,29 +1919,7 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |
 | WVTH013 | the tier fence: in `Themes\**` and `[CoreHost]` types, no comparison of a measured width (`Viewport.Size`, `UseMeasuredWidth`/`UseMeasuredBounds`, the width parameter of a `Responsive.Of` build lambda, a `TierFacts` width/height member) with a number or a constant declared outside `Rules\Tiers*.cs`, and no `Responsive.Of`/`UseMeasured*` call that feeds one (section 7) | none (a hard gate: a baseline file is WVTH901; TC10 deleted Classic's) |
 
-The analyzers recognise types by namespace and name (they run inside the compiler and never reference the app), so a rule
-is tested with stand-in declarations (`Wavee.Analyzers.Tests\Fixtures.cs`).
-
-## 6. Testing a view (`ViewHarness`)
-
-`Wavee.ShellTests\ViewHarness.cs` mounts one view key on the headless shell host:
-
-```csharp
-ViewHarness.With(host, ViewKeys.PlayerBar, fixtureProps, harness =>
-{
-    var bar = harness.Node("player:bar");
-    Assert.True(harness.AbsoluteBounds(bar).H <= 80f);
-    harness.SetOption("structure.density", Density.Compact);   // the cell changes, the view re-renders
-}, new ViewHarnessOptions { Composition = ZuneTheme.Create(), WidthDip = 640f, HeightDip = 360f });
-```
-
-Without a composition the view resolves through the installed theme (the shell's own providers). With one, the harness
-builds that composition's registry, option store (over a private in-memory settings store, never the profile) and facts and
-applies its definition to the process tokens until the mount is disposed. It keeps no baselines and captures no pixels; it
-asserts structure and geometry rules. Every member runs on the UI thread (`ShellHost.Run`).
-
-Core tests for the machinery itself are in `Wavee.Tests\Theming\` (catalog, options, bootstrap) against fake layers; they
-live in the platform collection because `Themes` is process state.
+The analyzers recognise types by namespace and name (they run inside the compiler and never reference the app).
 
 ## 7. Window tiers (`TierPolicy`, `WindowTiers`, T3b)
 
@@ -2182,8 +1963,6 @@ shelf builds is re-rendered only when its ITEM changes, so a card whose form fol
 Search's Best matches rows are `BestMatchRowHost`s (the row form of `ClassicSearchTiers.Of`, the shelf's live row height
 `ClassicSearchLayout.BestMatchRowH`) and its rows per page (`ClassicSearchLayout.BestMatchRowsFor`) are live props of the one mounted shelf
 (PagedShelf takes its row count live between multi-row counts and keeps the page holding its first item).
-`Wavee.ShellTests\TierLayoutTests.Crossing.cs` mounts each page, scrolls and focuses it, crosses 528 and 1008 (and 1920 for Home) both
-ways and asserts the same nodes, the kept offset and focus, and tracks on the crossing frame.
 
 **Reading tiers.** Read the facts a view is DRAWN IN, never the process's: a template reads `ctx.Tier()` and its structure's layout record
 for that tier; a component (a core host, a theme's stateful card) reads `TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal))` (`.Value` to
@@ -2199,7 +1978,7 @@ content tier crosses together with the window tier) and the panels that tier doc
 
 **Clip, never squeeze.** A tier layout record implements `ITierLayoutRecord`: it lists the regions it may clip with their minimum
 sizes, builds each with `TierRegion.Host` and puts them in a `TierClip.Ancestor`. On the resized frame a region the old tier cannot fit
-keeps its minimum and overflows into the clipping ancestor for that one refresh. Tests read the same declaration (`TierClip.ClippedAt`).
+keeps its minimum and overflows into the clipping ancestor for that one refresh.
 
 **Adding a ladder.** A structure builds its `TierPolicy` in `Rules\Tiers*.cs` (WVTH003 allows literals there) and sets it on its bundle (`ClassicPolicies.Bundle` is `new(...) { Tiers = ClassicTiers.Policy }`). Keep the instance in a static property or field (in a static constructor if the ladders spread over several files): the facts compare equal only while the policy is the
 same object. A finer ladder a core model reads by id goes in `Ladders` as a `NamedLadder` (`TierPolicy.Ladder(id)`); nothing in core reads one today.
@@ -2227,7 +2006,7 @@ switch's new root, a revisit after a keep-alive eviction) the region builds its 
 settle (`AppHost.Settle`) is quiet in its first pass. The role must be unique among the page's measured regions (a repeated block
 folds its identity in: `CategoryBlock("browse-cats:" + uri, ...)`); a keyed `Responsive.Of` also uses it as the element `Key`. An
 unkeyed hook still works and costs the settle one corrective pass. The WVTH013 fence reads the keyed overloads exactly like the
-unkeyed ones. Pinned by `KeyedMeasureTests` (`Wavee.ShellTests`).
+unkeyed ones.
 
 **Zoom and tiers (C1b).** Tiers are measured on the layout viewport, after app zoom, so Auto zoom is clamped against ONE core reference,
 `ZoomTierReference.HugeFrom` = 1920 (`Platform\ZoomService.cs`), the Huge edge of every shipped ladder. It is not any structure's ladder, so
@@ -2238,12 +2017,8 @@ a theme switch never changes the zoom. For an unzoomed window width W: `W < 1920
 Snap, a drag release, a DPI or monitor change) is classified by `ZoomService.AutoLoop.Arrive` and the frame steps in the same layout phase, so
 the zoom write is one more resized frame and the tier crosses once; only a stream of sizes (another within 500 ms of the previous) waits for the
 debounce, and nothing is rescaled inside the modal size-move loop. Manual zoom stops at `ZoomTierReference.CompactFloor` (300 layout DIP):
-`ZoomService.ManualStep` refuses a chord, wheel notch or palette step that would go under it, `PickManual` and `InitialZoom` land on the largest
-rung that fits. `ZoomTierTests` pin the rule.
-
-**Testing.** The pure rules (`WindowTiers.Resolve`, a policy's ladders) are driven with numbers (`TierPolicyTests`); the live resize
-(resized frame keeps the old tier, the next frame crosses with tracks, a drag crosses once) is `Wavee.ShellTests\TierResizeTests`;
-`ViewHarness` resolves the tiers of a view mounted alone from its window size, with hysteresis across `Resize`.
+`ZoomService.ManualStep refuses a chord, wheel notch or palette step that would go under it, `PickManual` and `InitialZoom` land on the largest
+rung that fits.
 
 **Classic (TC1, board `C-Breakpoints`).** `ClassicTiers` (`Rules\Tiers.cs`) holds every number:
 
@@ -2308,9 +2083,3 @@ scrolling body.
 Still not moved out of core, because none is a ladder this primitive can state without changing behaviour: the chrome-row allocator
 (it now takes the tier's budget), the stage aspect classes, the detail page-mode ladder and the artist hero's tiers
 (the Classic artist and profile pages override the hero metrics' gutter with the page gutter).
-
-**Testing the tiers.** `TierPolicyTests` pin the ladders and records; `Wavee.ShellTests\TierLayoutTests` mounts the real frame at every
-plan 3.5 size and threshold edge (527/528, 567 from below, 1007/1008, 1047 from below, 1879/1880 from above, 1919/1920) and asserts the
-tier in the first frame, the records in use, the four top-level regions inside the window without overlap, Compact targets of at least
-40 and the ShortFloor at 330 tall. A lane adds its pages in its own partial file of `TierLayoutTests` (a `TierPage` fixture and a
-theory over `PageSizes` that calls `AssertPage(page, size, more)`), never by editing the core file.

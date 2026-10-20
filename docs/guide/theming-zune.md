@@ -39,8 +39,7 @@ window. `ZuneTheme.Create()` therefore gives the structure Classic's registratio
 its own: picking Zune in Developer mode shows Classic's views under Zune's style, policies, tiers and capabilities. The engine cannot
 merge two registrations key by key yet (`ViewRegistryBuilder.Add` throws on a duplicate; a built registry cannot be read back). Once it
 offers `ViewRegistryBuilder.AddMissing(ViewRegistry)`, `ZuneStructure.Register` becomes "Zune's own views, then Classic's for every key
-Zune lacks", and a family's views show in the app as soon as its lane lands. `new ZuneStructure()` (no stand-in) is Zune's own registry:
-what the Zune registry tests read. Z9 removes the stand-in.
+Zune lacks", and a family's views show in the app as soon as its lane lands. `new ZuneStructure()` (no stand-in) is Zune's own registry. Z9 removes the stand-in.
 
 **Options** (stored as `theme.zune.structure.<id>`): `background` {ArtworkWash, Mix, None} (Live), `panoramaFit` {Bleed, Fit}
 (Transaction), `bandPins` (Live). **Structure parameters** (Hidden: never shown or stored, a composition sets them; each has a WVTH011
@@ -78,19 +77,6 @@ implements its hook in `Rules\ZunePolicies.<Family>.cs`.
 
 **Loc.** `theme.zune.name`, `.description` and `.options.*` are Z0's; each lane writes only inside its own object:
 `theme.zune.{frame,band,lists,player,stage,discovery,detail,artist,collection,overlays,screens,states}`. nl and ko-KR fall back to English.
-
-**Tests.** `Wavee.Tests\Theming\ZuneCatalogTests.cs` and `ZuneTierPolicyTests.cs`; `Wavee.ShellTests\ZuneHost.cs` (mount the app under
-Zune) and `ZuneTierLayoutTests.cs` (the harness: Zune's size table and edges, the frame's assertions). A lane adds its page fixtures in
-`ZuneTierLayoutTests.<Family>.cs`:
-
-```csharp
-public sealed partial class ZuneTierLayoutTests
-{
-    static readonly TierPage Album = new("album", new Shell.Route(Shell.RouteKind.Album, ...), "detail:");
-    [Theory, MemberData(nameof(PageSizes))]
-    public void The_album_page_holds_at_every_tier(string size) => AssertPage(Album, size, (shell, tiers) => { /* its record */ });
-}
-```
 
 ## Z1: the Zune style
 
@@ -139,8 +125,6 @@ Boards: Z-Frame-Home, Z-Frame-Panel, Z-Frame-Narrow, Z-Part-TitleBar, Z-Part-Pan
   layout does not change (the reservations are unpainted). FLOATING (and the sheet, and a docked panel sliding out) the panel is a card: it
   paints the same picture itself, opaque, picking the page wash up below its own top edge. The panel's inks (`ZunePanelInk`) are judged on
   the surface's colour where the head lies.
-
-Tests: `Wavee.ShellTests\ZuneFrameMountedTests.cs`.
 
 ## Z2b: the band and the material
 
@@ -254,7 +238,7 @@ labels (12/16, slot 40; the live slot's words lowercase).
 Standard, the queue docked beside it from Huge; `panelMode` AlwaysOverlay floats it at every desktop tier, `maxDockedPanes` caps the docked
 count (the core docks at most 2 until ZT2).
 
-Loc: `theme.zune.player.{devices,playingOn,playOn,playingFrom,nextUpFrom,translate}`. Tests: `Wavee.ShellTests\ZunePlayerMountedTests.cs`.
+Loc: `theme.zune.player.{devices,playingOn,playOn,playingFrom,nextUpFrom,translate}`.
 
 ## Z4b: the stage frame, Card and LargeArt
 
@@ -285,8 +269,7 @@ controls; the spectrum under the cover or ringing it). An arrangement that does 
 transport's slot: the plates cross-fade (`ZuneMotion.SwapFade`) and the one cover node springs to its rect.
 
 **Undrawn surfaces** (built from Zune's parts, Q18): the options popover, the gallery, the caption, the face chip. **Loc:**
-`theme.zune.stage.{options,layoutWord,faceWord}`. **Tests:** `Wavee.Tests\Theming\ZuneStageGeometryTests.cs`,
-`Wavee.ShellTests\ZuneStageMountedTests.cs`.
+`theme.zune.stage.{options,layoutWord,faceWord}`.
 
 ## Z4c: the rest of the stage
 
@@ -321,7 +304,7 @@ a 32 strip (the drag surface and the close glyph) and the eight resize zones; th
 full screen"); the pop-out keeps its OS caption band; the poster dims the cover to 0.4 and shows the ring or the fault in lowercase label words; the placement menu is
 `MenuFlyout.Create` over the core's decided rows (the plate is Zune's menu style). Compact shows the chrome at rest with 40 targets.
 
-**Loc:** `theme.zune.stage.{aboutArtist,upNextFrom,upNextMore,videoFullScreen,videoMiniPlayerWord}`. **Tests:** `Wavee.ShellTests\ZuneVideoLyricsMountedTests.cs`.
+**Loc:** `theme.zune.stage.{aboutArtist,upNextFrom,upNextMore,videoFullScreen,videoMiniPlayerWord}`.
 
 **Gaps (no verb or prop reaches the view):** the lyrics "translate" word (the secondary-line choice has no verb on `ILyricsHost`; the lines draw the secondary line
 when the user's choice says so); the Up next "shuffle" and "repeat" words (the transport has them; `QueueStagePaneProps` carries only the queue verbs); the Artist
@@ -356,10 +339,6 @@ facet's first six covers as the page's mix backdrop; "all" alone before the word
 route on screen (Home's facet changes the route's argument inside one mounted page, and the channel keys a publication by it). Search: the core
 host (`Search.PageHost`) publishes the facet strip with each facet's count (none for All and for 0); the lone All while the strip is skeletal;
 a vacant query withdraws it. Browse's row 2 is route level (ZC1).
-
-**Tests.** `Wavee.Tests\Theming\ZuneDiscoveryRulesTests.cs` (the plan, the records against the boards, every tier fitting its narrowest
-window, Huge 4K = Huge, the core row 2); `Wavee.ShellTests\ZuneDiscoveryMountedTests.cs` (mounted at 1440 x 960: the registry, Home's page and
-quickplay with pins, row 2's facets lit and switching, Browse filtering on a band switch, Search's row 2 with counts).
 
 ## Z6a1: the detail frame and the album
 
@@ -413,8 +392,6 @@ Boards `Z-Artist` (Standard, the target) and `Z-Artist-Compact` / `-Small` / `-H
 
 **Tiers.** `ZuneArtistTiers` has a record per content tier (hero height, the name's voice, where the actions stand, the chart's columns, the rail, the drawer's columns, pitch and head). Huge 4K is Huge's (decision 2). Every size is sane from 300 up; ZT6 tunes Compact, Small, Huge and Huge 4K against their boards.
 
-**Tests.** `Wavee.ShellTests\ZuneArtistMountedTests.cs`: Zune registers the family; the fake artist `ar0` renders Zune's page at the record's hero height with the popular band and the facets; the bleed and the row 2 are published; the discography page mounts its column and words.
-
 ## Z6b1: the playlist and Liked Songs
 
 Boards Z-Playlist-Owned-Followed (+ -Small, -Compact, -Huge), Z-Playlist-Followed (+ -Small, -Huge), Playlist-Page (study), Z-Liked (+ -Small, -Compact, -Huge),
@@ -447,9 +424,6 @@ numbers and tier records `Rules\ZunePlaylistRules.cs` (`ZunePlaylistRules`, `Zun
   that is not the viewer's own, save / saved, through the `PageChromeSink`. `User.Page.Liked.cs` publishes play and shuffle and no views (the library route's row stands).
 - **Tiers.** `ZunePlaylistTiers` has a record per content tier (the hit edge, the cover strip, the lead and its field, the duration lane, the detail record the rings
   read). Standard is the target; ZT5 tunes the rest. Every size is sane from 300 up.
-- **Tests.** `Wavee.ShellTests\ZunePlaylistLikedMountedTests.cs`: the registry draws all fourteen keys; pl1 draws Zune's frame over Zune's table and publishes its row 2;
-  a Compact window draws the vertical arm; Liked Songs draws the head arm and publishes play and shuffle; the cover looks and the tier records are pinned. The fake
-  dataset has no empty playlist, so the lead is pinned through its rules.
 
 ## Z6b2: the show, the episode and the concerts
 
@@ -485,8 +459,6 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 
 **Tiers.** `ZuneConcertTiers` has a record per content tier; the show and episode read Z6a1's detail records. Every page is correct from 300 to 3840; ZT5 tunes the finer tiers.
 
-**Tests.** `Wavee.ShellTests\ZuneShowEpisodeConcertMountedTests.cs`: the registry (Zune's own wins over the stand-in), the concert records, the show (toolbar, rail ring, row 2), the episode (stacked sections, four words in row 2, the 40 ring at Compact), the event page and the hub, the 400 and 3840 fits.
-
 ## Z7: the collection
 
 Library, Recents and the profile (`ZuneStructure.Collection.cs`; boards `Z-Library-{Albums,Artists,Playlists,Podcasts,Audiobooks}`, `Z-Recents`, `Z-Profile`, each with its Compact / Small / Huge twin).
@@ -501,7 +473,7 @@ Library, Recents and the profile (`ZuneStructure.Collection.cs`; boards `Z-Libra
 
 **Recents.** The band's row 2 carries the pivots (all, music, podcasts, artists) and the "overview" word (published by `Recents.PageView`); the page is the day-grouped list with the accordion and the 300 overview column beside it from Standard. **Profile.** The page's sections and the people list's facets are the band's row 2 (published by the profile hosts); the page is the hero, then shelves and ranked top-artist rows.
 
-**Loc.** `theme.zune.collection.{library,recents}`. **Tests.** `ZuneCollectionMountedTests*` (mounted at 1440 x 960), `LibraryPlaylistsRouteTests`, `ZuneProfileRulesTests`, the updated `PageChromeRowTests` and route-count facts.
+**Loc.** `theme.zune.collection.{library,recents}`.
 
 ## Z8a: the overlays and the dialogs
 
@@ -524,7 +496,7 @@ Settings, the theme picker and its options, the setup wizard, the release notes,
 
 **Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page and its seven tabs), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
 `ZuneCrash.cs`; numbers and tier records in `Structure\Rules\ZuneSettingsRules.cs` (settings) and `Rules\ZuneSetupRules.cs` (setup, release notes
-and the two dialogs); loc `theme.zune.screens`; tests `Wavee.ShellTests\ZuneScreensMountedTests.cs`.
+and the two dialogs); loc `theme.zune.screens`.
 
 **Keys.** `Pages.Settings`, `Settings.ThemePicker`, `Settings.ThemeOptions` (page and wizard variants), `Setup.Wizard / Terms / SignIn / Theme /
 LocalPlayback / SignInDoor / RuntimeCard`, `Pages.WhatsNew`, `ReleaseNotes.Viewer`, `ReleaseNotes.AfterUpdatePlate`, `Dialog.Feedback`,
@@ -561,7 +533,7 @@ keyboard have no document rows and are not built, and audio, lyrics, feedback & 
 from a folder). Compact and Small draw the section list as a wrapping row above the column, not a drill-in. The Standard preview column wraps under the
 options when the window is too narrow for both.
 
-## Z9: the states, "on this PC", the light pass and the completeness test
+## Z9: the states, "on this PC", the light pass and the completeness rule
 
 (Round H, first half: the light pass and the review capture list are not in this entry.)
 
@@ -576,8 +548,8 @@ options when the window is too narrow for both.
 - **Focused row.** The focused row hands the time lane to its heart and "..." (the rest time and heart used to draw under them).
 - **Loading.** An artist's name already known (a search row, a link) stands in its real display type over the skeleton (Z-State-Loading), the
   same element and place as the loaded hero's.
-- **Completeness.** `ZuneRegistryCompletenessTests`: every view key and style key the contract declares resolves under Zune to `zune.*` / `common.*`
-  with an EMPTY stand-in list (`DeliberateStandIns`): Classic's stand-in is no longer reached by any key. Availability Developer is asserted.
+- **Completeness.** Every view key and style key the contract declares resolves under Zune to `zune.*` / `common.*`
+  with no stand-in left: Classic's stand-in is no longer reached by any key.
 - **Not done / conflicts.** The board's selection bar is a bottom-docked bar of ring commands ("3 selected · play · play next · add to playlist · like ·
   remove · select all · done"); Zune keeps the core table's in-flow command bar in selection mode (a bottom dock is a core change). The focus ring on
   a row is clipped by the list's viewport on the left and right (the board draws a 2 dip ring inside the row).
@@ -689,11 +661,6 @@ rows are 56 (40 for a genre row), the rings 40.
 **Home row 2 seed.** `Shell.PageChromeChannel.RouteViews` answers Home with the lone "all" view (lit when the route names no facet), so the band
 reserves row 2 on the first frame instead of easing 52 to 84 when `HomeHost` publishes the real words (which replace it under the same id).
 
-**Tests.** `Wavee.Tests\Theming\ZuneDiscoveryRulesTests.cs` (the records per tier, every tier fitting its narrowest window, the one-row rung and its
-hysteresis); `Wavee.ShellTests\ZuneTierLayoutTests.Discovery.cs` (each page at every harness size: the record's page, no overflow, what the record
-decides is what is mounted, Compact targets; each page across 639 / 640, 1007 / 1008, 1919 / 1920, 3199 / 3200 both ways and the heights: the same
-nodes, the daylist gliding).
-
 ## ZT5: detail tiers
 
 Album, playlist, Liked Songs, show and episode at every width tier and on a short window, against `Z-Album*`, `Z-Playlist-*`, `Z-Liked*`, `Z-Show*`, `Z-Episode*` and
@@ -738,10 +705,6 @@ toggle and close 40.
 
 **Row 2 (Z6b1 item 3, not done).** The playlist's "recommended" and "collaborators" views and its "invite" action need a core seam; see the lane report.
 
-**Tests.** `Wavee.Tests\Theming\ZuneDetailTiersTests.cs` (the table form, the aside, the insights' rest and widths, the wide twin, the panorama step by kind, the
-short fold, the Compact minimum); `Wavee.ShellTests\ZuneTierLayoutTests.Detail.cs` (each page at every harness size: the arm, the band, the columns and the
-page column's x; the album across 1008, 1920, 3200 and the 700 height, both ways: the same nodes, the columns gliding).
-
 ## ZT6: artist and people tiers
 
 Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneShowRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
@@ -761,8 +724,6 @@ Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profi
 **Compact.** The hero's rings are 40 targets (the kit ring's box is the clickable node), the discography and "see all" link words and the external links are 40 boxes, the discography's three words wrap to a second row at 300, the profile's action row wraps to a second row of 40 targets beside a 96 avatar, and the people list's chip words wrap. The people list's narrowest card is the profile record's (`ArtistTierPolicy.ProfileListMinCell`): 120 at Compact (two across 300), 176, 200 at Huge, 220 at 4K.
 
 **Lightbox.** The overlay covers the window, so its thumb and top row follow the window tier (`ZuneArtistTiers.OfWindow`): thumb 48 / 56 / 56 / 72 / 88, top row 64 / 72 / 72 / 88 / 104.
-
-**Tests.** `Wavee.Tests\Theming\ZuneArtistRulesTests.cs` (the records, the 4K reconciliation, the Short folds, the clearance, the popups' fit); `Wavee.ShellTests\ZuneTierLayoutTests.Artist.cs` (the artist, the discography, the concert hub and event pages, the profile and the people list at every harness size, their parts across every edge both ways, the own profile reaching Ready, and a pivot click parking at the clearance).
 
 ## ZT7: collection tiers
 

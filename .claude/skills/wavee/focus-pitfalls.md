@@ -26,10 +26,3 @@ Keep `OnFocusChanged` on `PartRoot`. `SetFocus` fires GotFocus as a **bubbling**
 
 - `SearchField` in `src/apps/Wavee/Themes/Classic/Structure/Views/Search/ClassicSearch.cs` (was `MergedSearchField` in `MergedChromeRow.cs`, then `Shell.Masthead.UI.cs`; the `Shell.Search` view since T4b) — the focus ticket (`Shell.SearchFocusRequest`, Ctrl+F) used to `FocusNode(PartRoot)`; the `SearchFlyoutButtonView` beside it opens the flyout from the same ticket.
 - `LibraryV3Search` in `src/apps/Wavee/Features/Sidebar/Modes/LibraryV3/LibraryV3Search.cs` — expand-to-field used to `FocusNode(PartRoot)`.
-
-## Regression gate
-
-`gate.controls.autosuggest-programmatic-focus` in `src/FluentGpu.VerticalSlice/Suites/ControlsSuite.cs`:
-
-1. `SetFocus(PartRoot)` + Char `'a'` → text stays `""` (documents the chrome-focus trap).
-2. `SetFocus(FirstFocusableIn(PartRoot))` + Char `'a'` → text `== "a"` and focused role is `AutomationRole.Text`.

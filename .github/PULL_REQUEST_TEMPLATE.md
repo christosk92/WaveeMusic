@@ -8,15 +8,13 @@ Fixes #
 
 ## How I verified it
 
-- <!-- e.g. added/updated tests for X -->
+- <!-- e.g. rendered and traced screen X in the headless inspector (`--inspect`) -->
 - <!-- e.g. ran the app with `dotnet run --project src/apps/Wavee -- --fake` and checked Y -->
 
 ## Checklist
 
 - [ ] `dotnet build Wavee.slnx` (Debug) builds clean, no warnings
-- [ ] `dotnet build Wavee.slnx -c Release` builds clean, no warnings
-- [ ] `dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj` is green
-- [ ] No source-text tests were added (tests don't read/grep production source)
+- [ ] No tests were added (test projects and files are banned)
 - [ ] No new environment-variable switches for behaviour or verification
 - [ ] No legacy paths kept alongside the new code — replaced outright
 - [ ] Engine-touching changes were made and verified in the sibling `..\fluent-gpu` repo

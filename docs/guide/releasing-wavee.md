@@ -188,7 +188,7 @@ closes an issue (`Fixes #n` / `Closes #n` / …) must be cited by the CHANGELOG 
 group, and every `(#n)` the entry cites must be closed by a commit in range; disagreement fails with one line per
 mismatch (see `.claude/skills/github-triage/SKILL.md`) · **issue coverage** *(soft)* — warns when a CHANGELOG bullet
 cites no issue at all. Both SKIP on the first release of a `-TagPrefix` (there is no previous tag to range over) ·
-gates (one `dotnet build Wavee.slnx -c Release`; no Debug build, no test runs, no VerticalSlice).
+gates (one `dotnet build Wavee.slnx -c Release`; no Debug build).
 
 Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
@@ -625,14 +625,6 @@ AppXSvc reaching `127.0.0.1`.
 | `Wavee relaunched` fails on the `os` path | the activation is doing the download; raise `-LaunchTimeoutSec` (the `os` scenario already floors it at 180 s) |
 | the plate has no sections, or the rail shows one version twice | the run went through `-NoNotes`, or the release tool failed in P2 (a WARN row says why) and the harness fell back to the authored folder |
 
-Underneath the harness: `Invoke-Pester ops\release\tests` covers the loopback server's range arithmetic, content
-types and path resolution (plus one live-listener test that self-skips when not elevated), the pure release helpers,
-and the pure **evidence** helpers the rows above rest on — `ConvertTo-FeedPath`, `Get-FeedAssociationRequests` (the
-feed-log association proof), `Compare-LogSnapshot` (the survived-the-update verdict) and
-`ConvertTo-QuadString` / `Test-QuadMatch` / `Test-AnyQuadMatch` (the apply poll's version comparison). Those are
-pure-function tests: rows in, verdict out, no listener and no processes. `Wavee.Tests` covers the update service over
-a scripted HTTP handler and a fake `IPackageUpdater`.
-
 ---
 
 ## 8b. (optional) scratch feed on GitHub
@@ -680,11 +672,6 @@ The sequence:
   Get-AppxPackage cproducts.Wavee | Remove-AppxPackage
   Remove-Item artifacts\release -Recurse -Force
   ```
-
-Underneath the manual sequence: `Wavee.Tests` (tokenizer, changelog parser, range stacking, issue budget, the toast
-decision table, the update service over a scripted HTTP handler + a fake `IPackageUpdater`),
-`Invoke-Pester ops\release\tests` over the pure release helpers, the ReleaseTool fixture folders, VerticalSlice, and
-the in-app simulator.
 
 ---
 

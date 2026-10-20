@@ -20,7 +20,7 @@ Wavee.exe --inspect --pipe wavee-inspect                                      # 
 |---|---|
 | `--pipe <name>` | Serve one client on `\\.\pipe\<name>` (stdout first prints `{"kind":"listening","pipe":...}`). Default: stdin/stdout. |
 | `--profile <dir>` | The scratch profile. The default is a new folder under `%TEMP%\wavee-inspect`, which is deleted at exit. The user's `%LOCALAPPDATA%\Wavee` is refused. |
-| `--text dwrite\|headless` | `dwrite` (default): real DirectWrite metrics, plus the offscreen GPU for `render`. `headless`: the shell tests' 0.55 × size font model and recording device. |
+| `--text dwrite\|headless` | `dwrite` (default): real DirectWrite metrics, plus the offscreen GPU for `render`. `headless`: a 0.55 × size font model and a recording device. |
 | `--fg <switches>` | Engine switches (`EngineSwitches`), e.g. `--fg motion` writes the projected-motion decisions (capture, animate, snap) to stderr. `tools/inspect.py` drains stderr on a thread, so a chatty server cannot block. |
 
 What the server guarantees:
@@ -373,7 +373,7 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
 1. It mounts at `from` (or resizes the mount you have, and navigates when `route`, `uri` or `deeplink` is given), settles, and
    remembers every shown keyed node and its rect. With nothing mounted, the mount args apply (`theme`, `kind`, `route`, `gpu`,
    `scale`); `remount=true` forces a fresh mount.
-2. It resizes to `to` as the shell tests do (`ZuneTierLayoutTests` `CrossPage`). **Narrowing** goes through the OS modal size
+2. It resizes to `to`. **Narrowing** goes through the OS modal size
    loop: a keep-alive paint inside the loop, then `frames` more keep-alive paints outside it (default 1), which still lay out
    the old tier at the new size, then one more keep-alive paint, the **commit frame**, where the new tier lands. **Widening**
    skips the loop: `frames` keep-alive paints, then a normal frame as the commit.
@@ -528,11 +528,10 @@ dump root=<the page's root key> depth=3
 
 - **One process, one boot.** `Shell.Headless.Boot` runs once per process. A mount replaces the previous one; it does
   not reboot.
-- **Shell tests use the same session.** `Diagnostics.InspectSession` is the UI-thread half, and it owns no thread.
-  `Wavee.ShellTests/InspectSessionMountedTests.cs` drives it on the test host.
+- **One session.** `Diagnostics.InspectSession` is the UI-thread half, and it owns no thread.
 - **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle, Subtree, Play, the fixture grader and the
-  theme activation. The shell tests call it for Play, the fixture grader and the Zune activation.
+  theme activation.
 - **The lint rules are pure.** `Diagnostics.InspectLint` (`Diagnostics.Inspect.Lint.cs`) turns a `Snapshot` of nodes into
-  findings with no engine and no host; `Wavee.Tests/InspectLintTests.cs` pins each rule on hand-built trees.
+  findings with no engine and no host.
   `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
 - **No reflection.** JSON is parsed with `JsonDocument` and written with `Utf8JsonWriter`, so the server is AOT-safe.

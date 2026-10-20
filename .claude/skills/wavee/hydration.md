@@ -9,8 +9,8 @@ Canon: `docs/plans/wavee/hydration-facade-design.md` (the shapes) · `hydration-
 entry points this replaced) · [wiring-discipline.md](wiring-discipline.md) (no nullable seams).
 
 Layering (binding): **ports in `Wavee.Core/Hydration`** (zero deps) · **engine in `src/apps/Wavee/Backend/Hydration`**
-(engine-free, `IStore`-level, auto-compiled into `Wavee.Tests` by the `Backend\**` glob) · **Spotify transports and
-provider-concrete projectors in `src/apps/Wavee/SpotifyLive/Hydration`** (engine-free, its own test glob). Anything
+(engine-free, `IStore`-level) · **Spotify transports and
+provider-concrete projectors in `src/apps/Wavee/SpotifyLive/Hydration`** (engine-free). Anything
 that returns a FluentGpu type cannot live under either glob.
 
 ---
@@ -224,7 +224,7 @@ parse → drop what has no ladder → drop what is fresh (ledger seal)
 expose it as that source's `ICatalogSource.Hydrator`. Nothing in `Backend/Hydration`'s shape changes. The P4
 `HydrationRouter` groups a batch by `SourceRegistry.OwnerOf(uri)` and forwards each group — the same ownership answer
 routing already uses, so there is no second notion of who owns a uri. A complete-at-construction source (export,
-local files, the fake, user playlists, every test fake) implements nothing: the `Hydrator` DIM defaults to
+local files, the fake, user playlists) implements nothing: the `Hydrator` DIM defaults to
 `CompleteEntityHydrator`.
 
 ---
@@ -242,7 +242,7 @@ local files, the fake, user playlists, every test fake) implements nothing: the 
    if it returns a value to one screen it stays a plain service and never gains a cache of its own.
 4. **The playlist plane belongs to LibrarySync.** `PlaylistHydration` never writes membership — it only asks through
    `IPlaylistOpener`. The ledger **never TTL-seals a playlist Open**: LibrarySync's in-flight set, 5-minute window
-   and dirty set remain the freshness authority. A test pins this.
+   and dirty set remain the freshness authority.
 5. **Transient failures are reported, not swallowed silently.** `ctx.ReportTransient(uri)` from a `catch` — otherwise
    one 503 seals an album's `Rich` rung for 24 hours and costs a day of ©/℗ and row bundles.
 6. **Wiring discipline** ([wiring-discipline.md](wiring-discipline.md)): no nullable seam, ever. A source with
@@ -251,17 +251,16 @@ local files, the fake, user playlists, every test fake) implements nothing: the 
    go-live install registers its teardown through `LiveWiring`; `GoOffline` is `Uninstall()` in reverse order and
    `AssertCovers(Services.LiveSeams)` names any seam installed without one.
 7. **Delete outright.** No legacy path, no compat shim, no second entry point "for now".
-8. **Engine-free** under `Backend/**` and `SpotifyLive/Hydration/**` (both are compiled into `Wavee.Tests`);
+8. **Engine-free** under `Backend/**` and `SpotifyLive/Hydration/**` (both stay free of FluentGpu types);
    NativeAOT-clean; `TreatWarningsAsErrors`; new persisted records ride the existing `EntityJson` source-gen context.
 
 ---
 
-## 8. Request-count expectations (`Wavee.Tests/ApiWaste/HydrationWasteTests`)
+## 8. Request-count expectations
 
-These numbers ARE the design. They run the whole stack a page open traverses — `StoreLibrarySource` →
-`SpotifyProviderHydrator` → the ladders → `XmCatalogFetch` → `ExtensionEtagCache` → `ExtendedMetadataSource` → a fake
-exchange — and decode the real gzipped `BatchedEntityRequest`. If your change moves a count, it fails here and
-nowhere else; state the new count in the PR.
+These numbers ARE the design, for the whole stack a page open traverses — `StoreLibrarySource` →
+`SpotifyProviderHydrator` → the ladders → `XmCatalogFetch` → `ExtensionEtagCache` → `ExtendedMetadataSource`. If your
+change moves a count, state the new count in the PR.
 
 | Scenario | Expected |
 |---|---|
@@ -277,11 +276,6 @@ nowhere else; state the new count in the PR.
 | Any session | **no `(uri, kind)` pair is ever requested twice** |
 | A fully warm page | zero requests AND zero store change signals (the bulk window is opened lazily on the first write) |
 
-Related suites: `HydrationLevelsTests` (table-driven rungs), `HydrationLedgerTests`, `HydrationPumpTests`,
-`HydrationSharedRunTests`, `HydrationTransientFailureTests`, the per-ladder `*HydrationTests`,
-`Hydration/{TraitPipelineTests,ExtensionReaderTests}`, `TraitPolicyTests`.
-
 ```powershell
-dotnet build src/FluentGpu.slnx ; dotnet build src/FluentGpu.slnx -c Release
-dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj
+dotnet build src/apps/Wavee/Wavee.csproj
 ```

@@ -39,11 +39,7 @@ runs them all, then `CommonBlocks.Register` (W8b may hand it WinUI's own module 
 **The stand-in (until W9).** `WinUiTheme.Create()` gives the structure Classic's registration as a stand-in: `Register` registers WinUI's
 own views, then copies every key WinUI does not draw from Classic (`ViewRegistryBuilder.AddMissing`). Picking WinUI in Developer mode shows
 WinUI's views where a family has landed and Classic's elsewhere, all under WinUI's style, policies, tiers and capabilities.
-`new WinUiStructure()` is WinUI's own registry, what the registry tests read.
-
-**`DeliberateStandIns`** (`Wavee.Tests\Theming\WinUiRegistryCompletenessTests.cs`) lists every view key WinUI leaves to Classic, each with
-the lane that draws it. A family lane DELETES its lines in the PR that registers its keys (the test fails both ways: an unlisted stand-in,
-and a listed key WinUI now draws). W9 empties it.
+`new WinUiStructure()` is WinUI's own registry.
 
 **Options** (W-ThemeOptions: exactly six, no hidden, opt-in or composition-only member; so no WVTH011 matrix line). The structure's three,
 stored as `theme.winui.structure.<id>`:
@@ -96,12 +92,6 @@ there is a user collapse.
 **Lint.** `WinUiLintGuide` (registered by `WinUiTheme.Create()`) checks a page title keyed `winui.page.title` against the content card's
 left edge plus the tier's inset. It is inert until a lane keys that node.
 
-**Tests.** `Wavee.Tests\Theming\WinUiCatalogTests.cs` (manifest, resolution, options and apply modes, capabilities, policies, the ladder
-and the frame records) and `WinUiRegistryCompletenessTests.cs` (above). `Wavee.ShellTests\WinUiTierLayoutTests.cs` is the harness every
-lane extends: the app under WinUI (`WinUiHost`) at the boards' sizes and every edge (640/641, 617/616 from above, 1007/1008, 984/983,
-1919/1920, 1896/1895, heights 719/720, 696/695), asserting the first-frame tier, WinUI's records and capabilities, the nav pane's width
-per tier, the three regions and the ShortFloor. A lane adds its page fixtures in `WinUiTierLayoutTests.<Family>.cs`.
-
 ## W2a: the frame
 
 The frame family (boards Shell-Top, W-Shell-Compact / Small / Huge / Short, W-Narrow, W-Flyouts, W-Tiers): `Structure\WinUiStructure.Frame.cs`
@@ -149,9 +139,6 @@ queries with the history glyph, an edge-to-edge divider, the entity rows, Retry 
 **Masthead / Page.Head**: the band on the tier's inset; the head by `PageHeadForm` (Title: Title Large keyed `winui.page.title`; Drill: the
 BreadcrumbBar over the title; Hero: the BreadcrumbBar alone), heights within the pages' `BrowseMastheadMetrics` reserve.
 
-**Tests.** `Wavee.ShellTests\WinUiTierLayoutTests.Frame.cs` (the two rows, the clusters and the search per tier, the card's place, tabs off and
-back); the harness's Compact 40-DIP rule is live for the title bar (the identity chip, W8a's view, is excluded).
-
 **Open (engine / other lanes).** The avatar chip (32) is under 40 at Compact, and its name at the 1920 edge eases by the chip's own width
 state, not an engine track (33, 23, 14, 8 ... px a frame; `crossing` calls it snapped and the cluster left of it jumped): W8a's
 `Overlay.ProfileChip`. The 641 crossing re-mounts the Compact touch strip (its tab height is mount-time), so its tab widths do not ease there.
@@ -187,14 +174,11 @@ frame's content region, so it never pushes the page. Focus is trapped while it i
 
 **Material.** WinUI paints no wash: the material layer and the tone and blend leaves draw nothing, the veil is neutral, the tint binder publishes "no colour".
 
-**Tests.** `Wavee.Tests\Theming\WinUiNavTests.cs` (planner, ladder, touch metrics, the seam, the registry) and `Wavee.ShellTests\WinUiTierLayoutTests.Nav.cs` (the footer, the rail's tiles, the
-overlay never pushing the page, the Compact option holding the rail, the Compact targets).
-
 ## W3: the lists
 
 The track table (rows and chrome), the eager row, the episode row, the media surface, the lyrics lines, the artist chart and the track drawer: the seven
 list styles of `StyleKeys` (`Structure\WinUiStructure.Lists.cs`, pictures in `Structure\Lists\WinUi*.cs`, numbers in `Rules\WinUiListRules.cs` and the
-`WinUi*Layout.cs` records). They are STYLES the core hosts build from, not views, so none is a `DeliberateStandIns` line.
+`WinUi*Layout.cs` records). They are STYLES the core hosts build from, not views, so none is a stand-in.
 
 **The rows.** Two skins, one per `artworkInRows`: ON the Modern two-line row (title over its artists, a cover, 48), OFF the Classic one-line 40 row with the
 artist in a lane of its own (`WinUiListRules.ListsFor`). An album's numbered rows are one line with no cover (40: the two-line row less
@@ -220,9 +204,6 @@ lead is empty (the hero owns Play and Shuffle: W6a); the unavailable-songs bar i
 
 **Core seams added (contract 1.52, additive).** `DetailTableTier.HeartTrailing`, `KeepDuration`, `VersionsLane` and `DurationWidth` (the 72 / 80 time lane); `Track.ColumnSet.DurationKept` and `DurationWidth`.
 
-**Tests.** `Wavee.Tests\Theming\WinUiListsTests.cs` (the ladder and its holds, the policies, the table records, the density, the styles) and
-`Wavee.ShellTests\WinUiTierLayoutTests.Lists.cs` (the table mounted at Compact, Small, Standard: header, lanes, row heights, the Row size request).
-
 ## W8b: the screens
 
 Settings, the theme picker and WinUI's six options, the setup wizard, the What's-new page and the report and crash dialogs' bodies (boards `W-Settings`
@@ -236,7 +217,7 @@ Settings, the theme picker and WinUI's six options, the setup wizard, the What's
 
 **Settings.** The seven tabs are the grouping WinUI publishes (`WinUiPolicies` -> `ThemePolicies.Settings` = `WinUiSettingsGrouping.Seven`): General (account,
 devices, keyboard and the window rows), Appearance (+ lyrics), Playback (+ audio), Notifications, Storage & cache, Privacy & diagnostics (+ feedback), About. The page
-draws `props.Grouping.PartsOf(props.Group)`; a tab click calls `props.OpenGroup(i)`. Every old slug lands (`WinUiScreensTests` pins each). Title 28 / 36 at Compact and
+draws `props.Grouping.PartsOf(props.Group)`; a tab click calls `props.OpenGroup(i)`. Every old slug lands. Title 28 / 36 at Compact and
 Small, 40 / 52 above; inset = the frame's; the SettingsCards cap at 1000 (1200 at Huge) on the left edge; below 560 CONTENT width a card puts its control under the label
 (`WinUiScreenRules.StackRung`, a content-axis rung). Rows carry no glyphs except the Theme, App mode and Zoom cards. Toggles show their On / Off word. The keyboard list
 gets a Ctrl+Tab row where the structure cycles tabs (`ShellCaps.Tracked.TabCycleChord`).

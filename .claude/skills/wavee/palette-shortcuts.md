@@ -53,7 +53,7 @@ Buttons consume Space as activation (dispatcher arms click, no bubble). Editors 
 
 ### Seek keys: the keyboard scrub ladder
 
-Left/Right on the focused player bar (and the full-screen stage, which calls the same `Shell.BarKeyStep`) drive `KeyboardScrubLadder` (`src/apps/Wavee/Playback/Playback.Scrub.cs`, pure, unit-tested in `KeyboardScrubLadderTests`). The engine delivers no key-up, so the ladder steps a **visual** target and commits once the key goes quiet:
+Left/Right on the focused player bar (and the full-screen stage, which calls the same `Shell.BarKeyStep`) drive `KeyboardScrubLadder` (`src/apps/Wavee/Playback/Playback.Scrub.cs`, pure). The engine delivers no key-up, so the ladder steps a **visual** target and commits once the key goes quiet:
 
 | Rule | Value (`KeyboardScrubLadder` constant) |
 |---|---|

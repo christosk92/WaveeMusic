@@ -1,25 +1,25 @@
 ---
 name: wavee
-description: Wavee Spotify desktop client under src/apps/ (Wavee, Wavee.Core, Wavee.Tests). Use for app architecture, seams, playlist mutations, and build/test commands. Engine work belongs in the repo-root fluentgpu skill.
+description: Wavee Spotify desktop client under src/apps/ (Wavee, Wavee.Core). Use for app architecture, seams, playlist mutations, and build/verify commands. Engine work belongs in the repo-root fluentgpu skill.
 ---
 
 # Wavee app
 
-Scope: `src/apps/Wavee/**`, `src/apps/Wavee.Core/**`, `src/apps/Wavee.Tests/**` only.
+Scope: `src/apps/Wavee/**`, `src/apps/Wavee.Core/**` only.
 
 > **⛔ HARD RULES for subagents (agents dispatched by an orchestrator).** (1) **Never `git stash`** — or any
 > other git state change (no commit/checkout/reset/restore/stash pop): the working tree is shared and a stash
-> wipes every parallel agent's in-progress edits. (2) **Never run builds or test suites** — no `dotnet build`,
-> `dotnet test`, VerticalSlice, or check-canon: parallel builds on the shared `obj/bin` collide and exhaust the
-> machine. Write code + tests only; the orchestrator runs the full verification once after the whole batch.
+> wipes every parallel agent's in-progress edits. (2) **Never run builds** — no `dotnet build` or check-canon: parallel builds on the shared `obj/bin` collide and exhaust the
+> machine. Write code only; the orchestrator runs the full verification once after the whole batch.
 > (Working solo, i.e. not as a dispatched subagent? Then the Build & verify commands below are yours to run.)
 
 ## Build & verify
 
 ```powershell
 dotnet build src/apps/Wavee/Wavee.csproj
-dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj
 ```
+
+There are no tests. Verify UI with the headless inspector (`docs/guide/agent-inspect.md`: `render`, `trace`, `crossing`, `lint`).
 
 A `dotnet run`, a VS publish profile (`bin\...\publish-profiles-*`) or a plain `publish-wavee-aot.ps1` is unstamped:
 Settings › Privacy & diagnostics › Developer › "Send a test crash report" says *no crash service set up* and the update checker never runs
@@ -70,7 +70,7 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   out-of-process exes (YouTube, Twitch, radio; Spotify next) speaking JSON-RPC over stdio. The three layers (SDK in
   `Wavee.Sdk`, host in `Backend/Modules`, modules in `src/apps/modules`), the `wavee-module.json` manifest and the
   two discovery roots, the rules that are easy to break (dev `.dll` vs published `.exe` entry, stdout is the wire,
-  `-32601` = capability absent, declared-never-probed caps), `ModuleTestHost` testing, the diagnostics section, and
+  `-32601` = capability absent, declared-never-probed caps), the diagnostics section, and
   the dev/publish/MSIX layouts. Read before touching `Backend/Modules/**`, `src/apps/Wavee.Sdk/**`,
   `src/apps/modules/**`, or the module bits of `Wavee.csproj` / `ops/build`. Full doc:
   `docs/guide/playback-modules.md`.
@@ -117,8 +117,8 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   dispatches), how to build/run one against the live profile, and the credential-store caveat. Read before running
   or adding a probe.
 - **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: Classic and Library layouts, one
-  renderer, pane modes, Edit mode, per-account pins. Read it before touching `Shell/Sidebar*.cs`, the
-  `Sidebar*Tests.cs` files or `docs/guide/sidebar.md`'s subjects.
+  renderer, pane modes, Edit mode, per-account pins. Read it before touching `Shell/Sidebar*.cs` or
+  `docs/guide/sidebar.md`'s subjects.
 - **`dnd` skill** (`.claude/skills/dnd/`) — **drag & drop**, engine and app. Read it before touching
   `Features/DragDrop/**` (`WaveeResourceDrag` payloads/commit seams, the engine-free `WaveeDragRules` /
   `TabDropRules` decision tables, the chip model, the insertion preview) or any surface that declares a

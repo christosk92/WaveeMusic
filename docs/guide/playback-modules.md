@@ -21,7 +21,7 @@ native transport could be added later without touching a single line of module c
 3. [The manifest](#3-the-manifest)
 4. [The wire protocol](#4-the-wire-protocol)
 5. [Author quick-start](#5-author-quick-start)
-6. [Testing a module](#6-testing-a-module)
+6. [Running a module by hand](#6-running-a-module-by-hand)
 7. [Build, packaging and publish layout](#7-build-packaging-and-publish-layout)
 8. [Diagnostics](#8-diagnostics)
 9. [Module updates (designed now, built next)](#9-module-updates-designed-now-built-next)
@@ -444,41 +444,7 @@ rendered half-way is a bug report nobody can diagnose, while a typed error names
 
 ---
 
-## 6. Testing a module
-
-**Module tests never spawn a process.** `ModuleTestHost` is an `IModuleHost` that calls the module class directly
-and records everything it published:
-
-```csharp
-var module = new LoFiModule();
-var host = new ModuleTestHost(module, dataDir: tempDir);
-await host.InitializeAsync();
-
-MatchResult? match = await host.MatchAsync("https://lofi.example/stream");
-Assert.NotNull(match);
-
-ResolvedPlayable resolved = await host.ResolveAsync(match!.PlayableId);
-Assert.True(resolved.IsLive);
-Assert.Equal(MediaLocator.ContainerIcy, resolved.Media.Container);
-
-Assert.Empty(host.Logs.Where(l => l.Level == ModuleLogLevel.Error));
-```
-
-`ModuleTestHost` also exposes `Metadata`, `Expired`, `Status`, `Progress`, `Logs` (all recorded lists) and lets a
-test stand in for the host services via `TokenProvider`, `AuthContextProvider`, `SecretReader`/`SecretWriter` /
-`Secrets`, and `CallHandler`. `host.PageAsync(entityId)` drives `GetPageAsync` and runs the answer through
-`ModulePageBudget.Validate`, so a fixture test trips the same ceiling the wire would.
-
-Network never happens in a module's unit tests: put the module's `HttpClient` behind an injectable
-`HttpMessageHandler` and drive it from **recorded JSON fixtures** (sanitized). The three bundled modules are tested
-that way in `src/apps/Wavee.Tests/Modules/`.
-
-The **host's** own tests drive an in-memory `JsonRpcConnection` pair against a scripted fake module (including one
-that serves a local file over `stream/open|read|close`), so the real framing, id correlation, cancellation and
-binary-frame paths are exercised without a process. One integration test spawns the real Radio module exe behind
-`[Trait("Category","Integration")]`.
-
-### CLI subcommands (manual testing without the app)
+## 6. Running a module by hand
 
 `ModuleRunner` only speaks the protocol when it is launched with `--wavee-module`. Without it, it is a small CLI
 over the *same* code paths `ModuleTestHost` drives:
@@ -581,7 +547,7 @@ script packs this repo's three modules and the playplay repo's Spotify module.
 | The author surface (`WaveeModule`, `IModuleHost`) | `src/apps/Wavee.Sdk/{WaveeModule,IModuleHost,ModuleRunner}.cs` |
 | The page document (a section kind, a budget) | `src/apps/Wavee.Sdk/ModulePage.cs` — and the app renderer, the Common block `src/apps/Wavee/Themes/Common/CommonModulePage.cs` (mounted by `Modules.PageHost`, `Platform/Modules.Page.cs`) |
 | Discovery / process lifecycle / routing / host services | `src/apps/Wavee/Platform/Modules.Host.cs` (+ the pure rules in `Platform/Modules.cs`) |
-| A bundled module's behaviour | `src/apps/modules/Wavee.Module.<Name>/**` (+ fixtures in `src/apps/Wavee.Tests/Modules/`) |
+| A bundled module's behaviour | `src/apps/modules/Wavee.Module.<Name>/**` |
 | The dev copy layout | `CopyBundledModules` in `src/apps/Wavee/Wavee.csproj` |
 | The publish/MSIX layout | `ops/build/publish-wavee-modules.ps1` (called by `publish-wavee-aot.ps1` + `pack-wavee-msix.ps1`) |
 | The solution | `Wavee.slnx` |
@@ -701,8 +667,7 @@ re-asks the host on a 401.
   Exit criterion: a test module served from a local Ogg file plays through `ModuleByteStream` with seek,
   prepared-next hand-off and device-rate reload.
 - **M1 — playplay repo.** `Wavee.Module.Spotify` referencing the `Wavee.Sdk` NuGet; the resolver, head client, key
-  resolver, cipher and `SpotifyAudioStream` (→ `IModuleStream`, logical offset 0 past the `0xa7` header) move with
-  their tests. The runtime pack store moves to `WAVEE_MODULE_DATA_DIR\runtimes\…` and `module/status` drives the
+  resolver, cipher and `SpotifyAudioStream` (→ `IModuleStream`, logical offset 0 past the `0xa7` header) move. The runtime pack store moves to `WAVEE_MODULE_DATA_DIR\runtimes\…` and `module/status` drives the
   setup card.
 - **M2 — main repo, after M1 ships.** The in-proc Spotify playback path is **deleted**, not kept as a fallback:
   `AudioStreamHandle` becomes a neutral `MediaHandle`, `IFastTrackResolver`/`IFastTrackWarmer` fold into
@@ -712,7 +677,7 @@ re-asks the host on a 401.
 
 **Risks specific to the move.** Instant start depends on the module answering `stream/read(offset 0)` from its head
 buffer before body resolution — keep the parallel head/body open behaviour and measure against the current
-`InstantStartTests` timings across the process boundary (target: +≤ 30 ms). AP audio keys go through
+instant-start timings across the process boundary (target: +≤ 30 ms). AP audio keys go through
 `spotify/audioKey`, and the session-wide "AP disabled" latch moves into the module. Ciphertext at rest stays in the
 module's `ChunkDiskCache`; the app never persists decrypted Spotify audio (`ModuleByteStream` is memory-only).
 

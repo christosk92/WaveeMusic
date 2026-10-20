@@ -1,7 +1,6 @@
 # Wavee sidebar — architecture
 
-Every path, type and member below exists on disk. Paths are relative to `src/apps/Wavee/` unless they start with
-`Wavee.Tests/`. The design rationale is in [docs/guide/sidebar.md](../../../docs/guide/sidebar.md) (§1–§8) and the
+Every path, type and member below exists on disk. Paths are relative to `src/apps/Wavee/`. The design rationale is in [docs/guide/sidebar.md](../../../docs/guide/sidebar.md) (§1–§8) and the
 plan in `docs/plans/wavee/sidebar-rework-implementation.md`.
 
 ## 1. Layers
@@ -22,7 +21,7 @@ plan in `docs/plans/wavee/sidebar-rework-implementation.md`.
 | Pin bridge to Spotify | `Spotify/Spotify.Encode.cs` (`LibraryPinSync`) | no |
 | Renderer and components | `Shell/Sidebar.UI*.cs` | no |
 
-The engine-free files are source-included or referenced by `Wavee.Tests`. Keep new decision logic in one of them.
+Keep new decision logic in the engine-free files.
 
 ## 2. Component tree
 
@@ -119,7 +118,7 @@ Public signals (read them from the renderer so the pane subscribes):
 
 The version signals are public read signals backed by `s_layoutVersion`, `s_ringVersion` and `s_folderVersion`, plus
 the model's `BinderEpoch` (`NavModel.Binder.cs`). They invalidate caches. A `PaneView` re-plans when a version it
-read moves; `SidebarReplanCensus` names which planner input moved (see [testing.md](testing.md)).
+read moves; `SidebarReplanCensus` names which planner input moved.
 
 ## 6a. The nav model (`Shell/NavModel*.cs`)
 
@@ -164,7 +163,7 @@ engine menu items (`SidebarMenus.Map`) and draws the Outline.
   `.corrupt` (defaults are written over it). It enforces `MaxDocumentBytes = 256 KiB` against the serialized bytes
   before it touches any file. It moves bytes only: callers serialize on the UI thread and parse what they read.
 - **`SidebarStoreJsonCtx`** is the source-generated JSON context. Every persisted DTO is registered there. Adding a
-  persisted field means the DTO, the context and a round-trip test (`SidebarStoreV3Tests`).
+  persisted field means the DTO and the context registration.
 - **`SidebarMigrationV2`** runs once before the pane first mounts, when `sidebar.bootstrap.version` is not 2. It maps
   the three old designs and the v2 layout file onto the two layouts, writes `sidebar.json` v3 and the account files,
   latches `sidebar.bootstrap.version = 2`, and raises one toast for anything it could not keep. The old values stay in

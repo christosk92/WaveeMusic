@@ -183,7 +183,7 @@ and the metric's absolute floor (0.05 ms/us/cores, 1 MB, 1 %, 64 B, 0.1 per seco
 and the audio padding minimum are higher-is-better, run-describing figures (frame rates, the census, the A/B arms, scroll
 distance) are neutral, everything else is lower-is-better. `-FailOnRegression` exits 1 on a regression; `-Scenario` narrows;
 `-All` prints every metric. It warns before comparing when the runs differ in data (fake/real), window, processors, measure or
-warm-up window, pass timing, or cycle rate. Its own tests: `powershell -File ops\tools\frame-bench-compare.tests.ps1`.
+warm-up window, pass timing, or cycle rate.
 
 Run-to-run noise on a busy machine is easily 5–10 % for p99 figures: compare medians first, repeat a run that flags
 something before believing it, and never compare a fake run with a real one.
@@ -191,7 +191,7 @@ something before believing it, and never compare a fake run with a real one.
 ## Source
 
 - Engine: `FluentGpu.Engine/Hosting/FrameLedger*.cs`, `AppHost.Ledger.cs`, `Media/Playback/Audio/AudioHealth.cs`;
-  Windows seams `FluentGpu.Windows/Pal/Win32LedgerSampler.cs`. Tests: `FluentGpu.Engine.Tests/FrameLedgerTests.cs`.
+  Windows seams `FluentGpu.Windows/Pal/Win32LedgerSampler.cs`.
 - App: `src/apps/Wavee/Screens/Diagnostics.Probe.FrameBench.cs` (the arm), `Diagnostics.FrameBench.cs` (pure: options,
-  targets, summary maths, JSON, table). Tests: `src/apps/Wavee.Tests/FrameBenchTests.cs`.
-- Compare: `ops/tools/frame-bench-compare.ps1`, tests `ops/tools/frame-bench-compare.tests.ps1`.
+  targets, summary maths, JSON, table).
+- Compare: `ops/tools/frame-bench-compare.ps1`.

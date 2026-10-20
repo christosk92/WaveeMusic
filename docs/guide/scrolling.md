@@ -83,5 +83,4 @@ Rules that follow from the engine contract:
 
 Code: `Screens/Diagnostics.Scroll.cs` (`ScrollDiagRules`, `ScrollSettings`, the card), `Screens/Diagnostics.Tiles.cs`
 (`TileDiagRules`, the card), `Screens/Diagnostics.Evidence.cs` (the Evidence card), `Screens/EvidenceBundle.cs` (the
-bundle export), `Screens/Diagnostics.Host.cs` (`NavigationFrameWatch` — the log lines). Tests: `ScrollDiagRulesTests`,
-`TileDiagRulesTests`, `ScrollSpySectionTests`, `EvidenceReportTests`.
+bundle export), `Screens/Diagnostics.Host.cs` (`NavigationFrameWatch` — the log lines).

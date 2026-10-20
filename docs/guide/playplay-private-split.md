@@ -15,8 +15,7 @@ public GitHub record.
 The build is absence-tolerant. The presence of `src/apps/Wavee.PlayPlay/Client/PlayPlayHost.cs` flips the
 `WAVEE_PLAYPLAY_LOCAL` MSBuild symbol (not the sibling csproj alone — a partial junction, or a 0.2.x package that has no
 `PlayPlayHost`, must not enable a call to a type that never compiles); the package's `**/*.cs` + `Protos/playplay.proto`
-then source-link into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`), and `Wavee.Tests` links `Tests/` behind the
-same gate. The 0.3 package lives on the private repo's `feat/0.3` branch; 0.2.x keeps building from `main`.
+then source-link into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`). The 0.3 package lives on the private repo's `feat/0.3` branch; 0.2.x keeps building from `main`.
 
 **The seam (Wavee 0.3).** The composition root makes ONE call, `PlayPlayHost.Install()`, under `#if WAVEE_PLAYPLAY_LOCAL`
 and outside `--fake` (`App.cs`). It fills four public seams, and the public tree names nothing else of the package:

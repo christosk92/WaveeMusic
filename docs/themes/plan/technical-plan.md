@@ -176,8 +176,8 @@ Five facts shape the order:
    engine CLAUDE.md likewise): every fence is a Roslyn analyzer in `src\apps\Wavee.Analyzers` (WVTH*) or the engine
    SourceGen (FGTH*); stale-baseline detection is an analyzer diagnostic over AdditionalFiles, not a test.
 
-4. **There is no golden harness and no pixel-identity gate** (owner Q23). Every PR passes the CLAUDE.md gate (Debug +
-   Release build, tests green in both, VerticalSlice for engine PRs). Behaviour that revision 3 pinned with goldens is
+4. **There is no golden harness and no pixel-identity gate** (owner Q23). Every PR passes the CLAUDE.md gate (a clean Debug
+   build and headless inspector renders/traces). Behaviour that revision 3 pinned with goldens is
    pinned by ordinary tests (§2.1); the Live-option pins (LP1) are written on `main` before any view moves, on the
    headless shell host H0 (revision 5, R3-B1), which mounts the real frame headlessly.
 5. **Window size tiers are part of every theme** (§3). The engine primitive (EP22) lands in P1 so every view is
@@ -188,7 +188,7 @@ PR #205 is discarded (owner Q3): nothing in this sequence depends on it.
 | Phase | Goal | Entry | Exit |
 |---|---|---|---|
 | **P0 Guard** | analyzers (G2), the headless shell host with the settings store probes (H0, C0 folded in), Live-option behaviour pins (LP1) | the owner's answers (2026-10-11) | `Wavee.Analyzers` builds Debug + Release; H0 mounts the frame headlessly with no behaviour change (same `boot.*` marks, `BootOrderingTests` green); LP1 green on `main` in both configs |
-| **P1 Engine foundation** | E12, E3, E16, E1 + E4, E17a/b, E13, E9 + E19, E22 (E23 deleted, §3.4) | none (engine PRs do not wait for P0) | engine gate green (Debug + Release, Engine.Tests both, VerticalSlice) for each PR; each app pair green |
+| **P1 Engine foundation** | E12, E3, E16, E1 + E4, E17a/b, E13, E9 + E19, E22 (E23 deleted, §3.4) | none (engine PRs do not wait for P0) | engine gate green (clean Debug build) for each PR; each app pair green |
 | **P2 Core extraction** | BP §3.1 X1-X47 + `RootScope` (C17); M14 (lyrics Auto removed) lands here | P0 (LP1 green) | every X row done or explicitly assigned (X26 → T5a, X44 → T2b); tests and LP1 green |
 | **P3 Theming core + Classic registry** | contracts, catalogue, options machinery (T1b), roles, policies, tier policy (T3b) and the zoom clamp (C1b), Classic views for every key; **no switch migrated** | per PR (§9.2): T1 needs EP2, EP3, EP5, H0; each view PR needs its C-PR | registry completeness for Classic; tests and LP1 green; the Appearance tab regrouped once (T1b) |
 | **P3m Switch migrations** | one M-PR per switch (§2.3), batched per family before a release | each M-PR's prerequisite PRs merged | every §7.2 row migrated; `LegacyPrefs.cs` deleted |
@@ -416,7 +416,7 @@ props-stability census (§5.7); `ThemeBootstrapTests` (every merge order, §7.1)
 
 | Gate | Rule | Who |
 |---|---|---|
-| Build + tests | Debug **and** Release build (compile check `dotnet build src/apps/Wavee/Wavee.csproj`; tests via `Wavee.slnx`), Wavee.Tests Debug + Release (incl. the analyzer tests); engine PRs: Engine.Tests both configs + VerticalSlice | **orchestrator only** (implementers never build, test or launch; CLAUDE.md:77-79) |
+| Build + inspector | clean Debug build (compile check `dotnet build src/apps/Wavee/Wavee.csproj`) and headless inspector renders/traces; engine PRs: the engine Debug build | **orchestrator only** (implementers never build, test or launch; CLAUDE.md:77-79) |
 | Justified extras | frame bench (`playlist-scroll`, `home-scroll`, `nav-burst`) on a copied profile only at phase exits and for `perf-sensitive` PRs (EP3, EP6, EP14, EP22, T8a, T9a, Z3, W3); a resize sweep bench (`resize-sweep`, 3840 → 400 DIP) for the tier PRs (§3); the stage-lyrics depth-blur frame-time check on the owner's 120 Hz device in W4c (owner NQ5, §6.2). Nothing else is re-measured unasked (memory: no unrequested verification). There is no golden, rebaseline or pixel-identity gate (owner Q23) | orchestrator |
 | Plan file | `docs/plans/wavee/<branch>-implementation.md` with real code, by the Opus planner, before implementation (CLAUDE.md:77-79) | planner |
 | Parallelism | implementers in parallel only on disjoint files (lane table §9.3) | orchestrator |
@@ -896,8 +896,7 @@ the only cited lines that moved are `ItemsView.cs:704/757 → 727/780`) that sha
   Engine tests: VerticalSlice suites (`Harness\SuiteRegistry.cs:41`, `Gate.Check`, `Harness\HeadlessFixture.cs`),
   Engine.Tests (xunit.v3, ~342 files).
 
-Per-PR gate for every engine PR (CLAUDE.md "done"): Debug + Release build, Engine.Tests Debug + Release, VerticalSlice
-"ALL CHECKS PASSED", run by the orchestrator (§2.5). The new suite is registered in `SuiteRegistry.cs`; `SPEC-INDEX.md`
+Per-PR gate for every engine PR (CLAUDE.md "done"): a clean Debug build, run by the orchestrator (§2.5). `SPEC-INDEX.md`
 and `subsystems\theming.md` are updated. Paired app PRs share the branch name and merge after the engine PR.
 
 Facts added in revision 3 (round-2 review, verified):
@@ -2551,8 +2550,8 @@ Fable is never used.**
 - **Per PR:** an Opus 5.5 agent writes `docs/plans/wavee/<branch>-implementation.md` with real code (CLAUDE.md:77-79) →
   a second Opus 5.5 agent verifies the plan against the code → Sonnet 5.5 implementers work in a reused warm worktree
   (`git switch -c <branch> origin/main` in an idle worktree; no `git stash`, WIP commits instead), in parallel only on
-  disjoint files → **the orchestrator alone** builds, tests and launches: the CLAUDE.md gate (Debug + Release build and
-  tests; VerticalSlice for engine) plus only the justified extras of §2.5 → an Opus 5.5 review, up to 3 rounds, whose
+  disjoint files → **the orchestrator alone** builds, tests and launches: the CLAUDE.md gate (a clean Debug build and
+  headless inspector renders/traces) plus only the justified extras of §2.5 → an Opus 5.5 review, up to 3 rounds, whose
   findings Sonnet 5.5 fixes → the owner approves push and PR (`gh` writes asked first) → the engine PR merges before
   its app pair.
 - **Blocking review findings:** a hybrid or unsettled frame in a transaction; a layout jump, including a tier crossing
