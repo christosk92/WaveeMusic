@@ -88,6 +88,10 @@ public static partial class Detail
         /// <summary>Null + <see cref="MetaLoading"/> ⇒ a shimmer bar shaped "00 songs · 0 hr 00 min".</summary>
         public string? Meta { get; init; }
         public bool MetaLoading { get; init; }
+        /// <summary>The meta line can be stated but a later part of it is still on its way (a playlist's duration while its rows'
+        /// fields are in flight, the owner's name while the owner's profile is): a structure that fills the line ONCE holds its
+        /// words until this drops (WinUI's hero). Additive; false keeps every other reading as it was.</summary>
+        public bool MetaSettling { get; init; }
         /// <summary>The subject's header (title, cover, owner/artists) has not answered yet. The two-column rail and the
         /// hero band shimmer AS A WHOLE on this flag and cross-dissolve once when it drops — never a real layout with
         /// empty cells. Each page derives it from its own row (<c>Knows(…Identity)</c>); Liked is never pending.</summary>
@@ -125,7 +129,7 @@ public static partial class Detail
                 && string.Equals(PaletteUrl, o.PaletteUrl, StringComparison.Ordinal)
                 && CardAccent == o.CardAccent
                 && string.Equals(Eyebrow, o.Eyebrow, StringComparison.Ordinal)
-                && string.Equals(Meta, o.Meta, StringComparison.Ordinal) && MetaLoading == o.MetaLoading
+                && string.Equals(Meta, o.Meta, StringComparison.Ordinal) && MetaLoading == o.MetaLoading && MetaSettling == o.MetaSettling
                 && HeaderPending == o.HeaderPending
                 && string.Equals(OwnerName, o.OwnerName, StringComparison.Ordinal)
                 && string.Equals(OwnerImageUrl, o.OwnerImageUrl, StringComparison.Ordinal)

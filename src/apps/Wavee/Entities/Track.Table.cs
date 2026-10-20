@@ -657,10 +657,12 @@ public readonly partial struct Track
             _ = Entities.Current.Tracks.Changed.Value;
             _ = global::Wavee.Fetch.Settled.Value;
             int hot = TableRules.HotRows(src.Count);
+            bool credits = RowsTogether();
             for (int i = 0; i < hot; i++)
             {
                 var t = src.At(i);
-                if (t.IsValid && TableRules.RowUnsettled(t.Knows(TrackFields.Face), t.InFlight, t.Answered)) return false;
+                bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, credits);
+                if (t.IsValid && TableRules.RowUnsettled(paints, t.InFlight, t.Answered)) return false;
             }
             return true;
         }
@@ -2717,7 +2719,9 @@ public readonly partial struct Track
                 Pending: () =>
                 {
                     var t = row.Presentation.Value.Track;
-                    return !TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)) || host.RowGateClosed();
+                    _ = global::Wavee.Fetch.Settled.Value;   // an answer that names no field still ends the wait for the credits
+                    bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, withCredits: true);
+                    return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },
                 Failed: static () => false,
                 Content: () => grid,

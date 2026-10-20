@@ -113,16 +113,20 @@ internal static partial class WinUiDetailFrame
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
             // later fact (the duration) fills in place. Nothing above or below it ever moves.
+            // The line FILLS ONCE (the owner's recording: "1494 songs · 49.8K saves", then the owner and "· 98 hr 18 min" a moment later, three pop-ins):
+            // while a part of it is still on its way (the count held with the list, Identity.MetaLoading; the duration or the owner, Identity.MetaSettling) the box
+            // stays reserved and empty, and the words fade in whole.
             var faces = FacesOf(id);
             bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
+            bool settled = !id.MetaSettling && !id.MetaLoading;
             if (center)
             {
                 if (faces is { Count: > 0 }) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(faces, measure), late: true));
-                if (metaLine) rows.Add(Block("hero-meta", Reserved(id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, center)));
+                if (metaLine) rows.Add(Block("hero-meta", Reserved(settled && id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, center)));
             }
             else if (faces is { Count: > 0 } || metaLine)
             {
-                bool filled = faces is { Count: > 0 } || id.Meta is { Length: > 0 };
+                bool filled = settled && (faces is { Count: > 0 } || id.Meta is { Length: > 0 });
                 rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, avatar, measure) : null,
                     WinUiDetailRules.AttributionRow(avatar), center)));
             }

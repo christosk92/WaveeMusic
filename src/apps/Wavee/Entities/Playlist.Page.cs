@@ -156,7 +156,7 @@ public readonly partial struct Playlist
     /// <see cref="PageRules.MetaArmFor"/>).</param>
     public readonly record struct PageStamp(uint Epoch, int Slot, uint Row, EdgeState Membership, uint MembersEdge, ulong Members,
                                             int OwnerSlot, uint Owner, EdgeState Recommendations, uint Tuning, bool EditsLive, bool Facts,
-                                            bool Holding, int TrackCount, bool CountKnown, int Saves, bool SavesKnown);
+                                            bool Holding, int TrackCount, bool CountKnown, int Saves, bool SavesKnown, bool Settling = false);
 
     /// <summary>What the hero's meta line ("N songs · 2 hr 59 min") shows. THREE answers, never a fourth.</summary>
     public enum MetaArm : byte
@@ -576,6 +576,7 @@ public readonly partial struct Playlist
             _ = e.PlaylistRecs.Changed.Value;
             _ = e.TrackArtists.Changed.Value;          // FactsHas: a keyed credit alone earns the bento
             _ = ListOpen.Changed.Value;                // the open's hold: taken, answered, out of budget
+            _ = global::Wavee.Fetch.Settled.Value;     // MetaSettlingOf: an answer that names no field still ends the wait
             // The open ITSELF — HeldRows.Held switches rule at it — is the source's own signal, read through Held below.
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
@@ -592,7 +593,25 @@ public readonly partial struct Playlist
             return new PageStamp(epoch, slot, pl.Version, e.PlaylistTracks.Readiness(slot), e.PlaylistTracks.Version(slot),
                                  RowFold.Rows(scope.Tracks, pl.TrackSlots), owner.Slot, RowFold.Version(scope.Users, owner.Slot),
                                  e.PlaylistRecs.State(slot), e.PlaylistTuning.Version(slot), editsLive, facts, holding,
-                                 pl.TrackCount, pl.Knows(PlaylistFields.TrackCount), pl.Saves, pl.Knows(PlaylistFields.Saves));
+                                 pl.TrackCount, pl.Knows(PlaylistFields.TrackCount), pl.Saves, pl.Knows(PlaylistFields.Saves),
+                                 MetaSettlingOf(pl));
+        }
+
+        /// <summary>Is a later part of the meta line still on its way? A row whose duration is unknown while its fields are in flight
+        /// (the line gains "· 98 hr 18 min" when they land), or the owner whose name is unknown while their profile is (the line gains
+        /// "QmusicNL" and the avatar). Nothing in flight (offline, an answer that named nothing) settles at once. One pass over the
+        /// membership per publication, the same order as the fold beside it; allocates nothing.</summary>
+        static bool MetaSettlingOf(Playlist pl)
+        {
+            var owner = pl.Owner;
+            if (owner.IsValid && NameOf(owner).Length == 0 && Entities.Current.Users.Inflight[owner.Slot] != 0) return true;
+            var slots = pl.TrackSlots;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var t = new Track(slots[i]);
+                if (!t.Knows(TrackFields.Duration) && t.InFlight) return true;
+            }
+            return false;
         }
 
         /// <summary>The identity snapshot every arm renders (ch 06 §7's table, read off the columns and the membership).
@@ -661,6 +680,7 @@ public readonly partial struct Playlist
                                           pl.Knows(PlaylistFields.Visibility)),
                 Meta = meta,
                 MetaLoading = metaLoading,
+                MetaSettling = !_local && MetaSettlingOf(pl),
                 OwnerName = _local && !owner.IsValid ? Loc.Get("localFile.onThisDevice") : NameOf(owner),
                 OwnerImageUrl = Controls.ArtUrl(owner.ImageId),
                 Owner = owner.IsValid ? owner.Uri : default,
