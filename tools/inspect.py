@@ -7,7 +7,8 @@ and prints the one reply line it gets back. Standard library only; runs under `p
     python -I tools/inspect.py -f audit.jsonl --pretty
     python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py --trace -c "mount w=1440 h=900 theme=zune" -c "goto album:spotify:album:x settle=false trace=90"
-    python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a lint error, 2 on any ok:false, plus a summary line
+    python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, 2 on any ok:false, plus a summary line
+    python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys) count too
     python -I tools/inspect.py                      # interactive: type commands, Ctrl+Z / Ctrl+D to end
 
 Commands are the server's own grammar: a JSON object {"cmd","args","id"} or a text line `verb key=value k="a b" k=[a,b] ...`
@@ -153,13 +154,20 @@ def findings_text(reply):
             for item in obj.get(kind, []):
                 lines.append("  %-9s %s  d=(%s, %s, %s, %s)" % (kind, item["key"], item["dx"], item["dy"], item["dw"], item["dh"]))
     summary = lint.get("summary", {})
-    lines.append("lint %s %s %sx%s: %s error, %s warn, %s info over %s nodes%s" % (
+    outcomes, levels = lint.get("outcomes"), lint.get("levels")
+    lines.append("lint %s %s %sx%s: %s error, %s warn, %s info over %s nodes%s%s" % (
         lint.get("theme", ""), lint.get("tier", ""), lint.get("size", {}).get("w"), lint.get("size", {}).get("h"),
         summary.get("error", 0), summary.get("warn", 0), summary.get("info", 0), summary.get("nodes", 0),
-        "" if lint.get("guide", True) else " (no theme guide: gutter and right-edge not checked)"))
+        "" if lint.get("guide", True) else " (no theme guide: gutter and right-edge not checked)",
+        "; %s; %s" % (" ".join("%s=%s" % kv for kv in outcomes.items()), " ".join("%s=%s" % kv for kv in levels.items()))
+        if isinstance(outcomes, dict) and isinstance(levels, dict) else ""))
     for f in lint["findings"]:
         keys = ", ".join(f.get("keys", []))
-        lines.append("[%-5s] %s: %s%s" % (f["severity"], f["rule"], glyphs_named(f["message"]), "  <" + keys + ">" if keys else ""))
+        # a fail of a gate rule prints as it always did; anything else says what it is (review, suppressed, report; todo)
+        tags = [t for t in (f.get("outcome", "fail"), f.get("level", "gate")) if t not in ("fail", "gate")]
+        name = f["rule"] if f.get("id", f["rule"]) == f["rule"] else "%s/%s" % (f["rule"], f["id"])
+        lines.append("[%-5s] %s%s: %s%s" % (f["severity"], name, " (" + ", ".join(tags) + ")" if tags else "",
+                                            glyphs_named(f["message"]), "  <" + keys + ">" if keys else ""))
     return "\n".join(lines)
 
 
@@ -215,14 +223,18 @@ SEVERITY_RANK = {"info": 0, "warn": 1, "error": 2}
 
 class Gate:
     """--gate <info|warn|error>: tallies every reply. Exit 2 when any reply was ok:false, else 1 when a lint (or a crossing's
-    lint) reported a finding at or above the gate severity (a finding whose outcome is "suppressed" does not count), else 0."""
+    lint) listed a finding at or above the gate severity that is a verdict: outcome "fail" of a gate-level rule (with
+    --gate-todo, of a todo-level rule too). A review (the rule could not decide: look at the render), a suppressed finding (an
+    intent or a baseline matched) and a report line never count; they are tallied in the summary line. A finding without the
+    outcome/level fields (an older server) counts as a gate-level fail. Else 0."""
 
-    def __init__(self, level):
+    def __init__(self, level, todo=False):
         self.level = level
+        self.todo = todo
         self.failed = []          # (cmd, error) of every ok:false reply
         self.lints = 0
         self.counts = {"error": 0, "warn": 0, "info": 0}
-        self.suppressed = 0
+        self.skipped = {}         # why a listed finding did not count -> how many
 
     def see(self, reply):
         if reply is None:
@@ -236,8 +248,10 @@ class Gate:
             return
         self.lints += 1
         for f in lint["findings"]:
-            if f.get("outcome") == "suppressed":
-                self.suppressed += 1
+            outcome, level = f.get("outcome", "fail"), f.get("level", "gate")
+            why = outcome if outcome != "fail" else ("todo" if level == "todo" and not self.todo else None)
+            if why is not None:
+                self.skipped[why] = self.skipped.get(why, 0) + 1
                 continue
             sev = f.get("severity", "info")
             self.counts[sev] = self.counts.get(sev, 0) + 1
@@ -253,9 +267,11 @@ class Gate:
 
     def summary(self):
         code = self.code()
-        text = "gate %s: %d lint repl%s, %d error, %d warn, %d info (%d at or above %s%s); %d ok:false repl%s -> exit %d" % (
-            self.level, self.lints, "y" if self.lints == 1 else "ies", self.counts["error"], self.counts["warn"], self.counts["info"],
-            self.at_or_above(), self.level, ", %d suppressed not counted" % self.suppressed if self.suppressed else "",
+        skipped = ", ".join("%d %s" % (n, why) for why, n in sorted(self.skipped.items()))
+        text = "gate %s%s: %d lint repl%s, %d error, %d warn, %d info failed (%d at or above %s%s); %d ok:false repl%s -> exit %d" % (
+            self.level, " +todo" if self.todo else "", self.lints, "y" if self.lints == 1 else "ies",
+            self.counts["error"], self.counts["warn"], self.counts["info"],
+            self.at_or_above(), self.level, "; not counted: " + skipped if skipped else "",
             len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
         if self.failed:
             text += " (first: %s: %s)" % self.failed[0]
@@ -299,13 +315,18 @@ def main():
     ap.add_argument("--trace", action="store_true", help="print a trace reply (or the trace inside a goto/scroll/click reply) as a summary")
     ap.add_argument("--fail-fast", action="store_true", help="stop at the first ok:false reply (exit 2)")
     ap.add_argument("--gate", choices=["info", "warn", "error"],
-                    help="a verdict: exit 1 when any lint finding at or above this severity is reported (outcome 'suppressed' "
-                         "not counted), 2 on any ok:false reply, else 0; prints a one-line summary last")
+                    help="a verdict: exit 1 when any lint finding at or above this severity is a failure of a gate-level rule "
+                         "(outcome 'fail', level 'gate'; review, suppressed and report findings never count), 2 on any ok:false "
+                         "reply, else 0; prints a one-line summary last")
+    ap.add_argument("--gate-todo", action="store_true",
+                    help="with --gate: failures of the todo-level rules (align, space, placeholder, keys) count too")
     args = ap.parse_args()
 
     server = Server(find_exe(args.exe), args.pipe, args.profile, args.text)
     show(json.dumps(server.ready), args.pretty)
-    gate = Gate(args.gate) if args.gate else None
+    if args.gate_todo and not args.gate:
+        ap.error("--gate-todo needs --gate <info|warn|error>")
+    gate = Gate(args.gate, args.gate_todo) if args.gate else None
     code = 0
     try:
         lines = list(args.command)

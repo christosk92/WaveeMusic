@@ -275,6 +275,7 @@ class Worker(threading.Thread):
                                "tier": lint.get("tier"), "guide": lint.get("guide")}
                 for f in lint.get("findings", [])[:FINDINGS_KEPT]:
                     res["findings"].append({"rule": f.get("rule"), "severity": f.get("severity"),
+                                            "outcome": f.get("outcome", "fail"), "level": f.get("level", "gate"),
                                             "message": f.get("message"), "keys": f.get("keys", [])[:4]})
             else:
                 res["warnings"].append("lint: %s" % lint.get("error", lint))
@@ -406,7 +407,9 @@ def fig_app(res, out_dir, scale, entry):
         parts.append("<details><summary>lint (%d)</summary><ul class=f>" % len(fl))
         for f in fl:
             keys = (" &lt;" + esc(", ".join(f["keys"])) + "&gt;") if f.get("keys") else ""
-            parts.append('<li class="sev-%s">%s: %s%s</li>' % (esc(f["severity"]), esc(f["rule"]), esc(f["message"]), keys))
+            tags = [t for t in (f.get("outcome", "fail"), f.get("level", "gate")) if t not in ("fail", "gate")]
+            tag = (" (" + esc(", ".join(tags)) + ")") if tags else ""
+            parts.append('<li class="sev-%s">%s%s: %s%s</li>' % (esc(f["severity"]), esc(f["rule"]), tag, esc(f["message"]), keys))
         parts.append("</ul></details>")
     parts.append("</figcaption></figure>")
     return "".join(parts)
