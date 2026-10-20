@@ -258,6 +258,41 @@ public static partial class Diagnostics
             return null;
         }
 
+        // ── between mounts ──────────────────────────────────────────────────────────────────────────────────────────
+
+        static int[]? s_bootRefs;
+        static QueueEdge[] s_bootRows = [];
+
+        /// <summary>Remember the queue as the boot left it (under `--fake`, the seeded default queue: the rows the queue panel,
+        /// the stage pane and "Next up" render before anything plays). Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        public static void RememberBootQueue()
+        {
+            if (Queue.State == EdgeState.Unknown) return;
+            s_bootRefs = Queue.PackedRefs.ToArray();
+            s_bootRows = Queue.Rows.ToArray();
+        }
+
+        /// <summary>Playback as a fresh session starts (between mounts): <c>Shell.Headless.ResetPlayback</c> (the boot's deck, the
+        /// play log emptied, a late post from the last mount run first), then the boot's queue rows back in place.</summary>
+        public static void ResetPlayback()
+        {
+            Shell.Headless.ResetPlayback();
+            if (s_bootRefs is { } refs) Queue.Replace(refs, s_bootRows);
+        }
+
+        /// <summary>The tab workspace as a fresh session has it (between mounts): every tab back (a theme without tabs parks them),
+        /// then the first one active and the others closed. History opens in a tab of its own, so a mount after it would otherwise
+        /// land on that second tab.</summary>
+        public static void ResetTabs()
+        {
+            Shell.TabWorkspace tabs = Shell.Tabs;
+            tabs.Expand();
+            if (tabs.Count <= 1) return;
+            tabs.Activate(0);
+            int keep = tabs.ActiveId;
+            tabs.CloseWhere(t => t.Id != keep);
+        }
+
         // ── playback ────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Play one track or episode as its own context from <paramref name="fromMs"/> (the headless probe's

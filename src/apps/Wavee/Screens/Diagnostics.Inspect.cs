@@ -113,6 +113,7 @@ public static partial class Diagnostics
             {
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
+                InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
                 host._session = new InspectSession(realText);
                 host.TextBackend = host._session.TextBackend;
             });
@@ -274,6 +275,8 @@ public static partial class Diagnostics
 
         void Unmount()
         {
+            _pointer = null;   // the next mount's pointer has gone nowhere yet
+            _hit = null;
             if (_shell is null) return;
             var shell = _shell;
             _shell = null;
@@ -376,7 +379,7 @@ public static partial class Diagnostics
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Reset:
                     Unmount();
-                    ClearLeaks();
+                    ClearLeaks(keepRoute: false);
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -645,7 +648,7 @@ public static partial class Diagnostics
             if (!InspectKit.IsShipped(theme)) { error = "unknown theme '" + theme + "' (" + string.Join("|", InspectKit.ThemeIds) + ")"; return false; }
 
             Unmount();
-            ClearLeaks();
+            ClearLeaks(a.Bool("keepRoute", false));
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
             if (a.Bool("setup", false) || a.Str("setup") == "signin")
@@ -707,17 +710,18 @@ public static partial class Diagnostics
             return true;
         }
 
-        /// <summary>What one mount must not inherit from the last (`mount` and `reset`): the `state` vacancy (a static probe signal, Shell.UI.cs),
-        /// playback with its queue, and the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever
-        /// settling). The deck goes back to its initial state the way a sign-out empties it (the reducer's one "nothing is loaded" door;
-        /// offline, so nothing is reported anywhere), and the queue is forgotten. Not every static: a fresh process is the only full
-        /// reset, and `status` counts `mounts` so a reused server shows.</summary>
-        static void ClearLeaks()
+        /// <summary>What one mount must not inherit from the last (`mount` and `reset`, once a mount has run: before that the boot's own
+        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the fullscreen stage (a static signal too:
+        /// left up, its looping art kept the next mount from ever settling), the tab workspace (unless <paramref name="keepRoute"/>), and
+        /// playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and queue, the play log emptied). Not every static:
+        /// a fresh process is the only full reset, and `status` counts `mounts` so a reused server shows.</summary>
+        void ClearLeaks(bool keepRoute)
         {
+            if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
-            Playback.Release(Playback.ReleaseCause.Logout);
-            Wavee.Queue.Clear();
             Stage.Close(null, "inspect-mount");
+            if (!keepRoute) InspectKit.ResetTabs();
+            InspectKit.ResetPlayback();
         }
 
         /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set
