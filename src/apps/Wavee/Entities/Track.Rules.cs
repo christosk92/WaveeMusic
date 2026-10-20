@@ -212,6 +212,14 @@ public readonly partial struct Track
         /// before its page arrived). The one rule the row component reads.</summary>
         public static bool RowHasData(bool isValid, bool knowsFace) => isValid && knowsFace;
 
+        /// <summary>Does a row know what it PAINTS? Its face; and, where the structure reveals rows together
+        /// (<paramref name="withCredits"/>: <c>ListPolicy.RowsRevealTogether</c>), its credit line too while an answer for it is
+        /// still out. A disk-restored row knows its face but withholds <see cref="TrackFields.Artists"/> until its re-ask
+        /// lands (<c>TrackShape.PersistedIdentity</c>): revealed on the face alone it painted its title, then its artists a
+        /// moment later (the owner's recording). Nothing in flight (offline, a batch that did not name it) reveals at once.</summary>
+        public static bool RowPaints(bool knowsFace, bool knowsCredits, bool inFlight, bool withCredits) =>
+            knowsFace && (!withCredits || knowsCredits || !inFlight);
+
         /// <summary>Both row styles keep ONE trailing command lane (the hover "…") and the versions chevron's lane (the
         /// drawer restates what relief took away — a row affordance, not a skin flourish), under the same width gate.
         /// A video is never a lane (tuned Classic L3): it is the film glyph after the title, so the trailing lanes do not

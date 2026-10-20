@@ -189,6 +189,14 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 catalogue by name; `goto uri=spotify:artist:arzzqx` is the pending artist. `dialog kind=crash|hang|report` opens the crash prompt (over a made-up bundle)
 or Report a problem over the Settings page; `key esc` closes it.
 
+**Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
+(`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:
+the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, then either `state cold-rows` (the membership lands, rows 1
+and 4 know their face, the rest in flight) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
+credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). Pass `trace=N` on a `state` command to trace its
+frames. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
+`goto uri=spotify:playlist:pl2` from another playlist with `trace=200` catches the hold's release (the frame its rows land) inside the trace.
+
 ### `theme {id}`
 
 - Mounted: runs the user's live theme transaction (`ThemeHost.Switch`: prewarm, freeze, remount, thaw). The reply
