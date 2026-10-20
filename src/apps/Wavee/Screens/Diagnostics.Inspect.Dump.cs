@@ -234,6 +234,7 @@ public static partial class Diagnostics
                     int index = nth.GetValueOrDefault(k);
                     nth[k] = index + 1;
                     w.WriteNumber("nth", index);
+                    if (v.Note.Length > 0) w.WriteString("note", v.Note);
                 }
                 else w.WriteString("why", v.Why);
                 w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));

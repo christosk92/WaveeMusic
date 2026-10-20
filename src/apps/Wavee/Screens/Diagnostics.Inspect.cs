@@ -436,12 +436,13 @@ public static partial class Diagnostics
                             w.WriteNumber("frames", r.Frames);
                             w.WriteBoolean("settled", r.Settled);
                             if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
+                            InspectKit.WriteAmbient(w, in r);
                         });
                     }
                 case Inspect.Verb.Click:
                 case Inspect.Verb.Hover:
                     {
-                        if (!TryAim(id, name, a, out Aim aim, out string refusal)) return refusal;
+                        if (!TryAim(id, name, a, wheel: false, out Aim aim, out string refusal)) return refusal;
                         Point2 p = aim.Point;
                         Move(p);
                         RunFrames(1);
@@ -479,7 +480,7 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Scroll:
                     {
-                        if (!TryAim(id, name, a, out Aim aim, out string refusal)) return refusal;
+                        if (!TryAim(id, name, a, wheel: true, out Aim aim, out string refusal)) return refusal;
                         Point2 p = aim.Point;
                         float dy = a.Float("dy", 3f), dx = a.Float("dx", 0f);
                         Move(p);
@@ -988,13 +989,14 @@ public static partial class Diagnostics
 
         /// <summary>Where a pointer verb aims and at what: <see cref="Node"/> and <see cref="Key"/> for a `key` target (null for
         /// a point), its index among the counted matches and how many there were.</summary>
-        readonly record struct Aim(Point2 Point, NodeHandle Node, string? Key, int Nth, int Counted, int Matches, bool Forced, float Fraction);
+        readonly record struct Aim(Point2 Point, NodeHandle Node, string? Key, int Nth, int Counted, int Matches, bool Forced, float Fraction, string Note);
 
         /// <summary>The point a pointer verb aims at: `key` (the visible centre of an ACTIONABLE node keyed so: shown, at least half
         /// visible, enabled, and hit at that centre by itself or a part of it; `nth` counts the actionable matches in reading order) or
-        /// `x`,`y` (window DIP, no checks). `force=true` skips the checks and counts every match. On a refusal
-        /// <paramref name="refusal"/> is the ok:false reply: the reason, and every match with its own.</summary>
-        bool TryAim(int id, string name, Inspect.Args a, out Aim aim, out string refusal)
+        /// `x`,`y` (window DIP, no checks). `force=true` skips the checks and counts every match. <paramref name="wheel"/>: the
+        /// `scroll` verb (no handler needed at the centre). On a refusal <paramref name="refusal"/> is the ok:false reply: the reason,
+        /// and every match with its own.</summary>
+        bool TryAim(int id, string name, Inspect.Args a, bool wheel, out Aim aim, out string refusal)
         {
             aim = default;
             refusal = "";
@@ -1004,7 +1006,7 @@ public static partial class Diagnostics
             {
                 if (a.TryNum("x", out double x) && a.TryNum("y", out double y))
                 {
-                    aim = new Aim(new Point2((float)x, (float)y), NodeHandle.Null, null, 0, 0, 0, false, 1f);
+                    aim = new Aim(new Point2((float)x, (float)y), NodeHandle.Null, null, 0, 0, 0, false, 1f, "");
                     return true;
                 }
                 refusal = Inspect.Reply.Fail(id, name, "give key (a node key) or x and y (window DIP)");
@@ -1025,7 +1027,7 @@ public static partial class Diagnostics
             int counted = 0, pick = -1;
             for (int i = 0; i < found.Count; i++)
             {
-                verdicts[i] = InspectKit.Assess(shell, found[i].Node, window);
+                verdicts[i] = InspectKit.Assess(shell, found[i].Node, window, wheel);
                 if (!force && !verdicts[i].Ok) continue;
                 if (counted == nth) pick = i;
                 counted++;
@@ -1035,7 +1037,7 @@ public static partial class Diagnostics
                 Actionability.Verdict v = verdicts[pick];
                 // Forced onto a node with nothing visible: its presented centre, as before the checks existed.
                 Point2 at = force && v.Visible.IsEmpty ? InspectKit.CentreOf(scene.PresentedAbsoluteRect(found[pick].Node)) : v.Aim;
-                aim = new Aim(at, found[pick].Node, key, nth, counted, found.Count, force, v.Fraction);
+                aim = new Aim(at, found[pick].Node, key, nth, counted, found.Count, force, v.Fraction, force ? "" : v.Note);
                 return true;
             }
             string error = counted == 0
@@ -1067,7 +1069,7 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary>A pointer verb's reply: `at` and, for a key target, `key` and `target {nth, of, matches, onScreen, order, forced?}`.</summary>
+        /// <summary>A pointer verb's reply: `at` and, for a key target, `key` and `target {nth, of, matches, onScreen, order, forced?, note?}`.</summary>
         static void WriteAim(Utf8JsonWriter w, in Aim aim)
         {
             w.WriteStartObject("at");
@@ -1083,6 +1085,7 @@ public static partial class Diagnostics
             Inspect.Reply.Num(w, "onScreen", aim.Fraction);
             w.WriteString("order", aim.Forced ? "reading order (top, then left), every match (force=true: no checks)" : "reading order (top, then left), actionable matches only");
             if (aim.Forced) w.WriteBoolean("forced", true);
+            if (aim.Note.Length > 0) w.WriteString("note", aim.Note);
             w.WriteEndObject();
         }
 
