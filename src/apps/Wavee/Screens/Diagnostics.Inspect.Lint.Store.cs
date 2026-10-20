@@ -47,29 +47,30 @@ public static partial class Diagnostics
             return full;
         }
 
+        // Numbers are written at round-trip float precision: a row exactly half on screen must stay so on replay.
         static void Num(Utf8JsonWriter w, string name, float v)
         {
-            if (float.IsFinite(v)) w.WriteNumber(name, Math.Round(v, 3));
+            if (float.IsFinite(v)) w.WriteNumber(name, v);
             else w.WriteNull(name);
         }
 
         static void Rect(Utf8JsonWriter w, string name, in RectF r)
         {
             w.WriteStartArray(name);
-            w.WriteNumberValue(Math.Round(r.X, 3));
-            w.WriteNumberValue(Math.Round(r.Y, 3));
-            w.WriteNumberValue(Math.Round(r.W, 3));
-            w.WriteNumberValue(Math.Round(r.H, 3));
+            w.WriteNumberValue(r.X);
+            w.WriteNumberValue(r.Y);
+            w.WriteNumberValue(r.W);
+            w.WriteNumberValue(r.H);
             w.WriteEndArray();
         }
 
         static void Edges(Utf8JsonWriter w, string name, in Edges4 e)
         {
             w.WriteStartArray(name);
-            w.WriteNumberValue(Math.Round(e.Left, 3));
-            w.WriteNumberValue(Math.Round(e.Top, 3));
-            w.WriteNumberValue(Math.Round(e.Right, 3));
-            w.WriteNumberValue(Math.Round(e.Bottom, 3));
+            w.WriteNumberValue(e.Left);
+            w.WriteNumberValue(e.Top);
+            w.WriteNumberValue(e.Right);
+            w.WriteNumberValue(e.Bottom);
             w.WriteEndArray();
         }
 
@@ -119,6 +120,7 @@ public static partial class Diagnostics
                 if (e.UnderKey.Length > 0) w.WriteString("underKey", e.UnderKey);
                 if (e.GlyphsOnly) w.WriteBoolean("glyphsOnly", true);
                 if (e.Advisory) w.WriteBoolean("advisory", true);
+                if (e.Column) w.WriteBoolean("column", true);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
@@ -166,8 +168,11 @@ public static partial class Diagnostics
                 w.WriteNumber("axis", n.ScrollAxis);
                 Num(w, "offset", n.ScrollOffset);
                 Num(w, "max", n.ScrollMax);
+                if (n.ScrollMoving) w.WriteBoolean("moving", true);
                 w.WriteEndObject();
             }
+            if (!n.SeedScreen.IsInfinite) Rect(w, "seed", n.SeedScreen);
+            if (!n.SeedContent.IsInfinite) Rect(w, "seedContent", n.SeedContent);
             if (n.FadeEdges != 0) w.WriteNumber("fade", n.FadeEdges);
             if (!n.ClipRect.IsInfinite) Rect(w, "clip", n.ClipRect);
             if (n.ZStack) w.WriteBoolean("zstack", true);
@@ -198,6 +203,7 @@ public static partial class Diagnostics
             if (n.ImageCount != 0) w.WriteNumber("ic", n.ImageCount);
             // Derived (for a reader; replay recomputes them).
             Num(w, "on", n.OnScreen);
+            if (n.Covered) w.WriteBoolean("covered", true);
             if (n.Family.Length > 0) w.WriteString("family", n.Family);
             if (n.CellPath.Length > 0) w.WriteString("cell", n.CellPath);
             w.WriteEndObject();
@@ -275,9 +281,26 @@ public static partial class Diagnostics
                 WidthTier tier = Enum.TryParse(Str(root, "tier"), out WidthTier t) ? t : WidthTier.Compact;
                 float w = 0f, h = 0f;
                 if (root.TryGetProperty("size", out JsonElement size)) { w = Float(size, "w"); h = Float(size, "h"); }
+                if (!(w > 0f) || !(h > 0f) || !float.IsFinite(w) || !float.IsFinite(h)) { error = "replay: '" + full + "' has no window size (size.w and size.h must be above 0)"; return false; }
                 var nodes = new List<InspectLint.Node>();
                 if (root.TryGetProperty("nodes", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
-                    foreach (JsonElement n in list.EnumerateArray()) nodes.Add(ReadNode(n, nodes.Count));
+                    foreach (JsonElement n in list.EnumerateArray())
+                    {
+                        if (n.ValueKind != JsonValueKind.Object) { error = "replay: '" + full + "' node " + nodes.Count + " is not an object"; return false; }
+                        InspectLint.Node node = ReadNode(n, nodes.Count);
+                        if (node.Parent < -1 || node.Parent >= node.Index)
+                        {
+                            error = "replay: '" + full + "' node " + node.Index + " names parent " + node.Parent + " (a parent comes before its children: -1 or an earlier index)";
+                            return false;
+                        }
+                        RectF r = node.Rect;
+                        if (!float.IsFinite(r.X) || !float.IsFinite(r.Y) || !float.IsFinite(r.W) || !float.IsFinite(r.H) || r.W < 0f || r.H < 0f)
+                        {
+                            error = "replay: '" + full + "' node " + node.Index + " has no finite rect";
+                            return false;
+                        }
+                        nodes.Add(node);
+                    }
                 snapshot = new InspectLint.Snapshot(w, h, tier, nodes)
                 {
                     Theme = Str(root, "theme"),
@@ -343,11 +366,13 @@ public static partial class Diagnostics
             string? key = e.TryGetProperty("key", out JsonElement k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null;
             int axis = 0;
             float offset = 0f, max = 0f;
+            bool moving = false;
             if (e.TryGetProperty("scroll", out JsonElement scroll))
             {
                 axis = Int(scroll, "axis");
                 offset = Float(scroll, "offset");
                 max = Float(scroll, "max");
+                moving = Bool(scroll, "moving");
             }
             float borderW = 0f;
             ColorF borderC = default;
@@ -364,6 +389,9 @@ public static partial class Diagnostics
                 ScrollAxis = axis,
                 ScrollOffset = offset,
                 ScrollMax = max,
+                ScrollMoving = moving,
+                SeedScreen = RectOf(e, "seed", RectF.Infinite),
+                SeedContent = RectOf(e, "seedContent", RectF.Infinite),
                 FadeEdges = (byte)Int(e, "fade"),
                 ClipRect = RectOf(e, "clip", RectF.Infinite),
                 ZStack = Bool(e, "zstack"),
@@ -436,7 +464,7 @@ public static partial class Diagnostics
             foreach (JsonElement e in list.EnumerateArray())
                 edges.Add(new LintEdge(Str(e, "rule"), Str(e, "id"), Str(e, "what"), Str(e, "side") == "right" ? LintSide.Right : LintSide.Left,
                     Float(e, "expected"), Float(e, "tolerance"), StringsOf(e, "keys"), StringsOf(e, "prefixes"), Str(e, "underKey"),
-                    Bool(e, "glyphsOnly"), Bool(e, "advisory")));
+                    Bool(e, "glyphsOnly"), Bool(e, "advisory"), Bool(e, "column")));
             return edges;
         }
 

@@ -18,29 +18,47 @@ public static partial class Diagnostics
     {
         // ── text.placeholder ────────────────────────────────────────────────────────────────────────────────────────
 
-        static bool KeyChar(char c) => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.';
+        /// <summary>A loc key's shape (<c>home.quickPins</c>, <c>crash.recoveryTitle</c>): two or more dot-separated segments, each a lowercase
+        /// letter followed by letters, digits, <c>_</c> or <c>-</c>. A catalogue title's brackets (<c>[Pt.2]</c>, <c>[Intro.Outro]</c>) are not.</summary>
+        public static bool IsLocKey(ReadOnlySpan<char> key)
+        {
+            int segments = 0;
+            foreach (Range r in key.Split('.'))
+            {
+                ReadOnlySpan<char> seg = key[r];
+                if (seg.Length == 0 || !char.IsAsciiLetterLower(seg[0])) return false;
+                foreach (char c in seg)
+                    if (!(char.IsAsciiLetterOrDigit(c) || c is '_' or '-')) return false;
+                segments++;
+            }
+            return segments >= 2;
+        }
 
-        /// <summary>A missing loc key as `Loc.Get` renders it: <c>[a.b]</c>, word characters and at least one dot inside the brackets.</summary>
-        public static bool TryMissingKey(string text, out string token)
+        /// <summary>A missing loc key as `Loc.Get` renders it: <c>[a.b]</c> with a loc key's shape inside the brackets (<see cref="IsLocKey"/>).
+        /// <paramref name="whole"/>: only when the bracketed key is all the text (what a missing key renders as, alone).</summary>
+        public static bool TryMissingKey(string text, out string token, bool whole = false)
         {
             token = "";
+            if (whole)
+            {
+                string trimmed = text.Trim();
+                if (trimmed.Length < 5 || trimmed[0] != '[' || trimmed[^1] != ']' || !IsLocKey(trimmed.AsSpan(1, trimmed.Length - 2))) return false;
+                token = trimmed;
+                return true;
+            }
             for (int open = text.IndexOf('['); open >= 0; open = text.IndexOf('[', open + 1))
             {
                 int close = text.IndexOf(']', open + 1);
                 if (close < 0) return false;
-                ReadOnlySpan<char> inner = text.AsSpan(open + 1, close - open - 1);
-                if (inner.Length < 3 || inner.IndexOf('.') <= 0 || inner[^1] == '.') continue;
-                bool ok = true;
-                foreach (char c in inner)
-                    if (!KeyChar(c)) { ok = false; break; }
-                if (!ok) continue;
+                if (!IsLocKey(text.AsSpan(open + 1, close - open - 1))) continue;
                 token = text[open..(close + 1)];
                 return true;
             }
             return false;
         }
 
-        /// <summary>A missing argument as `Loc.Format` renders it: <c>{name}</c>, an identifier inside the braces.</summary>
+        /// <summary>A missing argument as `Loc.Format` renders it: <c>{name}</c>, a camelCase identifier inside the braces (a lowercase letter
+        /// first: <c>{count}</c>, never a title's <c>{Remix}</c>).</summary>
         public static bool TryMissingArg(string text, out string token)
         {
             token = "";
@@ -49,7 +67,7 @@ public static partial class Diagnostics
                 int close = text.IndexOf('}', open + 1);
                 if (close < 0) return false;
                 ReadOnlySpan<char> inner = text.AsSpan(open + 1, close - open - 1);
-                if (inner.Length == 0 || !(char.IsAsciiLetter(inner[0]) || inner[0] == '_')) continue;
+                if (inner.Length == 0 || !(char.IsAsciiLetterLower(inner[0]) || inner[0] == '_')) continue;
                 bool ok = true;
                 foreach (char c in inner)
                     if (!(char.IsAsciiLetterOrDigit(c) || c == '_')) { ok = false; break; }
@@ -60,20 +78,28 @@ public static partial class Diagnostics
             return false;
         }
 
-        static readonly string[] s_junkWords = ["NaN", "Infinity", "-Infinity", "null", "undefined"];
+        /// <summary>A number's neighbour: a digit, or what a formatted value sits next to (<c>NaN:NaN</c>, <c>NaN%</c>, <c>1/NaN</c>, <c>NaN×</c>).</summary>
+        static bool ValueNeighbour(char c) => char.IsAsciiDigit(c) || c is ':' or '%' or '/' or '×';
 
-        /// <summary>A value that leaked as words: NaN, Infinity, null, undefined, as a whole word.</summary>
+        /// <summary>A value that leaked as words: <c>NaN</c>, <c>null</c>, <c>undefined</c> or <c>-Infinity</c> as the whole text; any of them and
+        /// <c>Infinity</c> as a word next to a number (<c>NaN:NaN</c>, <c>NaN%</c>, <c>Infinity / 3</c>: a space between counts). "Infinity" alone
+        /// is a title, never a finding.</summary>
         public static bool TryJunkWord(string text, out string token)
         {
             token = "";
+            string trimmed = text.Trim();
+            if (trimmed is "NaN" or "null" or "undefined" or "-Infinity") { token = trimmed; return true; }
             foreach (string word in s_junkWords)
             {
                 for (int at = text.IndexOf(word, StringComparison.Ordinal); at >= 0; at = text.IndexOf(word, at + 1, StringComparison.Ordinal))
                 {
-                    bool startOk = at == 0 || !char.IsLetterOrDigit(text[at - 1]);
                     int end = at + word.Length;
-                    bool endOk = end == text.Length || !char.IsLetterOrDigit(text[end]);
-                    if (!startOk || !endOk) continue;
+                    if ((at > 0 && char.IsLetterOrDigit(text[at - 1])) || (end < text.Length && char.IsLetterOrDigit(text[end]))) continue;   // inside a word
+                    int before = at - 1, after = end;
+                    if (before >= 0 && text[before] == ' ') before--;
+                    if (after < text.Length && text[after] == ' ') after++;
+                    bool numeric = (before >= 0 && ValueNeighbour(text[before])) || (after < text.Length && ValueNeighbour(text[after]));
+                    if (!numeric) continue;
                     token = word;
                     return true;
                 }
@@ -81,8 +107,24 @@ public static partial class Diagnostics
             return false;
         }
 
+        static readonly string[] s_junkWords = ["NaN", "-Infinity", "Infinity", "null", "undefined"];
+
+        /// <summary>Catalogue content: text inside a row or a card of a repeated family (an instance that is a click target or carries art):
+        /// a track, album or playlist title is whatever the catalogue says ("Infinity", "Interlude [Pt.2]").</summary>
+        static bool IsContent(Snapshot s, Node n)
+        {
+            for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
+            {
+                Node m = s.Nodes[i];
+                if (m.Instance == i && (m.Interactive || m.ImageCount > 0)) return true;
+            }
+            return false;
+        }
+
         /// <summary><c>text.placeholder</c>: in-scope words that are not content. A missing loc key (<c>[a.b.c]</c>) or a missing argument
-        /// (<c>{name}</c>) is an error; NaN, Infinity, null or undefined as a word is a warning. Grouped by (kind, family pattern).</summary>
+        /// (<c>{name}</c>) is an error; NaN, null, undefined or -Infinity as the text, or any of them and Infinity next to a number, is a warning.
+        /// In catalogue content (<see cref="IsContent"/>) only a bracketed loc key that is the whole text counts (what a missing key renders as).
+        /// Grouped by (kind, family pattern).</summary>
         static int PlaceholderRule(Snapshot s, List<Finding> into)
         {
             int looked = 0;
@@ -93,7 +135,9 @@ public static partial class Diagnostics
                 looked++;
                 string kind, token;
                 Severity sev;
-                if (TryMissingKey(t.String, out token)) { kind = "missing-key"; sev = Severity.Error; }
+                bool content = IsContent(s, n);
+                if (TryMissingKey(t.String, out token, whole: content)) { kind = "missing-key"; sev = Severity.Error; }
+                else if (content) continue;
                 else if (TryMissingArg(t.String, out token)) { kind = "missing-arg"; sev = Severity.Error; }
                 else if (TryJunkWord(t.String, out token)) { kind = "value-" + token.TrimStart('-').ToLowerInvariant(); sev = Severity.Warn; }
                 else continue;
@@ -119,6 +163,7 @@ public static partial class Diagnostics
                     Cause = g.Kind,
                     Count = g.Nodes.Count,
                     Rects = rects,
+                    Nodes = Ids(g.Nodes),
                 });
             }
             return looked;
@@ -142,19 +187,21 @@ public static partial class Diagnostics
 
         static readonly string[] s_tierWords = ["compact", "small", "standard", "huge", "huge4k"];
 
-        /// <summary>A key part that names a tier, a form or a column count (the owner rule): a tier name, <c>form</c>, or a count like <c>3col</c>,
-        /// <c>cols4</c>, <c>2up</c>.</summary>
+        /// <summary>A word of the key's static slug (<see cref="SlugOf"/>: what the view typed, not a name the content brought) that names a
+        /// tier, a form or a column count (the owner rule): a tier name, <c>form</c>, or a count like <c>3col</c>, <c>cols4</c>, <c>2up</c>.
+        /// <c>zune-cluster:1:Huge Form 2up</c> carries an artist's name, not a tier word.</summary>
         public static bool TryTierWord(string key, out string word)
         {
             word = "";
+            string slug = SlugOf(key);
             int start = 0;
-            for (int i = 0; i <= key.Length; i++)
+            for (int i = 0; i <= slug.Length; i++)
             {
-                if (i < key.Length && char.IsAsciiLetterOrDigit(key[i])) continue;
+                if (i < slug.Length && char.IsAsciiLetterOrDigit(slug[i])) continue;
                 if (i > start)
                 {
-                    string part = key[start..i].ToLowerInvariant();
-                    if (Array.IndexOf(s_tierWords, part) >= 0 || part == "form" || IsCountWord(part)) { word = key[start..i]; return true; }
+                    string part = slug[start..i].ToLowerInvariant();
+                    if (Array.IndexOf(s_tierWords, part) >= 0 || part == "form" || IsCountWord(part)) { word = slug[start..i]; return true; }
                 }
                 start = i + 1;
             }
@@ -199,7 +246,8 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary><c>key.hygiene</c> (design-qa G6): in-scope keys that make a selector ambiguous or unstable, one finding per (class, key family):
+        /// <summary><c>key.hygiene</c> (design-qa G6), severity info (it reports selector hygiene, not a flaw anyone sees, so it never sits among the
+        /// visual warnings): in-scope keys that make a selector ambiguous or unstable, one finding per (class, key family):
         /// control characters; a trailing <c>:</c>; a run id (<c>#</c> + digits); a tier, form or column-count word (the owner rule); and the same
         /// key on two or more nodes (not counting a copy nested in another) OUTSIDE a repeated family: neither the family's own instances (rows keyed
         /// alike) nor copies of which all but one sit under keyed ancestors of their own (told apart by `root=<that key>`) count; the rest only
@@ -255,13 +303,14 @@ public static partial class Diagnostics
                 string message = g.Class == "duplicate"
                     ? $"{keys}: the same key is on {g.Nodes.Count} on-screen nodes that no row tells apart (a selector needs nth)"
                     : $"{keys}: {(g.Keys.Count == 1 ? "the key carries" : "these keys carry")} {g.Detail}";
-                into.Add(new Finding(Rules.KeyHygiene, Severity.Warn, message, refs.Select(Printable).ToList())
+                into.Add(new Finding(Rules.KeyHygiene, Severity.Info, message, refs.Select(Printable).ToList())
                 {
                     Measured = [M("count", g.Nodes.Count), M("keys", g.Keys.Count)],
                     Pattern = pattern,
                     Cause = g.Class,
                     Count = g.Nodes.Count,
                     Rects = rects,
+                    Nodes = Ids(g.Nodes),
                 });
             }
             return looked;

@@ -71,20 +71,35 @@ public static partial class Diagnostics
             public readonly HashSet<int> Sections = [];
             public float Line, X, D;
             public int Support;
-            public string LinePatterns = "";
+            public string LinePatterns = "", Source = "";
             public LintPolicy? Intent;
         }
 
+        /// <summary>A member that can lead the column: scrolling reaches it and no modal covers it (the column line is read over the whole
+        /// scroll content, so it does not move while the page scrolls).</summary>
+        static bool Reachable(Node n) => !n.Covered && !n.Reach.IsEmpty && InspectVisible.InScope(InspectVisible.Scope.Content, n.OnScreen, n.InContent, n.Cover);
+
+        /// <summary>A fill, image or gradient as wide as its scroll region (or the window): a ground, not a lead.</summary>
+        static bool FullBleed(Snapshot s, Node n)
+        {
+            if (n.Text is not null) return false;
+            float width = n.Region >= 0 ? s.Nodes[n.Region].Rect.W : s.Width;
+            return n.Rect.W >= 0.95f * width;
+        }
+
         /// <summary><c>align.inset</c> (port of design-qa proto/leads.py). Algorithm:
-        /// 1. members: in-scope ink (text, image, gradient, visible fill or border), not a glyph, not mid-animation, not inside a horizontal scroller
-        ///    (a rail's x is content-driven), not a PLATE (an ink node another ink node sits on: it leads its own content, not the column), not placed
-        ///    by centring or end alignment, and not an end-aligned column (cells of one family and cell path whose right or centre edges agree while
-        ///    their left edges do not: right-aligned numerals);
+        /// 1. members: ink (text, image, gradient, visible fill or border) that scrolling reaches (the WHOLE scroll content, not only the screen),
+        ///    not a glyph, not mid-animation, not inside a horizontal scroller (a rail's x is content-driven), not a PLATE (an ink node another ink
+        ///    node sits on: it leads its own content, not the column), not a ground as wide as its region, not placed by centring or end alignment,
+        ///    and not an end-aligned column (cells of one family and cell path whose right or centre edges agree while their left edges do not:
+        ///    right-aligned numerals);
         /// 2. groups: (scroll region x backdrop), so a card's content is never compared with the page column;
-        /// 3. leads: members with no other member wholly to their left on an overlapping line (vertical overlap over 2 DIP);
-        /// 4. the column line: the most common lead x (to 0.1 DIP) shared by at least 3 leads (ties: the leftmost);
-        /// 5. a lead 4 &lt; |d| &lt;= 16 off the line is a finding when its section (nearest keyed node) has nothing on the line (an inset INSIDE an
-        ///    on-line section is the section's own design); one finding per (pattern, d rounded to 1 DIP) collapses its rows.
+        /// 3. leads: members with no other member wholly to their left on an overlapping line (vertical overlap over 2 DIP), on reach rects;
+        /// 4. the column line: on the page's own ground (backdrop: the page) the guide's <c>Column</c> edge when at least 3 leads sit on it (Zune
+        ///    and WinUI: the page title's x); else the LEFTMOST x (to 0.1 DIP) at least 3 leads share. Never the most common x on screen: with more
+        ///    inset rows than headers in view that would call the headers wrong, and flip with the scroll position;
+        /// 5. a lead IN SCOPE 4 &lt; |d| &lt;= 16 off the line is a finding when its section (nearest keyed node) has no lead on the line (an inset
+        ///    INSIDE a section that also leads on the line is the section's own design); one finding per (pattern, d rounded to 1 DIP).
         /// A guide <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> within 2 DIP of d makes it intended (suppressed).</summary>
         static int AlignInsetRule(Snapshot s, List<Finding> into)
         {
@@ -95,12 +110,16 @@ public static partial class Diagnostics
             var members = new List<Node>();
             foreach (Node n in nodes)
             {
-                if (!n.InScope || !n.Ink || n.Animating || n.InRail || plate[n.Index] || n.Visible.IsEmpty) continue;
+                if (!n.Ink || n.Animating || n.InRail || plate[n.Index] || !Reachable(n)) continue;
                 if (n.Text is { Glyph: true }) continue;
-                if (PlacedOffStart(s, n)) continue;
+                if (FullBleed(s, n) || PlacedOffStart(s, n)) continue;
                 members.Add(n);
             }
             ExcludeEndAligned(members);
+
+            var columns = new List<LintEdge>();
+            foreach (LintEdge e in s.Edges)
+                if (e.Column && e.Side == LintSide.Left) columns.Add(e);
 
             var groups = new Dictionary<(int Region, int Backdrop), List<Node>>();
             foreach (Node n in members)
@@ -110,38 +129,55 @@ public static partial class Diagnostics
                 list.Add(n);
             }
             var found = new Dictionary<string, InsetGroup>(StringComparer.Ordinal);
-            foreach (var (_, list) in groups)
+            int judged = 0;
+            foreach (var ((_, backdrop), list) in groups)
             {
                 var leads = new List<Node>();
                 foreach (Node n in list)
                 {
-                    RectF r = n.Visible;
+                    if (n.InScope) judged++;
+                    RectF r = n.Reach;
                     bool covered = false;
                     foreach (Node m in list)
                     {
                         if (ReferenceEquals(m, n)) continue;
-                        RectF o = m.Visible;
+                        RectF o = m.Reach;
                         if (o.Right <= r.X + Slack && MathF.Min(r.Bottom, o.Bottom) - MathF.Max(r.Y, o.Y) > 2f) { covered = true; break; }
                     }
                     if (!covered) leads.Add(n);
                 }
-                var support = new Dictionary<float, int>();
-                foreach (Node n in leads)
-                {
-                    float x = MathF.Round(n.Rect.X, 1);
-                    support[x] = support.TryGetValue(x, out int c) ? c + 1 : 1;
-                }
-                float line = 0f;
+                float line = float.NaN, tolerance = Slack;
                 int best = 0;
-                foreach (var (x, c) in support)
-                    if (c > best || (c == best && x < line)) { line = x; best = c; }
-                if (best < 3) continue;
+                string source = "";
+                if (backdrop < 0)
+                    foreach (LintEdge e in columns)
+                    {
+                        float tol = MathF.Max(Slack, e.Tolerance);
+                        int c = 0;
+                        foreach (Node n in leads)
+                            if (MathF.Abs(n.Rect.X - e.Expected) <= tol) c++;
+                        if (c >= 3 && c > best) { line = e.Expected; tolerance = tol; best = c; source = "the guide's " + e.Id + "; "; }
+                    }
+                if (float.IsNaN(line))
+                {
+                    var support = new Dictionary<float, int>();
+                    foreach (Node n in leads)
+                    {
+                        float x = MathF.Round(n.Rect.X, 1);
+                        support[x] = support.TryGetValue(x, out int c) ? c + 1 : 1;
+                    }
+                    foreach (var (x, c) in support)
+                        if (c >= 3 && (float.IsNaN(line) || x < line)) { line = x; best = c; }
+                    if (float.IsNaN(line)) continue;
+                    source = "the leftmost x 3 leads share; ";
+                }
                 var onLine = new List<Node>();
                 foreach (Node n in leads)
-                    if (MathF.Abs(n.Rect.X - line) <= Slack) onLine.Add(n);
+                    if (MathF.Abs(n.Rect.X - line) <= tolerance) onLine.Add(n);
                 string linePatterns = string.Join(", ", onLine.Select(static n => n.Pattern).Distinct().Take(4));
                 foreach (Node n in leads)
                 {
+                    if (!n.InScope) continue;
                     float d = n.Rect.X - line;
                     if (MathF.Abs(d) <= InsetMin || MathF.Abs(d) > InsetMax) continue;
                     int section = SectionOf(s, n);
@@ -154,7 +190,7 @@ public static partial class Diagnostics
                     string key = n.Pattern + "|" + F(bucket);
                     if (!found.TryGetValue(key, out InsetGroup? g))
                     {
-                        found[key] = g = new InsetGroup { Line = line, X = MathF.Round(n.Rect.X, 1), D = bucket, Support = best, LinePatterns = linePatterns };
+                        found[key] = g = new InsetGroup { Line = line, X = MathF.Round(n.Rect.X, 1), D = bucket, Support = best, LinePatterns = linePatterns, Source = source };
                         LintPolicy? hang = PolicyFor(s, n, LintIntent.Hang) ?? PolicyFor(s, n, LintIntent.Indent);
                         if (hang is not null && MathF.Abs(d - hang.Value) <= IntentTolerance) g.Intent = hang;
                     }
@@ -169,7 +205,7 @@ public static partial class Diagnostics
                 int sections = g.Sections.Count;
                 string what = sections > 1 ? $"{pattern} ({sections} {Plural(sections, "section", "sections")})" : pattern;
                 var f = new Finding(Rules.AlignInset, Severity.Warn,
-                    $"{what} leads at x={F(g.X)}; its region's column line is x={F(g.Line)} ({g.Support} leads: {g.LinePatterns}): {Signed(g.D)}", refs)
+                    $"{what} leads at x={F(g.X)}; its region's column line is x={F(g.Line)} ({g.Source}{g.Support} leads on it: {g.LinePatterns}): {Signed(g.D)}", refs)
                 {
                     Measured = [M("x", g.X), M("d", g.D)],
                     Expected = [M("x", g.Line), M("support", g.Support)],
@@ -177,12 +213,13 @@ public static partial class Diagnostics
                     Cause = "lead:" + Signed(g.D),
                     Count = sections,
                     Rects = rects,
+                    Nodes = Ids(g.Leads),
                 };
                 if (g.Intent is { } intent)
                     f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = intent.Reason };
                 into.Add(f);
             }
-            return members.Count;
+            return judged;
         }
 
         /// <summary>Drop the cells of an end-aligned column: members of one family and cell path (3 or more) whose left edges spread over 0.5 DIP while
@@ -245,11 +282,14 @@ public static partial class Diagnostics
             public readonly List<float> Bottoms = [];
             public readonly List<float> Centres = [];
 
+            public readonly List<float> Heights = [];
+
             public void Add(Node text, RectF row)
             {
                 Cells.Add((text, text.Rect.Y - row.Y));
                 Bottoms.Add(text.Rect.Bottom - row.Y);
                 Centres.Add(text.Rect.Y + text.Rect.H / 2f - row.Y);
+                Heights.Add(row.H);
             }
             public readonly HashSet<int> Rows = [];
             public string Row = "";
@@ -268,8 +308,11 @@ public static partial class Diagnostics
         /// (b) UNKEYED CELLS: for every instance of a repeated family G that is a row (no other family's instance above it), the offset of each text
         ///     whose nearest instance is that row, from the row's top; grouped by (G, cell path).
         /// A group of 3 or more whose offsets spread over 0.5 DIP drifts: the text sits at different heights from row to row (a centred stack whose
-        /// optional line comes and goes), unless its bottoms or its centres agree (a bottom-anchored or centred caption whose line count varies). The rows themselves are never measured against the list they sit in (that offset only steps by the row
-        /// height: the prototype's false positive). Offsets are line-box tops, not true baselines, so a finding is a `review`: look at the rows.</summary>
+        /// optional line comes and goes), unless its bottoms or its centres agree (a bottom-anchored or centred caption whose line count varies),
+        /// or its "rows" are no rows: instances whose heights differ by more than max(2 DIP, 10 %) are sections of a page (a key family is a
+        /// static key part, so `zs:title` and `zs:link:*` are never one family; settings sections whose first one has no top rule differ in
+        /// height). The rows themselves are never measured against the list they sit in (that offset only steps by the row height: the
+        /// prototype's false positive). Offsets are line-box tops, not true baselines, so a finding is a `review`: look at the rows.</summary>
         static int AlignBaselineRule(Snapshot s, List<Finding> into)
         {
             IReadOnlyList<Node> nodes = s.Nodes;
@@ -322,6 +365,7 @@ public static partial class Diagnostics
                 }
                 if (max - min <= Slack) continue;
                 if (Spread(d.Bottoms) <= Slack || Spread(d.Centres) <= Slack) continue;   // anchored at its bottom or centre: a line count, not a drift
+                if (Spread(d.Heights) > MathF.Max(2f, 0.1f * d.Heights.Min())) continue;  // not rows: sections of different heights (a first one without its top rule)
                 string cell = key[2..];
                 bool keyed = key[0] == 'a';
                 if (keyed) cell = cell[..cell.LastIndexOf('|')];
@@ -339,6 +383,7 @@ public static partial class Diagnostics
                     Outcome = Outcome.Review,
                     Reason = "line-box tops, not measured baselines: look at the rows",
                     Rects = rects,
+                    Nodes = Ids(d.Cells.Select(static c => c.Text)),
                 });
             }
             return looked;
@@ -460,6 +505,7 @@ public static partial class Diagnostics
                     Cause = "value:" + F(v),
                     Count = g.Nodes.Count,
                     Rects = rects,
+                    Nodes = Ids(g.Nodes),
                 };
                 if (g.Intent is { } intent)
                     f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = intent.Reason };

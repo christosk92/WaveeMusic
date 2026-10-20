@@ -14,10 +14,12 @@
 // from a rendered frame, the ground under each text run. Every rule then reads only what is in scope (`scope=screen`: at least half visible).
 //
 // THE FINDING (PLAN 4.5): `rule` (today's name for the nine, the id for the new ones), `id` (family.name), severity, OUTCOME (fail: the rule's
-// verdict; review: it cannot decide, look at the render; suppressed: an intent or a baseline entry matched), LEVEL (gate: today's nine; todo:
-// report-only, never counted in `summary`), `fp` (rule|theme|route|pattern|cause, size-independent, so one baseline line covers every size),
-// `group` {count, pattern} (members collapse into one finding), a message, measured/expected, and a one-line `fix` that never says to shrink
-// Zune display type, to touch motion or to remove a feature (and on Classic only says "report; do not fix unless asked").
+// verdict; review: it cannot decide, look at the render; suppressed: an intent or a baseline entry matched; report: an info line stating what
+// is there, no verdict), LEVEL (gate: today's nine; todo: report-only, never counted in `summary`), `fp` (rule|theme|route|pattern|cause, no
+// sizes or positions, so one baseline line covers a flaw at every window size where the cause is the same), `group` {count, pattern} (members
+// collapse into one finding, and findings of one rule that share a fingerprint collapse too), a message, measured/expected, and a one-line
+// `fix` that never says to shrink Zune display type, to touch motion or to remove a feature (on Classic: "report; do not fix unless asked").
+// `summary` counts fail findings (and report lines) of the gate rules at or above `min`, listed or not.
 //
 // CONSERVATIVE BY DESIGN. A scroller may cut its content where scrolling reveals it (the fold); an edge fade or a guide `Bleed` excuses a hard
 // scroll edge; ZStack children and sticky headers may overlap; glyph (icon) text is not words; a designed ellipsis (MaxLines + ellipsis in a
@@ -59,8 +61,9 @@ public static partial class Diagnostics
         /// replay set (PLAN 5.6), so a new rule never breaks anyone's "lint min=error clean".</summary>
         public enum Level : byte { Gate, Todo }
 
-        /// <summary>fail: the rule's verdict; review: the rule cannot decide (look at the render); suppressed: an intent or a baseline entry matched.</summary>
-        public enum Outcome : byte { Fail, Review, Suppressed }
+        /// <summary>fail: the rule's verdict; review: the rule cannot decide (look at the render); suppressed: an intent or a baseline entry matched;
+        /// report: an info line that states what is there (the type styles in use, the gaps of a stack, the designed ellipses), not a verdict.</summary>
+        public enum Outcome : byte { Fail, Review, Suppressed, Report }
 
         /// <summary>One rule of the catalog: its id, the alias today's callers know it by ("" for a new rule), its level and what it checks.</summary>
         public readonly record struct RuleSpec(string Id, string Alias, Level Level, string What);
@@ -132,7 +135,7 @@ public static partial class Diagnostics
 
         public static string Name(Severity s) => s switch { Severity.Error => "error", Severity.Warn => "warn", _ => "info" };
 
-        public static string Name(Outcome o) => o switch { Outcome.Review => "review", Outcome.Suppressed => "suppressed", _ => "fail" };
+        public static string Name(Outcome o) => o switch { Outcome.Review => "review", Outcome.Suppressed => "suppressed", Outcome.Report => "report", _ => "fail" };
 
         public static string Name(Level l) => l == Level.Todo ? "todo" : "gate";
 
@@ -154,6 +157,7 @@ public static partial class Diagnostics
                 case "fail": outcome = Outcome.Fail; return true;
                 case "review": outcome = Outcome.Review; return true;
                 case "suppressed": outcome = Outcome.Suppressed; return true;
+                case "report": outcome = Outcome.Report; return true;
                 default: outcome = Outcome.Fail; return false;
             }
         }
@@ -240,6 +244,14 @@ public static partial class Diagnostics
             public float ScrollOffset { get; init; }
             public float ScrollMax { get; init; }
 
+            /// <summary>A scroller still moving (a smooth scroll or a fling in flight): the frame the lint read is mid-scroll.</summary>
+            public bool ScrollMoving { get; init; }
+
+            /// <summary>For a root (<c>Parent</c> -1) of a `root=` capture: the cut its live ancestors put on it, on screen and in content
+            /// (<see cref="InspectVisible.AncestorCut"/>). <see cref="RectF.Infinite"/> (the default): the window.</summary>
+            public RectF SeedScreen { get; init; } = RectF.Infinite;
+            public RectF SeedContent { get; init; } = RectF.Infinite;
+
             /// <summary>The edges it feathers (an edge fade, or a scroller's auto fade): <see cref="EdgeMask"/> bits.</summary>
             public byte FadeEdges { get; init; }
 
@@ -305,8 +317,20 @@ public static partial class Diagnostics
             /// <summary>The share of its rect scrolling reaches (the window and the scroll viewports do not cut).</summary>
             public float InContent { get; init; } = 1f;
 
-            /// <summary>In the run's scope (<c>scope=screen</c>: at least half visible).</summary>
+            /// <summary>The part of <see cref="Rect"/> scrolling reaches (cut by what scrolling cannot open): what a page audit judges.</summary>
+            public RectF Reach { get; init; }
+
+            /// <summary>The share of the viewport it sits in that its visible part fills (a container taller than its screen still fills it).</summary>
+            public float Cover { get; init; }
+
+            /// <summary>A modal scrim painted after it covers it (a dialog is open over the page): out of scope but at <c>scope=all</c>.</summary>
+            public bool Covered { get; init; }
+
+            /// <summary>In the run's scope (<c>scope=screen</c>: at least half visible, or filling half its viewport; never covered).</summary>
             public bool InScope { get; init; } = true;
+
+            /// <summary>The rect the run's scope judges: <see cref="Visible"/> (screen), <see cref="Reach"/> (content) or <see cref="Rect"/> (all).</summary>
+            public RectF Seen { get; init; }
 
             /// <summary>It paints: text, an image, a gradient, a visible fill or border.</summary>
             public bool Ink { get; init; }
@@ -373,20 +397,26 @@ public static partial class Diagnostics
             /// <summary>The scope <see cref="Prepare"/> derived the node fields for (null: not prepared).</summary>
             public InspectVisible.Scope? PreparedFor { get; init; }
 
+            /// <summary>The modal scrim <see cref="Prepare"/> found (its ref; "" when none): the nodes it covers are out of scope.</summary>
+            public string Modal { get; init; } = "";
+
+            /// <summary>How many nodes the modal scrim covers.</summary>
+            public int CoveredCount { get; init; }
+
             /// <summary>The route's name (<c>album</c>): the fingerprint's route part.</summary>
-            public string RouteName
-            {
-                get
-                {
-                    int cut = Route.AsSpan().IndexOfAny(' ', ':');
-                    return cut > 0 ? Route[..cut] : Route;
-                }
-            }
+            public string RouteName => RouteNameOf(Route);
 
             /// <summary>The page's own entity (<c>spotify:album:al2</c>), "" on a page about none.</summary>
             public string PageEntity => EntityIn(Route);
 
             public bool RealText => string.Equals(TrimSource, "dwrite", StringComparison.Ordinal);
+        }
+
+        /// <summary>The name part of a route as `status` names it (<c>album</c> of <c>album:spotify:album:al2</c>).</summary>
+        public static string RouteNameOf(string route)
+        {
+            int cut = route.AsSpan().IndexOfAny(' ', ':');
+            return cut > 0 ? route[..cut] : route;
         }
 
         // ── the rendered frame ──────────────────────────────────────────────────────────────────────────────────────
@@ -451,7 +481,24 @@ public static partial class Diagnostics
         public static readonly string[] DefaultIgnoreUnder = ["shell.titlebar", "shell.playerbar"];
 
         /// <summary>One accepted finding of a baseline file (a JSON line): matched by fingerprint, never by message. A reason is mandatory.</summary>
-        public sealed record BaselineEntry(string Fp, string Rule, string Reason, string By, string Date);
+        public sealed record BaselineEntry(string Fp, string Rule, string Reason, string By, string Date)
+        {
+            /// <summary>The rule id the entry speaks to: the fingerprint's first part (an entry's <c>rule</c> is for a reader).</summary>
+            public string RuleId
+            {
+                get
+                {
+                    int bar = Fp.IndexOf('|');
+                    return bar > 0 ? Fp[..bar] : Rule;
+                }
+            }
+        }
+
+        /// <summary>The outcomes a report lists by default: everything but the suppressed.</summary>
+        public static readonly Outcome[] DefaultOutcomes = [Outcome.Fail, Outcome.Review, Outcome.Report];
+
+        /// <summary>Every outcome (`outcomes=all`).</summary>
+        public static readonly Outcome[] AllOutcomes = [Outcome.Fail, Outcome.Review, Outcome.Suppressed, Outcome.Report];
 
         public sealed record Options
         {
@@ -494,8 +541,8 @@ public static partial class Diagnostics
             /// <summary>Findings below this severity are left out of the report.</summary>
             public Severity Min { get; init; } = Severity.Info;
 
-            /// <summary>The outcomes the report lists (default fail and review; every outcome is counted either way).</summary>
-            public IReadOnlyCollection<Outcome> Outcomes { get; init; } = [Outcome.Fail, Outcome.Review];
+            /// <summary>The outcomes the report lists (default fail, review and report; every outcome is counted either way).</summary>
+            public IReadOnlyCollection<Outcome> Outcomes { get; init; } = DefaultOutcomes;
 
             /// <summary>Accepted findings (`baseline=<file>`): a finding whose fingerprint is here is suppressed, with the entry's reason.</summary>
             public IReadOnlyList<BaselineEntry> Baseline { get; init; } = [];
@@ -556,8 +603,13 @@ public static partial class Diagnostics
             /// <summary>How many members the finding collapses.</summary>
             public int Count { get; init; } = 1;
 
-            /// <summary>The members' visible rects (as many as <see cref="Keys"/>): where to look, and what a marked render boxes.</summary>
+            /// <summary>The members' visible rects (as many as <see cref="Keys"/>; a member off the screen: its rect): where to look, and what a
+            /// marked render boxes.</summary>
             public IReadOnlyList<RectF> Rects { get; init; } = [];
+
+            /// <summary>Every member's node index (not capped like <see cref="Keys"/>): what a guide <see cref="LintIntent.Allow"/> is tested
+            /// against. Not in the reply.</summary>
+            public IReadOnlyList<int> Nodes { get; init; } = [];
 
             /// <summary>The fingerprint: rule|theme|route|pattern|cause.</summary>
             public string Fp { get; init; } = "";
@@ -591,23 +643,31 @@ public static partial class Diagnostics
             /// <summary>Baseline entries that matched a finding.</summary>
             public int BaselineMatched { get; init; }
 
-            /// <summary>Listed fail findings of a gate rule at <paramref name="severity"/>: the summary an agent gates on.</summary>
+            /// <summary>Baseline entries whose rule ran (only those can match: <c>matched</c> under it means an accepted finding is gone).</summary>
+            public int BaselineConsidered { get; init; }
+
+            /// <summary>Baseline entries whose fingerprint an earlier entry already holds (the later ones never match).</summary>
+            public int BaselineDuplicates { get; init; }
+
+            static bool Verdict(Finding f) => f.Outcome is Outcome.Fail or Outcome.Report;
+
+            /// <summary>Fail findings (and report lines) of a gate rule at <paramref name="severity"/>, at or above `min`, listed or not: the
+            /// summary an agent gates on. The `outcomes` filter and `limit` choose what is listed, never what is counted.</summary>
             public int Count(Severity severity)
             {
                 int n = 0;
-                foreach (Finding f in Findings)
-                    if (f.Severity == severity && f.Outcome == Outcome.Fail && f.Level == Level.Gate) n++;
+                foreach (Finding f in All)
+                    if (f.Severity == severity && Verdict(f) && f.Level == Level.Gate) n++;
                 return n;
             }
 
-            /// <summary>Listed fail findings of rule <paramref name="rule"/> (an id or what the report calls it) at <paramref name="severity"/>.</summary>
-            public int Count(string rule, Severity severity) => Count(rule, severity, Outcome.Fail);
-
-            public int Count(string rule, Severity severity, Outcome outcome)
+            /// <summary>Fail findings (and report lines) of rule <paramref name="rule"/> (an id or what the report calls it) at
+            /// <paramref name="severity"/>, listed or not.</summary>
+            public int Count(string rule, Severity severity)
             {
                 int n = 0;
-                foreach (Finding f in Findings)
-                    if (f.Severity == severity && f.Outcome == outcome && (string.Equals(f.Rule, rule, StringComparison.Ordinal) || string.Equals(f.Id, rule, StringComparison.Ordinal))) n++;
+                foreach (Finding f in All)
+                    if (f.Severity == severity && Verdict(f) && (string.Equals(f.Rule, rule, StringComparison.Ordinal) || string.Equals(f.Id, rule, StringComparison.Ordinal))) n++;
                 return n;
             }
 
@@ -641,19 +701,25 @@ public static partial class Diagnostics
 
         // ── running ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Run the enabled rules over <paramref name="snapshot"/>: prepare it for the scope, run each rule, apply the guide's generic
-        /// intents and the baseline, fingerprint, attach the fix, then filter by `min`, the listed outcomes and the per-rule cap.</summary>
+        /// <summary>Run the enabled rules over <paramref name="snapshot"/>: prepare it for the scope, run each rule, fingerprint, apply the guide's
+        /// generic intents and the baseline, attach the fix, collapse findings that share a fingerprint, then filter by `min`, the listed outcomes
+        /// and the cap per reported rule name.</summary>
         public static Report Run(Snapshot snapshot, Options? options = null)
         {
             Options o = options ?? new Options();
             Snapshot s = Prepare(snapshot, o.Scope);
-            var listed = new List<Finding>();
             var all = new List<Finding>();
             var checks = new Dictionary<string, int>(StringComparer.Ordinal);
-            var truncated = new List<string>();
             var baseline = new Dictionary<string, BaselineEntry>(StringComparer.Ordinal);
-            foreach (BaselineEntry e in o.Baseline) baseline.TryAdd(e.Fp, e);
+            int duplicates = 0, considered = 0;
+            foreach (BaselineEntry e in o.Baseline)
+            {
+                if (!baseline.TryAdd(e.Fp, e)) duplicates++;
+                else if (o.Runs(e.RuleId)) considered++;
+            }
             var baselineHit = new HashSet<string>(StringComparer.Ordinal);
+            var byName = new Dictionary<string, List<Finding>>(StringComparer.Ordinal);
+            var names = new List<string>();
             int edgesMatched = 0;
             foreach (RuleSpec spec in Catalog)
             {
@@ -681,27 +747,43 @@ public static partial class Diagnostics
                 checks[spec.Id] = looked;
                 if (spec.Id is Rules.EdgeLeft or Rules.EdgeRight) edgesMatched += looked;
 
-                var kept = new List<Finding>();
+                var finished = new List<Finding>(found.Count);
                 foreach (Finding raw in found)
                 {
                     Finding f = Finish(s, spec, raw);
-                    if (f.Outcome != Outcome.Suppressed && AllowedByPolicy(s, f, out LintPolicy? policy))
+                    if (f.Outcome is not (Outcome.Suppressed or Outcome.Report) && AllowedByPolicy(s, f, out LintPolicy? policy))
                         f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = policy!.Reason };
-                    if (f.Outcome != Outcome.Suppressed && baseline.TryGetValue(f.Fp, out BaselineEntry? entry))
+                    if (f.Outcome is not (Outcome.Suppressed or Outcome.Report) && baseline.TryGetValue(f.Fp, out BaselineEntry? entry))
                     {
                         f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "baseline", Reason = entry.Reason + (entry.By.Length > 0 ? " (" + entry.By + (entry.Date.Length > 0 ? ", " + entry.Date : "") + ")" : "") };
                         baselineHit.Add(f.Fp);
                     }
+                    finished.Add(f);
+                }
+                string name = ReportName(spec.Id);
+                if (!byName.TryGetValue(name, out List<Finding>? bucket))
+                {
+                    byName[name] = bucket = [];
+                    names.Add(name);
+                }
+                foreach (Finding f in Collapse(finished))
+                {
                     if (f.Severity < o.Min) continue;
                     all.Add(f);
-                    if (o.Lists(f.Outcome)) kept.Add(f);
+                    if (o.Lists(f.Outcome)) bucket.Add(f);
                 }
-                // Errors first, then warnings, then the rest; a rule's own order within a severity, fails before reviews before suppressions.
-                List<Finding> ordered = kept.OrderByDescending(static f => f.Severity).ThenBy(static f => f.Outcome).ToList();
+            }
+            // Per reported name (`clip` holds text.clip and overlap.sibling): errors first, then warnings, then the rest; fails before reviews
+            // before suppressions; then the cap, once per name.
+            var listed = new List<Finding>();
+            var truncated = new List<string>();
+            foreach (string name in names)
+            {
+                List<Finding> ordered = byName[name].OrderByDescending(static f => f.Severity).ThenBy(static f => f.Outcome).ToList();
                 if (ordered.Count > o.MaxPerRule)
                 {
                     ordered.RemoveRange(o.MaxPerRule, ordered.Count - o.MaxPerRule);
-                    truncated.Add(ReportName(spec.Id));
+                    truncated.Add(name);
                 }
                 listed.AddRange(ordered);
             }
@@ -715,7 +797,58 @@ public static partial class Diagnostics
                 EdgesMatched = edgesMatched,
                 InScope = inScope,
                 BaselineMatched = baselineHit.Count,
+                BaselineConsidered = considered,
+                BaselineDuplicates = duplicates,
             };
+        }
+
+        /// <summary>Findings of one rule that share a fingerprint, an outcome and a severity become ONE finding (the same flaw on every row of a
+        /// family: a trimmed caption per card, a clipped title per tile): the first one's message with how many more, every member counted.</summary>
+        static List<Finding> Collapse(List<Finding> findings)
+        {
+            var order = new List<string>();
+            var groups = new Dictionary<string, List<Finding>>(StringComparer.Ordinal);
+            foreach (Finding f in findings)
+            {
+                string key = f.Fp + "\u001f" + ((int)f.Outcome).ToString(CultureInfo.InvariantCulture) + "\u001f" + ((int)f.Severity).ToString(CultureInfo.InvariantCulture);
+                if (!groups.TryGetValue(key, out List<Finding>? list))
+                {
+                    groups[key] = list = [];
+                    order.Add(key);
+                }
+                list.Add(f);
+            }
+            var result = new List<Finding>(order.Count);
+            foreach (string key in order)
+            {
+                List<Finding> list = groups[key];
+                if (list.Count == 1) { result.Add(list[0]); continue; }
+                Finding first = list[0];
+                var refs = new List<string>(6);
+                var rects = new List<RectF>(6);
+                var nodes = new List<int>();
+                int count = 0;
+                foreach (Finding f in list)
+                {
+                    count += f.Count;
+                    nodes.AddRange(f.Nodes);
+                    for (int k = 0; k < f.Keys.Count && refs.Count < 6; k++)
+                    {
+                        if (refs.Contains(f.Keys[k])) continue;
+                        refs.Add(f.Keys[k]);
+                        rects.Add(k < f.Rects.Count ? f.Rects[k] : default);
+                    }
+                }
+                result.Add(first with
+                {
+                    Message = first.Message + $" (and {list.Count - 1} more like it)",
+                    Keys = refs,
+                    Rects = rects,
+                    Nodes = nodes,
+                    Count = count,
+                });
+            }
+            return result;
         }
 
         /// <summary>The run's half of a finding: id and alias, level, fingerprint, fix.</summary>
@@ -738,7 +871,8 @@ public static partial class Diagnostics
             };
         }
 
-        /// <summary>A guide <see cref="LintIntent.Allow"/> for the finding's rule covering one of its members.</summary>
+        /// <summary>A guide <see cref="LintIntent.Allow"/> for the finding's rule covering EVERY member (the member's key or an ancestor's starts
+        /// with the prefix, as every other intent is matched). A finding without member nodes is matched by its refs.</summary>
         static bool AllowedByPolicy(Snapshot s, Finding f, out LintPolicy? policy)
         {
             policy = null;
@@ -746,9 +880,22 @@ public static partial class Diagnostics
             {
                 if (p.Intent != LintIntent.Allow || p.Prefix.Length == 0) continue;
                 if (!string.Equals(p.Rule, f.Id, StringComparison.Ordinal) && !string.Equals(p.Rule, f.Rule, StringComparison.Ordinal)) continue;
-                foreach (string key in f.Keys)
-                    if (key.StartsWith(p.Prefix, StringComparison.Ordinal)) { policy = p; return true; }
+                bool all = f.Nodes.Count > 0;
+                foreach (int node in f.Nodes)
+                    if (node < 0 || node >= s.Nodes.Count || !CoveredBy(s, s.Nodes[node], p.Prefix)) { all = false; break; }
+                if (!all && f.Nodes.Count == 0)
+                    foreach (string key in f.Keys)
+                        if (key.StartsWith(p.Prefix, StringComparison.Ordinal)) { all = true; break; }
+                if (all) { policy = p; return true; }
             }
+            return false;
+        }
+
+        /// <summary>The key of <paramref name="n"/> or of an ancestor starts with <paramref name="prefix"/>: a policy covers it.</summary>
+        static bool CoveredBy(Snapshot s, Node n, string prefix)
+        {
+            for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
+                if (s.Nodes[i].Key is { } key && key.StartsWith(prefix, StringComparison.Ordinal)) return true;
             return false;
         }
 
@@ -766,6 +913,8 @@ public static partial class Diagnostics
         static string FixFor(string id, string cause) => id switch
         {
             Rules.EdgeLeft or Rules.EdgeRight => "take the x from the surface's tier record (the guide's numbers), not a literal tuned to one size",
+            Rules.TextClip when cause.EndsWith("ink-guess", StringComparison.Ordinal)
+                => "look at the render: only the 1.2 em ink guess runs past the clip, the laid-out box fits; never shrink the type",
             Rules.TextClip when cause.StartsWith("scroll-edge", StringComparison.Ordinal)
                 => "give the scroller an edge fade on that side (or declare a guide Bleed with a reason); never shrink the type",
             Rules.TextClip => "grow the clipping box or move the text inside it; Zune display type is never shrunk to fit (wrap, grow, bleed)",
@@ -778,15 +927,25 @@ public static partial class Diagnostics
                 "hard-clip" => "Trim=Clip cuts a glyph mid-way: use an ellipsis or room for the words",
                 "single" => "a lone title ellipsises: look at the render; under width pressure wrap or re-flow before cutting a title",
                 "model" => "the headless text model cannot judge a trim: lint again on a DirectWrite mount",
+                "designed-total" => "report: the designed ellipses on screen; nothing to do",
                 _ => "designed ellipses: nothing to do",
             },
             Rules.TypeFloor => "use a type role at or above the floor; the role table decides sizes, not the view",
+            Rules.TypeScale => "report: compare with the theme's type ramp; no change unless a style has no role",
             Rules.TargetSize => "grow the hit area (padding on the target, or hand the click to the row it sits in); keep the glyph size",
             Rules.DuplicateAction => "one home per verb (owner rule): find the verb's home on the board and ask before taking a control away; the feature stays",
-            Rules.SpaceStack => "the blocks overlap: give the stack a gap from the tier record or fix the line height",
-            Rules.ContrastText => cause.StartsWith("busy", StringComparison.Ordinal)
-                ? "text over art or a gradient: look at the render; a scrim or an on-media ink role fixes it, never a node-by-node colour"
-                : "change the theme's ink or ground role for every run of this pair, never node by node",
+            Rules.SpaceStack => cause switch
+            {
+                "overlap" => "the blocks overlap: give the stack a gap from the tier record or fix the line height",
+                "touching" => "report: look at the render; where the ink of two blocks touches, take the gap from the tier record",
+                _ => "report: the gaps of the stack; compare them with the board",
+            },
+            Rules.ContrastText => cause switch
+            {
+                "busy" => "text over art or a gradient: look at the render; a scrim or an on-media ink role fixes it, never a node-by-node colour",
+                "no-ground" => "look at the render: the frame gave no ground for these runs (cut by the window edge or a bar)",
+                _ => "change the theme's ink or ground role for every run of this pair, never node by node",
+            },
             Rules.AlignInset => "move the section's extra lead into its plate (padding on the hover plate only) so its ink sits on the column; leave the column alone",
             Rules.AlignBaseline => "anchor the cell's first line at one offset in every row (AlignItems=Start, or reserve the optional line in every row)",
             Rules.SpaceScale => "take the value from Spacing.* or the theme's R.Space/tier record (or declare OffScaleOk with a reason)",
@@ -797,9 +956,51 @@ public static partial class Diagnostics
 
         // ── preparing a snapshot ────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The key's family: the key up to its first <c>:</c>, <c>#</c>, <c>|</c> or control character (<c>zune-history:spotify:...</c>
-        /// gives <c>zune-history</c>; <c>c.title</c> stays itself).</summary>
+        /// <summary>The key up to its first <c>#</c>, <c>|</c> or control character (a run id, a composite separator): what a family is read from.</summary>
+        static string HeadOf(string key)
+        {
+            for (int i = 0; i < key.Length; i++)
+            {
+                char c = key[i];
+                if (c is '#' or '|' || c < ' ') return i > 0 ? key[..i] : key;
+            }
+            return key;
+        }
+
+        /// <summary>A static key segment: a lowercase slug word (<c>link</c>, <c>section</c>, <c>see-all</c>), not an id or a name.</summary>
+        static bool IsSlug(string segment)
+        {
+            if (segment.Length is 0 or > 24 || !char.IsAsciiLetterLower(segment[0])) return false;
+            foreach (char c in segment)
+                if (!(char.IsAsciiLetterLower(c) || c is '-' or '_' or '.')) return false;
+            return true;
+        }
+
+        /// <summary>The key's family: the static part the members of a repeated family share. Read by <c>:</c>-segments of <see cref="HeadOf"/>:
+        /// the first segment heads it; it stops before the first segment that is an id or a name (a digit, a capital, a space, longer than 24) or
+        /// <c>spotify</c> (an entity id follows), and, in a key of three or more segments, before the last one (the slot). So
+        /// <c>zune-history:spotify:track:x</c> is <c>zune-history</c>, <c>zs:link:privacy</c> is <c>zs:link</c>, <c>settings:section:Links</c>
+        /// is <c>settings:section</c>, an entity key <c>spotify:page:x</c> is <c>spotify:page</c>, while <c>zs:title</c> and <c>zs:body</c>
+        /// (parts of one page, not slots of one family) stay two families. <c>c.title</c> stays itself.</summary>
         public static string FamilyOfKey(string key)
+        {
+            string head = HeadOf(key);
+            string[] segments = head.Split(':');
+            if (segments.Length == 1 || segments[0].Length == 0) return head;
+            if (segments[0] == "spotify") return segments.Length >= 3 ? "spotify:" + segments[1] : head;
+            int take = 1;
+            for (int j = 1; j < segments.Length; j++)
+            {
+                if (segments[j] == "spotify" || !IsSlug(segments[j])) break;
+                if (j == segments.Length - 1 && segments.Length >= 3) break;
+                take = j + 1;
+            }
+            return string.Join(':', segments, 0, take);
+        }
+
+        /// <summary>The key's root: the key up to its first <c>:</c>, <c>#</c>, <c>|</c> or control character (<c>trail:moreby</c> and
+        /// <c>trail:similar</c> are both <c>trail</c>). A verb's HOME for <c>duplicate.action</c>: the sections of one trail are one home.</summary>
+        public static string RootOfKey(string key)
         {
             for (int i = 0; i < key.Length; i++)
             {
@@ -807,6 +1008,25 @@ public static partial class Diagnostics
                 if (c is ':' or '#' or '|' || c < ' ') return i > 0 ? key[..i] : key;
             }
             return key;
+        }
+
+        /// <summary>The key's static words: its <c>:</c>-segments up to the first name (a capital, a space, a character outside a slug) or
+        /// <c>spotify</c>. What a person typed into the view, not what the content brought (<c>zune-cluster:0:Small Black</c>: <c>zune-cluster:0</c>).</summary>
+        public static string SlugOf(string key)
+        {
+            string head = HeadOf(key);
+            string[] segments = head.Split(':');
+            int take = 1;
+            for (int j = 1; j < segments.Length; j++)
+            {
+                string seg = segments[j];
+                bool slug = seg.Length > 0 && seg != "spotify";
+                foreach (char c in seg)
+                    if (!(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '_' or '.')) { slug = false; break; }
+                if (!slug) break;
+                take = j + 1;
+            }
+            return string.Join(':', segments, 0, take);
         }
 
         /// <summary>The key's pattern: its family, with <c>:*</c> when the key carries more than the family (an id, a slot).</summary>
@@ -849,7 +1069,35 @@ public static partial class Diagnostics
             var visible = new RectF[count];
             var onScreen = new float[count];
             var inContent = new float[count];
-            InspectVisible.Compute(nodes, s.Width, s.Height, visible, onScreen, inContent);
+            var reach = new RectF[count];
+            var cover = new float[count];
+            InspectVisible.Compute(nodes, s.Width, s.Height, visible, onScreen, inContent, reach, cover);
+
+            // A modal scrim: an interactive fill over the whole window (a dialog's light-dismiss backdrop). It catches every click and dims
+            // what is under it, so whatever was painted before it, its own ancestors aside, is covered: out of scope at screen and content.
+            var covered = new bool[count];
+            int scrim = -1;
+            float windowArea = s.Width * s.Height;
+            for (int i = count - 1; i >= 0 && scrim < 0; i--)
+            {
+                Node n = nodes[i];
+                if (n.Interactive && n.Text is null && n.Fill.A * n.Opacity >= 0.04f && visible[i].W * visible[i].H >= 0.95f * windowArea) scrim = i;
+            }
+            int coveredCount = 0;
+            if (scrim >= 0)
+            {
+                var above = new bool[count];
+                for (int a = nodes[scrim].Parent; a >= 0; a = nodes[a].Parent) above[a] = true;
+                for (int i = 0; i < scrim; i++)
+                {
+                    if (above[i]) continue;
+                    covered[i] = true;
+                    coveredCount++;
+                    visible[i] = default;
+                    reach[i] = default;
+                    onScreen[i] = inContent[i] = cover[i] = 0f;
+                }
+            }
 
             var inScope = new bool[count];
             var ordinal = new int[count];
@@ -863,7 +1111,7 @@ public static partial class Diagnostics
             {
                 Node n = nodes[i];
                 int p = n.Parent;
-                inScope[i] = InspectVisible.InScope(scope, onScreen[i], inContent[i]);
+                inScope[i] = InspectVisible.InScope(scope, onScreen[i], inContent[i], cover[i]);
                 if (p >= 0) ordinal[i] = childCount[p]++;
                 region[i] = p < 0 ? -1 : nodes[p].ScrollAxis == 2 ? p : region[p];
                 inRail[i] = p >= 0 && (nodes[p].ScrollAxis == 1 || inRail[p]);
@@ -895,30 +1143,37 @@ public static partial class Diagnostics
             }
 
             // Backdrops (design-qa proto/geo.py): for each visible ink node in paint order, the last earlier visible ink node (not text) whose visible rect
-            // covers 90 % of it and is larger; a ground that covers the window is the page itself.
+            // covers 90 % of it and is larger; a ground that covers the window is the page itself. A node off the screen that scrolling reaches is
+            // matched the same way on reach rects (the column line of align.inset is read over the whole scroll content).
             var backdrop = new int[count];
             Array.Fill(backdrop, -1);
-            var order = new List<int>();
-            float windowArea = s.Width * s.Height;
-            for (int i = 0; i < count; i++)
+            for (int pass = 0; pass < 2; pass++)
             {
-                if (!ink[i] || visible[i].IsEmpty) continue;
-                RectF v = visible[i];
-                float area = v.W * v.H;
-                for (int k = order.Count - 1; k >= 0; k--)
+                RectF[] rects = pass == 0 ? visible : reach;
+                var order = new List<int>();
+                for (int i = 0; i < count; i++)
                 {
-                    int m = order[k];
-                    if (nodes[m].Text is not null) continue;
-                    RectF mv = visible[m];
-                    float marea = mv.W * mv.H;
-                    RectF both = mv.Intersect(v);
-                    if (both.W * both.H >= 0.9f * area && marea > area * 1.05f)
+                    if (!ink[i] || rects[i].IsEmpty) continue;
+                    if (pass == 0 || visible[i].IsEmpty)
                     {
-                        backdrop[i] = marea >= 0.95f * windowArea ? -1 : m;
-                        break;
+                        RectF v = rects[i];
+                        float area = v.W * v.H;
+                        for (int k = order.Count - 1; k >= 0; k--)
+                        {
+                            int m = order[k];
+                            if (nodes[m].Text is not null) continue;
+                            RectF mv = rects[m];
+                            float marea = mv.W * mv.H;
+                            RectF both = mv.Intersect(v);
+                            if (both.W * both.H >= 0.9f * area && marea > area * 1.05f)
+                            {
+                                backdrop[i] = visible[m].W * visible[m].H >= 0.95f * windowArea ? -1 : m;
+                                break;
+                            }
+                        }
                     }
+                    order.Add(i);
                 }
-                order.Add(i);
             }
 
             var path = new List<int>(16);
@@ -938,13 +1193,17 @@ public static partial class Diagnostics
                     cell = string.Join("/", path);
                 }
                 TextRun? text = n.Text;
-                if (text is not null && s.Backdrop is { } px && text.Ground.A <= 0f) text = WithGround(s, n, text, px);
+                if (text is not null && s.Backdrop is { } px && text.Ground.A <= 0f) text = WithGround(n, visible[i], text, px);
                 prepared[i] = n with
                 {
                     Visible = visible[i],
                     OnScreen = onScreen[i],
                     InContent = inContent[i],
+                    Reach = reach[i],
+                    Cover = cover[i],
+                    Covered = covered[i],
                     InScope = inScope[i],
+                    Seen = scope switch { InspectVisible.Scope.Screen => visible[i], InspectVisible.Scope.Content => reach[i], _ => n.Rect },
                     Ink = ink[i],
                     InkCount = inkCount[i],
                     Region = region[i],
@@ -957,18 +1216,17 @@ public static partial class Diagnostics
                     Text = text,
                 };
             }
-            return s with { Nodes = prepared, PreparedFor = scope };
+            return s with { Nodes = prepared, PreparedFor = scope, Modal = scrim >= 0 ? nodes[scrim].Ref : "", CoveredCount = coveredCount };
         }
 
-        /// <summary>The colour most of a text run's box is rendered in (width capped at its natural width + 2), and its share. A run whose ink fills
-        /// its own box (a heart, a solid glyph) is read again without its ink colour. Nothing for a box mostly off the frame.</summary>
-        static TextRun WithGround(Snapshot s, Node n, TextRun t, Pixels px)
+        /// <summary>The colour most of the VISIBLE part of a text run's box is rendered in (width capped at its natural width + 2), and its share:
+        /// a run cut by a scroller, a sticky header or a bar is read where it shows, never over what paints on its cut part. A run whose ink fills
+        /// its own box (a heart, a solid glyph) is read again without its ink colour. Nothing when under 2 x 2 DIP of it shows.</summary>
+        static TextRun WithGround(Node n, RectF visible, TextRun t, Pixels px)
         {
             float w = t.NaturalW > 0f ? MathF.Min(n.Rect.W, t.NaturalW + 2f) : n.Rect.W;
-            var box = new RectF(n.Rect.X, n.Rect.Y, w, n.Rect.H);
-            float x0 = MathF.Max(0f, box.X), x1 = MathF.Min(s.Width, box.Right), y0 = MathF.Max(0f, box.Y), y1 = MathF.Min(s.Height, box.Bottom);
-            if (x1 - x0 < MathF.Min(2f, w) || y1 - y0 < MathF.Min(2f, n.Rect.H) || (x1 - x0) * (y1 - y0) < 0.6f * w * n.Rect.H) return t;
-            var seen = new RectF(x0, y0, x1 - x0, y1 - y0);
+            RectF seen = visible.Intersect(new RectF(n.Rect.X, n.Rect.Y, w, n.Rect.H));
+            if (seen.W < MathF.Min(2f, w) || seen.H < MathF.Min(2f, n.Rect.H)) return t;
             if (!px.TryBackground(seen, null, 0f, out ColorF ground, out float share)) return t;
             if (t.Color.A > 0f && ContrastOf(t.Color, ground, n.Opacity) < 1.15)
             {
@@ -1039,7 +1297,10 @@ public static partial class Diagnostics
         /// <summary>The pattern of the repeated family <paramref name="n"/> belongs to (its instance root's), else its own key pattern.</summary>
         static string FamilyPattern(Snapshot s, Node n) => n.Instance >= 0 && s.Nodes[n.Instance].Key is { } key ? PatternOfKey(key) : n.Pattern;
 
-        /// <summary>Up to <paramref name="cap"/> refs and visible rects of <paramref name="members"/>.</summary>
+        /// <summary>Where a finding points at a member: its visible rect, or its rect when none of it is on screen (`scope=content` or `all`).</summary>
+        static RectF Where(Node n) => n.Visible.IsEmpty ? n.Rect : n.Visible;
+
+        /// <summary>Up to <paramref name="cap"/> refs and rects (<see cref="Where"/>) of <paramref name="members"/>.</summary>
         static (List<string> Refs, List<RectF> Rects) Members(IEnumerable<Node> members, int cap = 6)
         {
             var refs = new List<string>(cap);
@@ -1048,19 +1309,28 @@ public static partial class Diagnostics
             {
                 if (refs.Count >= cap) break;
                 refs.Add(n.Ref);
-                rects.Add(n.Visible.IsEmpty ? n.Rect : n.Visible);
+                rects.Add(Where(n));
             }
             return (refs, rects);
         }
+
+        /// <summary>Every member's node index (<see cref="Finding.Nodes"/>).</summary>
+        static int[] Ids(IEnumerable<Node> members) => members.Select(static n => n.Index).ToArray();
 
         static string Plural(int n, string one, string many) => n == 1 ? one : many;
 
         // ── edge.left and edge.right (gutter, right-edge): a theme's edge expectations ─────────────────────────────
 
+        /// <summary>The node matches the edge's keys, prefixes, <c>UnderKey</c> and <c>GlyphsOnly</c>, and the edge it measures is IN SCOPE: on
+        /// screen and not cut (a page column taller than the screen still shows its left edge; a header scrolled half under a sticky bar does not
+        /// count once its left edge is cut away). Not its share of itself: an edge is a line, not an area.</summary>
         static bool EdgeMatches(Snapshot s, Node n, LintEdge e)
         {
-            if (!n.InScope || n.Rect.W <= 0f || n.Rect.H <= 0f) return false;
+            if (n.Covered || n.Rect.W <= 0f || n.Rect.H <= 0f) return false;
             if (n.Rect.Right <= 0f || n.Rect.X >= s.Width) return false;   // off the window: scrolled away, not an edge
+            RectF seen = n.Seen;
+            if (seen.IsEmpty) return false;
+            if (e.Side == LintSide.Left ? MathF.Abs(seen.X - n.Rect.X) > Slack : MathF.Abs(seen.Right - n.Rect.Right) > Slack) return false;
             bool keyed = e.Keys is { Count: > 0 } || e.Prefixes is { Count: > 0 };
             if (keyed)
             {
@@ -1110,7 +1380,8 @@ public static partial class Diagnostics
                     Expected = [M("x", e.Expected), M("tolerance", e.Tolerance)],
                     Pattern = e.Id,
                     Cause = delta > 0f ? "right-of" : "left-of",
-                    Rects = [pick.Visible],
+                    Rects = [Where(pick)],
+                    Nodes = [pick.Index],
                 });
             }
             return looked;
@@ -1118,42 +1389,47 @@ public static partial class Diagnostics
 
         // ── text.clip and overlap.sibling (clip): text cut by an ancestor, and siblings that overlap ─────────────
 
-        /// <summary>The box the ink of a text node needs: its laid-out box, the natural height of an unwrapped run that wants more, and the
-        /// ink a tight explicit line height leaves outside the line box (<see cref="InkEm"/>).</summary>
-        static RectF InkBox(Node n, TextRun t)
+        /// <summary>The box the ink of a text node needs: its laid-out box and the natural height of an unwrapped run that wants more (both
+        /// measured), widened by <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a
+        /// guess (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
+        static RectF InkBox(Node n, TextRun t, out float guess)
         {
             RectF r = n.Rect;
-            float y = r.Y, h = r.H;
+            float h = r.H;
             if (!t.Wraps && t.NaturalH > h) h = t.NaturalH;
-            if (t.LineHeight > 0f)
-            {
-                float pad = MathF.Max(0f, (InkEm * t.Size - t.LineHeight) / 2f);
-                y -= pad;
-                h += 2f * pad;
-            }
-            return new RectF(r.X, y, r.W, h);
+            guess = t.LineHeight > 0f ? MathF.Max(0f, (InkEm * t.Size - t.LineHeight) / 2f) : 0f;
+            return new RectF(r.X, r.Y - guess, r.W, h + 2f * guess);
         }
+
+        /// <summary>Why a vertical cut is under review, "" when it is a verdict: the headless text model, or a cut only the ink guess makes (the
+        /// laid-out box fits; display type with a tight line height, whose real ascenders may well sit inside).</summary>
+        static string ClipDoubt(Snapshot s, float over, float guess)
+            => !s.RealText ? "headless text model: the ink box is not real glyph metrics"
+             : over - guess <= Slack ? "ink guess, not glyph metrics: the laid-out box fits the clip; only the 1.2 em ink guess runs past it"
+             : "";
 
         static bool Fades(Node n, EdgeMask edge) => (n.FadeEdges & (byte)edge) != 0;
 
         /// <summary>A cut at a scroller's edge on its own axis, or null when it is no finding: scrolling still reveals the text there (the fold of a
         /// list, a vertical scroller only) or the edge feathers (an edge fade). A guide <see cref="LintIntent.Bleed"/> makes it an intended one.</summary>
-        static Finding? ScrollEdgeCut(Snapshot s, Node n, TextRun t, Node scroller, bool vertical, bool start, float over)
+        static Finding? ScrollEdgeCut(Snapshot s, Node n, TextRun t, Node scroller, bool vertical, bool start, float over, float guess)
         {
             EdgeMask edge = vertical ? (start ? EdgeMask.Top : EdgeMask.Bottom) : (start ? EdgeMask.Left : EdgeMask.Right);
             bool reveals = start ? scroller.ScrollOffset > Slack : scroller.ScrollOffset < scroller.ScrollMax - Slack;
             if (Fades(scroller, edge) || (vertical && reveals)) return null;
             string side = edge switch { EdgeMask.Top => "top", EdgeMask.Bottom => "bottom", EdgeMask.Left => "left", _ => "right" };
+            string doubt = vertical ? ClipDoubt(s, over, guess) : s.RealText ? "" : ClipDoubt(s, over, 0f);
             var f = new Finding(Rules.TextClip, vertical ? Severity.Error : Severity.Warn,
                 $"text {Q(t.String)} is cut by {scroller.Ref}'s {side} scroll edge, which has no edge fade: {F(over)} past it", [n.Ref, scroller.Ref])
             {
-                Measured = [M("over", over), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
+                Measured = [M("over", over), M("inkGuess", vertical ? guess : 0f), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
                 Expected = [M("over", 0)],
                 Pattern = PatternOfKey(scroller.Key ?? scroller.Pattern),
-                Cause = "scroll-edge:" + side,
-                Rects = [n.Visible, scroller.Visible],
-                Outcome = s.RealText ? Outcome.Fail : Outcome.Review,
-                Reason = s.RealText ? "" : "headless text model: the ink box is not real glyph metrics",
+                Cause = "scroll-edge:" + side + (vertical && s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                Rects = [Where(n), Where(scroller)],
+                Nodes = [n.Index],
+                Outcome = doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
+                Reason = doubt,
             };
             if ((PolicyFor(s, n, LintIntent.Bleed) ?? PolicyFor(s, scroller, LintIntent.Bleed)) is { } bleed)
                 f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = bleed.Reason };
@@ -1172,7 +1448,7 @@ public static partial class Diagnostics
             {
                 if (!n.InScope || n.Text is not { } t || !IsWords(n) || n.Animating) continue;
                 looked++;
-                RectF ink = InkBox(n, t);
+                RectF ink = InkBox(n, t, out float guess);
                 bool doneV = false, doneH = false;
                 for (int a = n.Parent; a >= 0 && !(doneV && doneH); a = nodes[a].Parent)
                 {
@@ -1190,7 +1466,7 @@ public static partial class Diagnostics
                         bool vertical = anc.ScrollAxis == 2;
                         float over = vertical ? vOver : hOver;
                         if (vertical) { doneV = true; vOver = 0f; } else { doneH = true; hOver = 0f; }
-                        if (over > Slack && ScrollEdgeCut(s, n, t, anc, vertical, vertical ? above : leftSide, over) is { } cut)
+                        if (over > Slack && ScrollEdgeCut(s, n, t, anc, vertical, vertical ? above : leftSide, over, guess) is { } cut)
                         {
                             into.Add(cut);
                             break;
@@ -1198,17 +1474,19 @@ public static partial class Diagnostics
                     }
                     if (vOver > Slack)
                     {
+                        string doubt = ClipDoubt(s, vOver, guess);
                         into.Add(new Finding(Rules.TextClip, Severity.Error,
                             $"text {Q(t.String)} is clipped by {anc.Ref}: its ink runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)})",
                             [n.Ref, anc.Ref])
                         {
-                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("size", t.Size), M("lineHeight", t.LineHeight)],
+                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("inkGuess", guess), M("size", t.Size), M("lineHeight", t.LineHeight)],
                             Expected = [M("clipTop", c.Y), M("clipBottom", c.Bottom)],
                             Pattern = PatternOfKey(anc.Key ?? anc.Pattern),
-                            Cause = above ? "top" : "bottom",
-                            Rects = [n.Visible, anc.Visible],
-                            Outcome = s.RealText ? Outcome.Fail : Outcome.Review,
-                            Reason = s.RealText ? "" : "headless text model: the ink box is not real glyph metrics",
+                            Cause = (above ? "top" : "bottom") + (s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                            Rects = [Where(n), Where(anc)],
+                            Nodes = [n.Index],
+                            Outcome = doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
+                            Reason = doubt,
                         });
                         break;
                     }
@@ -1222,7 +1500,8 @@ public static partial class Diagnostics
                             Expected = [M("clipLeft", c.X), M("clipRight", c.Right)],
                             Pattern = PatternOfKey(anc.Key ?? anc.Pattern),
                             Cause = leftSide ? "left" : "right",
-                            Rects = [n.Visible, anc.Visible],
+                            Rects = [Where(n), Where(anc)],
+                            Nodes = [n.Index],
                             Outcome = s.RealText ? Outcome.Fail : Outcome.Review,
                             Reason = s.RealText ? "" : "headless text model: the ink box is not real glyph metrics",
                         });
@@ -1268,7 +1547,8 @@ public static partial class Diagnostics
                             Expected = [M("overlapW", 0), M("overlapH", 0)],
                             Pattern = parent.Pattern,
                             Cause = PatternOfKey(a.Key ?? a.Pattern) + "+" + PatternOfKey(b.Key ?? b.Pattern),
-                            Rects = [a.Visible, b.Visible],
+                            Rects = [Where(a), Where(b)],
+                            Nodes = [a.Index, b.Index],
                         });
                     }
                 }
@@ -1292,10 +1572,11 @@ public static partial class Diagnostics
         static bool Ellipsis(TextRun t) => t.Trim is "CharacterEllipsis" or "WordEllipsis";
 
         /// <summary>Text the engine reports trimmed (<c>QueryTextOverflow</c>), in scope, by class (first match wins):
-        /// model (the headless text model: review), never (a guide <see cref="LintIntent.NeverTrim"/>: error), overflow (<c>Trim=None</c>: the words
-        /// spill, error), near-miss (warn), designed (a guide <see cref="LintIntent.TrimOk"/>, an <c>allowTrim</c> prefix, or MaxLines plus an
-        /// ellipsis inside a repeated key family: suppressed, and one info line counts them), hard-clip (<c>Trim=Clip</c>: warn), single (a lone
-        /// ellipsis: review).</summary>
+        /// never (a guide <see cref="LintIntent.NeverTrim"/>: error), overflow (<c>Trim=None</c>: the words spill, error), near-miss (warn),
+        /// hard-clip (<c>Trim=Clip</c>: warn, whatever the family says: the boards draw an ellipsis), designed (an ELLIPSIS under a guide
+        /// <see cref="LintIntent.TrimOk"/>, an <c>allowTrim</c> prefix, or MaxLines plus an ellipsis inside a repeated key family: warn,
+        /// suppressed, and one report line counts them), single (a lone ellipsis: review). Under the headless text model only a designed
+        /// ellipsis keeps its class (the intent holds whatever the model measures); the rest is model (review).</summary>
         static int TrimRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -1318,22 +1599,28 @@ public static partial class Diagnostics
                 LintPolicy? never = PolicyFor(s, n, LintIntent.NeverTrim);
                 LintPolicy? ok = PolicyFor(s, n, LintIntent.TrimOk);
                 bool allowed = KeyedUnder(s, n, o.AllowTrim);
-                bool implicitDesign = t.MaxLines >= 1 && Ellipsis(t) && n.Family.Length > 0;
-                if (!s.RealText) { cls = "model"; sev = Severity.Warn; outcome = Outcome.Review; reason = "headless text model: the trim is the 0.55 x size model's, not DirectWrite's"; }
+                bool designable = Ellipsis(t) && (ok is not null || allowed || (t.MaxLines >= 1 && n.Family.Length > 0));
+                if (!s.RealText && !(designable && never is null))
+                {
+                    cls = "model";
+                    sev = Severity.Warn;
+                    outcome = Outcome.Review;
+                    reason = "headless text model: the trim is the 0.55 x size model's, not DirectWrite's";
+                }
                 else if (never is not null) { cls = "never"; sev = Severity.Error; reason = never.Reason; }
                 else if (t.Trim == "None") { cls = "overflow"; sev = Severity.Error; }
-                else if (NearMiss(n, t)) { cls = "near-miss"; sev = Severity.Warn; }
-                else if (ok is not null || allowed || implicitDesign)
+                else if (NearMiss(n, t) && s.RealText) { cls = "near-miss"; sev = Severity.Warn; }
+                else if (t.Trim == "Clip") { cls = "hard-clip"; sev = Severity.Warn; }
+                else if (designable)
                 {
                     cls = "designed";
-                    sev = Severity.Info;
+                    sev = Severity.Warn;
                     outcome = Outcome.Suppressed;
                     reason = ok?.Reason ?? (allowed ? "allowTrim" : "MaxLines " + t.MaxLines.ToString(CultureInfo.InvariantCulture) + " + ellipsis in the repeated family " + n.Family);
                     designed.Add(n);
                     string fam = FamilyPattern(s, n);
                     designedFamilies[fam] = designedFamilies.TryGetValue(fam, out int c) ? c + 1 : 1;
                 }
-                else if (t.Trim == "Clip") { cls = "hard-clip"; sev = Severity.Warn; }
                 else { cls = "single"; sev = Severity.Warn; outcome = Outcome.Review; reason = "a lone ellipsis outside any repeated family: is the cut designed?"; }
 
                 string lead = cls switch
@@ -1352,7 +1639,8 @@ public static partial class Diagnostics
                     Outcome = outcome,
                     SuppressedBy = outcome == Outcome.Suppressed ? "intent" : "",
                     Reason = reason,
-                    Rects = [n.Visible],
+                    Rects = [Where(n)],
+                    Nodes = [n.Index],
                 });
             }
             if (designed.Count > 0)
@@ -1366,7 +1654,9 @@ public static partial class Diagnostics
                     Pattern = "designed",
                     Cause = "designed-total",
                     Count = designed.Count,
+                    Outcome = Outcome.Report,
                     Rects = rects,
+                    Nodes = Ids(designed),
                 });
             }
             return looked;
@@ -1388,32 +1678,35 @@ public static partial class Diagnostics
             }
         }
 
-        /// <summary>An error per size under <see cref="Options.TypeFloor"/> (words in scope; glyphs are not type).</summary>
+        /// <summary>An error per size under <see cref="Options.TypeFloor"/> (words in scope; glyphs are not type). The fingerprint is the size
+        /// alone (pattern <c>type</c>): which runs happen to be on screen first changes with the window, the size does not.</summary>
         static int TypeFloorRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
-            var small = new SortedDictionary<float, Bin>();
+            var small = new SortedDictionary<float, List<Node>>();
             foreach (Node n in s.Nodes)
             {
                 if (!n.InScope || n.Text is not { } t || !IsWords(n)) continue;
                 looked++;
                 if (t.Size + 0.01f >= o.TypeFloor) continue;
                 float size = MathF.Round(t.Size, 2);
-                if (!small.TryGetValue(size, out Bin? low)) small[size] = low = new Bin();
-                low.Add(n, 8);
+                if (!small.TryGetValue(size, out List<Node>? low)) small[size] = low = [];
+                low.Add(n);
             }
-            foreach (var (size, bin) in small)
+            foreach (var (size, list) in small)
             {
-                var (refs, rects) = Members(bin.Samples, 8);
+                var (refs, rects) = Members(list, 8);
+                string patterns = string.Join(", ", list.Select(static n => n.Pattern).Distinct().Take(4));
                 into.Add(new Finding(Rules.TypeFloor, Severity.Error,
-                    $"{bin.Count} text {Plural(bin.Count, "node", "nodes")} at {F(size)} DIP, under the {F(o.TypeFloor)} DIP floor", refs)
+                    $"{list.Count} text {Plural(list.Count, "node", "nodes")} at {F(size)} DIP, under the {F(o.TypeFloor)} DIP floor ({patterns})", refs)
                 {
-                    Measured = [M("size", size), M("count", bin.Count)],
+                    Measured = [M("size", size), M("count", list.Count)],
                     Expected = [M("minSize", o.TypeFloor)],
-                    Pattern = bin.Samples[0].Pattern,
+                    Pattern = "type",
                     Cause = "size:" + F(size),
-                    Count = bin.Count,
+                    Count = list.Count,
                     Rects = rects,
+                    Nodes = Ids(list),
                 });
             }
             return looked;
@@ -1443,7 +1736,9 @@ public static partial class Diagnostics
                     Pattern = "type",
                     Cause = F(key.Size) + "/" + line + "/" + key.Weight.ToString(CultureInfo.InvariantCulture),
                     Count = bin.Count,
+                    Outcome = Outcome.Report,
                     Rects = rects,
+                    Nodes = Ids(bin.Samples),
                 });
             }
             return looked;
@@ -1488,21 +1783,32 @@ public static partial class Diagnostics
             public readonly List<string> Inks = [];
         }
 
-        /// <summary>Each in-scope run's declared colour (and its opacity) against the colour most of its box was rendered in, GROUPED by (ink, ground):
-        /// one finding per pair, with its runs as members. A run over a busy ground (no colour covers 45 % of its box: art, a gradient) cannot be
-        /// judged from one colour, so its group is a `review` naming what it sits on, never silence. Skipped: a disabled subtree, a node mid-animation,
-        /// a transparent ink, a span run, and a run with no ground read (no frame: `gpu=none`, a crossing).</summary>
+        /// <summary>Each in-scope run's declared colour (and its opacity) against the colour most of its VISIBLE box was rendered in, GROUPED by
+        /// (ink, ground): one finding per pair, with its runs as members. A run over a busy ground (no colour covers 45 % of its box: art, a
+        /// gradient) cannot be judged from one colour, so its group is a `review` naming what it sits on, never silence; so is a run on screen the
+        /// frame gave no ground for. Skipped: a disabled subtree, a node mid-animation, a transparent ink, a span run, a run off the screen
+        /// (`scope=content`), and everything when no frame was read (`gpu=none`, a crossing: `checked` 0).</summary>
         static int ContrastRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
+            bool framed = s.Backdrop is not null;
+            foreach (Node n in s.Nodes)
+                if (!framed && n.Text is { } run && run.Ground.A > 0f) framed = true;   // a replay: the saved grounds are the frame
             var pairs = new Dictionary<string, Pair>(StringComparer.Ordinal);
             foreach (Node n in s.Nodes)
             {
                 if (!n.InScope || n.Text is not { } t || t.Spans || t.String.Length == 0 || n.Inert || n.Animating) continue;
-                if (t.Color.A * n.Opacity < 0.02f || t.Ground.A <= 0f) continue;
+                if (t.Color.A * n.Opacity < 0.02f || !framed || n.Visible.IsEmpty) continue;
                 looked++;
                 float need = ContrastNeeded(t, o);
                 string ink = HexA(t.Color) + (n.Opacity < 0.995f ? "@" + F(n.Opacity) : "");
+                if (t.Ground.A <= 0f)
+                {
+                    if (!pairs.TryGetValue("none|", out Pair? none)) pairs["none|"] = none = new Pair { Need = need, Over = "no ground read" };
+                    none.Runs.Add(n);
+                    if (!none.Inks.Contains(ink)) none.Inks.Add(ink);
+                    continue;
+                }
                 ColorF ground = t.Ground;
                 if (t.GroundShare < BusyShare)
                 {
@@ -1533,9 +1839,9 @@ public static partial class Diagnostics
                 TextRun t = first.Text!;
                 string ink = "#" + HexA(t.Color);
                 string runs = pair.Runs.Count == 1 ? $"text {Q(t.String)}" : $"{pair.Runs.Count} runs ({Q(t.String)}, ...)";
+                string inks = string.Join(", ", pair.Inks.Take(4).Select(static i => "#" + i)) + (pair.Inks.Count > 4 ? ", ..." : "");
                 if (key.StartsWith("busy|", StringComparison.Ordinal))
                 {
-                    string inks = string.Join(", ", pair.Inks.Take(4).Select(static i => "#" + i)) + (pair.Inks.Count > 4 ? ", ..." : "");
                     into.Add(new Finding(Rules.ContrastText, Severity.Warn,
                         $"{runs} ({inks}) sit on a busy ground ({pair.Over}): no colour holds half a box, so contrast cannot be read from one colour; look at the render", refs)
                     {
@@ -1547,6 +1853,24 @@ public static partial class Diagnostics
                         Outcome = Outcome.Review,
                         Reason = "busy ground",
                         Rects = rects,
+                        Nodes = Ids(pair.Runs),
+                    });
+                    continue;
+                }
+                if (key == "none|")
+                {
+                    into.Add(new Finding(Rules.ContrastText, Severity.Warn,
+                        $"{runs} ({inks}) are on screen, but the frame gave no ground under them (under 2 x 2 DIP of the box shows); look at the render", refs)
+                    {
+                        Measured = [M("count", pair.Runs.Count), M("inks", pair.Inks.Count)],
+                        Expected = [M("minRatio", pair.Need)],
+                        Pattern = "no ground",
+                        Cause = "no-ground",
+                        Count = pair.Runs.Count,
+                        Outcome = Outcome.Review,
+                        Reason = "no ground read",
+                        Rects = rects,
+                        Nodes = Ids(pair.Runs),
                     });
                     continue;
                 }
@@ -1559,6 +1883,7 @@ public static partial class Diagnostics
                     Cause = "on #" + Hex(pair.Ground),
                     Count = pair.Runs.Count,
                     Rects = rects,
+                    Nodes = Ids(pair.Runs),
                 });
             }
             return looked;
@@ -1591,15 +1916,13 @@ public static partial class Diagnostics
         static bool IsBar(in RectF area, float floor)
             => MathF.Min(area.W, area.H) <= floor / 2f && MathF.Max(area.W, area.H) >= 4f * floor;
 
-        static int Root(int[] parent, int i)
-        {
-            while (parent[i] != i) i = parent[i] = parent[parent[i]];
-            return i;
-        }
+        /// <summary>The family a small target is grouped by: the key pattern of what it sits in (its parent's nearest key), so the band's Play
+        /// and Shuffle, a pager's dots and a crumb trail are one finding each, whatever else is small at this window size.</summary>
+        static string TargetFamily(Snapshot s, Node n) => n.Parent >= 0 ? s.Nodes[n.Parent].Pattern : n.Pattern;
 
         /// <summary>In-scope click targets whose effective area is under the floor: <see cref="Options.TargetFloorCompact"/> (40) at window tier
-        /// Compact, an error; <see cref="Options.TargetFloor"/> (32) above it, a warning. Drag bars are exempt. Grouped by family: targets that share
-        /// a key pattern or a parent are one finding (the band's Play and Shuffle, a pager's dots, a crumb trail).</summary>
+        /// Compact, an error; <see cref="Options.TargetFloor"/> (32) above it, a warning. Drag bars are exempt. Grouped by
+        /// <see cref="TargetFamily"/>: one finding per family, its fingerprint the family and narrow/low.</summary>
         static int TargetRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -1621,36 +1944,23 @@ public static partial class Diagnostics
                 if (IsBar(area, floor)) continue;
                 small.Add((n, area));
             }
-            // One family: the same key pattern, or the same parent.
-            var root = new int[small.Count];
-            for (int i = 0; i < root.Length; i++) root[i] = i;
-            var byPattern = new Dictionary<string, int>(StringComparer.Ordinal);
-            var byParent = new Dictionary<int, int>();
-            for (int i = 0; i < small.Count; i++)
+            var groups = new Dictionary<string, List<(Node Node, RectF Area)>>(StringComparer.Ordinal);
+            foreach (var entry in small)
             {
-                Node n = small[i].Node;
-                string pattern = PatternOfKey(n.Key ?? n.Pattern);
-                if (byPattern.TryGetValue(pattern, out int j)) root[Root(root, i)] = Root(root, j); else byPattern[pattern] = i;
-                if (byParent.TryGetValue(n.Parent, out int k)) root[Root(root, i)] = Root(root, k); else byParent[n.Parent] = i;
-            }
-            var groups = new Dictionary<int, List<(Node Node, RectF Area)>>();
-            for (int i = 0; i < small.Count; i++)
-            {
-                int g = Root(root, i);
-                if (!groups.TryGetValue(g, out var list)) groups[g] = list = [];
-                list.Add(small[i]);
+                string family = TargetFamily(s, entry.Node);
+                if (!groups.TryGetValue(family, out var list)) groups[family] = list = [];
+                list.Add(entry);
             }
             string floorText = compact ? $"the {F(floor)} x {F(floor)} Compact floor" : $"the {F(floor)} x {F(floor)} floor (Small and up)";
-            foreach (var (_, list) in groups)
+            foreach (var (pattern, list) in groups)
             {
                 Node n = list[0].Node;
                 var (refs, rects) = Members(list.Select(static e => e.Node));
                 string sizes = string.Join(", ", list.Take(4).Select(static e => TargetName(e.Node) + " " + F(e.Area.W) + " x " + F(e.Area.H)))
                     + (list.Count > 4 ? ", ..." : "");
                 bool narrow = list.Exists(e => e.Area.W < floor - Slack), low = list.Exists(e => e.Area.H < floor - Slack);
-                string pattern = list.Select(static e => PatternOfKey(e.Node.Key ?? e.Node.Pattern)).Order(StringComparer.Ordinal).First();
                 float minW = list.Min(static e => e.Area.W), minH = list.Min(static e => e.Area.H);
-                string head = list.Count > 1 ? $"{list.Count} hit targets in {pattern}" : $"hit target {n.Ref}";
+                string head = list.Count > 1 ? $"{list.Count} hit targets in {pattern}" : $"hit target {n.Ref} (in {pattern})";
                 into.Add(new Finding(Rules.TargetSize, compact ? Severity.Error : Severity.Warn, $"{head} under {floorText}: {sizes}", refs)
                 {
                     Measured = [M("w", minW), M("h", minH), M("count", list.Count)],
@@ -1659,6 +1969,7 @@ public static partial class Diagnostics
                     Cause = (narrow ? "narrow" : "") + (narrow && low ? "+" : "") + (low ? "low" : ""),
                     Count = list.Count,
                     Rects = rects,
+                    Nodes = Ids(list.Select(static e => e.Node)),
                 });
             }
             return looked;
@@ -1673,11 +1984,18 @@ public static partial class Diagnostics
         /// a title and a subtitle: its label is a name, not a verb).</summary>
         static bool IsVerb(Node n) => n.Role is "Button" or "ToggleButton" or "MenuItem" or "" && n.ImageCount == 0 && n.TextCount < 2;
 
-        /// <summary>What a verb acts on: the first spotify entity in its key or an ancestor's, else the page's own entity, else the page.</summary>
+        /// <summary>What a verb acts on: the first spotify entity in its key or an ancestor's; else the row or card it sits in (an instance of a
+        /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else the
+        /// page's own entity, else the page.</summary>
         static string SubjectOf(Snapshot s, Node n)
         {
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
-                if (EntityIn(s.Nodes[i].Key) is { Length: > 0 } entity) return entity;
+            {
+                Node m = s.Nodes[i];
+                if (EntityIn(m.Key) is { Length: > 0 } entity) return entity;
+                if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
+                    return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
+            }
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
         }
 
@@ -1711,7 +2029,7 @@ public static partial class Diagnostics
                 var homes = new List<string>();
                 foreach (Node n in list)
                 {
-                    string home = n.Pattern == "#root" ? "" : FamilyOfKey(n.Pattern);
+                    string home = n.Pattern == "#root" ? "" : RootOfKey(n.Pattern);
                     if (!homes.Contains(home)) homes.Add(home);
                 }
                 if (homes.Count < 2) continue;
@@ -1728,6 +2046,7 @@ public static partial class Diagnostics
                     Cause = string.Join("+", homes),
                     Count = list.Count,
                     Rects = rects,
+                    Nodes = Ids(list),
                 };
                 foreach (Node n in list)
                     if (PolicyFor(s, n, LintIntent.RepeatOk) is { } repeat)
@@ -1753,7 +2072,8 @@ public static partial class Diagnostics
 
         /// <summary>The vertical gaps between consecutive text blocks stacked in one in-scope column. Blocks that OVERLAP (a gap under -0.5) are a
         /// warning; blocks closer than <see cref="Options.GapMin"/> TOUCH (a line box includes its leading, so a title and its subtitle at 0 apart
-        /// read fine) and are a report, as are the gaps themselves. Grouped by the column's key pattern: one finding per family and kind.</summary>
+        /// read fine) and are a report line (outcome report), as are the gaps themselves. Grouped by the column's key pattern: one finding per
+        /// family and kind.</summary>
         static int RhythmRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -1799,6 +2119,7 @@ public static partial class Diagnostics
                     Cause = "overlap",
                     Count = g.Parents.Count,
                     Rects = rects,
+                    Nodes = Ids(g.Parents),
                 });
             }
             foreach (var (pattern, g) in touch)
@@ -1812,7 +2133,9 @@ public static partial class Diagnostics
                     Pattern = pattern,
                     Cause = "touching",
                     Count = g.Parents.Count,
+                    Outcome = Outcome.Report,
                     Rects = rects,
+                    Nodes = Ids(g.Parents),
                 });
             }
             foreach (var (pattern, g) in gaps)
@@ -1825,7 +2148,9 @@ public static partial class Diagnostics
                     Pattern = pattern,
                     Cause = "gaps",
                     Count = g.Parents.Count,
+                    Outcome = Outcome.Report,
                     Rects = rects,
+                    Nodes = Ids(g.Parents),
                 });
             }
             return looked;

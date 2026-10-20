@@ -5,9 +5,10 @@
 // Role: SHELL (UI thread; reads the engine's public scene inspection only, like the dump)
 // Spec: scratch/agentic-e2e/PLAN.md 4.4-4.5 and 5.1-5.5; the rules are Diagnostics.Inspect.Lint*.cs (pure).
 //
-// THE CAPTURE walks the scene exactly as `dump` does (visible, unparked, non-transparent subtrees; a node counts once it has a box; the
-// overlays that do not hang under the root follow) and keeps what the rules read: the presented rect, clip and scroll axes (with the scroll
-// offset, its range and any edge fade), an authored clip, the DECLARED layout (gap, padding, margin, sizes, flex, alignment, wrap), the paint
+// THE CAPTURE walks the scene exactly as `dump` does (visible, unparked, non-transparent subtrees; a node counts once it has a box, or when it
+// clips with none: a collapsed clip hides its children; the overlays that do not hang under the root follow; a `root=` subtree starts from the
+// cut its live ancestors put on it) and keeps what the rules read: the presented rect, clip and scroll axes (with the scroll offset, its
+// range, any edge fade and whether it is still moving), an authored clip, the DECLARED layout (gap, padding, margin, sizes, flex, alignment, wrap), the paint
 // that makes a node ink (fill, border, image, gradient), the text run (the dump's style + the engine's trim query), the click targets with their
 // label (a glyph by its icon name) and which click they run, the active theme's guide (edges and policies) and its spacing scale.
 //
@@ -56,6 +57,57 @@ public static partial class Diagnostics
             return list;
         }
 
+        /// <summary>A list argument read strictly: a comma-separated string or a JSON array whose entries are all non-empty strings. False with a
+        /// reason for anything else (a number in the array, an empty list).</summary>
+        public static bool TryListOf(Inspect.Args a, string name, out List<string> list, out string error)
+        {
+            list = [];
+            error = "";
+            if (!a.TryGet(name, out Inspect.Value value)) return true;
+            if (value.Kind == Inspect.ValueKind.Json)
+            {
+                try
+                {
+                    using JsonDocument doc = JsonDocument.Parse(value.Str);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array) { error = name + " is a list (a comma list or a JSON array of strings)"; return false; }
+                    foreach (JsonElement e in doc.RootElement.EnumerateArray())
+                    {
+                        if (e.ValueKind != JsonValueKind.String || e.GetString() is not { Length: > 0 } s) { error = name + " lists strings only, not " + e.GetRawText(); return false; }
+                        list.Add(s);
+                    }
+                }
+                catch (JsonException) { error = name + " is not a JSON array"; return false; }
+            }
+            else
+                foreach (string part in value.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    list.Add(part);
+            if (list.Count == 0) { error = name + " is empty"; return false; }
+            return true;
+        }
+
+        /// <summary>A number argument read strictly: absent gives <paramref name="fallback"/>; present, it must be a finite number at or above
+        /// <paramref name="min"/> (and above it when <paramref name="exclusive"/>).</summary>
+        static bool TryNumber(Inspect.Args a, string name, float fallback, float min, bool exclusive, out float value, out string error)
+        {
+            value = fallback;
+            error = "";
+            if (!a.Has(name)) return true;
+            if (!a.TryNum(name, out double d) || !double.IsFinite(d) || d < min || (exclusive && d <= min))
+            {
+                error = name + " is a number " + (exclusive ? "above " : "at or above ") + min.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", not '" + a.Str(name) + "'";
+                return false;
+            }
+            value = (float)d;
+            return true;
+        }
+
+        /// <summary>`save` and `replay` belong to `lint` alone: a verb that runs the lint inside itself (`crossing`) calls this to refuse them.</summary>
+        public static bool RejectSnapshotArgs(Inspect.Args a, out string error)
+        {
+            error = a.Has("save") || a.Has("replay") ? "save= and replay= are lint's own (run lint save=<file> or lint replay=<file>)" : "";
+            return error.Length > 0;
+        }
+
         /// <summary>Every arg `lint` reads (for a dispatcher's arg table): the options below, plus `root`, `nth`, `save` and `replay`.</summary>
         public static readonly string[] ArgNames =
         [
@@ -74,8 +126,9 @@ public static partial class Diagnostics
             IReadOnlyCollection<string> rules = InspectLint.RuleIds;
             if (a.Has("rules"))
             {
+                if (!TryListOf(a, "rules", out List<string> words, out error)) return false;
                 var ids = new List<string>();
-                foreach (string rule in ListOf(a, "rules"))
+                foreach (string rule in words)
                 {
                     List<string> named = InspectLint.IdsOf(rule);
                     if (named.Count == 0)
@@ -100,26 +153,38 @@ public static partial class Diagnostics
                 error = "scope is screen, content or all";
                 return false;
             }
-            IReadOnlyCollection<InspectLint.Outcome> outcomes = [InspectLint.Outcome.Fail, InspectLint.Outcome.Review];
+            IReadOnlyCollection<InspectLint.Outcome> outcomes = InspectLint.DefaultOutcomes;
             if (a.Has("outcomes"))
             {
+                if (!TryListOf(a, "outcomes", out List<string> words, out error)) return false;
                 var listed = new List<InspectLint.Outcome>();
-                foreach (string word in ListOf(a, "outcomes"))
+                foreach (string word in words)
                 {
                     if (string.Equals(word, "all", StringComparison.OrdinalIgnoreCase))
                     {
-                        listed = [InspectLint.Outcome.Fail, InspectLint.Outcome.Review, InspectLint.Outcome.Suppressed];
+                        listed = [.. InspectLint.AllOutcomes];
                         break;
                     }
                     if (!InspectLint.TryParseOutcome(word, out InspectLint.Outcome o))
                     {
-                        error = "outcomes lists fail, review, suppressed (or all)";
+                        error = "outcomes lists fail, review, suppressed, report (or all)";
                         return false;
                     }
                     if (!listed.Contains(o)) listed.Add(o);
                 }
-                if (listed.Count > 0) outcomes = listed;
+                outcomes = listed;
             }
+            if (!TryNumber(a, "typeFloor", 11f, 0f, exclusive: true, out float typeFloor, out error)
+                || !TryNumber(a, "targetFloor", 32f, 0f, exclusive: true, out float targetFloor, out error)
+                || !TryNumber(a, "targetFloorCompact", 40f, 0f, exclusive: true, out float targetFloorCompact, out error)
+                || !TryNumber(a, "gapMin", 2f, 0f, exclusive: false, out float gapMin, out error)
+                || !TryNumber(a, "limit", 100f, 1f, exclusive: false, out float limit, out error))
+                return false;
+            List<string> allowTrim = [], allowDuplicate = [], ignoreUnder = [];
+            if ((a.Has("allowTrim") && !TryListOf(a, "allowTrim", out allowTrim, out error))
+                || (a.Has("allowDuplicate") && !TryListOf(a, "allowDuplicate", out allowDuplicate, out error))
+                || (a.Has("ignoreUnder") && !TryListOf(a, "ignoreUnder", out ignoreUnder, out error)))
+                return false;
             List<InspectLint.BaselineEntry> baseline = [];
             string baselineFile = "";
             if (a.Has("baseline"))
@@ -131,14 +196,14 @@ public static partial class Diagnostics
             {
                 Rules = rules,
                 Scope = scope,
-                TypeFloor = a.Float("typeFloor", 11f),
-                TargetFloor = a.Float("targetFloor", 32f),
-                TargetFloorCompact = a.Float("targetFloorCompact", 40f),
-                GapMin = a.Float("gapMin", 2f),
-                AllowTrim = ListOf(a, "allowTrim"),
-                AllowDuplicate = ListOf(a, "allowDuplicate"),
-                IgnoreUnder = a.Has("ignoreUnder") ? ListOf(a, "ignoreUnder") : InspectLint.DefaultIgnoreUnder,
-                MaxPerRule = Math.Clamp(a.Int("limit", 100), 1, 10_000),
+                TypeFloor = typeFloor,
+                TargetFloor = targetFloor,
+                TargetFloorCompact = targetFloorCompact,
+                GapMin = gapMin,
+                AllowTrim = allowTrim,
+                AllowDuplicate = allowDuplicate,
+                IgnoreUnder = a.Has("ignoreUnder") ? ignoreUnder : InspectLint.DefaultIgnoreUnder,
+                MaxPerRule = (int)Math.Clamp(MathF.Round(limit), 1f, 10_000f),
                 Min = min,
                 Outcomes = outcomes,
                 Baseline = baseline,
@@ -257,15 +322,29 @@ public static partial class Diagnostics
         {
             SceneStore scene = shell.Host.Scene;
             StringTable strings = scene.Strings ?? Entities.Strings;
+            float scale = Math.Max(0.01f, shell.Window.Scale);
+            float width = shell.Window.ClientSizePx.Width / scale, height = shell.Window.ClientSizePx.Height / scale;
+            var window = new RectF(0f, 0f, width, height);
             var nodes = new List<InspectLint.Node>();
             var clicks = new Dictionary<Delegate, int>();
-            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert)>();
+            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert, int Root)>();
             var children = new List<NodeHandle>();
             Span<char> path = stackalloc char[256];
-            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false));
+            // A root under live ancestors (`root=`) starts from the cut they put on it, so the subtree is judged as the page shows it.
+            var seeds = new (RectF Screen, RectF Content)[roots.Length];
+            for (int r = 0; r < roots.Length; r++)
+            {
+                seeds[r] = (RectF.Infinite, RectF.Infinite);
+                if (!roots[r].IsNull && scene.IsLive(roots[r]) && !scene.Parent(roots[r]).IsNull)
+                {
+                    InspectVisible.AncestorCut(scene, roots[r], window, out RectF screen, out RectF content);
+                    seeds[r] = (screen, content);
+                }
+            }
+            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false, r));
             while (stack.Count > 0)
             {
-                var (node, parent, depth, above, inertAbove) = stack.Pop();
+                var (node, parent, depth, above, inertAbove, root) = stack.Pop();
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
@@ -274,7 +353,10 @@ public static partial class Diagnostics
                 float opacity = above * paint.Opacity;
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;
-                if (rect.W > 0f && rect.H > 0f)
+                bool scrolls = scene.TryGetScroll(node, out ScrollState scroll);
+                // A box with no area is skipped like the dump skips it, unless it cuts its children: a collapsed clip hides what is under it.
+                bool cuts = (flags & NodeFlags.ClipsToBounds) != 0 || !paint.ClipRect.IsInfinite || scrolls;
+                if ((rect.W > 0f && rect.H > 0f) || cuts)
                 {
                     self = nodes.Count;
                     ref InteractionInfo it = ref scene.Interaction(node);
@@ -286,11 +368,13 @@ public static partial class Diagnostics
                     int axis = 0;
                     float offset = 0f, max = 0f;
                     byte fade = 0;
-                    if (scene.TryGetScroll(node, out ScrollState scroll))
+                    bool moving = false;
+                    if (scrolls)
                     {
                         axis = scroll.Orientation == 1 ? 1 : 2;
                         offset = (float)scroll.Offset;
                         max = scroll.MaxOffset;
+                        moving = scroll.Motion.IsMoving || Math.Abs(scroll.Velocity) > 1.0;
                         if (scroll.AutoEdgeFade && scroll.AutoEdgeFadeBand > 0f) fade |= (byte)(axis == 1 ? EdgeMask.Horizontal : EdgeMask.Vertical);
                     }
                     if (scene.TryGetEdgeFade(node, out EdgeFadeSpec edgeFade) && !edgeFade.IsNone) fade |= (byte)edgeFade.Edges;
@@ -306,6 +390,9 @@ public static partial class Diagnostics
                         ScrollAxis = axis,
                         ScrollOffset = offset,
                         ScrollMax = max,
+                        ScrollMoving = moving,
+                        SeedScreen = parent < 0 ? seeds[root].Screen : RectF.Infinite,
+                        SeedContent = parent < 0 ? seeds[root].Content : RectF.Infinite,
                         FadeEdges = fade,
                         ClipRect = authored.IsInfinite ? RectF.Infinite : new RectF(rect.X + authored.X, rect.Y + authored.Y, authored.W, authored.H),
                         ZStack = (flags & NodeFlags.ZStack) != 0,
@@ -331,7 +418,7 @@ public static partial class Diagnostics
                 }
                 children.Clear();
                 for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) children.Add(c);
-                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert));
+                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert, root));
             }
 
             // The words and images under each node: children follow their parent, so one backwards pass.
@@ -351,8 +438,7 @@ public static partial class Diagnostics
             for (int i = 0; i < nodes.Count; i++) nodes[i] = nodes[i] with { TextCount = words[i], ImageCount = images[i] };
 
             TierFacts tiers = ThemeHost.Facts.Peek().Tiers;
-            float scale = Math.Max(0.01f, shell.Window.Scale);
-            float width = shell.Window.ClientSizePx.Width / scale, height = shell.Window.ClientSizePx.Height / scale;
+            string route = RouteNow();
             IReadOnlyList<LintEdge> edges = [];
             IReadOnlyList<LintPolicy> policies = [];
             string guideId = "";
@@ -363,7 +449,7 @@ public static partial class Diagnostics
                     NodeHandle found = shell.Find(key);
                     return found.IsNull ? (RectF?)null : scene.PresentedAbsoluteRect(found);
                 }
-                var context = new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey);
+                var context = new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey) { Route = InspectLint.RouteNameOf(route) };
                 edges = guide.Edges(context);
                 policies = guide.Policies(context);
                 guideId = InspectKit.ActiveThemeId;
@@ -375,7 +461,7 @@ public static partial class Diagnostics
                 Scale = ScaleOf(),
                 Theme = InspectKit.ActiveThemeId,
                 GuideId = guideId,
-                Route = RouteNow(),
+                Route = route,
                 TrimSource = InspectDump.TrimSource(shell),
                 Devices = devices,
                 Backdrop = pixels,
@@ -437,9 +523,10 @@ public static partial class Diagnostics
         }
 
         /// <summary>Into the open object: <c>guide</c> (<c>{id, edges, matched, policies}</c>, or false when the theme has none), <c>scope</c>,
-        /// <c>summary</c> (listed fail findings of the gate rules: what "lint min=error clean" means), <c>outcomes</c>, <c>levels</c>,
-        /// <c>suppressed</c>, <c>baseline</c>?, <c>rules</c> (per rule: <c>checked</c>, its counts, level and ids), <c>truncated</c>? and
-        /// <c>findings</c>.</summary>
+        /// <c>modal</c>? (<c>{scrim, covered}</c>: a dialog's scrim covers the page), <c>animating</c> (<c>{nodes, scrolling}</c>: what was still
+        /// moving in the frame read), <c>summary</c> (fail findings and report lines of the gate rules at or above `min`, listed or not: what
+        /// "lint min=error clean" means), <c>outcomes</c>, <c>levels</c>, <c>suppressed</c>, <c>baseline</c>?, <c>rules</c> (per rule:
+        /// <c>checked</c>, its counts, level and ids), <c>truncated</c>? and <c>findings</c>.</summary>
         public static void WriteReport(Utf8JsonWriter w, InspectLint.Snapshot snapshot, InspectLint.Report report, InspectLint.Options options)
         {
             if (snapshot.GuideId.Length > 0 || snapshot.Edges.Count > 0)
@@ -453,6 +540,24 @@ public static partial class Diagnostics
             }
             else w.WriteBoolean("guide", false);
             w.WriteString("scope", InspectVisible.Name(options.Scope));
+            InspectLint.Snapshot prepared = report.Prepared ?? snapshot;
+            if (prepared.Modal.Length > 0)
+            {
+                w.WriteStartObject("modal");
+                w.WriteString("scrim", prepared.Modal);
+                w.WriteNumber("covered", prepared.CoveredCount);
+                w.WriteEndObject();
+            }
+            int animating = 0, scrolling = 0;
+            foreach (InspectLint.Node n in prepared.Nodes)
+            {
+                if (n.Animating) animating++;
+                if (n.ScrollMoving) scrolling++;
+            }
+            w.WriteStartObject("animating");
+            w.WriteNumber("nodes", animating);
+            w.WriteNumber("scrolling", scrolling);
+            w.WriteEndObject();
             if (!snapshot.RealText) w.WriteString("textRules", "review: the headless text model measures trims and ink, so text.trim and text.clip only review");
             w.WriteStartObject("summary");
             w.WriteNumber("error", report.Count(InspectLint.Severity.Error));
@@ -466,6 +571,7 @@ public static partial class Diagnostics
             w.WriteNumber("fail", report.CountAll(InspectLint.Outcome.Fail));
             w.WriteNumber("review", report.CountAll(InspectLint.Outcome.Review));
             w.WriteNumber("suppressed", report.CountAll(InspectLint.Outcome.Suppressed));
+            w.WriteNumber("report", report.CountAll(InspectLint.Outcome.Report));
             w.WriteEndObject();
             w.WriteStartObject("levels");
             w.WriteNumber("gate", report.CountAll(InspectLint.Level.Gate));
@@ -480,7 +586,9 @@ public static partial class Diagnostics
                 w.WriteStartObject("baseline");
                 w.WriteString("file", options.BaselineFile);
                 w.WriteNumber("entries", options.Baseline.Count);
+                w.WriteNumber("considered", report.BaselineConsidered);
                 w.WriteNumber("matched", report.BaselineMatched);
+                if (report.BaselineDuplicates > 0) w.WriteNumber("duplicates", report.BaselineDuplicates);
                 w.WriteEndObject();
             }
             w.WriteStartObject("rules");
@@ -496,12 +604,13 @@ public static partial class Diagnostics
                 written.Add(name);
                 int looked = 0;
                 foreach (string id in ids) looked += report.Checked.TryGetValue(id, out int c) ? c : 0;
-                int review = 0, suppressed = 0;
+                int review = 0, suppressed = 0, reports = 0;
                 foreach (InspectLint.Finding f in report.All)
                 {
                     if (!ids.Contains(f.Id)) continue;
                     if (f.Outcome == InspectLint.Outcome.Review) review++;
                     else if (f.Outcome == InspectLint.Outcome.Suppressed) suppressed++;
+                    else if (f.Outcome == InspectLint.Outcome.Report) reports++;
                 }
                 w.WriteStartObject(name);
                 w.WriteNumber("checked", looked);
@@ -510,6 +619,7 @@ public static partial class Diagnostics
                 w.WriteNumber("info", report.Count(name, InspectLint.Severity.Info));
                 w.WriteNumber("review", review);
                 w.WriteNumber("suppressed", suppressed);
+                if (reports > 0) w.WriteNumber("report", reports);
                 w.WriteString("level", InspectLint.Name(spec.Level));
                 w.WriteStartArray("ids");
                 foreach (string id in ids) w.WriteStringValue(id);
@@ -570,6 +680,7 @@ public static partial class Diagnostics
             InspectLint.Snapshot snapshot;
             if (a.Has("replay"))
             {
+                if (a.Has("root") || a.Has("nth")) return Inspect.Reply.Fail(id, name, "replay lints the whole saved snapshot: root= and nth= pick nodes of a mounted page (save a root= lint instead)");
                 if (!InspectLintStore.TryLoad(a.Str("replay"), out snapshot, out error)) return Inspect.Reply.Fail(id, name, error);
             }
             else
