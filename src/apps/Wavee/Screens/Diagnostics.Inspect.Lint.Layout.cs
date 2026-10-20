@@ -28,6 +28,9 @@ public static partial class Diagnostics
         /// <summary>How close a lead may sit to a declared hang or indent and still be the intended one.</summary>
         const float IntentTolerance = 2f;
 
+        /// <summary>Without a guide column, a column line left of the best-supported x must hold at least this share of its support (see step 4).</summary>
+        public const float LineShare = 0.5f;
+
         static bool OffStart(string align) => align is "Center" or "End";
 
         /// <summary>Its x is set by centring or end alignment, not by a lead: the node or an ancestor up to its section root is placed Center or End
@@ -68,6 +71,7 @@ public static partial class Diagnostics
         sealed class InsetGroup
         {
             public readonly List<Node> Leads = [];
+            public readonly List<Node> FirstPerSection = [];
             public readonly HashSet<int> Sections = [];
             public float Line, X, D;
             public int Support;
@@ -89,17 +93,22 @@ public static partial class Diagnostics
 
         /// <summary><c>align.inset</c> (port of design-qa proto/leads.py). Algorithm:
         /// 1. members: ink (text, image, gradient, visible fill or border) that scrolling reaches (the WHOLE scroll content, not only the screen),
-        ///    not a glyph, not mid-animation, not inside a horizontal scroller (a rail's x is content-driven), not a PLATE (an ink node another ink
+        ///    not a glyph, not in an animating subtree (a page sliding in is not where it lands), not inside a horizontal scroller (a rail's x is content-driven), not a PLATE (an ink node another ink
         ///    node sits on: it leads its own content, not the column), not a ground as wide as its region, not placed by centring or end alignment,
         ///    and not an end-aligned column (cells of one family and cell path whose right or centre edges agree while their left edges do not:
         ///    right-aligned numerals);
         /// 2. groups: (scroll region x backdrop), so a card's content is never compared with the page column;
-        /// 3. leads: members with no other member wholly to their left on an overlapping line (vertical overlap over 2 DIP), on reach rects;
+        /// 3. leads: members that nothing of their group STARTS to the left of on an overlapping line (vertical overlap over 2 DIP), on reach rects.
+        ///    "Nothing" counts every ink node of the group, the ones step 1 left out included: a label beside a play disc (a plate) or an icon
+        ///    leads nothing, and neither does the back layer of stacked or offset art (the front layer starts left of it);
         /// 4. the column line: on the page's own ground (backdrop: the page) the guide's <c>Column</c> edge when at least 3 leads sit on it (Zune
-        ///    and WinUI: the page title's x); else the LEFTMOST x (to 0.1 DIP) at least 3 leads share. Never the most common x on screen: with more
-        ///    inset rows than headers in view that would call the headers wrong, and flip with the scroll position;
+        ///    and WinUI: the page title's x); else the x (to 0.1 DIP) the most leads share, at least 3, unless an x left of it holds at least
+        ///    <see cref="LineShare"/> of that support (then the leftmost such x): read over the whole scroll content, so it does not move with the
+        ///    scroll position, inset rows do not outvote the headers they sit under, and three outdented leads (a hang without a policy) do not move
+        ///    a column of twenty;
         /// 5. a lead IN SCOPE 4 &lt; |d| &lt;= 16 off the line is a finding when its section (nearest keyed node) has no lead on the line (an inset
-        ///    INSIDE a section that also leads on the line is the section's own design); one finding per (pattern, d rounded to 1 DIP).
+        ///    INSIDE a section that also leads on the line is the section's own design); one finding per (pattern, d rounded to 1 DIP), listing one
+        ///    member per section.
         /// A guide <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> within 2 DIP of d makes it intended (suppressed).</summary>
         static int AlignInsetRule(Snapshot s, List<Finding> into)
         {
@@ -108,11 +117,14 @@ public static partial class Diagnostics
             foreach (Node n in nodes)
                 if (n.Ink && n.Backdrop >= 0) plate[n.Backdrop] = true;
             var members = new List<Node>();
+            var blockers = new Dictionary<(int Region, int Backdrop), List<Node>>();
             foreach (Node n in nodes)
             {
-                if (!n.Ink || n.Animating || n.InRail || plate[n.Index] || !Reachable(n)) continue;
-                if (n.Text is { Glyph: true }) continue;
-                if (FullBleed(s, n) || PlacedOffStart(s, n)) continue;
+                if (!n.Ink || n.Moving || !Reachable(n) || FullBleed(s, n)) continue;
+                var at = (n.Region, n.Backdrop);
+                if (!blockers.TryGetValue(at, out List<Node>? ink)) blockers[at] = ink = [];
+                ink.Add(n);
+                if (n.InRail || plate[n.Index] || n.Text is { Glyph: true } || PlacedOffStart(s, n)) continue;
                 members.Add(n);
             }
             ExcludeEndAligned(members);
@@ -130,21 +142,22 @@ public static partial class Diagnostics
             }
             var found = new Dictionary<string, InsetGroup>(StringComparer.Ordinal);
             int judged = 0;
-            foreach (var ((_, backdrop), list) in groups)
+            foreach (var ((region, backdrop), list) in groups)
             {
                 var leads = new List<Node>();
+                List<Node> ink = blockers[(region, backdrop)];
                 foreach (Node n in list)
                 {
                     if (n.InScope) judged++;
                     RectF r = n.Reach;
-                    bool covered = false;
-                    foreach (Node m in list)
+                    bool led = false;
+                    foreach (Node m in ink)
                     {
-                        if (ReferenceEquals(m, n)) continue;
+                        if (ReferenceEquals(m, n) || Under(s, m.Index, n.Index) || Under(s, n.Index, m.Index)) continue;
                         RectF o = m.Reach;
-                        if (o.Right <= r.X + Slack && MathF.Min(r.Bottom, o.Bottom) - MathF.Max(r.Y, o.Y) > 2f) { covered = true; break; }
+                        if (o.X < r.X - Slack && MathF.Min(r.Bottom, o.Bottom) - MathF.Max(r.Y, o.Y) > 2f) { led = true; break; }
                     }
-                    if (!covered) leads.Add(n);
+                    if (!led) leads.Add(n);
                 }
                 float line = float.NaN, tolerance = Slack;
                 int best = 0;
@@ -166,10 +179,13 @@ public static partial class Diagnostics
                         float x = MathF.Round(n.Rect.X, 1);
                         support[x] = support.TryGetValue(x, out int c) ? c + 1 : 1;
                     }
+                    int most = 0;
+                    foreach (var (_, c) in support) most = Math.Max(most, c);
+                    float need = MathF.Max(3f, LineShare * most);
                     foreach (var (x, c) in support)
-                        if (c >= 3 && (float.IsNaN(line) || x < line)) { line = x; best = c; }
+                        if (c >= need && (float.IsNaN(line) || x < line)) { line = x; best = c; }
                     if (float.IsNaN(line)) continue;
-                    source = "the leftmost x 3 leads share; ";
+                    source = best == most ? "the x most leads share; " : "the leftmost x holding half the best support; ";
                 }
                 var onLine = new List<Node>();
                 foreach (Node n in leads)
@@ -195,12 +211,12 @@ public static partial class Diagnostics
                         if (hang is not null && MathF.Abs(d - hang.Value) <= IntentTolerance) g.Intent = hang;
                     }
                     g.Leads.Add(n);
-                    g.Sections.Add(section);
+                    if (g.Sections.Add(section)) g.FirstPerSection.Add(n);
                 }
             }
             foreach (var (key, g) in found)
             {
-                var (refs, rects) = Members(g.Leads);
+                var (refs, rects) = Members(g.FirstPerSection);
                 string pattern = key[..key.LastIndexOf('|')];
                 int sections = g.Sections.Count;
                 string what = sections > 1 ? $"{pattern} ({sections} {Plural(sections, "section", "sections")})" : pattern;
@@ -282,17 +298,46 @@ public static partial class Diagnostics
             public readonly List<float> Bottoms = [];
             public readonly List<float> Centres = [];
 
+            /// <summary>Each row's height, and the height and width of the box the text is measured in (the keyed cell, or the row itself).</summary>
             public readonly List<float> Heights = [];
+            public readonly List<float> BoxH = [];
+            public readonly List<float> BoxW = [];
 
-            public void Add(Node text, RectF row)
+            public void Add(Node text, RectF row, RectF box)
             {
                 Cells.Add((text, text.Rect.Y - row.Y));
                 Bottoms.Add(text.Rect.Bottom - row.Y);
                 Centres.Add(text.Rect.Y + text.Rect.H / 2f - row.Y);
                 Heights.Add(row.H);
+                BoxH.Add(box.H);
+                BoxW.Add(box.W);
             }
             public readonly HashSet<int> Rows = [];
+            public readonly List<int> RowIds = [];
             public string Row = "";
+            public string Style = "";
+        }
+
+        /// <summary>Do the drifts follow the boxes' heights? Every cell off the most common offset sits off it by as much (within 1 DIP) as its box
+        /// is taller or shorter than the boxes at that offset: a block above the text grew or shrank (an optional header, a wide card's shorter
+        /// art), which moves the text with it. Not a drift inside one row design.</summary>
+        static bool PushedByBox(Drift d, float mode)
+        {
+            var reference = new List<float>();
+            for (int i = 0; i < d.Cells.Count; i++)
+                if (MathF.Abs(d.Cells[i].Offset - mode) <= Slack) reference.Add(d.BoxH[i]);
+            if (reference.Count == 0) return false;
+            reference.Sort();
+            float href = reference[reference.Count / 2];
+            bool any = false;
+            for (int i = 0; i < d.Cells.Count; i++)
+            {
+                float off = d.Cells[i].Offset - mode;
+                if (MathF.Abs(off) <= Slack) continue;
+                any = true;
+                if (MathF.Abs(off - (d.BoxH[i] - href)) > 1f) return false;
+            }
+            return any;
         }
 
         static float Spread(List<float> values)
@@ -311,8 +356,12 @@ public static partial class Diagnostics
         /// optional line comes and goes), unless its bottoms or its centres agree (a bottom-anchored or centred caption whose line count varies),
         /// or its "rows" are no rows: instances whose heights differ by more than max(2 DIP, 10 %) are sections of a page (a key family is a
         /// static key part, so `zs:title` and `zs:link:*` are never one family; settings sections whose first one has no top rule differ in
-        /// height). The rows themselves are never measured against the list they sit in (that offset only steps by the row height: the
-        /// prototype's false positive). Offsets are line-box tops, not true baselines, so a finding is a `review`: look at the rows.</summary>
+        /// height), or its keyed cells come in different widths (a shelf of wide cards beside shelves of square ones: another card form), or every
+        /// drift follows its box's height (<see cref="PushedByBox"/>: an optional block above the text). The rows themselves are never measured
+        /// against the list they sit in (that offset only steps by the row height: the prototype's false positive). When several groups hold the
+        /// SAME texts (a card's title measured against its strip, its shelf and its zone), only the innermost row's finding stays. An unkeyed cell
+        /// is named by its type style (<c>text 14/400</c>), never by a dump index path. Offsets are line-box tops, not true baselines, so a finding
+        /// is a `review`: look at the rows.</summary>
         static int AlignBaselineRule(Snapshot s, List<Finding> into)
         {
             IReadOnlyList<Node> nodes = s.Nodes;
@@ -337,7 +386,11 @@ public static partial class Diagnostics
                     looked++;
                     string key = "a|" + PatternOfKey(n.Key!) + "|" + nodes[row].Family;
                     if (!drifts.TryGetValue(key, out Drift? d)) drifts[key] = d = new Drift { Row = PatternOfKey(nodes[row].Key!) };
-                    if (d.Rows.Add(row)) d.Add(text, nodes[row].Rect);   // the first such cell of each row: cells of one row stack
+                    if (d.Rows.Add(row))   // the first such cell of each row: cells of one row stack
+                    {
+                        d.Add(text, nodes[row].Rect, n.Rect);
+                        d.RowIds.Add(row);
+                    }
                     continue;
                 }
                 // (b) a row: its own texts by cell path
@@ -347,13 +400,30 @@ public static partial class Diagnostics
                     if (!m.InScope || m.Instance != n.Index || !IsWords(m)) continue;
                     looked++;
                     string key = "b|" + PatternOfKey(n.Key!) + "/" + m.CellPath;
-                    if (!drifts.TryGetValue(key, out Drift? d)) drifts[key] = d = new Drift { Row = PatternOfKey(n.Key!) };
-                    if (d.Rows.Add(n.Index)) d.Add(m, n.Rect);
+                    if (!drifts.TryGetValue(key, out Drift? d))
+                        drifts[key] = d = new Drift { Row = PatternOfKey(n.Key!), Style = "text " + F(m.Text!.Size) + "/" + m.Text.Weight.ToString(CultureInfo.InvariantCulture) };
+                    if (d.Rows.Add(n.Index))
+                    {
+                        d.Add(m, n.Rect, n.Rect);
+                        d.RowIds.Add(n.Index);
+                    }
                 }
             }
+            // Drifting groups first; the same texts measured against nested rows (a card's title against its strip, its shelf and its zone) are one
+            // drift, judged once at the innermost row (the deepest row is a descendant of the outer ones: the larger index). Only then the tests
+            // that excuse a drift, so a drift a card form explains at the card is not reported again through the shelf.
+            var drifting = new List<(string Key, Drift Drift, string Members, int Row)>();
             foreach (var (key, d) in drifts)
             {
-                if (d.Cells.Count < 3) continue;   // three rows at least
+                if (d.Cells.Count < 3 || Spread(d.Cells.Select(static c => c.Offset).ToList()) <= Slack) continue;   // three rows at least, and a drift
+                drifting.Add((key, d, string.Join(",", d.Cells.Select(static c => c.Text.Index).Order()), d.RowIds.Max()));
+            }
+            foreach (var (key, d, members, row) in drifting)
+            {
+                bool outer = false;
+                foreach (var other in drifting)
+                    if (!ReferenceEquals(other.Drift, d) && other.Members == members && other.Row > row) { outer = true; break; }
+                if (outer) continue;
                 float min = float.MaxValue, max = float.MinValue;
                 var modes = new Dictionary<float, int>();
                 foreach (var (_, offset) in d.Cells)
@@ -363,17 +433,18 @@ public static partial class Diagnostics
                     float b = MathF.Round(offset * 2f) / 2f;
                     modes[b] = modes.TryGetValue(b, out int c) ? c + 1 : 1;
                 }
-                if (max - min <= Slack) continue;
                 if (Spread(d.Bottoms) <= Slack || Spread(d.Centres) <= Slack) continue;   // anchored at its bottom or centre: a line count, not a drift
                 if (Spread(d.Heights) > MathF.Max(2f, 0.1f * d.Heights.Min())) continue;  // not rows: sections of different heights (a first one without its top rule)
-                string cell = key[2..];
                 bool keyed = key[0] == 'a';
-                if (keyed) cell = cell[..cell.LastIndexOf('|')];
+                if (keyed && Spread(d.BoxW) > MathF.Max(2f, 0.1f * d.BoxW.Min())) continue;   // cells of different widths: another card form
+                float mode = modes.OrderByDescending(static kv => kv.Value).ThenBy(static kv => kv.Key).First().Key;
+                if (PushedByBox(d, mode)) continue;   // an optional block above the text moved it: the box grew by as much
+                string cell = keyed ? key[2..key.LastIndexOf('|')] : d.Style;
                 string spread = string.Join(", ", modes.OrderByDescending(static kv => kv.Value).ThenBy(static kv => kv.Key)
                     .Take(4).Select(static kv => F(kv.Key) + " in " + kv.Value.ToString(CultureInfo.InvariantCulture)));
                 var (refs, rects) = Members(d.Cells.Select(static c => c.Text));
                 into.Add(new Finding(Rules.AlignBaseline, Severity.Warn,
-                    $"{(keyed ? cell + "'s first text" : "text " + cell)} sits at different heights below its row top ({d.Row}): {spread} rows; it drifts {F(max - min)} DIP from row to row", refs)
+                    $"{(keyed ? cell + "'s first text" : cell + " in " + d.Row)} sits at different heights below its row top ({d.Row}): {spread} rows; it drifts {F(max - min)} DIP from row to row", refs)
                 {
                     Measured = [M("spread", max - min), M("min", min), M("max", max), M("rows", d.Cells.Count)],
                     Expected = [M("spread", 0)],
@@ -448,8 +519,9 @@ public static partial class Diagnostics
         /// <summary><c>space.scale</c> (design-qa B1). Algorithm: for every in-scope node with ink under it (a value nothing shows is moot), each
         /// DECLARED gap (when it has two or more children), padding side and margin side that is not 0 must be on the theme's scale: 2, a multiple
         /// of 4 up to 64, or a value of the active definition's <c>Spacing.*</c>, <c>R.Space</c> or <c>R.Shape</c> (the capture lists them). A value
-        /// of the control-internal set under a control with a role is the control's. Grouped by (value, family pattern); one info per group naming the
-        /// nearest token. A guide <see cref="LintIntent.OffScaleOk"/> makes it intended.</summary>
+        /// of the control-internal set under a control with a role is the control's. Grouped by (value, the node's nearest keyed pattern: not a
+        /// family counted over the scope, so the fingerprint holds at every scope and scroll position); one info per group naming the nearest
+        /// token. A guide <see cref="LintIntent.OffScaleOk"/> makes it intended.</summary>
         static int SpaceScaleRule(Snapshot s, List<Finding> into)
         {
             IReadOnlyList<Node> nodes = s.Nodes;
@@ -485,7 +557,7 @@ public static partial class Diagnostics
                     foreach (float c in s_controlInternal)
                         if (Near(c, v)) { control = true; break; }
                     if (control && UnderControl(s, n)) continue;
-                    string pattern = FamilyPattern(s, n);
+                    string pattern = n.Pattern;
                     string key = F(MathF.Round(v, 2)) + "|" + pattern;
                     if (!groups.TryGetValue(key, out ScaleGroup? g)) groups[key] = g = new ScaleGroup { Intent = PolicyFor(s, n, LintIntent.OffScaleOk) };
                     if (!g.Nodes.Contains(n)) g.Nodes.Add(n);
