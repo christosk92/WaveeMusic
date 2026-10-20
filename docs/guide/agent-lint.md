@@ -423,12 +423,14 @@ and cluster rows (+8), the Zune artist album art inset (+8), the album title-bas
 wide zone's header sitting 4 lower in its zone (`scope=content`), the album's band-vs-list Shuffle and More, and one contrast
 finding per token pair. Labels per finding (true / false / intended): `C:/WAVEE/scratch/inspect-p1/i3/r3/labels.txt`.
 
-After the merge with feat/themes-p6 (busy grounds judged on the rendered pixels, the designed top bleeds; the integration run of
-`C:/WAVEE/scratch/inspect-p1/integration/mounts`), warn+ fail findings, gate / every level: Zune Home 400 0 / 1, Zune Home
-1440 5 / 5, Zune album 9 / 9 (its panorama cut is a suppressed designed bleed), Zune artist 10 / 11, Classic Home 7 / 7, WinUI
-Home 4 / 4. The new ones are contrast over pictures: the Classic daylist's tag line over its veiled art (an error over an image),
-the Zune artist crumb over the material bleed (an error), the Zune Home search hint over its translucent pill. Still 0 of 278
-findings name a wholly off-screen node.
+After the integration (feat/inspect-p1 with feat/themes-p6 951f4af2: busy grounds judged on the rendered pixels, the
+designed top bleeds, the target hit rect; `C:/WAVEE/scratch/inspect-p1/integration/final/six`), warn+ fail findings, gate /
+every level: Zune Home 400 0 / 5, Zune Home 1440 6 / 10, Zune album 9 / 11 (its panorama cut is a suppressed designed bleed),
+Zune artist 8 / 10, Classic Home 5 / 8, WinUI Home 3 / 6. The busy-ground reviews are gone where the frame could be read:
+those runs are judged on their pixels now (Zune Home 400: 5 reviews before, none after, every run passing). The new fails
+are contrast over pictures: the Zune Home search hint's "ctrl f" over its pill (2.61 : 1) and "Pinned" over the wash (3.16),
+the Zune artist crumb over the material bleed (an error, 3.67). Still 0 of 286 screen findings name a wholly off-screen
+node, and the replay of each of the six snapshots gives the same findings, fingerprints and counts.
 
 ## Known limits
 
