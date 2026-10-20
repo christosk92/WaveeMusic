@@ -1176,7 +1176,7 @@ public static partial class Diagnostics
             Rules.ContrastText => cause switch
             {
                 "busy" => "text over art or a gradient: look at the render; a scrim or an on-media ink role fixes it, never a node-by-node colour",
-                "media:image" or "media:gradient" => "text over a photograph or a wash that does not read: an adaptive scrim under it or the on-media ink role, never a node-by-node colour",
+                _ when cause.StartsWith("media:", StringComparison.Ordinal) => "text over a photograph or a wash that does not read: an adaptive scrim under it or the on-media ink role, never a node-by-node colour",
                 "no-ground" => "look at the render: the frame gave no ground for these runs (cut by the window edge or a bar)",
                 "moving" => "settle and lint again (frames 60): the frame was read mid-animation; the motion itself is not the finding",
                 "covered" => "close the overlay and lint again, or look at the render: the ground read under these runs may be the overlay's",
@@ -2252,7 +2252,8 @@ public static partial class Diagnostics
                         Measured = [M("ratio", pair.Worst), M("count", count), M("size", t.Size), M("weight", t.Weight), M("gapPixels", pair.GapPixels)],
                         Expected = [M("minRatio", pair.Need)],
                         Pattern = ink,
-                        Cause = pair.Photo ? "media:image" : "media:gradient",
+                        // The fingerprint is the ink and what it sits on, like a solid pair's: two plates are two flaws.
+                        Cause = (pair.Photo ? "media:image over " : "media:gradient over ") + pair.Over,
                         Count = count,
                         Rects = rects,
                         Nodes = Ids(pair.Runs),

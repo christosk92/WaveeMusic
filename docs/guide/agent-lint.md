@@ -248,7 +248,8 @@ between and around them are the ground, and the ratio is read at the 10th percen
 ground, WCAG G18). A glyph that fills its box (an icon, a filled heart) is judged on the 3 DIP ring around it, less what is
 ink-coloured there; a run whose words cannot be told from their ground (dark ink on a dark photograph, light on a bright one)
 is judged over every pixel, which says it does not read. A failure over an image (an image node under most of the box) is an
-`error`, over a gradient or a wash a `warn`, both `fail`, grouped by (ink, what it sits on): "6 runs (...) in #ffffff87 over a
+`error`, over a gradient or a wash a `warn`, both `fail`, grouped and fingerprinted by (ink, what it sits on: cause
+`media:gradient over a plate zune-search-hint`): "6 runs (...) in #ffffff87 over a
 gradient artist-veil-tone:* over an image read 3.57 : 1 on their p90 ground #43506d". To judge text over a real photograph,
 mount with `images=real` (the fake decoder paints every image as a gradient). A busy run with no worst read (a snapshot saved
 before it was) is a `review` grouped by that ground ("13 runs (3 inks) sit on a busy ground (a gradient
