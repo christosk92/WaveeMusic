@@ -312,6 +312,7 @@ internal static class ZuneSearch
             var answer = source.Answer();
             var state = answer.State;
             int highlighted = source.Highlight.Value;
+            _queryRowH = ZuneFrameRules.QueryRowHFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers.Window);
             // Exactly the box's width (no floor under a 220 pill); the field's popup hangs from the box's left edge.
             float w = props.Width.Value > 0f ? props.Width.Value : ZuneFrameRules.FallbackPopupWidth;
 
@@ -436,9 +437,12 @@ internal static class ZuneSearch
         }
 
         /// <summary>A query row: 36 tall, inset 16, square; the selected row is the accent wash, a hovered one the ink wash.</summary>
+        /// <summary>The query row's height at the window the popup is drawn in (this render's).</summary>
+        float _queryRowH = ZuneFrameRules.QueryRowH;
+
         Element QueryRow(string text, string typed, int index, bool selected) => new BoxEl
         {
-            MinHeight = ZuneFrameRules.QueryRowH, AlignItems = FlexAlign.Center, Padding = ZuneFrameRules.QueryRowPadding,
+            MinHeight = _queryRowH, AlignItems = FlexAlign.Center, Padding = ZuneFrameRules.QueryRowPadding,
             Corners = R.Shape.All(ShapeRole.OmniRow),
             Role = AutomationRole.MenuItem, AllowFocusOnInteraction = false,
             Fill = selected ? R.Layer.SelectedRest : ColorF.Transparent,

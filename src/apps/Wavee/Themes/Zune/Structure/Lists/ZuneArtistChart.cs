@@ -158,7 +158,7 @@ internal static class ZuneArtistChart
             return new BoxEl();   // the count is the header's "see all N"
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
+            Direction = 0, Gap = Wavee.Theming.TouchTargetPolicy.PagerGap(p.Window, Spacing.XS), AlignItems = FlexAlign.Center,
             Children =
             [
                 Chevron(Icons.ChevronLeft, p.CanPrev, p.Prev),
@@ -311,8 +311,11 @@ internal static class ZuneArtistChart
     }
 
     /// <summary>The pager's square chevron; a disabled one has no hover wash and a tertiary glyph.</summary>
+    /// <summary>A pager chevron; its touch slop reaches left (<see cref="TouchTargetPolicy.OneSide"/>): outward for the previous one, into the gap for the next
+    /// one, whose right side is the page's edge (a scroll bar's lane takes the side past it).</summary>
     static Element Chevron(string glyph, bool enabled, Action onClick) => new BoxEl
     {
+        HitSlop = Wavee.Theming.TouchTargetPolicy.OneSide(ZuneListRules.ChartPagerChevron, left: true),
         Width = ZuneListRules.ChartPagerChevron, Height = ZuneListRules.ChartPagerChevron, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         HoverFill = enabled ? R.Layer.RowHover : ColorF.Transparent, OnClick = enabled ? onClick : null,
         Role = AutomationRole.Button, Cursor = enabled ? CursorId.Hand : null,

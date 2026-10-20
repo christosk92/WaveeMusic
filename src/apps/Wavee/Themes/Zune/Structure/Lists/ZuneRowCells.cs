@@ -100,7 +100,7 @@ internal static class ZuneRowCells
                                                   ZuneListRules.RowInk(isNow, accent, Tok.TextTertiary)), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(t, isNow ? accent : null), CellKey.Tempo);
         if (RowMetrics.ShowHeartTrailing(in set))
-            cells[i++] = Track.RowCenterCell(HeartReveal(Heart(st.Saved, o.OnLike, o.LikePop), LikedNow(t)), CellKey.HeartTrailing);
+            cells[i++] = Track.RowControlCell(HeartReveal(Heart(st.Saved, o.OnLike, o.LikePop), LikedNow(t)), CellKey.HeartTrailing);
 
         if (RowMetrics.ShowDuration(in set))
         {

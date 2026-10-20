@@ -101,7 +101,7 @@ internal static class ClassicTrackTable
         if (set.Date) cells[i++] = Track.RowLeftCell(BoundDateCell(r, classic), CellKey.Date);
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
-        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.HeartTrailing);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.HeartTrailing);
         if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
         // The Compact row's "…" is a 40 target shown on every row (C-RowStates-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
