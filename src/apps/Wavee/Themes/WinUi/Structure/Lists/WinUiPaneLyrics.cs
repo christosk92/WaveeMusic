@@ -126,7 +126,9 @@ internal sealed class WinUiPaneLyricsRow : Component
             float split = highlight ? Lyrics.Wipe.ComputeSplit(line, (long)host.Now.Peek()) : 0f;
             if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f);
             ColorF sung = active ? Tok.TextPrimary : rest;
-            ColorF unsung = active ? Tok.TextTertiary : rest;
+            // The active line's unsung words carry the upcoming lines' ink (W-PaneLyrics: upcoming #c5c5c5): tertiary read darker than the
+            // lines after it, so the line being sung looked dimmer than the ones still to come.
+            ColorF unsung = active ? Tok.TextSecondary : rest;
             text = LineText(line.Text, sung, new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: host.SoftnessOfLine(_index), Lift: 0f));
         }
         else
