@@ -205,6 +205,7 @@ public static partial class Diagnostics
             float scale = Math.Max(0.01f, shell.Window.Scale);
             float width = shell.Window.ClientSizePx.Width / scale, height = shell.Window.ClientSizePx.Height / scale;
             IReadOnlyList<LintEdge> edges = [];
+            IReadOnlyList<string> bleeds = ThemeInspection.ActiveLintGuide?.DesignedTopBleeds ?? [];
             if (ThemeInspection.ActiveLintGuide is { } guide)
             {
                 RectF? RectOfKey(string key)
@@ -214,7 +215,7 @@ public static partial class Diagnostics
                 }
                 edges = guide.Edges(new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey));
             }
-            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, Theme = InspectKit.ActiveThemeId, Backdrop = pixels };
+            return new InspectLint.Snapshot(width, height, tiers.Window, nodes) { Edges = edges, TopBleeds = bleeds, Theme = InspectKit.ActiveThemeId, Backdrop = pixels };
         }
 
         // ── the report ──────────────────────────────────────────────────────────────────────────────────────────────

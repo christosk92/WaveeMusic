@@ -165,7 +165,11 @@ internal static partial class ZuneSettings
                 ],
             }.Interactive(Interaction.Subtle);
         }
-        return new BoxEl { Key = SectionsKey, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, Children = rows };
+        // The list scrolls like a section's lane: twelve 56-tall rows overrun a short window, and the last ones must still come up from under the play bar.
+        return ScrollView(new BoxEl
+        {
+            Key = SectionsKey, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = new Edges4(0f, 0f, 0f, Z.LaneBottom), Children = rows,
+        }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch, ScrollKey = "zs:sections", Key = "zs:scroll:sections" };
     }
 
     /// <summary>The "‹ settings" crumb over a Compact section's page: one 40-tall target back to the sections.</summary>

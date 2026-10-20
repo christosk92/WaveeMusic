@@ -325,7 +325,7 @@ internal static class ZuneRowCells
         Width = ZuneListRules.OnPcMark, Height = ZuneListRules.OnPcMark, Shrink = 0f, Corners = Radii.Circle(ZuneListRules.OnPcMark),
         BorderWidth = ZuneListRules.OnPcRing, BorderColor = ink, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Margin = new Edges4(0f, 0f, ZuneListRules.OnPcAfter, 0f),
-        Children = [new TextEl(ZuneListRules.OnPcArrow) { Size = ZuneListRules.OnPcGlyph, LineHeight = ZuneListRules.OnPcGlyph + 2f, Weight = 700, Color = ink }],
+        Children = [new TextEl(ZuneListRules.OnPcArrow) { Size = ZuneListRules.OnPcGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }],
     }, Loc.Get(Strings.Track.OnThisPc));
 
     /// <summary>The square "E" (Zune squares every plate).</summary>

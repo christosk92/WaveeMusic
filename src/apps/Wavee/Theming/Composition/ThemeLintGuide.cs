@@ -52,4 +52,10 @@ public interface IThemeLintGuide
 {
     /// <summary>The expectations that hold in <paramref name="context"/>'s window (empty when none do). Called per lint, on the UI thread.</summary>
     IReadOnlyList<LintEdge> Edges(LintContext context);
+
+    /// <summary>Keys of the boxes whose display type the theme sets on an EXACT line flush with a clipping edge above it, by design (Zune's
+    /// panorama: the title's line box sits on the band's top, its ascenders inside it). The clip rule's ink model (1.2 em, centred on the line)
+    /// reads such a line as running past the top, so for text under these keys a cut at the TOP is reported as <c>info</c> ("designed bleed"),
+    /// never an error; a cut at the bottom (descenders) still is. Empty by default.</summary>
+    IReadOnlyList<string> DesignedTopBleeds => [];
 }
