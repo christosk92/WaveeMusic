@@ -125,6 +125,10 @@ public static class ClassicHomeRules
     /// <summary>The tier forms' pieces (`C-Home-Compact`, `C-Home-Huge`): the Compact stack's copy rises this far over its art; the Huge hero's clock is a
     /// 440-wide dark plate (padding 14 / 12) inset 24 from the card's corner; the Compact and Small clock rows' gap.</summary>
     public const float StackedOverlap = 28f, ClockPlateW = 440f, ClockPlateInset = 24f;
+
+    /// <summary>Compact's stacked daylist: its vertical veil peaks where the copy rises over the art band (<see cref="StackedOverlap"/> above its foot,
+    /// less a line of slack) and holds to the foot, so the eyebrow is on the full veil. NaN for a band with no height.</summary>
+    public static float StackedVeilHold(float artH) => artH <= StackedOverlap ? float.NaN : (artH - 2f * StackedOverlap) / artH;
     public static ColorF ClockPlateFill => ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
     public static Edges4 ClockPlatePadding => new(14f, 12f, 14f, 12f);
 

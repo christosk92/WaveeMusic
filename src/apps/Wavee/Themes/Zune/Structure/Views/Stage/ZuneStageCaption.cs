@@ -44,12 +44,12 @@ internal static class ZuneStageCaption
         string gen = props.Generation;
         var kids = new List<Element>(3);
         if (props.PreviousText is { } previous)
-            kids.Add(ContextLine(previous, "cap:p:" + gen + ":" + props.PreviousIndex, props, Stage.Tone.CaptionPrevA));
+            kids.Add(ContextLine(previous, "cap:p:" + gen + ":" + props.PreviousIndex, props));
         if (props.Dots) kids.Add(DotsSlot("cap:d:" + gen + ":" + props.Anchor, props));
         else if (props.ActiveText is { } active)
             kids.Add(ActiveSlot(active, "cap:a:" + gen + ":" + props.ActiveIndex, props));
         if (props.NextText is { } next)
-            kids.Add(ContextLine(next, "cap:n:" + gen + ":" + props.NextIndex, props, Stage.Tone.CaptionNextA));
+            kids.Add(ContextLine(next, "cap:n:" + gen + ":" + props.NextIndex, props));
 
         return Stage.Layer with
         {
@@ -83,7 +83,7 @@ internal static class ZuneStageCaption
 
     static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
 
-    static Element ContextLine(string text, string key, StageCaptionProps p, float alpha) => new BoxEl
+    static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
     {
         Key = key, Direction = 1, AlignItems = FlexAlign.Center, MaxWidth = p.Width, HitTestVisible = false,
         Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
@@ -92,7 +92,7 @@ internal static class ZuneStageCaption
             new TextEl(text)
             {
                 Size = p.ContextSize, LineHeight = p.ContextLineHeight, Weight = G.CaptionWeight, FontFamily = R.Type.DisplayFace,
-                Color = Ink.Ink with { A = alpha }, Wrap = TextWrap.Wrap, MaxLines = G.ContextMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = G.ContextMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
         ],
     };

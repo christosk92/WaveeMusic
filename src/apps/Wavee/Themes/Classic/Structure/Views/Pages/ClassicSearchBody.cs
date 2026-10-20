@@ -385,8 +385,18 @@ internal static class ClassicSearchBody
                 minCardW: Search.BestMatchCellMin, maxCardW: 9999f, gap: Search.BestMatchGap, rows: rows, maxColumns: maxCols,
                 snap: ShelfSnap.Page, cardWidthAgnostic: true, edgeFade: ClassicSearchRules.BestMatchEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+                parts: layout.PagerEndInset > 0f ? PagerEndParts(layout.PagerEndInset) : null,
                 keyOf: static (item, _) => Search.KeyOf(item.Ref));
         }, fallback: firstW)) with { Layout = ClassicTierMotion.Reflow };
+    }
+
+    /// <summary>The pager's next chevron stands <paramref name="inset"/> in from the shelf's end (<see cref="ClassicSearchLayout.PagerEndInset"/>), its touch
+    /// slop reaching left into the gap before it (the scroll bar's lane takes the side past its end).</summary>
+    static TemplateParts PagerEndParts(float inset)
+    {
+        var parts = new TemplateParts();
+        parts[PagedShelf.PartChevronNext] = b => b with { Margin = new Edges4(0f, 0f, inset, 0f), HitSlop = Wavee.Theming.TouchTargetPolicy.OneSide(b.Width.Value, left: true) };
+        return parts;
     }
 
     static readonly Func<float, float> s_bestMatchHeight = static _ => Search.BestMatchRowH;

@@ -34,6 +34,10 @@ public sealed record ClassicSearchLayout
     /// <summary>The page's side inset: the page gutter (16 / 32 / 36 / 36).</summary>
     public required float Gutter { get; init; }
 
+    /// <summary>How far the best matches' pager stands in from the shelf's end (Compact: 4, where the shelf's end lies 8 from the window's and the page's
+    /// 12 scroll bar lane would take the next chevron's last 4 DIP, and so its touch floor; 0 elsewhere).</summary>
+    public float PagerEndInset { get; init; }
+
     /// <summary>The hit rows run edge to edge (Compact): the body takes no side inset and each row carries its own 16, so the hover plate reaches the card's edges.</summary>
     public required bool Flush { get; init; }
 
@@ -108,7 +112,7 @@ public static class ClassicSearchTiers
     {
         WidthTier.Compact => new ClassicSearchLayout
         {
-            Tier = WidthTier.Compact, Gutter = gutter, Flush = true, TabsWrap = false, TabH = 44f, RowArt = 44f, RowMinH = 60f,
+            Tier = WidthTier.Compact, Gutter = gutter, Flush = true, TabsWrap = false, TabH = 44f, RowArt = 44f, RowMinH = 60f, PagerEndInset = 4f,
             Songs = new ClassicGridBand(ClassicSearchRules.SongsColMin, 1), HeroH = ClassicSearchRules.HeroHeight, HeroBesideW = float.NaN,
             HeroForm = ClassicSearchHeroForm.Card, ArtistRail = null,
             Rail = new ClassicShelfBand(148f, 188f, 0, FixedCardW: 164f, Gap: 0f, Pager: false),

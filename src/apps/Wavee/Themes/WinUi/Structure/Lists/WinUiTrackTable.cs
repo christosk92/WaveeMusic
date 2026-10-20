@@ -108,7 +108,7 @@ internal static class WinUiTrackTable
                                                           RowInk(r, static () => Tok.TextSecondary), fill: true), CellKey.Date);
         if (set.Plays) cells[i++] = Track.RowEndCell(PlaysCell(r), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(r), CellKey.Tempo);
-        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Quiet, set.Compact), CellKey.HeartTrailing);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(HeartReveal(r, set.Quiet, set.Compact), CellKey.HeartTrailing);
         if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r), CellKey.Duration);
         // The Compact row's "..." is a 40 target shown on every row (W-RowStates-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact

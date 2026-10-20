@@ -212,7 +212,12 @@ public static partial class Shell
     /// inside the same theme providers.</summary>
     sealed class HeadlessRoot(Func<Element>? content) : Component
     {
-        public override Element Render() => content is null ? RootFrame() : Theming.ThemeRoot.Wrap(content);
+        public override Element Render()
+        {
+            var input = UseContext(FluentGpu.Hooks.InputHooks.Current);
+            UseSignalEffect(() => ApplyHitFloor(input));
+            return content is null ? RootFrame() : Theming.ThemeRoot.Wrap(content);
+        }
     }
 
     /// <summary>One mounted shell (<see cref="Headless.Mount"/>). Every member runs on the UI thread.</summary>

@@ -21,6 +21,7 @@ using System.Text.Json;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Input;
 using FluentGpu.Scene;
 using FluentGpu.Text;
 using Wavee.Theming;
@@ -334,6 +335,41 @@ public static partial class Diagnostics
             return Wavee.Shell.NameOf(r) + (arg is null ? "" : " " + arg);
         }
 
+        /// <summary>The press targets under an invisible (opacity 0) <paramref name="root"/>: hit-testable, so their real hits still beat a neighbour's slop.</summary>
+        static void CollectHitBlockers(SceneStore scene, NodeHandle root, List<RectF> into)
+        {
+            const uint press = InteractionInfo.ClickBit | InteractionInfo.PointerBit | InteractionInfo.PressedBit | InteractionInfo.DragBit | InteractionInfo.GestureBit;
+            var stack = new Stack<NodeHandle>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                NodeHandle node = stack.Pop();
+                if (node.IsNull || !scene.IsLive(node)) continue;
+                NodeFlags flags = scene.Flags(node);
+                if ((flags & (NodeFlags.Visible | NodeFlags.HitTestVisible)) != (NodeFlags.Visible | NodeFlags.HitTestVisible) || (flags & NodeFlags.Parked) != 0) continue;
+                RectF rect = scene.PresentedAbsoluteRect(node);
+                if (rect.W > 0f && rect.H > 0f && (scene.Interaction(node).HandlerMask & press) != 0 && (flags & NodeFlags.Disabled) == 0) into.Add(rect);
+                for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) stack.Push(c);
+            }
+        }
+
+        /// <summary>Where a scroll bar's lane starts inside <paramref name="slop"/>, per side, measured out from <paramref name="rect"/> along its
+        /// middle line in 1 DIP steps (<c>InputDispatcher.IsOverScrollbarLane</c>: a press there is the bar's before any target's); -1 where no lane
+        /// lies within the slop. The top is not walked (a bar's lane runs down a viewport's side or along its foot). Read at capture so a replay
+        /// cuts a target's slop as the live lint does.</summary>
+        static Edges4 LaneStops(InputDispatcher input, in RectF rect, in Edges4 slop)
+        {
+            float cy = rect.Y + rect.H / 2f, cx = rect.X + rect.W / 2f;
+            float right = -1f, left = -1f, bottom = -1f;
+            for (float d = 0f; d < slop.Right; d += 1f)
+                if (input.IsOverScrollbarLane(new Point2(rect.Right + d + 0.5f, cy))) { right = d; break; }
+            for (float d = 0f; d < slop.Left; d += 1f)
+                if (input.IsOverScrollbarLane(new Point2(rect.X - d - 0.5f, cy))) { left = d; break; }
+            for (float d = 0f; d < slop.Bottom; d += 1f)
+                if (input.IsOverScrollbarLane(new Point2(cx, rect.Bottom + d + 0.5f))) { bottom = d; break; }
+            return new Edges4(left, -1f, right, bottom);
+        }
+
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's guide and scale. UI thread, between
         /// frames. <paramref name="pixels"/> is the rendered frame the grounds under the text are read from (null: none read).</summary>
         public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, InspectLint.Pixels? pixels = null, string devices = "")
@@ -347,6 +383,7 @@ public static partial class Diagnostics
             var clicks = new Dictionary<Delegate, int>();
             var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert, int Root)>();
             var children = new List<NodeHandle>();
+            var blockers = new List<RectF>();
             Span<char> path = stackalloc char[256];
             // A root under live ancestors (`root=`) starts from the cut they put on it, so the subtree is judged as the page shows it.
             var seeds = new (bool Seeded, RectF Screen, RectF Content, bool Shown)[roots.Length];
@@ -366,7 +403,13 @@ public static partial class Diagnostics
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
-                if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0 || paint.Opacity <= 0f) continue;
+                if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0) continue;
+                if (paint.Opacity <= 0f)
+                {
+                    // Paints nothing, but the hit test is box and clip, never paint: its targets (an auto-hidden scroll bar) still take presses.
+                    CollectHitBlockers(scene, node, blockers);
+                    continue;
+                }
                 RectF rect = scene.PresentedAbsoluteRect(node);
                 float opacity = above * paint.Opacity;
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
@@ -384,6 +427,12 @@ public static partial class Diagnostics
                     int clickId = 0;
                     if (click && scene.GetClickHandler(node) is { } handler && !clicks.TryGetValue(handler, out clickId))
                         clicks[handler] = clickId = clicks.Count + 1;
+                    // What the hit test adds outside the box: only a whole-box target takes hits in its slop (InputDispatcher.Hit).
+                    const uint slopHandlers = InteractionInfo.ClickBit | InteractionInfo.PointerBit | InteractionInfo.PressedBit
+                        | InteractionInfo.DragBit | InteractionInfo.GestureBit | InteractionInfo.ContextBit;
+                    Edges4 slop = interactive && (it.HandlerMask & slopHandlers) != 0 && (flags & NodeFlags.Disabled) == 0
+                        ? shell.Host.Input.EffectiveHitSlop(node, rect.W, rect.H) : default;
+                    Edges4 lane = slop.Horizontal + slop.Vertical > 0f ? LaneStops(shell.Host.Input, rect, slop) : InspectLint.NoLane;
                     int axis = 0;
                     float offset = 0f, max = 0f;
                     byte fade = 0;
@@ -420,6 +469,9 @@ public static partial class Diagnostics
                         Column = layout.Direction == 1,
                         Layout = DeclaredOf(in layout),
                         Interactive = interactive,
+                        Slop = slop,
+                        Lane = lane,
+                        Pressable = (it.HandlerMask & slopHandlers) != 0,
                         Disabled = (flags & NodeFlags.Disabled) != 0,
                         Role = it.Role == AutomationRole.None ? "" : it.Role.ToString(),
                         ClickId = clickId,
@@ -501,6 +553,7 @@ public static partial class Diagnostics
                 Edges = edges,
                 Policies = policies,
                 TopBleeds = bleeds,
+                HitBlockers = blockers,
                 Scale = ScaleOf(),
                 Theme = InspectKit.ActiveThemeId,
                 GuideId = guideId,

@@ -76,6 +76,8 @@ internal static partial class ZuneLibraryPage
                         R.Type.QuickplayHead(Loc.Get(Strings.Podcast.Reader.YourEpisodes)) with
                         {
                             Size = LR.BoardHeadSize, LineHeight = LR.BoardHeadLine, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Case = R.Case.For(LabelKind.Label),
+                            // On its exact 32 line (the board's): the font's taller natural box overran the 32 the row leaves it and ran past the section's clip.
+                            LineStacking = LineStacking.BlockLineHeight,
                         },
                     ],
                 },

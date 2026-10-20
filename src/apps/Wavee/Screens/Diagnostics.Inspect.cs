@@ -534,17 +534,20 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Dialog:
                     {
-                        // `dialog {kind}`: opens over the CURRENT page, never navigating: crash | hang (the crash prompt over a made-up bundle) through the shell's
-                        // own overlay host (the one App.BindOverlayServices hands Track.DrawerOverlay on every mount), report (Report a problem) through its own
-                        // chrome. A developer's probe; `esc` closes it. The reply's `over` names the page underneath.
+                        // `dialog {kind}`: opens over the CURRENT page, never navigating: crash | hang (the crash prompt over a made-up bundle) and lightbox (the artist
+                        // gallery's lightbox over bundled photographs) through the shell's own overlay host (the one App.BindOverlayServices hands Track.DrawerOverlay
+                        // on every mount), report (Report a problem) through its own chrome. A developer's probe; `esc` closes it. The reply's `over` names the page
+                        // underneath.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (kind is not ("crash" or "hang" or "report")) return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report, not '" + kind + "'");
+                        if (kind is not ("crash" or "hang" or "report" or "lightbox")) return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report|lightbox, not '" + kind + "'");
                         if (kind == "report") Feedback.Open(Feedback.ReportKind.Bug);
                         else
                         {
                             var overlay = Track.DrawerOverlay;
                             if (Controls.IsNullOverlay(overlay)) return Inspect.Reply.Fail(id, name, "the shell's overlay host is not bound yet (run frames 30 and try again)");
-                            Crash.OpenFakePrompt(overlay, kind == "hang" ? Crash.Kind.Hang : Crash.Kind.Managed);
+                            // lightbox: the artist gallery's lightbox over the bundled photographs, the bright one first (text and chrome over a photograph)
+                            if (kind == "lightbox") Artist.GalleryOpen(overlay, LightboxPhotos(), 0);
+                            else Crash.OpenFakePrompt(overlay, kind == "hang" ? Crash.Kind.Hang : Crash.Kind.Managed);
                         }
                         RunFrames(40);
                         string over = RouteText();
@@ -1220,6 +1223,13 @@ public static partial class Diagnostics
         void Move(Point2 p) => Queue(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: _ms));
 
         void Queue(in InputEvent e) => _shell!.Window.QueueInput(in e);
+
+        /// <summary>`dialog lightbox`'s photographs: the bright header, then three bundled covers.</summary>
+        static string[] LightboxPhotos()
+        {
+            string dir = Path.Combine(AppContext.BaseDirectory, "assets", "covers");
+            return [Path.Combine(dir, "header-bright.jpg"), Path.Combine(dir, "cover01.jpg"), Path.Combine(dir, "cover05.jpg"), Path.Combine(dir, "cover09.jpg")];
+        }
 
         void RunFrames(int n)
         {

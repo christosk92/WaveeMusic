@@ -407,6 +407,14 @@ public readonly partial struct Track
         Children = [content],
     };
 
+    /// <summary>A centred lane for ONE fixed-size control that never overflows it (the trailing heart, 28 in its 32 lane): no clip, so the control's touch
+    /// slop (the host's hit floor at a Compact window) reaches past the lane's edge instead of being cut to it. Everything else keeps <see cref="RowCenterCell"/>.</summary>
+    internal static BoxEl RowControlCell(Element content, string? key = null) => new()
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f,
+        Children = [content],
+    };
+
     internal static BoxEl RowLeftCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, MinWidth = 0f, ClipToBounds = true,

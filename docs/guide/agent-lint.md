@@ -205,15 +205,21 @@ longer counts: the capture keeps the collapsed clip, so the bar is off screen.)
 fingerprint is the size alone (pattern `type`). Glyphs are not type; symbols count.
 **`type.scale` (type).** One report line per (size, line height, weight) in use. Never a verdict.
 
-**`target.size` (target).** Interactive, enabled, in-scope targets whose **effective area** is under the floor: under 40 x
-40 at window tier Compact is an error, under 32 x 32 above it a warn (`targetFloorCompact`, `targetFloor`). The effective
-area is the largest interactive ancestor that runs the SAME click and contains the node (a role-only node hands its click to
-the first clickable ancestor); a target filling its interactive parent is the parent's. Exempt: Slider, ScrollBar,
-ProgressBar, Hyperlink, and drag bars: thin across, at least 4 x the floor long, AND handling a drag, a pointer press or a
-gesture itself or through the ancestor its click belongs to (a splitter, a seek line; a 16 x 130 text button that only clicks
-is no bar and is judged). Targets are grouped
-by the key pattern of what they sit in (their parent's nearest key): the band's Play and Shuffle, a pager's dots and a crumb
-trail are one finding each, listing their sizes. Cause: narrow / low / narrow+low.
+**`target.size` (target).** Interactive, enabled, in-scope targets with a press handler (a role alone takes no press and is
+no target) that reach under the floor: under 40 x 40 at window tier Compact is an error, under 32 x 32 above it a warn
+(`targetFloorCompact`, `targetFloor`). A target reaches as far as the larger of two rects. Its **effective area** is the
+largest interactive ancestor that runs the SAME click and contains the node; a target filling its interactive parent is the
+parent's. Its **hit rect** is what the engine's hit test takes: the box grown by its hit slop (`BoxEl.HitSlop` plus the host's
+touch floor, 40 at a Compact window: `TouchTargetPolicy`), cut by every clipping ancestor (a scroller only across its axis
+while the target is not wholly in its view), by the boxes of the other press targets beside it in the same scrolled plane
+(their real hits win), by press targets that paint nothing (an auto-hidden bar: the snapshot's `hitBlockers`) and by a scroll
+bar's lane (the slop stops where a lane starts, read at capture along the target's middle line: the node's `lane`); the
+message names what cut it ("24 x 24 (hit 36 x 40 with its slop; cut by beside ...)"). A target its clipping ancestors hide
+whole is not on screen. Exempt: Slider, ScrollBar, ProgressBar, Pager (a pips pager's dots are one track), Hyperlink, and drag
+bars: thin across, at least 4 x the floor long, AND handling a drag, a pointer press or a gesture itself or through the
+ancestor its click belongs to (a splitter, a seek line; a 16 x 130 text button that only clicks is no bar and is judged).
+Targets are grouped by the key pattern of what they sit in (their parent's nearest key): the band's Play and Shuffle, a
+pager's chevrons and a crumb trail are one finding each, listing their sizes. Cause: narrow / low / narrow+low.
 
 **`duplicate.action` (duplicate).** The same verb on the same subject offered in two homes on screen (the album band's
 Shuffle and its song list's Shuffle). A verb is a Button, ToggleButton, MenuItem or role-less target that is not a content
@@ -249,7 +255,9 @@ before it was) is a `review` grouped by that ground ("13 runs (3 inks) sit on a 
 zune.material.wash:*)"). A run the frame gave no ground for, a run in a subtree still animating (a page fading in or out:
 `mid-animation`), and a run an opaque overlay partly covers (`covered`) are reviews too, before any pixel judgement: never
 silence, never a verdict from a frame that is not the page's. No frame (`gpu=none`, headless, inside `crossing`): `checked`
-0. FP class: under `root=`, a plate outside the subtree is not seen, so a run on it reads as "on the page"; a hover highlight
+0. Skipped as incidental text: a run whose own and ancestors' opacity multiply below 0.5 (faded on purpose: the stage's
+distance-faded lyric lines), and a fainter glow copy of the same words at the same box (a karaoke line's bloom: the strongest
+copy is judged). FP class: under `root=`, a plate outside the subtree is not seen, so a run on it reads as "on the page"; a hover highlight
 that is not a node of its own reads as the page.
 
 ### Report-only rules (level `todo`)

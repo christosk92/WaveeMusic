@@ -185,6 +185,10 @@ internal sealed class ArtistChartPagerArgs
 
     /// <summary>The pips' controlled selection, mirrored from the shelf's page by the core's effect.</summary>
     public required Signal<int> Selected { get; init; }
+
+    /// <summary>The window tier the pager is drawn in (additive): the chevrons stand a touch gap from the pips at Compact
+    /// (<see cref="Wavee.Theming.TouchTargetPolicy.PagerGap"/>).</summary>
+    public WidthTier Window { get; init; } = WidthTier.Standard;
 }
 
 /// <summary>What the core hands the chart's frame: the readiness region's arms (stable delegates, read live) and the floating bar.</summary>

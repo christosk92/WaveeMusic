@@ -96,7 +96,9 @@ internal static class WinUiArtistLightbox
 
             return new BoxEl
             {
-                Grow = 1f, ZStack = true, Fill = Rules.Scrim, Focusable = true,
+                // The viewport's size, not Grow alone: the modal host does not stretch its content, so the black ground painted nothing and the
+                // chrome sat on the page's ground (white in light mode) instead.
+                Grow = 1f, Width = vp.Width, Height = vp.Height, ZStack = true, Fill = Rules.Scrim, Focusable = true,
                 OnKeyDown = e => OnKeys(e, current, setSelected),
                 OnHoverMove = _ => Poke(),
                 Children =
@@ -114,7 +116,7 @@ internal static class WinUiArtistLightbox
             for (int i = 0; i < pages.Length; i++)
                 pages[i] = new BoxEl
                 {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Rules.PageGround,
                     // Ctrl+wheel / a touchpad pinch enters zoom; everything else bubbles to the FlipView.
                     OnPointerWheel = e =>
                     {
@@ -293,9 +295,9 @@ internal static class WinUiArtistLightbox
                         Direction = 1, Gap = Rules.TitleGap,
                         Children =
                         [
-                            new TextEl(Loc.Get(Strings.Artist.Gallery)) { Size = Rules.TitleSize, Weight = Rules.TitleWeight, Color = Tok.TextPrimary },
+                            new TextEl(Loc.Get(Strings.Artist.Gallery)) { Size = Rules.TitleSize, Weight = Rules.TitleWeight, Color = R.OnMedia.Ink },
                             new TextEl((current + 1).ToString(CultureInfo.CurrentCulture) + " / "
-                                       + _photos.Length.ToString(CultureInfo.CurrentCulture)) { Size = Rules.CountSize, Color = Tok.TextSecondary },
+                                       + _photos.Length.ToString(CultureInfo.CurrentCulture)) { Size = Rules.CountSize, Color = R.OnMedia.InkSecondary },
                         ],
                     },
                     new BoxEl { Grow = 1f },
@@ -331,7 +333,8 @@ internal static class WinUiArtistLightbox
             };
             return new BoxEl
             {
-                Height = Rules.Thumb + 2f * Rules.StripPad, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                // Along the viewer's foot (the pre-theme lightbox's place): stretched, the ZStack laid it over the top chrome's title.
+                Height = Rules.Thumb + 2f * Rules.StripPad, AlignSelf = FlexAlign.End, MinWidth = 0f,
                 Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
                 Children =

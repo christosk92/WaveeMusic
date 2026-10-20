@@ -758,6 +758,8 @@ public static partial class Controls
 
     /// <summary>The portrait itself.</summary>
     public const float FaceAvatar = 28f;
+    /// <summary>The overflow face's "+N": the 11-DIP text floor (it was 10), bold in the 28 avatar.</summary>
+    public const float FaceMoreText = 11f;
     /// <summary>The ring drawn around each portrait, in the SURFACE fill, so overlapping faces stay separable.</summary>
     public const float FaceRing = 2f;
     /// <summary>The framed diameter (portrait + ring on both sides) — what the row actually reserves per face.</summary>
@@ -872,7 +874,7 @@ public static partial class Controls
                 {
                     Width = FaceAvatar, Height = FaceAvatar, Corners = CornerRadius4.All(FaceAvatar / 2f),
                     Fill = Tok.FillCardDefault, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [new TextEl("+" + n) { Size = 10f, Weight = 700, Color = Tok.TextSecondary }],
+                    Children = [new TextEl("+" + n) { Size = FaceMoreText, Weight = 700, Color = Tok.TextSecondary }],
                 },
             ],
         };

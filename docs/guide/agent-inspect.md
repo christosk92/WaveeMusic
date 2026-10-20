@@ -322,8 +322,10 @@ the remote line shows through the load as the title and artists do.
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back); `loading` opens a search for
 `zzqx`, which the fake catalogue never answers (the page stays on its skeleton for the first frames). Any other search query is answered from the fake
 catalogue by name; `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
-`mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report` opens the crash prompt (over a made-up bundle, through the shell's own overlay host)
-or Report a problem over the **current** page: it never navigates, and the reply's `over` names the page underneath. `key esc` closes it.
+`mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
+overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
+photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. Lint the lightbox with `root=` its key,
+so the page under the modal is not judged. `key esc` closes it.
 
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:

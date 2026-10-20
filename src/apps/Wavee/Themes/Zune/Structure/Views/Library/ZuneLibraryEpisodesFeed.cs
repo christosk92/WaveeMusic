@@ -78,6 +78,8 @@ internal static class ZuneLibraryEpisodesFeed
                 kids[i] = new BoxEl
                 {
                     Key = "lib:episodes:filter:" + i, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Height = LR.HeadH,
+                    // The last word stands on the page's edge, whose clip cuts its touch slop there: it reaches left, into the gap, instead.
+                    HitSlop = i == words.Length - 1 ? Wavee.Theming.TouchTargetPolicy.OneSide(LR.HeadH, left: true) : default,
                     Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => _filter.Value = code,
                     Children = [ZuneLibraryKit.WordText(Loc.Get(words[i]), active: i == filter)],
                 };
@@ -143,6 +145,8 @@ internal static class ZuneLibraryEpisodesFeed
                     new BoxEl
                     {
                         Width = LR.FeedMore, Height = LR.FeedMore, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        // The row's end is the feed's clipped edge: the "⋯"'s touch slop reaches left instead.
+                        HitSlop = Wavee.Theming.TouchTargetPolicy.OneSide(LR.FeedMore, left: true),
                         Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => p.OpenEpisode?.Invoke(uri, title),
                         Children = [Icon(Icons.More, LR.ViewMoreGlyph, Tok.TextSecondary)],
                     },

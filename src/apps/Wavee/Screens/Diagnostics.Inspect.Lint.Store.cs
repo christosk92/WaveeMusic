@@ -140,6 +140,17 @@ public static partial class Diagnostics
             }
             w.WriteEndArray();
             Strings(w, "topBleeds", s.TopBleeds);
+            w.WriteStartArray("hitBlockers");
+            foreach (RectF b in s.HitBlockers)
+            {
+                w.WriteStartArray();
+                w.WriteNumberValue(b.X);
+                w.WriteNumberValue(b.Y);
+                w.WriteNumberValue(b.W);
+                w.WriteNumberValue(b.H);
+                w.WriteEndArray();
+            }
+            w.WriteEndArray();
             w.WriteStartArray("scale");
             foreach (InspectLint.ScaleEntry e in s.Scale)
             {
@@ -191,6 +202,9 @@ public static partial class Diagnostics
             if (n.Role.Length > 0) w.WriteString("role", n.Role);
             if (n.ClickId != 0) w.WriteNumber("click", n.ClickId);
             if (n.Drag) w.WriteBoolean("drag", true);
+            if (n.Slop != default) Edges(w, "slop", n.Slop);
+            if (n.Lane != InspectLint.NoLane) Edges(w, "lane", n.Lane);
+            if (!n.Pressable) w.WriteBoolean("pressable", false);
             if (n.Label.Length > 0) w.WriteString("label", n.Label);
             if (n.LabelGlyph.Length > 0) w.WriteString("labelGlyph", n.LabelGlyph);
             if (n.Animating) w.WriteBoolean("animating", true);
@@ -336,6 +350,7 @@ public static partial class Diagnostics
                     Edges = ReadEdges(root, head),
                     Policies = ReadPolicies(root, head),
                     TopBleeds = head.Strings(root, "topBleeds") ?? [],
+                    HitBlockers = ReadRects(root, "hitBlockers", head),
                     Scale = ReadScale(root, head),
                     Source = full,
                 };
@@ -534,6 +549,9 @@ public static partial class Diagnostics
                 Role = r.Str(e, "role", ""),
                 ClickId = r.Int(e, "click", 0),
                 Drag = r.Bool(e, "drag"),
+                Slop = r.Edges(e, "slop"),
+                Lane = e.TryGetProperty("lane", out _) ? r.Edges(e, "lane") : InspectLint.NoLane,
+                Pressable = !e.TryGetProperty("pressable", out _) || r.Bool(e, "pressable"),
                 Label = r.Str(e, "label", ""),
                 LabelGlyph = r.Str(e, "labelGlyph", ""),
                 Animating = r.Bool(e, "animating"),
@@ -644,6 +662,29 @@ public static partial class Diagnostics
                 policies.Add(new LintPolicy(intent, prefix, reason, r.Finite(e, "value", 0f), r.Str(e, "rule", "")));
             }
             return policies;
+        }
+
+        /// <summary>An array of rects <c>[[x, y, w, h], ...]</c> (absent or null: none), each checked as <see cref="Strict.Rect"/> checks one.</summary>
+        static IReadOnlyList<RectF> ReadRects(JsonElement root, string name, Strict r)
+        {
+            var rects = new List<RectF>();
+            if (!root.TryGetProperty(name, out JsonElement list) || list.ValueKind == JsonValueKind.Null) return rects;
+            if (list.ValueKind != JsonValueKind.Array) { r.Fail(name, "is an array of rects [x, y, w, h], not " + list.GetRawText()); return rects; }
+            int k = 0;
+            Span<float> v = stackalloc float[4];
+            foreach (JsonElement e in list.EnumerateArray())
+            {
+                bool ok = e.ValueKind == JsonValueKind.Array && e.GetArrayLength() == 4;
+                for (int j = 0; j < 4 && ok; j++) ok = e[j].ValueKind == JsonValueKind.Number && e[j].TryGetSingle(out v[j]) && float.IsFinite(v[j]);
+                if (!ok || v[2] < 0f || v[3] < 0f)
+                {
+                    r.Fail(name + "[" + k.ToString(CultureInfo.InvariantCulture) + "]", "is a rect [x, y, w, h] of finite numbers with w and h at or above 0, not " + e.GetRawText());
+                    break;
+                }
+                rects.Add(new RectF(v[0], v[1], v[2], v[3]));
+                k++;
+            }
+            return rects;
         }
 
         static IReadOnlyList<InspectLint.ScaleEntry> ReadScale(JsonElement root, Strict r)

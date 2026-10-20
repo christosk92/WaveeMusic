@@ -439,10 +439,10 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds))], s_settleArgs),
             },
-            new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang) or Report a problem (report) over the current page; key esc closes it", "dialog kind=report")
+            new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report")], s_settleArgs),
+                Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];

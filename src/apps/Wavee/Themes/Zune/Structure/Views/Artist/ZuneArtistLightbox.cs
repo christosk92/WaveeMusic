@@ -29,7 +29,8 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 using Rules = Wavee.Themes.Zune.ZuneArtistRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+
 using FluentGpu.Theming;
 
 namespace Wavee.Themes.Zune;
@@ -98,7 +99,9 @@ internal static class ZuneArtistLightbox
 
             return new BoxEl
             {
-                Key = Rules.LightboxKey, Grow = 1f, ZStack = true, Fill = Rules.Scrim, Focusable = true,
+                // The viewport's size, not Grow alone: the modal host does not stretch its content, so the black ground painted nothing and the
+                // chrome sat on the page's ground (white in light mode) instead.
+                Key = Rules.LightboxKey, Grow = 1f, Width = vp.Width, Height = vp.Height, ZStack = true, Fill = Rules.Scrim, Focusable = true,
                 OnKeyDown = e => OnKeys(e, current, setSelected),
                 OnHoverMove = _ => Poke(),
                 Children =
@@ -116,7 +119,7 @@ internal static class ZuneArtistLightbox
             for (int i = 0; i < pages.Length; i++)
                 pages[i] = new BoxEl
                 {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Rules.PageGround,
                     // Ctrl+wheel / a touchpad pinch enters zoom; everything else bubbles to the FlipView.
                     OnPointerWheel = e =>
                     {
@@ -296,9 +299,9 @@ internal static class ZuneArtistLightbox
                         Direction = 1, Gap = Rules.ChromeTitleGap,
                         Children =
                         [
-                            R.Type.TrackTitle(Loc.Get(Strings.Artist.Gallery)) with { Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 },
+                            R.Type.TrackTitle(Loc.Get(Strings.Artist.Gallery)) with { Color = R.OnMedia.Ink, Case = R.Case.For(LabelKind.Label), MaxLines = 1 },
                             R.Type.DenseMeta((current + 1).ToString(CultureInfo.CurrentCulture) + " / " + _photos.Length.ToString(CultureInfo.CurrentCulture))
-                                with { Color = Tok.TextSecondary, MaxLines = 1 },
+                                with { Color = R.OnMedia.InkSecondary, MaxLines = 1 },
                         ],
                     },
                     new BoxEl { Grow = 1f },
@@ -353,7 +356,8 @@ internal static class ZuneArtistLightbox
             };
             return new BoxEl
             {
-                Height = edge + Rules.StripPad + Rules.StripPad, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                // Along the viewer's foot (the pre-theme lightbox's place): stretched, the ZStack laid it over the top chrome's title.
+                Height = edge + Rules.StripPad + Rules.StripPad, AlignSelf = FlexAlign.End, MinWidth = 0f,
                 Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
                 Children =
