@@ -58,8 +58,9 @@ public static partial class Diagnostics
         }
 
         /// <summary>A list argument read strictly: a comma-separated string or a JSON array whose entries are all non-empty strings. False with a
-        /// reason for anything else (a number in the array, an empty list).</summary>
-        public static bool TryListOf(Inspect.Args a, string name, out List<string> list, out string error)
+        /// reason for anything else (a number in the array; an empty list unless <paramref name="allowEmpty"/>: `allowTrim=[]` and
+        /// `ignoreUnder=` mean "none", which is how a caller clears a default).</summary>
+        public static bool TryListOf(Inspect.Args a, string name, out List<string> list, out string error, bool allowEmpty = false)
         {
             list = [];
             error = "";
@@ -81,9 +82,28 @@ public static partial class Diagnostics
             else
                 foreach (string part in value.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     list.Add(part);
-            if (list.Count == 0) { error = name + " is empty"; return false; }
+            if (list.Count == 0 && !allowEmpty) { error = name + " is empty"; return false; }
             return true;
         }
+
+        /// <summary>A file path argument: absent is fine (""); present, it must be a non-empty string (`save=true` or `baseline=5` is refused, not
+        /// written to a file named "true").</summary>
+        public static bool TryPath(Inspect.Args a, string name, out string path, out string error)
+        {
+            path = "";
+            error = "";
+            if (!a.TryGet(name, out Inspect.Value value)) return true;
+            if (value.Kind != Inspect.ValueKind.String || value.Str.Trim().Length == 0)
+            {
+                error = name + " is a file path (a non-empty string), not " + (value.Kind == Inspect.ValueKind.String ? "''" : value.ToString());
+                return false;
+            }
+            path = value.Str;
+            return true;
+        }
+
+        /// <summary>The most findings `limit` lists per rule name.</summary>
+        public const int MaxLimit = 10_000;
 
         /// <summary>A number argument read strictly: absent gives <paramref name="fallback"/>; present, it must be a finite number at or above
         /// <paramref name="min"/> (and above it when <paramref name="exclusive"/>).</summary>
@@ -101,14 +121,10 @@ public static partial class Diagnostics
             return true;
         }
 
-        /// <summary>`save` and `replay` belong to `lint` alone: a verb that runs the lint inside itself (`crossing`) calls this to refuse them.</summary>
-        public static bool RejectSnapshotArgs(Inspect.Args a, out string error)
-        {
-            error = a.Has("save") || a.Has("replay") ? "save= and replay= are lint's own (run lint save=<file> or lint replay=<file>)" : "";
-            return error.Length > 0;
-        }
-
-        /// <summary>Every arg `lint` reads (for a dispatcher's arg table): the options below, plus `root`, `nth`, `save` and `replay`.</summary>
+        /// <summary>Every arg `lint` reads: the options below, plus `root`, `nth`, `save` and `replay`. The verb table
+        /// (Diagnostics.Inspect.Protocol.cs: `s_lintArgs`, `s_lintOnlyArgs` and lint's own root and nth) declares the same names, so `help verb=lint`
+        /// lists them and any other name is refused before the lint runs; `crossing` declares only `s_lintArgs`, so it refuses `save` and
+        /// `replay`.</summary>
         public static readonly string[] ArgNames =
         [
             "rules", "scope", "root", "nth", "min", "limit", "outcomes", "baseline", "save", "replay", "typeFloor", "targetFloor",
@@ -116,9 +132,11 @@ public static partial class Diagnostics
         ];
 
         /// <summary>The lint options an args bag spells: <c>rules</c> (ids, today's names, families: <c>align</c>, <c>all</c>), <c>scope</c>
-        /// (screen|content|all), <c>min</c> (info|warn|error), <c>limit</c> (findings listed per rule), <c>outcomes</c> (fail,review,suppressed or
-        /// all: which are LISTED; every one is counted), <c>baseline</c> (a JSON-lines file), <c>typeFloor</c>, <c>targetFloor</c>,
-        /// <c>targetFloorCompact</c>, <c>gapMin</c>, <c>allowTrim</c>, <c>allowDuplicate</c>, <c>ignoreUnder</c>.</summary>
+        /// (screen|content|all), <c>min</c> (info|warn|error), <c>limit</c> (a whole number of findings listed per rule, clamped to 1..10000 as it
+        /// always was), <c>outcomes</c> (fail,review,suppressed,report or all: which are LISTED; every one is counted), <c>baseline</c> (a
+        /// JSON-lines file), <c>typeFloor</c>, <c>targetFloor</c>, <c>targetFloorCompact</c>, <c>gapMin</c>, <c>allowTrim</c>,
+        /// <c>allowDuplicate</c>, <c>ignoreUnder</c> (lists; an empty one means none). Unknown arg names are not checked here: `crossing` passes
+        /// its own args through this too, and the verb table refuses them before either verb runs (<see cref="ArgNames"/>).</summary>
         public static bool TryOptions(Inspect.Args a, out InspectLint.Options options, out string error)
         {
             error = "";
@@ -177,21 +195,27 @@ public static partial class Diagnostics
             if (!TryNumber(a, "typeFloor", 11f, 0f, exclusive: true, out float typeFloor, out error)
                 || !TryNumber(a, "targetFloor", 32f, 0f, exclusive: true, out float targetFloor, out error)
                 || !TryNumber(a, "targetFloorCompact", 40f, 0f, exclusive: true, out float targetFloorCompact, out error)
-                || !TryNumber(a, "gapMin", 2f, 0f, exclusive: false, out float gapMin, out error)
-                || !TryNumber(a, "limit", 100f, 1f, exclusive: false, out float limit, out error))
+                || !TryNumber(a, "gapMin", 2f, 0f, exclusive: false, out float gapMin, out error))
                 return false;
+            int limit = 100;
+            if (a.Has("limit"))
+            {
+                // A whole number; 0 or less lists one and more than the cap lists the cap (the clamp `limit` always had).
+                if (!a.TryNum("limit", out double l) || !double.IsFinite(l) || l != Math.Floor(l))
+                {
+                    error = "limit is a whole number (clamped to 1.." + MaxLimit.ToString(System.Globalization.CultureInfo.InvariantCulture) + "), not '" + a.Str("limit") + "'";
+                    return false;
+                }
+                limit = (int)Math.Clamp(l, 1d, MaxLimit);
+            }
             List<string> allowTrim = [], allowDuplicate = [], ignoreUnder = [];
-            if ((a.Has("allowTrim") && !TryListOf(a, "allowTrim", out allowTrim, out error))
-                || (a.Has("allowDuplicate") && !TryListOf(a, "allowDuplicate", out allowDuplicate, out error))
-                || (a.Has("ignoreUnder") && !TryListOf(a, "ignoreUnder", out ignoreUnder, out error)))
+            if ((a.Has("allowTrim") && !TryListOf(a, "allowTrim", out allowTrim, out error, allowEmpty: true))
+                || (a.Has("allowDuplicate") && !TryListOf(a, "allowDuplicate", out allowDuplicate, out error, allowEmpty: true))
+                || (a.Has("ignoreUnder") && !TryListOf(a, "ignoreUnder", out ignoreUnder, out error, allowEmpty: true)))
                 return false;
             List<InspectLint.BaselineEntry> baseline = [];
-            string baselineFile = "";
-            if (a.Has("baseline"))
-            {
-                baselineFile = a.Str("baseline");
-                if (!InspectLintStore.TryReadBaseline(baselineFile, out baseline, out error)) return false;
-            }
+            if (!TryPath(a, "baseline", out string baselineFile, out error)) return false;
+            if (baselineFile.Length > 0 && !InspectLintStore.TryReadBaseline(baselineFile, out baseline, out error)) return false;
             options = new InspectLint.Options
             {
                 Rules = rules,
@@ -203,7 +227,7 @@ public static partial class Diagnostics
                 AllowTrim = allowTrim,
                 AllowDuplicate = allowDuplicate,
                 IgnoreUnder = a.Has("ignoreUnder") ? ignoreUnder : InspectLint.DefaultIgnoreUnder,
-                MaxPerRule = (int)Math.Clamp(MathF.Round(limit), 1f, 10_000f),
+                MaxPerRule = limit,
                 Min = min,
                 Outcomes = outcomes,
                 Baseline = baseline,
@@ -215,13 +239,7 @@ public static partial class Diagnostics
         // ── the capture ─────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>A private-use character or two: an icon glyph, not words.</summary>
-        public static bool IsGlyph(string text)
-        {
-            if (text.Length is 0 or > 2) return false;
-            foreach (char c in text)
-                if (c < '' || c > '') return false;
-            return true;
-        }
+        public static bool IsGlyph(string text) => InspectLint.IsGlyphText(text);
 
         /// <summary>The icon name of a glyph label (<c>Icons.TryGetName</c>), "" when it is words or no named icon.</summary>
         static string GlyphNameOf(string text) => IsGlyph(text) && Icons.TryGetName(text, out string? name) ? name : "";
@@ -331,14 +349,14 @@ public static partial class Diagnostics
             var children = new List<NodeHandle>();
             Span<char> path = stackalloc char[256];
             // A root under live ancestors (`root=`) starts from the cut they put on it, so the subtree is judged as the page shows it.
-            var seeds = new (RectF Screen, RectF Content)[roots.Length];
+            var seeds = new (bool Seeded, RectF Screen, RectF Content, bool Shown)[roots.Length];
             for (int r = 0; r < roots.Length; r++)
             {
-                seeds[r] = (RectF.Infinite, RectF.Infinite);
+                seeds[r] = (false, RectF.Infinite, RectF.Infinite, true);
                 if (!roots[r].IsNull && scene.IsLive(roots[r]) && !scene.Parent(roots[r]).IsNull)
                 {
-                    InspectVisible.AncestorCut(scene, roots[r], window, out RectF screen, out RectF content);
-                    seeds[r] = (screen, content);
+                    InspectVisible.AncestorCut(scene, roots[r], window, out RectF screen, out RectF content, out bool shown);
+                    seeds[r] = (true, screen, content, shown);
                 }
             }
             for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, 1f, false, r));
@@ -361,6 +379,7 @@ public static partial class Diagnostics
                     self = nodes.Count;
                     ref InteractionInfo it = ref scene.Interaction(node);
                     bool click = (it.HandlerMask & InteractionInfo.ClickBit) != 0;
+                    bool drag = (it.HandlerMask & (InteractionInfo.DragBit | InteractionInfo.PointerBit | InteractionInfo.GestureBit)) != 0;
                     bool interactive = (flags & NodeFlags.HitTestVisible) != 0 && (click || IsActionRole(it.Role));
                     int clickId = 0;
                     if (click && scene.GetClickHandler(node) is { } handler && !clicks.TryGetValue(handler, out clickId))
@@ -391,8 +410,10 @@ public static partial class Diagnostics
                         ScrollOffset = offset,
                         ScrollMax = max,
                         ScrollMoving = moving,
+                        Seeded = parent < 0 && seeds[root].Seeded,
                         SeedScreen = parent < 0 ? seeds[root].Screen : RectF.Infinite,
                         SeedContent = parent < 0 ? seeds[root].Content : RectF.Infinite,
+                        SeedShown = parent >= 0 || seeds[root].Shown,
                         FadeEdges = fade,
                         ClipRect = authored.IsInfinite ? RectF.Infinite : new RectF(rect.X + authored.X, rect.Y + authored.Y, authored.W, authored.H),
                         ZStack = (flags & NodeFlags.ZStack) != 0,
@@ -402,6 +423,7 @@ public static partial class Diagnostics
                         Disabled = (flags & NodeFlags.Disabled) != 0,
                         Role = it.Role == AutomationRole.None ? "" : it.Role.ToString(),
                         ClickId = clickId,
+                        Drag = drag,
                         Label = label,
                         LabelGlyph = GlyphNameOf(label),
                         Animating = shell.Host.Animation.HasTracks(node),
@@ -438,7 +460,26 @@ public static partial class Diagnostics
             for (int i = 0; i < nodes.Count; i++) nodes[i] = nodes[i] with { TextCount = words[i], ImageCount = images[i] };
 
             TierFacts tiers = ThemeHost.Facts.Peek().Tiers;
-            string route = RouteNow();
+            // The page the capture SAW: the keep-alive slot (`Shell.SlotKey`: tab, route, arg) showing the most of itself. Mid-navigation the
+            // shell already names the target while the old page is still the one on screen; its findings belong to the old page's route.
+            string route = RouteNow(), navigating = "";
+            string seenName = "", seenArg = "";
+            float seenArea = 0f;
+            foreach (InspectLint.Node n in nodes)
+            {
+                if (n.Key is not { } key || !InspectLint.TrySlotRoute(key, out string slotName, out string slotArg)) continue;
+                RectF shown = n.Rect.Intersect(window);
+                float area = shown.IsEmpty ? 0f : shown.W * shown.H * n.Opacity;
+                if (area > seenArea) { seenArea = area; seenName = slotName; seenArg = slotArg; }
+            }
+            string seen = seenName + (seenArg.Length > 0 ? " " + seenArg : "");
+            // A route not keyed by its arg has a slot without it: `artist` holds every artist page's slot, so its name alone must match.
+            if (seenName.Length > 0 && !string.Equals(route, seen, StringComparison.Ordinal)
+                && !(seenArg.Length == 0 && route.StartsWith(seenName + " ", StringComparison.Ordinal)))
+            {
+                navigating = route;
+                route = seen;
+            }
             IReadOnlyList<LintEdge> edges = [];
             IReadOnlyList<LintPolicy> policies = [];
             string guideId = "";
@@ -464,6 +505,7 @@ public static partial class Diagnostics
                 Theme = InspectKit.ActiveThemeId,
                 GuideId = guideId,
                 Route = route,
+                Navigating = navigating,
                 TrimSource = InspectDump.TrimSource(shell),
                 Devices = devices,
                 Backdrop = pixels,
@@ -525,8 +567,9 @@ public static partial class Diagnostics
         }
 
         /// <summary>Into the open object: <c>guide</c> (<c>{id, edges, matched, policies}</c>, or false when the theme has none), <c>scope</c>,
-        /// <c>modal</c>? (<c>{scrim, covered}</c>: a dialog's scrim covers the page), <c>animating</c> (<c>{nodes, scrolling}</c>: what was still
-        /// moving in the frame read), <c>summary</c> (fail findings and report lines of the gate rules at or above `min`, listed or not: what
+        /// <c>modal</c>? (<c>{scrim, covered}</c>: a dialog's scrim covers the page), <c>occluded</c>? (nodes an opaque fill painted after them
+        /// hides: a menu's plate, a pinned header), <c>animating</c> (<c>{nodes, subtree, scrolling}</c>: nodes with live tracks, the nodes under
+        /// them, scrollers still moving in the frame read), <c>summary</c> (fail findings and report lines of the gate rules at or above `min`, listed or not: what
         /// "lint min=error clean" means), <c>outcomes</c>, <c>levels</c>, <c>suppressed</c>, <c>baseline</c>?, <c>rules</c> (per rule:
         /// <c>checked</c>, its counts, level and ids), <c>truncated</c>? and <c>findings</c>.</summary>
         public static void WriteReport(Utf8JsonWriter w, InspectLint.Snapshot snapshot, InspectLint.Report report, InspectLint.Options options)
@@ -550,6 +593,7 @@ public static partial class Diagnostics
                 w.WriteNumber("covered", prepared.CoveredCount);
                 w.WriteEndObject();
             }
+            if (prepared.OccludedCount > 0) w.WriteNumber("occluded", prepared.OccludedCount);
             int animating = 0, scrolling = 0;
             foreach (InspectLint.Node n in prepared.Nodes)
             {
@@ -558,6 +602,7 @@ public static partial class Diagnostics
             }
             w.WriteStartObject("animating");
             w.WriteNumber("nodes", animating);
+            w.WriteNumber("subtree", prepared.MovingCount);
             w.WriteNumber("scrolling", scrolling);
             w.WriteEndObject();
             if (!snapshot.RealText) w.WriteString("textRules", "review: the headless text model measures trims and ink, so text.trim and text.clip only review");
@@ -640,8 +685,9 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
-        /// <summary>Into the open object: the window the lint ran in (<c>theme</c>, <c>tier</c>, <c>size</c>), the route, where trims come from
-        /// (<c>trimSource</c>), the devices, and the saved snapshot a replay read (<c>replay</c>).</summary>
+        /// <summary>Into the open object: the window the lint ran in (<c>theme</c>, <c>tier</c>, <c>size</c>), the route of the page it saw
+        /// (<c>navigating</c>: the route the shell is going to, when that page is not on screen yet), where trims come from (<c>trimSource</c>),
+        /// the devices, and the saved snapshot a replay read (<c>replay</c>).</summary>
         public static void WriteHead(Utf8JsonWriter w, InspectLint.Snapshot snapshot)
         {
             w.WriteString("theme", snapshot.Theme);
@@ -651,6 +697,7 @@ public static partial class Diagnostics
             Number(w, "h", snapshot.Height);
             w.WriteEndObject();
             w.WriteString("route", snapshot.Route);
+            if (snapshot.Navigating.Length > 0) w.WriteString("navigating", snapshot.Navigating);
             w.WriteString("trimSource", snapshot.TrimSource);
             w.WriteString("devices", snapshot.Devices);
             if (snapshot.Source.Length > 0) w.WriteString("replay", snapshot.Source);
@@ -679,25 +726,27 @@ public static partial class Diagnostics
         string Lint(int id, string name, Inspect.Args a, Shell.HeadlessShell? shell)
         {
             if (!InspectLintScene.TryOptions(a, out InspectLint.Options options, out string error)) return Inspect.Reply.Fail(id, name, error);
+            if (!InspectLintScene.TryPath(a, "replay", out string replay, out error) || !InspectLintScene.TryPath(a, "save", out string save, out error))
+                return Inspect.Reply.Fail(id, name, error);
             InspectLint.Snapshot snapshot;
-            if (a.Has("replay"))
+            if (replay.Length > 0)
             {
                 if (a.Has("root") || a.Has("nth")) return Inspect.Reply.Fail(id, name, "replay lints the whole saved snapshot: root= and nth= pick nodes of a mounted page (save a root= lint instead)");
-                if (!InspectLintStore.TryLoad(a.Str("replay"), out snapshot, out error)) return Inspect.Reply.Fail(id, name, error);
+                if (!InspectLintStore.TryLoad(replay, out snapshot, out error)) return Inspect.Reply.Fail(id, name, error);
             }
             else
             {
                 if (shell is null) return Inspect.Reply.Fail(id, name, "nothing is mounted (mount first, or lint replay=<file>)");
                 if (!TryRoots(a, shell, out List<NodeHandle> roots, out error)) return Inspect.Reply.Fail(id, name, error);
-                bool wantPixels = options.Enabled(InspectLint.Rules.Contrast) || a.Has("save");
+                bool wantPixels = options.Enabled(InspectLint.Rules.Contrast) || save.Length > 0;
                 InspectLint.Pixels? pixels = wantPixels ? RenderedFrame(shell) : null;
                 snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels, Devices);
             }
             InspectLint.Report report = InspectLint.Run(snapshot, options);
             string saved = "";
-            if (a.Has("save"))
+            if (save.Length > 0)
             {
-                try { saved = InspectLintStore.Save(report.Prepared ?? snapshot, a.Str("save")); }
+                try { saved = InspectLintStore.Save(report.Prepared ?? snapshot, save); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
                 {
                     return Inspect.Reply.Fail(id, name, "save: " + ex.Message);

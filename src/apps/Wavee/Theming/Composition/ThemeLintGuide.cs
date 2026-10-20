@@ -62,7 +62,8 @@ public readonly record struct LintContext(WidthTier Window, HeightTier Height, f
 /// <summary>What a guide policy declares about the nodes under its key prefix (each names the rule it speaks to).</summary>
 public enum LintIntent : byte
 {
-    /// <summary>Text here may ellipsise: the content decides its length (`text.trim` reports it as designed, not as a finding).</summary>
+    /// <summary>Text here may ellipsise: the content decides its length (`text.trim` counts it as designed, suppressed; a near miss, a hard
+    /// clip or a spill is still a finding).</summary>
     TrimOk,
 
     /// <summary>Text here must never trim: any trim is an error (`text.trim`).</summary>
@@ -74,7 +75,8 @@ public enum LintIntent : byte
     /// <summary>The lead edge is indented <see cref="LintPolicy.Value"/> DIP from its column on purpose, a nested list (`align.inset`).</summary>
     Indent,
 
-    /// <summary>Content runs past a scroller's or the window's edge on purpose (`text.clip` at a scroll edge).</summary>
+    /// <summary>Text runs past a hard scroll edge on purpose (`text.clip` at a scroller's edge with no edge fade). No rule judges a cut at the
+    /// window's own edge, so a bleed past it needs no policy.</summary>
     Bleed,
 
     /// <summary>The declared spacing here is off the theme's scale on purpose (`space.scale`).</summary>

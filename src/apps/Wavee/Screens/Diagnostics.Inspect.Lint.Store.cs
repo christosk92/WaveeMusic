@@ -7,7 +7,9 @@
 // A SAVED SNAPSHOT is what `lint` captured, as JSON: the window, theme, route, text source, the guide's edges and policies, the theme's
 // spacing scale, and every captured node with its rect, flags, declared layout, paint and text run (with the ground the rendered frame put
 // under it, so `contrast.text` replays without pixels). Replay reads it back and runs the same pure rules: no page needs to be mounted. The
-// derived fields (visible rect, region, family...) are written for a reader's eyes and recomputed on replay, for the scope asked.
+// derived fields (visible rect, region, family...) are written for a reader's eyes and recomputed on replay, for the scope asked. The reader
+// is strict: a field of the wrong type, a node without a finite rect, an unknown intent or an empty node list fails the replay with the node
+// and the field, never a silent default (a doctored copy must say what it got wrong).
 //
 // A BASELINE is JSON lines `{fp, rule, reason, by, date}`: accepted findings, matched by fingerprint (never by message). A reason is mandatory;
 // `#` lines and blank lines are comments.
@@ -97,6 +99,7 @@ public static partial class Diagnostics
             w.WriteNumber("version", Version);
             w.WriteString("theme", s.Theme);
             w.WriteString("route", s.Route);
+            if (s.Navigating.Length > 0) w.WriteString("navigating", s.Navigating);
             w.WriteString("tier", s.Tier.ToString());
             w.WriteStartObject("size");
             Num(w, "w", s.Width);
@@ -172,8 +175,12 @@ public static partial class Diagnostics
                 if (n.ScrollMoving) w.WriteBoolean("moving", true);
                 w.WriteEndObject();
             }
-            if (!n.SeedScreen.IsInfinite) Rect(w, "seed", n.SeedScreen);
-            if (!n.SeedContent.IsInfinite) Rect(w, "seedContent", n.SeedContent);
+            if (n.Seeded)
+            {
+                Rect(w, "seed", n.SeedScreen);
+                Rect(w, "seedContent", n.SeedContent);
+                if (!n.SeedShown) w.WriteBoolean("seedShown", false);
+            }
             if (n.FadeEdges != 0) w.WriteNumber("fade", n.FadeEdges);
             if (!n.ClipRect.IsInfinite) Rect(w, "clip", n.ClipRect);
             if (n.ZStack) w.WriteBoolean("zstack", true);
@@ -183,6 +190,7 @@ public static partial class Diagnostics
             if (n.Disabled) w.WriteBoolean("disabled", true);
             if (n.Role.Length > 0) w.WriteString("role", n.Role);
             if (n.ClickId != 0) w.WriteNumber("click", n.ClickId);
+            if (n.Drag) w.WriteBoolean("drag", true);
             if (n.Label.Length > 0) w.WriteString("label", n.Label);
             if (n.LabelGlyph.Length > 0) w.WriteString("labelGlyph", n.LabelGlyph);
             if (n.Animating) w.WriteBoolean("animating", true);
@@ -205,6 +213,7 @@ public static partial class Diagnostics
             // Derived (for a reader; replay recomputes them).
             Num(w, "on", n.OnScreen);
             if (n.Covered) w.WriteBoolean("covered", true);
+            if (n.Occluded > 0f) Num(w, "occluded", n.Occluded);
             if (n.Family.Length > 0) w.WriteString("family", n.Family);
             if (n.CellPath.Length > 0) w.WriteString("cell", n.CellPath);
             w.WriteEndObject();
@@ -270,7 +279,8 @@ public static partial class Diagnostics
 
         // ── reading ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Read a saved snapshot. False with a reason when the file is missing, not a lint snapshot, or newer than this reader.</summary>
+        /// <summary>Read a saved snapshot. False with a reason when the file is missing, not a lint snapshot, newer than this reader, or malformed
+        /// (the reason names the node and the field).</summary>
         public static bool TryLoad(string path, out InspectLint.Snapshot snapshot, out string error)
         {
             snapshot = new InspectLint.Snapshot(0f, 0f, WidthTier.Compact, []);
@@ -283,44 +293,53 @@ public static partial class Diagnostics
             {
                 using JsonDocument doc = JsonDocument.Parse(File.ReadAllBytes(full));
                 JsonElement root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object || Str(root, "kind") != Kind) { error = "replay: '" + full + "' is not a lint snapshot"; return false; }
-                if (Int(root, "version") > Version) { error = "replay: '" + full + "' is version " + Int(root, "version") + " (this reader knows " + Version + ")"; return false; }
-                WidthTier tier = Enum.TryParse(Str(root, "tier"), out WidthTier t) ? t : WidthTier.Compact;
+                if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("kind", out JsonElement kind) || kind.ValueKind != JsonValueKind.String
+                    || kind.GetString() != Kind) { error = "replay: '" + full + "' is not a lint snapshot"; return false; }
+                var r = new Strict("");
+                int version = r.Int(root, "version", 0);
+                if (version > Version) { error = "replay: '" + full + "' is version " + version + " (this reader knows " + Version + ")"; return false; }
+                WidthTier tier = WidthTier.Compact;
+                string tierName = r.Str(root, "tier", "Compact");
+                if (!Enum.TryParse(tierName, out tier)) r.Fail("tier", "is a width tier name, not '" + tierName + "'");
                 float w = 0f, h = 0f;
-                if (root.TryGetProperty("size", out JsonElement size)) { w = Float(size, "w"); h = Float(size, "h"); }
-                if (!(w > 0f) || !(h > 0f) || !float.IsFinite(w) || !float.IsFinite(h)) { error = "replay: '" + full + "' has no window size (size.w and size.h must be above 0)"; return false; }
-                var nodes = new List<InspectLint.Node>();
-                if (root.TryGetProperty("nodes", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
-                    foreach (JsonElement n in list.EnumerateArray())
-                    {
-                        if (n.ValueKind != JsonValueKind.Object) { error = "replay: '" + full + "' node " + nodes.Count + " is not an object"; return false; }
-                        InspectLint.Node node = ReadNode(n, nodes.Count);
-                        if (node.Parent < -1 || node.Parent >= node.Index)
-                        {
-                            error = "replay: '" + full + "' node " + node.Index + " names parent " + node.Parent + " (a parent comes before its children: -1 or an earlier index)";
-                            return false;
-                        }
-                        RectF r = node.Rect;
-                        if (!float.IsFinite(r.X) || !float.IsFinite(r.Y) || !float.IsFinite(r.W) || !float.IsFinite(r.H) || r.W < 0f || r.H < 0f)
-                        {
-                            error = "replay: '" + full + "' node " + node.Index + " has no finite rect";
-                            return false;
-                        }
-                        nodes.Add(node);
-                    }
+                if (root.TryGetProperty("size", out JsonElement size) && size.ValueKind == JsonValueKind.Object) { w = r.Num(size, "w", 0f); h = r.Num(size, "h", 0f); }
+                if (r.Error.Length == 0 && (!(w > 0f) || !(h > 0f) || !float.IsFinite(w) || !float.IsFinite(h)))
+                    r.Fail("size", "needs w and h, finite numbers above 0");
+                if (r.Error.Length > 0) { error = "replay: '" + full + "': " + r.Error; return false; }
+                if (!root.TryGetProperty("nodes", out JsonElement list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() == 0)
+                {
+                    error = "replay: '" + full + "': nodes must be a non-empty array of nodes";
+                    return false;
+                }
+                var nodes = new List<InspectLint.Node>(list.GetArrayLength());
+                foreach (JsonElement n in list.EnumerateArray())
+                {
+                    int index = nodes.Count;
+                    var at = new Strict("node " + index.ToString(CultureInfo.InvariantCulture));
+                    if (n.ValueKind != JsonValueKind.Object) { error = "replay: '" + full + "': node " + index + " is not an object"; return false; }
+                    InspectLint.Node node = ReadNode(n, index, at);
+                    if (at.Error.Length == 0 && n.TryGetProperty("i", out _) && at.Int(n, "i", index) != index) at.Fail("i", "says " + at.Int(n, "i", index) + " but the node is the " + index + "th (nodes are read in order)");
+                    if (at.Error.Length == 0 && (node.Parent < -1 || node.Parent >= index))
+                        at.Fail("p", "names parent " + node.Parent + " (a parent comes before its children: -1 or an earlier index)");
+                    if (at.Error.Length > 0) { error = "replay: '" + full + "': " + at.Error; return false; }
+                    nodes.Add(node);
+                }
+                var head = new Strict("");
                 snapshot = new InspectLint.Snapshot(w, h, tier, nodes)
                 {
-                    Theme = Str(root, "theme"),
-                    Route = Str(root, "route"),
-                    TrimSource = Str(root, "trimSource", "dwrite"),
-                    Devices = Str(root, "devices"),
-                    GuideId = Str(root, "guide"),
-                    Edges = ReadEdges(root),
-                    Policies = ReadPolicies(root),
-                    TopBleeds = StringsOf(root, "topBleeds") ?? [],
-                    Scale = ReadScale(root),
+                    Theme = head.Str(root, "theme", ""),
+                    Route = head.Str(root, "route", ""),
+                    Navigating = head.Str(root, "navigating", ""),
+                    TrimSource = head.Str(root, "trimSource", "dwrite"),
+                    Devices = head.Str(root, "devices", ""),
+                    GuideId = head.Str(root, "guide", ""),
+                    Edges = ReadEdges(root, head),
+                    Policies = ReadPolicies(root, head),
+                    TopBleeds = head.Strings(root, "topBleeds") ?? [],
+                    Scale = ReadScale(root, head),
                     Source = full,
                 };
+                if (head.Error.Length > 0) { error = "replay: '" + full + "': " + head.Error; return false; }
                 return true;
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException or FormatException)
@@ -330,172 +349,319 @@ public static partial class Diagnostics
             }
         }
 
-        static string Str(JsonElement e, string name, string fallback = "")
-            => e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? fallback : fallback;
-
-        static float Float(JsonElement e, string name, float fallback = 0f)
-            => e.TryGetProperty(name, out JsonElement v) ? v.ValueKind == JsonValueKind.Number ? v.GetSingle() : v.ValueKind == JsonValueKind.Null ? float.NaN : fallback : fallback;
-
-        static int Int(JsonElement e, string name, int fallback = 0)
-            => e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : fallback;
-
-        static bool Bool(JsonElement e, string name) => e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.True;
-
-        static RectF RectOf(JsonElement e, string name, RectF fallback)
+        /// <summary>A strict field reader: an absent field gives the fallback; a present one of the wrong type records the first error (with
+        /// <c>Where</c>: "node 12") and gives the fallback, so the caller fails the replay once it has read the object.</summary>
+        sealed class Strict(string where)
         {
-            if (!e.TryGetProperty(name, out JsonElement a) || a.ValueKind != JsonValueKind.Array || a.GetArrayLength() != 4) return fallback;
-            return new RectF(a[0].GetSingle(), a[1].GetSingle(), a[2].GetSingle(), a[3].GetSingle());
+            public string Error { get; private set; } = "";
+
+            public void Fail(string field, string want)
+            {
+                if (Error.Length == 0) Error = (where.Length > 0 ? where + ": " : "") + "'" + field + "' " + want;
+            }
+
+            bool Get(JsonElement e, string name, out JsonElement v) => e.TryGetProperty(name, out v) && v.ValueKind != JsonValueKind.Null;
+
+            public string Str(JsonElement e, string name, string fallback)
+            {
+                if (!Get(e, name, out JsonElement v)) return fallback;
+                if (v.ValueKind == JsonValueKind.String) return v.GetString() ?? fallback;
+                Fail(name, "is a string, not " + v.GetRawText());
+                return fallback;
+            }
+
+            public string? NullableStr(JsonElement e, string name)
+            {
+                if (!Get(e, name, out JsonElement v)) return null;
+                if (v.ValueKind == JsonValueKind.String) return v.GetString();
+                Fail(name, "is a string, not " + v.GetRawText());
+                return null;
+            }
+
+            /// <summary>A number; <c>null</c> reads as NaN where the writer wrote one for a value that was not finite.</summary>
+            public float Num(JsonElement e, string name, float fallback)
+            {
+                if (!e.TryGetProperty(name, out JsonElement v)) return fallback;
+                if (v.ValueKind == JsonValueKind.Null) return float.NaN;
+                if (v.ValueKind == JsonValueKind.Number && v.TryGetSingle(out float f)) return f;
+                Fail(name, "is a number, not " + v.GetRawText());
+                return fallback;
+            }
+
+            /// <summary>A number that must be finite (a size, an opacity, a scroll offset).</summary>
+            public float Finite(JsonElement e, string name, float fallback, float min = float.NegativeInfinity, float max = float.PositiveInfinity)
+            {
+                float f = Num(e, name, fallback);
+                if (e.TryGetProperty(name, out _) && (!float.IsFinite(f) || f < min || f > max))
+                {
+                    Fail(name, "is a finite number" + (float.IsFinite(min) ? " from " + min.ToString(CultureInfo.InvariantCulture) : "")
+                        + (float.IsFinite(max) ? " to " + max.ToString(CultureInfo.InvariantCulture) : "") + ", not " + e.GetProperty(name).GetRawText());
+                    return fallback;
+                }
+                return f;
+            }
+
+            public int Int(JsonElement e, string name, int fallback)
+            {
+                if (!Get(e, name, out JsonElement v)) return fallback;
+                if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)) return i;
+                Fail(name, "is a whole number, not " + v.GetRawText());
+                return fallback;
+            }
+
+            public bool Bool(JsonElement e, string name)
+            {
+                if (!Get(e, name, out JsonElement v)) return false;
+                if (v.ValueKind is JsonValueKind.True or JsonValueKind.False) return v.ValueKind == JsonValueKind.True;
+                Fail(name, "is true or false, not " + v.GetRawText());
+                return false;
+            }
+
+            /// <summary>A rect <c>[x, y, w, h]</c>: four finite numbers, w and h at or above 0. <paramref name="required"/>: absent is an error too.</summary>
+            public RectF Rect(JsonElement e, string name, RectF fallback, bool required = false)
+            {
+                if (!Get(e, name, out JsonElement a))
+                {
+                    if (required) Fail(name, "is missing (a rect [x, y, w, h])");
+                    return fallback;
+                }
+                if (a.ValueKind == JsonValueKind.Array && a.GetArrayLength() == 4)
+                {
+                    Span<float> v = stackalloc float[4];
+                    bool ok = true;
+                    for (int k = 0; k < 4 && ok; k++) ok = a[k].ValueKind == JsonValueKind.Number && a[k].TryGetSingle(out v[k]) && float.IsFinite(v[k]);
+                    if (ok && v[2] >= 0f && v[3] >= 0f) return new RectF(v[0], v[1], v[2], v[3]);
+                }
+                Fail(name, "is a rect [x, y, w, h] of finite numbers with w and h at or above 0, not " + a.GetRawText());
+                return fallback;
+            }
+
+            public Edges4 Edges(JsonElement e, string name)
+            {
+                if (!Get(e, name, out JsonElement a)) return default;
+                if (a.ValueKind == JsonValueKind.Array && a.GetArrayLength() == 4)
+                {
+                    Span<float> v = stackalloc float[4];
+                    bool ok = true;
+                    for (int k = 0; k < 4 && ok; k++) ok = a[k].ValueKind == JsonValueKind.Number && a[k].TryGetSingle(out v[k]) && float.IsFinite(v[k]);
+                    if (ok) return new Edges4(v[0], v[1], v[2], v[3]);
+                }
+                Fail(name, "is four finite numbers [left, top, right, bottom], not " + a.GetRawText());
+                return default;
+            }
+
+            /// <summary>A colour <c>#RRGGBBAA</c>; absent: transparent (the default every reader of a colour treats as "not known").</summary>
+            public ColorF Color(JsonElement e, string name)
+            {
+                if (!Get(e, name, out JsonElement c)) return default;
+                string hex = c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : "";
+                if (hex.Length == 9 && hex[0] == '#' && uint.TryParse(hex.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint v))
+                    return new ColorF(((v >> 24) & 255) / 255f, ((v >> 16) & 255) / 255f, ((v >> 8) & 255) / 255f, (v & 255) / 255f);
+                Fail(name, "is a colour '#RRGGBBAA', not " + c.GetRawText());
+                return default;
+            }
+
+            public List<string>? Strings(JsonElement e, string name)
+            {
+                if (!Get(e, name, out JsonElement a)) return null;
+                if (a.ValueKind != JsonValueKind.Array) { Fail(name, "is an array of strings, not " + a.GetRawText()); return null; }
+                var list = new List<string>();
+                foreach (JsonElement v in a.EnumerateArray())
+                {
+                    if (v.ValueKind != JsonValueKind.String) { Fail(name, "is an array of strings; it holds " + v.GetRawText()); return null; }
+                    list.Add(v.GetString() ?? "");
+                }
+                return list;
+            }
+
+            /// <summary>An object field (a node's <c>scroll</c>, <c>border</c>, <c>layout</c>, <c>text</c>); a present non-object is an error.</summary>
+            public bool Object(JsonElement e, string name, out JsonElement value)
+            {
+                if (!Get(e, name, out value)) return false;
+                if (value.ValueKind == JsonValueKind.Object) return true;
+                Fail(name, "is an object, not " + value.GetRawText());
+                return false;
+            }
         }
 
-        static Edges4 EdgesOf(JsonElement e, string name)
+        static InspectLint.Node ReadNode(JsonElement e, int index, Strict r)
         {
-            if (!e.TryGetProperty(name, out JsonElement a) || a.ValueKind != JsonValueKind.Array || a.GetArrayLength() != 4) return default;
-            return new Edges4(a[0].GetSingle(), a[1].GetSingle(), a[2].GetSingle(), a[3].GetSingle());
-        }
-
-        static ColorF ColorOf(JsonElement e, string name)
-        {
-            string hex = Str(e, name);
-            if (hex.Length != 9 || hex[0] != '#' || !uint.TryParse(hex.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint v)) return default;
-            return new ColorF(((v >> 24) & 255) / 255f, ((v >> 16) & 255) / 255f, ((v >> 8) & 255) / 255f, (v & 255) / 255f);
-        }
-
-        static List<string>? StringsOf(JsonElement e, string name)
-        {
-            if (!e.TryGetProperty(name, out JsonElement a) || a.ValueKind != JsonValueKind.Array) return null;
-            var list = new List<string>();
-            foreach (JsonElement v in a.EnumerateArray())
-                if (v.ValueKind == JsonValueKind.String && v.GetString() is { } s) list.Add(s);
-            return list;
-        }
-
-        static InspectLint.Node ReadNode(JsonElement e, int index)
-        {
-            string? key = e.TryGetProperty("key", out JsonElement k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null;
+            if (!e.TryGetProperty("p", out _)) r.Fail("p", "is missing (the parent's index, -1 for a root)");
             int axis = 0;
             float offset = 0f, max = 0f;
             bool moving = false;
-            if (e.TryGetProperty("scroll", out JsonElement scroll))
+            if (r.Object(e, "scroll", out JsonElement scroll))
             {
-                axis = Int(scroll, "axis");
-                offset = Float(scroll, "offset");
-                max = Float(scroll, "max");
-                moving = Bool(scroll, "moving");
+                axis = r.Int(scroll, "axis", 0);
+                if (axis is < 0 or > 2) r.Fail("scroll.axis", "is 0, 1 (horizontal) or 2 (vertical), not " + axis);
+                offset = r.Finite(scroll, "offset", 0f);
+                max = r.Finite(scroll, "max", 0f);
+                moving = r.Bool(scroll, "moving");
             }
             float borderW = 0f;
             ColorF borderC = default;
-            if (e.TryGetProperty("border", out JsonElement border))
+            if (r.Object(e, "border", out JsonElement border))
             {
-                borderW = Float(border, "w");
-                borderC = ColorOf(border, "color");
+                borderW = r.Finite(border, "w", 0f, 0f);
+                borderC = r.Color(border, "color");
             }
-            return new InspectLint.Node(index, Int(e, "p", -1), key, Str(e, "path"), RectOf(e, "r", default))
+            int fade = r.Int(e, "fade", 0);
+            if (fade is < 0 or > 255) r.Fail("fade", "is an edge mask from 0 to 255, not " + fade);
+            bool seeded = e.TryGetProperty("seed", out _);
+            InspectLint.Declared layout = r.Object(e, "layout", out JsonElement l) ? ReadLayout(l, r) : InspectLint.Declared.None;
+            InspectLint.TextRun? text = r.Object(e, "text", out JsonElement t) ? ReadText(t, r) : null;
+            return new InspectLint.Node(index, r.Int(e, "p", -1), r.NullableStr(e, "key"), r.Str(e, "path", ""), r.Rect(e, "r", default, required: true))
             {
-                Depth = Int(e, "d"),
-                Kind = Str(e, "kind"),
-                Clips = Bool(e, "clips"),
+                Depth = r.Int(e, "d", 0),
+                Kind = r.Str(e, "kind", ""),
+                Clips = r.Bool(e, "clips"),
                 ScrollAxis = axis,
                 ScrollOffset = offset,
                 ScrollMax = max,
                 ScrollMoving = moving,
-                SeedScreen = RectOf(e, "seed", RectF.Infinite),
-                SeedContent = RectOf(e, "seedContent", RectF.Infinite),
-                FadeEdges = (byte)Int(e, "fade"),
-                ClipRect = RectOf(e, "clip", RectF.Infinite),
-                ZStack = Bool(e, "zstack"),
-                Column = !Bool(e, "row"),
-                Layout = e.TryGetProperty("layout", out JsonElement layout) ? ReadLayout(layout) : InspectLint.Declared.None,
-                Interactive = Bool(e, "interactive"),
-                Disabled = Bool(e, "disabled"),
-                Role = Str(e, "role"),
-                ClickId = Int(e, "click"),
-                Label = Str(e, "label"),
-                LabelGlyph = Str(e, "labelGlyph"),
-                Animating = Bool(e, "animating"),
-                Opacity = e.TryGetProperty("opacity", out _) ? Float(e, "opacity", 1f) : 1f,
-                Inert = Bool(e, "inert"),
-                Sticky = Bool(e, "sticky"),
-                Fill = ColorOf(e, "fill"),
+                Seeded = seeded,
+                SeedScreen = r.Rect(e, "seed", RectF.Infinite),
+                // A snapshot written before the seed was a flag has a seed without its content cut when the cut was open: unbounded.
+                SeedContent = r.Rect(e, "seedContent", RectF.Infinite),
+                SeedShown = !e.TryGetProperty("seedShown", out _) || r.Bool(e, "seedShown"),
+                FadeEdges = (byte)fade,
+                ClipRect = r.Rect(e, "clip", RectF.Infinite),
+                ZStack = r.Bool(e, "zstack"),
+                Column = !r.Bool(e, "row"),
+                Layout = layout,
+                Interactive = r.Bool(e, "interactive"),
+                Disabled = r.Bool(e, "disabled"),
+                Role = r.Str(e, "role", ""),
+                ClickId = r.Int(e, "click", 0),
+                Drag = r.Bool(e, "drag"),
+                Label = r.Str(e, "label", ""),
+                LabelGlyph = r.Str(e, "labelGlyph", ""),
+                Animating = r.Bool(e, "animating"),
+                Opacity = r.Finite(e, "opacity", 1f, 0f, 1f),
+                Inert = r.Bool(e, "inert"),
+                Sticky = r.Bool(e, "sticky"),
+                Fill = r.Color(e, "fill"),
                 BorderWidth = borderW,
                 BorderColor = borderC,
-                Image = Bool(e, "image"),
-                Gradient = Bool(e, "gradient"),
-                Text = e.TryGetProperty("text", out JsonElement text) ? ReadText(text) : null,
-                TextCount = Int(e, "tc"),
-                ImageCount = Int(e, "ic"),
+                Image = r.Bool(e, "image"),
+                Gradient = r.Bool(e, "gradient"),
+                Text = text,
+                TextCount = r.Int(e, "tc", 0),
+                ImageCount = r.Int(e, "ic", 0),
             };
         }
 
-        static InspectLint.Declared ReadLayout(JsonElement e) => new(Float(e, "gap"), EdgesOf(e, "pad"), EdgesOf(e, "margin"))
+        static InspectLint.Declared ReadLayout(JsonElement e, Strict r) => new(r.Finite(e, "gap", 0f), r.Edges(e, "pad"), r.Edges(e, "margin"))
         {
-            W = Float(e, "w", float.NaN),
-            H = Float(e, "h", float.NaN),
-            MinW = Float(e, "minW", float.NaN),
-            MinH = Float(e, "minH", float.NaN),
-            MaxW = Float(e, "maxW", float.NaN),
-            MaxH = Float(e, "maxH", float.NaN),
-            Grow = Float(e, "grow"),
-            Shrink = Float(e, "shrink"),
-            Basis = Float(e, "basis", float.NaN),
-            Justify = Str(e, "justify", "Start"),
-            AlignItems = Str(e, "alignItems", "Stretch"),
-            AlignSelf = Str(e, "alignSelf", "Auto"),
-            JustifySelf = Str(e, "justifySelf", "Auto"),
-            Wrap = Bool(e, "wrap"),
+            W = r.Num(e, "w", float.NaN),
+            H = r.Num(e, "h", float.NaN),
+            MinW = r.Num(e, "minW", float.NaN),
+            MinH = r.Num(e, "minH", float.NaN),
+            MaxW = r.Num(e, "maxW", float.NaN),
+            MaxH = r.Num(e, "maxH", float.NaN),
+            Grow = r.Finite(e, "grow", 0f),
+            Shrink = r.Finite(e, "shrink", 0f),
+            Basis = r.Num(e, "basis", float.NaN),
+            Justify = r.Str(e, "justify", "Start"),
+            AlignItems = r.Str(e, "alignItems", "Stretch"),
+            AlignSelf = r.Str(e, "alignSelf", "Auto"),
+            JustifySelf = r.Str(e, "justifySelf", "Auto"),
+            Wrap = r.Bool(e, "wrap"),
         };
 
-        static InspectLint.TextRun ReadText(JsonElement e) => new(Str(e, "s"), Float(e, "size"))
+        static InspectLint.TextRun ReadText(JsonElement e, Strict r)
         {
-            LineHeight = Float(e, "lh"),
-            Weight = Int(e, "weight", 400),
-            MaxLines = Int(e, "maxLines"),
-            Wraps = Bool(e, "wraps"),
-            Trim = Str(e, "trim", "None"),
-            Trimmed = Bool(e, "trimmed"),
-            NaturalW = Float(e, "nw"),
-            NaturalH = Float(e, "nh"),
-            OverflowX = Bool(e, "ox"),
-            OverflowY = Bool(e, "oy"),
-            Glyph = Bool(e, "glyph"),
-            GlyphName = Str(e, "glyphName"),
-            Spans = Bool(e, "spans"),
-            Color = ColorOf(e, "color"),
-            Align = Str(e, "align", "Start"),
-            Ground = ColorOf(e, "ground"),
-            GroundShare = Float(e, "groundShare"),
-            Worst = Float(e, "worst"),
-            WorstGround = ColorOf(e, "worstGround"),
-            GapPixels = Int(e, "gapPixels"),
-        };
+            if (!e.TryGetProperty("size", out _)) r.Fail("text.size", "is missing (the run's size in DIP)");
+            float size = r.Finite(e, "size", 0f, 0f);
+            if (size <= 0f && e.TryGetProperty("size", out _)) r.Fail("text.size", "is above 0");
+            string trim = r.Str(e, "trim", "None");
+            if (trim is not ("None" or "Clip" or "CharacterEllipsis" or "WordEllipsis")) r.Fail("text.trim", "is None, Clip, CharacterEllipsis or WordEllipsis, not '" + trim + "'");
+            return new InspectLint.TextRun(r.Str(e, "s", ""), size)
+            {
+                LineHeight = r.Finite(e, "lh", 0f, 0f),
+                Weight = r.Int(e, "weight", 400),
+                MaxLines = r.Int(e, "maxLines", 0),
+                Wraps = r.Bool(e, "wraps"),
+                Trim = trim,
+                Trimmed = r.Bool(e, "trimmed"),
+                NaturalW = r.Finite(e, "nw", 0f),
+                NaturalH = r.Finite(e, "nh", 0f),
+                OverflowX = r.Bool(e, "ox"),
+                OverflowY = r.Bool(e, "oy"),
+                Glyph = r.Bool(e, "glyph"),
+                GlyphName = r.Str(e, "glyphName", ""),
+                Spans = r.Bool(e, "spans"),
+                Color = r.Color(e, "color"),
+                Align = r.Str(e, "align", "Start"),
+                Ground = r.Color(e, "ground"),
+                GroundShare = r.Finite(e, "groundShare", 0f, 0f, 1f),
+                Worst = r.Finite(e, "worst", 0f, 0f),
+                WorstGround = r.Color(e, "worstGround"),
+                GapPixels = r.Int(e, "gapPixels", 0),
+            };
+        }
 
-        static IReadOnlyList<LintEdge> ReadEdges(JsonElement root)
+        static IReadOnlyList<LintEdge> ReadEdges(JsonElement root, Strict r)
         {
             var edges = new List<LintEdge>();
-            if (!root.TryGetProperty("edges", out JsonElement list) || list.ValueKind != JsonValueKind.Array) return edges;
+            if (!root.TryGetProperty("edges", out JsonElement list) || list.ValueKind == JsonValueKind.Null) return edges;
+            if (list.ValueKind != JsonValueKind.Array) { r.Fail("edges", "is an array, not " + list.GetRawText()); return edges; }
             foreach (JsonElement e in list.EnumerateArray())
-                edges.Add(new LintEdge(Str(e, "rule"), Str(e, "id"), Str(e, "what"), Str(e, "side") == "right" ? LintSide.Right : LintSide.Left,
-                    Float(e, "expected"), Float(e, "tolerance"), StringsOf(e, "keys"), StringsOf(e, "prefixes"), Str(e, "underKey"),
-                    Bool(e, "glyphsOnly"), Bool(e, "advisory"), Bool(e, "column")));
+            {
+                if (e.ValueKind != JsonValueKind.Object) { r.Fail("edges", "holds objects, not " + e.GetRawText()); break; }
+                string at = "edges[" + edges.Count.ToString(CultureInfo.InvariantCulture) + "]";
+                string side = r.Str(e, "side", "left"), rule = r.Str(e, "rule", "");
+                if (side is not ("left" or "right")) r.Fail(at + ".side", "is left or right, not '" + side + "'");
+                if (rule is not (InspectLint.Rules.Gutter or InspectLint.Rules.RightEdge) || r.Str(e, "id", "").Length == 0 || !e.TryGetProperty("expected", out _))
+                {
+                    r.Fail(at, "needs rule (gutter or right-edge), id and expected");
+                    break;
+                }
+                edges.Add(new LintEdge(r.Str(e, "rule", ""), r.Str(e, "id", ""), r.Str(e, "what", ""), side == "right" ? LintSide.Right : LintSide.Left,
+                    r.Finite(e, "expected", 0f), r.Finite(e, "tolerance", 0f, 0f), r.Strings(e, "keys"), r.Strings(e, "prefixes"), r.Str(e, "underKey", ""),
+                    r.Bool(e, "glyphsOnly"), r.Bool(e, "advisory"), r.Bool(e, "column")));
+            }
             return edges;
         }
 
-        static IReadOnlyList<LintPolicy> ReadPolicies(JsonElement root)
+        static IReadOnlyList<LintPolicy> ReadPolicies(JsonElement root, Strict r)
         {
             var policies = new List<LintPolicy>();
-            if (!root.TryGetProperty("policies", out JsonElement list) || list.ValueKind != JsonValueKind.Array) return policies;
+            if (!root.TryGetProperty("policies", out JsonElement list) || list.ValueKind == JsonValueKind.Null) return policies;
+            if (list.ValueKind != JsonValueKind.Array) { r.Fail("policies", "is an array, not " + list.GetRawText()); return policies; }
             foreach (JsonElement e in list.EnumerateArray())
-                if (Enum.TryParse(Str(e, "intent"), out LintIntent intent))
-                    policies.Add(new LintPolicy(intent, Str(e, "prefix"), Str(e, "reason"), Float(e, "value"), Str(e, "rule")));
+            {
+                string at = "policies[" + policies.Count + "]";
+                if (e.ValueKind != JsonValueKind.Object) { r.Fail(at, "is an object, not " + e.GetRawText()); break; }
+                string intentName = r.Str(e, "intent", "");
+                if (!Enum.TryParse(intentName, out LintIntent intent) || !Enum.IsDefined(intent) || intentName.Length == 0 || char.IsAsciiDigit(intentName[0]))
+                {
+                    r.Fail(at + ".intent", "is one of " + string.Join(", ", Enum.GetNames<LintIntent>()) + ", not '" + intentName + "'");
+                    break;
+                }
+                string prefix = r.Str(e, "prefix", ""), reason = r.Str(e, "reason", "");
+                if (prefix.Length == 0 || reason.Trim().Length == 0) { r.Fail(at, "needs a prefix and a reason"); break; }
+                policies.Add(new LintPolicy(intent, prefix, reason, r.Finite(e, "value", 0f), r.Str(e, "rule", "")));
+            }
             return policies;
         }
 
-        static IReadOnlyList<InspectLint.ScaleEntry> ReadScale(JsonElement root)
+        static IReadOnlyList<InspectLint.ScaleEntry> ReadScale(JsonElement root, Strict r)
         {
             var scale = new List<InspectLint.ScaleEntry>();
-            if (!root.TryGetProperty("scale", out JsonElement list) || list.ValueKind != JsonValueKind.Array) return scale;
-            foreach (JsonElement e in list.EnumerateArray()) scale.Add(new InspectLint.ScaleEntry(Str(e, "name"), Float(e, "value")));
+            if (!root.TryGetProperty("scale", out JsonElement list) || list.ValueKind == JsonValueKind.Null) return scale;
+            if (list.ValueKind != JsonValueKind.Array) { r.Fail("scale", "is an array, not " + list.GetRawText()); return scale; }
+            foreach (JsonElement e in list.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.Object) { r.Fail("scale", "holds objects {name, value}, not " + e.GetRawText()); break; }
+                scale.Add(new InspectLint.ScaleEntry(r.Str(e, "name", ""), r.Finite(e, "value", 0f)));
+            }
             return scale;
         }
+
+        /// <summary>A string field of a baseline line ("" when absent or not a string).</summary>
+        static string Str(JsonElement e, string name)
+            => e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
         // ── baselines ───────────────────────────────────────────────────────────────────────────────────────────────
 

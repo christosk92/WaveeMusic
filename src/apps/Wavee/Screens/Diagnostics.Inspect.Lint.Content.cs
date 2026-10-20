@@ -58,8 +58,9 @@ public static partial class Diagnostics
         }
 
         /// <summary>A missing argument as `Loc.Format` renders it: <c>{name}</c>, a camelCase identifier inside the braces (a lowercase letter
-        /// first: <c>{count}</c>, never a title's <c>{Remix}</c>).</summary>
-        public static bool TryMissingArg(string text, out string token)
+        /// first: <c>{count}</c>, never a title's <c>{Remix}</c>). <paramref name="formattedOnly"/> (catalogue content): only where it sits like a
+        /// formatted value (<see cref="SitsLikeAValue"/>: <c>{count} plays</c>, <c>{m}:{s}</c>), never a title's lone <c>{intro}</c>.</summary>
+        public static bool TryMissingArg(string text, out string token, bool formattedOnly = false)
         {
             token = "";
             for (int open = text.IndexOf('{'); open >= 0; open = text.IndexOf('{', open + 1))
@@ -71,35 +72,65 @@ public static partial class Diagnostics
                 bool ok = true;
                 foreach (char c in inner)
                     if (!(char.IsAsciiLetterOrDigit(c) || c == '_')) { ok = false; break; }
-                if (!ok) continue;
+                if (!ok || (formattedOnly && !SitsLikeAValue(text, open, close + 1, separators: false))) continue;
                 token = text[open..(close + 1)];
                 return true;
             }
             return false;
         }
 
-        /// <summary>A number's neighbour: a digit, or what a formatted value sits next to (<c>NaN:NaN</c>, <c>NaN%</c>, <c>1/NaN</c>, <c>NaN×</c>).</summary>
-        static bool ValueNeighbour(char c) => char.IsAsciiDigit(c) || c is ':' or '%' or '/' or '×';
+        /// <summary>A number's neighbour: a digit, or what a formatted value sits next to (<c>NaN:NaN</c>, <c>NaN%</c>, <c>1/NaN</c>, <c>NaN×</c>),
+        /// or a placeholder's closing brace (<c>{m}:{s}</c>).</summary>
+        static bool ValueNeighbour(char c) => char.IsAsciiDigit(c) || c is ':' or '%' or '/' or '×' or '}' or '{';
+
+        /// <summary>What separates the parts of a meta line (<c>Album • 2010 • 12 songs</c>): a leaked value beside one is a part of the line.</summary>
+        static bool Separator(char c) => c is '•' or '·' or '|' or '–' or '—' or ',';
+
+        /// <summary>The words a formatted count or length ends in (<c>NaN plays</c>, <c>{count} songs</c>, <c>NaN min</c>).</summary>
+        static readonly string[] s_unitWords =
+        [
+            "plays", "play", "songs", "song", "tracks", "track", "min", "mins", "minutes", "hr", "hrs", "hours", "sec", "secs", "seconds",
+            "items", "item", "followers", "listeners", "likes", "saves", "episodes", "albums", "videos", "views", "kB", "MB", "GB",
+        ];
+
+        /// <summary>Does <c>text[start..end]</c> sit where a formatted value sits: next to a digit, <c>:</c>, <c>%</c>, <c>/</c>, <c>×</c> or another
+        /// placeholder (a space between counts), before a unit word (<c>plays</c>, <c>min</c>), or, with <paramref name="separators"/>, beside a
+        /// meta line's separator (<c>Album • null</c>)?</summary>
+        static bool SitsLikeAValue(string text, int start, int end, bool separators)
+        {
+            int before = start - 1, after = end;
+            if (before >= 0 && text[before] == ' ') before--;
+            if (after < text.Length && text[after] == ' ') after++;
+            if ((before >= 0 && ValueNeighbour(text[before])) || (after < text.Length && ValueNeighbour(text[after]))) return true;
+            if (separators && ((before >= 0 && Separator(text[before])) || (after < text.Length && Separator(text[after])))) return true;
+            if (after > end && after < text.Length)
+            {
+                int stop = after;
+                while (stop < text.Length && char.IsLetter(text[stop])) stop++;
+                ReadOnlySpan<char> word = text.AsSpan(after, stop - after);
+                foreach (string unit in s_unitWords)
+                    if (word.SequenceEqual(unit)) return true;
+            }
+            return false;
+        }
 
         /// <summary>A value that leaked as words: <c>NaN</c>, <c>null</c>, <c>undefined</c> or <c>-Infinity</c> as the whole text; any of them and
-        /// <c>Infinity</c> as a word next to a number (<c>NaN:NaN</c>, <c>NaN%</c>, <c>Infinity / 3</c>: a space between counts). "Infinity" alone
-        /// is a title, never a finding.</summary>
-        public static bool TryJunkWord(string text, out string token)
+        /// <c>Infinity</c> as a word where a formatted value sits (<see cref="SitsLikeAValue"/>: <c>NaN:NaN</c>, <c>NaN%</c>, <c>NaN plays</c>,
+        /// <c>Infinity / 3</c>), and NaN, null or undefined beside a meta line's separator (<c>Album • null</c>). "Infinity" alone, or beside a
+        /// separator, is a title, never a finding. <paramref name="formattedOnly"/> (catalogue content): never the whole-text form (a band may be
+        /// called "null"), only a value beside a number, a unit word or a separator.</summary>
+        public static bool TryJunkWord(string text, out string token, bool formattedOnly = false)
         {
             token = "";
             string trimmed = text.Trim();
-            if (trimmed is "NaN" or "null" or "undefined" or "-Infinity") { token = trimmed; return true; }
+            if (!formattedOnly && trimmed is "NaN" or "null" or "undefined" or "-Infinity") { token = trimmed; return true; }
             foreach (string word in s_junkWords)
             {
                 for (int at = text.IndexOf(word, StringComparison.Ordinal); at >= 0; at = text.IndexOf(word, at + 1, StringComparison.Ordinal))
                 {
                     int end = at + word.Length;
                     if ((at > 0 && char.IsLetterOrDigit(text[at - 1])) || (end < text.Length && char.IsLetterOrDigit(text[end]))) continue;   // inside a word
-                    int before = at - 1, after = end;
-                    if (before >= 0 && text[before] == ' ') before--;
-                    if (after < text.Length && text[after] == ' ') after++;
-                    bool numeric = (before >= 0 && ValueNeighbour(text[before])) || (after < text.Length && ValueNeighbour(text[after]));
-                    if (!numeric) continue;
+                    if (!SitsLikeAValue(text, at, end, separators: word is not ("Infinity" or "-Infinity"))) continue;
                     token = word;
                     return true;
                 }
@@ -121,10 +152,11 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary><c>text.placeholder</c>: in-scope words that are not content. A missing loc key (<c>[a.b.c]</c>) or a missing argument
-        /// (<c>{name}</c>) is an error; NaN, null, undefined or -Infinity as the text, or any of them and Infinity next to a number, is a warning.
-        /// In catalogue content (<see cref="IsContent"/>) only a bracketed loc key that is the whole text counts (what a missing key renders as).
-        /// Grouped by (kind, family pattern).</summary>
+        /// <summary><c>text.placeholder</c>: in-scope word runs. A missing loc key (<c>[a.b.c]</c>) or a missing argument (<c>{name}</c>) is an
+        /// error; NaN, null, undefined or -Infinity as the text, or a leaked value where a formatted value sits (<see cref="TryJunkWord"/>), is a
+        /// warning. In catalogue content (<see cref="IsContent"/>: a title is whatever the catalogue says) a bracketed loc key counts only as the
+        /// whole text, and a missing argument or a leaked value only where a formatted value sits: a track row's <c>NaN:NaN</c> duration and
+        /// <c>NaN plays</c> count, a title "null" or "{intro}" does not. Grouped by (kind, the node's nearest keyed pattern).</summary>
         static int PlaceholderRule(Snapshot s, List<Finding> into)
         {
             int looked = 0;
@@ -137,11 +169,10 @@ public static partial class Diagnostics
                 Severity sev;
                 bool content = IsContent(s, n);
                 if (TryMissingKey(t.String, out token, whole: content)) { kind = "missing-key"; sev = Severity.Error; }
-                else if (content) continue;
-                else if (TryMissingArg(t.String, out token)) { kind = "missing-arg"; sev = Severity.Error; }
-                else if (TryJunkWord(t.String, out token)) { kind = "value-" + token.TrimStart('-').ToLowerInvariant(); sev = Severity.Warn; }
+                else if (TryMissingArg(t.String, out token, formattedOnly: content)) { kind = "missing-arg"; sev = Severity.Error; }
+                else if (TryJunkWord(t.String, out token, formattedOnly: content)) { kind = "value-" + token.TrimStart('-').ToLowerInvariant(); sev = Severity.Warn; }
                 else continue;
-                string key = kind + "|" + FamilyPattern(s, n);
+                string key = kind + "|" + n.Pattern;
                 if (!groups.TryGetValue(key, out var g)) groups[key] = g = (sev, kind, token, []);
                 g.Nodes.Add(n);
             }
@@ -246,8 +277,8 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary><c>key.hygiene</c> (design-qa G6), severity info (it reports selector hygiene, not a flaw anyone sees, so it never sits among the
-        /// visual warnings): in-scope keys that make a selector ambiguous or unstable, one finding per (class, key family):
+        /// <summary><c>key.hygiene</c> (design-qa G6), severity warn at level todo (so it never counts in the summary): in-scope keys that make a
+        /// selector ambiguous or unstable, one finding per (class, key family):
         /// control characters; a trailing <c>:</c>; a run id (<c>#</c> + digits); a tier, form or column-count word (the owner rule); and the same
         /// key on two or more nodes (not counting a copy nested in another) OUTSIDE a repeated family: neither the family's own instances (rows keyed
         /// alike) nor copies of which all but one sit under keyed ancestors of their own (told apart by `root=<that key>`) count; the rest only
@@ -303,7 +334,7 @@ public static partial class Diagnostics
                 string message = g.Class == "duplicate"
                     ? $"{keys}: the same key is on {g.Nodes.Count} on-screen nodes that no row tells apart (a selector needs nth)"
                     : $"{keys}: {(g.Keys.Count == 1 ? "the key carries" : "these keys carry")} {g.Detail}";
-                into.Add(new Finding(Rules.KeyHygiene, Severity.Info, message, refs.Select(Printable).ToList())
+                into.Add(new Finding(Rules.KeyHygiene, Severity.Warn, message, refs.Select(Printable).ToList())
                 {
                     Measured = [M("count", g.Nodes.Count), M("keys", g.Keys.Count)],
                     Pattern = pattern,

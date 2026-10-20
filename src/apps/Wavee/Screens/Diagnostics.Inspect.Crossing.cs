@@ -298,9 +298,9 @@ public static partial class Diagnostics
             }
             topmost.Sort(static (x, y) => x.Commit.Y.CompareTo(y.Commit.Y));   // top of the page first
 
-            // 6. lint the settled scene
+            // 6. lint the settled scene (no frame is read: contrast checks nothing here; the head names the devices it ran on)
             if (!TryRoots(Inspect.Args.Empty, shell, out List<NodeHandle> roots, out error)) return Inspect.Reply.Fail(id, name, error);
-            InspectLint.Snapshot snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots));
+            InspectLint.Snapshot snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels: null, devices: Devices);
             InspectLint.Report report = InspectLint.Run(snapshot, options);
 
             int glided = 0, snapped = 0, jumped = 0;

@@ -617,7 +617,7 @@ public static partial class Diagnostics
         {
             if (!shown)
                 return new("notShown", "not shown (hidden, parked, transparent or no box on its chain)", aim, visible, fraction, hitKey);
-            if (fraction < MinVisible)
+            if (!InspectVisible.OnScreen(fraction))
                 return new("offscreen", string.Create(CultureInfo.InvariantCulture,
                     $"only {fraction * 100f:0}% of it is visible after the window and its clipping ancestors (needs {MinVisible * 100f:0}%): scroll it into view"),
                     aim, visible, fraction, hitKey);
