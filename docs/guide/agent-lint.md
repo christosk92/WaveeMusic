@@ -19,7 +19,9 @@ frames 90
 ```
 
 `python -I tools/inspect.py --exe <your run copy>/Wavee.exe --findings -f home.txt` prints a head line and one line per
-finding. The raw reply (without `--findings`) carries everything below. Lint reads the scene as it is: settle first (after a
+finding (`[warn ] align.baseline (review, todo): ...`: a finding that is not a fail of a gate rule says what it is). Add
+`--gate error` for an exit code: 1 when a gate rule's fail finding at or above the severity was listed (reviews, suppressed
+findings and report lines never count; `--gate-todo` counts the todo rules' fails too), 2 on any `ok:false`. The raw reply (without `--findings`) carries everything below. Lint reads the scene as it is: settle first (after a
 `scroll`, `frames 60`); `animating.scrolling` above 0 in the head says a scroller was still moving in the frame it read. With
 `contrast` on (the default) it presents one frame and reads it back.
 
@@ -49,8 +51,11 @@ names what the lint could not decide, and the `todo` rules report the spacing an
 | `ignoreUnder` | `shell.titlebar,shell.playerbar` | Key prefixes `duplicate.action` skips. Passing it replaces the default. |
 
 A number that is not a finite number in range fails the command and names the arg; nothing falls back silently.
-`crossing` takes the same options for the lint it runs after its settle (not `root`, `save` or `replay`;
-`InspectLintScene.RejectSnapshotArgs` is the helper a verb uses to refuse those two).
+Every arg above is declared in the server's verb table (`Diagnostics.Inspect.Protocol.cs`, the marked lint-arg list, plus `root`,
+`nth`, `save` and `replay` on `lint` itself), so `help verb=lint` and `help schema=json` list them and any other name is refused
+before the lint runs (`lint rule=clip`: "unknown arg 'rule' for lint (did you mean 'rules'?)"). `crossing` takes the same
+options for the lint it runs after its settle, except `root`, `nth`, `save` and `replay`: the table does not declare them there,
+so they are refused as unknown args.
 
 ## The reply
 
@@ -152,7 +157,10 @@ something else. Suppression: `Allow` policy, baseline.
 box, a no-wrap run's natural height, and (1.2 x size - line height) / 2 above and below under a tighter explicit line height
 (the **ink guess**). When the laid-out box fits the clip and only the ink guess runs past it, the finding is a `review`
 (cause `top:ink-guess`, reason "ink guess, not glyph metrics"): display type whose real ascenders sit inside (the Zune album
-and settings panoramas). A **scroller judges its own axis by its edges**: no finding where scrolling still reveals the cut text
+and settings panoramas). A cut at the TOP of text under a key the theme's guide lists in `DesignedTopBleeds` (Zune: the detail
+panorama `zune.detail.panorama` and the settings title `zs:title`, display type set on its exact line flush with the edge above
+it, ascenders inside) is intended: `suppressed` by intent, cause `top:designed-bleed`, counted in `suppressed.intent`; a cut at
+the bottom (descenders) still fails. A **scroller judges its own axis by its edges**: no finding where scrolling still reveals the cut text
 (the fold of a vertical list) or the edge fades (an edge fade, a scroller's auto fade); a cut at a hard horizontal scroll edge
 is a warn and a vertical scroll edge scrolling cannot open (the top at offset 0) an error (cause `scroll-edge:<side>`); a
 guide `Bleed` makes it intended. Under the headless text model: review.
@@ -202,10 +210,19 @@ VISIBLE part of its box was rendered in (a run cut by a scroller, a sticky heade
 (ink, ground): one finding per pair with its runs as members (an album page's 39 crumb and meta runs are one finding). Needs
 4.5 : 1, or 3 : 1 for glyphs, 24 DIP and up and bold 18.66 and up. Small type and glyphs are read without their own
 anti-aliased ink. A **busy ground** (no colour holds 45 % of a box) on a solid plate is judged against the plate's declared
-fill; on art, a gradient or a wash it is a `review` grouped by that ground ("13 runs (3 inks) sit on a busy ground (a gradient
-zune.material.wash:*)"); a run on screen the frame gave no ground for is a `review` too ("no ground read"): never silence. No
-frame (`gpu=none`, headless, inside `crossing`): `checked` 0. FP class: under `root=`, a plate outside the subtree is not seen,
-so a run on it reads as "on the page".
+fill. On art, a scrim, a gradient or a wash it is judged against the **rendered pixels around its glyphs at their worst**
+(`Pixels.TryWorstContrast`, read with the frame and saved with the snapshot as the run's `worst`): the glyphs are found in the
+frame (pixels past a quarter of the way from the box's median grey to the ink, plus 1.5 DIP either side), the gaps between and
+around them are the ground, and the ratio is read at the 10th percentile of the per-pixel ratios (the p90 worst ground, WCAG
+G18). A glyph that fills its box (an icon, a filled heart) is judged on the 3 DIP ring around it, less what is ink-coloured
+there; a run whose words cannot be told from their ground (dark ink on a dark photograph, light on a bright one) is judged over
+every pixel, which says it does not read. A failure over an image (an image node under most of the box) is an `error`, over a
+gradient or a wash a `warn`, both `fail`, grouped by (ink, what it sits on): "6 runs (...) in #ffffff87 over a gradient
+artist-veil-tone:* over an image read 3.57 : 1 on their p90 ground #43506d". To judge text over a real photograph, mount with
+`images=real` (the fake decoder paints every image as a gradient). A busy run with no worst read (a snapshot saved before it
+was) is a `review` grouped by that ground; a run on screen the frame gave no ground for is a `review` too ("no ground read"):
+never silence. No frame (`gpu=none`, headless, inside `crossing`): `checked` 0. FP class: under `root=`, a plate outside the
+subtree is not seen, so a run on it reads as "on the page".
 
 ### Report-only rules (level `todo`)
 
@@ -269,6 +286,8 @@ A theme describes what only it knows as data, through `IThemeLintGuide` (registe
 
 - `Edges(LintContext)`: `LintEdge`s for `edge.left` / `edge.right`. An edge with `Column: true` is the page column's ink line
   `align.inset` anchors on.
+- `DesignedTopBleeds` (default: none): keys whose display type sits on its exact line flush with a clipping edge above it, by
+  design; `text.clip` suppresses a cut at the top of text under them (above).
 - `Policies(LintContext)` (default: none): `LintPolicy(Intent, Prefix, Reason, Value, Rule)`, intents for every node whose key
   or an ancestor's starts with `Prefix`: `TrimOk`, `NeverTrim`, `Hang` (Value DIP, negative = left), `Indent`, `Bleed`,
   `OffScaleOk`, `RepeatOk`, `Allow` (any finding of `Rule` whose members ALL lie under the prefix). The reason must let a
@@ -279,7 +298,7 @@ it in `suppressed.intent`; it never hides it from `outcomes=all`.
 
 | Theme | Edges | Policies |
 |---|---|---|
-| Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings) |
+| Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings). `DesignedTopBleeds`: `zune.detail.panorama`, `zs:title` |
 | WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | none |
 | Classic | no guide: `guide:false`, no edges, no intents; findings are reported, not fixed | |
 
@@ -300,10 +319,10 @@ use a baseline to hide a feature someone switched off.
 
 ## Saved snapshots and replay
 
-`lint save=<file>` writes the snapshot the rules saw: window, theme, route, text source, the guide's edges and policies, the
+`lint save=<file>` writes the snapshot the rules saw: window, theme, route, text source, the guide's edges, policies and top bleeds, the
 theme's spacing scale, and every captured node with its rect, flags, scroll range, fades and motion, authored clip, the cut a
 `root=` subtree started from, declared layout, paint, click identity and text run (with the ground the rendered frame put under
-it, so `contrast.text` replays without pixels). Numbers are written at round-trip float precision. Derived fields (`on`,
+it, and over a busy ground its worst ratio, so `contrast.text` replays without pixels). Numbers are written at round-trip float precision. Derived fields (`on`,
 `covered`, `family`, `cell`) are written for a reader and recomputed on replay. A Zune Home 400 snapshot is about 0.27 MB, a
 Classic or WinUI Home at 1440 about 0.5-0.6 MB.
 
@@ -312,8 +331,8 @@ snapshot gives the same findings, fingerprints and counts (checked on the Zune a
 lint snapshot, is newer than the reader, has no window size, names a parent that does not come before its child, or holds a
 rect that is not finite fails with the reason. Uses: validating a rule on pinned pages while the branch moves (the six
 reference mounts), showing a rule on a doctored copy (one node moved, one text replaced, a policy added) after a lane fixed
-the real flaw, and auditing a page without mounting it. Today the server checks for a mount before `lint` runs, so a replay
-needs any mount (`mount w=400 h=300` is enough; the replay reads nothing from it).
+the real flaw, and auditing a page without mounting it. A replay needs **no mount**: the server routes `lint replay=` before
+its mount check, so a fresh server can lint a saved page at once (`status` still reads `mounts:0`).
 
 ## Fix-hint rules (every `fix` line keeps them)
 
@@ -346,14 +365,19 @@ inset (+8) and, below the fold, the release and cluster rows (+8), the Zune arti
 title-baseline drift (`align.baseline`), the album's band-vs-list Shuffle and More, and one contrast finding for the 39-run
 token pair. Labels per finding (true / false / intended): `C:/WAVEE/scratch/inspect-p1/i3/fix/labels.txt`.
 
+After the merge with feat/themes-p6 (busy grounds judged on the rendered pixels, the designed top bleeds; the integration run of
+`C:/WAVEE/scratch/inspect-p1/integration/mounts`), warn+ fail findings, gate / every level: Zune Home 400 0 / 1, Zune Home
+1440 5 / 5, Zune album 9 / 9 (its panorama cut is a suppressed designed bleed), Zune artist 10 / 11, Classic Home 7 / 7, WinUI
+Home 4 / 4. The new ones are contrast over pictures: the Classic daylist's tag line over its veiled art (an error over an image),
+the Zune artist crumb over the material bleed (an error), the Zune Home search hint over its translucent pill. Still 0 of 278
+findings name a wholly off-screen node.
+
 ## Known limits
 
 - The text ink is a 1.2 em guess, not glyph ink metrics: a clip only the guess makes is a review until the engine reports ink.
 - `align.baseline` compares line-box tops (review only) until the engine reports first baselines.
 - `space.scale` knows the token scale, not the boards': Zune's board values (6, 10, 14, 18, 22) report as info until the guide
   declares them.
-- Contrast reads one rendered frame: text over art and gradients is a review, not a measurement; under `root=` the plates
-  outside the subtree are not seen.
-- A replay needs a mounted server until the dispatcher lets `lint replay=` run unmounted.
-- `tools/inspect.py --findings` prints a finding's severity, not its outcome or level: a review or a todo finding reads like a
-  plain warn there; the raw reply has both.
+- Contrast reads one rendered frame: over art the ground is the frame's pixels at their p90 worst, so the fake decoder's
+  gradients stand in for photographs unless the mount says `images=real`; under `root=` the plates outside the subtree are
+  not seen.

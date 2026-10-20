@@ -441,70 +441,67 @@ Returns the window's current `TierFacts`:
 - `resizing`
 - the crossed `rungs`, by id (as `mount`, `status` and `crossing` list them)
 
+The three sizes are those of the last time the facts were published (the mount or a tier change). After a `resize` that
+stays in the same tier, they still show the old size; the tier names are current. `status` has the window's size.
+
 It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
 mounted window.
 
-### `lint {rules?, root?, nth?, min?, limit?, ...}`
+### `lint {rules?, scope?, root?, nth?, min?, limit?, outcomes?, baseline?, save?, replay?, ...}`
 
-Checks the mounted scene for the flaws a visual audit looks for, and returns structured findings. It reads the scene as it
-is, so `settle` first (the verbs that change the screen already do). Only what paints is checked: hidden, parked,
-transparent and empty-box nodes are not in it.
+Checks the mounted scene (or a saved snapshot) for the flaws a visual audit looks for, and returns findings an agent can act
+on. **The full reference is [`agent-lint.md`](agent-lint.md)**: every rule and its classes, the finding model (`id`,
+`outcome`, `level`, `fp`, `group`, `fix`), scopes and the visible rect, theme guides and intents, baselines, and saved
+snapshots. In short:
+
+- It judges **what a person can see** (`scope=screen`, the default: nodes at least half visible after the window and every
+  clip); `scope=content` reaches below the fold, `scope=all` is everything captured. It reads the scene as it is, so `settle`
+  first (the verbs that change the screen already do).
+- Rules have ids (`text.clip`) and, for today's nine, the old names as aliases (`clip`, `trim`, `type`, `target`,
+  `duplicate`, `rhythm`, `contrast`, `gutter`, `right-edge`); `rules=` takes ids, aliases, families (`align`, `align.*`) or
+  `all`. The nine are level `gate`; the newer ones (`align.inset`, `align.baseline`, `space.scale`, `text.placeholder`,
+  `key.hygiene`) are level `todo`, report-only.
+- Each finding has an `outcome`: `fail` (the verdict), `review` (the rule could not decide: render and look), `suppressed` (a
+  guide intent or a baseline entry matched; counted in the head, listed with `outcomes=all`) or `report` (an info line that
+  states what is there).
+- **"lint min=error clean"** means `summary.error` is 0: `summary` counts the fail findings (and report lines) of the gate
+  rules at or above `min`, listed or not. A review or a todo finding never breaks it.
+- `save=<file>` writes the snapshot the rules saw; `replay=<file>` lints a saved snapshot instead of the mount and **needs no
+  mount** (the server routes it before its mount check).
 
 | Arg | Meaning |
 |---|---|
-| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a list (`[gutter,clip]`). Default: all nine. A name that is not a rule, or an empty list, is refused. |
-| `root`, `nth` | Lint only the subtree of the node with that key (`nth` picks among duplicates). Default: the whole tree and the overlays. |
+| `rules` | Ids, aliases, families or `all` (comma list or `[a,b]`; default: all). An unknown word or an empty list is refused. |
+| `scope` | `screen` (default), `content` or `all`. |
+| `root`, `nth` | Lint only the subtree of the node keyed exactly so (`nth` picks among copies). Not with `replay`. |
 | `min` | Leaves out findings below this severity: `info` (default), `warn` or `error`. |
-| `limit` | The most findings one rule reports, 100 by default. The reply lists the rules it cut in `truncated`. |
-| `typeFloor` | `type`: text under this size in DIP is an error. 11 by default. |
-| `targetFloor`, `targetFloorCompact` | `target`: the smallest hit target outside Compact (32) and at Compact (40). |
-| `gapMin` | `rhythm`: stacked text blocks closer than this are cramped. 2 DIP by default. |
-| `allowTrim` | `trim`: keys or key prefixes (of the text or any ancestor) whose text may be trimmed. |
-| `allowDuplicate` | `duplicate`: labels that may appear twice. |
-| `ignoreUnder` | `duplicate`: key prefixes it does not look inside. Default `shell.titlebar,shell.playerbar`. |
+| `limit` | The most findings listed per rule name, 100 by default; cut names are in `truncated`. |
+| `outcomes` | The outcomes LISTED: any of `fail`, `review`, `suppressed`, `report`, or `all` (default `fail,review,report`). Every outcome is counted either way. |
+| `baseline` | A JSON-lines file of accepted findings (`{fp, rule, reason, by, date}`); a match is `suppressed`. |
+| `save`, `replay` | Write the snapshot the rules saw / lint a saved snapshot. `lint` only: `crossing` refuses both as unknown args. |
+| `typeFloor` | `type.floor`: text under this size in DIP is an error. 11 by default. |
+| `targetFloor`, `targetFloorCompact` | `target.size`: the smallest hit target outside Compact (32) and at Compact (40). |
+| `gapMin` | `space.stack`: stacked text blocks closer than this touch (a report). 2 DIP by default. |
+| `allowTrim`, `allowDuplicate`, `ignoreUnder` | `text.trim` keys or prefixes that may ellipsise; `duplicate.action` labels that may repeat and key prefixes it skips (default `shell.titlebar,shell.playerbar`). |
 
 ```json
 {"cmd":"lint","args":{"rules":"gutter,clip","min":"warn"},"id":8}
-→ {"id":8,"ok":true,"cmd":"lint","theme":"zune","tier":"Standard","size":{"w":2560,"h":1440},"guide":true,
-   "summary":{"error":1,"warn":0,"info":0,"nodes":812,"edges":7},
-   "rules":{"gutter":{"checked":4,"error":1,"warn":0,"info":0},"clip":{"checked":143,"error":0,"warn":0,"info":0}},
-   "findings":[{"rule":"gutter","severity":"error",
+→ {"id":8,"ok":true,"cmd":"lint","theme":"zune","tier":"Standard","size":{"w":2560,"h":1440},"route":"home",
+   "trimSource":"dwrite","devices":"offscreen (D3D12 (WARP))","guide":{"id":"zune","edges":7,"matched":4,"policies":9},
+   "scope":"screen","animating":{"nodes":0,"scrolling":0},
+   "summary":{"error":1,"warn":0,"info":0,"nodes":812,"edges":7,"inScope":402},
+   "outcomes":{"fail":1,"review":0,"suppressed":0,"report":0},"levels":{"gate":1,"todo":0},"suppressed":{"intent":0,"baseline":0},
+   "rules":{"gutter":{"checked":4,"error":1,"warn":0,"info":0,"review":0,"suppressed":0,"level":"gate","ids":["edge.left"]}, ...},
+   "findings":[{"rule":"gutter","id":"edge.left","severity":"error","outcome":"fail","level":"gate",
      "message":"the band's first pivot (band.first-pivot): left edge at 48, expected 80 (-32)",
-     "keys":["zune-band-pivot:home"],"measured":{"x":48,"delta":-32},"expected":{"x":80,"tolerance":1}}]}
+     "keys":["zune-band-pivot:home"],"measured":{"x":48,"delta":-32},"expected":{"x":80,"tolerance":1},
+     "fp":"edge.left|zune|home|zune-band-pivot:*|left-of","group":{"count":1,"pattern":"zune-band-pivot:*"},
+     "rects":[[48,60,77,32]],"fix":"take the x from the surface's tier record (the guide's numbers), not a literal tuned to one size"}]}
 ```
 
-**A finding** has these fields:
-
-| Field | Meaning |
-|---|---|
-| `rule` | The rule that found it. |
-| `severity` | `error`, `warn` or `info`. Errors sort first within a rule. |
-| `message` | One line, with the numbers in it. |
-| `keys` | The nodes involved, by key. A node without a key is named by its dump `path`. Use them with `find`, `dump root=` and `click`. |
-| `measured?` | What the scene has, as named numbers (`x`, `w`, `inkBottom`, `gap`, `size`, ...). |
-| `expected?` | What the rule wanted (`x`, `w`, `clipBottom`, `minSize`, `minGap`, ...). |
-
-`summary` counts the findings by severity. `rules` gives each rule's `checked` (how many things it looked at) and its
-counts, so a rule with no findings can be told apart from a rule that had nothing to check.
-
-**The rules** and what they check:
-
-| Rule | What it reports | Severity |
-|---|---|---|
-| `gutter` | The active theme's left-edge expectations: the title-bar lead on the tier's gutter, the band's first pivot and the page column's content on the page column (Zune: `ZuneFrameRules.ColumnLead(width, gutter)` in the content column). Off by more than 1 DIP. | `error` (`warn` for an expectation the theme marks advisory, such as Back at Compact) |
-| `right-edge` | The theme's right-edge expectations: the band's last row-2 action, the page's right content edge and the play bar's last glyph agree within 1 DIP. Zune checks this from Small to Standard. | `error`, the play bar's glyph `warn` |
-| `clip` | (a) Text whose ink runs outside the nearest ancestor that clips it: clipped descenders, a title taller than its fixed box. The ink is the text box, the natural height of an unwrapped run, and the 1.2 × size a tight explicit line height needs. An axis the clipping ancestor scrolls on is allowed (a pivot row fading at the window's edge), and so is everything above it. (b) Sibling boxes that overlap by more than 1 DIP, when both carry text or a target and their parent is not a ZStack or a scroller. | (a) vertical `error` (a cut at the top of text under a theme's designed top bleed, `IThemeLintGuide.DesignedTopBleeds` — Zune's panorama band and settings title — is `info`), horizontal `warn`; (b) `warn` |
-| `trim` | Text the engine reports trimmed (`text.trimmed`), with its natural size against its box, and whether it is ellipsised, hard-clipped or overflowing. | `warn` |
-| `type` | Every distinct size / line height / weight with its count (the type scale), and an error per size under `typeFloor`. Icon glyphs are not text here. | scale `info`; floor `error` |
-| `target` | Click targets smaller than 40 × 40 at Compact (32 elsewhere). Sliders, scroll bars, progress bars and inline links are exempt, and a target that fills its interactive parent is that parent's. | `error` at Compact, `warn` elsewhere |
-| `duplicate` | The same action visible twice: click targets with the same role and label whose surfaces differ (the first key of the nearest keyed ancestor, up to the first `:`). The title bar and play bar are skipped. Rows of one list share a surface, so they are not duplicates. | `warn` |
-| `contrast` | Each text run's declared colour (times its own and its ancestors' opacity) against what is painted under it on the rendered frame (the lint presents one frame at rest and reads it back, like `render`). Body text needs 4.5 : 1; 24 DIP and up, bold 18.66 DIP and up, and icon glyphs need 3 : 1. Over a SOLID ground (one colour holds half the box) the run is judged against that colour: `warn`. Over a BUSY ground (a photograph, a scrim, a gradient) it is judged against the RENDERED pixels around its glyphs at their worst: the glyphs are found in the frame (pixels past a quarter of the way from the box's median grey to the ink, plus 1.5 DIP either side), the gaps between and around them are the ground, and the ratio is read at the 10th percentile of the per-pixel ratios (the p90 worst ground, WCAG G18). A glyph that fills its box (an icon) is judged on the 3 DIP ring around it. A ground the glyphs cannot be told from (dark ink on a dark photograph, light on a bright one) is judged over every pixel, which says it does not read. Over an image (a visible image node under most of the box) a failure is an `error`; over a gradient or a wash, a `warn`. Skipped, not passed: disabled subtrees, nodes mid-animation, transparent ink, span runs, boxes mostly off the frame. No offscreen surface (`gpu=none`), no check (`checked` is 0). The page behind a modal scrim is read dimmed against its undimmed ink, so lint a dialog with `root=` set to it. To judge text over a real photograph mount with `images=real`. | `error` over an image, else `warn` |
-| `rhythm` | The vertical gaps between consecutive text blocks stacked in one column (`info`, one per container), and a warning for a gap under `gapMin`, or an overlap. | `info` / `warn` |
-
-The edge rules need the theme's help: the theme registers a **lint guide** (`IThemeLintGuide`, registered through
-`ThemeInspection.RegisterLintGuide` when the theme is built). A guide describes where its edges belong in the current window
-tier, as data, and core resolves them against the scene by key. A theme with no guide (Classic) is not checked by `gutter` and
-`right-edge`; the reply says `"guide":false`. An edge whose node is not on screen is not checked.
+Every key the lint reply had before the finding model stays (`rule`, `severity`, `message`, `keys`, `measured`,
+`expected`, `summary`, `rules{checked, error, warn, info}`); `guide` is an object now, or `false` for a theme with no guide
+(Classic), so a truthiness check still works.
 
 ### `crossing {from, to, frames?, items?, max?, ...}`
 
@@ -521,10 +518,33 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
    skips the loop: `frames` keep-alive paints, then a normal frame as the commit.
 3. It settles, lints the settled scene (the same options as `lint`) and replies.
 
+Reading a crossing:
+
+- The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
+  lists (the offscreen window reports the window flags the crossing sets, engine `9476a4bbe`). Only `settle.frames` varies:
+  it changes with the machine's load, on either device. `gpu=none` is faster; under the default, `render` works in the same
+  server after the crossing.
+- Start in the old tier. Edges hold differently each way: a narrowing drag keeps Zune's Huge tier down to 1904 wide, where a
+  fresh mount is already Standard. The content tier also depends on the path: Classic resized from 3456 straight to 1136 is
+  content Small, walked down in 16 DIP steps it is still Standard there. So at an edge, mount inside the old tier, walk to
+  the old-side size with `resize`, check `tiers`, then run `crossing` without a remount:
+  `mount w=1920 h=960 theme=zune route=home`, `resize 1904 960`, `tiers`, `crossing from=1904x960 to=1888x960`. Run as the
+  first command at 1904, the same crossing crosses nothing, and still reads `heldOldTier:true`: compare `tierBefore` with
+  `tierAfter`.
+- `committed` and `heldOldTier` compare the window and height tiers and the rungs, not the content tier: an edge where only
+  the content tier changes reads `committed:false`, and `tierAfter.content` shows the change.
+- Only `frames=1` models a drag: the old tier holds for one keep-alive paint after the resize (after the loop, when
+  narrowing), and the next frame commits. From `frames=2` on, the new tier lands inside the resized frames, both ways:
+  `heldOldTier` is false, `tierResized` is already the new tier, and the commit frame compares two frames after the commit. Zune home 1440x960 to 1440x400 reports 195 jumped at `frames=1`, 176 at `frames=2`
+  and nothing changed at `frames=60`.
+- A width step with no tier edge already moves nodes on the commit frame (Zune home 1504 to 1488 wide: 8 snapped,
+  119 to 125 jumped, depending on how the page got to 1504). Set an edge's numbers against a 16 DIP step inside the same
+  tier, reached the same way, before you blame the tier change.
+
 | Reply field | Meaning |
 |---|---|
 | `tierBefore`, `tierResized`, `tierAfter` | `{window, height, content, rungs}` at the start, after the resized frames and after the commit; `rungs` lists the crossed rung ids, as `tiers` does. |
-| `committed` | The tier or a rung changed. `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
+| `committed` | The window or height tier or a rung changed (the content tier is not compared). `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
 | `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `remounted`, `vanished`, `appeared`, `recounted`. |
 | `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
@@ -532,7 +552,7 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
 | `recounted` | Keys that repeat (rows) whose count changed: `{key, before, after}`. |
 | `snapped` | Nodes whose laid-out rect changed **on the commit frame** (compared with the resized frame, so plain window resizing does not count) with nothing animating it: no track on the node or an ancestor, and the presented rect already equal to the laid-out one. Each has `from`, `to` and `dx`, `dy`, `dw`, `dh`. Only the topmost of a subtree is listed. |
 | `jumped` | The snapped nodes that only moved (same size): the content below something that changed height, shifting at once. |
-| `settle` | `{frames, settled, busy?}` for the final settle (`busy` as in Settling, when it hit `max`). |
+| `settle` | `{frames, settled, busy?}` for the final settle (`busy` as in Settling, when it hit `max`). `frames` varies from run to run with the machine's load. |
 | `lint` | The settled scene's lint: `theme`, `tier`, `size`, `guide`, `summary`, `rules`, `findings` as in `lint`. |
 | `reducedMotion` | Under reduced motion nothing glides, so every change reads as snapped. |
 | `items` | An arg: how many entries each list shows, 40 by default. |
@@ -551,18 +571,25 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
 ```
 
 `python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"` prints a lint (or the lint of a
-crossing) as one line per finding (an icon glyph in a message prints as `glyph:U+XXXX`).
+crossing) as a head line (the summary, then the `outcomes` and `levels` counts) and one line per finding:
+`[warn ] target/target.size: ...` (the alias, then the id when they differ). A finding that is not a fail of a gate rule
+says what it is: `[warn ] align.baseline (review, todo): ...`, `[error] clip/text.clip (suppressed): ...`. An icon glyph in
+a message prints as `glyph:U+XXXX`.
 
 **A verdict: `--gate`.** `python -I tools/inspect.py --gate error -f lint.txt` runs the file as usual, then prints one
-summary line and exits **1** when any lint (or crossing's lint) reported a finding at or above the gate's severity
-(`info`, `warn` or `error`; a finding whose `outcome` is `suppressed` does not count), **2** when any reply was `ok:false`
-(that wins), else **0**. The finding counts come from the replies, so the lint's own `min` and `limit` apply first. A server
-that dies or closes the stream mid-run counts as an `ok:false` (`server: ...`): exit 2 with the summary line, never 1.
+summary line and exits **1** when any lint (or crossing's lint) listed a **failure of a gate-level rule** at or above the
+gate's severity (`info`, `warn` or `error`), **2** when any reply was `ok:false` (that wins), else **0**. A finding counts
+only with `outcome` `fail` and `level` `gate`: a review (the rule could not decide), a suppressed finding (an intent or a
+baseline matched) and a report line never count, and the summary line says how many of each it passed over. Add
+`--gate-todo` to count the todo rules' failures too (`align.inset`, `align.baseline`, `space.scale`, `text.placeholder`,
+`key.hygiene`). The counts come from the LISTED findings, so the lint's own `min`, `limit` and `outcomes` apply first. A
+server that dies or closes the stream mid-run counts as an `ok:false` (`server: ...`): exit 2 with the summary line, never 1.
 
 ```text
-gate error: 1 lint reply, 0 error, 18 warn, 0 info (0 at or above error); 0 ok:false replies -> exit 0
-gate warn: 1 lint reply, 0 error, 18 warn, 0 info (18 at or above warn); 0 ok:false replies -> exit 1
-gate error: 0 lint replies, 0 error, 0 warn, 0 info (0 at or above error); 1 ok:false reply -> exit 2 (first: lint: unknown arg 'rule' for lint (did you mean 'rules'?))
+gate warn: 1 lint reply, 0 error, 0 warn, 0 info failed (0 at or above warn; not counted: 1 todo); 0 ok:false replies -> exit 0
+gate warn +todo: 1 lint reply, 0 error, 1 warn, 0 info failed (1 at or above warn); 0 ok:false replies -> exit 1
+gate error: 1 lint reply, 0 error, 9 warn, 0 info failed (0 at or above error; not counted: 1 review, 1 suppressed); 0 ok:false replies -> exit 0
+gate error: 0 lint replies, 0 error, 0 warn, 0 info failed (0 at or above error); 1 ok:false reply -> exit 2 (first: lint: unknown arg 'rule' for lint (did you mean 'rules'?))
 ```
 
 Without `--gate` the client exits 0 whatever the replies say (`--fail-fast` stops at the first `ok:false` with exit 2).
@@ -622,10 +649,11 @@ dump keysOnly=true
 
 What to compare across the four sizes (`lint` does all of this for you, per mount):
 
-- The left edges of the title-bar lead, the band and the first content block, against the tier's gutter (`gutter`).
-- Every `text` with `trimmed: true` (`trim`).
-- The distinct `sizeDip` / `lineHeight` pairs, which make up the type scale (`type`).
-- The hit targets under 40 DIP at Compact (`target`).
+- The left edges of the title-bar lead, the band and the first content block, against the tier's gutter (`edge.left`).
+- Every `text` with `trimmed: true` (`text.trim`).
+- The distinct `sizeDip` / `lineHeight` pairs, which make up the type scale (`type.scale`).
+- The hit targets under 40 DIP at Compact (`target.size`).
+- A section whose ink sits a few DIP off its region's column (`align.inset`, report-only).
 
 `python -I tools/inspect.py -f audit.txt --pretty` runs such a file.
 
@@ -642,8 +670,8 @@ mount w=2560 h=1440 theme=zune route=home
 lint min=warn
 ```
 
-`python -I tools/inspect.py --findings -f lint.txt` prints each finding as `[error] gutter: message <keys>`; add
-`--gate error` for an exit code. Follow a finding's `keys` with `dump root=<key> depth=2` to see the node, or
+`python -I tools/inspect.py --findings -f lint.txt` prints each finding as `[error] gutter/edge.left: message <keys>`; add
+`--gate error` for an exit code (gate-rule failures only; `--gate-todo` adds the todo rules). Follow a finding's `keys` with `dump root=<key> depth=2` to see the node, or
 `render path=...` to see it.
 
 ### Check a crossing
@@ -691,10 +719,13 @@ dump root=<the page's root key> depth=3
   names, args (type, default, choices, aliases, doc), example, whether it needs a mount and whether it acts. The strict-arg
   check, `help` and the `after` block all read it: a verb that reads a new arg declares it there, or the arg is refused.
   The lint args are one line each in their own marked list.
-- **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle (and `busy`), Subtree, the visible-rect math
-  and the actionability check (`Assess`, deciding through the pure `Diagnostics.Actionability`), what a mount puts back
+- **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle (and `busy`), Subtree and the actionability check (`Assess`, deciding through the pure `Diagnostics.Actionability`), what a mount puts back
   (`ResetPlayback` with the boot's queue, `ResetTabs`), Play, the fixture grader and the theme activation.
-- **The lint rules are pure.** `Diagnostics.InspectLint` (`Diagnostics.Inspect.Lint.cs`) turns a `Snapshot` of nodes into
-  findings with no engine and no host.
+- **One visible rect.** `Diagnostics.InspectVisible` (`Diagnostics.Inspect.Visible.cs`) computes what of a node a person can
+  see: the lint's scopes read its pure half over a snapshot, and the pointer verbs' actionability reads its live half
+  (`TryGetVisibleRect`: the engine's `VisibleWindowRect`, transforms and the node's own clip folded in, cut by the window), so
+  a target `click` refuses as off screen and a node `lint` leaves out are judged by the same rect.
+- **The lint rules are pure.** `Diagnostics.InspectLint` (`Diagnostics.Inspect.Lint*.cs`) turns a `Snapshot` of nodes into
+  findings with no engine and no host; [`agent-lint.md`](agent-lint.md) is its reference.
   `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
 - **No reflection.** JSON is parsed with `JsonDocument` and written with `Utf8JsonWriter`, so the server is AOT-safe.
