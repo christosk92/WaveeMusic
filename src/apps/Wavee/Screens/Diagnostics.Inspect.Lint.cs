@@ -119,6 +119,13 @@ public static partial class Diagnostics
             public bool Disabled { get; init; }
             public string Role { get; init; } = "";
 
+            /// <summary>How far the engine's hit test reaches past the box (its own <c>HitSlop</c> plus the host's touch floor), per side.</summary>
+            public Edges4 Slop { get; init; }
+
+            /// <summary>It carries a press handler (click, pointer, press, drag, gesture or context): a role alone (a pager's arrow on its first
+            /// page, drawn but handler-less) takes no press and is no target.</summary>
+            public bool Pressable { get; init; } = true;
+
             /// <summary>The first text under an interactive node (an icon-only button: its glyph).</summary>
             public string Label { get; init; } = "";
 
@@ -152,6 +159,12 @@ public static partial class Diagnostics
             /// <summary>The active theme's designed top bleeds (<see cref="IThemeLintGuide.DesignedTopBleeds"/>): keys whose text may run its ink
             /// past the top of a clip.</summary>
             public IReadOnlyList<string> TopBleeds { get; init; } = [];
+
+            /// <summary>The boxes of press targets that paint nothing (opacity 0: an auto-hidden scroll bar) but still take hits: a slop beside one is cut by it.</summary>
+            public IReadOnlyList<RectF> HitBlockers { get; init; } = [];
+
+            /// <summary>Whether a window point is over a scroll bar's lane (a press there is the bar's before any target's), or null in a hand-built snapshot.</summary>
+            public Func<Point2, bool>? OverScrollbarLane { get; init; }
 
             public string Theme { get; init; } = "";
 
@@ -855,7 +868,9 @@ public static partial class Diagnostics
 
         // ── target ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-        static bool ExemptFromTarget(Node n) => n.Role is "Slider" or "ScrollBar" or "ProgressBar" or "Hyperlink";
+        /// <summary>Track controls whose target is the whole track, not one mark on it: a slider, a scroll bar, a progress bar, a pips pager's pips (12-DIP
+        /// dots abutting in one strip, a tap anywhere on it lands on a page; its chevrons are ordinary targets), and inline links (checked by eye).</summary>
+        static bool ExemptFromTarget(Node n) => n.Role is "Slider" or "ScrollBar" or "ProgressBar" or "Hyperlink" or "Pager";
 
         /// <summary>Click targets smaller than <see cref="Options.TargetFloorCompact"/> (Compact: an error) or <see cref="Options.TargetFloor"/> (a warning).
         /// A target that sits exactly on its interactive parent is that parent's, not its own.</summary>
@@ -866,24 +881,139 @@ public static partial class Diagnostics
             float floor = compact ? o.TargetFloorCompact : o.TargetFloor;
             foreach (Node n in s.Nodes)
             {
-                if (!n.Interactive || n.Disabled || ExemptFromTarget(n)) continue;
+                if (!n.Interactive || n.Disabled || !n.Pressable || ExemptFromTarget(n)) continue;
                 looked++;
                 if (n.Rect.W >= floor - Slack && n.Rect.H >= floor - Slack) continue;
+                RectF hit = HitRect(s, n, out string cutBy);
+                if (hit.W <= 0f || hit.H <= 0f) continue;   // a clipping ancestor hides it whole: no target on screen
+                if (hit.W >= floor - Slack && hit.H >= floor - Slack) continue;
                 if (n.Parent >= 0)
                 {
                     Node p = s.Nodes[n.Parent];
                     if (p.Interactive && MathF.Abs(p.Rect.W - n.Rect.W) <= Slack && MathF.Abs(p.Rect.H - n.Rect.H) <= Slack) continue;
                 }
                 string what = n.Label.Length > 0 ? " " + Q(n.Label) : "";
+                bool slopped = hit.W > n.Rect.W + Slack || hit.H > n.Rect.H + Slack;
                 into.Add(new Finding(Rules.Target, compact ? Severity.Error : Severity.Warn,
-                    $"hit target {n.Ref}{what} is {F(n.Rect.W)} x {F(n.Rect.H)}, under {F(floor)} x {F(floor)}"
+                    $"hit target {n.Ref}{what} is {F(n.Rect.W)} x {F(n.Rect.H)}{(slopped ? $" (hit {F(hit.W)} x {F(hit.H)} with its slop{(cutBy.Length > 0 ? "; cut by " + cutBy : "")})" : cutBy.Length > 0 ? " (its slop cut by " + cutBy + ")" : n.Slop.Horizontal + n.Slop.Vertical <= 0f ? " (no slop)" : "")}, under {F(floor)} x {F(floor)}"
                     + (compact ? " at Compact" : ""), [n.Ref])
                 {
-                    Measured = [M("w", n.Rect.W), M("h", n.Rect.H)],
+                    Measured = [M("w", n.Rect.W), M("h", n.Rect.H), M("hitW", hit.W), M("hitH", hit.H)],
                     Expected = [M("w", floor), M("h", floor)],
                 });
             }
             return looked;
+        }
+
+        /// <summary>The rect a target takes hits in: its box grown by its slop, cut by every clipping ancestor, and kept off the boxes of the other
+        /// targets beside it (a real hit always wins over a slop hit, InputDispatcher.Hit).</summary>
+        static RectF HitRect(Snapshot s, Node n) => HitRect(s, n, out _);
+
+        static RectF HitRect(Snapshot s, Node n, out string cutBy)
+        {
+            cutBy = "";
+            Edges4 slop = n.Slop;
+            if (slop.Left <= 0f && slop.Top <= 0f && slop.Right <= 0f && slop.Bottom <= 0f) return n.Rect;
+            RectF r = n.Rect;
+            float l = r.X - slop.Left, t = r.Y - slop.Top, rr = r.Right + slop.Right, b = r.Bottom + slop.Bottom;
+            var by = new List<string>(2);
+            // A target not wholly in its scroller's view is judged as if scrolled in: that scroller, and every ancestor above it, cut only across
+            // its axis. A target in view meets every clip as the hit test does (a pager at the end of a paged shelf is cut at the shelf's edge).
+            bool scrollsH = false, scrollsV = false;
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node anc = s.Nodes[a];
+                if (anc.ScrollAxis == 1 && (r.X < anc.Rect.X - Slack || r.Right > anc.Rect.Right + Slack)) scrollsH = true;
+                if (anc.ScrollAxis == 2 && (r.Y < anc.Rect.Y - Slack || r.Bottom > anc.Rect.Bottom + Slack)) scrollsV = true;
+                if (!anc.Clips && anc.ScrollAxis == 0) continue;
+                float cl = scrollsH ? float.NegativeInfinity : anc.Rect.X, cr = scrollsH ? float.PositiveInfinity : anc.Rect.Right;
+                float ct = scrollsV ? float.NegativeInfinity : anc.Rect.Y, cb = scrollsV ? float.PositiveInfinity : anc.Rect.Bottom;
+                if (cl > l + Slack || ct > t + Slack || cr < rr - Slack || cb < b - Slack)
+                    if (by.Count < 2) by.Add("clip " + anc.Ref);
+                l = MathF.Max(l, cl); t = MathF.Max(t, ct); rr = MathF.Min(rr, cr); b = MathF.Min(b, cb);
+            }
+            int scroller = NearestScroller(s, n);
+            foreach (Node m in s.Nodes)
+            {
+                if (!m.Interactive || !m.Pressable || m.Index == n.Index || Related(s, n, m)) continue;
+                // Only a neighbour in the same scrolled plane (one under another scroller meets it at these coordinates only off screen), or a scroll
+                // bar of a scroller the target sits in (it overlays the target's edge of the view, and its real hit wins).
+                if (NearestScroller(s, m) != scroller && !(m.Role == "ScrollBar" && BarOfAncestor(s, n, m))) continue;
+                RectF o = m.Rect;
+                if (o.X >= rr || o.Right <= l || o.Y >= b || o.Bottom <= t) continue;   // not in the grown rect
+                bool cut = false;
+                if (o.X >= r.Right) { rr = MathF.Min(rr, o.X); cut = true; }
+                else if (o.Right <= r.X) { l = MathF.Max(l, o.Right); cut = true; }
+                if (o.Y >= r.Bottom) { b = MathF.Min(b, o.Y); cut = true; }
+                else if (o.Bottom <= r.Y) { t = MathF.Max(t, o.Bottom); cut = true; }
+                if (cut && by.Count < 3) by.Add("beside " + m.Ref);
+            }
+            // The invisible targets (an auto-hidden scroll bar) cut it only where the target is on screen in its view: off screen they meet at no real point.
+            if (InView(s, n))
+                foreach (RectF o in s.HitBlockers)
+                {
+                    if (o.X >= rr || o.Right <= l || o.Y >= b || o.Bottom <= t) continue;
+                    if (o.X >= r.Right) rr = MathF.Min(rr, o.X);
+                    else if (o.Right <= r.X) l = MathF.Max(l, o.Right);
+                    else if (o.Y >= r.Bottom) b = MathF.Min(b, o.Y);
+                    else if (o.Bottom <= r.Y) t = MathF.Max(t, o.Bottom);
+                    else continue;
+                    if (by.Count < 3) by.Add("beside a target that paints nothing at " + F(o.X) + "," + F(o.Y));
+                }
+            // A scroll bar's lane takes a press before any target does: walk each side's slop back off a lane (at the target's middle line).
+            if (s.OverScrollbarLane is { } lane && InView(s, n))
+            {
+                float cy = r.Y + r.H / 2f, cx = r.X + r.W / 2f;
+                bool cut = false;
+                while (rr > r.Right && lane(new Point2(rr - 0.5f, cy))) { rr -= 1f; cut = true; }
+                while (l < r.X && lane(new Point2(l + 0.5f, cy))) { l += 1f; cut = true; }
+                while (b > r.Bottom && lane(new Point2(cx, b - 0.5f))) { b -= 1f; cut = true; }
+                if (cut && by.Count < 4) by.Add("a scroll bar's lane");
+            }
+            cutBy = string.Join(", ", by);
+            return new RectF(l, t, MathF.Max(0f, rr - l), MathF.Max(0f, b - t));
+        }
+
+        /// <summary>The node lies wholly inside every scroller above it (and the window): it is on screen, not waiting to be scrolled in.</summary>
+        static bool InView(Snapshot s, Node n)
+        {
+            RectF r = n.Rect;
+            if (r.X < -Slack || r.Y < -Slack || r.Right > s.Width + Slack || r.Bottom > s.Height + Slack) return false;
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node anc = s.Nodes[a];
+                if (anc.ScrollAxis == 0) continue;
+                if (r.X < anc.Rect.X - Slack || r.Y < anc.Rect.Y - Slack || r.Right > anc.Rect.Right + Slack || r.Bottom > anc.Rect.Bottom + Slack) return false;
+            }
+            return true;
+        }
+
+        /// <summary>The index of the nearest scrolling ancestor, -1 for none.</summary>
+        static int NearestScroller(Snapshot s, Node n)
+        {
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent) if (s.Nodes[a].ScrollAxis != 0) return a;
+            return -1;
+        }
+
+        /// <summary>The scroll bar <paramref name="bar"/> belongs to a scroller that holds <paramref name="n"/> (the bar's nearest scrolling ancestor-or-
+        /// sibling root: the first scroller up its chain that is also an ancestor of <paramref name="n"/>).</summary>
+        static bool BarOfAncestor(Snapshot s, Node n, Node bar)
+        {
+            for (int a = bar.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                if (s.Nodes[a].ScrollAxis == 0) continue;
+                for (int b = n.Parent; b >= 0; b = s.Nodes[b].Parent) if (b == a) return true;
+                return false;
+            }
+            return false;
+        }
+
+        /// <summary>One of the two nodes is the other's ancestor.</summary>
+        static bool Related(Snapshot s, Node a, Node b)
+        {
+            for (int i = b.Parent; i >= 0; i = s.Nodes[i].Parent) if (i == a.Index) return true;
+            for (int i = a.Parent; i >= 0; i = s.Nodes[i].Parent) if (i == b.Index) return true;
+            return false;
         }
 
         // ── duplicate ───────────────────────────────────────────────────────────────────────────────────────────────

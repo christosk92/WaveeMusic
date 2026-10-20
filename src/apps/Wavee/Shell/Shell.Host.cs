@@ -1142,6 +1142,8 @@ public static partial class Shell
         public override Element Render()
         {
             RootServices();
+            var input = UseContext(InputHooks.Current);
+            UseSignalEffect(() => ApplyHitFloor(input));
             return RootFrame();
         }
 
@@ -1182,6 +1184,11 @@ public static partial class Shell
     static Element RootFrame() => Theming.ThemeRoot.Wrap(RootContent);
 
     static Element RootContent() => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
+
+    /// <summary>The window tier's touch floor (<see cref="Theming.TouchTargetPolicy"/>) for the host's hit test, re-written whenever the tier
+    /// changes: both roots (the window's <see cref="RootHost"/> and the headless host's) run it in their render.</summary>
+    internal static void ApplyHitFloor(InputHooks input)
+        => input.SetMinHitSize?.Invoke(Theming.TouchTargetPolicy.FloorFor(Theming.ThemeHost.Facts.Value.Tiers.Window));
 
     // ══ 6. HISTORY.JSON — the navigation log's store (ch 16) ════════════════════════════════════════════════════════
 
