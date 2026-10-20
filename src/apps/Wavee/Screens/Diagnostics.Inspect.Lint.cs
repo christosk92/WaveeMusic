@@ -174,6 +174,125 @@ public static partial class Diagnostics
             public int Height { get; }
             public float Scale { get; }
 
+            /// <summary>The device-pixel bounds of <paramref name="rect"/> (DIP), clamped to the frame. False when they hold no pixel.</summary>
+            bool Bounds(RectF rect, out int x0, out int y0, out int x1, out int y1)
+            {
+                x0 = Math.Clamp((int)MathF.Floor(rect.X * Scale), 0, Width);
+                x1 = Math.Clamp((int)MathF.Ceiling(rect.Right * Scale), 0, Width);
+                y0 = Math.Clamp((int)MathF.Floor(rect.Y * Scale), 0, Height);
+                y1 = Math.Clamp((int)MathF.Ceiling(rect.Bottom * Scale), 0, Height);
+                return x1 > x0 && y1 > y0;
+            }
+
+            /// <summary>The straight-alpha colour of pixel <paramref name="i"/> (a BGRA byte offset), 0..1 per channel.</summary>
+            void Rgb(int i, out float r, out float g, out float b)
+            {
+                int a = Math.Max(1, (int)_bgra[i + 3]);
+                r = Math.Min(255, _bgra[i + 2] * 255 / a) / 255f;
+                g = Math.Min(255, _bgra[i + 1] * 255 / a) / 255f;
+                b = Math.Min(255, _bgra[i] * 255 / a) / 255f;
+            }
+
+            /// <summary>The ground a run's glyphs sit on, judged at its worst. The glyphs are found in the frame itself: a pixel past <see cref="InkShare"/>
+            /// of the way from the box's median grey to the run's <paramref name="ink"/> (its alpha times <paramref name="opacity"/>) is ink, and every
+            /// device column of <paramref name="rect"/> within <see cref="InkGuard"/> pixels of a column holding ink is the glyphs' (their anti-aliased
+            /// edges included). The other columns are the gaps between and around the glyphs: the ground under the line, sampled where it shows. Each
+            /// gap pixel's contrast against the ink is taken and the one at <paramref name="percentile"/> of the ordered ratios is the answer (0.1: the
+            /// 10 % worst pixels, the WCAG G18 approach for text over imagery). A box with fewer than <see cref="MinGapPixels"/> gap pixels (the ground
+            /// itself is ink-coloured: dark text on a dark photograph, light on a bright one) is judged over all of its pixels, which is the honest
+            /// answer there: it does not read. False when the rect holds no pixel.</summary>
+            public bool TryWorstContrast(RectF rect, ColorF ink, float opacity, float percentile, out double ratio, out ColorF worst, out int gapPixels)
+            {
+                ratio = 21d;
+                worst = default;
+                gapPixels = 0;
+                if (!Bounds(rect, out int x0, out int y0, out int x1, out int y1)) return false;
+                int cols = x1 - x0;
+                var inked = new bool[cols];
+                // Where the ink lands, as a share of the way from the box's median grey to the ink's own grey: a pixel past InkShare of that way
+                // is the glyph's (its core or its anti-aliased edge). Grey is the sRGB-encoded luma, the axis the ink and its ground differ on.
+                var greys = new float[cols * (y1 - y0)];
+                for (int y = y0, k = 0; y < y1; y++)
+                    for (int x = x0; x < x1; x++, k++)
+                    {
+                        Rgb((y * Width + x) * 4, out float r, out float g, out float b);
+                        greys[k] = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                    }
+                float[] sorted = (float[])greys.Clone();
+                Array.Sort(sorted);
+                float median = sorted[sorted.Length / 2];
+                float a = Math.Clamp(ink.A * opacity, 0f, 1f);
+                float inkGrey = a * (0.2126f * ink.R + 0.7152f * ink.G + 0.0722f * ink.B) + (1f - a) * median;
+                float span = inkGrey - median;
+                bool separable = MathF.Abs(span) >= InkSpan;
+                if (separable)
+                    for (int y = y0, k = 0; y < y1; y++)
+                        for (int x = x0; x < x1; x++, k++)
+                            if ((greys[k] - median) / span > InkShare) inked[x - x0] = true;
+                int guard = Math.Max(1, (int)MathF.Ceiling(InkGuard * Scale));
+                var picked = new List<int>();
+                for (int x = x0; x < x1; x++)
+                {
+                    bool near = false;
+                    for (int k = Math.Max(x0, x - guard); k <= Math.Min(x1 - 1, x + guard) && !near; k++) near = inked[k - x0];
+                    if (near) continue;
+                    for (int y = y0; y < y1; y++) picked.Add((y * Width + x) * 4);
+                }
+                if (separable && picked.Count < MinGapPixels)
+                {
+                    // A glyph that fills its box (an icon): its ground is the ring just outside the box, less any ink that reaches into it.
+                    int ring = Math.Max(1, (int)MathF.Ceiling(RingDip * Scale));
+                    int rx0 = Math.Max(0, x0 - ring), rx1 = Math.Min(Width, x1 + ring), ry0 = Math.Max(0, y0 - ring), ry1 = Math.Min(Height, y1 + ring);
+                    for (int y = ry0; y < ry1; y++)
+                        for (int x = rx0; x < rx1; x++)
+                        {
+                            if (x >= x0 && x < x1 && y >= y0 && y < y1) continue;
+                            int i = (y * Width + x) * 4;
+                            Rgb(i, out float r, out float g, out float b);
+                            if ((0.2126f * r + 0.7152f * g + 0.0722f * b - median) / span > InkShare) continue;
+                            picked.Add(i);
+                        }
+                }
+                gapPixels = picked.Count;
+                if (!separable || picked.Count < MinGapPixels)
+                {
+                    picked.Clear();
+                    for (int y = y0; y < y1; y++)
+                        for (int x = x0; x < x1; x++) picked.Add((y * Width + x) * 4);
+                }
+                var ratios = new double[picked.Count];
+                var colors = new ColorF[picked.Count];
+                for (int k = 0; k < picked.Count; k++)
+                {
+                    Rgb(picked[k], out float r, out float g, out float b);
+                    colors[k] = new ColorF(r, g, b, 1f);
+                    ratios[k] = ContrastOf(ink, colors[k], opacity);
+                }
+                int[] order = new int[ratios.Length];
+                for (int k = 0; k < order.Length; k++) order[k] = k;
+                Array.Sort(ratios, order);
+                int at = Math.Clamp((int)MathF.Floor(percentile * (ratios.Length - 1)), 0, ratios.Length - 1);
+                ratio = ratios[at];
+                worst = colors[order[at]];
+                return true;
+            }
+
+            /// <summary>The share of the way from the box's median grey to the ink's grey past which a pixel is the glyph's.</summary>
+            public const float InkShare = 0.25f;
+
+            /// <summary>The least grey difference between the ink and the box's median for the glyphs to be told from their ground (below it the
+            /// ground is ink-coloured and every pixel is judged).</summary>
+            public const float InkSpan = 0.12f;
+
+            /// <summary>The DIP either side of an inked column that still belong to the glyphs (their anti-aliased edge).</summary>
+            public const float InkGuard = 1.5f;
+
+            /// <summary>The ring (DIP) outside a box whose glyph fills it that stands for its ground.</summary>
+            public const float RingDip = 3f;
+
+            /// <summary>The fewest gap pixels that make a ground.</summary>
+            public const int MinGapPixels = 24;
+
             /// <summary>The colour most of <paramref name="rect"/> (DIP) is painted in, and the share of its pixels that colour has. A pixel within
             /// <paramref name="tolerance"/> (0..1 per channel) of <paramref name="ignore"/> is not counted: the ink of a glyph that fills its box must
             /// not read as its own background. False when the rect holds no pixel.</summary>
@@ -247,6 +366,10 @@ public static partial class Diagnostics
 
             /// <summary>The contrast large text, bold large text and icon glyphs need (3 : 1).</summary>
             public float ContrastLarge { get; init; } = 3f;
+
+            /// <summary>Over a busy ground (a photograph, a scrim, a gradient), the share of a run's glyph pixels allowed under the ratio it needs:
+            /// the ratio is read at this percentile of the ordered per-pixel ratios. Default 0.1 (judged against its p90 worst ground).</summary>
+            public float MediaPercentile { get; init; } = 0.1f;
 
             /// <summary>The most findings one rule reports.</summary>
             public int MaxPerRule { get; init; } = 100;
@@ -639,9 +762,13 @@ public static partial class Diagnostics
         public static float ContrastNeeded(TextRun t, Options o)
             => t.Glyph || t.Size >= 24f || (t.Size >= 18.66f && t.Weight >= 700) ? o.ContrastLarge : o.ContrastBody;
 
-        /// <summary>Each run's declared colour (and its opacity) against the colour most of its box is painted in. Runs the check cannot judge are skipped,
-        /// not passed: a disabled subtree, a node mid-animation, a fully transparent ink, a span run, a box mostly off the frame, and a box over a busy
-        /// background (art, a gradient: no colour holds half of it). No frame, no check.</summary>
+        /// <summary>Each run's declared colour (and its opacity) against what is painted under it. Over a SOLID ground (one colour holds half of the
+        /// box) the run is judged against that colour, a warning. Over a BUSY ground (a photograph, a veil, a gradient: no colour holds half of it)
+        /// the run is judged against the rendered pixels around its glyphs at their worst (<see cref="Pixels.TryWorstContrast"/> at
+        /// <see cref="Options.MediaPercentile"/>): an error over an image (<see cref="OverImage"/>; text over a photograph that does not read is a bug,
+        /// whatever the declared fill says), a warning over a gradient or a wash. Runs the
+        /// check cannot judge are skipped, not passed: a disabled subtree, a node mid-animation, a fully transparent ink, a span run and a box mostly
+        /// off the frame. No frame, no check.</summary>
         static int ContrastRule(Snapshot s, Options o, List<Finding> into)
         {
             if (s.Backdrop is not { } px) return 0;
@@ -661,12 +788,26 @@ public static partial class Diagnostics
                     // The ink fills its own box (a heart, a solid glyph): look at what is left once its colour is taken out.
                     if (!px.TryBackground(seen, t.Color, 0.03f, out ground, out share)) continue;
                 }
-                if (share < 0.45f) continue;
+                float need = ContrastNeeded(t, o);
+                string kind = t.Glyph ? "icon" : "text";
+                if (share < 0.45f)
+                {
+                    if (!px.TryWorstContrast(seen, t.Color, n.Opacity, o.MediaPercentile, out double worstRatio, out ColorF worst, out int gaps))
+                        continue;
+                    looked++;
+                    if (worstRatio + 0.005 >= need) continue;
+                    bool photo = OverImage(s, n);
+                    into.Add(new Finding(Rules.Contrast, photo ? Severity.Error : Severity.Warn,
+                        $"{kind} {Q(t.String)} over {(photo ? "an image" : "a gradient")} reads {F(worstRatio)} : 1 on its p{F((1f - o.MediaPercentile) * 100f)} ground #{Hex(worst)}, under the {F(need)} : 1 it needs", [n.Ref])
+                    {
+                        Measured = [M("ratio", worstRatio), M("size", t.Size), M("weight", t.Weight), M("gapPixels", gaps)],
+                        Expected = [M("minRatio", need)],
+                    });
+                    continue;
+                }
                 looked++;
                 double ratio = ContrastOf(t.Color, ground, n.Opacity);
-                float need = ContrastNeeded(t, o);
                 if (ratio + 0.005 >= need) continue;
-                string kind = t.Glyph ? "icon" : "text";
                 into.Add(new Finding(Rules.Contrast, Severity.Warn,
                     $"{kind} {Q(t.String)} reads {F(ratio)} : 1 on #{Hex(ground)}, under the {F(need)} : 1 it needs", [n.Ref])
                 {
@@ -675,6 +816,22 @@ public static partial class Diagnostics
                 });
             }
             return looked;
+        }
+
+        /// <summary>An image paints under <paramref name="n"/>: a visible image node earlier in paint order (the snapshot is depth-first, so earlier is
+        /// under) covers most of its box. Text over a photograph that does not read is an error; over a gradient or a wash, a warning.</summary>
+        static bool OverImage(Snapshot s, Node n)
+        {
+            float area = MathF.Max(1f, n.Rect.W * n.Rect.H);
+            for (int i = 0; i < n.Index; i++)
+            {
+                Node m = s.Nodes[i];
+                if (m.Kind != "Image" || m.Opacity < 0.5f) continue;
+                float w = MathF.Min(m.Rect.Right, n.Rect.Right) - MathF.Max(m.Rect.X, n.Rect.X);
+                float h = MathF.Min(m.Rect.Bottom, n.Rect.Bottom) - MathF.Max(m.Rect.Y, n.Rect.Y);
+                if (w > 0f && h > 0f && w * h >= 0.5f * area) return true;
+            }
+            return false;
         }
 
         static string Hex(ColorF c)

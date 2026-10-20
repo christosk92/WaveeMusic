@@ -54,7 +54,11 @@ public static partial class Shell
     /// <paramref name="Release"/> after the host is disposed (the caller's font system and surface go then, in that order).
     /// The shell tests never pass one: their mounts stay on the recording device and the deterministic headless font.</summary>
     public sealed record HeadlessDevices(IPlatformWindow Window, HeadlessWindow Input, IGpuDevice Device, IFontSystem Fonts,
-        Action<AppHost>? Attach = null, Action? Release = null);
+        Action<AppHost>? Attach = null, Action? Release = null)
+    {
+        /// <summary>The image pipeline the host decodes through; null: the engine's deterministic fake decoder (a per-image gradient).</summary>
+        public ImageCache? Images { get; init; }
+    }
 
     /// <summary>The shell test host: boot once, then mount the real frame headlessly. UI THREAD = the booting thread.</summary>
     public static class Headless
@@ -250,7 +254,7 @@ public static partial class Shell
             Fonts = devices.Fonts;
             _release = devices.Release;
             var strings = Entities.Strings;
-            Host = new AppHost(_app, devices.Window, devices.Device, Fonts, strings, new HeadlessRoot(content),
+            Host = new AppHost(_app, devices.Window, devices.Device, Fonts, strings, new HeadlessRoot(content), devices.Images,
                 frameTime: frameTime);
             devices.Attach?.Invoke(Host);
             // Every cross-thread seam posts into THIS host, each post followed by the publish on the cadence — the GUI's

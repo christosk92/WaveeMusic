@@ -278,7 +278,7 @@ public static partial class Diagnostics
         /// <summary>Mount the frame on the best devices this machine has (see the file header): the offscreen surface (real
         /// pixels and text), else the recording device with DirectWrite (true text, no pixels), else (`--text headless`) the
         /// shell tests' devices.</summary>
-        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu)
+        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false)
         {
             if (!_realText)
             {
@@ -299,9 +299,17 @@ public static partial class Diagnostics
                 {
                     FluentGpu.Hosting.OffscreenSurface surface = created;   // non-null from here on (the lambda below captures it)
                     var fonts = surface.CreateFontSystem();
+                    // `images=real`: the app's own pipeline (WIC behind the disk-first fetcher) instead of the engine's fake decoder, so a photograph
+                    // renders as itself: what `lint`'s contrast rule needs to judge text over a REAL bright or dark photograph.
+                    FluentGpu.Media.DefaultImageFetcher? fetcher = realImages ? new FluentGpu.Media.DefaultImageFetcher() : null;
+                    FluentGpu.Media.DecodeScheduler? decoder = fetcher is null ? null
+                        : new FluentGpu.Media.DecodeScheduler(new FluentGpu.Media.Codecs.Wic.WicImageCodec(), fetcher, new FluentGpu.Media.DecodeOptions());
                     var devices = new Wavee.Shell.HeadlessDevices(surface.Window, surface.Input, surface.Device, fonts,
                         Attach: surface.Attach,
-                        Release: () => { fonts.Dispose(); surface.Dispose(); });
+                        Release: () => { fonts.Dispose(); surface.Dispose(); decoder?.Dispose(); fetcher?.Dispose(); })
+                    {
+                        Images = decoder is null ? null : new FluentGpu.Scene.ImageCache(decoder),
+                    };
                     _surface = surface;
                     _devices = "offscreen (" + surface.BackendName + ")";
                     return Wavee.Shell.Headless.Mount(devices);
@@ -633,7 +641,9 @@ public static partial class Diagnostics
                 },
                 _ => null,
             };
-            _shell = MountOn(w0, h0, scale, gpu);
+            string images = a.Str("images", "fake").ToLowerInvariant();
+            if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            _shell = MountOn(w0, h0, scale, gpu, images == "real");
             _frames++;
             mounted = true;
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
