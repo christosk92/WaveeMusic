@@ -100,17 +100,38 @@ class Server:
             return None
         self.inp.write((line + "\n").encode("utf-8"))
         self.inp.flush()
-        return self._read_line()
+        while True:
+            reply = self._read_line()
+            obj = _object(reply)
+            if obj is None or "kind" not in obj or "cmd" in obj:
+                return reply
+            # An event line ({"kind":"bye"}, {"kind":"fault"}) is not this command's reply.
+            if obj.get("kind") == "bye":
+                self.ended = True
+                sys.exit("inspect.py: the server ended before it replied to: " + line)
+            sys.stderr.write("inspect.py: event: " + reply + "\n")
+
+    ended = False   # the server ran `quit` (or said bye): nothing more can be sent
 
     def close(self):
-        try:
-            self.send('{"cmd":"quit"}')
-        except SystemExit:
-            pass
+        if not self.ended and self.proc.poll() is None:
+            try:
+                self.send('{"cmd":"quit"}')
+            except (SystemExit, OSError):
+                pass
         try:
             self.proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+
+
+def _object(line):
+    """The JSON object on a line, or None."""
+    try:
+        obj = json.loads(line)
+    except ValueError:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def findings_text(reply):
@@ -292,14 +313,31 @@ def main():
             with open(args.file, encoding="utf-8") as fh:
                 lines += fh.read().splitlines()
         source = lines if (lines or args.file) else sys.stdin
+        left = 0
         for line in source:
+            if server.ended:
+                left += 1 if line.strip() and not line.strip().startswith("#") else 0
+                continue
             reply = server.send(line)
             show(reply, args.pretty, args.findings, args.trace)
             if gate is not None:
                 gate.see(reply)
+            obj = _object(reply) if reply else None
+            if obj is not None and obj.get("ok") and obj.get("cmd", "").lower() in ("quit", "exit"):
+                server.ended = True   # the server is gone: the lines after `quit` are not sent
             if reply and args.fail_fast and not json.loads(reply).get("ok", False):
                 code = 2
                 break
+        if left:
+            sys.stderr.write("inspect.py: %d command line%s after quit not sent\n" % (left, "" if left == 1 else "s"))
+    except (SystemExit, OSError) as e:
+        # The server died or closed the stream mid-run. Without --gate this ends the run as it always did; with --gate it is a
+        # failed reply (exit 2), never a lint verdict, and the summary still prints.
+        if gate is None:
+            raise
+        why = (str(e) or e.__class__.__name__).strip()
+        gate.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
+        server.ended = True
     finally:
         server.close()
     if gate is not None:
