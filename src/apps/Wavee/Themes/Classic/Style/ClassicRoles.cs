@@ -247,6 +247,9 @@ public static class ClassicRoles
 
     private static bool ArmDark(ThemeKind k) => k == ThemeKind.Dark;
 
+    /// <summary>The light stage arm's secondary and tertiary ink alphas (dark ink over the light veil, at least 4.5 : 1 over the art's p90).</summary>
+    private const float LightArmSecondaryA = 0.88f, LightArmTertiaryA = 0.76f;
+
     /// <summary>The colour every scrim alpha is mixed FROM and the opaque floor under the backdrop. Light takes the app's own canon achromatic
     /// light ground rather than minting a near-duplicate; achromatic on purpose, so the cover's own colour comes through the veil.</summary>
     private static ColorF ArmVeil(ThemeKind k) => ArmDark(k) ? Tok.MediaStage : ColorScience.PageToneNeutralLight;
@@ -260,8 +263,10 @@ public static class ClassicRoles
         Veil: ColorRole.By(ArmVeil),
         Floor: ColorRole.By(ArmVeil),   // the floor IS the veil: the code once painted the solid base and flashed near-white under the dark scrim
         Ink: ColorRole.By(ArmInk),
-        InkSecondary: ColorRole.By(static k => ArmDark(k) ? Tok.OnMediaSecondary : Tok.MediaStage with { A = Tok.OnMediaSecondary.A }),
-        InkTertiary: ColorRole.By(static k => ArmDark(k) ? Tok.OnMediaTertiary : Tok.MediaStage with { A = Tok.OnMediaTertiary.A }),
+        // The light arm's dark ink needs more alpha than the dark arm's light ink for the same ratio (a dark ink thinned over a light veil
+        // greys fast): at the white ladder's 0.80 / 0.60 the queue's and the artist pane's meta read 3.6 to 4.4 : 1 over the light stage.
+        InkSecondary: ColorRole.By(static k => ArmDark(k) ? Tok.OnMediaSecondary : Tok.MediaStage with { A = LightArmSecondaryA }),
+        InkTertiary: ColorRole.By(static k => ArmDark(k) ? Tok.OnMediaTertiary : Tok.MediaStage with { A = LightArmTertiaryA }),
         GlassRest: ColorRole.Fixed(ColorF.Transparent),
         GlassHover: ColorRole.By(static k => ArmInk(k) with { A = 0.10f }),
         GlassPressed: ColorRole.By(static k => ArmInk(k) with { A = 0.16f }),

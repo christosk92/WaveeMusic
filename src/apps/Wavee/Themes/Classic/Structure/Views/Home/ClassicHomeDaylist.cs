@@ -101,7 +101,10 @@ internal static class ClassicHomeDaylist
         Element? art = artUrl is null ? null : ArtLayer(artUrl);
         Element? veil = artUrl is null ? null
             : Palette.ArtistHeroVeil(artUrl, vertical: dl.Form == ClassicDaylistForm.Stacked, float.NaN, float.NaN, key: "daylist-veil:" + uri,
-                                     payloadAccent: card.Accent);
+                                     payloadAccent: card.Accent,
+                                     // horizontal: held under the whole copy column; Compact's vertical: held from where the copy rises over the art
+                                     hold: dl.Form == ClassicDaylistForm.Stacked ? ClassicHomeRules.StackedVeilHold(dl.ArtH)
+                                         : DaylistForm.VeilHold(firstW, dl.CopyPad.Horizontal));
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
@@ -287,7 +290,9 @@ internal static class ClassicHomeDaylist
     {
         var kids = new List<Element>(5)
         {
-            Ui.Body(p.Eyebrow).Secondary() with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            // Compact's stack rises the eyebrow over the art's foot: primary there (secondary read 4 : 1 on the veil), secondary on the plate forms.
+            (dl.Form == ClassicDaylistForm.Stacked ? Ui.Body(p.Eyebrow).Primary() : Ui.Body(p.Eyebrow).Secondary())
+                with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             TitleRung(p.Title, text, dl) with
             {
                 MaxLines = dl.TitleLines, Wrap = dl.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -297,7 +302,8 @@ internal static class ClassicHomeDaylist
         if (dl.Details)
         {
             kids.Add(p.Tags);
-            kids.Add(Ui.Caption(p.Meta).Tertiary() with
+            // Secondary, not tertiary: the copy sits on the cover veil, whose far side lets the art through (tertiary read 3.2 : 1 there).
+            kids.Add(Ui.Caption(p.Meta).Secondary() with
             {
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
@@ -326,7 +332,7 @@ internal static class ClassicHomeDaylist
     };
 
     /// <summary>The tags as ONE 14/20 line: every tag a secondary link span (the engine's Hand cursor over its own laid
-    /// rects), " · " separators in tertiary, one line with an ellipsis. Clicks resolve by span INDEX
+    /// rects), " · " separators in secondary too (over the veil, tertiary does not reach 4.5 : 1), one line with an ellipsis. Clicks resolve by span INDEX
     /// (`OnSpanClick`): tags sit at the even indices, separators at the odd ones.</summary>
     static Element Tags(HomeCard card)
     {
@@ -342,19 +348,19 @@ internal static class ClassicHomeDaylist
         var spans = new TextSpan[tags.Count * 2 - 1];
         for (int i = 0; i < tags.Count; i++)
         {
-            if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextTertiary);
+            if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextSecondary);
             spans[2 * i] = new TextSpan(tags[i], Color: Tok.TextSecondary, IsLink: true);
         }
         return TagLine(spans, i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1]); });
     }
 
-    /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), tertiary base, 6 below the title.</summary>
+    /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), secondary base, 6 below the title.</summary>
     static SpanTextEl TagLine(TextSpan[] spans, Action<int>? onSpanClick)
     {
         var body = Ui.Body("");
         return new SpanTextEl(spans)
         {
-            Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextTertiary,
+            Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextSecondary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Margin = new Edges4(0f, Spacing.XS + Spacing.XXS, 0f, 0f),
             OnSpanClick = onSpanClick,

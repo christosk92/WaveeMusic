@@ -191,7 +191,8 @@ internal static class ClassicHomeDaylistClock
         };
 
     /// <summary>The timeline at width <paramref name="w"/>: five equal cells (<see cref="DaypartTimeline.CellWidth"/>)
-    /// of stock bars, and the labels on the same cells — tertiary and ellipsised, except the current one, primary 600,
+    /// of stock bars, and the labels on the same cells — secondary (the veil's far side lets the art through: tertiary read 3.2 : 1) and
+    /// ellipsised, except the current one, primary 600,
     /// which holds at least its cell and never truncates (its neighbours give way instead). The bars are determinate
     /// (live per <paramref name="segs"/>, or static: empty for the skeleton, the finished window's fills once it has
     /// ended); Updating makes the segment after the current one an indeterminate bar.</summary>
@@ -210,7 +211,7 @@ internal static class ClassicHomeDaylistClock
             string label = Loc.Get(DaypartTimeline.LabelKey(i));
             labelCells[i] = i == current
                 ? Ui.Caption(label).Primary() with { Weight = 600, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = cell, Shrink = 0f }
-                : Ui.Caption(label).Tertiary() with
+                : Ui.Caption(label).Secondary() with
                 {
                     MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                     Basis = cell, Shrink = 1f, MinWidth = 0f,

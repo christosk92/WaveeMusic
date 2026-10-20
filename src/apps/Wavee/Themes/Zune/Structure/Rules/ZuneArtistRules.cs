@@ -382,6 +382,10 @@ public static class ZuneArtistRules
     /// <summary>The modal's ground, black at 88 %, and the top chrome's scrim.</summary>
     public static ColorF Scrim => ColorF.FromRgba(0, 0, 0, 224);
 
+    /// <summary>A pager page's ground, opaque black: the FlipView under the photo paints the theme's solid base (white in light mode), so the chrome
+    /// and a letterboxed photo sat on white there instead of the viewer's black.</summary>
+    public static ColorF PageGround => ColorF.FromRgba(0, 0, 0);
+
     /// <summary>Fully transparent (the photo's placeholder, an idle thumb's border).</summary>
     public static ColorF Clear => ColorF.FromRgba(0, 0, 0, 0);
 

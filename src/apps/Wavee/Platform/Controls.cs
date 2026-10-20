@@ -486,13 +486,25 @@ public static partial class Controls
     /// image into a painted plate.</para>
     /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
     /// ends, and the 0.35 shoulder keeps its distance after it (tuned Classic D18): the copy stays on the plate at every width.
-    /// NaN (or a hold left of the default) keeps the default stops.</para></summary>
+    /// NaN (or a hold left of the default) keeps the default stops. On the VERTICAL arm a finite <paramref name="hold"/> is where the copy
+    /// starts (a fraction of the height): the veil reaches its peak there and holds it to the foot.</para></summary>
     public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN)
     {
         ColorF layer = Tok.FillLayerDefault;
         var wash = R.Wash;
         float pull = wash.HeroVeilPull;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
+        if (vertical && !float.IsNaN(hold))
+        {
+            // A held vertical veil (the copy over the photograph's lower part): it eases in above the copy and holds its peak from the copy's top
+            // to the foot, so the copy's first line (a Verified tick, an eyebrow) never sits on the veil's thin upper ramp.
+            float at = Math.Clamp(hold, HeroVeilShoulder, 1f);
+            return GradientDown(
+                new GradientStop(0f, veil with { A = 0f }),
+                new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
+                new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
+                new GradientStop(1f, veil with { A = wash.HeroVeilPeak }));
+        }
         if (vertical)
         {
             float top = wash.HeroVeilPeak;
@@ -513,6 +525,9 @@ public static partial class Controls
     /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
     /// shoulder keeps before the veil's clear edge.</summary>
     const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
+
+    /// <summary>Where a held vertical veil's 0.35 rung sits, as a share of the way to its hold.</summary>
+    const float HeroVeilRampShare = 0.55f;
 
     // ══ 2. SEARCH HIGHLIGHT ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -931,6 +946,8 @@ public static partial class Controls
         public Func<ColorF>? Accent { get; init; }
         /// <summary>The toggle's control size: the stock 32 (<see cref="ControlSize.Medium"/>), or the 40-tall Compact target (<see cref="ControlSize.Large"/>, TC6).</summary>
         public ControlSize Size { get; init; } = ControlSize.Medium;
+        /// <summary>A surface's last word on the style (the stage's arm ink over the art); null keeps the stock ramp.</summary>
+        public Func<ToggleButton.Style, ToggleButton.Style>? Restyle { get; init; }
 
         public override Element Render()
         {
@@ -945,8 +962,10 @@ public static partial class Controls
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Glyph(Verb, false), checkedGlyph: Glyph(Verb, true), checkedLabel: Label(Verb, true),
-                style: Sized(ButtonRules.FollowStyle(a, light), Size), parts: RootNoShrink);
+                style: Restyled(Sized(ButtonRules.FollowStyle(a, light), Size)), parts: RootNoShrink);
         }
+
+        ToggleButton.Style Restyled(ToggleButton.Style style) => Restyle is { } restyle ? restyle(style) : style;
 
         /// <summary>The style at a control size: the size's height and padding over the stock ramp (Medium is the ramp as it is).</summary>
         static ToggleButton.Style Sized(ToggleButton.Style style, ControlSize size)

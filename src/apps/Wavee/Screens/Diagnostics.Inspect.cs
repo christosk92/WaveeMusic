@@ -509,7 +509,9 @@ public static partial class Diagnostics
                             case "crash": Crash.OpenFakePrompt(overlay, Crash.Kind.Managed); break;
                             case "hang": Crash.OpenFakePrompt(overlay, Crash.Kind.Hang); break;
                             case "report": Feedback.Open(Feedback.ReportKind.Bug); break;
-                            default: return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report, not '" + kind + "'");
+                            // the artist gallery's lightbox over the bundled photographs, the bright one first (text and chrome over a photograph)
+                            case "lightbox": Artist.GalleryOpen(overlay, LightboxPhotos(), 0); break;
+                            default: return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report|lightbox, not '" + kind + "'");
                         }
                         RunFrames(40);
                         return Settled(id, name, a, w => w.WriteString("kind", kind));
@@ -993,6 +995,13 @@ public static partial class Diagnostics
         void Move(Point2 p) => Queue(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: _ms));
 
         void Queue(in InputEvent e) => _shell!.Window.QueueInput(in e);
+
+        /// <summary>`dialog lightbox`'s photographs: the bright header, then three bundled covers.</summary>
+        static string[] LightboxPhotos()
+        {
+            string dir = Path.Combine(AppContext.BaseDirectory, "assets", "covers");
+            return [Path.Combine(dir, "header-bright.jpg"), Path.Combine(dir, "cover01.jpg"), Path.Combine(dir, "cover05.jpg"), Path.Combine(dir, "cover09.jpg")];
+        }
 
         void RunFrames(int n)
         {

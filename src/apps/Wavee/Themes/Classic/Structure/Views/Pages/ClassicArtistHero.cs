@@ -175,7 +175,9 @@ internal static class ClassicArtistHero
             : new BoxEl
             {
                 Width = w, Height = photoH, ZStack = true, HitTestVisible = false,
-                Children = [Palette.ArtistHeroVeil(paletteUrl, vertical: true, w, photoH, key: "artist-veil:" + uri, payloadAccent: headerAccent)],
+                // Held from the copy's top down: on a bright photograph the Verified line sat on the veil's thin ramp (2.3 : 1).
+                Children = [Palette.ArtistHeroVeil(paletteUrl, vertical: true, w, photoH, key: "artist-veil:" + uri, payloadAccent: headerAccent,
+                                                   hold: ClassicArtistRules.OverlayVeilHold)],
             };
         Element copy = new BoxEl
         {
@@ -214,7 +216,8 @@ internal static class ClassicArtistHero
                 Children =
                 [
                     InfoBadge.Icon(Icons.Accept, color: accent),
-                    Lines(Caption(Loc.Get(Strings.Artist.Verified)) with { Color = Tok.TextSecondary }, 1, shimmer),
+                    // Primary on the overlay arm (no action row: the copy sits on the photograph's veil, where secondary read 3.7 : 1).
+                    Lines(Caption(Loc.Get(Strings.Artist.Verified)) with { Color = actions ? Tok.TextSecondary : Tok.TextPrimary }, 1, shimmer),
                 ],
             }
             : new BoxEl();
