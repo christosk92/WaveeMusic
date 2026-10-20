@@ -114,6 +114,7 @@ public static partial class Diagnostics
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
+                InspectKit.RememberColdPlaylist();
                 host._session = new InspectSession(realText);
                 host.TextBackend = host._session.TextBackend;
             });
@@ -254,6 +255,7 @@ public static partial class Diagnostics
         bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
         string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
         Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
+        bool _optionsForNext;       // `option` set a value with nothing mounted: it is for the next mount, which keeps the options
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
         public string TextBackend => _realText ? "dwrite" : "headless";
@@ -388,7 +390,7 @@ public static partial class Diagnostics
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Reset:
                     Unmount();
-                    ClearLeaks(keepRoute: false);
+                    ClearLeaks(keepRoute: false, keepOptions: false);
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -444,13 +446,15 @@ public static partial class Diagnostics
                         {
                             w.WriteNumber("frames", r.Frames);
                             w.WriteBoolean("settled", r.Settled);
-                            if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
+                            if (r.Frames == 0) w.WriteString("note", "no frame ran (max=0): nothing was waited for");
+                            else if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
                             InspectKit.WriteAmbient(w, in r);
                         });
                     }
                 case Inspect.Verb.Click:
                 case Inspect.Verb.Hover:
                     {
+                        if (!TryMods(a, out KeyModifiers mods)) return Inspect.Reply.Fail(id, name, "bad value '" + a.Str("mods") + "' for mods (ctrl, shift, alt or win, joined by +: ctrl+shift)");
                         if (!TryAim(id, name, a, wheel: false, out Aim aim, out string refusal)) return refusal;
                         Point2 p = aim.Point;
                         Move(p);
@@ -458,7 +462,6 @@ public static partial class Diagnostics
                         _hit = HitKey(p);   // what the press lands on (a hover can raise a part over the target)
                         if (cmd.Verb == Inspect.Verb.Click)
                         {
-                            KeyModifiers mods = Mods(a);
                             int button = a.Str("button", "left") == "right" ? 1 : 0;
                             Queue(new InputEvent(InputKind.PointerDown, p, button, 0, mods, TimestampMs: _ms));
                             RunFrames(1);
@@ -494,7 +497,7 @@ public static partial class Diagnostics
                         float dy = a.Float("dy", 3f), dx = a.Float("dx", 0f);
                         Move(p);
                         RunFrames(1);
-                        _hit = HitKey(p);
+                        _hit = WheelKey(p, horizontal: dy == 0f && dx != 0f);   // what the wheel goes to: a scroller, not a click target
                         var wheel = new ScrollInputEvent(ScrollSource.MouseWheel, ScrollGesture.Notch, 0, p, dx, dy, 0, KeyModifiers.None);
                         Queue(InputEvent.ForScroll(in wheel, timestampMs: _ms));
                         if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the notch lands on
@@ -556,7 +559,8 @@ public static partial class Diagnostics
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-warm|cold-faces|none, not '" + kind + "'");
+                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
+                        if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
                         return Settled(id, name, a, w => w.WriteString("kind", kind));
                     }
@@ -565,7 +569,6 @@ public static partial class Diagnostics
                         // `find <key>` is exact; a prefix says so (`find prefix=zune-band-`).
                         string key = a.Str("key"), prefix = a.Str("prefix");
                         if (key.Length == 0 && !a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find wants a key (exact) or prefix=");
-                        if (key.Length > 0 && a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find takes key or prefix, not both");
                         return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix));
                     }
                 case Inspect.Verb.Dump:
@@ -742,17 +745,23 @@ public static partial class Diagnostics
         }
 
         /// <summary>What one mount must not inherit from the last (`mount` and `reset`, once a mount has run: before that the boot's own
-        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the fullscreen stage (a static signal too:
-        /// left up, its looping art kept the next mount from ever settling), the tab workspace (unless <paramref name="keepRoute"/>), and
-        /// playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and queue, the play log emptied). Not every static:
-        /// a fresh process is the only full reset, and `status` counts `mounts` so a reused server shows.</summary>
-        void ClearLeaks(bool keepRoute)
+        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the cold playlist a `state kind=cold-*`
+        /// staged, the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever settling), the tab
+        /// workspace (unless <paramref name="keepRoute"/>), playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and
+        /// queue, the play log emptied), and every theme's option values (unless `option` set one with nothing mounted, for this mount;
+        /// <paramref name="keepOptions"/> false forgets them anyway: `reset`). Not every static: a fresh process is the only full reset,
+        /// and `status` counts `mounts` so a reused server shows.</summary>
+        void ClearLeaks(bool keepRoute, bool keepOptions = true)
         {
+            bool optionsForNext = _optionsForNext && keepOptions;
+            _optionsForNext = false;
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
+            InspectKit.RestoreColdPlaylist();
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
             InspectKit.ResetPlayback();
+            if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
         /// <summary>`mount marquee=on|off remote=<name> panelW=<dip>`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
@@ -915,7 +924,11 @@ public static partial class Diagnostics
             if (!a.TryGet("value", out Inspect.Value raw)) return Inspect.Reply.Fail(id, name, "option wants a value");
             if (!TryCoerce(option.Option, raw, out object? value)) return Inspect.Reply.Fail(id, name, "'" + raw + "' is not a value of " + option.QualifiedId);
             Task applied = ThemeHost.Apply(new OptionChange(ThemeInspection.IdOf(theme), option.QualifiedId, value!));
-            if (_shell is null) return Inspect.Reply.Ok(id, name, w => w.WriteString("id", option.QualifiedId));
+            if (_shell is null)
+            {
+                _optionsForNext = true;   // for the next mount: its ClearLeaks keeps the options
+                return Inspect.Reply.Ok(id, name, w => w.WriteString("id", option.QualifiedId));
+            }
             int max = a.Int("max", 900), ran = 0;
             while (!applied.IsCompleted && ran < max) { RunFrames(1); ran++; }
             return Settled(id, name, a, w =>
@@ -1064,7 +1077,7 @@ public static partial class Diagnostics
             List<(NodeHandle Node, string Key)> found = InspectDump.Exact(shell, key);
             if (found.Count == 0)
             {
-                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + key + " lists near keys)");
+                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + Inspect.Quote(key) + " lists near keys)");
                 return false;
             }
             InspectDump.InReadingOrder(scene, found);
@@ -1146,9 +1159,23 @@ public static partial class Diagnostics
             return hit.IsNull ? null : InspectKit.KeyOf(_shell.Host.Scene, hit);
         }
 
+        /// <summary>The key of the scroll viewport a wheel at <paramref name="p"/> drives (the engine's resolution: the nearest scroller
+        /// of the wheel's axis with room to move, else of the other axis, else the nearest scroller), or null over none. Remembers
+        /// <paramref name="p"/> as where the pointer is.</summary>
+        string? WheelKey(Point2 p, bool horizontal)
+        {
+            _pointer = p;
+            var input = _shell!.Host.Input;
+            NodeHandle vp = input.ScrollableUnderForAxis(p, horizontal);
+            if (vp.IsNull) vp = input.ScrollableUnderForAxis(p, !horizontal);
+            if (vp.IsNull) vp = input.ScrollableUnder(p);
+            return vp.IsNull ? null : InspectKit.KeyOf(_shell.Host.Scene, vp);
+        }
+
         /// <summary>`after {route, focused, overlays, hit}`: where an acting verb left the app. `focused` and `hit` are keys (the
         /// nearest keyed ancestor); `overlays` the open overlay layers (`overlay:<id>`, with `first`, the first key inside each);
-        /// `hit` is what a pointer verb's press or wheel landed on, else what lies under the pointer now (null before any pointer verb).</summary>
+        /// `hit` is what a pointer verb's press landed on (`scroll`: the scroller its wheel drives), else what lies under the pointer now
+        /// (null before any pointer verb).</summary>
         void WriteAfter(Utf8JsonWriter w)
         {
             if (_shell is not { } shell) return;
@@ -1181,11 +1208,13 @@ public static partial class Diagnostics
         static int LayerId(string key)
             => int.TryParse(key.AsSpan("overlay:".Length), NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : -1;
 
-        static KeyModifiers Mods(Inspect.Args a)
+        /// <summary>`mods=ctrl+shift`: the modifiers a click holds (None when absent). False for a word that is not one (`crtl`), so a
+        /// typo is refused instead of clicking with nothing held.</summary>
+        static bool TryMods(Inspect.Args a, out KeyModifiers mods)
         {
+            mods = KeyModifiers.None;
             string m = a.Str("mods");
-            if (m.Length == 0) return KeyModifiers.None;
-            return Inspect.TryKey(m + "+a", out _, out KeyModifiers mods) ? mods : KeyModifiers.None;
+            return m.Length == 0 || Inspect.TryKey(m + "+a", out _, out mods);
         }
 
         void Move(Point2 p) => Queue(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: _ms));

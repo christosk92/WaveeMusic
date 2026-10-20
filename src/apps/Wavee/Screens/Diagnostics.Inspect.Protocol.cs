@@ -110,13 +110,19 @@ public static partial class Diagnostics
         public enum ArgType : byte { String, Int, Float, Bool, Size, Key, Path, Enum, List }
 
         /// <summary>One declared arg: its name, type, default (null: none), choices (an enum's or a list's words), aliases, a one-line
-        /// doc, and <see cref="Requires"/>: the arg it only applies beside (a trace option needs `trace`, a video option `video`).</summary>
+        /// doc, <see cref="Requires"/>: the arg it only applies beside (a trace option needs `trace`, a video option `video`),
+        /// <see cref="Excludes"/>: the arg it cannot stand beside (a point's `x` and a `key`), and an int's or a number's range.</summary>
         public sealed record ArgSpec(string Name, ArgType Type, string Doc)
         {
             public string? Default { get; init; }
             public string[] Choices { get; init; } = [];
             public string[] Aliases { get; init; } = [];
             public string? Requires { get; init; }
+            public string? Excludes { get; init; }
+            /// <summary>The least value an int or a number takes (inclusive), or null.</summary>
+            public double? Min { get; init; }
+            /// <summary>The greatest value an int or a number takes (inclusive), or null.</summary>
+            public double? Max { get; init; }
         }
 
         /// <summary>One verb: its canonical name, aliases, a one-line summary, one example, its positional names (bare words fill
@@ -133,13 +139,21 @@ public static partial class Diagnostics
         }
 
         /// <summary>An arg row: <paramref name="choices"/> and <paramref name="aliases"/> are `|`-separated.</summary>
-        static ArgSpec Arg(string name, ArgType type, string doc, string? def = null, string choices = "", string aliases = "", string? requires = null) => new(name, type, doc)
+        static ArgSpec Arg(string name, ArgType type, string doc, string? def = null, string choices = "", string aliases = "", string? requires = null,
+                           string? excludes = null) => new(name, type, doc)
         {
             Default = def,
             Choices = choices.Length == 0 ? [] : choices.Split('|'),
             Aliases = aliases.Length == 0 ? [] : aliases.Split('|'),
             Requires = requires,
+            Excludes = excludes,
         };
+
+        /// <summary>An int row taking <paramref name="min"/>..<paramref name="max"/> (a value outside is refused, not clamped).</summary>
+        static ArgSpec IntArg(string name, string doc, string? def, double min, double max) => Arg(name, ArgType.Int, doc, def) with { Min = min, Max = max };
+
+        /// <summary>The theme ids as an enum's choices: App.ShippedThemeIds, the list the verbs' own check (InspectKit.IsShipped) reads.</summary>
+        static string ThemeChoices => string.Join("|", App.ShippedThemeIds);
 
         /// <summary>The groups in order; a name a group repeats keeps its first row.</summary>
         static ArgSpec[] Join(params ArgSpec[][] groups)
@@ -184,8 +198,8 @@ public static partial class Diagnostics
             Arg("dragDy", ArgType.Float, "DIP per frame down while dragging", "0"),
         ];
 
-        /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` (anywhere else they would
-        /// do nothing, so they are refused).</summary>
+        /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` with N > 0 (anywhere else
+        /// they would do nothing, so they are refused).</summary>
         static readonly ArgSpec[] s_settleArgs = Join(
         [
             Arg("settle", ArgType.Bool, "false: reply at once (frames:0, settled:false) and step with frames yourself", "true"),
@@ -208,12 +222,11 @@ public static partial class Diagnostics
             Arg("deeplink", ArgType.String, "a wavee:// payload through the OS door (never validated)"),
         ];
 
-        /// <summary>The mount's own args, without the navigation (`mount`, and `crossing` only when it mounts). The theme ids are
-        /// App.ShippedThemeIds: a theme the app starts shipping is added here too, or `theme=` refuses it.</summary>
+        /// <summary>The mount's own args, without the navigation (`mount`, and `crossing` only when it mounts).</summary>
         static readonly ArgSpec[] s_mountOwnArgs =
         [
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
-            Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, "classic|zune|winui"),
+            Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, ThemeChoices),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
             Arg("gpu", ArgType.Enum, "warp/hardware: the offscreen D3D12 surface (render works); none: no pixels", "warp", "warp|hardware|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
@@ -244,8 +257,14 @@ public static partial class Diagnostics
             return false;
         }
 
-        // ── the lint args: ONE LINE PER ARG (Diagnostics.Inspect.Lint.Scene.cs `TryOptions` reads them; `lint` and `crossing` take them;
-        // `lint` adds root, nth, save and replay: with these, InspectLintScene.ArgNames) ──
+        // ── the lint args: ONE LINE PER ARG. `s_lintArgs` are the options Diagnostics.Inspect.Lint.Scene.cs `TryOptions` reads, which
+        // `lint` and `crossing` (its lint of the settled scene) both take; `s_lintOnlyArgs` are the `lint` verb's own (a file it saves or
+        // replays), which `crossing` refuses. With root and nth, the two lists are InspectLintScene.ArgNames. ──
+        static readonly ArgSpec[] s_lintOnlyArgs =
+        [
+            Arg("save", ArgType.Path, "write the snapshot the rules saw to this JSON file"),
+            Arg("replay", ArgType.Path, "lint a saved snapshot instead of the mount (needs no mount)"),
+        ];
         static readonly ArgSpec[] s_lintArgs =
         [
             Arg("rules", ArgType.List, "the rules to run: ids (text.clip), today's names (clip), families (align or align.*) or all (default: all)", null, string.Join("|", InspectLint.RuleWords)),
@@ -268,11 +287,15 @@ public static partial class Diagnostics
         static readonly ArgSpec[] s_aimArgs =
         [
             Arg("key", ArgType.Key, "the node (exact key); refused unless shown, >= 50% visible, enabled and hit at its visible centre"),
-            Arg("nth", ArgType.Int, "which actionable match, in reading order (top, then left)", "0"),
-            Arg("x", ArgType.Float, "a point instead of a key (window DIP; no checks)"),
-            Arg("y", ArgType.Float, "a point instead of a key (window DIP; no checks)"),
-            Arg("force", ArgType.Bool, "skip the actionability checks (nth then counts every match)", "false"),
+            Arg("nth", ArgType.Int, "which actionable match, in reading order (top, then left)", "0", requires: "key") with { Min = 0 },
+            Arg("x", ArgType.Float, "a point instead of a key (window DIP; no checks)", excludes: "key"),
+            Arg("y", ArgType.Float, "a point instead of a key (window DIP; no checks)", excludes: "key"),
+            Arg("force", ArgType.Bool, "skip the actionability checks (nth then counts every match)", "false", requires: "key"),
         ];
+
+        /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
+        /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-rows", "cold-warm", "cold-faces", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -280,10 +303,10 @@ public static partial class Diagnostics
             new(Verb.Help, "help", "List the verbs; help verb=<name> gives one verb's args, defaults, choices and example; help schema=json the whole table", "help verb=lint")
             {
                 Positional = ["verb"],
-                Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json")],
+                Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json", excludes: "verb")],
             },
             new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts when mounted", "status") { Aliases = ["ping"] },
-            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, stage, tabs, playback, queue", "mount w=400 h=860 theme=zune kind=dark route=home")
+            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, cold playlist, stage, tabs, playback, queue, theme options", "mount w=400 h=860 theme=zune kind=dark route=home")
             {
                 Positional = ["w", "h"],
                 Args = Join([Arg("w", ArgType.Float, "window width (DIP)", "1180"), Arg("h", ArgType.Float, "window height (DIP)", "760")], s_mountArgs, s_settleArgs),
@@ -302,11 +325,11 @@ public static partial class Diagnostics
             },
             new(Verb.Frames, "frames", "Run exactly n frames on the 16 ms fake clock", "frames 60")
             {
-                Positional = ["n"], NeedsMount = true, Args = [Arg("n", ArgType.Int, "frames to run (0..100000)", "1")],
+                Positional = ["n"], NeedsMount = true, Args = [IntArg("n", "frames to run", "1", 0, 100_000)],
             },
             new(Verb.Settle, "settle", "Run frames until nothing moves (tracks, user scroll, wake reasons) for 2 frames; busy names what still moves at the cap", "settle max=900")
             {
-                Positional = ["max"], NeedsMount = true, Args = [Arg("max", ArgType.Int, "the frame cap", "600")],
+                Positional = ["max"], NeedsMount = true, Args = [IntArg("max", "the frame cap", "600", 0, 100_000)],
             },
             new(Verb.Reset, "reset", "Unmount, put back what the mount changed (as mount does), reset navigation to Home, activate Classic dark", "reset"),
             new(Verb.Click, "click", "Click a node's visible centre (refused unless actionable; force=true skips) or a point; then settle", "click key=zune-band-pivot:library")
@@ -323,7 +346,7 @@ public static partial class Diagnostics
             {
                 Positional = ["key"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("key", ArgType.String, "enter, esc, tab, space, backspace, delete, arrows, home, end, pageup, pagedown, apps, f1..f12, a..z, 0..9 or a VK code"),
-                             Arg("repeat", ArgType.Int, "presses (1..100)", "1")], s_settleArgs),
+                             IntArg("repeat", "presses", "1", 1, 100)], s_settleArgs),
             },
             new(Verb.Type, "type", "Type text into the focused node (text form: the rest of the line, spaces kept; quote it to add args); then settle", "type \"daft punk\" settle=false")
             {
@@ -338,7 +361,7 @@ public static partial class Diagnostics
             {
                 Positional = ["uri", "fromMs"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri (optional with remote=)"), Arg("fromMs", ArgType.Int, "the start position", "0"),
-                             Arg("next", ArgType.Int, "queue this many tracks after a spotify:track:tr<k> (0..64)", "0"),
+                             IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
             },
@@ -352,12 +375,12 @@ public static partial class Diagnostics
             new(Verb.Theme, "theme", "Switch the theme: mounted, the live theme transaction; unmounted, the next mount's theme", "theme zune")
             {
                 Positional = ["id"], Acts = true,
-                Args = Join([Arg("id", ArgType.Enum, "the theme", null, "classic|zune|winui")], s_transactionMax, s_settleArgs),
+                Args = Join([Arg("id", ArgType.Enum, "the theme", null, ThemeChoices)], s_transactionMax, s_settleArgs),
             },
             new(Verb.Find, "find", "Nodes keyed exactly key (or starting with prefix=), in reading order, with shown, onScreen and actionable", "find see-all:home:made-for-you")
             {
                 Positional = ["key"], NeedsMount = true,
-                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead")],
+                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead", excludes: "key")],
             },
             new(Verb.Dump, "dump", "The scene (or the subtree root names) as a flat node array: rects, paint, text metrics, flags", "dump root=zune-daylist-play depth=2")
             {
@@ -365,12 +388,12 @@ public static partial class Diagnostics
                 Args =
                 [
                     Arg("root", ArgType.Key, "start at every node with this exact key (default: the whole tree and the overlays)"),
-                    Arg("nth", ArgType.Int, "pick one of the root's matches"),
-                    Arg("depth", ArgType.Int, "how deep the walk goes (0: the root only)"),
+                    Arg("nth", ArgType.Int, "pick one of the root's matches (0 first, in slot order)", requires: "root") with { Min = 0 },
+                    Arg("depth", ArgType.Int, "how deep the walk goes (0: the root only)") with { Min = 0 },
                     Arg("keysOnly", ArgType.Bool, "keyed nodes only", "false"),
                     Arg("visibleOnly", ArgType.Bool, "skip hidden, parked, transparent and empty-box nodes", "true"),
                     Arg("text", ArgType.Bool, "write the text blocks", "true"),
-                    Arg("max", ArgType.Int, "the most nodes (up to 200000)", "4000"),
+                    IntArg("max", "the most nodes", "4000", 1, 200_000),
                 ],
             },
             new(Verb.Render, "render", "Write the offscreen frame to a PNG (an absolute path; folders are created)", "render path=C:/WAVEE/scratch/x/home.png")
@@ -389,9 +412,8 @@ public static partial class Diagnostics
             {
                 Positional = ["rules"], NeedsMount = true,
                 Args = Join([Arg("root", ArgType.Key, "lint every node with this exact key (default: the whole tree and the overlays)"),
-                             Arg("nth", ArgType.Int, "pick one of the root's matches"),
-                             Arg("save", ArgType.Path, "write the snapshot the rules saw to this JSON file"),
-                             Arg("replay", ArgType.Path, "lint a saved snapshot instead of the mount (needs no mount)")], s_lintArgs),
+                             Arg("nth", ArgType.Int, "pick one of the root's matches (0 first, in slot order)", requires: "root") with { Min = 0 }],
+                            s_lintOnlyArgs, s_lintArgs),
             },
             new(Verb.Crossing, "crossing", "Resize across a tier edge the way a user does; report remounts, vanished keys, snaps and jumps; lint the result", "crossing from=1440x960 to=1440x400 theme=zune route=home gpu=none")
             {
@@ -401,7 +423,7 @@ public static partial class Diagnostics
                     Arg("to", ArgType.Size, "the end size: WxH (text), {w,h} or [w,h] (JSON)"),
                     Arg("fromW", ArgType.Float, "the start width (instead of from)"), Arg("fromH", ArgType.Float, "the start height (instead of from)"),
                     Arg("toW", ArgType.Float, "the end width (instead of to)"), Arg("toH", ArgType.Float, "the end height (instead of to)"),
-                    Arg("frames", ArgType.Int, "keep-alive paints at the new size before the commit (1..60)", "1"),
+                    IntArg("frames", "keep-alive paints at the new size before the commit", "1", 1, 60),
                     Arg("items", ArgType.Int, "entries per reply list", "40"),
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                     Arg("remount", ArgType.Bool, "mount afresh even when a mount is up (the mount args apply)", "false"),
@@ -410,12 +432,12 @@ public static partial class Diagnostics
             new(Verb.Trace, "trace", "Run N frames; per-frame engine timings, watched nodes and one scroller, plus a summary of snaps, jumps and scroll faults", "trace 90 prefix=zune- scroll=main")
             {
                 Positional = ["frames"], NeedsMount = true,
-                Args = Join([Arg("frames", ArgType.Int, "frames to trace (1..5000)", "60"), Arg("max", ArgType.Int, "the most nodes watched (up to 500)", "20")], s_traceOptions),
+                Args = Join([IntArg("frames", "frames to trace", "60", 1, 5000), IntArg("max", "the most nodes watched", "20", 1, 500)], s_traceOptions),
             },
             new(Verb.State, "state", "Show a page state in place of the page (empty, nomatch, error, offline...), or put the page back (none)", "state kind=empty")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the state", null, "empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-warm|cold-faces|none")], s_settleArgs),
+                Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds))], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang) or Report a problem (report) over the current page; key esc closes it", "dialog kind=report")
             {
@@ -456,11 +478,12 @@ public static partial class Diagnostics
 
         // ── the strict-arg check ────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Every arg of <paramref name="cmd"/> must be one its verb declares (exact case), hold a value of its type, and
-        /// (when it <see cref="ArgSpec.Requires"/> another) stand beside that one. An alias is rewritten to its canonical name, and a
+        /// <summary>Every arg of <paramref name="cmd"/> must be one its verb declares (exact case), hold a value of its type (and
+        /// range), stand beside the arg it <see cref="ArgSpec.Requires"/> (given, and when a number, above 0: `trace=0` traces
+        /// nothing) and not beside the one it <see cref="ArgSpec.Excludes"/>. An alias is rewritten to its canonical name, and a
         /// value to its canonical form (an enum word to its declared spelling, a bool word to a bool, a list to a JSON array of
         /// strings). False with the reason otherwise: "unknown arg 'rule' for lint (did you mean 'rules'?)", "bad value 'middle'
-        /// for button (left|right)", "'keys' applies only beside trace=".</summary>
+        /// for button (left|right)", "'keys' applies only beside trace=N with N > 0", "'x' and 'key' do not go together".</summary>
         public static bool Validate(in Command cmd, out string error)
         {
             error = "";
@@ -488,15 +511,46 @@ public static partial class Diagnostics
             foreach (ArgSpec arg in spec.Args)
             {
                 if (!args.TryGet(arg.Name, out Value value)) continue;   // absent (or JSON null: absent too)
-                if (arg.Requires is { } need && !args.Has(need))
+                if (arg.Requires is { } need && !Engaged(spec, args, need))
                 {
-                    error = "'" + arg.Name + "' applies only beside " + need + "= (" + spec.Name + " ignores it otherwise)";
+                    error = "'" + arg.Name + "' applies only beside " + need + (args.Has(need) ? "=N with N > 0" : "=") + " (" + spec.Name + " ignores it otherwise)";
+                    return false;
+                }
+                if (arg.Excludes is { } other && args.Has(other))
+                {
+                    error = "'" + arg.Name + "' and '" + other + "' do not go together (" + spec.Name + " takes one or the other)";
                     return false;
                 }
                 if (!TryCanonical(arg, args, value, out error)) return false;
             }
             return true;
         }
+
+        /// <summary>The arg a Requires names is in effect: given, and (an int or a number) above 0 (`trace=0` traces nothing), or (a bool) true.</summary>
+        static bool Engaged(VerbSpec spec, Args args, string name)
+        {
+            if (!args.TryGet(name, out Value v)) return false;
+            return ArgNamed(spec, name)?.Type switch
+            {
+                ArgType.Int or ArgType.Float => args.TryNum(name, out double n) && n > 0,
+                ArgType.Bool => BoolOf(v) is true,
+                _ => true,
+            };
+        }
+
+        /// <summary>A bool a value spells: true/false, on/off, yes/no, 1/0 (any case), or null.</summary>
+        static bool? BoolOf(Value value) => value.Kind switch
+        {
+            ValueKind.Bool => value.Bool,
+            ValueKind.Number => value.Num == 1 ? true : value.Num == 0 ? false : null,
+            ValueKind.String => value.Str.ToLowerInvariant() switch
+            {
+                "true" or "on" or "yes" or "1" => true,
+                "false" or "off" or "no" or "0" => false,
+                _ => null,
+            },
+            _ => null,
+        };
 
         /// <summary>Check one present value against its row and write it back canonical. False with "bad value ..." otherwise.</summary>
         static bool TryCanonical(ArgSpec arg, Args args, Value value, out string error)
@@ -505,35 +559,26 @@ public static partial class Diagnostics
             switch (arg.Type)
             {
                 case ArgType.Int:
-                    if (args.TryNum(arg.Name, out double n) && n == Math.Floor(n) && Math.Abs(n) <= int.MaxValue) return true;
-                    error = BadValue(arg, value, "a whole number");
+                    if (args.TryNum(arg.Name, out double n) && n == Math.Floor(n) && Math.Abs(n) <= int.MaxValue) return InRange(arg, value, n, out error);
+                    error = BadValue(arg, value, "a whole number" + RangeText(arg));
                     return false;
                 case ArgType.Float:
-                    if (args.TryNum(arg.Name, out _)) return true;
-                    error = BadValue(arg, value, "a number");
+                    if (args.TryNum(arg.Name, out double f)) return InRange(arg, value, f, out error);
+                    error = BadValue(arg, value, "a number" + RangeText(arg));
                     return false;
                 case ArgType.Bool:
                     {
-                        bool? b = value.Kind switch
-                        {
-                            ValueKind.Bool => value.Bool,
-                            ValueKind.Number => value.Num == 1 ? true : value.Num == 0 ? false : null,
-                            ValueKind.String => value.Str.ToLowerInvariant() switch
-                            {
-                                "true" or "on" or "yes" or "1" => true,
-                                "false" or "off" or "no" or "0" => false,
-                                _ => null,
-                            },
-                            _ => null,
-                        };
-                        if (b is not { } flag) { error = BadValue(arg, value, "true or false"); return false; }
+                        if (BoolOf(value) is not { } flag) { error = BadValue(arg, value, "true or false"); return false; }
                         args.Set(arg.Name, new Value(ValueKind.Bool, Bool: flag));
                         return true;
                     }
                 case ArgType.Enum:
                     {
                         if (arg.Choices.Length == 0) return true;
-                        if (value.Kind != ValueKind.Json && ChoiceOf(arg, value.ToString()) is { } choice)
+                        // An enum with a yes and a no among its choices (setup's true|false|signin, gallery's on|off) takes a bool's spellings for them too.
+                        string? choice = value.Kind == ValueKind.Json ? null : ChoiceOf(arg, value.ToString());
+                        if (choice is null && BoolOf(value) is { } yes) choice = ChoiceOf(arg, yes ? "true" : "false") ?? ChoiceOf(arg, yes ? "on" : "off");
+                        if (choice is not null)
                         {
                             args.Set(arg.Name, new Value(ValueKind.String, choice));
                             return true;
@@ -575,6 +620,24 @@ public static partial class Diagnostics
         }
 
         static string BadValue(ArgSpec arg, Value value, string want) => "bad value '" + value + "' for " + arg.Name + " (" + want + ")";
+
+        /// <summary>True when <paramref name="n"/> lies in the row's range; else false with "bad value '-5' for n (a whole number, 0..100000)".</summary>
+        static bool InRange(ArgSpec arg, Value value, double n, out string error)
+        {
+            error = "";
+            if ((arg.Min is not { } min || n >= min) && (arg.Max is not { } max || n <= max)) return true;
+            error = BadValue(arg, value, (arg.Type == ArgType.Int ? "a whole number" : "a number") + RangeText(arg));
+            return false;
+        }
+
+        /// <summary>", 0..100000", ", 0 or more", ", at most 64", or nothing for a row with no range.</summary>
+        static string RangeText(ArgSpec arg) => (arg.Min, arg.Max) switch
+        {
+            ({ } min, { } max) => ", " + min.ToString(CultureInfo.InvariantCulture) + ".." + max.ToString(CultureInfo.InvariantCulture),
+            ({ } min, null) => ", " + min.ToString(CultureInfo.InvariantCulture) + " or more",
+            (null, { } max) => ", at most " + max.ToString(CultureInfo.InvariantCulture),
+            _ => "",
+        };
 
         /// <summary>The declared choice <paramref name="word"/> names (any case), or null.</summary>
         static string? ChoiceOf(ArgSpec arg, string word)
@@ -682,6 +745,9 @@ public static partial class Diagnostics
                 if (a.Choices.Length > 0) WriteStrings(w, "choices", a.Choices);
                 if (a.Aliases.Length > 0) WriteStrings(w, "aliases", a.Aliases);
                 if (a.Requires is { } need) w.WriteString("requires", need);
+                if (a.Excludes is { } other) w.WriteString("excludes", other);
+                if (a.Min is { } min) w.WriteNumber("min", min);
+                if (a.Max is { } max) w.WriteNumber("max", max);
                 w.WriteString("doc", a.Doc);
                 w.WriteEndObject();
             }
@@ -693,7 +759,7 @@ public static partial class Diagnostics
         {
             w.WriteStartObject("schema");
             w.WriteNumber("version", 1);
-            w.WriteString("grammar", "one command per line: {\"cmd\",\"args\",\"id\"} or `verb k=v k=\"a b\" k=[a,\"b c\"] bare`; bare words fill the `positional` names not given by name, in order; arg names are case-sensitive, and an undeclared name, a name given twice, a value not of the arg's type or choices, or an arg given without the one it `requires` is refused");
+            w.WriteString("grammar", "one command per line: {\"cmd\",\"args\",\"id\"} or `verb k=v k=\"a b\" k=[a,\"b c\"] bare`; bare words fill the `positional` names not given by name, in order; arg names are case-sensitive, and an undeclared name, a name given twice, a value not of the arg's type, choices or `min`..`max` range, an arg given without the one it `requires` (a number: above 0) or beside the one it `excludes` is refused");
             w.WriteStartArray("verbs");
             foreach (VerbSpec s in Specs)
             {
@@ -949,6 +1015,14 @@ public static partial class Diagnostics
             }
             cmd = new Command(verb, name, args);
             return true;
+        }
+
+        /// <summary><paramref name="value"/> as a text command writes it: bare when it can be (`chip:Pop`), else in double quotes with
+        /// `"` and `\` escaped (`"chip:Hip Hop"`), so a hint's command runs as printed.</summary>
+        public static string Quote(string value)
+        {
+            if (value.Length > 0 && value.AsSpan().IndexOfAny(" \t\"[]=,\\") < 0) return value;
+            return "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
         }
 
         /// <summary>Add one arg; refuses a name the line already gave ("'rules' given twice": which one was meant is not ours to guess).</summary>
