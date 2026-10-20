@@ -203,6 +203,7 @@ internal static class WinUiPanel
 internal sealed class WinUiPanelFrame : Component
 {
     bool _motionSeeded;
+    float _closedAt;
     PanelPlacement _seededPlacement;
     Action<RectF>? _onBounds;
     Action<KeyEventArgs>? _onKey;
@@ -260,9 +261,16 @@ internal sealed class WinUiPanelFrame : Component
                 if (crossfade) anim.Animate(Context.HostNode, AnimChannel.Opacity, 0f, 1f, F.CrossfadeMs, Easing.Linear);
                 return;
             }
+            // Docked or floating, the pane slides by the width it is laid out at (the frame's host: the live width, held at the width a drag
+            // closed it at), so its edge and the page's eased reservation travel the same distance on the same curve.
+            if (!sheet && Context.Scene is { } laid && laid.AbsoluteRect(Context.HostNode).W is var w && w > 0.5f) target = open ? 0f : w;
             float from = Context.Scene is { } scene
                 ? (sheet ? scene.Paint(Context.HostNode).LocalTransform.Dy : scene.Paint(Context.HostNode).LocalTransform.Dx)
                 : (open ? offCanvas : 0f);
+            // Opening from rest: from the edge at the width it opens at (a pane a drag closed at 270 reopens at 360 from 360 out, not 270).
+            if (open && !sheet && _closedAt > 0f && MathF.Abs(from - _closedAt) < 0.5f && target == 0f && Context.Scene is { } s2)
+                from = MathF.Max(from, s2.AbsoluteRect(Context.HostNode).W);
+            if (!open) _closedAt = target;
             anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : F.SlideMs, F.SlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
