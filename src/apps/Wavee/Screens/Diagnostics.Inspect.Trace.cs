@@ -77,8 +77,8 @@ public static partial class Diagnostics
             if (frames < 1 || frames > MaxFrames) { error = "trace wants 1 <= frames <= " + MaxFrames; return false; }
             o.Frames = frames;
             o.Every = Math.Max(1, a.Int("every", 1));
-            o.Keys = InspectLintScene.ListOf(a, "keys");
-            o.Prefixes = InspectLintScene.ListOf(a, "prefix");
+            o.Keys = a.List("keys");
+            o.Prefixes = a.List("prefix");
             string scroll = a.Str("scroll", defaultScroll);
             o.Scroll = scroll is "none" or "off" or "false" ? "" : scroll;
             o.MaxNodes = Math.Clamp(a.Int("max", 20), 1, MaxWatch);

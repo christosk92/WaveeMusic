@@ -245,6 +245,8 @@ public static partial class Diagnostics
             w.WriteEndArray();
             w.WriteNumber("count", found.Count);
             w.WriteString("order", "reading order (top, then left); nth counts the actionable matches of a key");
+            if (key.Length > 0 && found.Count == 0 && shell.FindPrefix(key).Count is > 0 and int near)   // `find <x>` was a prefix search once
+                w.WriteString("hint", "0 nodes keyed exactly '" + key + "'; " + near + " keys start with it: find prefix=" + key);
             return found.Count;
         }
 
@@ -282,8 +284,17 @@ public static partial class Diagnostics
         /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; null for words.</summary>
         public static string? GlyphLabel(string text)
         {
-            if (!InspectLintScene.IsGlyph(text)) return null;
+            if (!IsGlyph(text)) return null;
             return "glyph:" + (FluentGpu.Controls.Icons.TryGetName(text, out string? name) ? name : "U+" + Codepoints(text));
+        }
+
+        /// <summary>One or two private-use characters (U+E000..U+F8FF): an icon glyph, not words.</summary>
+        static bool IsGlyph(string text)
+        {
+            if (text.Length is 0 or > 2) return false;
+            foreach (char c in text)
+                if (c < '\uE000' || c > '\uF8FF') return false;
+            return true;
         }
 
         /// <summary>The UTF-16 units of <paramref name="text"/> as hex (`E768`, or `E768 E769` for two).</summary>

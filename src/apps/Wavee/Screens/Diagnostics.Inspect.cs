@@ -818,7 +818,7 @@ public static partial class Diagnostics
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;
             while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; }
-            if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames");
+            if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames", WriteAfter);
             string outcome = t.IsFaulted ? "faulted" : t.Result.Outcome.ToString();
             return Settled(id, name, a, w =>
             {
@@ -859,6 +859,7 @@ public static partial class Diagnostics
                         w.WriteEndObject();
                     }
                     w.WriteEndArray();
+                    WriteAfter(w);   // an acting verb's reply ends with `after`, the listing too (nothing changed: it reads what is)
                 });
             }
             string optionId = a.Str("id");
