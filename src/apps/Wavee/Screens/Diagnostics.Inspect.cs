@@ -114,6 +114,7 @@ public static partial class Diagnostics
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
+                InspectKit.RememberColdPlaylist();
                 host._session = new InspectSession(realText);
                 host.TextBackend = host._session.TextBackend;
             });
@@ -254,6 +255,7 @@ public static partial class Diagnostics
         bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
         string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
         Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
+        bool _optionsForNext;       // `option` set a value with nothing mounted: it is for the next mount, which keeps the options
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
         public string TextBackend => _realText ? "dwrite" : "headless";
@@ -379,7 +381,7 @@ public static partial class Diagnostics
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Reset:
                     Unmount();
-                    ClearLeaks(keepRoute: false);
+                    ClearLeaks(keepRoute: false, keepOptions: false);
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -486,7 +488,7 @@ public static partial class Diagnostics
                         float dy = a.Float("dy", 3f), dx = a.Float("dx", 0f);
                         Move(p);
                         RunFrames(1);
-                        _hit = HitKey(p);
+                        _hit = WheelKey(p, horizontal: dy == 0f && dx != 0f);   // what the wheel goes to: a scroller, not a click target
                         var wheel = new ScrollInputEvent(ScrollSource.MouseWheel, ScrollGesture.Notch, 0, p, dx, dy, 0, KeyModifiers.None);
                         Queue(InputEvent.ForScroll(in wheel, timestampMs: _ms));
                         if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the notch lands on
@@ -536,7 +538,8 @@ public static partial class Diagnostics
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-faces|none, not '" + kind + "'");
+                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
+                        if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
                         return Settled(id, name, a, w => w.WriteString("kind", kind));
                     }
@@ -718,17 +721,23 @@ public static partial class Diagnostics
         }
 
         /// <summary>What one mount must not inherit from the last (`mount` and `reset`, once a mount has run: before that the boot's own
-        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the fullscreen stage (a static signal too:
-        /// left up, its looping art kept the next mount from ever settling), the tab workspace (unless <paramref name="keepRoute"/>), and
-        /// playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and queue, the play log emptied). Not every static:
-        /// a fresh process is the only full reset, and `status` counts `mounts` so a reused server shows.</summary>
-        void ClearLeaks(bool keepRoute)
+        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the cold playlist a `state kind=cold-*`
+        /// staged, the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever settling), the tab
+        /// workspace (unless <paramref name="keepRoute"/>), playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and
+        /// queue, the play log emptied), and every theme's option values (unless `option` set one with nothing mounted, for this mount;
+        /// <paramref name="keepOptions"/> false forgets them anyway: `reset`). Not every static: a fresh process is the only full reset,
+        /// and `status` counts `mounts` so a reused server shows.</summary>
+        void ClearLeaks(bool keepRoute, bool keepOptions = true)
         {
+            bool optionsForNext = _optionsForNext && keepOptions;
+            _optionsForNext = false;
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
+            InspectKit.RestoreColdPlaylist();
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
             InspectKit.ResetPlayback();
+            if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
         /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set
@@ -868,7 +877,11 @@ public static partial class Diagnostics
             if (!a.TryGet("value", out Inspect.Value raw)) return Inspect.Reply.Fail(id, name, "option wants a value");
             if (!TryCoerce(option.Option, raw, out object? value)) return Inspect.Reply.Fail(id, name, "'" + raw + "' is not a value of " + option.QualifiedId);
             Task applied = ThemeHost.Apply(new OptionChange(ThemeInspection.IdOf(theme), option.QualifiedId, value!));
-            if (_shell is null) return Inspect.Reply.Ok(id, name, w => w.WriteString("id", option.QualifiedId));
+            if (_shell is null)
+            {
+                _optionsForNext = true;   // for the next mount: its ClearLeaks keeps the options
+                return Inspect.Reply.Ok(id, name, w => w.WriteString("id", option.QualifiedId));
+            }
             int max = a.Int("max", 900), ran = 0;
             while (!applied.IsCompleted && ran < max) { RunFrames(1); ran++; }
             return Settled(id, name, a, w =>
@@ -1099,9 +1112,23 @@ public static partial class Diagnostics
             return hit.IsNull ? null : InspectKit.KeyOf(_shell.Host.Scene, hit);
         }
 
+        /// <summary>The key of the scroll viewport a wheel at <paramref name="p"/> drives (the engine's resolution: the nearest scroller
+        /// of the wheel's axis with room to move, else of the other axis, else the nearest scroller), or null over none. Remembers
+        /// <paramref name="p"/> as where the pointer is.</summary>
+        string? WheelKey(Point2 p, bool horizontal)
+        {
+            _pointer = p;
+            var input = _shell!.Host.Input;
+            NodeHandle vp = input.ScrollableUnderForAxis(p, horizontal);
+            if (vp.IsNull) vp = input.ScrollableUnderForAxis(p, !horizontal);
+            if (vp.IsNull) vp = input.ScrollableUnder(p);
+            return vp.IsNull ? null : InspectKit.KeyOf(_shell.Host.Scene, vp);
+        }
+
         /// <summary>`after {route, focused, overlays, hit}`: where an acting verb left the app. `focused` and `hit` are keys (the
         /// nearest keyed ancestor); `overlays` the open overlay layers (`overlay:<id>`, with `first`, the first key inside each);
-        /// `hit` is what a pointer verb's press or wheel landed on, else what lies under the pointer now (null before any pointer verb).</summary>
+        /// `hit` is what a pointer verb's press landed on (`scroll`: the scroller its wheel drives), else what lies under the pointer now
+        /// (null before any pointer verb).</summary>
         void WriteAfter(Utf8JsonWriter w)
         {
             if (_shell is not { } shell) return;

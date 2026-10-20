@@ -69,6 +69,13 @@ public static partial class Diagnostics
             public int Quiet { get; init; }
             /// <summary>The theme epoch (Tok.Epoch) moved on the last frame: one of the FrameNeeded terms (<see cref="WriteFrameNeeded"/>).</summary>
             public bool EpochMoved { get; init; }
+
+            /// <summary>The settle's old shape, `var (frames, settled) = Settle(...)`.</summary>
+            public void Deconstruct(out int frames, out bool settled)
+            {
+                frames = Frames;
+                settled = Settled;
+            }
         }
 
         /// <summary>Busy this frame: a live animation track, a scroller in user-driven motion (a wheel notch's glide, a fling),
@@ -302,8 +309,15 @@ public static partial class Diagnostics
             {
                 hitKey = KeyOf(scene, hit);
                 note = WhatIs(scene, hit);
+                // A passive target over the overlay host's input-blocking layer (a menu's header text, a dialog's body): the press passes
+                // through it to that layer, which a user's press reaches instead (a light-dismiss one closes the overlay). Covered, not reached.
+                if (relation == Actionability.Hit.Through && note is not null)
+                {
+                    relation = Actionability.Hit.Other;
+                    note += "; a press there reaches that layer instead, and a light-dismiss one closes its overlay";
+                }
                 // The hit's nearest key is the target's own ancestor (a part of it beside the target): name the part by its path instead.
-                if (relation == Actionability.Hit.Other && KeyedSelfOrAncestor(scene, hit) is { IsNull: false } keyed && IsUnder(scene, node, keyed))
+                if (relation == Actionability.Hit.Other && note is null && KeyedSelfOrAncestor(scene, hit) is { IsNull: false } keyed && IsUnder(scene, node, keyed))
                 {
                     note = "a part of '" + hitKey + "' that is not inside the target takes the press";
                     hitKey = PathOf(scene, hit);
@@ -401,6 +415,55 @@ public static partial class Diagnostics
 
         static int[]? s_bootRefs;
         static QueueEdge[] s_bootRows = [];
+
+        // The cold playlist (Entities.Fake.Cold.cs) as the boot seeded it: `state kind=cold-*` rewrites its membership and header.
+        static int s_coldSlot = Table.None;
+        static int[] s_coldTargets = [];
+        static PlaylistTrackEdge[] s_coldPayload = [];
+        static EdgeState s_coldState;
+        static int s_coldTotal, s_coldCount;
+        static uint s_coldKnown;
+
+        /// <summary>A `state kind=cold-*` ran: the next mount puts the cold playlist back (<see cref="RestoreColdPlaylist"/>).</summary>
+        public static bool ColdStaged { get; set; }
+
+        /// <summary>Remember the cold playlist's membership and header as the boot seeded them. Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        public static void RememberColdPlaylist()
+        {
+            if (!EntityId.TryParse(Entities.FakeColdPlaylistUri.AsSpan(), out EntityId id)) return;
+            EntityRef list = Entities.Ref(id);
+            if (list.Kind != EntityKind.Playlist || list.Slot == Table.None) return;
+            Scope s = Entities.Current;
+            s_coldSlot = list.Slot;
+            s_coldTargets = s.Edges.PlaylistTracks.Targets(list.Slot).ToArray();
+            s_coldPayload = s.Edges.PlaylistTracks.Payload(list.Slot).ToArray();
+            s_coldState = s.Edges.PlaylistTracks.State(list.Slot);
+            s_coldTotal = s.Edges.PlaylistTracks.Total(list.Slot);
+            s_coldKnown = s.Playlists.Known[list.Slot];
+            s_coldCount = s.Playlists.TrackCount[list.Slot];
+        }
+
+        /// <summary>After a `state kind=cold-*`: the cold playlist's boot membership and header back in place (the cold rows it minted stay
+        /// in the store, unreferenced). Nothing when no cold stage ran.</summary>
+        public static void RestoreColdPlaylist()
+        {
+            if (!ColdStaged) return;
+            ColdStaged = false;
+            if (s_coldSlot == Table.None) return;
+            Scope s = Entities.Current;
+            s.Edges.PlaylistTracks.Replace(s_coldSlot, s_coldTargets, s_coldPayload, s_coldState, s_coldTotal);
+            s.Playlists.Known[s_coldSlot] = s_coldKnown;
+            s.Playlists.TrackCount[s_coldSlot] = s_coldCount;
+            s.PublishAll();
+        }
+
+        /// <summary>Every shipped theme's persisted option values forgotten (<c>ThemeOptionStore.ResetOptions</c>: the store half of the
+        /// Settings "Reset options" verb, which `option` writes through <c>ThemeHost.Apply</c>): the next <see cref="ActivateTheme"/>
+        /// builds the theme's cells from its composition's defaults, as the boot did.</summary>
+        public static void ForgetThemeOptions()
+        {
+            foreach (string id in App.ShippedThemeIds) ThemeOptionStore.ResetOptions(id);
+        }
 
         /// <summary>Remember the queue as the boot left it (under `--fake`, the seeded default queue: the rows the queue panel,
         /// the stage pane and "Next up" render before anything plays). Once, right after <c>Shell.Headless.Boot</c>.</summary>
