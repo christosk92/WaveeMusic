@@ -59,51 +59,90 @@ internal static class WinUiPanel
         _ => Loc.Get(Strings.Theme.Winui.Player.NowPlaying),
     };
 
-    /// <summary>The head: the tabs, then the close.</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, bool compact)
+    /// <summary>The head: the tabs, then (when they do not all fit the pane's <paramref name="width"/>) the "⋯" that lists the rest, then the
+    /// close. The current tab always shows; the others keep their order and the first that does not fit moves, with the ones after it, into
+    /// the "⋯" (W-Queue-Small: "More pane tabs: Friends").</summary>
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, bool compact, float width)
     {
-        var tabs = new List<Element>(5);
+        var modes = new List<PanelMode>(5);
+        Action<PanelMode>? show;
         if (!view.Tabs.IsEmpty && props.ShowPaneTab is { } showPane)
         {
             // A pane of Huge's arrangement: its own tab group.
+            show = showPane;
             foreach (var mode in TabOrder)
-                if (view.Tabs.Contains(mode) || mode == body) tabs.Add(Tab(mode, mode == body, showPane));
+                if (view.Tabs.Contains(mode) || mode == body) modes.Add(mode);
         }
-        else if (props.ShowMode is { } show)
+        else if (props.ShowMode is { } showMode)
         {
+            show = showMode;
             foreach (var mode in TabOrder)
             {
                 if (mode == PanelMode.Friends && !friends) continue;
                 if (mode != body && view.Beside.Contains(mode)) continue;   // on screen in its own docked pane
-                tabs.Add(Tab(mode, mode == body, show));
+                modes.Add(mode);
             }
-            if (body == PanelMode.Video) tabs.Add(Tab(PanelMode.Video, current: true, show));
+            if (body == PanelMode.Video) modes.Add(PanelMode.Video);
         }
-        else tabs.Add(Tab(body, current: true, show: null));
+        else
+        {
+            show = null;
+            modes.Add(body);
+        }
 
         float close = compact ? F.CloseTouchBox : F.CloseBox;
+        // What fits: each tab's measured word (at least the touch floor) against the lane the close leaves; no text seam, every tab.
+        Span<float> widths = stackalloc float[modes.Count];
+        Span<bool> shown = stackalloc bool[modes.Count];
+        int current = Math.Max(0, modes.IndexOf(body));
+        bool measured = true;
+        for (int i = 0; i < modes.Count && measured; i++)
+        {
+            float w = Controls.NaturalWidth(Word(modes[i]), Label(modes[i], i == current));
+            measured = !float.IsNaN(w);
+            widths[i] = w;
+        }
+        if (!measured || !F.FitTabs(widths, current, F.TabLane(width, close), close, shown)) shown.Fill(true);
+
+        var tabs = new List<Element>(modes.Count);
+        var rest = new List<PanelMode>(modes.Count);
+        for (int i = 0; i < modes.Count; i++)
+        {
+            if (shown[i]) tabs.Add(Tab(modes[i], i == current, show));
+            else rest.Add(modes[i]);
+        }
+
+        var row = new List<Element>(3)
+        {
+            new ScrollEl
+            {
+                Horizontal = true, Height = F.TabRowH, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
+                Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = F.TabGap, Height = F.TabRowH, Children = tabs.ToArray() },
+            },
+        };
+        if (rest.Count > 0 && show is not null)
+            row.Add(Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey });
+        row.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph) with { Key = F.CloseKey },
+            Loc.Get(Strings.Theme.Winui.Player.ClosePane)));
         return new BoxEl
         {
             Key = F.TabsKey, Direction = 1, Shrink = 0f,
             Children =
             [
-                new BoxEl
-                {
-                    Height = F.TabRowH, Direction = 0, AlignItems = FlexAlign.Center, Padding = F.TabRowPadding,
-                    Children =
-                    [
-                        new ScrollEl
-                        {
-                            Horizontal = true, Height = F.TabRowH, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
-                            Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = F.TabGap, Height = F.TabRowH, Children = tabs.ToArray() },
-                        },
-                        ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph) with { Key = F.CloseKey },
-                            Loc.Get(Strings.Theme.Winui.Player.ClosePane)),
-                    ],
-                },
+                new BoxEl { Height = F.TabRowH, Direction = 0, AlignItems = FlexAlign.Center, Padding = F.TabRowPadding, Children = row.ToArray() },
             ],
         };
     }
+
+    /// <summary>A tab's word as drawn (the selected one semibold in the primary ink, the rest secondary).</summary>
+    static TextEl Label(PanelMode mode, bool current) => new(Word(mode))
+    {
+        Size = F.TabSize, LineHeight = F.TabLine, Weight = current ? F.TabSelectedWeight : F.TabWeight,
+        Color = current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+    };
+
+    /// <summary>The "⋯" props: the tabs it lists, the verb that shows one, its box.</summary>
+    internal sealed record MoreTabsProps(PanelMode[] Modes, Action<PanelMode> Show, float Box);
 
     /// <summary>One tab: the word over the pill (reserved on every tab, painted on the selected one), its hit box the row's 48.</summary>
     private static Element Tab(PanelMode mode, bool current, Action<PanelMode>? show)
@@ -113,11 +152,7 @@ internal static class WinUiPanel
             Direction = 1, AlignItems = FlexAlign.Stretch, Gap = F.PillGap, Shrink = 0f,
             Children =
             [
-                new TextEl(Word(mode))
-                {
-                    Size = F.TabSize, LineHeight = F.TabLine, Weight = current ? F.TabSelectedWeight : F.TabWeight,
-                    Color = current ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-                },
+                Label(mode, current),
                 new BoxEl { Height = F.PillH, Corners = CornerRadius4.All(F.PillH / 2f), Fill = current ? Tok.AccentDefault : ColorF.Transparent },
             ],
         };
@@ -285,7 +320,7 @@ internal sealed class WinUiPanelFrame : Component
         if (sheet) column.Add(Grabber(props.Close, compact));
         // The docked card mounts unconditionally outside the Now playing tab (its own gate hides it); that tab pins it in place of the hero.
         if (body != PanelMode.NowPlaying) column.Add(WinUiPanel.DockedCap(props, view.DockedHere, width));
-        column.Add(WinUiPanel.Head(props, view, body, friends, compact));
+        column.Add(WinUiPanel.Head(props, view, body, friends, compact, sheet ? vp.Value.Width : width));
         column.Add(bodySlot);
 
         CornerRadius4 corners = sheet ? new CornerRadius4(B.CardRadius, B.CardRadius, 0f, 0f)
@@ -310,11 +345,19 @@ internal sealed class WinUiPanelFrame : Component
                     Acrylic = floating ? Tok.AcrylicFlyout : null, Fill = floating ? ColorF.Transparent : ColorF.Transparent,
                     BorderColor = floating ? Tok.StrokeFlyoutDefault : ColorF.Transparent, BorderWidth = floating ? 1f : 0f,
                 },
-                // Docked: the 1-px divider on the pane's left edge (the content layer runs under both).
+                // Docked: the band's hairline, the content card's own (left and top, round the r8 arc, the full height): one stroke that follows the
+                // band's corner, never a straight line that the corner's clip leaves as a stub at the top.
                 new BoxEl
                 {
-                    Direction = 0, Grow = 1f, HitTestVisible = false,
-                    Children = [new BoxEl { Width = floating ? 0f : F.DividerH, Shrink = 0f, Fill = Tok.StrokeDividerDefault }],
+                    Grow = 1f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Margin = WinUiFrameRules.StrokeOverhang, Corners = WinUiFrameRules.PaneBandCorners,
+                            BorderWidth = floating ? 0f : WinUiFrameRules.StrokeWidth, BorderColor = floating ? ColorF.Transparent : Tok.StrokeCardDefault,
+                        },
+                    ],
                 },
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
@@ -342,6 +385,37 @@ internal sealed class WinUiPanelFrame : Component
             }, Loc.Get(Strings.Theme.Winui.Player.Grabber)),
         ],
     };
+}
+
+/// <summary>The head's "⋯" (W-Queue-Small): the tabs the pane's width leaves out, as a menu under it; picking one shows it (the head then lays
+/// out round the new current tab).</summary>
+internal sealed class WinUiPaneMoreTabs : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<WinUiPanel.MoreTabsProps>();
+        var anchor = UseRef<NodeHandle>(default);
+        var handle = UseRef<OverlayHandle?>(null);
+        var overlay = UseContext(Overlay.Service);
+        UseEffect(() => () => handle.Value?.Close(), DepKey.Empty);
+        void Toggle()
+        {
+            if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+            var items = new List<MenuFlyoutItem>(p.Modes.Length);
+            foreach (var mode in p.Modes)
+            {
+                var m = mode;
+                items.Add(new MenuFlyoutItem(WinUiPanel.Word(m), null, true, () => p.Show(m)));
+            }
+            handle.Value = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(items, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.BottomEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+            handle.Value.ClosedAction = () => handle.Value = null;
+        }
+        string names = string.Join(", ", Array.ConvertAll(p.Modes, WinUiPanel.Word));
+        return ToolTip.Wrap(WinUiPlayerBar.Button(Icons.More, Toggle, true, false, p.Box, p.Box, F.MoreGlyph, h => anchor.Value = h),
+            Strings.Theme.Winui.Player.MorePaneTabs(names));
+    }
 }
 
 /// <summary>The Now playing tab's body under the hero: "Next up" (the hero carries the track itself).</summary>
