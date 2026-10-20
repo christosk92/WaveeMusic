@@ -479,8 +479,11 @@ public static partial class Diagnostics
             /// gap pixel's contrast against the ink is taken and the one at <paramref name="percentile"/> of the ordered ratios is the answer (0.1: the
             /// 10 % worst pixels, the WCAG G18 approach for text over imagery). A box with fewer than <see cref="MinGapPixels"/> gap pixels (the ground
             /// itself is ink-coloured: dark text on a dark photograph, light on a bright one) is judged over all of its pixels, which is the honest
-            /// answer there: it does not read. False when the rect holds no pixel.</summary>
-            public bool TryWorstContrast(RectF rect, ColorF ink, float opacity, float percentile, out double ratio, out ColorF worst, out int gapPixels)
+            /// answer there: it does not read. An <paramref name="icon"/> is the exception: a glyph that fills its box makes the box's median its own
+            /// ink, so when its box cannot be split it is judged on the ring around it (less what is ink-coloured there), the ground a user sees
+            /// it on. False when the rect holds no pixel.</summary>
+            public bool TryWorstContrast(RectF rect, ColorF ink, float opacity, float percentile, out double ratio, out ColorF worst, out int gapPixels,
+                bool icon = false)
             {
                 ratio = 21d;
                 worst = default;
@@ -517,9 +520,12 @@ public static partial class Diagnostics
                     if (near) continue;
                     for (int y = y0; y < y1; y++) picked.Add((y * Width + x) * 4);
                 }
-                if (separable && picked.Count < MinGapPixels)
+                bool ringed = separable ? picked.Count < MinGapPixels : icon;
+                if (ringed)
                 {
-                    // A glyph that fills its box (an icon): its ground is the ring just outside the box, less any ink that reaches into it.
+                    // A glyph that fills its box (an icon): its ground is the ring just outside the box, less any ink that reaches into it
+                    // (unsplittable: less any pixel near the ink's own colour).
+                    if (!separable) picked.Clear();
                     int ring = Math.Max(1, (int)MathF.Ceiling(RingDip * Scale));
                     int rx0 = Math.Max(0, x0 - ring), rx1 = Math.Min(Width, x1 + ring), ry0 = Math.Max(0, y0 - ring), ry1 = Math.Min(Height, y1 + ring);
                     for (int y = ry0; y < ry1; y++)
@@ -528,12 +534,13 @@ public static partial class Diagnostics
                             if (x >= x0 && x < x1 && y >= y0 && y < y1) continue;
                             int i = (y * Width + x) * 4;
                             Rgb(i, out float r, out float g, out float b);
-                            if ((0.2126f * r + 0.7152f * g + 0.0722f * b - median) / span > InkShare) continue;
+                            if (separable ? (0.2126f * r + 0.7152f * g + 0.0722f * b - median) / span > InkShare
+                                : MathF.Max(MathF.Abs(r - ink.R), MathF.Max(MathF.Abs(g - ink.G), MathF.Abs(b - ink.B))) < InkSpan) continue;
                             picked.Add(i);
                         }
                 }
                 gapPixels = picked.Count;
-                if (!separable || picked.Count < MinGapPixels)
+                if ((!separable && !ringed) || picked.Count < MinGapPixels)
                 {
                     picked.Clear();
                     for (int y = y0; y < y1; y++)
@@ -1377,7 +1384,8 @@ public static partial class Diagnostics
                 share = plainShare;
             }
             // Still busy (a photograph, a scrim, a gradient): read the ground around the glyphs at its worst, so the rule can judge it.
-            if (share < BusyShare && t.Color.A > 0f && px.TryWorstContrast(seen, t.Color, n.Opacity, MediaPercentile, out double worst, out ColorF worstGround, out int gaps))
+            if (share < BusyShare && t.Color.A > 0f
+                && px.TryWorstContrast(seen, t.Color, n.Opacity, MediaPercentile, out double worst, out ColorF worstGround, out int gaps, icon: t.Glyph))
                 return t with { Ground = ground, GroundShare = share, Worst = (float)worst, WorstGround = worstGround, GapPixels = gaps };
             return t with { Ground = ground, GroundShare = share };
         }
@@ -1982,7 +1990,8 @@ public static partial class Diagnostics
                         // Judged on the rendered pixels around its glyphs at their worst (read with the frame): a photograph, a scrim, a gradient.
                         if (t.Worst + 0.005 >= need) continue;
                         bool photo = under is { Image: true } || OverImage(s, n);
-                        string over = under is null ? (photo ? "an image" : "the page") : (under.Image ? "art " : under.Gradient ? "a gradient " : "a plate ") + under.Pattern;
+                        string over = under is null ? (photo ? "an image" : "the page")
+                            : (under.Image ? "art " : under.Gradient ? "a gradient " : "a plate ") + under.Pattern + (photo && !under.Image ? " over an image" : "");
                         string mediaKey = "media|" + ink + "|" + over + "|" + F(need);
                         if (!pairs.TryGetValue(mediaKey, out Pair? media)) pairs[mediaKey] = media = new Pair { Need = need, Over = over, Media = true, Photo = photo };
                         media.Runs.Add(n);
