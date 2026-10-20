@@ -52,17 +52,27 @@ mount w=400 h=860 theme=zune
 
 - **JSON form.** The args can also sit at the top level, beside `cmd` and `id`. A `--headless`-style `"args":[...]`
   array fills the verb's positional names.
-- **Text form.** Bare words fill the positional names: `goto home`, `find zune-band-pivot:home`, `frames 30`. `type` takes
-  the rest of the line as its text.
+- **Text form.** Bare words fill the positional names that no `k=v` on the line has filled, in order: `goto home`,
+  `find zune-band-pivot:home`, `frames 30`, `scroll key=zune-home-scroll: 4` (4 is `dy`). `type` takes the rest of the line
+  as its text (`type daft punk`), unless the line goes on with a quote or `text=`: `type "daft punk" settle=false`.
   - **Quoting.** A value in double quotes keeps its blanks and is always a string: `lint allowDuplicate="See all"`. Inside
     the quotes `\"` is a quote and `\\` a backslash; any other backslash stays as it is, so a Windows path needs nothing.
-  - **Lists.** A value in brackets is a list, carried exactly as the JSON form would carry it:
-    `lint rules=[clip,trim] allowDuplicate=["See all",Play]`, `trace 60 wheel=[3,3,-6]`. Unquoted numbers and `true`/`false`
-    are JSON literals; every other item is a string. A comma list without brackets (`rules=clip,trim`) still works.
-- **Strict args.** Every verb declares its args (the verb table beside `VerbNames` in `Diagnostics.Inspect.Protocol.cs`).
-  Names are case-sensitive, and an arg the verb does not declare is refused before anything runs:
-  `{"ok":false,"error":"unknown arg 'rule' for lint (did you mean 'rules'?)"}`. A miscased name is pointed at its right
-  spelling (`keysonly`: did you mean `keysOnly`), so `mount them=zune` fails instead of quietly mounting the active theme.
+    A quoted value of a list arg is one item, commas and all: `allowDuplicate="Hello, world"`.
+  - **Lists.** A value in brackets is a list: `lint rules=[clip,trim] allowDuplicate=["See all",Play]`,
+    `trace 60 wheel=[3,3,-6]`. A comma list without brackets (`rules=clip,trim`) works too. Every list reaches the verb as
+    strings (`[2024,Play]` allows `2024`). In the JSON form a list is an array; a JSON string is split at its commas.
+- **Strict args.** Every verb declares its args (the verb table beside `VerbNames` in `Diagnostics.Inspect.Protocol.cs`),
+  and a command that breaks the table is refused before anything runs:
+  - An undeclared name: `{"ok":false,"error":"unknown arg 'rule' for lint (did you mean 'rules'?)"}`. Names are
+    case-sensitive and a miscased one is pointed at its right spelling (`keysonly`: did you mean `keysOnly`), so
+    `mount them=zune` fails instead of quietly mounting the active theme.
+  - A value not of the arg's type or choices: `bad value 'middle' for button (left|right)`, `bad value 'abc' for n (a whole
+    number)`, `bad value '1' in rules (gutter|right-edge|...)`, `'rules' names nothing`. A choice matches in any case and
+    reaches the verb in its declared spelling (`theme=ZUNE` is `zune`); a bool takes `true`/`false`, `on`/`off`, `yes`/`no`
+    or `1`/`0`.
+  - An arg that only applies beside another: `'every' applies only beside trace=` (the trace options on a settling verb),
+    `'fromMs' applies only beside video=` (`mount`). `help verb=<name>` lists these as `requires`.
+  - A name given twice, by name or once by name and once as a bare word: `'rules' given twice`.
 - **`help`** lists the verbs with a one-line summary each. `help verb=lint` (or `help lint`) gives that verb's positional
   names and every arg with its type, default, choices, aliases and a line of doc, plus one example. `help schema=json`
   returns the whole table (`schema {version, grammar, verbs:[...]}`).
@@ -85,24 +95,43 @@ Every command gets exactly **one** reply line. A JSON command's `id` comes back 
 row, at most `max` frames (600 by default). Nothing moves means no animation track, no scroller in user-driven motion
 (`AppHost.AnyUserScrollMoving`: a wheel notch's glide, a fling), and no wake reason (`AppHost.CurrentWakeReasons`) but the
 ambient ones: the caret blink, the warm cadence, a host timer coming due, and the frame-clock tickers that run for as long
-as a track plays (the playhead, a visualizer). The replies report `frames` and `settled`. A settle that hit its cap adds
-`busy`, what still moved: `{"key","kind":"anim"}` for a node with live tracks (named by its nearest keyed ancestor),
-`{"key","kind":"scroll","motion":"Wheel"}` for a scroller in motion, and `{"kind":"wake","reason":"ImageReady"}` for a wake
-reason with no node. Pass `settle=false` to skip the settle and step the frames yourself with `frames`.
+as a track plays (the playhead, a visualizer). The replies report `frames` and `settled`, and `ambient:[...]` when the
+settle saw any of those ambient reasons: motion they drive (a frame-clock ticker) was not waited for. A settle that hit its
+cap adds `busy`, what still moved:
 
-A looping animation never ends, so a page that shows one never settles. On Zune the playing track's row animates for as
-long as it plays: a `play` (or any verb after it) on a page that lists that row runs to `max`, and `busy` names the row.
-Use `settle=false` with `frames N` there, or a small `max`.
+- `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor).
+- `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
+- `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
+  inspector can see: `themeEpoch` (a theme token was written on the last frame), `freeze`, `engineSettle`,
+  `themeTransaction`, or `explicit` (an explicit wake, a posted action, a scroll plan write or a frame owed after paint,
+  which the engine does not attribute).
+- An empty `busy` with `quietFrames` and a `note`: nothing moved on the last frame, but `max` came before two quiet frames
+  in a row (`settle max=1`).
+
+Pass `settle=false` to skip the settle and step the frames yourself with `frames`.
+
+A looping animation never ends, so a page that shows one never settles. While a track plays, its row animates on every
+page that lists it, in every theme: Home after a `play` (Classic and WinUI: the `recent:*` card; Zune: the
+`zune-cluster-row:*` row) and Liked Songs (`c.num`, `winui.row.now`, `zune.row.now`). A verb there runs to `max`, and `busy`
+names the row. Use `settle=false` with `frames N` there, or a small `max`.
+
+**Known issue: Classic with a second tab active.** In Classic, while any tab but the first is active, the app wakes a frame
+every frame (`busy` reads `FrameNeeded` with `terms:["explicit"]`, and nothing is drawn: an idle repaint in the app, not the
+inspector). `goto route=history` opens History in a tab of its own, so every settle on that tab runs to `max`. Click the
+first tab (`tab#2`) or mount again: a mount closes the extra tabs.
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
-`theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`:
+`theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
+includes `option`'s listing (nothing changed: it reads what is) and a `theme` whose transaction ran out of frames
+(`ok:false`):
 
 - `route`: the route the app is on now, in `status`'s form.
 - `focused`: the key of the focused node, or null.
 - `overlays`: the open overlay layers, top first, as `{"key":"overlay:3","first":"crash-prompt:fake0001"}` (the layer and
   the first key inside it).
 - `hit`: the key of the node the pointer resolved to. For a pointer verb, what its press or wheel landed on; for any other
-  verb, what lies under the pointer now. Null before any pointer verb, or over nothing that takes input.
+  verb, what lies under the pointer now. Null before any pointer verb on this mount (a mount starts with no pointer), or
+  over nothing that takes input.
 
 Keys name the nearest keyed ancestor when the node itself has none.
 
@@ -110,11 +139,17 @@ Keys name the nearest keyed ancestor when the node itself has none.
 
 ### `mount {w, h, scale?, theme?, kind?, route? | uri? | deeplink?, gpu?, keepRoute?}`
 
-Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and the next mount does not inherit
-what the last one left behind: the `state` vacancy is cleared, playback stops and the deck empties (as a sign-out empties
-it), the play queue is forgotten and the fullscreen stage closes. Not every static is reset (the video surface of a
-`video=` mount is not), so a fresh process per configuration is still the rule; `status` counts the `mounts` a server has
-done so a reused one shows. A mount without `theme` or `kind` keeps the active ones.
+Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and a mount after the first does not
+inherit what the last one changed. It puts back:
+
+- the `state` vacancy (cleared) and the fullscreen stage (closed);
+- the tab workspace: every tab but the first is closed and the first is active (not with `keepRoute=true`);
+- playback as the boot left it (`Shell.Headless.ResetPlayback`): nothing on the deck, the play log empty, and the queue the
+  `--fake` boot seeded (the 12 rows the queue panel, the stage's up next and "Next up" show before anything plays).
+
+The first mount of a server finds the boot's own state, which is the fresh one. Not every static is reset (the video
+surface of a `video=` mount is not), so a fresh process per configuration is still the rule; `status` counts the `mounts`
+a server has done so a reused one shows. A mount without `theme` or `kind` keeps the active ones.
 
 | Arg | Values |
 |---|---|
@@ -122,10 +157,10 @@ done so a reused one shows. A mount without `theme` or `kind` keeps the active o
 | `theme` | `classic`, `zune` or `winui` (default: the active theme; a fresh server is on Classic). Zune turns Developer mode on; the others turn it off. |
 | `kind` | `dark` or `light`. |
 | `gpu` | `warp` (default) or `hardware`: the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels). |
-| `keepRoute=true` | Keeps the current navigation. Without it, the mount starts from a fresh Home. |
+| `keepRoute=true` | Keeps the current navigation and tabs. Without it, the mount starts from a fresh Home on the first tab. |
 | `setup=true` or `signin` | Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). `signin` asks for the sign-in page; today the plate still opens on its first page, so click `next` to reach it. |
 | `feedback=bug` or `feature` | Opens the report form over the page. |
-| `video=fullscreen`, `docked` or `floating` | Puts the video surface up with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome is a hover band: add `chrome=shown` to draw it at rest at every tier). |
+| `video=fullscreen`, `docked` or `floating` | Puts the video surface up with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome is a hover band: add `chrome=shown` to draw it at rest at every tier). Beside it, `fromMs` sets the track's position (74000) and `player=fake` binds an idle engine player; without `video` both are refused. |
 
 The navigation args are the ones `goto` takes.
 
@@ -162,13 +197,14 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 
 `frames` runs exactly `n` frames and replies with `{"frames":n,"animating":bool,"scrolling":bool,"wake":[...],"ambient":[...]}`:
 `animating` is a live animation track, `scrolling` a scroller in user-driven motion, `wake` the wake reasons that keep a
-settle going and `ambient` the ones it ignores (see Settling). `settle` runs frames until nothing moves for two frames, for
-at most `max` frames, and replies with `{"frames","settled"}` (plus `busy` at the cap).
+settle going and `ambient` the ones it ignores (see Settling). With `FrameNeeded` in `wake` it adds `frameNeeded:[terms]`,
+as `busy` does. `settle` runs frames until nothing moves for two frames, for at most `max` frames, and replies with
+`{"frames","settled"}` (plus `busy` at the cap, and `ambient` when it saw any).
 
 ### `reset`
 
-Unmounts, clears the `state` vacancy, playback, the queue and the fullscreen stage (as `mount` does), resets the navigation
-to a fresh Home, and makes Classic dark the active theme.
+Unmounts, puts back what the mounts changed (as `mount` does: the `state` vacancy, the stage, the tabs, playback and the
+queue), resets the navigation to a fresh Home, and makes Classic dark the active theme.
 
 ### `unmount`, `status`, `help`, `quit`
 
@@ -176,7 +212,8 @@ to a fresh Home, and makes Classic dark the active theme.
   above 1 means state that a mount does not clear may carry over), the theme and kind, the route, the text backend and the
   network leaks. When something is mounted, it adds the mount facts, `animating` and `trimSource`.
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
-- `quit` unmounts and ends the server.
+- `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
+  sends nothing after a `quit` and says how many lines it left.
 
 ### `click`, `hover {key | x,y, nth?, force?, mods?, button?}`
 
@@ -192,16 +229,19 @@ These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no
 |---|---|
 | It is shown: live, linked to the root, visible and opaque on its whole chain, with a box (`SceneStore.IsShown`; a parked keep-alive page is not). | `notShown` |
 | At least 50 % of its presented rect is visible after the window, every ancestor that clips (`ClipsToBounds`, a scroll viewport) and every ancestor's authored clip rect. | `offscreen` (scroll it into view first) |
-| Neither it nor an ancestor is disabled. | `disabled` |
-| The hit test at the centre of its visible part lands inside it, on nothing, or on an ancestor it is a passive part of (a label in a button). | `covered`, naming the key that covers it |
+| It is enabled, and so is the click owner a press on it reaches (the nearest node up from the hit carrying a click handler, as the dispatcher finds it). A disabled container alone does not disable an enabled button inside it. | `disabled` |
+| The hit test at the centre of its visible part lands inside it. A passive target (no pointer handler of its own: a label, an icon, a hint) may also be reached through what owns it: an ancestor, a sibling part of the same click owner, or a hit target painted beneath it (the press passes through it). | `covered`, naming the key that covers it (or, when that key is the target's own ancestor, the covering part's dump path) |
+| Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end). A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
 
 The pointer goes to the centre of the visible part. A refusal is `ok:false` with the reason, and `matches` lists every node
-keyed so with its `rect`, `onScreen` share, `actionable`, `reason`, `why` and `hit`. `force=true` skips the checks (and aims at
-the presented centre of a node with nothing visible), as the verbs did before.
+keyed so with its `rect`, `onScreen` share, `actionable`, `reason`, `why` and `hit`. An accepted target can carry
+`target.note` (a press that passes through it, a passive target over nothing). `force=true` skips the checks (and aims at
+the presented centre of a node with nothing visible); `nth` then counts every match, still in reading order.
 
 **`nth`** counts the actionable matches only (every match with `force=true`), in **reading order**: top first (to the whole
 DIP), then left. `find <key>` lists the matches in the same order with the `nth` each one answers to. The reply says which it
-took: `target {nth, of, matches, onScreen, order, forced?}`, beside `at` and `key`; acting verbs add `after` (see Protocol).
+took: `target {nth, of, matches, onScreen, order, forced?, note?}`, beside `at` and `key`; acting verbs add `after` (see
+Protocol).
 
 ```json
 {"cmd":"click","args":{"key":"see-all:home:made-for-you"},"id":4}
@@ -224,18 +264,21 @@ took: `target {nth, of, matches, onScreen, order, forced?}`, beside `at` and `ke
 - `f1` to `f12`, `a` to `z`, `0` to `9`, or a decimal virtual-key code
 - any of these with `ctrl+`, `shift+`, `alt+` or `win+` in front, such as `ctrl+f`
 
-`type` sends character input to whatever has focus.
+`type` sends character input to whatever has focus. The text form takes the rest of the line, spaces kept; to add args
+(`settle=false`, `trace=N`), quote the text or use `text=`:
 
 ```text
 key ctrl+f
 type daft punk
+type "daft punk" settle=false
 key enter
 ```
 
 ### `scroll {key | x,y, dy?, dx?}`
 
 Turns the mouse wheel at the target: `dy` notches, positive toward the end of the content (3 by default). A `key` target
-is checked and picked as `click` does (`nth`, `force`). The settle waits for the scroller to stop, so the reply's
+is checked and picked as `click` does (`nth`, `force`), except that nothing needs a handler at its centre: the wheel goes to
+the scroller under the pointer either way. The settle waits for the scroller to stop, so the reply's
 `scroll {offset, max}` (with `key`: the first scroll viewport under that node) is where the glide ended.
 
 ### `play {uri, fromMs?, next?, ago?}`
@@ -259,6 +302,9 @@ or Report a problem over the **current** page: it never navigates, and the reply
   carries the `outcome`.
 - Not mounted: selects the theme for the next mount.
 
+`max` caps the transaction at 900 frames by default (`option`: the apply), and, when given, the settle after it too
+(otherwise that settle's 600).
+
 ### `option {themeId?, id?, value?}`
 
 - Without `id`: lists the theme's user options, with each one's qualified id, kind, current value and choices.
@@ -277,14 +323,15 @@ Which `value` each option kind takes:
 ### `find {key | prefix}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is
-in reading order (top, then left). Each entry has:
+in reading order (top, then left). `find` used to be a prefix search, so an exact miss that `prefix=` would answer says so:
+`"hint":"0 nodes keyed exactly 'zune-band-pivot:'; 4 keys start with it: find prefix=zune-band-pivot:"`. Each entry has:
 
 | Field | Meaning |
 |---|---|
 | `rect` | The presented rect. |
 | `shown` | `SceneStore.IsShown`: on the tree's visible chain (a parked page's nodes are not). |
 | `onScreen` | The share of the rect that can be seen, 0..1, after the window and every clipping ancestor (0 when not shown). |
-| `actionable` | What `click`, `hover` and `scroll` check (see `click`). An actionable entry has `nth`, the index a pointer verb's `nth` takes for this key; any other has `why`. |
+| `actionable` | What `click` and `hover` check (see `click`; `scroll` needs no handler at the centre). An actionable entry has `nth`, the index a pointer verb's `nth` takes for this key, and sometimes a `note`; any other has `why`. |
 | `kind`, `text?` | The element type and the first text under it (a button's label; an icon glyph prints as `glyph:<name>`, see `dump`). |
 
 ```json
@@ -389,7 +436,7 @@ transparent and empty-box nodes are not in it.
 
 | Arg | Meaning |
 |---|---|
-| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a JSON array. Default: all nine. |
+| `rules` | Which rules run: a comma list (`rules=gutter,clip`) or a list (`[gutter,clip]`). Default: all nine. A name that is not a rule, or an empty list, is refused. |
 | `root`, `nth` | Lint only the subtree of the node with that key (`nth` picks among duplicates). Default: the whole tree and the overlays. |
 | `min` | Leaves out findings below this severity: `info` (default), `warn` or `error`. |
 | `limit` | The most findings one rule reports, 100 by default. The reply lists the rules it cut in `truncated`. |
@@ -450,7 +497,8 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
 
 1. It mounts at `from` (or resizes the mount you have, and navigates when `route`, `uri` or `deeplink` is given), settles, and
    remembers every shown keyed node and its rect. With nothing mounted, the mount args apply (`theme`, `kind`, `route`, `gpu`,
-   `scale`); `remount=true` forces a fresh mount.
+   `scale`); `remount=true` forces a fresh mount. Over a mount that is up (no `remount`), only the navigation args apply, and a
+   mount-only arg is refused: `'theme' applies only when the crossing mounts (nothing mounted, or remount=true)`.
 2. It resizes to `to`. **Narrowing** goes through the OS modal size
    loop: a keep-alive paint inside the loop, then `frames` more keep-alive paints outside it (default 1), which still lay out
    the old tier at the new size, then one more keep-alive paint, the **commit frame**, where the new tier lands. **Widening**
@@ -492,7 +540,8 @@ crossing) as one line per finding (an icon glyph in a message prints as `glyph:U
 **A verdict: `--gate`.** `python -I tools/inspect.py --gate error -f lint.txt` runs the file as usual, then prints one
 summary line and exits **1** when any lint (or crossing's lint) reported a finding at or above the gate's severity
 (`info`, `warn` or `error`; a finding whose `outcome` is `suppressed` does not count), **2** when any reply was `ok:false`
-(that wins), else **0**. The finding counts come from the replies, so the lint's own `min` and `limit` apply first.
+(that wins), else **0**. The finding counts come from the replies, so the lint's own `min` and `limit` apply first. A server
+that dies or closes the stream mid-run counts as an `ok:false` (`server: ...`): exit 2 with the summary line, never 1.
 
 ```text
 gate error: 1 lint reply, 0 error, 18 warn, 0 info (0 at or above error); 0 ok:false replies -> exit 0
@@ -626,8 +675,8 @@ dump root=<the page's root key> depth=3
   check, `help` and the `after` block all read it: a verb that reads a new arg declares it there, or the arg is refused.
   The lint args are one line each in their own marked list.
 - **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle (and `busy`), Subtree, the visible-rect math
-  and the actionability check (`Assess`, deciding through the pure `Diagnostics.Actionability`), Play, the fixture grader
-  and the theme activation.
+  and the actionability check (`Assess`, deciding through the pure `Diagnostics.Actionability`), what a mount puts back
+  (`ResetPlayback` with the boot's queue, `ResetTabs`), Play, the fixture grader and the theme activation.
 - **The lint rules are pure.** `Diagnostics.InspectLint` (`Diagnostics.Inspect.Lint.cs`) turns a `Snapshot` of nodes into
   findings with no engine and no host.
   `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
