@@ -244,12 +244,16 @@ public static partial class Diagnostics
             return false;
         }
 
-        // ── the lint args: ONE LINE PER ARG (Diagnostics.Inspect.Lint.Scene.cs `TryOptions` reads them; `lint` and `crossing` take them) ──
+        // ── the lint args: ONE LINE PER ARG (Diagnostics.Inspect.Lint.Scene.cs `TryOptions` reads them; `lint` and `crossing` take them;
+        // `lint` adds root, nth, save and replay: with these, InspectLintScene.ArgNames) ──
         static readonly ArgSpec[] s_lintArgs =
         [
-            Arg("rules", ArgType.List, "the rules to run (default: all)", null, string.Join("|", InspectLint.RuleNames)),
+            Arg("rules", ArgType.List, "the rules to run: ids (text.clip), today's names (clip), families (align or align.*) or all (default: all)", null, string.Join("|", InspectLint.RuleWords)),
+            Arg("scope", ArgType.Enum, "screen: nodes at least half on screen; content: below the fold too; all: every node", "screen", "screen|content|all"),
             Arg("min", ArgType.Enum, "leave out findings below this severity", "info", "info|warn|warning|error"),
-            Arg("limit", ArgType.Int, "the most findings one rule reports", "100"),
+            Arg("limit", ArgType.Int, "the most findings one rule lists", "100"),
+            Arg("outcomes", ArgType.List, "the outcomes LISTED (every one is counted)", "fail,review,report", "fail|review|suppressed|report|all"),
+            Arg("baseline", ArgType.Path, "accepted findings: a JSON-lines file of {fp, rule, reason}; a match is suppressed"),
             Arg("typeFloor", ArgType.Float, "type: text under this size (DIP) is an error", "11"),
             Arg("targetFloor", ArgType.Float, "target: the smallest hit target outside Compact (DIP)", "32"),
             Arg("targetFloorCompact", ArgType.Float, "target: the smallest hit target at Compact (DIP)", "40"),
@@ -381,11 +385,13 @@ public static partial class Diagnostics
                 ],
             },
             new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, sizes, rung ids", "tiers") { NeedsMount = true },
-            new(Verb.Lint, "lint", "Check the mounted scene for design flaws (clip, trim, type, target, duplicate, rhythm, contrast, theme edges)", "lint min=warn allowDuplicate=\"See all\"")
+            new(Verb.Lint, "lint", "Check the mounted scene (or a saved snapshot: replay=) for design flaws: gate rules (clip, trim, type, target, duplicate, rhythm, contrast, theme edges) and todo rules (align, space, placeholder, keys)", "lint min=warn allowDuplicate=\"See all\"")
             {
                 Positional = ["rules"], NeedsMount = true,
                 Args = Join([Arg("root", ArgType.Key, "lint every node with this exact key (default: the whole tree and the overlays)"),
-                             Arg("nth", ArgType.Int, "pick one of the root's matches")], s_lintArgs),
+                             Arg("nth", ArgType.Int, "pick one of the root's matches"),
+                             Arg("save", ArgType.Path, "write the snapshot the rules saw to this JSON file"),
+                             Arg("replay", ArgType.Path, "lint a saved snapshot instead of the mount (needs no mount)")], s_lintArgs),
             },
             new(Verb.Crossing, "crossing", "Resize across a tier edge the way a user does; report remounts, vanished keys, snaps and jumps; lint the result", "crossing from=1440x960 to=1440x400 theme=zune route=home gpu=none")
             {

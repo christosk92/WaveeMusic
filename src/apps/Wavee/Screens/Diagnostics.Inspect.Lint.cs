@@ -92,6 +92,25 @@ public static partial class Diagnostics
         /// <summary>Every rule id, in report order.</summary>
         public static readonly string[] RuleIds = Catalog.Select(static r => r.Id).ToArray();
 
+        /// <summary>Every word `rules=` takes (what <see cref="IdsOf"/> resolves): today's nine names, the ids, each family (<c>align</c>) and its
+        /// <c>.*</c> form, and <c>all</c>. The verb table declares these as the choices of `rules`.</summary>
+        public static readonly string[] RuleWords = BuildRuleWords();
+
+        static string[] BuildRuleWords()
+        {
+            var words = new List<string>(RuleNames);
+            foreach (RuleSpec r in Catalog)
+                if (!words.Contains(r.Id)) words.Add(r.Id);
+            foreach (string suffix in (string[])["", ".*"])
+                foreach (RuleSpec r in Catalog)
+                {
+                    string family = r.Id[..r.Id.IndexOf('.')] + suffix;
+                    if (!words.Contains(family)) words.Add(family);
+                }
+            words.Add("all");
+            return words.ToArray();
+        }
+
         /// <summary>The catalog entry of <paramref name="id"/>.</summary>
         public static bool TrySpec(string id, out RuleSpec spec)
         {

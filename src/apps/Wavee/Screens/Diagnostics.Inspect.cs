@@ -369,6 +369,7 @@ public static partial class Diagnostics
             Inspect.Args a = cmd.Args;
             int id = cmd.Id;
             string name = cmd.Name;
+            if (cmd.Verb == Inspect.Verb.Lint && a.Has("replay")) return Lint(id, name, a, _shell);   // a saved snapshot needs no mount
             if (Inspect.SpecOf(cmd.Verb) is { NeedsMount: true } && _shell is null) return Inspect.Reply.Fail(id, name, "nothing is mounted (mount first)");
             switch (cmd.Verb)
             {
