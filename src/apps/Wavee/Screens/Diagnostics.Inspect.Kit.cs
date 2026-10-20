@@ -1,6 +1,7 @@
 // ── Screens/Diagnostics.Inspect.Kit.cs ─────────────────────────────────────────────────────────────────────────────────
-// the mounted-shell helpers the `--inspect` server and the shell tests share: frame pumping (Until / Settle), the subtree
-// walk, the fake single-track play, the fixture palette grader and the theme activation (Developer mode for Zune)
+// the mounted-shell helpers of the `--inspect` server: frame pumping (Until / Settle and what keeps it busy), the subtree
+// walk, the visible-rect math and the pointer verbs' actionability check, the fake single-track play, the fixture palette
+// grader and the theme activation (Developer mode for Zune)
 //
 // Role: SHELL (UI thread only, on a shell booted by `Shell.Headless.Boot`)
 // Spec: handoff/themes-2026-10-17/agent-inspect-plan.md lane A2 ("move the test-only helpers into the app")
@@ -11,6 +12,7 @@
 //
 // AOT: no reflection. Theme ids go through `ThemeHost.SelectForRun` (WVTH007: a `theme.*` key is minted only by theming).
 
+using System.Globalization;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -50,19 +52,103 @@ public static partial class Diagnostics
             return ready();
         }
 
-        /// <summary>Run frames until the animation engine has no active track for two frames in a row, at most
-        /// <paramref name="maxFrames"/>. Returns the frames run and whether it settled.</summary>
-        public static (int Frames, bool Settled) Settle(Shell.HeadlessShell shell, int maxFrames = 600)
+        /// <summary>The wake reasons that never make a frame "busy": the caret's blink, the real window's post-input warm
+        /// cadence, a host timer coming due, and the frame-clock subscribers that tick for as long as something plays (the
+        /// playhead, a visualizer): they run forever by design, so waiting for them would never end.</summary>
+        public const FluentGpu.Hosting.WakeReasons AmbientWake = FluentGpu.Hosting.WakeReasons.Caret | FluentGpu.Hosting.WakeReasons.WarmCadence
+            | FluentGpu.Hosting.WakeReasons.Timer | FluentGpu.Hosting.WakeReasons.FrameClockPoller | FluentGpu.Hosting.WakeReasons.FrameClockPaceable;
+
+        /// <summary>What a settle saw on its last frame: the frames run, whether it settled, and (when it did not) what still
+        /// moved: live animation tracks, a scroller in motion, and the wake reasons outside <see cref="AmbientWake"/>.</summary>
+        public readonly record struct SettleResult(int Frames, bool Settled, bool Tracks, bool Scrolling, FluentGpu.Hosting.WakeReasons Wake);
+
+        /// <summary>Busy this frame: a live animation track, a scroller in user-driven motion (a wheel notch's glide, a fling),
+        /// or a wake reason outside <see cref="AmbientWake"/> (pending effects, image uploads and decodes, a smooth
+        /// programmatic scroll, crossfades, exit orphans...). The reasons outside the ambient set, or None.</summary>
+        public static FluentGpu.Hosting.WakeReasons BusyWake(Shell.HeadlessShell shell) => shell.Host.CurrentWakeReasons & ~AmbientWake;
+
+        /// <summary>Run frames until nothing moves for two frames in a row (no animation track, no scroller in user motion, no
+        /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>.</summary>
+        public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600)
         {
             int quiet = 0, ran = 0;
+            bool tracks = false, scrolling = false;
+            FluentGpu.Hosting.WakeReasons wake = default;
             while (ran < maxFrames)
             {
                 shell.Host.RunFrame();
                 ran++;
-                quiet = shell.Host.Animation.HasActive ? 0 : quiet + 1;
-                if (quiet >= 2) return (ran, true);
+                tracks = shell.Host.Animation.HasActive;
+                scrolling = shell.Host.AnyUserScrollMoving;
+                wake = BusyWake(shell);
+                quiet = tracks || scrolling || wake != 0 ? 0 : quiet + 1;
+                if (quiet >= 2) return new SettleResult(ran, true, false, false, default);
             }
-            return (ran, false);
+            return new SettleResult(ran, false, tracks, scrolling, wake);
+        }
+
+        /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `anim` = a node with live tracks
+        /// (named by its nearest keyed ancestor), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
+        /// reason with no node (`reason`). At most <paramref name="max"/> nodes per kind.</summary>
+        public static void WriteBusy(System.Text.Json.Utf8JsonWriter w, Shell.HeadlessShell shell, in SettleResult r, int max = 12)
+        {
+            SceneStore scene = shell.Host.Scene;
+            w.WriteStartArray("busy");
+            int anims = 0, scrolls = 0;
+            var named = new HashSet<string>(StringComparer.Ordinal);
+            foreach (NodeHandle n in Subtree(scene, scene.Root))
+            {
+                if (anims < max && r.Tracks && shell.Host.Animation.HasTracks(n) && named.Add("anim|" + KeyOf(scene, n)))
+                {
+                    w.WriteStartObject();
+                    w.WriteString("key", KeyOf(scene, n));
+                    w.WriteString("kind", "anim");
+                    w.WriteEndObject();
+                    anims++;
+                }
+                if (scrolls < max && scene.HasScroll(n) && scene.TryGetScroll(n, out ScrollState s) && s.Motion.IsMoving
+                    && named.Add("scroll|" + KeyOf(scene, n)))
+                {
+                    w.WriteStartObject();
+                    w.WriteString("key", KeyOf(scene, n));
+                    w.WriteString("kind", "scroll");
+                    w.WriteString("motion", s.Motion.Kind.ToString());
+                    w.WriteEndObject();
+                    scrolls++;
+                }
+            }
+            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+            {
+                if (bit == 0 || (r.Wake & bit) == 0) continue;
+                w.WriteStartObject();
+                w.WriteString("kind", "wake");
+                w.WriteString("reason", bit.ToString());
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+        }
+
+        /// <summary>`wake:[names]`: the bits of <paramref name="wake"/>, with `ambient:[names]` for those a settle ignores.</summary>
+        public static void WriteWake(System.Text.Json.Utf8JsonWriter w, FluentGpu.Hosting.WakeReasons wake)
+        {
+            w.WriteStartArray("wake");
+            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+                if (bit != 0 && (wake & bit) == bit && (AmbientWake & bit) == 0) w.WriteStringValue(bit.ToString());
+            w.WriteEndArray();
+            w.WriteStartArray("ambient");
+            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+                if (bit != 0 && (wake & bit) == bit && (AmbientWake & bit) != 0) w.WriteStringValue(bit.ToString());
+            w.WriteEndArray();
+        }
+
+        /// <summary>The key of <paramref name="node"/> or of its nearest keyed ancestor (what verbs accept), else its dump path.</summary>
+        public static string KeyOf(SceneStore scene, NodeHandle node)
+        {
+            for (NodeHandle n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
+                if (scene.DebugKeyOf(n) is { Length: > 0 } key) return key;
+            Span<char> path = stackalloc char[256];
+            int length = NodeDescriber.Describe(scene, (int)node.Raw.Index, node.Raw.Gen, path);
+            return new string(path[..length]);
         }
 
         // ── the tree ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -92,11 +178,84 @@ public static partial class Diagnostics
             return false;
         }
 
+        /// <summary>The centre of a rect (window DIP).</summary>
+        public static Point2 CentreOf(in RectF r) => new(r.X + r.W / 2f, r.Y + r.H / 2f);
+
         /// <summary>The centre of a node's presented rect (window DIP).</summary>
-        public static Point2 CentreOf(SceneStore scene, NodeHandle node)
+        public static Point2 CentreOf(SceneStore scene, NodeHandle node) => CentreOf(scene.PresentedAbsoluteRect(node));
+
+        // ── on screen ───────────────────────────────────────────────────────────────────────────────────────────────
+        // The visible part of a node: its presented rect cut by the window, every ancestor that clips (ClipsToBounds, a scroll
+        // viewport) and every ancestor's authored clip rect (node-local, NodePaint.ClipRect). Lint has its own copy of this math
+        // (lane i3); the two are meant to become one.
+
+        /// <summary>The part of <paramref name="node"/>'s presented rect that can be seen (empty when none), in window DIP.</summary>
+        public static RectF VisibleRect(SceneStore scene, NodeHandle node, in RectF window)
         {
-            RectF r = scene.PresentedAbsoluteRect(node);
-            return new Point2(r.X + r.W / 2f, r.Y + r.H / 2f);
+            RectF r = scene.PresentedAbsoluteRect(node).Intersect(window);
+            for (NodeHandle a = scene.Parent(node); !a.IsNull && !r.IsEmpty; a = scene.Parent(a))
+            {
+                RectF box = scene.PresentedAbsoluteRect(a);
+                if ((scene.Flags(a) & NodeFlags.ClipsToBounds) != 0 || scene.HasScroll(a)) r = r.Intersect(box);
+                RectF clip = scene.Paint(a).ClipRect;
+                if (!clip.IsInfinite) r = r.Intersect(new RectF(box.X + clip.X, box.Y + clip.Y, clip.W, clip.H));
+            }
+            return r;
+        }
+
+        /// <summary>The share of <paramref name="full"/> that <paramref name="visible"/> covers, 0..1 (0 for an empty box).</summary>
+        public static float Fraction(in RectF visible, in RectF full)
+            => full.W > 0f && full.H > 0f && !visible.IsEmpty ? Math.Clamp(visible.W * visible.H / (full.W * full.H), 0f, 1f) : 0f;
+
+        /// <summary>The window's rect in DIP.</summary>
+        public static RectF WindowRect(Shell.HeadlessShell shell)
+        {
+            float scale = Math.Max(0.01f, shell.Window.Scale);
+            return new RectF(0f, 0f, shell.Window.ClientSizePx.Width / scale, shell.Window.ClientSizePx.Height / scale);
+        }
+
+        /// <summary>True when <paramref name="node"/> is <paramref name="root"/> or lies under it.</summary>
+        public static bool IsUnder(SceneStore scene, NodeHandle node, NodeHandle root)
+        {
+            for (NodeHandle n = node; !n.IsNull; n = scene.Parent(n))
+                if (n == root) return true;
+            return false;
+        }
+
+        /// <summary>The handlers that make a node a hit target in its own right (the dispatcher's hit-anywhere set).</summary>
+        const uint TakesHits = InteractionInfo.ClickBit | InteractionInfo.PointerBit | InteractionInfo.PressedBit | InteractionInfo.DragBit
+            | InteractionInfo.CursorBit | InteractionInfo.SelectableTextBit | InteractionInfo.GestureBit | InteractionInfo.ContextBit;
+
+        /// <summary>Whether a pointer verb may aim at <paramref name="node"/>, and where: see <see cref="Actionability"/>.</summary>
+        public static Actionability.Verdict Assess(Shell.HeadlessShell shell, NodeHandle node, in RectF window)
+        {
+            SceneStore scene = shell.Host.Scene;
+            RectF rect = scene.PresentedAbsoluteRect(node);
+            bool shown = scene.IsShown(node);
+            RectF visible = shown ? VisibleRect(scene, node, window) : default;   // a parked or hidden node shows nothing, wherever its rect lies
+            bool disabled = false;
+            for (NodeHandle n = node; !n.IsNull && !disabled; n = scene.Parent(n)) disabled = (scene.Flags(n) & NodeFlags.Disabled) != 0;
+            Point2 aim = CentreOf(visible.IsEmpty ? rect : visible);
+            NodeHandle hit = shell.Host.Input.HitTest(aim);
+            Actionability.Hit relation = hit.IsNull ? Actionability.Hit.Nothing
+                : IsUnder(scene, hit, node) ? Actionability.Hit.Inside
+                : IsUnder(scene, node, hit) && (scene.Interaction(node).HandlerMask & TakesHits) == 0 ? Actionability.Hit.Ancestor
+                : Actionability.Hit.Other;
+            return Actionability.Decide(shown, Fraction(visible, rect), disabled, relation, aim, visible,
+                hit.IsNull ? null : KeyOf(scene, hit), hit.IsNull ? null : WhatIs(scene, hit));
+        }
+
+        /// <summary>A word on an unkeyed hit the key path does not explain: the overlay host's input-blocking layer (an open
+        /// menu's light-dismiss scrim, a modal's) is an unkeyed sibling of the open layers (`overlay:<id>`). Null otherwise.</summary>
+        static string? WhatIs(SceneStore scene, NodeHandle hit)
+        {
+            if (scene.DebugKeyOf(hit) is not null) return null;
+            NodeHandle parent = scene.Parent(hit);
+            if (parent.IsNull) return null;
+            for (NodeHandle c = scene.FirstChild(parent); !c.IsNull; c = scene.NextSibling(c))
+                if (scene.DebugKeyOf(c) is { } key && key.StartsWith("overlay:", StringComparison.Ordinal))
+                    return "the input-blocking layer under the open overlay " + key;
+            return null;
         }
 
         // ── playback ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -196,5 +355,49 @@ public static partial class Diagnostics
 
         /// <summary>The active theme's id.</summary>
         public static string ActiveThemeId => ThemeInspection.ActiveId;
+    }
+
+    /// <summary>Whether `click`, `hover` and `scroll key=` may aim at a node (pure: the facts in, a verdict out). A target must
+    /// be shown, at least <see cref="MinVisible"/> of it visible after the window and every clipping ancestor, enabled, and
+    /// the hit test at its visible centre must land in its own subtree (or on an ancestor, when the target is a passive part of
+    /// it: a label inside a button). `force=true` on the verb skips all of it.</summary>
+    public static class Actionability
+    {
+        /// <summary>The share of a target that must be visible.</summary>
+        public const float MinVisible = 0.5f;
+
+        /// <summary>Where the hit test at the visible centre landed, relative to the target.</summary>
+        public enum Hit : byte { Nothing, Inside, Ancestor, Other }
+
+        /// <summary>The verdict: <see cref="Reason"/> is empty when actionable, else a short word (`notShown`, `offscreen`,
+        /// `disabled`, `covered`) and <see cref="Why"/> a sentence naming the numbers and the occluder's key.</summary>
+        public readonly record struct Verdict(string Reason, string Why, Point2 Aim, RectF Visible, float Fraction, string? HitKey)
+        {
+            public bool Ok => Reason.Length == 0;
+        }
+
+        /// <summary><paramref name="hitNote"/> says what an unkeyed occluder is, when the key path alone does not.</summary>
+        public static Verdict Decide(bool shown, float fraction, bool disabled, Hit hit, Point2 aim, RectF visible, string? hitKey, string? hitNote = null)
+        {
+            if (!shown)
+                return new("notShown", "not shown (hidden, parked, transparent or no box on its chain)", aim, visible, fraction, hitKey);
+            if (fraction < MinVisible)
+                return new("offscreen", string.Create(CultureInfo.InvariantCulture,
+                    $"only {fraction * 100f:0}% of it is visible after the window and its clipping ancestors (needs {MinVisible * 100f:0}%): scroll it into view"),
+                    aim, visible, fraction, hitKey);
+            if (disabled) return new("disabled", "disabled (it or an ancestor)", aim, visible, fraction, hitKey);
+            if (hit == Hit.Other)
+                return new("covered", string.Create(CultureInfo.InvariantCulture,
+                    $"its visible centre ({aim.X:0.##}, {aim.Y:0.##}) hits '{hitKey}'{(hitNote is null ? "" : " (" + hitNote + ")")}, which is not inside it"),
+                    aim, visible, fraction, hitKey);
+            return new("", "", aim, visible, fraction, hitKey);
+        }
+
+        /// <summary>Reading order: top first (to the whole DIP), then left.</summary>
+        public static int ReadingOrder(in RectF a, in RectF b)
+        {
+            int byTop = MathF.Round(a.Y).CompareTo(MathF.Round(b.Y));
+            return byTop != 0 ? byTop : a.X.CompareTo(b.X);
+        }
     }
 }

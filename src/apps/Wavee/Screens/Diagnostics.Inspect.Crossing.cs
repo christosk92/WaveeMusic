@@ -154,7 +154,7 @@ public static partial class Diagnostics
             w.WriteString("window", t.Window.ToString());
             w.WriteString("height", t.Height.ToString());
             w.WriteString("content", t.Content.ToString());
-            w.WriteNumber("rungs", t.Rungs);
+            InspectDump.WriteRungs(w, in t);   // ids, as `tiers` lists them
             w.WriteEndObject();
         }
 
@@ -188,7 +188,7 @@ public static partial class Diagnostics
             bool narrowing = toW < fromW || toH < fromH;
             bool wasComposited = shell.Window.Composited;
             TierFacts tiersResized, tiersCommit;
-            (int Frames, bool Settled) settle;
+            InspectKit.SettleResult settle;
             int changed = 0;
             shell.Window.Composited = true;
             try
@@ -385,6 +385,7 @@ public static partial class Diagnostics
                 w.WriteStartObject("settle");
                 w.WriteNumber("frames", settle.Frames);
                 w.WriteBoolean("settled", settle.Settled);
+                if (!settle.Settled) InspectKit.WriteBusy(w, shell, in settle);
                 w.WriteEndObject();
 
                 w.WriteStartObject("lint");
