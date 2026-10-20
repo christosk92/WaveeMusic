@@ -242,8 +242,24 @@ public static partial class Diagnostics
         sealed class Drift
         {
             public readonly List<(Node Text, float Offset)> Cells = [];
+            public readonly List<float> Bottoms = [];
+            public readonly List<float> Centres = [];
+
+            public void Add(Node text, RectF row)
+            {
+                Cells.Add((text, text.Rect.Y - row.Y));
+                Bottoms.Add(text.Rect.Bottom - row.Y);
+                Centres.Add(text.Rect.Y + text.Rect.H / 2f - row.Y);
+            }
             public readonly HashSet<int> Rows = [];
             public string Row = "";
+        }
+
+        static float Spread(List<float> values)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (float v in values) { min = MathF.Min(min, v); max = MathF.Max(max, v); }
+            return values.Count == 0 ? 0f : max - min;
         }
 
         /// <summary><c>align.baseline</c> (port of design-qa proto/columns.py "row-offset", without its false positive). Algorithm:
@@ -252,7 +268,7 @@ public static partial class Diagnostics
         /// (b) UNKEYED CELLS: for every instance of a repeated family G that is a row (no other family's instance above it), the offset of each text
         ///     whose nearest instance is that row, from the row's top; grouped by (G, cell path).
         /// A group of 3 or more whose offsets spread over 0.5 DIP drifts: the text sits at different heights from row to row (a centred stack whose
-        /// optional line comes and goes). The rows themselves are never measured against the list they sit in (that offset only steps by the row
+        /// optional line comes and goes), unless its bottoms or its centres agree (a bottom-anchored or centred caption whose line count varies). The rows themselves are never measured against the list they sit in (that offset only steps by the row
         /// height: the prototype's false positive). Offsets are line-box tops, not true baselines, so a finding is a `review`: look at the rows.</summary>
         static int AlignBaselineRule(Snapshot s, List<Finding> into)
         {
@@ -278,7 +294,7 @@ public static partial class Diagnostics
                     looked++;
                     string key = "a|" + PatternOfKey(n.Key!) + "|" + nodes[row].Family;
                     if (!drifts.TryGetValue(key, out Drift? d)) drifts[key] = d = new Drift { Row = PatternOfKey(nodes[row].Key!) };
-                    if (d.Rows.Add(row)) d.Cells.Add((text, text.Rect.Y - nodes[row].Rect.Y));   // the first such cell of each row: cells of one row stack
+                    if (d.Rows.Add(row)) d.Add(text, nodes[row].Rect);   // the first such cell of each row: cells of one row stack
                     continue;
                 }
                 // (b) a row: its own texts by cell path
@@ -289,7 +305,7 @@ public static partial class Diagnostics
                     looked++;
                     string key = "b|" + PatternOfKey(n.Key!) + "/" + m.CellPath;
                     if (!drifts.TryGetValue(key, out Drift? d)) drifts[key] = d = new Drift { Row = PatternOfKey(n.Key!) };
-                    if (d.Rows.Add(n.Index)) d.Cells.Add((m, m.Rect.Y - n.Rect.Y));
+                    if (d.Rows.Add(n.Index)) d.Add(m, n.Rect);
                 }
             }
             foreach (var (key, d) in drifts)
@@ -305,6 +321,7 @@ public static partial class Diagnostics
                     modes[b] = modes.TryGetValue(b, out int c) ? c + 1 : 1;
                 }
                 if (max - min <= Slack) continue;
+                if (Spread(d.Bottoms) <= Slack || Spread(d.Centres) <= Slack) continue;   // anchored at its bottom or centre: a line count, not a drift
                 string cell = key[2..];
                 bool keyed = key[0] == 'a';
                 if (keyed) cell = cell[..cell.LastIndexOf('|')];

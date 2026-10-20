@@ -183,15 +183,12 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary>The instance of a repeated family other than <paramref name="family"/> nearest above <paramref name="n"/> (-1: none).</summary>
-        static int OtherInstanceAbove(Snapshot s, Node n, string family)
+        /// <summary>The key of the nearest keyed ancestor of <paramref name="n"/> whose key is not <paramref name="key"/> (null: none).</summary>
+        static string? KeyedAncestor(Snapshot s, Node n, string key)
         {
             for (int i = n.Parent; i >= 0; i = s.Nodes[i].Parent)
-            {
-                Node m = s.Nodes[i];
-                if (m.Instance == i && !string.Equals(m.Family, family, StringComparison.Ordinal)) return i;
-            }
-            return -1;
+                if (s.Nodes[i].Key is { Length: > 0 } k && !string.Equals(k, key, StringComparison.Ordinal)) return k;
+            return null;
         }
 
         /// <summary>An ancestor of <paramref name="n"/> carries the same key.</summary>
@@ -205,7 +202,8 @@ public static partial class Diagnostics
         /// <summary><c>key.hygiene</c> (design-qa G6): in-scope keys that make a selector ambiguous or unstable, one finding per (class, key family):
         /// control characters; a trailing <c>:</c>; a run id (<c>#</c> + digits); a tier, form or column-count word (the owner rule); and the same
         /// key on two or more nodes (not counting a copy nested in another) OUTSIDE a repeated family: neither the family's own instances (rows keyed
-        /// alike) nor cells of which every copy but one sits in a different row (told apart by `root=<row key>`) count; the rest only `nth` tells apart.</summary>
+        /// alike) nor copies of which all but one sit under keyed ancestors of their own (told apart by `root=<that key>`) count; the rest only
+        /// `nth` tells apart.</summary>
         static int KeyHygieneRule(Snapshot s, List<Finding> into)
         {
             int looked = 0;
@@ -239,15 +237,14 @@ public static partial class Diagnostics
                 var copies = all.FindAll(n => !NestedInSameKey(s, n, key));
                 if (copies.Count < 2) continue;
                 if (copies.TrueForAll(static n => n.Instance == n.Index)) continue;   // a repeated family: its rows share the key by design
-                string family = FamilyOfKey(key);
-                var rows = new HashSet<int>();
+                // Told apart when each copy (all but one at most) sits under a keyed ancestor no other copy shares: `root=<that key>` finds it.
+                var homes = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (Node n in copies)
+                    if (KeyedAncestor(s, n, key) is { } home) homes[home] = homes.TryGetValue(home, out int c) ? c + 1 : 1;
                 int loose = 0;
                 foreach (Node n in copies)
-                {
-                    int row = OtherInstanceAbove(s, n, family);
-                    if (row < 0 || !rows.Add(row)) loose++;
-                }
-                if (loose <= 1) continue;   // each copy but one is a cell of its own row: `root=<row key>` tells them apart
+                    if (KeyedAncestor(s, n, key) is not { } home || homes[home] > 1) loose++;
+                if (loose <= 1) continue;
                 foreach (Node n in copies) Add("duplicate", copies.Count.ToString(CultureInfo.InvariantCulture) + " nodes share it", n);
             }
             foreach (var (gkey, g) in groups)

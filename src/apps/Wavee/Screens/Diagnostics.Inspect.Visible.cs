@@ -9,8 +9,9 @@
 // what nobody sees (a "duplicate" 2,500 DIP below the fold, a parked panel's 28-DIP button). Every lint rule reads `OnScreen` instead.
 //
 // THE THREE SCOPES (`lint scope=`): `screen` (the default) keeps a node when at least half of its rect is visible; `content` keeps what a
-// person reaches by scrolling (the window and the scroll viewports do not cut, every other clip does: a page audit); `all` keeps everything
-// the capture walked (the lint before this file). Occlusion (a dialog's scrim over the page) is not a cut: the rules that care look at paint.
+// person reaches by scrolling (below a scroller nothing cuts along its axis, every other clip and the window still do: a page audit); `all`
+// keeps everything the capture walked (the lint before this file). Occlusion (a dialog's scrim over the page) is not a cut: the rules that
+// care look at paint.
 //
 // NOT HERE. Hidden, parked, exiting and fully transparent subtrees never reach the snapshot (the capture skips them), so the pure half never
 // sees them; `TryGetVisibleRect` checks them itself because it starts from any live node.
@@ -65,7 +66,9 @@ public static partial class Diagnostics
         /// <summary>The visible rect, the on-screen fraction and the content fraction of every node of a depth-first list (a parent before its
         /// children, <c>Parent</c> an earlier index or -1) in a window of <paramref name="windowW"/> x <paramref name="windowH"/> DIP.
         /// A node is cut by what its ANCESTORS clip (a box's own clip cuts its children, never itself): <c>Clips</c>, a scroll viewport
-        /// (<c>ScrollAxis</c> != 0) and an authored <c>ClipRect</c>. The content fraction ignores the window and the scroll viewports.</summary>
+        /// (<c>ScrollAxis</c> != 0) and an authored <c>ClipRect</c>. The content fraction lifts, below a scroller, every cut along its axis (the
+        /// window and whatever clips above the viewport, the viewport included): scrolling brings that content into view; a panel parked past
+        /// the window's edge stays out.</summary>
         public static void Compute(IReadOnlyList<InspectLint.Node> nodes, float windowW, float windowH,
             Span<RectF> visible, Span<float> onScreen, Span<float> inContent)
         {
@@ -80,7 +83,7 @@ public static partial class Diagnostics
                 InspectLint.Node n = nodes[i];
                 int p = n.Parent;
                 RectF inheritedScreen = p >= 0 && p < i ? screenCut[p] : window;
-                RectF inheritedContent = p >= 0 && p < i ? contentCut[p] : RectF.Infinite;
+                RectF inheritedContent = p >= 0 && p < i ? contentCut[p] : window;
                 RectF r = n.Rect;
                 RectF seen = r.Intersect(inheritedScreen);
                 visible[i] = seen;
@@ -89,11 +92,10 @@ public static partial class Diagnostics
 
                 // What this node cuts its descendants to.
                 RectF childScreen = inheritedScreen, childContent = inheritedContent;
-                if (n.Clips || n.ScrollAxis != 0)
-                {
-                    childScreen = childScreen.Intersect(r);
-                    if (n.ScrollAxis == 0) childContent = childContent.Intersect(r);
-                }
+                if (n.Clips || n.ScrollAxis != 0) childScreen = childScreen.Intersect(r);
+                if (n.ScrollAxis == 2) childContent = Unbounded(childContent.Intersect(r), vertical: true);   // scrolling reaches the whole axis
+                else if (n.ScrollAxis == 1) childContent = Unbounded(childContent.Intersect(r), vertical: false);
+                else if (n.Clips) childContent = childContent.Intersect(r);
                 if (!n.ClipRect.IsInfinite)
                 {
                     childScreen = childScreen.Intersect(n.ClipRect);
@@ -102,6 +104,14 @@ public static partial class Diagnostics
                 screenCut[i] = childScreen;
                 contentCut[i] = childContent;
             }
+        }
+
+        /// <summary><paramref name="cut"/> opened along one axis: what a scroller's content reaches by scrolling (the cross axis stays cut).</summary>
+        static RectF Unbounded(in RectF cut, bool vertical)
+        {
+            if (cut.IsEmpty) return cut;
+            RectF open = RectF.Infinite;
+            return vertical ? new RectF(cut.X, open.Y, cut.W, open.H) : new RectF(open.X, cut.Y, open.W, cut.H);
         }
 
         // ── the live half (UI thread) ────────────────────────────────────────────────────────────────────────────────

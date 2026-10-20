@@ -782,7 +782,7 @@ public static partial class Diagnostics
             },
             Rules.TypeFloor => "use a type role at or above the floor; the role table decides sizes, not the view",
             Rules.TargetSize => "grow the hit area (padding on the target, or hand the click to the row it sits in); keep the glyph size",
-            Rules.DuplicateAction => "one home per verb: keep the verb in the home the board draws and drop the copy (never the feature itself)",
+            Rules.DuplicateAction => "one home per verb (owner rule): find the verb's home on the board and ask before taking a control away; the feature stays",
             Rules.SpaceStack => "the blocks overlap: give the stack a gap from the tier record or fix the line height",
             Rules.ContrastText => cause.StartsWith("busy", StringComparison.Ordinal)
                 ? "text over art or a gradient: look at the render; a scrim or an on-media ink role fixes it, never a node-by-node colour"
