@@ -617,6 +617,7 @@ public static partial class Diagnostics
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
+            if (!BarPrefs(a, out error)) return false;
             // `grade=hue`: every cover grades to a hue taken from its uri (the fake catalogue's covers are local files the provider cannot grade), so a surface that tints
             // from the playing cover renders in colour offline
             // `grade=grey`: every cover grades to a hueless grey (a black-and-white cover), so the surfaces that tint from it show their no-hue arm
@@ -660,6 +661,29 @@ public static partial class Diagnostics
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
                 Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
+            return true;
+        }
+
+        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip>`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
+        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), and the side panel's stored
+        /// width (clamped to the theme's drag range when the panel opens).</summary>
+        static bool BarPrefs(Inspect.Args a, out string error)
+        {
+            error = "";
+            if (a.Has("marquee"))
+            {
+                string m = a.Str("marquee").ToLowerInvariant();
+                if (m is not ("on" or "off" or "true" or "false")) { error = "marquee is on or off"; return false; }
+                Platform.Settings.Set(Platform.Keys.MarqueeEnabled, m is "on" or "true");
+                Prefs.Appearance.Bump();
+            }
+            Wavee.Theming.InspectSwitches.RemoteDevice = a.Has("remote") ? a.Str("remote") : null;
+            if (a.Has("panelW"))
+            {
+                float w = a.Float("panelW", 0f);
+                if (!(w > 0f)) { error = "panelW wants a width in DIP"; return false; }
+                Shell.PanelSizes.Shared.SaveWidth(w);
+            }
             return true;
         }
 

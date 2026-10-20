@@ -467,6 +467,9 @@ public static partial class Entities
             return s_merchNames.Length;
         }
 
+        /// <summary>The pool track with the long credit line.</summary>
+        const int LongCreditsTrack = 10;
+
         static void LandTracks()
         {
             var e = Current.Edges;
@@ -497,6 +500,13 @@ public static partial class Entities
                 Tags(slot, i, false, zeros, tags);
                 Traits(slot);
             }
+
+            // tr10 (Afterglow) is the long credit line: three artists, the longest name first ("Iris Overdrive and the Nightjars, Sable & Sun,
+            // The Wavee Collective"), so a single-line credit slot has something to cut.
+            artists[0] = Wrap(LongCreditsTrack, ArtistCount);
+            artists[1] = 5;
+            artists[2] = 3;
+            Artists(SlotOf(Current.Tracks, TrackUri(LongCreditsTrack)), artists[..3], targets);
 
             // the prerelease's and the waterfall's own rows, and the four counterparts
             for (int a = PreReleaseAlbum; a <= WaterfallAlbum; a++)

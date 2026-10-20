@@ -52,6 +52,22 @@ public static partial class Controls
                                        style.Wrap, style.MaxLines, style.MinSize, style.FontFamily),
                       static () => new TrimTipHost());
 
+    /// <summary>The single-line natural width of <paramref name="text"/> drawn in <paramref name="style"/> (its size, weight, tracking and line
+    /// height, the default face), through the same seam query <see cref="TrimTip"/> makes: what a row that lays out its own pieces (a line of
+    /// links cut at its end, a tab strip that moves what does not fit into an overflow) needs to decide in its render. Cold path, one shape
+    /// per call. NaN with no seam (a headless text backend): the caller keeps its uncut arrangement.</summary>
+    public static float NaturalWidth(string text, TextEl style)
+    {
+        if (text.Length == 0) return 0f;
+        if (TextSeam.Default is not { } fonts) return float.NaN;
+        var one = new TextStyle(default, style.Size, style.ResolvedWeight, TextWrap.NoWrap, TextTrim.None, 0, style.CharSpacing, style.LineHeight);
+        Span<RectF> rects = stackalloc RectF[8];
+        int n = fonts.GetRangeRects(text, in one, float.PositiveInfinity, 0, text.Length, rects);
+        float natural = 0f;
+        for (int i = 0; i < n; i++) natural += rects[i].W;
+        return natural;
+    }
+
     /// <summary>The ONE "title inside <see cref="TrimTip"/>" wrapper — every surface's trimmable title (the media surface's
     /// cards and rows, a text-first (B) panel's record title, a podcast door) goes through it, so the slot it measures and
     /// the skeleton it leaves cannot drift. The run sits in a column box that fills a stretched wrapper, so the slot the

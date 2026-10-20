@@ -49,8 +49,33 @@ public static class WinUiPanelLayout
     /// <summary>The close: a 32 subtle button with a 12 glyph; 40 at Compact (the touch floor).</summary>
     public const float CloseBox = 32f, CloseTouchBox = 40f, CloseGlyph = 10f;
 
-    /// <summary>The tab row's divider under it (1 px).</summary>
-    public const float DividerH = 1f;
+    /// <summary>The head's "⋯" (W-Queue-Small: the tabs the pane's width leaves out): its key and glyph (its box is the close's).</summary>
+    public const string MoreKey = "winui-pane-more";
+
+    public const float MoreGlyph = 16f;
+
+    /// <summary>The room the tabs have in a head <paramref name="paneWidth"/> wide: the row's inset either side and the close.</summary>
+    public static float TabLane(float paneWidth, float close) => paneWidth - TabRowPadding.Left - TabRowPadding.Right - close;
+
+    /// <summary>Which tabs a head shows (<paramref name="shown"/>), from their words' measured <paramref name="widths"/> (a tab is at least
+    /// <see cref="TabMinW"/>, 18 apart): every tab when they fit <paramref name="lane"/> (false: no "⋯"); else the current one and, in order,
+    /// the others that fit beside the "⋯" (a <paramref name="more"/> box), the first that does not and every one after it moving into it.</summary>
+    public static bool FitTabs(ReadOnlySpan<float> widths, int current, float lane, float more, Span<bool> shown)
+    {
+        float total = 0f;
+        for (int i = 0; i < widths.Length; i++) total += (i > 0 ? TabGap : 0f) + MathF.Max(TabMinW, widths[i]);
+        if (total <= lane + 0.5f) return false;
+        float room = lane - more - TabGap, used = MathF.Max(TabMinW, widths[current]);
+        bool open = true;
+        for (int i = 0; i < widths.Length; i++)
+        {
+            if (i == current) { shown[i] = true; continue; }
+            float w = TabGap + MathF.Max(TabMinW, widths[i]);
+            shown[i] = open && used + w <= room + 0.5f;
+            if (shown[i]) used += w; else open = false;
+        }
+        return true;
+    }
 
     /// <summary>The sheet: 85 % of the body's height (the rest the scrim above it), the r8 top corners, the grabber (32 x 4, r2, 12 above and
     /// 4 under it: its 40-tall hit row closes the sheet).</summary>

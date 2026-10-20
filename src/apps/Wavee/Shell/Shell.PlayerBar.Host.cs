@@ -68,11 +68,13 @@ public static partial class Shell
             DragPayload = static () => BarDragPayload(),
             DeviceIsRemote = static () =>
             {
+                if (Theming.InspectSwitches.RemoteDevice is not null) return true;
                 _ = Playback.Devices.Changed.Value;
                 return DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
             },
             RemoteDeviceName = static () =>
             {
+                if (Theming.InspectSwitches.RemoteDevice is { } stood) return stood;
                 _ = Playback.Devices.Changed.Value;
                 var rows = Playback.Devices.Rows;
                 int slot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
@@ -212,9 +214,9 @@ public static partial class Shell
             int playingSlot = faceRef.IsNone ? 0 : faceRef.Slot;
 
             // ── the left block and the right cluster ──
-            int remoteSlot = active && L.ShowRemoteDeviceLine
-                ? DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows)
-                : -1;
+            int remoteSlot = !active || !L.ShowRemoteDeviceLine ? -1
+                : Theming.InspectSwitches.RemoteDevice is not null ? 0
+                : DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows);
             if (remoteSlot >= 0) _ = Playback.Devices.Changed.Value;
 
             bool titleNav = !BarTitleRoute().IsNone;

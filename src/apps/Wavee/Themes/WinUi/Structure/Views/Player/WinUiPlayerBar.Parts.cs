@@ -425,7 +425,8 @@ internal sealed class WinUiEpisodeSpeed : Component
 }
 
 /// <summary>"Playing on Living room speaker": the device glyph and the words (the secondary ink under the artists from Medium; the accent ink in
-/// place of the artists in the Mini bar); a second door to the same picker.</summary>
+/// place of the artists in the Mini bar); a second door to the same picker. The words end in an ellipsis in the slot, the whole line in a
+/// tooltip while they are cut.</summary>
 internal sealed class WinUiRemoteLine : Component
 {
     public override Element Render()
@@ -438,64 +439,103 @@ internal sealed class WinUiRemoteLine : Component
         string? name = props.RemoteDeviceName();
         if (name is null) return new BoxEl { Height = 0f, HitTestVisible = false };
         ColorF ink = p.Accent ? Tok.AccentTextPrimary : Tok.TextSecondary;
-        return new BoxEl
+        string words = Strings.Player.PlayingOn(name);
+        var run = new TextEl(words)
         {
-            Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.RemoteGap, MinWidth = 0f, ClipToBounds = true,
+            Size = PL.SubSize, LineHeight = PL.SubLine, Color = ink, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f, Shrink = 1f,
+        };
+        var line = new BoxEl
+        {
+            Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.RemoteGap, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
             Cursor = p.Accent ? null : CursorId.Hand, Role = p.Accent ? AutomationRole.Text : AutomationRole.Button,
             Focusable = !p.Accent, AllowFocusOnInteraction = false,
             OnClick = p.Accent ? null : () => props.ToggleDevicePicker(overlay, anchor, handle), OnRealized = h => anchor.Value = h,
             Children =
             [
                 new TextEl(PL.DevicesGlyph) { Size = PL.RemoteGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink, Shrink = 0f },
-                new TextEl(Strings.Player.PlayingOn(name))
-                {
-                    Size = PL.SubSize, LineHeight = PL.SubLine, Color = ink, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-                    MinWidth = 0f, Shrink = 1f,
-                },
+                run,
             ],
         };
+        return Controls.TrimTip(line, words, run);
     }
 }
 
 /// <summary>The artists under the title (or the episode's show): each name a link where it has a route (the Mini bar: plain text, its door is
-/// the identity). It re-renders only when its stamp moves; a held face keeps its credits, so the line never empties on a skip.</summary>
-internal sealed class WinUiCredits : Component
+/// the identity). It re-renders only when its stamp moves; a held face keeps its credits, so the line never empties on a skip. In its slot
+/// (<see cref="WinUiCredits"/>) the line is laid out from the names' measured widths: the names that fit whole, then the next one cut to the
+/// room left with its ellipsis (<see cref="PL.CreditsFit"/>), the whole line in a tooltip while it is cut; inside the marquee
+/// (<see cref="WinUiCreditsRun"/>) every name lies at its full width.</summary>
+internal abstract class WinUiCreditsLine : Component
 {
-    public override Element Render()
+    protected Element Line(WinUiPlayerBar.CreditsProps p, bool fit)
     {
-        var p = UseProps<WinUiPlayerBar.CreditsProps>();
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
+        float slot = fit ? UseMeasuredWidth(PL.CreditSlotQuantum).Value : 0f;   // `fit` is the class's: the hook runs in every render or none
         var credits = props.Credits();
-        if (credits.Show is { } show)
-            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [Name(show, p)] };
-        var artists = credits.Artists;
-        if (artists.Length == 0) return new BoxEl { Direction = 0, Height = PL.SubLine };
-        var kids = new List<Element>(artists.Length * 2);
-        for (int i = 0; i < artists.Length; i++)
+        // An episode's line is its show, one link; a track's, its credited names.
+        var named = new List<PlayerCreditLink>(Math.Max(1, credits.Artists.Length));
+        if (credits.Show is { } show) named.Add(show);
+        else foreach (var link in credits.Artists) if (link.Text.Length > 0) named.Add(link);
+        if (named.Count == 0) return new BoxEl { Direction = 0, Height = PL.SubLine };
+        string line = string.Join(PL.CreditSeparator, named.ConvertAll(static l => l.Text));
+        var style = Run(line);
+
+        // Fitted: the names that fit whole, then the next one cut (no slot yet, or no text seam: every name whole, the row's clip the edge).
+        int whole = named.Count;
+        float cut = 0f;
+        if (fit && slot > 0f)
         {
-            var link = artists[i];
-            if (link.Text.Length == 0) continue;
-            if (kids.Count > 0) kids.Add(new TextEl(", ") { Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, Shrink = 0f });
-            kids.Add(Name(link, p));
+            float separator = Controls.NaturalWidth(PL.CreditSeparator, style);
+            Span<float> widths = named.Count <= 16 ? stackalloc float[named.Count] : new float[named.Count];
+            bool measured = !float.IsNaN(separator);
+            for (int i = 0; i < named.Count && measured; i++) measured = !float.IsNaN(widths[i] = Controls.NaturalWidth(named[i].Text, style));
+            if (measured) (whole, cut) = PL.CreditsFit(widths, separator, slot);
         }
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
+        var kids = new List<Element>(named.Count * 2);
+        int shown = cut > 0f ? whole + 1 : whole;
+        for (int i = 0; i < shown; i++)
+        {
+            if (i > 0) kids.Add(new TextEl(PL.CreditSeparator) { Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, Shrink = 0f });
+            kids.Add(Name(named[i], p, i == whole ? cut : float.NaN, out _));
+        }
+        var lineRow = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = fit, Children = kids.ToArray() };
+        return fit ? Controls.TrimTip(lineRow, line, style) : lineRow;
     }
 
-    static Element Name(PlayerCreditLink link, WinUiPlayerBar.CreditsProps p)
+    static TextEl Run(string text) => new(text) { Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap };
+
+    /// <summary>One name: its link box, whole (<paramref name="cut"/> NaN) or cut to <paramref name="cut"/> with its ellipsis.</summary>
+    static Element Name(PlayerCreditLink link, WinUiPlayerBar.CreditsProps p, float cut, out TextEl run)
     {
         bool nav = p.Linked && link.Navigate is not null;
-        var text = new TextEl(link.Text)
+        bool cutting = !float.IsNaN(cut);
+        run = Run(link.Text) with
         {
-            Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, HoverColor = nav ? Tok.TextPrimary : Tok.TextSecondary,
-            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            HoverColor = nav ? Tok.TextPrimary : Tok.TextSecondary,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = cutting ? 1f : 0f,
         };
         return new BoxEl
         {
-            Key = link.Key + ":" + link.Text, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            Key = link.Key + ":" + link.Text, Direction = 0, Width = cutting ? cut : float.NaN, Shrink = 0f, MinWidth = 0f, ClipToBounds = cutting,
             Cursor = nav ? CursorId.Hand : null, OnClick = nav ? link.Navigate : null,
             Role = nav ? AutomationRole.Hyperlink : AutomationRole.Text,
-            Children = [text],
+            Children = [run],
         };
     }
+}
+
+/// <summary>The credits line in its slot (the bar's artists line with the marquee setting off, and every Mini bar).</summary>
+internal sealed class WinUiCredits : WinUiCreditsLine
+{
+    public override Element Render() => Line(UseProps<WinUiPlayerBar.CreditsProps>(), fit: true);
+}
+
+/// <summary>The credits line at its full width: the marquee's content.</summary>
+internal sealed class WinUiCreditsRun(WinUiPlayerBar.CreditsProps props) : WinUiCreditsLine
+{
+    readonly WinUiPlayerBar.CreditsProps _props = props;
+
+    public override Element Render() => Line(_props, fit: false);
 }

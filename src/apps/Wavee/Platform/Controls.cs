@@ -1004,15 +1004,25 @@ public static partial class Controls
 
     // ══ 5. THE SMALL ROW PRIMITIVES ══════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The "E"'s share of its badge, and the text floor it never drops under (the lint's type floor).</summary>
+    public const float ExplicitLetterShare = 0.68f, ExplicitLetterFloor = 11f;
+
     /// <summary>The EXPLICIT badge: a 16 × 16 rounded square carrying an "E". Not a glyph and not a letter in the title
-    /// — a mark, so it survives every locale and never joins the text run's shaping.</summary>
-    public static Element ExplicitBadge(float size = 16f, ColorF? ink = null) => new BoxEl
+    /// — a mark, so it survives every locale and never joins the text run's shaping. The letter is the badge's
+    /// <see cref="ExplicitLetterShare"/>, never under <see cref="ExplicitLetterFloor"/>: a smaller badge asked for grows
+    /// to keep that share (14 → 16), so the "E" stays centred in it.</summary>
+    public static BoxEl ExplicitBadge(float size = 16f, ColorF? ink = null)
     {
-        Width = size, Height = size, Shrink = 0f,
-        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(2f), Fill = ink ?? Tok.TextTertiary,
-        Children = [new TextEl("E") { Size = size * 0.68f, Weight = 700, Color = Tok.TextInverse }],
-    };
+        float letter = MathF.Max(size * ExplicitLetterShare, ExplicitLetterFloor);
+        float box = MathF.Max(size, MathF.Round(letter / ExplicitLetterShare));
+        return new BoxEl
+        {
+            Width = box, Height = box, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = CornerRadius4.All(2f), Fill = ink ?? Tok.TextTertiary,
+            Children = [new TextEl("E") { Size = letter, Weight = 700, Color = Tok.TextInverse }],
+        };
+    }
 
     /// <summary>The overflow "…" — the STANDARD 32 × 32 icon button, and the one affordance that must not be
     /// invisible.
