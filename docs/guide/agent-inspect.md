@@ -535,10 +535,11 @@ Resizes across a tier edge the way the user does, and reports what broke on the 
    remembers every shown keyed node and its rect. With nothing mounted, the mount args apply (`theme`, `kind`, `route`, `gpu`,
    `scale`); `remount=true` forces a fresh mount. Over a mount that is up (no `remount`), only the navigation args apply, and a
    mount-only arg is refused: `'theme' applies only when the crossing mounts (nothing mounted, or remount=true)`.
-2. It resizes to `to`. **Narrowing** goes through the OS modal size
-   loop: a keep-alive paint inside the loop, then `frames` more keep-alive paints outside it (default 1), which still lay out
-   the old tier at the new size, then one more keep-alive paint, the **commit frame**, where the new tier lands. **Widening**
-   skips the loop: `frames` keep-alive paints, then a normal frame as the commit.
+2. It resizes to `to`. **Narrowing** goes through the OS modal size loop: a keep-alive paint inside the loop, then
+   `frames` more keep-alive paints outside it (default 1), then one more keep-alive paint, the **commit frame**. **Widening**
+   skips the loop: `frames` keep-alive paints, then a normal frame as the commit. With the default `frames=1` the resized
+   paints lay out the old tier at the new size and the new tier lands on the commit frame, as in a drag; with more, the new
+   tier lands earlier (see below).
 3. It settles, lints the settled scene (the same options as `lint`) and replies.
 
 Reading a crossing:
@@ -558,8 +559,9 @@ Reading a crossing:
   the content tier changes reads `committed:false`, and `tierAfter.content` shows the change.
 - Only `frames=1` models a drag: the old tier holds for one keep-alive paint after the resize (after the loop, when
   narrowing), and the next frame commits. From `frames=2` on, the new tier lands inside the resized frames, both ways:
-  `heldOldTier` is false, `tierResized` is already the new tier, and the commit frame compares two frames after the commit. Zune home 1440x960 to 1440x400 reports 195 jumped at `frames=1`, 176 at `frames=2`
-  and nothing changed at `frames=60`.
+  `heldOldTier` is false, `tierResized` is already the new tier, and the commit frame compares two frames after the
+  commit. Zune home 1440x960 to 1440x400 reports 195 jumped at `frames=1`, 176 at `frames=2` and nothing changed at
+  `frames=60`.
 - A width step with no tier edge already moves nodes on the commit frame (Zune home 1504 to 1488 wide: 8 snapped,
   119 to 125 jumped, depending on how the page got to 1504). Set an edge's numbers against a 16 DIP step inside the same
   tier, reached the same way, before you blame the tier change.
