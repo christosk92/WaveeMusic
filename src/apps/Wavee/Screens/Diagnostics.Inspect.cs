@@ -113,6 +113,7 @@ public static partial class Diagnostics
             {
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
+                InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
                 host._session = new InspectSession(realText);
                 host.TextBackend = host._session.TextBackend;
             });
@@ -189,7 +190,8 @@ public static partial class Diagnostics
                     string name = o.Pipe.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? o.Pipe[prefix.Length..] : o.Pipe;
                     // The pipe is announced on stdout before the wait, so a client knows when to connect.
                     Console.Out.WriteLine(Inspect.Reply.Event("listening", w => w.WriteString("pipe", prefix + name)));
-                    server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+                    // CurrentUserOnly: only a process of the user who started the server may connect (the pipe drives the app and reads its scene).
+                    server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly);
                     server.WaitForConnection();
                     reader = new StreamReader(server, new UTF8Encoding(false), false, 4096, leaveOpen: true);
                     writer = new StreamWriter(server, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
@@ -247,6 +249,11 @@ public static partial class Diagnostics
         string _devices = "";
         uint _ms = 1000;
         long _frames;
+        int _mounts;
+        bool _acts;                 // the running verb acts (the verb table's Acts): its reply carries `after`
+        bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
+        string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
+        Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
         public string TextBackend => _realText ? "dwrite" : "headless";
@@ -268,6 +275,8 @@ public static partial class Diagnostics
 
         void Unmount()
         {
+            _pointer = null;   // the next mount's pointer has gone nowhere yet
+            _hit = null;
             if (_shell is null) return;
             var shell = _shell;
             _shell = null;
@@ -325,19 +334,26 @@ public static partial class Diagnostics
             if (!Inspect.TryParse(line, out Inspect.Command cmd, out string error))
                 return Inspect.Reply.Fail(cmd.Id, cmd.Name.Length > 0 ? cmd.Name : line.Trim(), error);
             if (cmd.IsNone) return "";
-            quit = cmd.Verb == Inspect.Verb.Quit;
-            return Execute(in cmd);
+            string reply = Execute(in cmd);
+            quit = _quit;
+            _quit = false;
+            return reply;
         }
 
-        /// <summary>Run one parsed command; never throws (a failure is an ok:false reply naming the exception).</summary>
+        /// <summary>Run one parsed command; never throws (a failure is an ok:false reply naming the exception). An arg the verb
+        /// does not declare (Diagnostics.Inspect.Protocol.cs, the verb table) is refused before anything runs.</summary>
         public string Execute(in Inspect.Command cmd)
         {
+            if (!Inspect.Validate(in cmd, out string invalid)) return Inspect.Reply.Fail(cmd.Id, cmd.Name, invalid);
+            _acts = Inspect.SpecOf(cmd.Verb)?.Acts ?? false;
+            _hit = null;
             try { return Dispatch(in cmd); }
             catch (Exception ex)
             {
                 Log.Warn("inspect", "command '" + cmd.Name + "' failed", ex);
                 return Inspect.Reply.Fail(cmd.Id, cmd.Name, ex.GetType().Name + ": " + ex.Message);
             }
+            finally { _acts = false; }
         }
 
         string Dispatch(in Inspect.Command cmd)
@@ -345,18 +361,14 @@ public static partial class Diagnostics
             Inspect.Args a = cmd.Args;
             int id = cmd.Id;
             string name = cmd.Name;
+            if (Inspect.SpecOf(cmd.Verb) is { NeedsMount: true } && _shell is null) return Inspect.Reply.Fail(id, name, "nothing is mounted (mount first)");
             switch (cmd.Verb)
             {
                 case Inspect.Verb.Help:
-                    return Inspect.Reply.Ok(id, name, w =>
-                    {
-                        w.WriteStartArray("verbs");
-                        foreach (string v in Inspect.VerbNames) w.WriteStringValue(v);
-                        w.WriteEndArray();
-                        w.WriteString("doc", "docs/guide/agent-inspect.md");
-                    });
+                    return Help(id, name, a);
                 case Inspect.Verb.Quit:
                     Unmount();
+                    _quit = true;
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Status:
                     return Inspect.Reply.Ok(id, name, WriteStatus);
@@ -367,23 +379,24 @@ public static partial class Diagnostics
                     return Inspect.Reply.Ok(id, name);
                 case Inspect.Verb.Reset:
                     Unmount();
+                    ClearLeaks(keepRoute: false);
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
                 case Inspect.Verb.Theme:
                     return Theme(id, name, a);
-                case Inspect.Verb.Tiers:
-                    return Inspect.Reply.Ok(id, name, InspectDump.WriteTiers);
                 case Inspect.Verb.Option:
                     return Option(id, name, a);
                 case Inspect.Verb.Crossing:
                     return Crossing(id, name, a);   // mounts by itself when nothing is
             }
 
-            // Everything below needs a mount.
-            if (_shell is not { } shell) return Inspect.Reply.Fail(id, name, "nothing is mounted (mount first)");
+            // Everything below needs a mount (the verb table says so: NeedsMount).
+            Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
+                case Inspect.Verb.Tiers:
+                    return Inspect.Reply.Ok(id, name, InspectDump.WriteTiers);
                 case Inspect.Verb.GoTo:
                     {
                         if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error);
@@ -395,33 +408,45 @@ public static partial class Diagnostics
                         if (!(w0 >= 1f && h0 >= 1f)) return Inspect.Reply.Fail(id, name, "resize wants w and h (DIP)");
                         if (a.Bool("loop", false)) ResizeThroughModalLoop(shell, w0, h0);
                         else shell.Resize(w0, h0);
+                        if (_pointer is { } p && !InspectKit.WindowRect(shell).Contains(p)) _pointer = null;   // the window shrank past it
                         return Settled(id, name, a);
                     }
                 case Inspect.Verb.Frames:
                     {
                         int n = Math.Clamp(a.Int("n", 1), 0, 100_000);
-                        RunFrames(n);
+                        RunFrames(Math.Max(0, n - 1));
+                        int epoch = Tok.Epoch;
+                        RunFrames(Math.Min(n, 1));
+                        bool epochMoved = n > 0 && Tok.Epoch != epoch;   // the last frame wrote a theme token (a FrameNeeded term)
                         return Inspect.Reply.Ok(id, name, w =>
                         {
                             w.WriteNumber("frames", n);
                             w.WriteBoolean("animating", shell.Host.Animation.HasActive);
+                            w.WriteBoolean("scrolling", shell.Host.AnyUserScrollMoving);
+                            FluentGpu.Hosting.WakeReasons wake = shell.Host.CurrentWakeReasons;
+                            InspectKit.WriteWake(w, wake);   // every reason the loop would stay awake (settle ignores the ambient ones)
+                            if ((wake & FluentGpu.Hosting.WakeReasons.FrameNeeded) != 0) InspectKit.WriteFrameNeeded(w, "frameNeeded", shell, epochMoved);
                         });
                     }
                 case Inspect.Verb.Settle:
                     {
-                        var (frames, settled) = Settle(a.Int("max", 600));
+                        InspectKit.SettleResult r = Settle(a.Int("max", 600));
                         return Inspect.Reply.Ok(id, name, w =>
                         {
-                            w.WriteNumber("frames", frames);
-                            w.WriteBoolean("settled", settled);
+                            w.WriteNumber("frames", r.Frames);
+                            w.WriteBoolean("settled", r.Settled);
+                            if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
+                            InspectKit.WriteAmbient(w, in r);
                         });
                     }
                 case Inspect.Verb.Click:
                 case Inspect.Verb.Hover:
                     {
-                        if (!TryTarget(a, out Point2 p, out string? key, out string error)) return Inspect.Reply.Fail(id, name, error);
+                        if (!TryAim(id, name, a, wheel: false, out Aim aim, out string refusal)) return refusal;
+                        Point2 p = aim.Point;
                         Move(p);
                         RunFrames(1);
+                        _hit = HitKey(p);   // what the press lands on (a hover can raise a part over the target)
                         if (cmd.Verb == Inspect.Verb.Click)
                         {
                             KeyModifiers mods = Mods(a);
@@ -431,14 +456,7 @@ public static partial class Diagnostics
                             Queue(new InputEvent(InputKind.PointerUp, p, button, 0, mods, TimestampMs: _ms + 50));
                             if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the release lands on
                         }
-                        return Settled(id, name, a, w =>
-                        {
-                            w.WriteStartObject("at");
-                            Inspect.Reply.Num(w, "x", p.X);
-                            Inspect.Reply.Num(w, "y", p.Y);
-                            w.WriteEndObject();
-                            if (key is not null) w.WriteString("key", key);
-                        });
+                        return Settled(id, name, a, w => WriteAim(w, in aim));
                     }
                 case Inspect.Verb.Key:
                     {
@@ -462,17 +480,20 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Scroll:
                     {
-                        if (!TryTarget(a, out Point2 p, out string? key, out string error)) return Inspect.Reply.Fail(id, name, error);
+                        if (!TryAim(id, name, a, wheel: true, out Aim aim, out string refusal)) return refusal;
+                        Point2 p = aim.Point;
                         float dy = a.Float("dy", 3f), dx = a.Float("dx", 0f);
                         Move(p);
                         RunFrames(1);
+                        _hit = HitKey(p);
                         var wheel = new ScrollInputEvent(ScrollSource.MouseWheel, ScrollGesture.Notch, 0, p, dx, dy, 0, KeyModifiers.None);
                         Queue(InputEvent.ForScroll(in wheel, timestampMs: _ms));
                         if (!Tracing(a)) RunFrames(1);   // `trace=N` starts at the frame the notch lands on
-                        return Settled(id, name, a, traceScroll: key ?? "main", body: w =>
+                        return Settled(id, name, a, traceScroll: aim.Key ?? "main", body: w =>
                         {
-                            if (key is null) return;
-                            NodeHandle viewport = ScrollUnder(shell.Host.Scene, shell.Find(key));
+                            WriteAim(w, in aim);
+                            if (aim.Node.IsNull || !shell.Host.Scene.IsLive(aim.Node)) return;
+                            NodeHandle viewport = ScrollUnder(shell.Host.Scene, aim.Node);
                             if (viewport.IsNull || !shell.Host.Scene.TryGetScroll(viewport, out ScrollState s)) return;
                             w.WriteStartObject("scroll");
                             Inspect.Reply.Num(w, "offset", (float)s.Offset);
@@ -489,22 +510,25 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Dialog:
                     {
-                        // `dialog {kind}`: opens a dialog over the Settings page (the page binds the overlay host the dialogs open through): crash | hang (the crash prompt over a made-up
-                        // bundle), report (Report a problem). A developer's probe; `esc` closes it.
+                        // `dialog {kind}`: opens over the CURRENT page, never navigating: crash | hang (the crash prompt over a made-up bundle) through the shell's
+                        // own overlay host (the one App.BindOverlayServices hands Track.DrawerOverlay on every mount), report (Report a problem) through its own
+                        // chrome. A developer's probe; `esc` closes it. The reply's `over` names the page underneath.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
-                        RunFrames(30);
-                        var overlay = SettingsContext.Overlay;
-                        if (overlay is null) return Inspect.Reply.Fail(id, name, "no overlay host is bound (is the page mounted?)");
-                        switch (kind)
+                        if (kind is not ("crash" or "hang" or "report")) return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report, not '" + kind + "'");
+                        if (kind == "report") Feedback.Open(Feedback.ReportKind.Bug);
+                        else
                         {
-                            case "crash": Crash.OpenFakePrompt(overlay, Crash.Kind.Managed); break;
-                            case "hang": Crash.OpenFakePrompt(overlay, Crash.Kind.Hang); break;
-                            case "report": Feedback.Open(Feedback.ReportKind.Bug); break;
-                            default: return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report, not '" + kind + "'");
+                            var overlay = Track.DrawerOverlay;
+                            if (Controls.IsNullOverlay(overlay)) return Inspect.Reply.Fail(id, name, "the shell's overlay host is not bound yet (run frames 30 and try again)");
+                            Crash.OpenFakePrompt(overlay, kind == "hang" ? Crash.Kind.Hang : Crash.Kind.Managed);
                         }
                         RunFrames(40);
-                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                        string over = RouteText();
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("kind", kind);
+                            w.WriteString("over", over);
+                        });
                     }
                 case Inspect.Verb.State:
                     {
@@ -517,8 +541,10 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Find:
                     {
+                        // `find <key>` is exact; a prefix says so (`find prefix=zune-band-`).
                         string key = a.Str("key"), prefix = a.Str("prefix");
-                        if (key.Length == 0 && prefix.Length == 0) return Inspect.Reply.Fail(id, name, "find wants key or prefix");
+                        if (key.Length == 0 && !a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find wants a key (exact) or prefix=");
+                        if (key.Length > 0 && a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find takes key or prefix, not both");
                         return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix));
                     }
                 case Inspect.Verb.Dump:
@@ -531,6 +557,32 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
+        }
+
+        /// <summary>`help` (the verbs and their summaries), `help verb=<name>` (one verb's args, defaults, choices and example) or
+        /// `help schema=json` (the whole verb table): all from the table in Diagnostics.Inspect.Protocol.cs.</summary>
+        static string Help(int id, string name, Inspect.Args a)
+        {
+            if (a.Has("schema"))
+            {
+                string schema = a.Str("schema");
+                if (schema != "json") return Inspect.Reply.Fail(id, name, "schema is json, not '" + schema + "'");
+                return Inspect.Reply.Ok(id, name, Inspect.WriteSchema);
+            }
+            if (!a.Has("verb")) return Inspect.Reply.Ok(id, name, Inspect.WriteHelpIndex);
+            string verb = a.Str("verb");
+            if (Inspect.SpecNamed(verb) is not { } spec)
+            {
+                string? near = null;
+                int best = 3;
+                foreach (string v in Inspect.VerbNames)
+                {
+                    int d = Inspect.EditDistance(verb.ToLowerInvariant(), v);
+                    if (d < best) { best = d; near = v; }
+                }
+                return Inspect.Reply.Fail(id, name, "unknown verb '" + verb + "'" + (near is null ? " (help lists them)" : " (did you mean '" + near + "'?)"));
+            }
+            return Inspect.Reply.Ok(id, name, w => Inspect.WriteVerb(w, spec));
         }
 
         /// <summary>`render {path, scale?, alpha?}`: the offscreen surface's frame as a PNG (flattened over the window background
@@ -603,6 +655,7 @@ public static partial class Diagnostics
             if (!InspectKit.IsShipped(theme)) { error = "unknown theme '" + theme + "' (" + string.Join("|", InspectKit.ThemeIds) + ")"; return false; }
 
             Unmount();
+            ClearLeaks(a.Bool("keepRoute", false));
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
             if (a.Bool("setup", false) || a.Str("setup") == "signin")
@@ -634,6 +687,7 @@ public static partial class Diagnostics
             };
             _shell = MountOn(w0, h0, scale, gpu);
             _frames++;
+            _mounts++;
             mounted = true;
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
             {
@@ -661,6 +715,20 @@ public static partial class Diagnostics
             if (a.Has("feedback"))
                 Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
             return true;
+        }
+
+        /// <summary>What one mount must not inherit from the last (`mount` and `reset`, once a mount has run: before that the boot's own
+        /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the fullscreen stage (a static signal too:
+        /// left up, its looping art kept the next mount from ever settling), the tab workspace (unless <paramref name="keepRoute"/>), and
+        /// playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and queue, the play log emptied). Not every static:
+        /// a fresh process is the only full reset, and `status` counts `mounts` so a reused server shows.</summary>
+        void ClearLeaks(bool keepRoute)
+        {
+            if (_mounts == 0) return;
+            Wavee.Shell.SetInspectState("none");
+            Stage.Close(null, "inspect-mount");
+            if (!keepRoute) InspectKit.ResetTabs();
+            InspectKit.ResetPlayback();
         }
 
         /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set
@@ -750,7 +818,7 @@ public static partial class Diagnostics
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;
             while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; }
-            if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames");
+            if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames", WriteAfter);
             string outcome = t.IsFaulted ? "faulted" : t.Result.Outcome.ToString();
             return Settled(id, name, a, w =>
             {
@@ -791,6 +859,7 @@ public static partial class Diagnostics
                         w.WriteEndObject();
                     }
                     w.WriteEndArray();
+                    WriteAfter(w);   // an acting verb's reply ends with `after`, the listing too (nothing changed: it reads what is)
                 });
             }
             string optionId = a.Str("id");
@@ -900,7 +969,7 @@ public static partial class Diagnostics
             for (int i = 0; i < scene.OverlayCount; i++)
             {
                 NodeHandle overlay = scene.OverlayAt(i);
-                if (!overlay.IsNull && !Under(scene, overlay, scene.Root)) roots.Add(overlay);
+                if (!overlay.IsNull && !InspectKit.IsUnder(scene, overlay, scene.Root)) roots.Add(overlay);
             }
             return true;
         }
@@ -917,37 +986,153 @@ public static partial class Diagnostics
             return Inspect.Reply.Ok(id, name, w => InspectDump.Write(w, shell, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(roots), in request));
         }
 
-        static bool Under(SceneStore scene, NodeHandle node, NodeHandle ancestor)
-        {
-            for (var n = node; !n.IsNull; n = scene.Parent(n))
-                if (n == ancestor) return true;
-            return false;
-        }
-
         // ── input and frames ────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The point a pointer verb aims at: `key` (the centre of its presented rect; `nth` picks among duplicates)
-        /// or `x`,`y` (window DIP).</summary>
-        bool TryTarget(Inspect.Args a, out Point2 p, out string? key, out string error)
+        /// <summary>Where a pointer verb aims and at what: <see cref="Node"/> and <see cref="Key"/> for a `key` target (null for
+        /// a point), its index among the counted matches and how many there were.</summary>
+        readonly record struct Aim(Point2 Point, NodeHandle Node, string? Key, int Nth, int Counted, int Matches, bool Forced, float Fraction, string Note);
+
+        /// <summary>The point a pointer verb aims at: `key` (the visible centre of an ACTIONABLE node keyed so: shown, at least half
+        /// visible, enabled, and hit at that centre by itself or a part of it; `nth` counts the actionable matches in reading order) or
+        /// `x`,`y` (window DIP, no checks). `force=true` skips the checks and counts every match. <paramref name="wheel"/>: the
+        /// `scroll` verb (no handler needed at the centre). On a refusal <paramref name="refusal"/> is the ok:false reply: the reason,
+        /// and every match with its own.</summary>
+        bool TryAim(int id, string name, Inspect.Args a, bool wheel, out Aim aim, out string refusal)
         {
-            p = default; key = null; error = "";
-            SceneStore scene = _shell!.Host.Scene;
-            if (a.Has("key"))
+            aim = default;
+            refusal = "";
+            Shell.HeadlessShell shell = _shell!;
+            SceneStore scene = shell.Host.Scene;
+            if (!a.Has("key"))
             {
-                string want = a.Str("key");
-                key = want;
-                var found = _shell.FindPrefix(want);
-                found.RemoveAll(e => !string.Equals(e.Key, want, StringComparison.Ordinal));
-                if (found.Count == 0) { error = "no mounted node keyed '" + want + "'"; return false; }
-                int nth = a.Int("nth", 0);
-                if ((uint)nth >= (uint)found.Count) { error = "only " + found.Count + " nodes keyed '" + key + "'"; return false; }
-                p = InspectKit.CentreOf(scene, found[nth].Node);
+                if (a.TryNum("x", out double x) && a.TryNum("y", out double y))
+                {
+                    aim = new Aim(new Point2((float)x, (float)y), NodeHandle.Null, null, 0, 0, 0, false, 1f, "");
+                    return true;
+                }
+                refusal = Inspect.Reply.Fail(id, name, "give key (a node key) or x and y (window DIP)");
+                return false;
+            }
+            string key = a.Str("key");
+            List<(NodeHandle Node, string Key)> found = InspectDump.Exact(shell, key);
+            if (found.Count == 0)
+            {
+                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + key + " lists near keys)");
+                return false;
+            }
+            InspectDump.InReadingOrder(scene, found);
+            bool force = a.Bool("force", false);
+            int nth = a.Int("nth", 0);
+            RectF window = InspectKit.WindowRect(shell);
+            var verdicts = new Actionability.Verdict[found.Count];
+            int counted = 0, pick = -1;
+            for (int i = 0; i < found.Count; i++)
+            {
+                verdicts[i] = InspectKit.Assess(shell, found[i].Node, window, wheel);
+                if (!force && !verdicts[i].Ok) continue;
+                if (counted == nth) pick = i;
+                counted++;
+            }
+            if (pick >= 0)
+            {
+                Actionability.Verdict v = verdicts[pick];
+                // Forced onto a node with nothing visible: its presented centre, as before the checks existed.
+                Point2 at = force && v.Visible.IsEmpty ? InspectKit.CentreOf(scene.PresentedAbsoluteRect(found[pick].Node)) : v.Aim;
+                aim = new Aim(at, found[pick].Node, key, nth, counted, found.Count, force, v.Fraction, force ? "" : v.Note);
                 return true;
             }
-            if (a.TryNum("x", out double x) && a.TryNum("y", out double y)) { p = new Point2((float)x, (float)y); return true; }
-            error = "give key (a node key) or x and y (window DIP)";
+            string error = counted == 0
+                ? "'" + key + "' is not actionable: " + verdicts[0].Why
+                    + (found.Count > 1 ? " (and " + (found.Count - 1) + " more matches, none actionable)" : "") + "; force=true aims at it anyway"
+                : "only " + counted + (force ? " nodes keyed '" : " actionable nodes keyed '") + key + "' (nth counts from 0, in reading order)";
+            string reason = counted == 0 ? verdicts[0].Reason : "nth";
+            refusal = Inspect.Reply.Fail(id, name, error, w =>
+            {
+                w.WriteString("reason", reason);
+                w.WriteStartArray("matches");
+                for (int i = 0; i < found.Count; i++)
+                {
+                    Actionability.Verdict v = verdicts[i];
+                    w.WriteStartObject();
+                    Inspect.Reply.Rect(w, "rect", scene.PresentedAbsoluteRect(found[i].Node));
+                    Inspect.Reply.Num(w, "onScreen", v.Fraction);
+                    w.WriteBoolean("actionable", v.Ok);
+                    if (!v.Ok)
+                    {
+                        w.WriteString("reason", v.Reason);
+                        w.WriteString("why", v.Why);
+                    }
+                    if (v.HitKey is not null) w.WriteString("hit", v.HitKey);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            });
             return false;
         }
+
+        /// <summary>A pointer verb's reply: `at` and, for a key target, `key` and `target {nth, of, matches, onScreen, order, forced?, note?}`.</summary>
+        static void WriteAim(Utf8JsonWriter w, in Aim aim)
+        {
+            w.WriteStartObject("at");
+            Inspect.Reply.Num(w, "x", aim.Point.X);
+            Inspect.Reply.Num(w, "y", aim.Point.Y);
+            w.WriteEndObject();
+            if (aim.Key is null) return;
+            w.WriteString("key", aim.Key);
+            w.WriteStartObject("target");
+            w.WriteNumber("nth", aim.Nth);
+            w.WriteNumber("of", aim.Counted);
+            w.WriteNumber("matches", aim.Matches);
+            Inspect.Reply.Num(w, "onScreen", aim.Fraction);
+            w.WriteString("order", aim.Forced ? "reading order (top, then left), every match (force=true: no checks)" : "reading order (top, then left), actionable matches only");
+            if (aim.Forced) w.WriteBoolean("forced", true);
+            if (aim.Note.Length > 0) w.WriteString("note", aim.Note);
+            w.WriteEndObject();
+        }
+
+        /// <summary>The key of the node a pointer at <paramref name="p"/> resolves to (the dispatcher's hit test, named by its nearest
+        /// keyed ancestor), or null over nothing that takes input. Remembers <paramref name="p"/> as where the pointer is.</summary>
+        string? HitKey(Point2 p)
+        {
+            _pointer = p;
+            NodeHandle hit = _shell!.Host.Input.HitTest(p);
+            return hit.IsNull ? null : InspectKit.KeyOf(_shell.Host.Scene, hit);
+        }
+
+        /// <summary>`after {route, focused, overlays, hit}`: where an acting verb left the app. `focused` and `hit` are keys (the
+        /// nearest keyed ancestor); `overlays` the open overlay layers (`overlay:<id>`, with `first`, the first key inside each);
+        /// `hit` is what a pointer verb's press or wheel landed on, else what lies under the pointer now (null before any pointer verb).</summary>
+        void WriteAfter(Utf8JsonWriter w)
+        {
+            if (_shell is not { } shell) return;
+            SceneStore scene = shell.Host.Scene;
+            w.WriteStartObject("after");
+            w.WriteString("route", RouteText());
+            NodeHandle focused = shell.Host.Input.Focused;
+            if (!focused.IsNull && scene.IsLive(focused)) w.WriteString("focused", InspectKit.KeyOf(scene, focused));
+            else w.WriteNull("focused");
+            w.WriteStartArray("overlays");
+            List<(NodeHandle Node, string Key)> layers = shell.FindPrefix("overlay:");
+            layers.Sort(static (x, y) => LayerId(y.Key).CompareTo(LayerId(x.Key)));   // the overlay host's ids grow with each open: top first
+            foreach (var (node, key) in layers)
+            {
+                if (!scene.IsShown(node)) continue;
+                w.WriteStartObject();
+                w.WriteString("key", key);
+                foreach (NodeHandle n in InspectKit.Subtree(scene, node))
+                    if (n != node && scene.DebugKeyOf(n) is { Length: > 0 } inner) { w.WriteString("first", inner); break; }
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            string? hit = _hit ?? (_pointer is { } p ? HitKey(p) : null);
+            if (hit is not null) w.WriteString("hit", hit);
+            else w.WriteNull("hit");
+            w.WriteEndObject();
+        }
+
+        /// <summary>The number in an overlay layer's key (`overlay:12` is 12), -1 when there is none.</summary>
+        static int LayerId(string key)
+            => int.TryParse(key.AsSpan("overlay:".Length), NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : -1;
 
         static KeyModifiers Mods(Inspect.Args a)
         {
@@ -970,19 +1155,19 @@ public static partial class Diagnostics
             }
         }
 
-        (int Frames, bool Settled) Settle(int max)
+        InspectKit.SettleResult Settle(int max)
         {
-            var r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000));
+            InspectKit.SettleResult r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000));
             _ms += (uint)(16 * r.Frames);
             _frames += r.Frames;
             return r;
         }
 
-        /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled.</summary>
+        /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
+        /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
         string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "")
         {
-            int frames = 0;
-            bool settled = false;
+            InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
             if (Tracing(a) && _shell is { } shell)
             {
@@ -990,11 +1175,14 @@ public static partial class Diagnostics
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 trace = RunTrace(shell, o);
             }
-            else if (a.Bool("settle", true)) (frames, settled) = Settle(a.Int("max", 600));
+            else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600));
+            bool acts = _acts;
             return Inspect.Reply.Ok(id, name, w =>
             {
-                w.WriteNumber("frames", frames);
-                w.WriteBoolean("settled", settled);
+                w.WriteNumber("frames", settle.Frames);
+                w.WriteBoolean("settled", settle.Settled);
+                if (settle.Frames > 0 && !settle.Settled && _shell is { } mounted) InspectKit.WriteBusy(w, mounted, in settle);
+                InspectKit.WriteAmbient(w, in settle);
                 body?.Invoke(w);
                 if (trace is not null)
                 {
@@ -1002,6 +1190,7 @@ public static partial class Diagnostics
                     InspectTrace.Write(w, trace);
                     w.WriteEndObject();
                 }
+                if (acts) WriteAfter(w);
             });
         }
 
@@ -1017,6 +1206,7 @@ public static partial class Diagnostics
         {
             w.WriteBoolean("mounted", _shell is not null);
             w.WriteNumber("frames", _frames);
+            w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
             if (_shell is { } shell)
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)

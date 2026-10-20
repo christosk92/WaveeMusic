@@ -10,6 +10,7 @@
 //    "scroll"?:{offset,max,viewport,content,axis},"anim"?:true,"children"}
 // Defaults are omitted (no fill when transparent, no border when 0 wide...), so a dump of a page stays small enough to read.
 // `rect` is the PRESENTED absolute rect in window DIP (`SceneStore.PresentedAbsoluteRect`): what paint and hit-testing use.
+// An icon glyph prints as `glyph:<Icons name>` (dump and find alike), so a label is never an invisible private-use character.
 
 using System.Text.Json;
 using FluentGpu.Foundation;
@@ -140,7 +141,12 @@ public static partial class Diagnostics
             StringTable strings = scene.Strings ?? Entities.Strings;
             string value = paint.Text.Value > 0 ? strings.Resolve(paint.Text) : "";
             w.WriteStartObject("text");
-            w.WriteString("string", value);
+            if (GlyphLabel(value) is { } glyph)
+            {
+                w.WriteString("string", glyph);
+                w.WriteString("codepoint", Codepoints(value));
+            }
+            else w.WriteString("string", value);
             if (value.Length == 0 && scene.TryGetSpanText(node, out ReadOnlySpan<TextSpan> spans)) w.WriteNumber("spans", spans.Length);
             Inspect.Reply.Num(w, "sizeDip", style.SizeDip);
             if (float.IsFinite(style.LineHeight)) Inspect.Reply.Num(w, "lineHeight", style.LineHeight);
@@ -202,34 +208,62 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
-        /// <summary>`"nodes":[{key, rect, visible, text?}]` for every live node whose key equals <paramref name="key"/> or
-        /// starts with <paramref name="prefix"/>.</summary>
+        /// <summary>`"nodes":[{key, rect, shown, onScreen, actionable, nth?, why?, kind, text?}]` for every live node keyed exactly
+        /// <paramref name="key"/> (or, with <paramref name="key"/> empty, starting with <paramref name="prefix"/>), in reading order.
+        /// `onScreen` is the visible share of the rect (0..1, after the window and every clipping ancestor); `actionable` is what
+        /// `click`/`hover`/`scroll` check, and `nth` the index a pointer verb's `nth` takes for this key (actionable matches only).</summary>
         public static int WriteFind(Utf8JsonWriter w, Shell.HeadlessShell shell, string key, string prefix)
         {
             SceneStore scene = shell.Host.Scene;
-            var found = key.Length > 0 ? Exact(shell, key) : shell.FindPrefix(prefix);
+            List<(NodeHandle Node, string Key)> found = key.Length > 0 ? Exact(shell, key) : shell.FindPrefix(prefix);
+            InReadingOrder(scene, found);
+            RectF window = InspectKit.WindowRect(shell);
+            var nth = new Dictionary<string, int>(StringComparer.Ordinal);
             w.WriteStartArray("nodes");
             foreach (var (node, k) in found)
             {
+                Actionability.Verdict v = InspectKit.Assess(shell, node, window);
                 w.WriteStartObject();
                 w.WriteString("key", k);
                 Inspect.Reply.Rect(w, "rect", scene.PresentedAbsoluteRect(node));
                 w.WriteBoolean("shown", scene.IsShown(node));
+                Inspect.Reply.Num(w, "onScreen", v.Fraction);
+                w.WriteBoolean("actionable", v.Ok);
+                if (v.Ok)
+                {
+                    int index = nth.GetValueOrDefault(k);
+                    nth[k] = index + 1;
+                    w.WriteNumber("nth", index);
+                    if (v.Note.Length > 0) w.WriteString("note", v.Note);
+                }
+                else w.WriteString("why", v.Why);
                 w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));
                 string? text = FirstText(scene, node);
-                if (text is not null) w.WriteString("text", text);
+                if (text is not null) w.WriteString("text", GlyphLabel(text) ?? text);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
             w.WriteNumber("count", found.Count);
+            w.WriteString("order", "reading order (top, then left); nth counts the actionable matches of a key");
+            if (key.Length > 0 && found.Count == 0 && shell.FindPrefix(key).Count is > 0 and int near)   // `find <x>` was a prefix search once
+                w.WriteString("hint", "0 nodes keyed exactly '" + key + "'; " + near + " keys start with it: find prefix=" + key);
             return found.Count;
         }
 
-        static List<(NodeHandle Node, string Key)> Exact(Shell.HeadlessShell shell, string key)
+        /// <summary>Every live node keyed exactly <paramref name="key"/>, in slot order.</summary>
+        public static List<(NodeHandle Node, string Key)> Exact(Shell.HeadlessShell shell, string key)
         {
             var all = shell.FindPrefix(key);
             all.RemoveAll(e => !string.Equals(e.Key, key, StringComparison.Ordinal));
             return all;
+        }
+
+        /// <summary>Sort <paramref name="found"/> into reading order by presented rect (<see cref="Actionability.ReadingOrder"/>).</summary>
+        public static void InReadingOrder(SceneStore scene, List<(NodeHandle Node, string Key)> found)
+        {
+            var rects = new Dictionary<NodeHandle, RectF>(found.Count);
+            foreach (var (node, _) in found) rects[node] = scene.PresentedAbsoluteRect(node);
+            found.Sort((a, b) => Actionability.ReadingOrder(rects[a.Node], rects[b.Node]));
         }
 
         /// <summary>The first text string at or under <paramref name="node"/> (a button's label), or null.</summary>
@@ -244,6 +278,37 @@ public static partial class Diagnostics
             return null;
         }
 
+        // ── glyphs ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the <c>Icons</c> constant,
+        /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; null for words.</summary>
+        public static string? GlyphLabel(string text)
+        {
+            if (!IsGlyph(text)) return null;
+            return "glyph:" + (FluentGpu.Controls.Icons.TryGetName(text, out string? name) ? name : "U+" + Codepoints(text));
+        }
+
+        /// <summary>One or two private-use characters (U+E000..U+F8FF): an icon glyph, not words.</summary>
+        static bool IsGlyph(string text)
+        {
+            if (text.Length is 0 or > 2) return false;
+            foreach (char c in text)
+                if (c < '\uE000' || c > '\uF8FF') return false;
+            return true;
+        }
+
+        /// <summary>The UTF-16 units of <paramref name="text"/> as hex (`E768`, or `E768 E769` for two).</summary>
+        static string Codepoints(string text)
+        {
+            var sb = new System.Text.StringBuilder(text.Length * 5);
+            foreach (char c in text)
+            {
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(((int)c).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return sb.ToString();
+        }
+
         /// <summary>The window's tier facts (`ThemeHost.Facts.Tiers`) plus the active theme and kind.</summary>
         public static void WriteTiers(Utf8JsonWriter w)
         {
@@ -256,14 +321,20 @@ public static partial class Diagnostics
             Inspect.Reply.Num(w, "viewportWidth", t.ViewportWidth);
             Inspect.Reply.Num(w, "viewportHeight", t.ViewportHeight);
             w.WriteBoolean("resizing", t.Resizing);
+            WriteRungs(w, in t);
+            w.WriteEndObject();
+            w.WriteString("theme", InspectKit.ActiveThemeId);
+            w.WriteString("kind", FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark");
+        }
+
+        /// <summary>`"rungs":[ids]`: the crossed rungs of the tier policy, by id (`tiers`, `mount`, `status` and `crossing` alike).</summary>
+        public static void WriteRungs(Utf8JsonWriter w, in TierFacts t)
+        {
             w.WriteStartArray("rungs");
             if (t.Policy is { } policy && !policy.Rungs.IsDefaultOrEmpty)
                 for (int i = 0; i < policy.Rungs.Length && i < 64; i++)
                     if (((t.Rungs >> i) & 1UL) != 0UL) w.WriteStringValue(policy.Rungs[i].Id);
             w.WriteEndArray();
-            w.WriteEndObject();
-            w.WriteString("theme", InspectKit.ActiveThemeId);
-            w.WriteString("kind", FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark");
         }
     }
 }

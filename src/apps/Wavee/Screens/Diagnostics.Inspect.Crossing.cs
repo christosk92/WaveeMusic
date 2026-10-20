@@ -154,7 +154,7 @@ public static partial class Diagnostics
             w.WriteString("window", t.Window.ToString());
             w.WriteString("height", t.Height.ToString());
             w.WriteString("content", t.Content.ToString());
-            w.WriteNumber("rungs", t.Rungs);
+            InspectDump.WriteRungs(w, in t);   // ids, as `tiers` lists them
             w.WriteEndObject();
         }
 
@@ -164,6 +164,10 @@ public static partial class Diagnostics
         {
             if (!TrySize(a, "from", "fromW", "fromH", out float fromW, out float fromH)) return Inspect.Reply.Fail(id, name, "crossing wants from {w,h} (or from=WxH)");
             if (!TrySize(a, "to", "toW", "toH", out float toW, out float toH)) return Inspect.Reply.Fail(id, name, "crossing wants to {w,h} (or to=WxH)");
+            // Over a mount that is up (no remount), the crossing resizes it: the mount args would do nothing, so they are refused.
+            if (_shell is not null && !a.Bool("remount", false))
+                foreach (string arg in a.Names)
+                    if (Inspect.IsMountOnly(arg)) return Inspect.Reply.Fail(id, name, "'" + arg + "' applies only when the crossing mounts (nothing mounted, or remount=true)");
             if (!InspectLintScene.TryOptions(a, out InspectLint.Options options, out string error)) return Inspect.Reply.Fail(id, name, error);
             int resizedFrames = Math.Clamp(a.Int("frames", 1), 1, 60);
             int items = Math.Clamp(a.Int("items", 40), 1, 1000);
@@ -188,7 +192,7 @@ public static partial class Diagnostics
             bool narrowing = toW < fromW || toH < fromH;
             bool wasComposited = shell.Window.Composited;
             TierFacts tiersResized, tiersCommit;
-            (int Frames, bool Settled) settle;
+            InspectKit.SettleResult settle;
             int changed = 0;
             shell.Window.Composited = true;
             try
@@ -385,6 +389,8 @@ public static partial class Diagnostics
                 w.WriteStartObject("settle");
                 w.WriteNumber("frames", settle.Frames);
                 w.WriteBoolean("settled", settle.Settled);
+                if (!settle.Settled) InspectKit.WriteBusy(w, shell, in settle);
+                InspectKit.WriteAmbient(w, in settle);
                 w.WriteEndObject();
 
                 w.WriteStartObject("lint");

@@ -77,8 +77,8 @@ public static partial class Diagnostics
             if (frames < 1 || frames > MaxFrames) { error = "trace wants 1 <= frames <= " + MaxFrames; return false; }
             o.Frames = frames;
             o.Every = Math.Max(1, a.Int("every", 1));
-            o.Keys = InspectLintScene.ListOf(a, "keys");
-            o.Prefixes = InspectLintScene.ListOf(a, "prefix");
+            o.Keys = a.List("keys");
+            o.Prefixes = a.List("prefix");
             string scroll = a.Str("scroll", defaultScroll);
             o.Scroll = scroll is "none" or "off" or "false" ? "" : scroll;
             o.MaxNodes = Math.Clamp(a.Int("max", 20), 1, MaxWatch);
@@ -88,7 +88,7 @@ public static partial class Diagnostics
             o.Census = a.Bool("census", false);
             if (a.Has("wheel"))
             {
-                if (!TryWheelSequence(a.Str("wheel"), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
+                if (!TryWheelSequence(string.Join(",", a.List("wheel")), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
                 o.WheelEvery = Math.Max(1, a.Int("wheelEvery", 1));
                 o.WheelCount = Math.Clamp(a.Int("wheelCount", 1), 0, 10_000);
                 o.WheelKey = a.Str("wheelKey");
@@ -97,7 +97,7 @@ public static partial class Diagnostics
             }
             if (a.Has("pan"))
             {
-                if (!TryWheelSequence(a.Str("pan"), out o.Pan)) { error = "pan is a number or a comma list of numbers (DIP per frame, + toward the end)"; return false; }
+                if (!TryWheelSequence(string.Join(",", a.List("pan")), out o.Pan)) { error = "pan is a number or a comma list of numbers (DIP per frame, + toward the end)"; return false; }
                 o.PanFrames = Math.Clamp(a.Int("panFrames", 8), 1, 1000);
                 o.PanStart = Math.Max(0, a.Int("panStart", 0));
                 o.PanEvery = Math.Max(0, a.Int("panEvery", 0));
