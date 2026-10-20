@@ -149,6 +149,10 @@ public static partial class Diagnostics
             /// <summary>The active theme's edge expectations (the gutter and right-edge rules check these).</summary>
             public IReadOnlyList<LintEdge> Edges { get; init; } = [];
 
+            /// <summary>The active theme's designed top bleeds (<see cref="IThemeLintGuide.DesignedTopBleeds"/>): keys whose text may run its ink
+            /// past the top of a clip.</summary>
+            public IReadOnlyList<string> TopBleeds { get; init; } = [];
+
             public string Theme { get; init; } = "";
 
             /// <summary>The rendered frame the contrast rule reads its backgrounds from; null when nothing was rendered (the rule then checks nothing).</summary>
@@ -592,8 +596,9 @@ public static partial class Diagnostics
                     if (vOver > Slack)
                     {
                         bool above = c.Y - ink.Y > ink.Bottom - c.Bottom;
-                        into.Add(new Finding(Rules.Clip, Severity.Error,
-                            $"text {Q(t.String)} is clipped by {anc.Ref}: its ink runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)})",
+                        bool designed = above && s.TopBleeds.Count > 0 && UnderAny(nodes, n, s.TopBleeds);
+                        into.Add(new Finding(Rules.Clip, designed ? Severity.Info : Severity.Error,
+                            $"text {Q(t.String)} is clipped by {anc.Ref}: its ink runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)}){(designed ? " (a designed bleed: the theme sets this line flush with the edge)" : "")}",
                             [n.Ref, anc.Ref])
                         {
                             Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("size", t.Size), M("lineHeight", t.LineHeight)],
@@ -616,6 +621,16 @@ public static partial class Diagnostics
                 }
             }
             return looked;
+        }
+
+        /// <summary>The node or an ancestor carries one of <paramref name="keys"/>.</summary>
+        static bool UnderAny(IReadOnlyList<Node> nodes, Node n, IReadOnlyList<string> keys)
+        {
+            for (int a = n.Index; a >= 0; a = nodes[a].Parent)
+                if (nodes[a].Key is { } k)
+                    foreach (string key in keys)
+                        if (string.Equals(k, key, StringComparison.Ordinal)) return true;
+            return false;
         }
 
         /// <summary>Sibling boxes that overlap, in a parent that is not a ZStack or a scroller, when both carry text or a target. Pinned headers

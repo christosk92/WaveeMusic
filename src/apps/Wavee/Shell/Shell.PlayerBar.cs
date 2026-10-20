@@ -192,6 +192,10 @@ public static partial class Shell
             _ => NowPlayingInk.Primary,
         };
 
+        /// <summary>The "Playing on <device>" line follows the artists line's states (absent for NoTrack and Error), so a load or a reconnect on the
+        /// remote output keeps it: gating it on Active made it fade out and back, the identity column 16 shorter, on every skip.</summary>
+        public static bool StatesRemoteLine(PlayerState state) => state != PlayerState.NoTrack && state != PlayerState.Error;
+
         /// <summary>The artists line is ABSENT for NoTrack and Error (not merely empty — W7/W9), present otherwise.</summary>
         public static bool ShowsArtistLine(PlayerState state, bool showSubtitle)
             => showSubtitle && state != PlayerState.NoTrack && state != PlayerState.Error;

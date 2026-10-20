@@ -54,6 +54,23 @@ public static class WinUiPanelLayout
 
     public const float MoreGlyph = 16f;
 
+    /// <summary>The keys of a tab's slot (the 18 before it and the tab) and of the "⋯"'s slot: the boxes that carry <see cref="TabMotion"/> and
+    /// <see cref="MoreSlotMotion"/>.</summary>
+    public const string TabSlotKeyPrefix = "winui-pane-tab-slot:", MoreSlotKey = "winui-pane-more-slot";
+
+    /// <summary>A tab moving into or out of the "⋯" (a pane drag across the fit, a tab switch that reorders the fit): its slot fades and opens or
+    /// closes its width through real layout, and the tabs after it slide over, so the crossing reads as motion (W-Tiers: "Nothing snaps").</summary>
+    public static readonly LayoutTransition TabMotion = new(TransitionChannels.Bounds | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut), SizeMode.Reflow, Axes: SizeAxes.Width,
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut));
+
+    /// <summary>The "⋯"'s slot: it opens and closes its width (the close's box) and fades, so the tab strip beside it eases (the title bar's
+    /// ⋯ slot, `WinUiFrameRules.MoreSlotMotion`, on the tabs' clock). Size only: the slot rides the pane's edge during a drag.</summary>
+    public static readonly LayoutTransition MoreSlotMotion = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width,
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
+
     /// <summary>The room the tabs have in a head <paramref name="paneWidth"/> wide: the row's inset either side and the close.</summary>
     public static float TabLane(float paneWidth, float close) => paneWidth - TabRowPadding.Left - TabRowPadding.Right - close;
 
