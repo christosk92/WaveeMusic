@@ -104,12 +104,20 @@ internal static class WinUiPanel
         }
         if (!measured || !F.FitTabs(widths, current, F.TabLane(width, close), close, shown)) shown.Fill(true);
 
+        // Each tab stands in its own keyed slot (the 18 before it and the tab), so one that moves into or out of the "⋯" fades and eases its width
+        // and the ones after it slide (F.TabMotion): a pane drag across the fit reads as motion, never a snap.
         var tabs = new List<Element>(modes.Count);
         var rest = new List<PanelMode>(modes.Count);
+        LayoutTransition? motion = Design.Reduced ? null : F.TabMotion;
         for (int i = 0; i < modes.Count; i++)
         {
-            if (shown[i]) tabs.Add(Tab(modes[i], i == current, show));
-            else rest.Add(modes[i]);
+            if (!shown[i]) { rest.Add(modes[i]); continue; }
+            tabs.Add(new BoxEl
+            {
+                Key = F.TabSlotKeyPrefix + modes[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true, Animate = motion,
+                Padding = new Edges4(tabs.Count > 0 ? F.TabGap : 0f, 0f, 0f, 0f),
+                Children = [Tab(modes[i], i == current, show)],
+            });
         }
 
         var row = new List<Element>(3)
@@ -117,11 +125,16 @@ internal static class WinUiPanel
             new ScrollEl
             {
                 Horizontal = true, Height = F.TabRowH, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
-                Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = F.TabGap, Height = F.TabRowH, Children = tabs.ToArray() },
+                Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Height = F.TabRowH, Children = tabs.ToArray() },
             },
         };
         if (rest.Count > 0 && show is not null)
-            row.Add(Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey });
+            row.Add(new BoxEl
+            {
+                Key = F.MoreSlotKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
+                Animate = Design.Reduced ? null : F.MoreSlotMotion,
+                Children = [Embed.Comp(new MoreTabsProps(rest.ToArray(), show, close), static () => new WinUiPaneMoreTabs()) with { Key = F.MoreKey }],
+            });
         row.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.ChromeClose, props.Close, true, false, close, close, F.CloseGlyph) with { Key = F.CloseKey },
             Loc.Get(Strings.Theme.Winui.Player.ClosePane)));
         return new BoxEl
