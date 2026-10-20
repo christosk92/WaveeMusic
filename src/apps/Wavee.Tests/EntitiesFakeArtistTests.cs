@@ -47,7 +47,7 @@ public class EntitiesFakeArtistTests
         (false, true,  0, 0, 0, 5, 5, 6, true,  0),     // ar7  Kimmuseum
         (true,  false, 4, 4, 4, 0, 0, 0, true,  142),   // ar8  Dry Season
         (true,  false, 4, 0, 4, 5, 5, 6, true,  362),   // ar9  The Longtime
-        (false, false, 4, 4, 0, 0, 6, 0, false, 483),   // ar10 Iris Overdrive
+        (false, false, 4, 4, 0, 0, 6, 0, false, 483),   // ar10 Iris Overdrive and the Midnight Orchestra
         (true,  false, 4, 0, 6, 5, 0, 6, true,  232),   // ar11 Coral Hours
         (true,  false, 0, 4, 6, 0, 6, 0, true,  228),   // arnoimg The Unpictured
     ];

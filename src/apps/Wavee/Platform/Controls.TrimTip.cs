@@ -121,7 +121,7 @@ public static partial class Controls
 
         /// <summary>One seam query. A single-line run (NoWrap, or capped at one line) compares its natural width with the
         /// slot; a run capped at N &gt; 1 lines is laid out at the slot width and its line fragments are counted against
-        /// the cap. An auto-fit run (<c>MinSize</c>, which the engine only applies to a wrapping, line-capped run) is
+        /// the cap. An auto-fit run (<c>MinSize</c>: a NoWrap run, or a wrapping line-capped one) is
         /// measured at its FLOOR face — the smallest it ever shrinks to — because the engine ellipsizes only after even
         /// the floor fails to fit. An uncapped wrapping run grows instead of being cut, so it is never trimmed. The face
         /// is the TextEl's own (<c>Family</c> interned through the engine's table — the one the font system resolves
@@ -133,7 +133,7 @@ public static partial class Controls
             if (TextSeam.Default is not { } fonts) return true;
             bool wraps = p.Wrap != TextWrap.NoWrap;
             if (wraps && p.MaxLines <= 0) return false;
-            float size = wraps && p.MinSize > 0f && p.MinSize < p.Size ? p.MinSize : p.Size;   // NaN fails both compares
+            float size = p.MinSize > 0f && p.MinSize < p.Size ? p.MinSize : p.Size;   // NaN fails both compares
             StringId family = p.Family is { } name && strings is not null ? strings.Intern(name) : default;
             Span<RectF> rects = stackalloc RectF[8];
             if (!wraps || p.MaxLines == 1)
