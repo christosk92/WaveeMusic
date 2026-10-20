@@ -23,7 +23,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiArtistOverview
 {
     /// <summary>The overview block at the page's measure: the columns by the tier's rule, each keyed so a crossing re-parents nothing it need not.</summary>
-    public static Element Block(ArtistPageProps p, WinUiArtistLatch latch, WidthTier tier, float inset)
+    public static Element Block(ArtistPageProps p, WinUiArtistLatch latch, WidthTier tier, float inset, in TierFacts facts)
     {
         Artist a = p.Artist;
         bool popular = false, latest = false, upcoming = false;
@@ -64,7 +64,7 @@ internal static class WinUiArtistOverview
             {
                 side.AddRange(after);
                 return Grid(0, WinUiArtistRules.HugeColumnGap,
-                    Column(PopularKey, WinUiArtistRules.PopularGrow, chart is null ? [] : [chart]),
+                    Popular(PreviewWidth(slot, columns), chart),
                     Column("ov:col:discography", WinUiArtistRules.PopularGrow, [preview]),
                     Column(SideKey(columns), WinUiArtistRules.OtherGrow, side.ToArray()));
             }
@@ -80,10 +80,11 @@ internal static class WinUiArtistOverview
             // Stacked without a chart, an empty Popular column would add a section gap above the side column.
             if (!two && chart is null) return Grid(1, WinUiArtistRules.SectionGap, sideColumn);
             return Grid((byte)(two ? 0 : 1), two ? WinUiArtistRules.ColumnGap : WinUiArtistRules.SectionGap,
-                Column(PopularKey, grow * WinUiArtistRules.PopularGrow, chart is null ? [] : [chart]),
+                Popular(two ? MathF.Max(1f, slot - WinUiArtistRules.ColumnGap - PreviewWidth(slot, columns)) : float.NaN, chart),
                 sideColumn);
         };
-        return Embed.Comp(new GridProps(build, inset, p.Width), static () => new GridHost()) with { Key = "artist:overview" };
+        return Embed.Comp(new GridProps(build, inset, p.Width, WinUiArtistTiers.OverviewRungOf(in facts), facts.ContentWidth), static () => new GridHost())
+            with { Key = "artist:overview" };
     }
 
     /// <summary>The preview's width in a <paramref name="slot"/>-wide overview of <paramref name="columns"/> columns: the slot stacked; the side column's
@@ -106,7 +107,7 @@ internal static class WinUiArtistOverview
     };
 
     /// <summary>A column: in a row it grows by its weight from a zero basis; stacked (<paramref name="grow"/> 0) it takes its content's height.</summary>
-    static Element Column(string key, float grow, Element[] kids) => new BoxEl
+    static BoxEl Column(string key, float grow, Element[] kids) => new BoxEl
     {
         Key = key, Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = grow, Basis = grow > 0f ? 0f : float.NaN, MinWidth = 0f,
         // Popular's height never follows its width (the chart's rows are fixed), so it re-lays at the eased width once the side column has faded; the side
@@ -116,6 +117,12 @@ internal static class WinUiArtistOverview
         // durations) inside the held width instead of over the outgoing column.
         ClipToBounds = key == PopularKey,
     };
+
+    /// <summary>The Popular column, <paramref name="width"/> wide beside the other columns (its weight's share of the slot; NaN stacked: the slot).
+    /// An explicit width, not a grow from a zero basis: its restack resize re-lays the chart at the eased width it writes into the column's width, and
+    /// a row re-solved under it (the page easing through a docked pane's slide) hands a growing column its flex share instead, which presented
+    /// Popular at its new width for the whole of the resize's delay, then back at the old one when the resize started.</summary>
+    static Element Popular(float width, Element? chart) => Column(PopularKey, 0f, chart is null ? [] : [chart]) with { Width = width, Shrink = 1f };
 
     const string PopularKey = "ov:col:popular";
 
@@ -131,38 +138,54 @@ internal static class WinUiArtistOverview
 
     // ── the column rung ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The grid host's props: the arrangement for a column rung, the page inset (the rung reads the PAGE width: the slot plus the inset either
-    /// side) and the page width the host measured (the rung's seed before the first measure). The builder is a live closure (a fresh one rebuilds with
-    /// the page, like the ungated responsive box this replaced).</summary>
-    sealed record GridProps(Func<int, float, PreviewState, Element> Build, float Inset, float Seed);
+    /// <summary>The grid host's props: the arrangement for a column rung, the page inset (the page is the slot plus the inset either side), the page
+    /// width the host measured (the slot's seed before the first measure), the committed column rung (<see cref="WinUiArtistTiers.OverviewRung"/>) and
+    /// the content width the rung was resolved at: the width the page LANDS at. The builder is a live closure (a fresh one rebuilds with the page).</summary>
+    sealed record GridProps(Func<int, float, PreviewState, Element> Build, float Inset, float Seed, int Rung, float Landing);
 
-    /// <summary>The overview's column rung, resolved with the engine's tier hook over the measured page width: a crossing found after mount is held
-    /// until the first frame that is not resized and committed right before FLIP capture, so the restack animates. A measured width written into a
-    /// signal the render reads (the responsive box this replaced) rebuilt the overview in the frame's in-frame flush with no capture, so every
-    /// transition on the overview had nothing to animate from: the restack snapped.</summary>
+    /// <summary>The overview's arrangement. The column rung is the policy's content-axis mark, which the core resolves from the content width the shell
+    /// computes (the width the page lands at) and commits right before FLIP capture: on a docked pane's open or close that is the slide's first frame,
+    /// on a window resize the first frame that is not resized.
+    /// <para>A docked pane's slide eases the page's width through real layout, so the measured width only reaches the landing width 250 ms later.
+    /// A restack therefore lays the overview out AT THE LANDING WIDTH until the measured width meets it: every transition of the fade-through (the side
+    /// column out where it stands, Popular's resize, the column in at its slot, the overview's height) runs from a fixed start to its final rect, while
+    /// the page's edge slides over (opening) or uncovers (closing) the overview, which the content card clips. Laid out at the live width instead, the
+    /// restack crossed partway through the slide and every frame after it moved its targets: Popular narrowed ~490 at once and jumped back when its
+    /// delayed resize started (closing), or overshot to the width of the restack's frame and snapped back at its end (opening).</para></summary>
     sealed class GridHost : Component
     {
-        readonly Signal<float> _page = new(0f);
         readonly Signal<float> _slot = new(0f);   // a version: the width a render uses is _slotNow
+        readonly Signal<int> _released = new(0);   // a version: bumped when the landing width below is let go
         readonly PreviewState _state = new();
-        readonly Func<float> _seedFn;
         readonly Action<RectF> _onBounds;
-        float _inset, _seed, _measured, _slotNow;
-        int _rung = -1;
+        readonly Action _release;
+        float _inset, _measured, _slotNow, _distance, _landing = float.NaN;   // _landing: the width the overview is laid out at while the page eases to it
+        int _rung = -1, _restacks;
 
         public GridHost()
         {
-            _seedFn = () => _seed;
+            _release = () =>
+            {
+                if (float.IsNaN(_landing)) return;
+                _landing = float.NaN;
+                _released.Value++;
+            };
             _onBounds = r =>
             {
                 if (!(r.W > 0f)) return;
                 _measured = r.W;
-                float page = r.W + 2f * _inset;
-                // A width that crosses the column edge waits for the restack: re-rendering the preview at it now (an in-frame rebuild with no FLIP capture)
-                // would snap the overview's height a frame or two before the restack animates it. The restack's render reads the width measured last.
-                bool crossing = _rung >= 0 && WinUiArtistTiers.OverviewLadder.Resolve(page, _rung) != _rung;
+                if (!float.IsNaN(_landing))
+                {
+                    // The page has met its landing width (the overview's layout no longer changes), or it moves away from it (a slide reversed or
+                    // interrupted): the overview follows the measured width again.
+                    float distance = MathF.Abs(r.W - _landing);
+                    if (distance > 0.5f && distance <= _distance + 0.5f) { _distance = distance; return; }
+                    _release();
+                }
+                // A width across the column edge from the committed rung waits for the restack: re-rendering the preview at it now (an in-frame rebuild with
+                // no FLIP capture) would snap the overview's height a frame or two before the restack animates it.
+                bool crossing = _rung >= 0 && WinUiArtistTiers.OverviewLadder.Resolve(r.W + 2f * _inset, _rung) != _rung;
                 if (!crossing && MathF.Abs(r.W - _slotNow) > 0.5f) { _slotNow = r.W; _slot.Value = r.W; }
-                if (MathF.Abs(page - _page.Peek()) > 0.5f) _page.Value = page;
             };
         }
 
@@ -170,17 +193,44 @@ internal static class WinUiArtistOverview
         {
             var props = UseProps<GridProps>();
             _inset = props.Inset;
-            _seed = props.Seed;
-            var rung = UseTier(WinUiArtistTiers.OverviewLadder, TierSource.Measured(_page, _seedFn));
-            bool restack = _rung >= 0 && rung.Value != _rung;
-            _rung = rung.Value;
-            // The slot's width sizes the preview's covers (read: a width change inside one arrangement rebuilds). A restack reads the width measured last,
-            // which the signal does not have yet (a crossing width waits for it). The seed stands in before the first measure.
+            bool restack = _rung >= 0 && props.Rung != _rung;
+            _rung = props.Rung;
             _ = _slot.Value;
-            if (restack && _measured > 0.5f) _slotNow = _measured;
+            _ = _released.Value;
+            if (restack)
+            {
+                // The page lands at the content width the rung was resolved at: lay the restack out there while the page is still on its way.
+                float landing = props.Landing - 2f * props.Inset;
+                float from = _measured > 0.5f ? _measured : landing;
+                if (landing > 0.5f && MathF.Abs(landing - from) > 0.5f)
+                {
+                    _distance = MathF.Abs(landing - from);
+                    _restacks++;
+                    _landing = landing;
+                }
+                else
+                {
+                    _landing = float.NaN;
+                    if (_measured > 0.5f) _slotNow = _measured;
+                }
+            }
+            UseTimeout(_release, WinUiArtistMotion.LandingHoldMs, DepKey.From(_restacks));
+            float pinned = _landing;
+            if (!float.IsNaN(pinned)) _slotNow = pinned;
+            else if (_measured > 0.5f && MathF.Abs(_measured - _slotNow) > 0.5f
+                && WinUiArtistTiers.OverviewLadder.Resolve(_measured + 2f * props.Inset, _rung) == _rung) _slotNow = _measured;
             float slot = _slotNow;
             if (!(slot > 0.5f)) slot = MathF.Max(1f, props.Seed - 2f * props.Inset);
-            return new BoxEl { Direction = 1, MinWidth = 0f, OnBoundsChanged = _onBounds, Children = [props.Build(_rung, slot, _state)] };
+            // The measured box follows the page; the overview inside it takes the landing width while one is set (the content card clips what passes its edge).
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, OnBoundsChanged = _onBounds,
+                Children = [new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Width = pinned,
+                    Children = [props.Build(_rung, slot, _state)],
+                }],
+            };
         }
     }
 

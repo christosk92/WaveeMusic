@@ -57,7 +57,7 @@ internal static class WinUiArtistPage
         latch.Surface ??= ListStyleLookup.Of(registry, StyleKeys.Surface);
         var chart = ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
 
-        Element? body = p.BodyReady ? Compose(p, latch, tier) : null;
+        Element? body = p.BodyReady ? Compose(p, latch, tier, in facts) : null;
         // ONE region, and the shimmer is DERIVED (a representative tree at the loaded page's geometry, never mounted directly).
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, tier),
@@ -86,7 +86,7 @@ internal static class WinUiArtistPage
 
     // ── the loaded page ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element Compose(ArtistPageProps p, WinUiArtistLatch latch, WidthTier tier)
+    static Element Compose(ArtistPageProps p, WinUiArtistLatch latch, WidthTier tier, in TierFacts facts)
     {
         Artist a = p.Artist;
         string uri = a.Uri.Text;
@@ -128,7 +128,7 @@ internal static class WinUiArtistPage
         {
             Key = "artist-magazine", Direction = 1, Gap = WinUiArtistRules.SectionGap, MinWidth = 0f,
             Padding = new Edges4(inset, WinUiArtistRules.OverviewTop, inset, R.Space.DockReserve + WinUiArtistRules.DockExtra),
-            Children = [WinUiArtistOverview.Block(p, latch, tier, inset), .. sections],
+            Children = [WinUiArtistOverview.Block(p, latch, tier, inset, in facts), .. sections],
         }.StickyClip(WinUiArtistRules.PivotClearance);   // the pinned pivot paints nothing: what scrolls under it cuts itself at its lower edge
         return new BoxEl { Direction = 1, Children = [hero, WinUiArtistPivot.Bar(p, inset), magazine] };
     }

@@ -14,6 +14,7 @@
 //
 // Public, so `Wavee.Tests` pins the records.
 
+using System.Collections.Immutable;
 using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -25,6 +26,11 @@ public readonly record struct WinUiDiscoLayout(float MinColumn, float Gap, int D
 {
     /// <summary>The drawer's shape the core's verdict sizes.</summary>
     public Album.DrawerShape Drawer => new(DrawerColumns, DrawerPitch, DrawerHead);
+}
+
+public static partial class WinUiTiers
+{
+    static partial void RungsEntities(ImmutableArray<NamedRung>.Builder rungs) => rungs.Add(WinUiArtistTiers.OverviewRung);
 }
 
 /// <summary>WinUI's artist tier policy and records.</summary>
@@ -47,16 +53,23 @@ public static class WinUiArtistTiers
         _ => new WinUiShelfBand(WinUiArtistRules.ShelfMin, WinUiArtistRules.ShelfMax, 0, 0f, WinUiArtistRules.ShelfGap, true),
     };
 
-    /// <summary>The overview's column count for a <paramref name="pageWidth"/>-wide page in window tier <paramref name="tier"/>: one below 1100 (held 24 once two),
-    /// two from 1100, three at Huge. <paramref name="previous"/> 0 is a fresh resolve.</summary>
-    public static int OverviewColumns(float pageWidth, WidthTier tier, int previous)
-        => OverviewColumnsOf(OverviewLadder.Resolve(pageWidth, previous <= 0 ? -1 : previous >= 2 ? 1 : 0), tier);
+    /// <summary>The rung the overview stands in two columns from (<see cref="OverviewRung"/>).</summary>
+    public const string OverviewRungId = "winui.artist.overview.columns";
 
-    /// <summary>The overview's column rung over the page width: 0 (one column) below 1100, 1 from 1100, held down to 1076 once over. The view resolves it
-    /// with the engine's tier hook, so a crossing found after mount commits on the first frame that is not resized, right before FLIP capture (a measured
-    /// width written straight into a signal rebuilt the overview in an in-frame flush with no capture: the restack snapped).</summary>
-    public static TierLadder OverviewLadder { get; } = TierLadder.Of(
-        new TierEdge(WinUiArtistRules.TwoColumnFrom, NarrowHold: WinUiArtistRules.ColumnHold, WidenHold: 0f));
+    /// <summary>The overview's column rung, a CONTENT-axis mark of WinUI's policy: crossed (two columns, three at Huge) from a 1100 page, held down to 1076
+    /// once over. The artist page is the content card, so the content width is the page width. The core resolves it from the content width the shell
+    /// computes synchronously: the width the page LANDS at. A docked pane's open or close crosses it on the slide's first frame (the slide eases the
+    /// page's width through real layout, so a rung over the measured width crossed partway through: the restack fired mid-slide and its transitions
+    /// chased a width still moving), and a window resize commits it on the first frame that is not resized, right before FLIP capture.</summary>
+    public static NamedRung OverviewRung { get; } = new(OverviewRungId,
+        new TierEdge(WinUiArtistRules.TwoColumnFrom, NarrowHold: WinUiArtistRules.ColumnHold, WidenHold: 0f), RungAxis.Content);
+
+    /// <summary>The overview rung's edge as a ladder over a page width (0: one column, 1: two or more): the view asks it whether a measured width
+    /// lies across the edge from the committed rung.</summary>
+    public static TierLadder OverviewLadder { get; } = TierLadder.Of(OverviewRung.Edge);
+
+    /// <summary>The overview's column rung in <paramref name="facts"/>: 1 once <see cref="OverviewRung"/> is crossed, else 0.</summary>
+    public static int OverviewRungOf(in TierFacts facts) => facts.Rung(OverviewRungId) ? 1 : 0;
 
     /// <summary>The overview's column count for column rung <paramref name="rung"/> of <see cref="OverviewLadder"/> in window tier <paramref name="tier"/>:
     /// one, two, three at Huge.</summary>
