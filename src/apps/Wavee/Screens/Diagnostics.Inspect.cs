@@ -1017,7 +1017,7 @@ public static partial class Diagnostics
             List<(NodeHandle Node, string Key)> found = InspectDump.Exact(shell, key);
             if (found.Count == 0)
             {
-                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + key + " lists near keys)");
+                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + Inspect.Quote(key) + " lists near keys)");
                 return false;
             }
             InspectDump.InReadingOrder(scene, found);

@@ -10,7 +10,8 @@
 //    "scroll"?:{offset,max,viewport,content,axis},"anim"?:true,"children"}
 // Defaults are omitted (no fill when transparent, no border when 0 wide...), so a dump of a page stays small enough to read.
 // `rect` is the PRESENTED absolute rect in window DIP (`SceneStore.PresentedAbsoluteRect`): what paint and hit-testing use.
-// An icon glyph prints as `glyph:<Icons name>` (dump and find alike), so a label is never an invisible private-use character.
+// An icon glyph prints as `glyph:<Icons name>` (dump and find alike), alone or inside words, so a label never holds an invisible
+// private-use character.
 
 using System.Text.Json;
 using FluentGpu.Foundation;
@@ -144,7 +145,7 @@ public static partial class Diagnostics
             if (GlyphLabel(value) is { } glyph)
             {
                 w.WriteString("string", glyph);
-                w.WriteString("codepoint", Codepoints(value));
+                w.WriteString("codepoint", Codepoints(value, privateUseOnly: true));
             }
             else w.WriteString("string", value);
             if (value.Length == 0 && scene.TryGetSpanText(node, out ReadOnlySpan<TextSpan> spans)) w.WriteNumber("spans", spans.Length);
@@ -246,7 +247,7 @@ public static partial class Diagnostics
             w.WriteNumber("count", found.Count);
             w.WriteString("order", "reading order (top, then left); nth counts the actionable matches of a key");
             if (key.Length > 0 && found.Count == 0 && shell.FindPrefix(key).Count is > 0 and int near)   // `find <x>` was a prefix search once
-                w.WriteString("hint", "0 nodes keyed exactly '" + key + "'; " + near + " keys start with it: find prefix=" + key);
+                w.WriteString("hint", "0 nodes keyed exactly '" + key + "'; " + near + " keys start with it: find prefix=" + Inspect.Quote(key));
             return found.Count;
         }
 
@@ -281,28 +282,58 @@ public static partial class Diagnostics
         // ── glyphs ──────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the <c>Icons</c> constant,
-        /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; null for words.</summary>
+        /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
+        /// (`Afterglow glyph:U+E8B2`: a token stands apart from the words beside it by a blank); null for text with no glyph.</summary>
         public static string? GlyphLabel(string text)
         {
-            if (!IsGlyph(text)) return null;
-            return "glyph:" + (FluentGpu.Controls.Icons.TryGetName(text, out string? name) ? name : "U+" + Codepoints(text));
+            if (IsGlyph(text)) return GlyphToken(text);
+            if (text.AsSpan().IndexOfAnyInRange(FirstPrivateUse, LastPrivateUse) < 0) return null;
+            var sb = new System.Text.StringBuilder(text.Length + 16);
+            for (int i = 0; i < text.Length;)
+            {
+                if (!IsPrivateUse(text[i])) { sb.Append(text[i++]); continue; }
+                int start = i;
+                while (i < text.Length && IsPrivateUse(text[i])) i++;
+                string run = text[start..i];
+                if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1])) sb.Append(' ');
+                // A run of two may be one glyph (a layered icon); a longer run, or two the table does not name together, is a token per glyph.
+                if (run.Length <= 2 && FluentGpu.Controls.Icons.TryGetName(run, out _)) sb.Append(GlyphToken(run));
+                else
+                    for (int k = 0; k < run.Length; k++)
+                    {
+                        if (k > 0) sb.Append(' ');
+                        sb.Append(GlyphToken(run[k].ToString()));
+                    }
+                if (i < text.Length && !char.IsWhiteSpace(text[i])) sb.Append(' ');
+            }
+            return sb.ToString();
         }
+
+        /// <summary>`glyph:<Icons name>`, or `glyph:U+XXXX` for a glyph the engine's table has no name for.</summary>
+        static string GlyphToken(string glyph)
+            => "glyph:" + (FluentGpu.Controls.Icons.TryGetName(glyph, out string? name) ? name : "U+" + Codepoints(glyph));
+
+        const char FirstPrivateUse = '\uE000', LastPrivateUse = '\uF8FF';
+
+        static bool IsPrivateUse(char c) => c is >= FirstPrivateUse and <= LastPrivateUse;
 
         /// <summary>One or two private-use characters (U+E000..U+F8FF): an icon glyph, not words.</summary>
         static bool IsGlyph(string text)
         {
             if (text.Length is 0 or > 2) return false;
             foreach (char c in text)
-                if (c < '\uE000' || c > '\uF8FF') return false;
+                if (!IsPrivateUse(c)) return false;
             return true;
         }
 
-        /// <summary>The UTF-16 units of <paramref name="text"/> as hex (`E768`, or `E768 E769` for two).</summary>
-        static string Codepoints(string text)
+        /// <summary>The UTF-16 units of <paramref name="text"/> as hex (`E768`, or `E768 E769` for two); with
+        /// <paramref name="privateUseOnly"/>, only the private-use ones (the glyphs inside words).</summary>
+        static string Codepoints(string text, bool privateUseOnly = false)
         {
             var sb = new System.Text.StringBuilder(text.Length * 5);
             foreach (char c in text)
             {
+                if (privateUseOnly && !IsPrivateUse(c)) continue;
                 if (sb.Length > 0) sb.Append(' ');
                 sb.Append(((int)c).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
             }
