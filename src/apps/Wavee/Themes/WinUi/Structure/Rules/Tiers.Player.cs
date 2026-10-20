@@ -191,7 +191,12 @@ public static class WinUiPlayerTiers
         s_docked,
         s_docked with { MaxDocked = 2, Panes = HugePanes });
 
+    /// <summary>The gap before each docked pane: none. The frame lays Huge's second pane flush against the primary (one hairline between them), so
+    /// the content width the shell estimates counts no gap there (it counted the shell's 8: the page laid out 8 wider than every content-axis rung
+    /// and record was resolved at, and stepped 8 once it measured itself).</summary>
+    public const float PaneGap = 0f;
+
     /// <summary>The panel's policy: 340, resizable 280-480, the content row's height (the pane sits between the toolbar and the bar), the
-    /// core's mini-player bounds, the rules above.</summary>
-    public static PanelPolicy Panel { get; } = new(PanelMinW, PanelMaxW, FullHeight: false, PanelPolicy.Default.Pip) { Tiers = PanelRules };
+    /// core's mini-player bounds, the rules above, the panes flush (<see cref="PaneGap"/>; the shell's 8 before the primary).</summary>
+    public static PanelPolicy Panel { get; } = new(PanelMinW, PanelMaxW, FullHeight: false, PanelPolicy.Default.Pip) { Tiers = PanelRules, PaneGap = PaneGap };
 }

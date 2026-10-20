@@ -229,15 +229,20 @@ public static class WinUiArtistMotion
     /// it glides, so the frames between the width change and the restack show the column where it stood, not a step toward a slot it never takes.</summary>
     public const float HoldMs = 64f;
 
-    /// <summary>The overview's height: laid out once at the new height, its PRESENTED extent eased (a flow reveal, which also clips the overview to it), so
-    /// the sections under it ride the difference.</summary>
+    /// <summary>The overview's height: it eases through REAL layout (a reflow, which also clips the overview to it), so every section under it is laid
+    /// out at the eased height's foot each tick. A flow reveal (layout once, the presented extent eased at paint time) landed at once whenever the
+    /// change lay wholly below the view (the restack grows the overview past the window's foot), so the body's layout stepped ~455 DIP in one frame.</summary>
     public static readonly LayoutTransition OverviewHeight = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.FlowReveal, Axes: SizeAxes.Height);
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
     /// <summary>The Popular column: it resizes (full width stacked, its weight's share beside the side column), re-laying the chart at the eased width every
     /// tick, after the side column has faded out of the way (it never widens under the outgoing column).</summary>
     public static readonly LayoutTransition Column = new(TransitionChannels.Position | TransitionChannels.Size,
         TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Relayout, DelayMs: FadeOutMs);
+
+    /// <summary>Popular's resize once a restack that WIDENS it has held it at its old width for <see cref="FadeOutMs"/> (the view lays it out at that
+    /// width, then releases it): <see cref="Column"/> without the delay, which the hold has already spent.</summary>
+    public static readonly LayoutTransition ColumnReleased = Column with { DelayMs = 0f };
 
     /// <summary>The side column in one arrangement: a restack replaces it (keyed by the arrangement), so the outgoing one fades out where it stands and
     /// the incoming one fades in at its slot once Popular has resized. Inside one arrangement its layout changes hold <see cref="HoldMs"/>, then glide.</summary>

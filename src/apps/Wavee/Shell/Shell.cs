@@ -1839,16 +1839,18 @@ public static partial class Shell
 
         /// <summary>Everything the docked panes take from the content row in a window <paramref name="viewportWidth"/> wide under
         /// <paramref name="rule"/>: the primary while it is open and docked (at its width brought up to the floor) and each docked pane of the
-        /// rule's arrangement that is open, each with its gap (contract 1.29; what <c>WindowTiers.PanelsReserved</c> estimates the content
-        /// width from).</summary>
+        /// rule's arrangement that is open, each with the gap the structure's frame lays before it (<paramref name="dockGap"/> before the
+        /// primary, <paramref name="paneGap"/> before each pane: <c>PanelPolicy.DockGap</c> / <c>PaneGap</c>; contract 1.29; what
+        /// <c>WindowTiers.PanelsReserved</c> estimates the content width from).</summary>
         public static float PanelsReserved(Theming.PanelTierRule rule, float viewportWidth, bool railOpen, RailMode mode, float railWidth,
-            bool queueBeside)
+            bool queueBeside, float dockGap = RailGapW, float paneGap = RailGapW)
         {
             float floor = rule.FloorFor(viewportWidth);
             var panes = rule.Arrangement;
-            float total = RailGapWidth(railOpen, rule.Docks) + RailReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, FloorWidth(floor)));
+            bool docked = railOpen && rule.Docks;
+            float total = (docked ? dockGap : 0f) + RailReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, FloorWidth(floor)));
             for (int i = 0; i < panes.Count; i++)
-                total += SecondOffset(PaneOpen(in panes, i, queueBeside, railOpen, mode), SecondWidth(floor));
+                if (PaneOpen(in panes, i, queueBeside, railOpen, mode)) total += paneGap + SecondWidth(floor);
             return total;
         }
 
