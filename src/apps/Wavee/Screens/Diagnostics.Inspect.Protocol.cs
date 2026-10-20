@@ -175,6 +175,13 @@ public static partial class Diagnostics
             Arg("panEvery", ArgType.Int, "repeat the gesture every N frames (0: once)", "0"),
             Arg("panCount", ArgType.Int, "how many gestures", "1"),
             Arg("panKind", ArgType.Enum, "the contact's device", "touchpad", "touchpad|touch"),
+            Arg("drag", ArgType.List, "a mouse drag: DIP per frame along x while the button is down, cycled"),
+            Arg("dragFrames", ArgType.Int, "frames the pointer moves with the button down", "8"),
+            Arg("dragStart", ArgType.Int, "the frame the button goes down on", "0"),
+            Arg("dragKey", ArgType.Key, "press on this node's centre (or dragX, dragY)"),
+            Arg("dragX", ArgType.Float, "press at this x (window DIP)"),
+            Arg("dragY", ArgType.Float, "press at this y (window DIP)"),
+            Arg("dragDy", ArgType.Float, "DIP per frame down while dragging", "0"),
         ];
 
         /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` (anywhere else they would
@@ -220,6 +227,10 @@ public static partial class Diagnostics
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
             Arg("gallery", ArgType.Enum, "the fullscreen stage's gallery", null, "on|off|true|false"),
             Arg("grade", ArgType.Enum, "cover grading: a hue per uri, all grey, or the playing one grey", null, "hue|grey|gray|greynow"),
+            Arg("images", ArgType.Enum, "fake: a gradient per image; real: the app's own decoder paints the bundled photographs", "fake", "fake|real"),
+            Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
+            Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
+            Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
         ];
 
         /// <summary>The mount's args: its own and the navigation.</summary>
@@ -319,12 +330,13 @@ public static partial class Diagnostics
                 Positional = ["key", "dy"], NeedsMount = true, Acts = true,
                 Args = Join(s_aimArgs, [Arg("dy", ArgType.Float, "notches, positive toward the end", "3"), Arg("dx", ArgType.Float, "horizontal notches", "0")], s_settleArgs),
             },
-            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it); then settle", "play spotify:track:tr3 next=4")
+            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it), or turn the output remote (remote=); then settle", "play spotify:track:tr3 next=4")
             {
                 Positional = ["uri", "fromMs"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri"), Arg("fromMs", ArgType.Int, "the start position", "0"),
+                Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri (optional with remote=)"), Arg("fromMs", ArgType.Int, "the start position", "0"),
                              Arg("next", ArgType.Int, "queue this many tracks after a spotify:track:tr<k> (0..64)", "0"),
-                             Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0")], s_settleArgs),
+                             Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
+                             Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
             {
@@ -397,7 +409,7 @@ public static partial class Diagnostics
             new(Verb.State, "state", "Show a page state in place of the page (empty, nomatch, error, offline...), or put the page back (none)", "state kind=empty")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the state", null, "empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-faces|none")], s_settleArgs),
+                Args = Join([Arg("kind", ArgType.Enum, "the state", null, "empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-warm|cold-faces|none")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang) or Report a problem (report) over the current page; key esc closes it", "dialog kind=report")
             {

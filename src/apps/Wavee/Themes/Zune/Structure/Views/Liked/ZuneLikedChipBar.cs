@@ -65,7 +65,8 @@ internal static class ZuneLikedChipBar
     /// row flex would otherwise compress every chip and ellipsise the labels instead of letting the rail overflow). An un-evidenced chip is SHOWN AND DISABLED.</summary>
     static Element Chip(string key, string label, bool word, bool on, bool available, Action? click, float target) => new BoxEl
     {
-        Key = key, Direction = 0, Height = target, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        // At least as wide as it is tall: a one-word chip ("All") keeps the touch floor's 40 at Compact.
+        Key = key, Direction = 0, Height = target, MinWidth = target, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(Z.ChipPadX, 0f, Z.ChipPadX, 0f),
         Fill = on ? Tok.AccentDefault : R.Layer.RowHover,
         HoverFill = on ? Tok.AccentSecondary : R.Layer.ChromeHover, PressedFill = on ? Tok.AccentTertiary : R.Layer.RowPressed,

@@ -426,14 +426,7 @@ internal static class ClassicTrackTable
                     Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
                     Visible = Prop.Of(() => r.P.Track.ForDisplay.IsPodcast),
                 },
-                new BoxEl
-                {
-                    Width = ClassicTrackRowLayout.EpisodeBadge, Height = ClassicTrackRowLayout.EpisodeBadge, Shrink = 0f,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Corners = CornerRadius4.All(2f), Fill = Tok.TextTertiary,
-                    Visible = Prop.Of(() => Track.Badge(r.P)),
-                    Children = [new TextEl("E") { Size = 14f * 0.68f, Weight = 700, Color = Tok.TextInverse }],
-                },
+                Controls.ExplicitBadge(ClassicTrackRowLayout.EpisodeBadge) with { Visible = Prop.Of(() => Track.Badge(r.P)) },
                 new SpanTextEl(Prop.Of(() =>
                 {
                     buffer.Clear();

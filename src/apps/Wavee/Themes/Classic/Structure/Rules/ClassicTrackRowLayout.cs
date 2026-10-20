@@ -51,7 +51,8 @@ internal static class ClassicTrackRowLayout
     /// <summary>The gap between the Modern subline's parts (EPISODE, the E badge, the credit run).</summary>
     public const float MetaGap = 4f;
 
-    /// <summary>The Modern episode "E" badge: a 14 DIP square.</summary>
+    /// <summary>The Modern episode "E" badge as asked of <c>Controls.ExplicitBadge</c>: 14, which the badge grows to 16 so its letter meets
+    /// the 11-DIP text floor.</summary>
     public const float EpisodeBadge = 14f;
 
     /// <summary>The Classic explicit word-mark's height.</summary>

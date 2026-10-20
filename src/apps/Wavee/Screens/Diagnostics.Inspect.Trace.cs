@@ -63,6 +63,13 @@ public static partial class Diagnostics
             public double[] Pan = [];
             public int PanFrames = 8, PanStart, PanEvery, PanCount = 1;
             public bool PanTouch;
+            /// <summary>A mouse drag (a splitter, a slider, a drag source): DIP per frame along x while the button is down, cycled; empty = none.
+            /// The button goes down at <see cref="DragStart"/> on <see cref="DragKey"/>'s centre (or <see cref="DragX"/>, <see cref="DragY"/>), the
+            /// pointer moves for <see cref="DragFrames"/> frames (<see cref="DragDy"/> DIP per frame down), then the button comes up.</summary>
+            public double[] Drag = [];
+            public int DragFrames = 8, DragStart;
+            public float DragDy, DragX = float.NaN, DragY = float.NaN;
+            public string DragKey = "";
             public bool WatchesNodes => Keys.Count > 0 || Prefixes.Count > 0;
         }
 
@@ -106,6 +113,17 @@ public static partial class Diagnostics
                 o.WheelKey = a.Str("wheelKey");
                 o.WheelX = a.Float("wheelX", float.NaN);
                 o.WheelY = a.Float("wheelY", float.NaN);
+            }
+            if (a.Has("drag"))
+            {
+                if (!TryWheelSequence(string.Join(",", a.List("drag")), out o.Drag)) { error = "drag is a number or a comma list of numbers (DIP per frame along x)"; return false; }
+                o.DragFrames = Math.Clamp(a.Int("dragFrames", 8), 1, 5000);
+                o.DragStart = Math.Max(0, a.Int("dragStart", 0));
+                o.DragDy = a.Float("dragDy", 0f);
+                o.DragKey = a.Str("dragKey");
+                o.DragX = a.Float("dragX", float.NaN);
+                o.DragY = a.Float("dragY", float.NaN);
+                if (o.DragKey.Length == 0 && !(float.IsFinite(o.DragX) && float.IsFinite(o.DragY))) { error = "drag wants dragKey or dragX and dragY"; return false; }
             }
             options = o;
             return true;
@@ -582,6 +600,7 @@ public static partial class Diagnostics
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
             int sent = 0;
             bool moved = false;
+            Point2 dragAt = default;
             shell.Host.RenderCensus = o.Census;   // a slow frame names its components (row.census)
             for (int f = 0; f < o.Frames; f++)
             {
@@ -606,6 +625,7 @@ public static partial class Diagnostics
                     }
                     wheel |= down;
                 }
+                if (o.Drag.Length > 0) DragStep(shell, o, f, keyed, ref dragAt);
                 long t0 = Stopwatch.GetTimestamp();
                 FrameStats s = shell.Host.RunFrame();
                 double wall = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
@@ -678,6 +698,26 @@ public static partial class Diagnostics
         }
 
         /// <summary>Where a trace's wheel lands: `wheelKey`, else `wheelX`/`wheelY`, else the centre of the traced scroller, else the window centre.</summary>
+        /// <summary>The drag on traced frame <paramref name="f"/>: the press on its start point, a move per frame while it is down, the release.</summary>
+        void DragStep(Shell.HeadlessShell shell, InspectTrace.Options o, int f, List<(NodeHandle Node, string Key)> keyed, ref Point2 at)
+        {
+            int end = o.DragStart + o.DragFrames;
+            if (f < o.DragStart || f > end) return;
+            if (f == o.DragStart)
+            {
+                at = float.IsFinite(o.DragX) && float.IsFinite(o.DragY) ? new Point2(o.DragX, o.DragY) : default;
+                if (o.DragKey.Length > 0)
+                    foreach (var (node, key) in keyed)
+                        if (string.Equals(key, o.DragKey, StringComparison.Ordinal)) { at = InspectKit.CentreOf(shell.Host.Scene, node); break; }
+                Move(at);
+                Queue(new InputEvent(InputKind.PointerDown, at, 0, 0, TimestampMs: _ms));
+                return;
+            }
+            if (f == end) { Queue(new InputEvent(InputKind.PointerUp, at, 0, 0, TimestampMs: _ms)); return; }
+            at = new Point2(at.X + (float)o.Drag[(f - o.DragStart - 1) % o.Drag.Length], at.Y + o.DragDy);
+            Move(at);
+        }
+
         Point2 WheelPoint(Shell.HeadlessShell shell, InspectTrace.Options o, List<(NodeHandle Node, string Key)> keyed)
         {
             SceneStore scene = shell.Host.Scene;

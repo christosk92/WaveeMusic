@@ -64,11 +64,22 @@ public static class WinUiArtistRules
     /// <summary>The Verified seal (14 round, its check 9) and the gap to its words; the lines' gap in the copy; the actions' gap and their air under the card's baseline.</summary>
     public const float SealSize = 14f, SealGlyph = 9f, SealGap = 6f, CopyGap = 2f, ActionsGap = 8f, ActionsBottom = 8f;
 
+    /// <summary>The Display face's natural line box per em: the name's box is the taller of it and its line height (what the scrim's bands measure).</summary>
+    public const float NameNaturalLine = 1.33f;
+
     /// <summary>The name's size (Display 68) and line (80), its auto-fit floor; the meta line's size and line; the Verified words'.</summary>
     public const float NameSize = 68f, NameLine = 80f, NameFloor = 40f, MetaSize = 14f, MetaLine = 20f, VerifiedSize = 12f, VerifiedLine = 16f;
 
     /// <summary>A hero action's plate: 70 % of the base with a 12 % hairline (the boards: rgba(32,32,32,0.7), rgba(255,255,255,0.12)).</summary>
     public const float PlateAlpha = 0.7f, PlateStrokeAlpha = 0.12f;
+
+    /// <summary>The plate itself: the board's rgba(32,32,32,0.7) in light AND dark. Everything on the photograph is on-media (light ink on a dark plate),
+    /// whatever the theme kind; hover and press step down the on-media scrim ramp (`Controls.OnMediaPlatePalette`).</summary>
+    public static ColorF PlateFill => ColorF.FromRgba(32, 32, 32) with { A = PlateAlpha };
+
+    /// <summary>The most the adaptive scrim (`Controls.ScrimBoost`) darkens a bright photograph over the 62 % veil: 0.6 keeps the foot under 85 % black and the
+    /// photograph's top clear, so it stays a photograph.</summary>
+    public const float BoostCeiling = 0.6f;
 
     /// <summary>The Compact actions row under the card: 12 under it; the Play word's padding.</summary>
     public const float ActionsRowTop = 12f, PlayPad = 16f;
@@ -221,19 +232,28 @@ public static class WinUiArtistMotion
     /// <summary>The fade-in's start: the fade-out, then most of Popular's resize.</summary>
     public const float FadeInDelayMs = FadeOutMs + RestackMs * FadeInLead;
 
+    /// <summary>The longest a restack lays the overview out at the page's landing width while the page eases toward it (a docked pane's slide): the
+    /// whole fade-through. The page has landed long before; this only backs the release up should the measured width never meet the landing one.</summary>
+    public const float LandingHoldMs = FadeInDelayMs + FadeInMs;
+
     /// <summary>A layout change of the side column outside a restack (a pane docking a frame before the column count follows it) holds this long before
     /// it glides, so the frames between the width change and the restack show the column where it stood, not a step toward a slot it never takes.</summary>
     public const float HoldMs = 64f;
 
-    /// <summary>The overview's height: laid out once at the new height, its PRESENTED extent eased (a flow reveal, which also clips the overview to it), so
-    /// the sections under it ride the difference.</summary>
+    /// <summary>The overview's height: it eases through REAL layout (a reflow, which also clips the overview to it), so every section under it is laid
+    /// out at the eased height's foot each tick. A flow reveal (layout once, the presented extent eased at paint time) landed at once whenever the
+    /// change lay wholly below the view (the restack grows the overview past the window's foot), so the body's layout stepped ~455 DIP in one frame.</summary>
     public static readonly LayoutTransition OverviewHeight = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.FlowReveal, Axes: SizeAxes.Height);
+        TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
     /// <summary>The Popular column: it resizes (full width stacked, its weight's share beside the side column), re-laying the chart at the eased width every
     /// tick, after the side column has faded out of the way (it never widens under the outgoing column).</summary>
     public static readonly LayoutTransition Column = new(TransitionChannels.Position | TransitionChannels.Size,
         TransitionDynamics.Tween(RestackMs, Easing.SmoothOut), SizeMode.Relayout, DelayMs: FadeOutMs);
+
+    /// <summary>Popular's resize once a restack that WIDENS it has held it at its old width for <see cref="FadeOutMs"/> (the view lays it out at that
+    /// width, then releases it): <see cref="Column"/> without the delay, which the hold has already spent.</summary>
+    public static readonly LayoutTransition ColumnReleased = Column with { DelayMs = 0f };
 
     /// <summary>The side column in one arrangement: a restack replaces it (keyed by the arrangement), so the outgoing one fades out where it stands and
     /// the incoming one fades in at its slot once Popular has resized. Inside one arrangement its layout changes hold <see cref="HoldMs"/>, then glide.</summary>

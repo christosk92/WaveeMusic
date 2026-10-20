@@ -68,11 +68,13 @@ public static partial class Shell
             DragPayload = static () => BarDragPayload(),
             DeviceIsRemote = static () =>
             {
+                if (Theming.InspectSwitches.RemoteDevice is not null) return true;
                 _ = Playback.Devices.Changed.Value;
                 return DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
             },
             RemoteDeviceName = static () =>
             {
+                if (Theming.InspectSwitches.RemoteDevice is { } stood) return stood;
                 _ = Playback.Devices.Changed.Value;
                 var rows = Playback.Devices.Rows;
                 int slot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
@@ -212,10 +214,20 @@ public static partial class Shell
             int playingSlot = faceRef.IsNone ? 0 : faceRef.Slot;
 
             // ── the left block and the right cluster ──
-            int remoteSlot = active && L.ShowRemoteDeviceLine
-                ? DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows)
-                : -1;
-            if (remoteSlot >= 0) _ = Playback.Devices.Changed.Value;
+            // "Playing on <device>": while the bar states a track (a load or a reconnect on the remote output keeps the line). A foreign owner
+            // reads the roster's change signal BEFORE its row is found: the row can land after the owner and the active slot, and a read
+            // made only once the slot resolves would leave the line waiting for an unrelated re-render.
+            int remoteSlot = -1;
+            if (L.ShowRemoteDeviceLine && PlayerBarRules.StatesRemoteLine(facts.State))
+            {
+                if (Theming.InspectSwitches.RemoteDevice is not null) remoteSlot = 0;
+                else
+                {
+                    var owner = Playback.OwnerSignal.Value;
+                    if (owner == Playback.Owner.Foreign) _ = Playback.Devices.Changed.Value;
+                    remoteSlot = DeviceRoster.RemoteSlot(owner, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows);
+                }
+            }
 
             bool titleNav = !BarTitleRoute().IsNone;
             bool artNav = !BarArtRoute().IsNone;

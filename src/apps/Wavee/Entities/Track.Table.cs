@@ -492,9 +492,14 @@ public readonly partial struct Track
         // publishes): the compact band's input hand-off. (The body clip's feather is the clip's own composite-time
         // parameter, EdgeFadeSpec.WhileStuck — no engaged signal, no re-render; RCA 2026-09-25 F(ii).)
         readonly Signal<bool> _compactInteractive = new(false);
-        readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0));
-        // The hero arm's list carries the recommendations section after its rows (C-Playlist-Compact, C-Empty-Compact): the slot map reads it.
-        readonly Signal<bool> _verticalRecs = new(false);
+        // The hero arm's list count and its recommendations section (C-Playlist-Compact, C-Empty-Compact), DERIVED from the same snapshot
+        // and row count the slots resolve their roles from (TableVerticalItem): a count written by a layout effect reached the list a
+        // frame after the slots had already turned the skeleton's slot into row 1 (the skeleton gone, then row 1 alone, then the rest).
+        IReadSignal<int> _verticalItemCount = null!;
+        IReadSignal<bool> _verticalRecs = null!;
+        /// <summary>Can the hero arm's list carry the section at all (the render's config, the aside, the page's builder)? Written by the
+        /// layout effect; <see cref="_verticalRecs"/> folds it with the list's state.</summary>
+        readonly Signal<bool> _recsCapable = new(false);
         /// <summary>The list is empty and shows its recommendations lead (an owned, empty playlist): a theme that sets <c>HidesChromeOnEmptyLead</c> draws no table chrome over it.</summary>
         readonly Signal<bool> _emptyLead = new(false);
         bool EmptyLeadHides => _listStyle?.Chrome.HidesChromeOnEmptyLead == true && _emptyLead.Value;
@@ -657,10 +662,12 @@ public readonly partial struct Track
             _ = Entities.Current.Tracks.Changed.Value;
             _ = global::Wavee.Fetch.Settled.Value;
             int hot = TableRules.HotRows(src.Count);
+            bool credits = RowsTogether();
             for (int i = 0; i < hot; i++)
             {
                 var t = src.At(i);
-                if (t.IsValid && TableRules.RowUnsettled(t.Knows(TrackFields.Face), t.InFlight, t.Answered)) return false;
+                bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, credits);
+                if (t.IsValid && TableRules.RowUnsettled(paints, t.InFlight, t.Answered)) return false;
             }
             return true;
         }
@@ -1075,6 +1082,8 @@ public readonly partial struct Track
                     return o >= 0 ? _latest.Source.At(o) : default;
                 },
                 default(Track)), DepKey.Empty);
+            _verticalRecs = UseComputed(VerticalRecsNow);
+            _verticalItemCount = UseComputed(VerticalItemCountNow);
             _episodeItems = UseMemo(() => BoundItems.Project(_snapshot!,
                 snap => ViewOf(in snap).Length,
                 (snap, display) =>
@@ -1172,10 +1181,9 @@ public readonly partial struct Track
             {
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
-                _verticalRecs.Value = recsLive;
+                _recsCapable.Value = recsCapable;
                 _emptyLead.Value = recsLive && listState == PlaylistRowsState.Empty;
-                _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, recsLive);
-            }, DepKey.From(visible, listTotal, recsLive ? 1 : 0, listState == PlaylistRowsState.Empty ? 1 : 0));
+            }, DepKey.From(visible, listTotal, (recsLive ? 1 : 0) | (recsCapable ? 2 : 0), listState == PlaylistRowsState.Empty ? 1 : 0));
             UseEffect(PublishHeroHeight);
             var listCount = CountNow(in snap, visible) with { EmptyLead = recsLive && listState == PlaylistRowsState.Empty };
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
@@ -1663,6 +1671,18 @@ public readonly partial struct Track
         internal int VisibleCountValue => _rowItems!.Count.Value;
         /// <summary>The hero arm's list carries the recommendations section after its rows (a tracked read: the slot map follows it).</summary>
         internal bool VerticalRecsValue => _verticalRecs.Value;
+
+        /// <summary>The section rides the hero arm's list while the list has rows or is empty (never over a shimmer): the render's rule
+        /// (<c>recsLive</c>), read off the same snapshot and row count the slots read.</summary>
+        bool VerticalRecsNow()
+        {
+            var snap = _snapshot!.Value;
+            int visible = _rowItems!.Count.Value;
+            var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
+            return _recsCapable.Value && state is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
+        }
+
+        int VerticalItemCountNow() => Detail.VerticalLayout.ItemCount(_rowItems!.Count.Value, _verticalRecs.Value);
         internal Shape ShapeValue => _shape!.Value;
         internal Func<ColorF> AccentRead => _accent;
         internal Element? RecommendationsElement() => P.Recommendations?.Invoke();
@@ -2717,7 +2737,9 @@ public readonly partial struct Track
                 Pending: () =>
                 {
                     var t = row.Presentation.Value.Track;
-                    return !TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)) || host.RowGateClosed();
+                    _ = global::Wavee.Fetch.Settled.Value;   // an answer that names no field still ends the wait for the credits
+                    bool paints = TableRules.RowPaints(t.Knows(TrackFields.Face), t.Knows(TrackFields.Artists), t.InFlight, withCredits: true);
+                    return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },
                 Failed: static () => false,
                 Content: () => grid,

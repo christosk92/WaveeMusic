@@ -49,11 +49,39 @@ public static class WinUiPlayerLayout
     /// <summary>The title (Body Strong 14/20) and the artists (Caption 12/16, the secondary ink); the "playing on" line (12/16).</summary>
     public const float TitleSize = 14f, TitleLine = 20f, SubSize = 12f, SubLine = 16f;
 
-    /// <summary>The title's weight.</summary>
-    public const ushort TitleWeight = 600;
+    /// <summary>The title's weight and the lines' under it.</summary>
+    public const ushort TitleWeight = 600, SubWeight = 400;
 
     /// <summary>The "playing on" line's device glyph and its gap.</summary>
     public const float RemoteGlyph = 12f, RemoteGap = 4f;
+
+    /// <summary>The app's marquee setting on: an overflowing title and credits line scroll unattended, ping-pong, at Classic's slow cadence
+    /// (18 DIP/s at least, a 14 s cycle, 2 s before the first move, 3 s at each end), the two lines on one cycle.</summary>
+    public const float MarqueeSpeed = 18f, MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f;
+
+    /// <summary>The separator between two credited names.</summary>
+    public const string CreditSeparator = ", ";
+
+    /// <summary>The narrowest cut a later name is given in a credits line (an ellipsis and a letter); less room ends the line at the last
+    /// whole name. The slot width's grid (DIP): a sub-DIP wobble re-lays nothing.</summary>
+    public const float CreditMinCut = 16f, CreditSlotQuantum = 1f;
+
+    /// <summary>How a credits line of names (their natural widths, <paramref name="names"/>), joined by a separator
+    /// <paramref name="separator"/> wide, lies in a slot <paramref name="slot"/> wide: the names shown whole, then the width the next one is
+    /// cut to (its ellipsis; 0: none is cut). The line gives way from its end, in one ellipsis, as a single text run would; the first name is
+    /// always shown, cut to the slot.</summary>
+    public static (int Whole, float Cut) CreditsFit(ReadOnlySpan<float> names, float separator, float slot)
+    {
+        float used = 0f;
+        for (int i = 0; i < names.Length; i++)
+        {
+            float lead = i == 0 ? 0f : separator;
+            if (used + lead + names[i] <= slot + 0.5f) { used += lead + names[i]; continue; }
+            float rest = slot - used - lead;
+            return i == 0 ? (0, MathF.Max(0f, slot)) : (i, rest >= CreditMinCut ? rest : 0f);
+        }
+        return (names.Length, 0f);
+    }
 
     /// <summary>The video badge on the cover (16, the film glyph 10, 2 in from the corner, black at 60 %).</summary>
     public const float FilmBadge = 16f, FilmGlyph = 10f, FilmInset = 2f, FilmCorner = 3f;

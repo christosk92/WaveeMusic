@@ -366,7 +366,9 @@ internal static partial class WinUiPlayerBar
         };
     }
 
-    /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).</summary>
+    /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).
+    /// Each line is one slot of the column's width: a line that does not fit ends in an ellipsis with its full text in a tooltip, or, with
+    /// the app's marquee setting on, the title and the artists scroll (Classic's trigger: always, ping-pong, the two lines on one cycle).</summary>
     private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
@@ -376,7 +378,14 @@ internal static partial class WinUiPlayerBar
             Size = PL.TitleSize, LineHeight = PL.TitleLine, Weight = PL.TitleWeight, Color = titleInk,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
-        BoxEl title = new BoxEl { Key = titleKey, ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
+        // A column of the slot's width (never wider: Shrink), so the run is cut by its own ellipsis, not by the column's clip.
+        BoxEl title = v.Marquee
+            ? new BoxEl
+            {
+                Key = titleKey, Height = PL.TitleLine, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f,
+                Children = [Marquee.Of(Prop.Of<string>(props.TitleText), MarqueeStyle(PL.TitleSize, PL.TitleWeight, titleInk))],
+            }
+            : new BoxEl { Key = titleKey, Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [titleRun] };
         if (v.TitleNav && !mini)
             title = title with
             {
@@ -385,15 +394,25 @@ internal static partial class WinUiPlayerBar
                 OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
             };
 
-        var kids = new List<Element>(3) { Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey } };
+        // A scrolling title shows itself in full; a plain one carries its full text in a tooltip while it is cut.
+        var kids = new List<Element>(3) { v.Marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey } };
         if (mini && props.DeviceIsRemote())
-            kids.Add(new BoxEl { Key = "remote-device-line", MinWidth = 0f, Children = [Embed.Comp(new RemoteProps(props, Accent: true), static () => new WinUiRemoteLine())] });
+            kids.Add(new BoxEl { Key = "remote-device-line", Direction = 1, MinWidth = 0f, Children = [Embed.Comp(new RemoteProps(props, Accent: true), static () => new WinUiRemoteLine())] });
         else if (v.ShowArtistLine)
-            kids.Add(new BoxEl { Key = artistsKey, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(new CreditsProps(props, Linked: !mini), static () => new WinUiCredits())] });
+        {
+            var credits = new CreditsProps(props, Linked: !mini);
+            kids.Add(v.Marquee
+                ? new BoxEl
+                {
+                    Key = artistsKey, Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = [Marquee.Content(() => new WinUiCreditsRun(credits), MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)))],
+                }
+                : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] });
+        }
         if (!mini && v.RemoteLine)
             kids.Add(new BoxEl
             {
-                Key = "remote-device-line", Animate = PL.ItemMotion, MinWidth = 0f,
+                Key = "remote-device-line", Direction = 1, Animate = PL.ItemMotion, MinWidth = 0f,
                 Children = [Embed.Comp(new RemoteProps(props, Accent: false), static () => new WinUiRemoteLine())],
             });
 
@@ -404,6 +423,15 @@ internal static partial class WinUiPlayerBar
             Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The bar's marquee: Classic's trigger and park rules (always on, ping-pong, the title and the artists on one cycle; the
+    /// engine parks it while the window is covered) at WinUI's type.</summary>
+    static Marquee.Style MarqueeStyle(float size, ushort weight, Prop<ColorF> ink) => new()
+    {
+        FontSize = size, Weight = weight, Foreground = ink,
+        Speed = PL.MarqueeSpeed, CycleMs = PL.MarqueeCycleMs, EndPauseMs = PL.MarqueeEndPauseMs, StartDelayMs = PL.MarqueeStartDelayMs,
+        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
+    };
 
     static ColorF InkOf(NowPlayingInk ink) => ink switch
     {

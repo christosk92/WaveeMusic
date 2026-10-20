@@ -36,6 +36,13 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         ZuneProfileRules.ListHeadKey, ZuneLibraryRules.PageKey, ZuneRecentsRules.PageKey,
     ];
 
+    /// <summary>The panorama voice on its exact line, flush with the edge above it (Z-Album, Z-Liked, Z-Settings: the title's line box on the band's
+    /// and the page's top, its ascenders inside): the detail panorama band and the settings title.</summary>
+    private static readonly string[] s_topBleeds = [ZuneDetailRules.PanoramaKey, ZuneSettings.TitleKey];
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> DesignedTopBleeds => s_topBleeds;
+
     /// <inheritdoc />
     public IReadOnlyList<LintEdge> Edges(LintContext context)
     {

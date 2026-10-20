@@ -136,6 +136,7 @@ public static partial class Diagnostics
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+            Strings(w, "topBleeds", s.TopBleeds);
             w.WriteStartArray("scale");
             foreach (InspectLint.ScaleEntry e in s.Scale)
             {
@@ -257,6 +258,12 @@ public static partial class Diagnostics
             {
                 w.WriteString("ground", Color(t.Ground));
                 Num(w, "groundShare", t.GroundShare);
+                if (t.Worst > 0f)
+                {
+                    Num(w, "worst", t.Worst);
+                    w.WriteString("worstGround", Color(t.WorstGround));
+                    w.WriteNumber("gapPixels", t.GapPixels);
+                }
             }
             w.WriteEndObject();
         }
@@ -310,6 +317,7 @@ public static partial class Diagnostics
                     GuideId = Str(root, "guide"),
                     Edges = ReadEdges(root),
                     Policies = ReadPolicies(root),
+                    TopBleeds = StringsOf(root, "topBleeds") ?? [],
                     Scale = ReadScale(root),
                     Source = full,
                 };
@@ -455,6 +463,9 @@ public static partial class Diagnostics
             Align = Str(e, "align", "Start"),
             Ground = ColorOf(e, "ground"),
             GroundShare = Float(e, "groundShare"),
+            Worst = Float(e, "worst"),
+            WorstGround = ColorOf(e, "worstGround"),
+            GapPixels = Int(e, "gapPixels"),
         };
 
         static IReadOnlyList<LintEdge> ReadEdges(JsonElement root)

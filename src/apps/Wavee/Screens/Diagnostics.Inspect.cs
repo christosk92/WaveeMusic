@@ -287,7 +287,7 @@ public static partial class Diagnostics
         /// <summary>Mount the frame on the best devices this machine has (see the file header): the offscreen surface (real
         /// pixels and text), else the recording device with DirectWrite (true text, no pixels), else (`--text headless`) the
         /// shell tests' devices.</summary>
-        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu)
+        Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false)
         {
             if (!_realText)
             {
@@ -308,9 +308,17 @@ public static partial class Diagnostics
                 {
                     FluentGpu.Hosting.OffscreenSurface surface = created;   // non-null from here on (the lambda below captures it)
                     var fonts = surface.CreateFontSystem();
+                    // `images=real`: the app's own pipeline (WIC behind the disk-first fetcher) instead of the engine's fake decoder, so a photograph
+                    // renders as itself: what `lint`'s contrast rule needs to judge text over a REAL bright or dark photograph.
+                    FluentGpu.Media.DefaultImageFetcher? fetcher = realImages ? new FluentGpu.Media.DefaultImageFetcher() : null;
+                    FluentGpu.Media.DecodeScheduler? decoder = fetcher is null ? null
+                        : new FluentGpu.Media.DecodeScheduler(new FluentGpu.Media.Codecs.Wic.WicImageCodec(), fetcher, new FluentGpu.Media.DecodeOptions());
                     var devices = new Wavee.Shell.HeadlessDevices(surface.Window, surface.Input, surface.Device, fonts,
                         Attach: surface.Attach,
-                        Release: () => { fonts.Dispose(); surface.Dispose(); });
+                        Release: () => { fonts.Dispose(); surface.Dispose(); decoder?.Dispose(); fetcher?.Dispose(); })
+                    {
+                        Images = decoder is null ? null : new FluentGpu.Scene.ImageCache(decoder),
+                    };
                     _surface = surface;
                     _devices = "offscreen (" + surface.BackendName + ")";
                     return Wavee.Shell.Headless.Mount(devices);
@@ -504,6 +512,18 @@ public static partial class Diagnostics
                 case Inspect.Verb.Play:
                     {
                         string uri = a.Str("uri");
+                        // `remote=<name>|off`: the output turns remote (or local again) on the live mount, as a Connect transfer does while playing;
+                        // without a uri only the output changes.
+                        if (a.Has("remote"))
+                        {
+                            string remote = a.Str("remote");
+                            Wavee.Theming.InspectSwitches.RemoteDevice = remote.Length == 0 || string.Equals(remote, "off", StringComparison.OrdinalIgnoreCase) ? null : remote;
+                            if (uri.Length == 0)
+                            {
+                                RunFrames(2);
+                                return Settled(id, name, a, w => w.WriteString("remote", Wavee.Theming.InspectSwitches.RemoteDevice ?? "off"));
+                            }
+                        }
                         if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         return Settled(id, name, a, w => w.WriteString("uri", uri));
@@ -535,7 +555,7 @@ public static partial class Diagnostics
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-faces|none, not '" + kind + "'");
+                        if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=empty|nomatch|error|offline|offline-rows|loading|cold-list|cold-rows|cold-warm|cold-faces|none, not '" + kind + "'");
                         RunFrames(30);
                         return Settled(id, name, a, w => w.WriteString("kind", kind));
                     }
@@ -670,6 +690,7 @@ public static partial class Diagnostics
             string gpu = a.Str("gpu", "warp").ToLowerInvariant();
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
+            if (!BarPrefs(a, out error)) return false;
             // `grade=hue`: every cover grades to a hue taken from its uri (the fake catalogue's covers are local files the provider cannot grade), so a surface that tints
             // from the playing cover renders in colour offline
             // `grade=grey`: every cover grades to a hueless grey (a black-and-white cover), so the surfaces that tint from it show their no-hue arm
@@ -685,7 +706,9 @@ public static partial class Diagnostics
                 },
                 _ => null,
             };
-            _shell = MountOn(w0, h0, scale, gpu);
+            string images = a.Str("images", "fake").ToLowerInvariant();
+            if (images is not ("fake" or "real")) { error = "images is fake or real"; return false; }
+            _shell = MountOn(w0, h0, scale, gpu, images == "real");
             _frames++;
             _mounts++;
             mounted = true;
@@ -729,6 +752,29 @@ public static partial class Diagnostics
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
             InspectKit.ResetPlayback();
+        }
+
+        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip>`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
+        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), and the side panel's stored
+        /// width (clamped to the theme's drag range when the panel opens).</summary>
+        static bool BarPrefs(Inspect.Args a, out string error)
+        {
+            error = "";
+            if (a.Has("marquee"))
+            {
+                string m = a.Str("marquee").ToLowerInvariant();
+                if (m is not ("on" or "off" or "true" or "false")) { error = "marquee is on or off"; return false; }
+                Platform.Settings.Set(Platform.Keys.MarqueeEnabled, m is "on" or "true");
+                Prefs.Appearance.Bump();
+            }
+            Wavee.Theming.InspectSwitches.RemoteDevice = a.Has("remote") ? a.Str("remote") : null;
+            if (a.Has("panelW"))
+            {
+                float w = a.Float("panelW", 0f);
+                if (!(w > 0f)) { error = "panelW wants a width in DIP"; return false; }
+                Shell.PanelSizes.Shared.SaveWidth(w);
+            }
+            return true;
         }
 
         /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set

@@ -49,6 +49,11 @@ internal static class WinUiArtistHero
             Gradient = GradientDown(new GradientStop(0f, WinUiArtistRules.VeilClear), new GradientStop(1f, WinUiArtistRules.VeilEdge)),
         };
 
+        // Over the photograph the copy is on-media ink in light AND dark; on a bright photograph the veil is not enough, so the adaptive boost darkens it
+        // until every line reads (MediaScrim: the meta and the Verified line at 4.5 : 1, the name at 3 : 1, against the photograph's p90 under each line).
+        Element boost = shimmer || photoUrl is not { Length: > 0 } boostSrc
+            ? new BoxEl { Width = w, Height = height, HitTestVisible = false }
+            : Controls.ScrimBoost(BoostOf(in text, boostSrc, form, w));
         Element copy = Copy(in text, uri, form, shimmer);
         var bottom = new List<Element>(2) { new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [copy] } };
         if (!compact)
@@ -67,8 +72,28 @@ internal static class WinUiArtistHero
         {
             Key = "artist-hero", Width = w, Height = height, ZStack = true, ClipToBounds = true,
             Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), Fill = Prop.Of(static () => Tok.FillCardDefault),
-            Children = [photo, veil, overlay],
+            Children = [photo, veil, boost, overlay],
         };
+    }
+
+    /// <summary>The boost's reading of this card: the copy's line bands from the card's foot up (the meta, the name in its natural line box, the Verified
+    /// line), the 62 % veil as the floor, the ceiling.</summary>
+    static Controls.ScrimBoostProps BoostOf(in Artist.HeroText text, string photoUrl, WinUiArtistHeroForm form, float w)
+    {
+        float height = form.Height;
+        float left = form.InsetX, right = form.InsetX + MathF.Min(WinUiArtistTiers.CopyMax, MathF.Max(1f, w - 2f * form.InsetX));
+        float metaTop = height - form.Bottom - form.MetaLine;
+        float nameBox = MathF.Max(form.NameLine, form.NameSize * WinUiArtistRules.NameNaturalLine);
+        float nameTop = metaTop - WinUiArtistRules.CopyGap - nameBox;
+        float verifiedTop = nameTop - WinUiArtistRules.CopyGap - WinUiArtistRules.VerifiedLine;
+        var bands = new List<MediaScrim.Band>(3)
+        {
+            MediaScrim.Band.Line(left, right, metaTop, form.MetaLine, form.MetaSize),
+            MediaScrim.Band.Line(left, right, nameTop, nameBox, form.NameSize, 600),
+        };
+        if (text.Verified) bands.Add(MediaScrim.Band.Line(left, right, verifiedTop, WinUiArtistRules.VerifiedLine, WinUiArtistRules.VerifiedSize));
+        var floor = new MediaScrim.Floor(height - form.Veil, form.Veil, WinUiArtistRules.VeilEdge.A);
+        return new Controls.ScrimBoostProps(photoUrl, w, height, bands.ToArray(), floor, WinUiArtistRules.BoostCeiling, text.Verified ? verifiedTop : nameTop);
     }
 
     /// <summary>The Compact page's actions row under the card: Play, Follow, Shuffle, radio, then "..." at the row's end, every target 40.</summary>
@@ -92,7 +117,7 @@ internal static class WinUiArtistHero
                     Seal(),
                     Lines(new TextEl(Loc.Get(Strings.Artist.Verified))
                     {
-                        Size = WinUiArtistRules.VerifiedSize, LineHeight = WinUiArtistRules.VerifiedLine, Color = Tok.TextPrimary,
+                        Size = WinUiArtistRules.VerifiedSize, LineHeight = WinUiArtistRules.VerifiedLine, Color = R.OnMedia.Ink,
                     }, shimmer),
                 ],
             }
@@ -100,7 +125,7 @@ internal static class WinUiArtistHero
         TextEl name = R.Type.ArtistDisplay(text.Name) with
         {
             Size = form.NameSize, LineHeight = form.NameLine, MinSize = MathF.Min(WinUiArtistRules.NameFloor, form.NameSize), Weight = 600,
-            Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = R.OnMedia.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         return new BoxEl
         {
@@ -117,7 +142,7 @@ internal static class WinUiArtistHero
         Children = [Icon(Icons.Accept, WinUiArtistRules.SealGlyph, ColorContrast.PickContrast(Tok.AccentDefault))],
     };
 
-    /// <summary>"20,577,457 monthly listeners · #112 in the world": Body 14 in Text 1; a zero stat drops its run.</summary>
+    /// <summary>"20,577,457 monthly listeners · #112 in the world": Body 14 in the on-media ink (the board's Text 1 is white over the photograph); a zero stat drops its run.</summary>
     static Element Meta(in Artist.HeroText text, WinUiArtistHeroForm form, bool shimmer)
     {
         var parts = new List<string>(3);
@@ -129,7 +154,7 @@ internal static class WinUiArtistHero
         if (parts.Count == 0) return new BoxEl();
         return Lines(new TextEl(string.Join(WinUiDetailRules.MetaLead, parts))
         {
-            Size = form.MetaSize, LineHeight = form.MetaLine, Color = Tok.TextPrimary,
+            Size = form.MetaSize, LineHeight = form.MetaLine, Color = R.OnMedia.Ink,
             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         }, shimmer);
     }
@@ -166,23 +191,23 @@ internal static class WinUiArtistHero
         }.Skeletonized(false);
     }
 
-    /// <summary>A secondary action: the glyph and its word (Huge) or the glyph alone, on the control fill (plated: the 70 % plate over the photograph).</summary>
+    /// <summary>A secondary action: the glyph and its word (Huge) or the glyph alone, on the control fill (plated: on-media, the 70 % dark plate and the
+    /// on-media ink over the photograph in light and dark, hover and press down the on-media scrim ramp).</summary>
     static Element Control(string glyph, string label, Action? onClick, float target, bool word, bool plated)
     {
         Action click = onClick ?? s_noop;
-        BoxEl box = word
-            ? Button.Create(label, click, ButtonAppearance.Standard, glyph: glyph) with { Height = target, MinWidth = 0f, Shrink = 0f }
-            : Controls.IconAction(glyph, click, size: target) with
+        BoxEl box = (word, plated) switch
+        {
+            (true, true) => Button.Create(label, click, ButtonAppearance.Standard, glyph: glyph,
+                palette: Controls.OnMediaPlatePalette(WinUiArtistRules.PlateFill, WinUiArtistRules.PlateStroke)) with { Height = target, MinWidth = 0f, Shrink = 0f },
+            (true, false) => Button.Create(label, click, ButtonAppearance.Standard, glyph: glyph) with { Height = target, MinWidth = 0f, Shrink = 0f },
+            (false, true) => Controls.OnMediaIconAction(glyph, click, size: target, rest: WinUiArtistRules.PlateFill, stroke: WinUiArtistRules.PlateStroke),
+            _ => Controls.IconAction(glyph, click, size: target) with
             {
                 Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
                 BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
-            };
-        if (plated)
-            box = box with
-            {
-                Fill = Prop.Of(static () => R.Layer.FileArea with { A = WinUiArtistRules.PlateAlpha }),
-                BorderBrush = GradientSpec.Solid(WinUiArtistRules.PlateStroke),
-            };
+            },
+        };
         return Controls.Named(box, label);
     }
 }

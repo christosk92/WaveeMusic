@@ -21,5 +21,6 @@ public static partial class ZunePolicies
         => panel = new PanelPolicy(ZunePanelTiers.PanelW, ZunePanelTiers.PanelW, FullHeight: true, PanelPolicy.Default.Pip with { OverlaysContent = true })
         {
             Tiers = ZunePanelTiers.PanelRules(parameters.PanelMode, parameters.MaxDockedPanes),
+            DockGap = ZunePanelTiers.DockGap, PaneGap = ZunePanelTiers.DockGap,
         };
 }

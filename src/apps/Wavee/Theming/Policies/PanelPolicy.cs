@@ -174,6 +174,17 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
     /// docked panel in every tier.</summary>
     public ImmutableArray<PanelTierRule> Tiers { get; init; } = ImmutableArray<PanelTierRule>.Empty;
 
+    /// <summary>The gap the structure's frame lays between the content and the DOCKED primary panel (the shell's 8 by default; Zune lays the panel
+    /// flush). The content-width estimate (<c>WindowTiers.EstimateContentWidth</c>) takes it from the content row, so it must be what the frame draws:
+    /// an estimate that counts a gap the frame does not lay resolves every content-axis rung and record on a page narrower than the one laid out, and
+    /// the page steps by the difference once it measures itself. Appended (P6).</summary>
+    public float DockGap { get; init; } = Shell.FrameRules.RailGapW;
+
+    /// <summary>The gap the structure's frame lays before each docked pane of the arrangement (contract 1.29): the shell's 8 by default (Classic's
+    /// queue beside the primary); 0 where the panes sit flush against the primary (WinUI's hairline-separated panes, Zune's columns). Read by the
+    /// content-width estimate, like <see cref="DockGap"/>. Appended (P6).</summary>
+    public float PaneGap { get; init; } = Shell.FrameRules.RailGapW;
+
     /// <summary>The rule of window tier <paramref name="tier"/>.</summary>
     public PanelTierRule For(WidthTier tier)
     {
@@ -208,7 +219,8 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
     public bool Equals(PanelPolicy? other)
     {
         if (ReferenceEquals(this, other)) return true;
-        if (other is null || MinWidth != other.MinWidth || MaxWidth != other.MaxWidth || FullHeight != other.FullHeight || !Pip.Equals(other.Pip))
+        if (other is null || MinWidth != other.MinWidth || MaxWidth != other.MaxWidth || FullHeight != other.FullHeight || !Pip.Equals(other.Pip)
+            || DockGap != other.DockGap || PaneGap != other.PaneGap)
             return false;
         bool emptyA = Tiers.IsDefaultOrEmpty, emptyB = other.Tiers.IsDefaultOrEmpty;
         if (emptyA || emptyB) return emptyA && emptyB;
@@ -223,6 +235,8 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
         hash.Add(MaxWidth);
         hash.Add(FullHeight);
         hash.Add(Pip);
+        hash.Add(DockGap);
+        hash.Add(PaneGap);
         if (!Tiers.IsDefaultOrEmpty)
             foreach (var rule in Tiers) hash.Add(rule);
         return hash.ToHashCode();
@@ -235,6 +249,8 @@ public sealed record PanelPolicy(float MinWidth, float MaxWidth, bool FullHeight
         if (!float.IsFinite(MinWidth) || MinWidth <= 0f) problems.Add($"Panel.MinWidth must be positive and finite (was {MinWidth})");
         if (!float.IsFinite(MaxWidth) || MaxWidth <= 0f) problems.Add($"Panel.MaxWidth must be positive and finite (was {MaxWidth})");
         if (problems.Count == 0 && MinWidth > MaxWidth) problems.Add("Panel.MinWidth must not exceed MaxWidth");
+        if (!float.IsFinite(DockGap) || DockGap < 0f || !float.IsFinite(PaneGap) || PaneGap < 0f)
+            problems.Add($"Panel.DockGap and PaneGap must be zero or more and finite (were {DockGap}, {PaneGap})");
         if (!Tiers.IsDefaultOrEmpty)
         {
             if (Tiers.Length > (int)WidthTier.Huge4K + 1) problems.Add($"Panel.Tiers holds {Tiers.Length} rules, at most {(int)WidthTier.Huge4K + 1} fit WidthTier");

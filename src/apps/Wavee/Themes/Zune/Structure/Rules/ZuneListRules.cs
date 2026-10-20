@@ -105,15 +105,17 @@ public static class ZuneListRules
     /// <summary>The gap between the # cell's number and its chart mark, and between the subline's parts.</summary>
     public const float NumberGap = 2f, MetaGap = 4f;
 
-    /// <summary>The subline's explicit "E": a 14 square at the subline's 0.68 type, radius 0 (Zune squares every plate).</summary>
-    public const float ExplicitBox = 14f, ExplicitType = 9.5f;
+    /// <summary>The subline's explicit "E": a 16 square, the letter at the 11-DIP text floor (it was 9.5 in a 14 square: the letter grew to the
+    /// floor and the square with it, keeping the 0.68 share, so the "E" stays centred), radius 0 (Zune squares every plate).</summary>
+    public const float ExplicitBox = 16f, ExplicitType = 11f;
 
-    /// <summary>The "on this PC" mark that leads a row's subline (Z-Liked: a 14 ring, 2 stroke, the 8-type arrow inside, 6 before the artist; the
+    /// <summary>The "on this PC" mark that leads a row's subline (Z-Liked: a 14 ring, 2 stroke, the 8 DIP arrow glyph inside, 6 before the artist; the
     /// subline's own gap is <see cref="MetaGap"/>, so the mark adds the rest). A row that is dimmed offline says its reason in the time lane.</summary>
     public const float OnPcMark = 14f, OnPcRing = 2f, OnPcGlyph = 8f, OnPcAfter = 2f;
 
-    /// <summary>The arrow the ring carries (Z-Liked draws the plain "arrow down", not a download tray).</summary>
-    public const string OnPcArrow = "↓";
+    /// <summary>The arrow the ring carries (Z-Liked draws the plain "arrow down", not a download tray): the icon font's Down glyph, so the 8-DIP
+    /// mark is an icon, not text under the 11-DIP type floor.</summary>
+    public const string OnPcArrow = "";
 
     /// <summary>The tempo lane's key swatch: a 6 DIP square at 0.85.</summary>
     public const float TempoDot = 6f, TempoDotOpacity = 0.85f;

@@ -442,6 +442,7 @@ public static partial class Diagnostics
             IReadOnlyList<LintEdge> edges = [];
             IReadOnlyList<LintPolicy> policies = [];
             string guideId = "";
+            IReadOnlyList<string> bleeds = ThemeInspection.ActiveLintGuide?.DesignedTopBleeds ?? [];
             if (ThemeInspection.ActiveLintGuide is { } guide)
             {
                 RectF? RectOfKey(string key)
@@ -458,6 +459,7 @@ public static partial class Diagnostics
             {
                 Edges = edges,
                 Policies = policies,
+                TopBleeds = bleeds,
                 Scale = ScaleOf(),
                 Theme = InspectKit.ActiveThemeId,
                 GuideId = guideId,

@@ -3115,6 +3115,7 @@
         "devices": "Devices",
         "wherePlayVideo": "Where to play the video",
         "closePane": "Close pane",
+        "morePaneTabs": "More pane tabs: {names}",
         "friends": "Friends",
         "grabber": "Drag down to close",
         "nowPlaying": "Now playing",

@@ -145,6 +145,59 @@ public static partial class Controls
         Border: Button.BorderRamp.Flat(GradientSpec.Solid(R.OnMedia.Stroke)),
         Sizing: BackgroundSizing.InnerBorderEdge);
 
+    /// <summary><see cref="OnMediaPalette"/> on a surface's own resting plate and hairline (a board that draws its on-photo plates in its own
+    /// darkness): hover and press still step down the on-media scrim ramp, the ink is the on-media ink in every state.</summary>
+    public static Button.ButtonPalette OnMediaPlatePalette(ColorF rest, ColorF stroke) => new(
+        Background: new StateBrush(rest, R.OnMedia.ScrimHover, R.OnMedia.ScrimPressed, rest),
+        Foreground: new StateBrush(R.OnMedia.Ink, R.OnMedia.Ink,
+                                   R.OnMedia.Ink with { A = OnFillSecondaryAlpha(R.OnMedia.Ink) }, R.OnMedia.Ink with { A = OnMediaDisabledAlpha }),
+        Border: Button.BorderRamp.Flat(GradientSpec.Solid(stroke)),
+        Sizing: BackgroundSizing.InnerBorderEdge);
+
+    /// <summary>The on-media icon button: <see cref="IconAction"/> on the on-media plate ramp (<paramref name="rest"/>, else the ladder's resting
+    /// scrim; hover and press down the scrim ramp) with the on-media ink in every state and a <paramref name="stroke"/> hairline (else the ladder's).
+    /// For an icon action ON a photograph, where the theme's control fill would be a light plate in light mode.</summary>
+    public static BoxEl OnMediaIconAction(string glyph, Action? onClick, float size = IconButtonSize, bool requestsContext = false,
+                                          ColorF? rest = null, ColorF? stroke = null)
+    {
+        ColorF ink = R.OnMedia.Ink, plate = rest ?? R.OnMedia.ScrimRest;
+        var box = IconButton.Create(glyph, onClick ?? NoOp, style: IconButton.DefaultStyle with
+        {
+            Size = size, CornerRadius = Radii.Control,
+            Fill = plate, HoverFill = R.OnMedia.ScrimHover, PressedFill = R.OnMedia.ScrimPressed, DisabledFill = plate,
+            Foreground = ink, HoverForeground = ink, PressedForeground = ink with { A = OnFillSecondaryAlpha(ink) },
+            DisabledForeground = ink with { A = OnMediaDisabledAlpha },
+        }) with
+        {
+            HoverScale = R.Motion.ScaleSubtle.Hover,
+            PressScale = R.Motion.ScaleSubtle.Press,
+            Cursor = CursorId.Hand,
+            BorderWidth = 1f, BorderColor = stroke ?? R.OnMedia.Stroke,
+        };
+        return requestsContext ? box with { OnClick = null, ClickRequestsContext = true } : box;
+    }
+
+    /// <summary><paramref name="s"/> moved onto a photograph: both states on the on-media plate ramp (<paramref name="rest"/> at rest, the scrim
+    /// ramp on hover and press), the on-media ink and the <paramref name="stroke"/> hairline. The checked state still says itself through its word.</summary>
+    public static ToggleButton.Style OnMediaToggle(ToggleButton.Style s, ColorF rest, ColorF stroke)
+    {
+        ColorF ink = R.OnMedia.Ink, pressedInk = ink with { A = OnFillSecondaryAlpha(ink) }, disabledInk = ink with { A = OnMediaDisabledAlpha };
+        var hairline = GradientSpec.Solid(stroke);
+        return s with
+        {
+            OffBackground = rest, OffHover = R.OnMedia.ScrimHover, OffPressed = R.OnMedia.ScrimPressed, OffDisabledBackground = rest,
+            OnBackground = rest, OnHover = R.OnMedia.ScrimHover, OnPressed = R.OnMedia.ScrimPressed, OnDisabledBackground = rest,
+            OffForeground = ink, OffPressedForeground = pressedInk, OffDisabledForeground = disabledInk,
+            OnForeground = ink, OnPressedForeground = pressedInk, OnDisabledForeground = disabledInk,
+            OffBorder = hairline, OffHoverBorder = hairline, OffPressedBorder = hairline, OffDisabledBorder = hairline,
+            OnBorder = hairline, OnHoverBorder = hairline, OnPressedBorder = hairline, OnDisabledBorder = hairline,
+            OffGlyphForeground = null, OnGlyphForeground = null,
+        };
+    }
+
+    /// <summary>The alpha of a disabled on-media label.</summary>
+    const float OnMediaDisabledAlpha = 0.4f;
+
     /// <summary>A filter/mode <see cref="ToggleButton.Style"/> whose CHECKED state is <paramref name="fill"/> (the
     /// grammar table's "stock checked = accent" row) instead of the live <see cref="Tok.AccentDefault"/> — the OFF arm
     /// is <see cref="ToggleButton.DefaultStyle"/> verbatim, same convention as <see cref="ButtonRules.FollowStyle"/>.

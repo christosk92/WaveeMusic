@@ -58,6 +58,11 @@ public static class ZunePanelTiers
     /// <summary>The panel's one width inline and floating (Z-Part-Panel "inline" / "overlay"): never resized.</summary>
     public const float PanelW = 340f;
 
+    /// <summary>The gap before the docked panel and before each docked pane: none. The frame lays the page column, the panel and the panes flush,
+    /// so the content width the shell estimates counts no gap (it counted the shell's 8 before each: 16 at Huge, the page laid out wider than its
+    /// content-axis rungs and records were resolved at).</summary>
+    public const float DockGap = 0f;
+
     /// <summary>A docked column where two or three dock (Z-Part-Panel "docked2" / "docked3"): 360 each, 720 and 1080 in all.</summary>
     public const float DockedPaneW = 360f;
 
