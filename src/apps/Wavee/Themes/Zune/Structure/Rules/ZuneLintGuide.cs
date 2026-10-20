@@ -5,6 +5,12 @@
 // x = content.X + ColumnLead(content.W, gutter), and end on its mirror; from Small to Standard (where ColumnLead IS the gutter) the band's
 // last row-2 action, the page's right content edge and the play bar's last glyph land on one x. The guide only DESCRIBES those edges as
 // `LintEdge` data (core resolves them against the scene by key); it measures nothing and lays nothing out.
+//
+// THE POLICIES say what Zune means where a rule would guess (each reason names the board that draws it):
+//   · the Home captions ellipsise on one line: pins, history rows, the shelves' cards and descriptions, the tiles, the cluster rows and the
+//     chart captions are `nowrap` + `text-overflow: ellipsis` on Z-Home and Z-Home-Compact (`TrimOk`). A near-miss (a box a hair too
+//     narrow for its words) is still reported: the lint checks it before any intent;
+//   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album) (`Hang`).
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -64,4 +70,22 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         }
         return edges;
     }
+
+    /// <summary>Why Home's captions may ellipsise: the boards draw them so.</summary>
+    private const string HomeCaptions = "Home captions ellipsise on one line (Z-Home, Z-Home-Compact: nowrap + text-overflow: ellipsis)";
+
+    /// <inheritdoc />
+    public IReadOnlyList<LintPolicy> Policies(LintContext context) =>
+    [
+        new(LintIntent.TrimOk, ZuneHomeRules.PinTilePrefix, "pin captions: " + HomeCaptions),
+        new(LintIntent.TrimOk, "zune-history:", "history rows and tiles: " + HomeCaptions),
+        new(LintIntent.TrimOk, ZuneListRules.ShelfBodyKey, "shelf card titles and descriptions: " + HomeCaptions),
+        new(LintIntent.TrimOk, "zune-shelf-card:", "shelf cards: " + HomeCaptions),
+        new(LintIntent.TrimOk, "zune-tile:", "tile titles (two lines, then the ellipsis): " + HomeCaptions),
+        new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions),
+        new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions),
+        new(LintIntent.Hang, ZuneDetailRules.PanoramaKey,
+            "the panorama title hangs left of the column by the light face's side bearing (PanoramaNudgeX, Z-Album)",
+            Value: ZuneDetailTiers.For(context.Window).PanoramaNudgeX),
+    ];
 }
