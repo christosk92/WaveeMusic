@@ -435,13 +435,15 @@ public static partial class Diagnostics
                         {
                             w.WriteNumber("frames", r.Frames);
                             w.WriteBoolean("settled", r.Settled);
-                            if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
+                            if (r.Frames == 0) w.WriteString("note", "no frame ran (max=0): nothing was waited for");
+                            else if (!r.Settled) InspectKit.WriteBusy(w, shell, in r);
                             InspectKit.WriteAmbient(w, in r);
                         });
                     }
                 case Inspect.Verb.Click:
                 case Inspect.Verb.Hover:
                     {
+                        if (!TryMods(a, out KeyModifiers mods)) return Inspect.Reply.Fail(id, name, "bad value '" + a.Str("mods") + "' for mods (ctrl, shift, alt or win, joined by +: ctrl+shift)");
                         if (!TryAim(id, name, a, wheel: false, out Aim aim, out string refusal)) return refusal;
                         Point2 p = aim.Point;
                         Move(p);
@@ -449,7 +451,6 @@ public static partial class Diagnostics
                         _hit = HitKey(p);   // what the press lands on (a hover can raise a part over the target)
                         if (cmd.Verb == Inspect.Verb.Click)
                         {
-                            KeyModifiers mods = Mods(a);
                             int button = a.Str("button", "left") == "right" ? 1 : 0;
                             Queue(new InputEvent(InputKind.PointerDown, p, button, 0, mods, TimestampMs: _ms));
                             RunFrames(1);
@@ -544,7 +545,6 @@ public static partial class Diagnostics
                         // `find <key>` is exact; a prefix says so (`find prefix=zune-band-`).
                         string key = a.Str("key"), prefix = a.Str("prefix");
                         if (key.Length == 0 && !a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find wants a key (exact) or prefix=");
-                        if (key.Length > 0 && a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find takes key or prefix, not both");
                         return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix));
                     }
                 case Inspect.Verb.Dump:
@@ -1134,11 +1134,13 @@ public static partial class Diagnostics
         static int LayerId(string key)
             => int.TryParse(key.AsSpan("overlay:".Length), NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : -1;
 
-        static KeyModifiers Mods(Inspect.Args a)
+        /// <summary>`mods=ctrl+shift`: the modifiers a click holds (None when absent). False for a word that is not one (`crtl`), so a
+        /// typo is refused instead of clicking with nothing held.</summary>
+        static bool TryMods(Inspect.Args a, out KeyModifiers mods)
         {
+            mods = KeyModifiers.None;
             string m = a.Str("mods");
-            if (m.Length == 0) return KeyModifiers.None;
-            return Inspect.TryKey(m + "+a", out _, out KeyModifiers mods) ? mods : KeyModifiers.None;
+            return m.Length == 0 || Inspect.TryKey(m + "+a", out _, out mods);
         }
 
         void Move(Point2 p) => Queue(new InputEvent(InputKind.PointerMove, p, 0, 0, TimestampMs: _ms));
