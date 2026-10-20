@@ -408,18 +408,24 @@ public static partial class Diagnostics
                         if (!(w0 >= 1f && h0 >= 1f)) return Inspect.Reply.Fail(id, name, "resize wants w and h (DIP)");
                         if (a.Bool("loop", false)) ResizeThroughModalLoop(shell, w0, h0);
                         else shell.Resize(w0, h0);
+                        if (_pointer is { } p && !InspectKit.WindowRect(shell).Contains(p)) _pointer = null;   // the window shrank past it
                         return Settled(id, name, a);
                     }
                 case Inspect.Verb.Frames:
                     {
                         int n = Math.Clamp(a.Int("n", 1), 0, 100_000);
-                        RunFrames(n);
+                        RunFrames(Math.Max(0, n - 1));
+                        int epoch = Tok.Epoch;
+                        RunFrames(Math.Min(n, 1));
+                        bool epochMoved = n > 0 && Tok.Epoch != epoch;   // the last frame wrote a theme token (a FrameNeeded term)
                         return Inspect.Reply.Ok(id, name, w =>
                         {
                             w.WriteNumber("frames", n);
                             w.WriteBoolean("animating", shell.Host.Animation.HasActive);
                             w.WriteBoolean("scrolling", shell.Host.AnyUserScrollMoving);
-                            InspectKit.WriteWake(w, shell.Host.CurrentWakeReasons);   // every reason the loop would stay awake (settle ignores the ambient ones)
+                            FluentGpu.Hosting.WakeReasons wake = shell.Host.CurrentWakeReasons;
+                            InspectKit.WriteWake(w, wake);   // every reason the loop would stay awake (settle ignores the ambient ones)
+                            if ((wake & FluentGpu.Hosting.WakeReasons.FrameNeeded) != 0) InspectKit.WriteFrameNeeded(w, "frameNeeded", shell, epochMoved);
                         });
                     }
                 case Inspect.Verb.Settle:
@@ -1172,6 +1178,7 @@ public static partial class Diagnostics
                 w.WriteNumber("frames", settle.Frames);
                 w.WriteBoolean("settled", settle.Settled);
                 if (settle.Frames > 0 && !settle.Settled && _shell is { } mounted) InspectKit.WriteBusy(w, mounted, in settle);
+                InspectKit.WriteAmbient(w, in settle);
                 body?.Invoke(w);
                 if (trace is not null)
                 {

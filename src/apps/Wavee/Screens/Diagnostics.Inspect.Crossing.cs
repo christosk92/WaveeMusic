@@ -390,6 +390,7 @@ public static partial class Diagnostics
                 w.WriteNumber("frames", settle.Frames);
                 w.WriteBoolean("settled", settle.Settled);
                 if (!settle.Settled) InspectKit.WriteBusy(w, shell, in settle);
+                InspectKit.WriteAmbient(w, in settle);
                 w.WriteEndObject();
 
                 w.WriteStartObject("lint");

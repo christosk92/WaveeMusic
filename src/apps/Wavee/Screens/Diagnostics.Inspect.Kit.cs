@@ -54,13 +54,22 @@ public static partial class Diagnostics
 
         /// <summary>The wake reasons that never make a frame "busy": the caret's blink, the real window's post-input warm
         /// cadence, a host timer coming due, and the frame-clock subscribers that tick for as long as something plays (the
-        /// playhead, a visualizer): they run forever by design, so waiting for them would never end.</summary>
+        /// playhead, a visualizer): they run forever by design, so waiting for them would never end. A settle that saw any of
+        /// them says so (`ambient` on its reply): motion they drive was not waited for.</summary>
         public const FluentGpu.Hosting.WakeReasons AmbientWake = FluentGpu.Hosting.WakeReasons.Caret | FluentGpu.Hosting.WakeReasons.WarmCadence
             | FluentGpu.Hosting.WakeReasons.Timer | FluentGpu.Hosting.WakeReasons.FrameClockPoller | FluentGpu.Hosting.WakeReasons.FrameClockPaceable;
 
-        /// <summary>What a settle saw on its last frame: the frames run, whether it settled, and (when it did not) what still
+        /// <summary>What a settle saw: the frames run, whether it settled, and (from its last frame, when it did not) what still
         /// moved: live animation tracks, a scroller in motion, and the wake reasons outside <see cref="AmbientWake"/>.</summary>
-        public readonly record struct SettleResult(int Frames, bool Settled, bool Tracks, bool Scrolling, FluentGpu.Hosting.WakeReasons Wake);
+        public readonly record struct SettleResult(int Frames, bool Settled, bool Tracks, bool Scrolling, FluentGpu.Hosting.WakeReasons Wake)
+        {
+            /// <summary>The ambient wake reasons set on any frame of the settle (ignored, but reported).</summary>
+            public FluentGpu.Hosting.WakeReasons Ambient { get; init; }
+            /// <summary>Quiet frames in a row at the end: a settle the cap stopped with nothing busy had fewer than 2.</summary>
+            public int Quiet { get; init; }
+            /// <summary>The theme epoch (Tok.Epoch) moved on the last frame: one of the FrameNeeded terms (<see cref="WriteFrameNeeded"/>).</summary>
+            public bool EpochMoved { get; init; }
+        }
 
         /// <summary>Busy this frame: a live animation track, a scroller in user-driven motion (a wheel notch's glide, a fling),
         /// or a wake reason outside <see cref="AmbientWake"/> (pending effects, image uploads and decodes, a smooth
@@ -72,29 +81,34 @@ public static partial class Diagnostics
         public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600)
         {
             int quiet = 0, ran = 0;
-            bool tracks = false, scrolling = false;
-            FluentGpu.Hosting.WakeReasons wake = default;
+            bool tracks = false, scrolling = false, epochMoved = false;
+            FluentGpu.Hosting.WakeReasons wake = default, ambient = default;
             while (ran < maxFrames)
             {
+                int epoch = Tok.Epoch;
                 shell.Host.RunFrame();
                 ran++;
+                epochMoved = Tok.Epoch != epoch;
                 tracks = shell.Host.Animation.HasActive;
                 scrolling = shell.Host.AnyUserScrollMoving;
-                wake = BusyWake(shell);
+                FluentGpu.Hosting.WakeReasons all = shell.Host.CurrentWakeReasons;
+                wake = all & ~AmbientWake;
+                ambient |= all & AmbientWake;
                 quiet = tracks || scrolling || wake != 0 ? 0 : quiet + 1;
-                if (quiet >= 2) return new SettleResult(ran, true, false, false, default);
+                if (quiet >= 2) return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet };
             }
-            return new SettleResult(ran, false, tracks, scrolling, wake);
+            return new SettleResult(ran, false, tracks, scrolling, wake) { Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved };
         }
 
         /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `anim` = a node with live tracks
         /// (named by its nearest keyed ancestor), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
-        /// reason with no node (`reason`). At most <paramref name="max"/> nodes per kind.</summary>
+        /// reason with no node (`reason`; FrameNeeded adds its `terms`, <see cref="WriteFrameNeeded"/>). At most
+        /// <paramref name="max"/> nodes per kind. Nothing busy (the cap came before two quiet frames): `quietFrames` and a `note`.</summary>
         public static void WriteBusy(System.Text.Json.Utf8JsonWriter w, Shell.HeadlessShell shell, in SettleResult r, int max = 12)
         {
             SceneStore scene = shell.Host.Scene;
             w.WriteStartArray("busy");
-            int anims = 0, scrolls = 0;
+            int anims = 0, scrolls = 0, wakes = 0;
             var named = new HashSet<string>(StringComparer.Ordinal);
             foreach (NodeHandle n in Subtree(scene, scene.Root))
             {
@@ -123,8 +137,42 @@ public static partial class Diagnostics
                 w.WriteStartObject();
                 w.WriteString("kind", "wake");
                 w.WriteString("reason", bit.ToString());
+                if (bit == FluentGpu.Hosting.WakeReasons.FrameNeeded) WriteFrameNeeded(w, "terms", shell, r.EpochMoved);
                 w.WriteEndObject();
+                wakes++;
             }
+            w.WriteEndArray();
+            if (anims + scrolls + wakes == 0)
+            {
+                w.WriteNumber("quietFrames", r.Quiet);
+                w.WriteString("note", "nothing moved on the last frame, but the cap came before 2 quiet frames in a row: raise max");
+            }
+        }
+
+        /// <summary>`<paramref name="name"/>:[terms]`: which FrameNeeded terms the inspector can see from outside the engine.
+        /// `themeEpoch` = a theme token was written on the last frame (Tok.Epoch moved: something writes the theme every frame);
+        /// `freeze` = a freeze holds presents (AppHost.IsFrozen); `engineSettle` = an engine settle is running (AppHost.IsSettling);
+        /// `themeTransaction` = a theme transaction is running; `explicit` = none of those: an explicit wake, a posted action,
+        /// a scroll plan write or a frame owed after paint, which the engine does not attribute.</summary>
+        public static void WriteFrameNeeded(System.Text.Json.Utf8JsonWriter w, string name, Shell.HeadlessShell shell, bool epochMoved)
+        {
+            w.WriteStartArray(name);
+            int n = 0;
+            if (epochMoved) { w.WriteStringValue("themeEpoch"); n++; }
+            if (shell.Host.IsFrozen) { w.WriteStringValue("freeze"); n++; }
+            if (shell.Host.IsSettling) { w.WriteStringValue("engineSettle"); n++; }
+            if (ThemeHost.IsTransactionRunning) { w.WriteStringValue("themeTransaction"); n++; }
+            if (n == 0) w.WriteStringValue("explicit");
+            w.WriteEndArray();
+        }
+
+        /// <summary>`ambient:[names]` for the ambient wake reasons a settle saw (nothing when it saw none).</summary>
+        public static void WriteAmbient(System.Text.Json.Utf8JsonWriter w, in SettleResult r)
+        {
+            if (r.Ambient == 0) return;
+            w.WriteStartArray("ambient");
+            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+                if (bit != 0 && (r.Ambient & bit) == bit) w.WriteStringValue(bit.ToString());
             w.WriteEndArray();
         }
 
