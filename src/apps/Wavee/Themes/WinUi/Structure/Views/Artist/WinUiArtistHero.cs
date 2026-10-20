@@ -99,7 +99,7 @@ internal static class WinUiArtistHero
             : new BoxEl();
         TextEl name = R.Type.ArtistDisplay(text.Name) with
         {
-            Size = form.NameSize, LineHeight = form.NameLine, MinSize = WinUiArtistRules.NameFloor, Weight = 600,
+            Size = form.NameSize, LineHeight = form.NameLine, MinSize = MathF.Min(WinUiArtistRules.NameFloor, form.NameSize), Weight = 600,
             Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         return new BoxEl

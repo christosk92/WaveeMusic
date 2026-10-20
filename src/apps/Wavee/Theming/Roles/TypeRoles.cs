@@ -31,7 +31,7 @@ public enum TypeRung : byte { Caption, Body, BodyStrong, BodyLarge, Subtitle, Ti
 /// <param name="LineHeight">The line height in DIP (null = the rung's). A role that changes <paramref name="Size"/> states this too.</param>
 /// <param name="Weight">The font weight, 1-999 (null = the rung's).</param>
 /// <param name="Tracking">The character spacing in 1/1000 em (null = none).</param>
-/// <param name="MinSize">The auto-fit floor in DIP (null = off): the glyph run shrinks toward it before it wraps.</param>
+/// <param name="MinSize">The auto-fit floor in DIP (null = off): the glyph run shrinks toward it before it wraps past its line cap or, on one NoWrap line, before it trims.</param>
 /// <param name="Secondary">True to set the secondary ink after the deviations (the rung's own ink otherwise).</param>
 public sealed record TextRole(
     TypeRung Rung,

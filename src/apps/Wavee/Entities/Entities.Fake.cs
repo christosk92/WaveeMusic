@@ -65,7 +65,7 @@ public static partial class Entities
     static readonly string[] s_artistNames =
     [
         "Christos", "Alex Rivers", "Mia Solace", "The Wavee Collective", "Nova Kite", "Sable & Sun",
-        "Half Moon Radio", "Kimmuseum", "Dry Season", "The Longtime", "Iris Overdrive", "Coral Hours",
+        "Half Moon Radio", "Kimmuseum", "Dry Season", "The Longtime", "Iris Overdrive and the Nightjars", "Coral Hours",
     ];
 
     static readonly string[] s_playlistNames =
