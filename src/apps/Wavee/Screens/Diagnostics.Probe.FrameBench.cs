@@ -67,7 +67,7 @@ public static partial class Diagnostics
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 
-            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
+            // The window was placed by PlaceProbeWindow (off every monitor, or --probe-monitor N): never topmost.
             if (!PumpUntil(host, w, static () => NavigationFrameWatch.NavigationId > 0, 20)) { Say("[frame-bench] the shell never activated a route"); return true; }
             bool real = !fake;
             int quality = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
