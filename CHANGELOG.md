@@ -324,6 +324,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Repeated songs in another device's queue are separate rows again.** When you watch the queue of a phone or another
+  computer that repeats its album or playlist, every copy of a song acted as the first one: clicking the second copy played
+  the first. Clicking a copy now plays that copy, and the queue no longer redraws every row each time the other device
+  updates it. The same holds when another device edits the queue on this one.
 - **The audio cache keeps caching once it is full.** When the cache sat just under its size limit, it refused every new piece of
   a song instead of making room, so new music stopped being cached until something else freed space. It now evicts the songs you
   played longest ago to fit the new one.

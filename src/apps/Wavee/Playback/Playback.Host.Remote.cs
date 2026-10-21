@@ -210,17 +210,20 @@ public static partial class Playback
         try
         {
             int n = 0;
+            // The history and the deck the splice keeps: a controller's row may repeat a uid they carry (a repeated
+            // context's next lap), and must not take their item id.
+            ReadOnlySpan<QueueEdge> kept = Queue.Rows[..Math.Min(deck + 1, Queue.Rows.Length)];
             if (body.Kind == RemoteCmd.SetQueue)
             {
                 ReadOnlySpan<ClusterTrack> tracks = buffer.Tracks(body.NextStart, body.NextCount);
-                for (int k = 0; k < tracks.Length; k++) AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n);
+                for (int k = 0; k < tracks.Length; k++) AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n, distinct: true, kept);
             }
             else
             {
                 AddKeptQueue(refs, rows, ref n, room);
                 ReadOnlySpan<ClusterTrack> tracks = buffer.Tracks(body.TrackStart, body.TrackCount);
                 for (int k = CurrentIndexIn(buffer, tracks) + 1; k < tracks.Length; k++)
-                    AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n);
+                    AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n, distinct: true, kept);
             }
             Queue.Pack(refs.AsSpan(0, n), next);
             int written = SpliceQueue(Queue.PackedRefs, Queue.Rows, deck, next.AsSpan(0, n), rows.AsSpan(0, n),
