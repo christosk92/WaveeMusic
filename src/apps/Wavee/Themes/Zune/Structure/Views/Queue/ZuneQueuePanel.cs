@@ -137,9 +137,12 @@ internal sealed class ZuneQueuePanelView : Component
         bool viewer = props.Queue.Viewer;
         var text = props.Lane.TextOf(r);
         Action skip = () => verbs.Play(itemId, index, r);
+        // The ✕ is built from its data (the verbs and the entry) by a static builder, so an unchanged row is an equal push and its surface
+        // does not re-render when the panel does (Controls.FromData).
         Element trailing = row.Removable
-            ? ToolTip.Wrap(ZunePlayerBar.Glyph(Icons.ChromeClose, () => verbs.Remove(itemId, index, r), true, Tok.TextTertiary, Q.CloseBox, Q.CloseGlyph)
-                with { BlocksDragArm = true }, Loc.Get(Strings.Menu.RemoveFromQueue))
+            ? Controls.FromData((verbs, itemId, index, r), static d => ToolTip.Wrap(
+                ZunePlayerBar.Glyph(Icons.ChromeClose, () => d.verbs.Remove(d.itemId, d.index, d.r), true, Tok.TextTertiary, Q.CloseBox, Q.CloseGlyph)
+                    with { BlocksDragArm = true }, Loc.Get(Strings.Menu.RemoveFromQueue)))
             : new BoxEl { Width = Q.CloseBox, Shrink = 0f };
         var data = SurfaceData(r, text, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
             menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
