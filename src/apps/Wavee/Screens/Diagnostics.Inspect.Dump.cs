@@ -340,19 +340,28 @@ public static partial class Diagnostics
             return sb.ToString();
         }
 
-        /// <summary>The window's tier facts (`ThemeHost.Facts.Tiers`) plus the active theme and kind.</summary>
+        /// <summary>The window's tier facts (`ThemeHost.Facts.Tiers`) plus the active theme and kind. The three sizes are the
+        /// live ones the ladders read now (`WindowTiers.TryLiveSizes`); the facts only carry the sizes of their last publish (a tier
+        /// change), which `published` lists.</summary>
         public static void WriteTiers(Utf8JsonWriter w)
         {
             TierFacts t = ThemeHost.Facts.Peek().Tiers;
+            if (!WindowTiers.TryLiveSizes(out float viewportWidth, out float viewportHeight, out float contentWidth))
+                (viewportWidth, viewportHeight, contentWidth) = (t.ViewportWidth, t.ViewportHeight, t.ContentWidth);
             w.WriteStartObject("tiers");
             w.WriteString("window", t.Window.ToString());
             w.WriteString("height", t.Height.ToString());
             w.WriteString("content", t.Content.ToString());
+            Inspect.Reply.Num(w, "contentWidth", contentWidth);
+            Inspect.Reply.Num(w, "viewportWidth", viewportWidth);
+            Inspect.Reply.Num(w, "viewportHeight", viewportHeight);
+            w.WriteBoolean("resizing", t.Resizing);
+            WriteRungs(w, in t);
+            w.WriteStartObject("published");
             Inspect.Reply.Num(w, "contentWidth", t.ContentWidth);
             Inspect.Reply.Num(w, "viewportWidth", t.ViewportWidth);
             Inspect.Reply.Num(w, "viewportHeight", t.ViewportHeight);
-            w.WriteBoolean("resizing", t.Resizing);
-            WriteRungs(w, in t);
+            w.WriteEndObject();
             w.WriteEndObject();
             w.WriteString("theme", InspectKit.ActiveThemeId);
             w.WriteString("kind", FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark");
