@@ -34,6 +34,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Render;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -124,46 +125,14 @@ public readonly partial struct User
     const float FactsSettleMs = 250f;
     const string FactsSep = " · ";
 
-    static SparkBars.Style FactSparkStyle => SparkBars.DefaultStyle with { TipDelayMs = FactTipDelayMs };
+    static SparkBars.Style FactSparkStyle(DetailFactsStyle st) => st.Spark() with { TipDelayMs = FactTipDelayMs };
 
-    /// <summary>ch 07 §3 "fact card": pad 12/10/12/11, gap 6, radius 8, card fill + stroke + elevation, self-entering.</summary>
-    static Element FactCard(string key, Element head, Element body) => new BoxEl
-    {
-        Key = key, Enter = FactFadeUp, Layout = FactShove,
-        Direction = 1, Gap = 6f, MinWidth = 0f,
-        Padding = new Edges4(Spacing.M, 10f, Spacing.M, 11f),
-        Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
-        Children = [head, body],
-    };
+    /// <summary>The theme's facts pictures (<see cref="StyleKeys.DetailFacts"/>), from the ambient registry; null (and one log line) without one.</summary>
+    static DetailFactsStyle? FactsStyleOf(FluentGpu.Theming.ViewRegistry? registry) => ListStyleLookup.Of(registry, StyleKeys.DetailFacts);
 
-    /// <summary>The card header: the eyebrow GROWS so the fact is pushed to the trailing edge without a spacer node.</summary>
-    static Element CardHead(string title, string? trailing)
-    {
-        var label = R.Type.Eyebrow(title) with
-        {
-            Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-        };
-        Element[] kids = trailing is { Length: > 0 } fact
-            ? [label, Caption(fact) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }]
-            : [label];
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Children = kids };
-    }
-
-    /// <summary>The big numeral over its caption: Title 28/36/600 in a ZStack keyed on the value (M-9 TextSwap).</summary>
-    static Element FactNumeral(string value, string caption, float width = float.NaN)
-    {
-        var box = new BoxEl
-        {
-            Direction = 1, Gap = Spacing.XS, Shrink = 0f,
-            Children =
-            [
-                ZStack(new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [Title(value) with { MaxLines = 1 }] }),
-                Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1 },
-            ],
-        };
-        return float.IsNaN(width) ? box : box with { Width = width };
-    }
+    /// <summary>A fact section in the theme's picture (ch 07 §3 "fact card" in the Fluent look), self-entering and shoved.</summary>
+    static Element FactCard(DetailFactsStyle st, string key, Element head, Element body)
+        => st.Section(key, head, body) with { Key = key, Enter = FactFadeUp, Layout = FactShove };
 
     // ══ 3. THE PANEL ═════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -231,6 +200,7 @@ public readonly partial struct User
         IReadSignal<Track.FilterState>? _live;
         LensCell? _lens;
         bool _liked, _outerPadding;
+        DetailFactsStyle? _style;
 
         readonly Action _settle, _rearm;
         readonly Func<Track.FilterState> _readFilters;
@@ -242,8 +212,8 @@ public readonly partial struct User
             _settle = Settle;
             _rearm = Rearm;
             _readFilters = () => _props?.Lens.Live.Value?.View.Value.Filters ?? default;
-            _shimmer = () => FactsStack(FactSkeletonCards(), _outerPadding);
-            _content = m => FactsStack(FactCards(m, in _filters, _live!, _lens!, _liked, _latch, CultureInfo.CurrentCulture), _outerPadding);
+            _shimmer = () => FactsStack(_style!, FactSkeletonCards(_style!), _outerPadding);
+            _content = m => FactsStack(_style!, FactCards(_style!, m, in _filters, _live!, _lens!, _liked, _latch, CultureInfo.CurrentCulture), _outerPadding);
         }
 
         public override Element Render()
@@ -253,6 +223,7 @@ public readonly partial struct User
             var facts = UseLoadable<FactsModel>();
             _facts = facts;
             var filters = UseComputed(_readFilters);
+            _style = FactsStyleOf(UseContext(FluentGpu.Theming.ViewRegistry.Context));
 
             // THE SETTLE (ch 07 §0.10): every publication that can move a fact restarts the 250 ms quiet window. The
             // counters are read in the WATCHER EFFECT below, never here (W3-A3): this render used to subscribe to five
@@ -275,6 +246,7 @@ public readonly partial struct User
             _filters = filters.Value;                  // subscribe: the lit lenses repaint wherever the filter moved
             _live = filters;
             _lens = p.Lens;
+            if (_style is null) return new BoxEl { Key = "liked-facts-panel" };
             return Skel.Region(facts, shimmerSource: _shimmer, content: _content, reveal: SkelReveal.Soft, smoothResize: false);
         }
 
@@ -330,22 +302,22 @@ public readonly partial struct User
         }
     }
 
-    static Element FactsStack(Element[] cards, bool outerPadding)
+    static Element FactsStack(DetailFactsStyle st, Element[] cards, bool outerPadding)
     {
         if (cards.Length == 0) return new BoxEl { Key = "liked-facts-panel" };
         return new BoxEl
         {
             Key = "liked-facts-panel", Enter = FactFadeUp, Layout = FactShove,
-            Direction = 1, Gap = Spacing.S, MinWidth = 0f,
+            Direction = 1, Gap = st.SectionGap(), MinWidth = 0f,
             // Reduced motion is a VALUE: the stagger goes to zero, the cards still fade.
             Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,
-            Padding = outerPadding ? new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.L) : Edges4.All(0f),
+            Padding = st.StackPadding(outerPadding),
             Children = cards,
         };
     }
 
     /// <summary>The real cards, decided by <see cref="LikedFactsRules.Plan"/> from ONE settled summary.</summary>
-    static Element[] FactCards(FactsModel m, in Track.FilterState filters, IReadSignal<Track.FilterState> live, LensCell lens,
+    static Element[] FactCards(DetailFactsStyle st, FactsModel m, in Track.FilterState filters, IReadSignal<Track.FilterState> live, LensCell lens,
                            bool liked, LikedFactsRules.ShapeLatch latch, CultureInfo culture)
     {
         var s = m.Summary;
@@ -353,8 +325,8 @@ public readonly partial struct User
         var cards = new List<Element>(7);
 
         // (a) the time slot — the week card or the years card, never both.
-        if (plan.WeekCard) cards.Add(FactWeekCard(m.Weeks, culture, in filters, lens, liked));
-        else if (plan.YearsCard) cards.Add(FactYearsCard(m.Rows, s.YearBuckets, culture, in filters, lens));
+        if (plan.WeekCard) cards.Add(FactWeekCard(st, m.Weeks, culture, in filters, lens, liked));
+        else if (plan.YearsCard) cards.Add(FactYearsCard(st, m.Rows, s.YearBuckets, culture, in filters, lens));
         DateTimeOffset? lastActivity = plan.LastActivityClause ? LikedFactsRules.LatestStamp(m.Rows) : null;
 
         // (a′) tempo, (b) artists, (c) blend — each its own component (hooks under an `if`).
@@ -366,13 +338,13 @@ public readonly partial struct User
             cards.Add(Embed.Comp(new FactBlendProps(m.Rows, s.BlendShares, lens, live), static () => new BlendCardHost()) with { Key = "fact:blend" });
 
         // (d) rediscover — Liked only, mounted only when that window holds.
-        if (liked && m.LastYear.Count > 0) cards.Add(FactRediscoverCard(m.LastYear, m.Context));
+        if (liked && m.LastYear.Count > 0) cards.Add(FactRediscoverCard(st, m.LastYear, m.Context));
 
         // (e) the facts that did not earn a card — still lenses.
-        if (FactPillRow(s, plan.YearsPill, plan.TempoPill, plan.BlendPill, culture, in filters, lens) is { } pills) cards.Add(pills);
+        if (FactPillRow(st, s, plan.YearsPill, plan.TempoPill, plan.BlendPill, culture, in filters, lens) is { } pills) cards.Add(pills);
 
         // (f) the since-line; its decade clause yields to a years pill.
-        if (FactSinceLine(m.Rows, culture, liked, s.StampsSpread, suppressDecade: plan.YearsPill, lastActivity) is { } since)
+        if (FactSinceLine(st, m.Rows, culture, liked, s.StampsSpread, suppressDecade: plan.YearsPill, lastActivity) is { } since)
             cards.Add(since);
 
         return cards.ToArray();
@@ -383,7 +355,7 @@ public readonly partial struct User
     static readonly float[] s_factSkelHeights = [10f, 18f, 8f, 26f, 14f, 6f, 22f, 12f, 30f, 16f, 24f, 38f];
     static readonly float[] s_factSkelNameWidths = [120f, 96f, 132f, 88f, 150f];
 
-    static Element[] FactSkeletonCards()
+    static Element[] FactSkeletonCards(DetailFactsStyle st)
     {
         static Element Column(float h) => new BoxEl
         {
@@ -393,7 +365,7 @@ public readonly partial struct User
 
         var columns = new Element[s_factSkelHeights.Length];
         for (int i = 0; i < columns.Length; i++) columns[i] = Column(s_factSkelHeights[i]);
-        var time = FactCard("fact:week", CardHead(" ", " "), new BoxEl
+        var time = FactCard(st, "fact:week", st.Head(" ", " "), new BoxEl
         {
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f,
             Children =
@@ -412,18 +384,19 @@ public readonly partial struct User
             };
         var names = new Element[s_factSkelNameWidths.Length];
         for (int i = 0; i < names.Length; i++) names[i] = Controls.PendingBar(s_factSkelNameWidths[i], 12f);
-        var artists = FactCard("fact:artists", CardHead(" ", null), new BoxEl
+        var artists = FactCard(st, "fact:artists", st.Head(" ", null), new BoxEl
         {
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children = [new BoxEl { Direction = 0, Children = faces }, new BoxEl { Direction = 1, Gap = 6f, Children = names }],
         });
 
-        var blend = FactCard("fact:blend", CardHead(" ", " "), new BoxEl
+        var bar = st.BlendBar();
+        var blend = FactCard(st, "fact:blend", st.Head(" ", " "), new BoxEl
         {
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children =
             [
-                new BoxEl { Height = 8f, Corners = CornerRadius4.All(4f), Fill = Tok.FillControlDefault },
+                new BoxEl { Height = bar.Height, Corners = bar.Corners, Fill = Tok.FillControlDefault },
                 new BoxEl { Direction = 0, Gap = Spacing.M, Children = [Controls.PendingBar(64f, 12f), Controls.PendingBar(52f, 12f), Controls.PendingBar(70f, 12f)] },
             ],
         });
@@ -433,7 +406,7 @@ public readonly partial struct User
 
     // ══ 4. THE TIME SLOT: THIS WEEK / THE YEARS ═════════════════════════════════════════════════════════════════════
 
-    static Element FactWeekCard(IReadOnlyList<LikedFactsRules.WeekBucket> weeks, CultureInfo culture, in Track.FilterState filters,
+    static Element FactWeekCard(DetailFactsStyle st, IReadOnlyList<LikedFactsRules.WeekBucket> weeks, CultureInfo culture, in Track.FilterState filters,
                             LensCell lens, bool liked)
     {
         int thisWeek = weeks.Count > 0 ? weeks[weeks.Count - 1].Count : 0;
@@ -455,14 +428,10 @@ public readonly partial struct User
         }
 
         string caption = liked ? Strings.Detail.LikedFacts.SongsLiked(thisWeek) : Strings.Detail.LikedFacts.SongsAdded(thisWeek);
-        return FactCard("fact:week",
-            CardHead(Loc.Get(Strings.Detail.LikedFacts.ThisWeek), Strings.Detail.LikedFacts.WindowCaption(weeks.Count)),
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f,
-                Children = [FactNumeral(Strings.Detail.LikedFacts.LikedDelta(thisWeek), caption),
-                            SparkBars.Create(new SparkBarsModel(bars), FactSparkStyle, key: "spark")],
-            });
+        return FactCard(st, "fact:week",
+            st.Head(Loc.Get(Strings.Detail.LikedFacts.ThisWeek), Strings.Detail.LikedFacts.WindowCaption(weeks.Count)),
+            st.FigureRow(st.Figure(Strings.Detail.LikedFacts.LikedDelta(thisWeek), caption, float.NaN),
+                         SparkBars.Create(new SparkBarsModel(bars), FactSparkStyle(st), key: "spark")));
     }
 
     static string FactWeekTip(in LikedFactsRules.WeekBucket week, CultureInfo culture, bool liked)
@@ -474,7 +443,7 @@ public readonly partial struct User
             : Strings.Detail.LikedFacts.WeekTipAdded(start, end, week.Count);
     }
 
-    static Element FactYearsCard(LikedRow[] rows, IReadOnlyList<LikedFactsRules.YearBucket> years, CultureInfo culture,
+    static Element FactYearsCard(DetailFactsStyle st, LikedRow[] rows, IReadOnlyList<LikedFactsRules.YearBucket> years, CultureInfo culture,
                              in Track.FilterState filters, LensCell lens)
     {
         int peak = 0, peakIdx = 0;
@@ -510,14 +479,10 @@ public readonly partial struct User
             ? Strings.Detail.LikedFacts.YearRange(spanLo.ToString(culture), spanHi.ToString(culture))
             : (spanLo > 0 ? spanLo.ToString(culture) : "");
 
-        return FactCard("fact:years",
-            CardHead(Loc.Get(Strings.Detail.LikedFacts.TheYears), trailing),
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f,
-                Children = [FactNumeral(modeYear.ToString(culture), Loc.Get(Strings.Detail.LikedFacts.MostTracks)),
-                            SparkBars.Create(new SparkBarsModel(bars), FactSparkStyle, key: "spark")],
-            });
+        return FactCard(st, "fact:years",
+            st.Head(Loc.Get(Strings.Detail.LikedFacts.TheYears), trailing),
+            st.FigureRow(st.Figure(modeYear.ToString(culture), Loc.Get(Strings.Detail.LikedFacts.MostTracks), float.NaN),
+                         SparkBars.Create(new SparkBarsModel(bars), FactSparkStyle(st), key: "spark")));
     }
 
     static string FactYearTip(in LikedFactsRules.YearBucket bucket, CultureInfo culture)
@@ -527,15 +492,11 @@ public readonly partial struct User
 
     // ══ 5. REDISCOVER + THE SINCE-LINE ══════════════════════════════════════════════════════════════════════════════
 
-    static Element FactRediscoverCard(IReadOnlyList<LikedRow> window, EntityUri context)
+    static Element FactRediscoverCard(DetailFactsStyle st, IReadOnlyList<LikedRow> window, EntityUri context)
     {
         var body = new List<Element>(2)
         {
-            Caption(Strings.Detail.LikedFacts.LastYear(window.Count)) with
-            {
-                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.CharacterEllipsis,
-                Grow = 1f, Basis = 0f, MinWidth = 0f,
-            },
+            st.Prose(Strings.Detail.LikedFacts.LastYear(window.Count), true, 3) with { Grow = 1f, Basis = 0f, MinWidth = 0f },
         };
         // "Play them" plays THESE rows in THIS order as a held row set of the collection (the subset seam). No context ⇒
         // no button: the fact still reads on its own rather than offering a dead control.
@@ -548,17 +509,16 @@ public readonly partial struct User
                 for (int i = 0; i < refs.Length; i++) refs[i] = new EntityRef(EntityKind.Track, window[i].Track.Slot);
                 Playback.PlayRows(refs, 0, context.Id);
             }
-            body.Add(Button.Create(Loc.Get(Strings.Detail.LikedFacts.PlayThem), PlayThem, ButtonAppearance.Standard, ControlSize.Small)
-                with { Shrink = 0f });
+            body.Add(st.Command(Loc.Get(Strings.Detail.LikedFacts.PlayThem), PlayThem));
         }
-        return FactCard("fact:lastyear",
-            CardHead(Loc.Get(Strings.Detail.LikedFacts.Rediscover), null),
+        return FactCard(st, "fact:lastyear",
+            st.Head(Loc.Get(Strings.Detail.LikedFacts.Rediscover), null),
             new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = body.ToArray() });
     }
 
     /// <summary>Present-only clauses. Liked = save since / save decade / oldest like. Playlist with spread = collecting
     /// since / release decade / oldest add. Editorial = release decade / oldest track with year.</summary>
-    static Element? FactSinceLine(LikedRow[] rows, CultureInfo culture, bool liked, bool spread, bool suppressDecade,
+    static Element? FactSinceLine(DetailFactsStyle st, LikedRow[] rows, CultureInfo culture, bool liked, bool spread, bool suppressDecade,
                               DateTimeOffset? lastActivity)
     {
         var clauses = new List<string>(4);
@@ -600,11 +560,10 @@ public readonly partial struct User
         {
             Key = "caption:since", Direction = 1, MinWidth = 0f,
             Enter = FactFadeUp, Layout = FactShove,
-            Padding = new Edges4(Spacing.XXS, Spacing.XXS, Spacing.XXS, 0f),
+            Padding = st.FootnotePadding(),
             Children =
             [
-                Caption(string.Join(FactsSep, clauses)) with
-                { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.CharacterEllipsis },
+                st.Prose(string.Join(FactsSep, clauses), false, 3),
             ],
         };
     }
@@ -658,11 +617,6 @@ public readonly partial struct User
         static readonly Track.TempoBand[] s_bands =
             [Track.TempoBand.Under90, Track.TempoBand.From90To119, Track.TempoBand.From120To139, Track.TempoBand.From140AndUp];
 
-        static DensityPlot.Style PlotStyle => DensityPlot.DefaultStyle with
-        {
-            TipDelayMs = FactTipDelayMs, LineWidth = 1.25f, AxisFontSize = 10f, Marker = Tok.AccentTextPrimary with { A = 0.45f },
-        };
-
         FactTempoProps? _latest;
         // The card's strings, minted once per tempo SUMMARY (a record struct: value equality) — the four band tips, the
         // median numeral and the header's coverage / range (W3-A3: no per-render string building).
@@ -705,6 +659,7 @@ public readonly partial struct User
         {
             var p = UseProps<FactTempoProps>();
             _latest = p;
+            var st = FactsStyleOf(UseContext(FluentGpu.Theming.ViewRegistry.Context));
             var t = p.Tempo;
             var stats = t.Stats;
             var filters = p.Filters.Value;             // subscribe: the lit band is the list's filter
@@ -736,14 +691,11 @@ public readonly partial struct User
                 Bands = bands, Ticks = s_ticks, Marker = (float)stats.Median, RugDotMax = 0,
             };
 
-            return FactCard("fact:tempo",
-                CardHead(Loc.Get(Strings.Detail.LikedFacts.Tempo), _trailing),
-                new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f,
-                    Children = [FactNumeral(_median, Loc.Get(Strings.Detail.LikedFacts.BpmMedian), NumeralColumnWidth),
-                                DensityPlot.Create(model, PlotStyle, key: "tempo-plot")],
-                });
+            if (st is null) return new BoxEl { Key = "fact:tempo" };
+            return FactCard(st, "fact:tempo",
+                st.Head(Loc.Get(Strings.Detail.LikedFacts.Tempo), _trailing),
+                st.FigureRow(st.Figure(_median, Loc.Get(Strings.Detail.LikedFacts.BpmMedian), NumeralColumnWidth),
+                             DensityPlot.Create(model, st.Density() with { TipDelayMs = FactTipDelayMs }, key: "tempo-plot")));
         }
     }
 
@@ -770,6 +722,7 @@ public readonly partial struct User
         Ref<NodeHandle>? _anchor;
         Ref<OverlayHandle?>? _handle;
         IOverlayService? _overlay;
+        DetailFactsStyle? _style;
 
         // Per-slot state for the five name rows (W3-A3): written by Render, read by the MOUNT-STABLE row factories
         // ToolTip.WrapStable invokes inside each tooltip's own render — so a row's tooltip re-renders only when its tip
@@ -819,7 +772,7 @@ public readonly partial struct User
             var artist = _rowArtist[i];
             bool lensable = LikedFactsRules.ArtistKey(artist) != 0;
             bool lit = lensable && _latest is { } p && LikedFactsRules.IsArtistLens(p.Filters.Value, artist);
-            return NameRow(_rowName[i], _rowCount[i], lit, lensable ? _rowClick[i] : null);
+            return _style is { } st ? st.ArtistRow(_rowName[i], _rowCount[i], lit, lensable ? _rowClick[i] : null) : new BoxEl();
         }
 
         public override Element Render()
@@ -827,6 +780,7 @@ public readonly partial struct User
             var p = UseProps<FactArtistsProps>();
             _latest = p;
             _overlay = UseContext(Overlay.Service);
+            var st = _style = FactsStyleOf(UseContext(FluentGpu.Theming.ViewRegistry.Context));
             _anchor = UseRef<NodeHandle>(default);
             _handle = UseRef<OverlayHandle?>(null);
             _moreOpen = UseSignal(false);
@@ -842,8 +796,9 @@ public readonly partial struct User
             for (int i = 0; i < ranked.Count; i++) rankedKey = rankedKey * 31 + ranked[i].Artist.Slot;
             UseEffect(_demandPortraits, DepKey.From(rankedKey, ranked.Count));
 
+            if (st is null) return new BoxEl { Key = "fact:artists" };
             int nameCount = Math.Min(FactTopArtistCount, ranked.Count);
-            float inner = measuredW.Value > 0f ? MathF.Max(0f, measuredW.Value - Spacing.M * 2f) : 0f;
+            float inner = measuredW.Value > 0f ? MathF.Max(0f, measuredW.Value - st.SectionInset() * 2f) : 0f;
             // First frame is unmeasured: keep the named five so the pile doesn't flash a single face.
             int faceCount = inner >= Controls.FaceOuter ? Controls.VisibleFaces(inner, ranked.Count) : nameCount;
             int pileExtra = Math.Max(0, ranked.Count - faceCount);
@@ -878,13 +833,15 @@ public readonly partial struct User
                     faces[i] = new Controls.Face(name, Controls.ArtUrl(artist.ImageId), click, LikedFactsRules.IsArtistLens(filters, artist), tip);
                 }
             }
-            if (nameExtra > 0) rows.Add(MoreRow(nameExtra));
+            if (nameExtra > 0)
+                rows.Add(st.Disclosure(new DetailFactsDisclosure("who:more", Strings.Detail.LikedFacts.MoreArtists(nameExtra), null,
+                                                                  _moreOpenRead, _toggleMore, _moreKey, InLegend: false)));
 
-            return FactCard("fact:artists",
-                CardHead(Loc.Get(p.Liked ? Strings.Detail.LikedFacts.MostLiked : Strings.Detail.LikedFacts.TopArtists), null),
+            return FactCard(st, "fact:artists",
+                st.Head(Loc.Get(p.Liked ? Strings.Detail.LikedFacts.MostLiked : Strings.Detail.LikedFacts.TopArtists), null),
                 new BoxEl
                 {
-                    Direction = 1, Gap = Spacing.S, MinWidth = 0f,
+                    Direction = 1, Gap = st.ArtistGap(), MinWidth = 0f,
                     Children =
                     [
                         new BoxEl
@@ -897,7 +854,7 @@ public readonly partial struct User
                                     overflowTip: pileExtra > 0 ? Strings.Detail.LikedFacts.MoreArtists(pileExtra) : null),
                             ],
                         },
-                        new BoxEl { Direction = 1, Gap = Spacing.XXS, MinWidth = 0f, Children = rows.ToArray() },
+                        new BoxEl { Direction = 1, Gap = st.ArtistRowGap(), MinWidth = 0f, Children = rows.ToArray() },
                     ],
                 });
         }
@@ -944,55 +901,6 @@ public readonly partial struct User
             ToggleMore();
             e.Handled = true;
         }
-
-        /// <summary>The bare row (its tooltip wrap is the caller's: <c>ToolTip.WrapStable</c> over <see cref="RowFor"/>).</summary>
-        static Element NameRow(string name, string count, bool lit, Action? onClick)
-        {
-            bool live = onClick is not null;
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
-                Padding = new Edges4(2f, 1f, 2f, 1f), Corners = CornerRadius4.All(4f),
-                Role = live ? AutomationRole.Button : AutomationRole.None,
-                Focusable = live, Cursor = live ? CursorId.Hand : CursorId.Arrow,
-                FocusVisualMargin = live ? Design.FocusInsetRow : null,
-                Fill = lit ? Tok.AccentSubtle : ColorF.Transparent,
-                HoverFill = !live ? ColorF.Transparent : lit ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
-                PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
-                HoverScale = live ? R.Motion.ScaleSubtle.Hover : 1f,
-                PressScale = live ? R.Motion.ScaleSubtle.Press : 1f,
-                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                OnClick = onClick,
-                Children =
-                [
-                    Caption(name) with
-                    {
-                        Weight = 600, Color = lit ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                        Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                    Caption("·") with { Color = Tok.TextTertiary, Shrink = 0f },
-                    Caption(count) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 },
-                ],
-            };
-        }
-
-        Element MoreRow(int extra) => new BoxEl
-        {
-            Key = "who:more", Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
-            Padding = new Edges4(2f, 1f, 2f, 1f), Corners = CornerRadius4.All(4f),
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-            FocusVisualMargin = Design.FocusInsetRow,
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
-            HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-            OnClick = _toggleMore, OnKeyDown = _moreKey,
-            Children =
-            [
-                Sidebar.Chevron.Disclosure(_moreOpenRead),
-                Caption(Strings.Detail.LikedFacts.MoreArtists(extra)) with
-                { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            ],
-        };
 
         static Element Flyout(IReadOnlyList<LikedFactsRules.ArtistCount> ranked, Track.FilterState filters, LensCell lens, Action close)
         {
@@ -1105,7 +1013,7 @@ public readonly partial struct User
     /// width — the Card reveal (<c>Design.Reveal.Card</c>): the presented height springs and the cards below ride it.</summary>
     sealed class BlendCardHost : Component
     {
-        const float BarHeight = 8f, BarRadius = 4f, SegGap = 2f, LegendDot = 8f, TickGap = 1f, TickMinWidth = 2f;
+        const float TickGap = 1f, TickMinWidth = 2f;
         const float TailLegendFloor = 0.01f;
         static readonly float[] s_sliceAlpha = [1f, 0.8f, 0.6f, 0.45f, 0.3f];
         static readonly float[] s_tickAlpha = [0.16f, 0.22f, 0.30f];
@@ -1117,6 +1025,7 @@ public readonly partial struct User
             Enter: new EnterExit(Dy: Spacing.XS, Opacity: 0f, Active: true));
 
         FactBlendProps? _latest;
+        DetailFactsStyle? _style;
         Signal<bool>? _open;
         readonly Action _toggle;
         readonly Func<bool> _openRead;
@@ -1174,13 +1083,14 @@ public readonly partial struct User
         Element LegendFor(int i)
         {
             bool lit = LitNow(i);
-            return LegendEntry(SliceInk(i, lit), _sliceTitle[i], _labels?.Share[i] ?? "", lit, _sliceClick[i]);
+            return _style is { } st ? st.LegendEntry(SliceInk(i, lit), _sliceTitle[i], _labels?.Share[i] ?? "", lit, _sliceClick[i]) : new BoxEl();
         }
 
         public override Element Render()
         {
             var p = UseProps<FactBlendProps>();
             _latest = p;
+            var st = _style = FactsStyleOf(UseContext(FluentGpu.Theming.ViewRegistry.Context));
             var culture = CultureInfo.CurrentCulture;
             var filters = p.Filters.Value;
             _open = UseSignal(false);
@@ -1217,6 +1127,8 @@ public readonly partial struct User
                 _otherText = other.ToString("P0", culture);
             }
             var labels = _labels!;
+            if (st is null) return new BoxEl { Key = "fact:blend" };
+            var metrics = st.BlendBar();
 
             int slices = Math.Min(shares.Count, FactBlendSlices);
             var segments = new List<Element>(slices + 1);
@@ -1230,13 +1142,14 @@ public readonly partial struct User
             if (hasTail)
             {
                 segments.Add(TailTicks(tail.Named, _tailLabels!, other, in filters));
-                legend.Add(MoreButton(_tailLabels!, isOpen));
+                legend.Add(st.Disclosure(new DetailFactsDisclosure("leg:more",
+                    isOpen ? Loc.Get(Strings.Detail.LikedFacts.ShowLess) : _tailLabels!.Total, _otherText, _openRead, _toggle, null, InLegend: true)));
             }
 
             var bar = new BoxEl
             {
-                Direction = 0, Height = BarHeight, Gap = SegGap, MinWidth = 0f,
-                Corners = CornerRadius4.All(BarRadius), ClipToBounds = true, HitTestPassThrough = true,
+                Direction = 0, Height = metrics.Height, Gap = metrics.Gap, MinWidth = 0f,
+                Corners = metrics.Corners, ClipToBounds = true, HitTestPassThrough = true,
                 Children = segments.ToArray(),
             };
 
@@ -1246,7 +1159,7 @@ public readonly partial struct User
                 Key = "blend-body-host", Direction = 1, MinWidth = 0f,
                 Children = isOpen && hasTail
                     ? [new BoxEl { Key = "blend-body", Direction = 1, MinWidth = 0f, Animate = Design.Reveal.Card,
-                                   Children = [Body(in tail, _tailLabels!, culture, in filters)] }]
+                                   Children = [Body(st, in tail, _tailLabels!, culture, in filters)] }]
                     : [],
             };
 
@@ -1256,16 +1169,16 @@ public readonly partial struct User
                 Children =
                 [
                     bar,
-                    new BoxEl { Key = "blend-legend", Direction = 0, Wrap = true, Gap = Spacing.XS, MinWidth = 0f, Children = legend.ToArray() },
+                    new BoxEl { Key = "blend-legend", Direction = 0, Wrap = true, Gap = st.LegendGap(), MinWidth = 0f, Children = legend.ToArray() },
                 ],
             };
             // The body host hangs off an UNGAPPED outer column: a zero-height host inside the gapped card column would
             // leave 8 DIP of dead air under the legend while the card is shut (ch 07 §9, parity 80).
             var stack = new List<Element>(2) { collapsed, host };
 
-            return FactCard("fact:blend",
+            return FactCard(st, "fact:blend",
                 // The header count is the TAGGED population, not the library.
-                CardHead(Loc.Get(Strings.Detail.LikedFacts.Blend), labels.Total),
+                st.Head(Loc.Get(Strings.Detail.LikedFacts.Blend), labels.Total),
                 new BoxEl { Direction = 1, MinWidth = 0f, Children = stack.ToArray() });
         }
 
@@ -1323,58 +1236,10 @@ public readonly partial struct User
             };
         }
 
-        /// <summary>The legend's last entry: chevron + "44 more" ⇄ "Show less" + the share, which stays put.</summary>
-        Element MoreButton(BlendLabels tailLabels, bool isOpen)
-        {
-            string label = isOpen ? Loc.Get(Strings.Detail.LikedFacts.ShowLess) : tailLabels.Total;
-            return new BoxEl
-            {
-                Key = "leg:more", Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
-                Padding = new Edges4(4f, 2f, 4f, 2f), Corners = CornerRadius4.All(4f),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                FocusVisualMargin = Design.FocusInsetRow,
-                HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
-                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                OnClick = _toggle,
-                Children =
-                [
-                    Sidebar.Chevron.Disclosure(_openRead),
-                    Caption(label) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    Caption(_otherText) with { Color = Tok.TextTertiary, MaxLines = 1 },
-                ],
-            };
-        }
-
-        /// <summary>The bare legend row: its tooltip wrap is the caller's (<c>ToolTip.WrapStable</c> over
-        /// <see cref="LegendFor"/> for a primary slice, <c>ToolTip.Wrap</c> in the opened tail).</summary>
-        static Element LegendEntry(ColorF ink, string label, string share, bool lit, Action onClick)
-        {
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
-                Padding = new Edges4(4f, 2f, 4f, 2f), Corners = CornerRadius4.All(4f),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                FocusVisualMargin = Design.FocusInsetRow,
-                Fill = lit ? Tok.AccentSubtle : ColorF.Transparent,
-                HoverFill = lit ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
-                PressedFill = Tok.FillSubtleTertiary,
-                HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
-                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                OnClick = onClick,
-                Children =
-                [
-                    new BoxEl { Width = LegendDot, Height = LegendDot, Shrink = 0f, Corners = CornerRadius4.All(2f), Fill = ink },
-                    Caption(label) with { Color = lit ? Tok.AccentTextPrimary : Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    Caption(share) with { Color = Tok.TextTertiary, MaxLines = 1 },
-                ],
-            };
-        }
-
         /// <summary>The opened body: a hairline, "The other N", the tail at FULL width (its percentages are OF THE TAIL and
         /// say so), a legend down to 1 % and a count of the rest. Built only while the disclosure is open (a click), so
         /// its per-row strings that are not in <paramref name="labels"/> are minted here.</summary>
-        Element Body(in LikedFactsRules.BlendTail tail, BlendLabels labels, CultureInfo culture, in Track.FilterState filters)
+        Element Body(DetailFactsStyle st, in LikedFactsRules.BlendTail tail, BlendLabels labels, CultureInfo culture, in Track.FilterState filters)
         {
             var named = tail.Named;
             var segs = new Element[named.Count];
@@ -1388,10 +1253,11 @@ public readonly partial struct User
                     with { Key = "tseg:" + title };
             }
 
+            var metrics = st.BlendBar();
             var tailBar = new BoxEl
             {
-                Key = "tail-bar", Direction = 0, Height = BarHeight, Gap = SegGap, MinWidth = 0f,
-                Corners = CornerRadius4.All(BarRadius), ClipToBounds = true, HitTestPassThrough = true,
+                Key = "tail-bar", Direction = 0, Height = metrics.Height, Gap = metrics.Gap, MinWidth = 0f,
+                Corners = metrics.Corners, ClipToBounds = true, HitTestPassThrough = true,
                 TransformOriginX = 0f,
                 Enter = s_tailBarReveal.Enter, Layout = s_tailBarReveal,
                 Children = segs,
@@ -1411,7 +1277,7 @@ public readonly partial struct User
                 {
                     Key = "tlw:" + title, Direction = 0, Shrink = 0f,
                     Animate = s_tailRowReveal with { DelayMs = Design.Entrance.DelayMs(i) },
-                    Children = [ToolTip.Wrap(LegendEntry(ink, title, share, lit, Click), tip, showDelayMs: FactTipDelayMs) with { Key = "tl:" + title }],
+                    Children = [ToolTip.Wrap(st.LegendEntry(ink, title, share, lit, Click), tip, showDelayMs: FactTipDelayMs) with { Key = "tl:" + title }],
                 });
             }
             if (underFloor > 0)
@@ -1420,8 +1286,7 @@ public readonly partial struct User
                     Key = "tl:underfloor", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
                     Padding = new Edges4(4f, 2f, 4f, 2f),
                     Animate = s_tailRowReveal with { DelayMs = Design.Entrance.DelayMs(rows.Count) },
-                    Children = [Caption(Strings.Detail.LikedFacts.UnderFloor(underFloor)) with
-                                { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                    Children = [st.Prose(Strings.Detail.LikedFacts.UnderFloor(underFloor), false, 1)],
                 });
 
             return new BoxEl
@@ -1431,10 +1296,10 @@ public readonly partial struct User
                 Padding = new Edges4(0f, Spacing.S, 0f, 0f),
                 Children =
                 [
-                    new BoxEl { Key = "tail-rule", Height = 1f, Fill = Tok.StrokeCardDefault, HitTestVisible = false },
-                    CardHead(Strings.Detail.LikedFacts.TailHeader(tail.Named.Count + tail.MoreTags), Strings.Detail.LikedFacts.TailSongs(tail.Count)),
+                    new BoxEl { Key = "tail-rule", Height = 1f, Fill = st.Rule(), HitTestVisible = false },
+                    st.Head(Strings.Detail.LikedFacts.TailHeader(tail.Named.Count + tail.MoreTags), Strings.Detail.LikedFacts.TailSongs(tail.Count)),
                     tailBar,
-                    new BoxEl { Key = "tail-legend", Direction = 0, Wrap = true, Gap = Spacing.XS, MinWidth = 0f, Children = legendRows.ToArray() },
+                    new BoxEl { Key = "tail-legend", Direction = 0, Wrap = true, Gap = st.LegendGap(), MinWidth = 0f, Children = legendRows.ToArray() },
                 ],
             };
         }
@@ -1449,7 +1314,7 @@ public readonly partial struct User
 
     /// <summary>The distribution facts that did NOT earn a card — each a one-line label that is still a LENS. A flat
     /// blend has no one tag to open and is the one plain (non-button) pill.</summary>
-    static Element? FactPillRow(LikedFactsRules.FactsSummary s, bool yearsPill, bool tempoPill, bool blendPill, CultureInfo culture,
+    static Element? FactPillRow(DetailFactsStyle st, LikedFactsRules.FactsSummary s, bool yearsPill, bool tempoPill, bool blendPill, CultureInfo culture,
                             in Track.FilterState filters, LensCell lens)
     {
         var pills = new List<Element>(3);
@@ -1466,7 +1331,7 @@ public readonly partial struct User
                 var current = LensFilters(lens);
                 LensWrite(lens, LikedFactsRules.IsYearLens(current, b) ? current.WithReleaseYear(0, 0) : current.WithReleaseYear(b.YearMin, b.YearMax));
             }
-            pills.Add(FactPill("pill:years", s_factCalendarGlyph, mostly, range, Strings.Detail.LikedFacts.PillCount(b.Count, d.Known),
+            pills.Add(FactPill(st, "pill:years", s_factCalendarGlyph, mostly, range, Strings.Detail.LikedFacts.PillCount(b.Count, d.Known),
                            LikedFactsRules.IsYearLens(filters, b), ToggleYears, Strings.Detail.LikedFacts.PillYearsTip(range, b.Count, d.Known)));
         }
 
@@ -1479,7 +1344,7 @@ public readonly partial struct User
                 var current = LensFilters(lens);
                 LensWrite(lens, current with { Tempo = LikedFactsRules.IsTempoLens(current, band) ? Track.TempoBand.Any : band });
             }
-            pills.Add(FactPill("pill:tempo", s_factMetronomeGlyph, mostly, TempoBandText.Range(band),
+            pills.Add(FactPill(st, "pill:tempo", s_factMetronomeGlyph, mostly, TempoBandText.Range(band),
                            Strings.Detail.LikedFacts.PillCount(s.Tempo.Count(td.TopIndex), td.Known),
                            LikedFactsRules.IsTempoLens(filters, band), ToggleTempo,
                            Strings.Detail.LikedFacts.PillTempoTip(Math.Round(stats.Median).ToString(culture), stats.Known, stats.Total)));
@@ -1491,7 +1356,7 @@ public readonly partial struct User
             if (bd.Flat)
             {
                 string flat = Strings.Detail.LikedFacts.PillBlendFlat(bd.Styles, LikedFactsRules.BlendFlat.ToString("P0", culture));
-                pills.Add(FactPill("pill:blend", s_factTagGlyph, "", flat, null, lit: false, toggle: null, flat));
+                pills.Add(FactPill(st, "pill:blend", s_factTagGlyph, "", flat, null, lit: false, toggle: null, flat));
             }
             else
             {
@@ -1500,7 +1365,7 @@ public readonly partial struct User
                     var current = LensFilters(lens);
                     LensWrite(lens, current with { Tag = LikedFactsRules.IsTagLens(current, title) ? null : title });
                 }
-                pills.Add(FactPill("pill:blend", s_factTagGlyph, "", title, share, LikedFactsRules.IsTagLens(filters, title), ToggleTag,
+                pills.Add(FactPill(st, "pill:blend", s_factTagGlyph, "", title, share, LikedFactsRules.IsTagLens(filters, title), ToggleTag,
                                Strings.Detail.LikedFacts.ShareTip(title, bd.TopCount, share)));
             }
         }
@@ -1508,49 +1373,14 @@ public readonly partial struct User
         if (pills.Count == 0) return null;
         return new BoxEl
         {
-            Key = "fact:pills", Direction = 0, Wrap = true, Gap = 6f, MinWidth = 0f,
+            Key = "fact:pills", Direction = 0, Wrap = true, Gap = st.PillGap(), MinWidth = 0f,
             Enter = FactFadeUp, Layout = FactShove,
             Children = pills.ToArray(),
         };
     }
 
-    static Element FactPill(string key, PathData glyph, string lead, string strong, string? trailing, bool lit, Action? toggle, string tip)
-    {
-        bool live = toggle is not null;
-        var ink = lit ? Tok.AccentTextPrimary : Tok.TextTertiary;
-        var kids = new List<Element>(4)
-        {
-            new PathEl
-            {
-                Geometry = glyph, Width = 13f, Height = 13f, ViewBoxW = 24f, ViewBoxH = 24f, Shrink = 0f,
-                StrokeColor = ink, Stroke = new StrokeStyle(2.4f, LineCap.Round, LineJoin.Round),
-            },
-        };
-        if (lead.Length > 0) kids.Add(Caption(lead) with { Color = lit ? Tok.AccentTextPrimary : Tok.TextSecondary, MaxLines = 1 });
-        kids.Add(Caption(strong) with
-        {
-            Weight = 600, Color = lit ? Tok.AccentTextPrimary : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            Shrink = 1f, MinWidth = 0f,
-        });
-        if (trailing is { Length: > 0 }) kids.Add(Caption(trailing) with { Color = Tok.TextTertiary, MaxLines = 1 });
-
-        var rest = lit ? Tok.AccentSubtle : Tok.FillCardDefault;
-        var pill = new BoxEl
-        {
-            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = 26f, MinWidth = 0f,
-            Padding = new Edges4(8f, 0f, 10f, 0f), Corners = CornerRadius4.All(13f),
-            Fill = rest, BorderWidth = 1f, BorderColor = lit ? Tok.AccentSecondary : Tok.StrokeCardDefault, Shadow = Elevation.Card,
-            Role = live ? AutomationRole.Button : AutomationRole.None, Focusable = live,
-            Cursor = live ? CursorId.Hand : CursorId.Arrow, FocusVisualMargin = live ? Design.FocusInsetRow : null,
-            // A non-live pill pins hover AND pressed to its own idle fill: a plain pill must not animate (W23 h).
-            HoverFill = live ? (lit ? Tok.AccentSecondary : Tok.FillSubtleSecondary) : rest,
-            PressedFill = live ? Tok.FillSubtleTertiary : rest,
-            HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-            OnClick = toggle,
-            Children = kids.ToArray(),
-        };
-        return ToolTip.Wrap(pill, tip, showDelayMs: FactTipDelayMs) with { Key = key };
-    }
+    static Element FactPill(DetailFactsStyle st, string key, PathData glyph, string lead, string strong, string? trailing, bool lit, Action? toggle, string tip)
+        => ToolTip.Wrap(st.Pill(new DetailFactsPill(key, glyph, lead, strong, trailing, lit, toggle)), tip, showDelayMs: FactTipDelayMs) with { Key = key };
 
     // ══ 10. THE LENS HEADER ══════════════════════════════════════════════════════════════════════════════════════════
 

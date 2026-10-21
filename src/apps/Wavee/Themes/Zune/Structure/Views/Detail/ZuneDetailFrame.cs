@@ -254,7 +254,7 @@ internal static class ZuneDetailFrame
         if (aside.Body is { } body) kids.Add(Ctx.Provide(InAside, true, body));
         // An aside that holds the insights ALONE takes the bento's own width (320 / 420 / 440); one that holds a body takes the record's column.
         float asideW = aside.Body is null && lay.InsightsW > 0f ? lay.InsightsW : lay.AsideW;
-        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!, asideW));
+        if (insights is { } i) kids.Add(ZuneInsights.AsideSection(i.Toggle, i.Facts!));
         float slotW = lay.ColumnGap + asideW;
         Prop<float> width = slotW;
         if (aside.Body is null && insights is { } only)

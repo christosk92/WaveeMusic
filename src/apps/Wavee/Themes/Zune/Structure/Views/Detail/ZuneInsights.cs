@@ -1,9 +1,10 @@
 // ── Themes/Zune/Structure/Views/Detail/ZuneInsights.cs — Zune's insights sheet and its entry points (themes plan 6.3; P5 Z6a1) ────────────────
 //
-// No Zune board draws the insights; they are built from Zune's parts (Q18): the facts bento (the page's own, `Detail.FrameSlots.LikedFacts`) in a
-// flat, square pane on the floating-pane layer, its "insights" heading (26/32 light, lowercased) and a 40 close, sliding over the list from the
-// right (the engine's `SplitView`: its slide, light dismiss, Escape and focus contract), or as a section of the docked aside where one docks.
-// The entry points: the list bar's glyph (accent while open) and the stuck band's word.
+// No Zune board draws the insights; they are built from Zune's parts (Q18): the facts bento (the page's own, `Detail.FrameSlots.LikedFacts`,
+// drawn in Zune's voice by `ZuneFacts`) in a flat, square pane on the floating-pane layer, its "insights" heading (26/32 light, lowercased) and a
+// 40 close, sliding over the list from the right (the engine's `SplitView`: its slide, light dismiss, Escape and focus contract), or as a
+// section of the docked aside where one docks. The bento takes the width of the column it lands in (never a width of its own: an aside that
+// yields to a docked panel would clip it). The entry points: the list bar's bar-chart mark (accent while open) and the stuck band's word.
 //
 // What stays core (`Entities\Detail.Insights.cs`): the toggle (the open signal and its verbs), the arm and open rules, the facts latch and the
 // focus return.
@@ -14,6 +15,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Render;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -22,6 +24,7 @@ using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 using InsightsToggle = Wavee.Detail.InsightsToggle;
 using K = Wavee.Themes.Zune.ZuneDetailKit;
+using F = Wavee.Themes.Zune.ZuneFactsRules;
 using Z = Wavee.Themes.Zune.ZuneDetailRules;
 
 namespace Wavee.Themes.Zune;
@@ -58,7 +61,7 @@ internal static class ZuneInsights
     {
         float paneW = Z.SheetWidthFor(pageWidth);
         return SplitView.Create(
-            pane: Pane(toggle, facts, paneW, routeKey),
+            pane: Pane(toggle, facts, routeKey),
             content: new BoxEl { Key = "insights:content", ZStack = true, Grow = 1f, Children = [page] },
             paneWidth: paneW,
             isPaneOpen: toggle.Open,
@@ -82,14 +85,14 @@ internal static class ZuneInsights
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Width = w, Shrink = 0f, MinHeight = 0f, Fill = Prop.Of(static () => R.Layer.FloatingPane),
-                    Children = [Pane(toggle, facts, w, routeKey)],
+                    Children = [Pane(toggle, facts, routeKey)],
                 },
             ],
         };
     }
 
     /// <summary>The insights as a section of the docked aside: the heading and the close over the bento, shown while the toggle is open.</summary>
-    public static Element AsideSection(InsightsToggle toggle, Func<float, Element> facts, float width)
+    public static Element AsideSection(InsightsToggle toggle, Func<float, Element> facts)
     {
         var open = toggle.Open;
         return new BoxEl
@@ -100,27 +103,27 @@ internal static class ZuneInsights
                 Flow.Show(() => open.Value, new BoxEl
                 {
                     Direction = 1, Gap = Z.SheetGap, MinWidth = 0f, Enter = Z.ArmFade, Exit = Z.ArmFade, Transition = Z.ArmFadeMotion,
-                    Children = [Header(toggle), facts(width)],
+                    Children = [Header(toggle), facts(0f)],
                 }),
             ],
         };
     }
 
-    /// <summary>The pane: the header row over the scrolling bento at the pane's content width.</summary>
-    static Element Pane(InsightsToggle toggle, Func<float, Element>? facts, float paneW, string routeKey)
+    /// <summary>The pane: the header row over the scrolling bento, which stretches to the pane's content width. The side padding sits INSIDE
+    /// the scroller, so a target on the bento's edge (the first face, the first bar) keeps its hit slop instead of losing it to the clip.</summary>
+    static Element Pane(InsightsToggle toggle, Func<float, Element>? facts, string routeKey)
     {
-        float contentW = MathF.Max(0f, paneW - 2f * Z.SheetPad);
         return new BoxEl
         {
             Key = "insights:column", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = Z.SheetGap,
-            Padding = new Edges4(Z.SheetPad, Z.SheetPad, Z.SheetPad, 0f),
+            Padding = new Edges4(0f, Z.SheetPad, 0f, 0f),
             Children =
             [
-                Header(toggle),
+                new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(Z.SheetPad, 0f, Z.SheetPad, 0f), Children = [Header(toggle)] },
                 ScrollView(new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, Z.SheetPad),
-                    Children = [facts is null ? new BoxEl() : facts(contentW)],
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(Z.SheetPad, 0f, Z.SheetPad, Z.SheetPad),
+                    Children = [facts is null ? new BoxEl() : facts(0f)],
                 }) with { Key = "insights:body:" + routeKey, Grow = 1f, Shrink = 1f, MinHeight = 0f },
             ],
         };
@@ -143,7 +146,10 @@ internal static class ZuneInsights
         ],
     };
 
-    /// <summary>The list bar's toggle: the insights glyph, the accent ink while open (a toggle button: pressed IS its meaning).</summary>
+    /// <summary>The bar-chart mark (three square bars on a baseline, a 24-unit stroked path in the theme's thin line), parsed once.</summary>
+    static readonly PathData s_mark = PathDataParser.Parse("M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4", PathContentEpoch.Mint(), FillRule.NonZero);
+
+    /// <summary>The list bar's toggle: the bar-chart mark, the accent ink while open (a toggle button: pressed IS its meaning).</summary>
     sealed class BarButton(InsightsToggle toggle, float edge) : Component
     {
         public override Element Render()
@@ -155,7 +161,15 @@ internal static class ZuneInsights
                 HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
                 Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand,
                 OnClick = toggle.Toggle, OnRealized = toggle.CaptureButton,
-                Children = [Icon(Icons.Info, Z.ToggleGlyph, open ? Tok.AccentTextPrimary : Tok.TextSecondary)],
+                Children =
+                [
+                    new PathEl
+                    {
+                        Geometry = s_mark, Width = Z.ToggleGlyph, Height = Z.ToggleGlyph, ViewBoxW = F.GlyphViewBox, ViewBoxH = F.GlyphViewBox, Shrink = 0f,
+                        StrokeColor = open ? Tok.AccentTextPrimary : Tok.TextSecondary,
+                        Stroke = new StrokeStyle(F.ToggleStroke, LineCap.Square, LineJoin.Miter),
+                    },
+                ],
             };
         }
     }

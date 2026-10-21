@@ -26,6 +26,7 @@ public sealed partial class ZuneStructure
         views.AddStyle(StyleKeys.DetailHero, ZuneDetailHero.Style);
         views.Add(ViewKeys.DetailInsights, ZuneInsights.SheetTemplate, "zune.detail.insights");
         views.Add(ViewKeys.DetailInsightsToggle, ZuneInsights.ToggleTemplate, "zune.detail.insights-toggle");
+        views.AddStyle(StyleKeys.DetailFacts, ZuneFacts.Style);
         views.Add(ViewKeys.DetailNotice, ZuneDetailSeam.NoticeTemplate, "zune.detail.notice");
         views.Add(ViewKeys.DetailVerticalTrailing, ZuneDetailSeam.VerticalTrailingTemplate, "zune.detail.vertical-trailing");
 
