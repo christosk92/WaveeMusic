@@ -56,12 +56,21 @@ public static partial class Diagnostics
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE MEM SOAK ===")
                 .AppendLine("version=" + VersionLabel() + "  rounds=" + s_options.MemSoakRounds + "  idleSec=" + s_options.MemSoakIdleSec);
+            string tileFile = Path.Combine(OutDir(), "tile-census.txt");
+            try { Directory.CreateDirectory(OutDir()); File.WriteAllText(tileFile, ""); } catch (IOException) { }
             void Phase(string name)
             {
                 string line = "[mem-soak] " + name + " " + MemLine(host);
                 report.AppendLine(line);
                 Say(line);
                 MemorySampler.Sample("mem-soak " + name);   // the full census line (engine, snapshots, GPU) in the profile's log
+                // Where the retained tiles are and how much of them is painted, on the page this phase stands on.
+                string? tiles = null;
+                if (FluentApp.RequestTileCensus(r => Volatile.Write(ref tiles, r)))
+                {
+                    PumpUntil(host, w, () => Volatile.Read(ref tiles) is not null, 3);
+                    try { File.AppendAllText(tileFile, "== " + name + Environment.NewLine + (Volatile.Read(ref tiles) ?? "(no census within 3 s)" + Environment.NewLine)); } catch (IOException) { }
+                }
             }
 
             PumpPaced(host, w, real ? 5.0 : 0.5);
