@@ -261,6 +261,9 @@ public static partial class Shell
                     // allocated. ALWAYS ON: a slow frame that cannot be attributed is a slow frame that does not get
                     // fixed.
                     RenderCensus = true,
+                    // `--d3d12-debug`: the D3D12 debug layer, for the memory soak's live-object census (FluentApp.RequestGpuLiveCensus).
+                    // A diagnostics launch only: the layer validates every call and costs frame time and memory.
+                    D3D12DebugLayer = Array.IndexOf(Platform.Args.Argv, "--d3d12-debug") >= 0,
                     // The scene store starts at its steady-state size and the idle trim never shrinks below it: growing
                     // from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside the first
                     // scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23).

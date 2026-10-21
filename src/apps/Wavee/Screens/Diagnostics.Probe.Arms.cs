@@ -848,7 +848,7 @@ public static partial class Diagnostics
         bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
         bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0,
         bool PlayDemo = false, string PlayDemoShot = "",
-        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false, bool StageWindowed = false)
+        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false, bool StageWindowed = false, bool MemSoakPlay = false)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -880,7 +880,7 @@ public static partial class Diagnostics
                 Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048),
                 Array.IndexOf(args, "--play-demo") >= 0, shot, title,
                 Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0,
-                Array.IndexOf(args, "--stage-windowed") >= 0);
+                Array.IndexOf(args, "--stage-windowed") >= 0, Array.IndexOf(args, "--mem-soak-play") >= 0);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)

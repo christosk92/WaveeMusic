@@ -7,6 +7,11 @@
 // Run beside a live Wavee with a scratch profile (its own single instance, no real account):
 //   Wavee.exe --fake --profile <scratch dir> --mem-soak [--mem-soak-rounds N] [--mem-soak-idle-sec S] [--mem-soak-minimize]
 //             [--mem-soak-loh-mb N] [--probe-out <dir>]
+//   Wavee.exe --profile <copy of a signed-in profile> --mem-soak [--mem-soak-play] ...   (the profile's REAL pages)
+//
+// `--mem-soak-play` (real profile only) plays the profile's most recent track before the tour and keeps it playing through
+// it: a 60 s phase with nothing but playback separates what playback holds (audio pipeline, lyrics, now-playing art) from
+// what the pages hold. It plays on the profile's account, so that account's other devices stop.
 //
 // Each round visits every `--fake` page a session reaches (the library lists, every album, artist and playlist, Home),
 // pumping frames after each hop so the page mounts, binds and fetches. After the rounds it idles at the production
@@ -40,11 +45,13 @@ public static partial class Diagnostics
         static bool TryMemSoak(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
             if (!s_options.MemSoak) return false;
-            // The soak navigates the fake catalog's ids; against a real account it would fetch and cache whatever those
-            // ids resolve to under the user's own profile. Refused, not degraded.
-            if (!Platform.Args.Fake) { Say("[mem-soak] needs --fake (it visits the fake catalog's pages)"); return true; }
+            // Without --fake the soak tours the profile's REAL pages (its recent albums, playlists and artists): only on a
+            // --profile copy, never the default profile, and it never plays anything.
+            bool real = !Platform.Args.Fake;
+            if (real && Platform.ProfileRoot.Length == 0) { Say("[mem-soak] without --fake it needs --profile <a copy of a signed-in profile>"); return true; }
             if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[mem-soak] unavailable: requires Win32Window + D3D12Device"); return true; }
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[mem-soak] the shell never activated a route"); return true; }
+            if (real && !PumpUntil(host, w, static () => Spotify.Current.IsOnline, 60)) { Say("[mem-soak] the session never came online (is the profile signed in?)"); return true; }
 
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE MEM SOAK ===")
@@ -54,25 +61,64 @@ public static partial class Diagnostics
                 string line = "[mem-soak] " + name + " " + MemLine(host);
                 report.AppendLine(line);
                 Say(line);
+                MemorySampler.Sample("mem-soak " + name);   // the full census line (engine, snapshots, GPU) in the profile's log
             }
 
+            PumpPaced(host, w, real ? 5.0 : 0.5);
             Phase("start");
-            var routes = SoakRoutes();
+            bool play = real && s_options.MemSoakPlay;
+            if (play)
+            {
+                var targets = RealTargets(s_frameBench);
+                string? track = targets.Tracks.Length > 0 ? targets.Tracks[0] : null;
+                if (track is null) Say("[mem-soak] --mem-soak-play: the profile has no recent track");
+                else
+                {
+                    Playback.PlayContext(track);
+                    bool started = PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 30);
+                    Say("[mem-soak] playing " + track + (started ? "" : " (did not start within 30 s)"));
+                    PumpPaced(host, w, 5.0);
+                    Phase("play-5s");
+                    PumpPaced(host, w, 55.0);
+                    Phase("play-60s");
+                }
+            }
+            var routes = real ? RealSoakRoutes() : SoakRoutes();
+            Say("[mem-soak] " + (real ? "real" : "fake") + " routes=" + routes.Count);
             int hops = 0;
             for (int r = 0; r < s_options.MemSoakRounds && !w.IsClosed; r++)
             {
                 foreach (var route in routes)
                 {
                     if (w.IsClosed) break;
+                    long nav0 = NavigationFrameWatch.NavigationId;
                     Nav(route);
+                    if (real)
+                    {
+                        // A real page waits on the network: let it land, then scroll it the way a person reads it (down
+                        // a few viewports and back), so its images decode and its virtualized rows realize.
+                        PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                        PumpPaced(host, w, 2.0);
+                        var scroll = new ScrollState(depthViewports: 6);
+                        if (scroll.WaitReady(host, w, 3)) Pump(host, w, 5.0, scroll.Driver(host));
+                        PumpPaced(host, w, 0.5);
+                    }
                     // Enough frames for the page to mount, its rows to bind and the fake provider's answers to land.
-                    for (int f = 0; f < 24 && !w.IsClosed; f++) FrameFast(host, w, gpu);
+                    else for (int f = 0; f < 24 && !w.IsClosed; f++) FrameFast(host, w, gpu);
                     hops++;
+                    if (real) Phase("hop=" + hops.ToString(CultureInfo.InvariantCulture) + " " + route.Kind + (route.Subject.IsValid ? " " + route.Subject.Text : ""));
                 }
                 Phase("round=" + (r + 1).ToString(CultureInfo.InvariantCulture) + " hops=" + hops.ToString(CultureInfo.InvariantCulture));
             }
             Nav(new Shell.Route(Shell.RouteKind.Home));
             PumpPaced(host, w, 2.0);
+            if (play)
+            {
+                Phase("tour-end playing");
+                Playback.Stop();
+                PumpPaced(host, w, 3.0);
+                Phase("stopped");
+            }
             // `--mem-soak-loh-mb N`: what a real session leaves that `--fake` cannot — N MB of dead large objects with a
             // survivor every eighth megabyte holding the holes open (the shape AI-lyrics jobs and large answers left behind).
             var survivors = new List<byte[]>();
@@ -99,6 +145,13 @@ public static partial class Diagnostics
             if (s_options.MemSoakMinimize) ShowWindow(w.Handle.Value, 9 /*SW_RESTORE*/);
 
             string dir = OutDir();
+            // `--d3d12-debug`: every live D3D12 resource and heap, tracked / leaked / untracked, with exact sizes.
+            string? census = null;
+            if (Array.IndexOf(Platform.Args.Argv, "--d3d12-debug") >= 0 && FluentApp.RequestGpuLiveCensus(r => Volatile.Write(ref census, r)))
+            {
+                PumpUntil(host, w, () => Volatile.Read(ref census) is not null, 15);
+                if (Volatile.Read(ref census) is { } gpuReport) { WriteArtifact(dir, "gpu-census.txt", gpuReport); Say(gpuReport); }
+            }
             string ready = Path.Combine(dir, "mem-soak-dump.ready"), done = Path.Combine(dir, "mem-soak-dump.done");
             try { if (File.Exists(done)) File.Delete(done); } catch (IOException) { }
             WriteArtifact(dir, "mem-soak-dump.ready", Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
@@ -136,6 +189,23 @@ public static partial class Diagnostics
             for (int i = 0; i < 12; i++) routes.Add(Shell.For(EntityUri.Parse("spotify:artist:ar" + i.ToString(CultureInfo.InvariantCulture)), "Soak artist"));
             for (int i = 0; i < 7; i++) routes.Add(Shell.For(EntityUri.Parse("spotify:playlist:pl" + i.ToString(CultureInfo.InvariantCulture)), "Soak playlist"));
             for (int i = 0; i < 6; i++) routes.Add(Shell.For(EntityUri.Parse("spotify:playlist:plx" + i.ToString(CultureInfo.InvariantCulture)), "Soak playlist"));
+            routes.Add(new Shell.Route(Shell.RouteKind.Home));
+            return routes;
+        }
+
+        /// <summary>The real profile's pages: the library lists, then its recent albums, playlists and artists (the
+        /// frame bench's profile reading: play-recency.json and history.json), then Home again.</summary>
+        static List<Shell.Route> RealSoakRoutes()
+        {
+            var t = RealTargets(s_frameBench);
+            var routes = new List<Shell.Route>
+            {
+                new(Shell.RouteKind.Home), new(Shell.RouteKind.LibraryAlbums), new(Shell.RouteKind.LibraryArtists),
+                new(Shell.RouteKind.Liked), new(Shell.RouteKind.Recents),
+            };
+            foreach (string u in t.Playlists.Take(8)) routes.Add(Shell.For(EntityUri.Parse(u), "Soak playlist"));
+            foreach (string u in t.Albums.Take(8)) routes.Add(Shell.For(EntityUri.Parse(u), "Soak album"));
+            foreach (string u in t.Artists.Take(6)) routes.Add(Shell.For(EntityUri.Parse(u), "Soak artist"));
             routes.Add(new Shell.Route(Shell.RouteKind.Home));
             return routes;
         }
