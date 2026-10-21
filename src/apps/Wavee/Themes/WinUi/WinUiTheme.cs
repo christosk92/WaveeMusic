@@ -40,6 +40,12 @@ public static class WinUiTheme
     public static ThemeComposition Create()
     {
         ThemeInspection.RegisterLintGuide(Id, new WinUiLintGuide());
+        ThemeInspection.RegisterGlyphNames(
+            (nameof(WinUiPlayerLayout.PlaySolid), WinUiPlayerLayout.PlaySolid), (nameof(WinUiPlayerLayout.PauseSolid), WinUiPlayerLayout.PauseSolid),
+            (nameof(WinUiPlayerLayout.LyricsGlyph), WinUiPlayerLayout.LyricsGlyph), (nameof(WinUiPlayerLayout.QueueGlyph), WinUiPlayerLayout.QueueGlyph),
+            (nameof(WinUiPlayerLayout.DevicesGlyph), WinUiPlayerLayout.DevicesGlyph), (nameof(WinUiPlayerLayout.ExpandGlyph), WinUiPlayerLayout.ExpandGlyph),
+            (nameof(WinUiNavHeadLayout.BannerGlyph), WinUiNavHeadLayout.BannerGlyph), (nameof(WinUiNavGeometry.OfflineGlyph), WinUiNavGeometry.OfflineGlyph),
+            (nameof(WinUiQueueRules.LevelGlyph), WinUiQueueRules.LevelGlyph));
         return new(
             Manifest,
             new WinUiStructure(standIn: static views => new ClassicStructure().Register(views)),

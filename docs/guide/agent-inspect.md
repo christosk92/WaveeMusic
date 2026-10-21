@@ -106,11 +106,19 @@ Every command gets exactly **one** reply line. A JSON command's `id` comes back 
 row, at most `max` frames (600 by default). Nothing moves means no animation track, no scroller in user-driven motion
 (`AppHost.AnyUserScrollMoving`: a wheel notch's glide, a fling), and no wake reason (`AppHost.CurrentWakeReasons`) but the
 ambient ones: the caret blink, the warm cadence, a host timer coming due, and the frame-clock tickers that run for as long
-as a track plays (the playhead, a visualizer). The replies report `frames` and `settled`, and `ambient:[...]` when the
-settle saw any of those ambient reasons: motion they drive (a frame-clock ticker) was not waited for. A settle that hit its
-cap adds `busy`, what still moved:
+as a track plays (the playhead, a visualizer). **Looping tracks** are ambient too: when every live, unparked animation row
+is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the engine's `AnimEngine.ActiveNonLoopCount`
+is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
+`ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
+for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
+when the reply was written. Loading indicators are the exception (below): a skeleton's shimmer, an indeterminate
+progress bar or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
+reached. A settle that hit its cap adds `busy`, what still moved:
 
-- `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor).
+- `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
+  engine's census of the live rows: `anim=N:Channel*k,...`, then `done=`, `parked=` and `loop=` counts when there are any.
+- `{"key","kind":"loading"}`: a loading indicator still running (a skeleton's shimmer, a progress bar or ring, until the data or its error lands), with a
+  `loading` sentence beside `busy` that names them (see Looping animations below).
 - `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
 - `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
   inspector can see: `themeEpoch` (a theme token was written on the last frame), `freeze`, `engineSettle`,
@@ -121,15 +129,34 @@ cap adds `busy`, what still moved:
 
 Pass `settle=false` to skip the settle and step the frames yourself with `frames`.
 
-A looping animation never ends, so a page that shows one never settles. While a track plays, its row animates on every
-page that lists it, in every theme: Home after a `play` (Classic and WinUI: the `recent:*` card; Zune: the
-`zune-cluster-row:*` row) and Liked Songs (`c.num`, `winui.row.now`, `zune.row.now`). A verb there runs to `max`, and `busy`
-names the row. Use `settle=false` with `frames N` there, or a small `max`.
+**Looping animations.** A loop never ends by design. Where its rows are loops the settle reads them as ambient (above):
+Classic's player bar at
+window Small below 760 wide lays the title out in an 88 DIP lane (the Compact bar level), "Nothing playing" is 107 DIP, so
+the bar's marquee (`np-title`, motion policy F239: an overflowing title always scrolls) loops for as long as the window
+stays there; a verb there settles as it does at any other width (a `resize` in 21 frames) and replies `loops:["np-title"]`
+(it ran to `max` before). While a track plays, its row's indicator is a loop row too, on every page that lists it, in every
+theme: Home after a `play` (Classic and WinUI: the `recent:*` cards; Zune: the `zune-cluster-row:*` row) and Liked Songs
+(`c.num`, `winui.row.now`, `zune.row.now`); look for those keys in `loops`. Whether it runs is decided per process, not by
+the device: WinUI Home 1440 `play`, one fresh server each, looped in 1 of 6 under WARP and 1 of 6 under `gpu=none` (the
+others never started it, even 600 frames later), and a build that waited for loops ran 3 of 6 to `max` under WARP. Motion
+that never ends but is not a loop row (a frame-clock ticker is ambient already; anything else) still runs a verb to `max`,
+and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
+Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) is still waited for.
 
-**Known issue: Classic with a second tab active.** In Classic, while any tab but the first is active, the app wakes a frame
-every frame (`busy` reads `FrameNeeded` with `terms:["explicit"]`, and nothing is drawn: an idle repaint in the app, not the
-inspector). `goto route=history` opens History in a tab of its own, so every settle on that tab runs to `max`. Click the
-first tab (`tab#2`) or mount again: a mount closes the extra tabs.
+Loading indicators are not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows
+while its data is pending), an **indeterminate progress bar** (a looping node under the `ProgressBar` role: WinUI and Classic
+search's `omni-progress` while a query is pending) and a **progress ring** (its arc's trim loops). A page that still shows one
+has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 24 frames on
+"No results found", not after 4 on the skeleton rows), and a settle that hits `max` there says `loading` (above). The fake catalogue answers on the wall clock, so a slow page can take
+several hundred frames (`goto uri=spotify:album:alq2`, seeded to fail, takes 200 to 900): raise `max`.
+
+Every settling verb, and `settle`, takes `loops`:
+
+| `loops=` | A loop holds the settle |
+|---|---|
+| `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
+| `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture. |
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
@@ -162,12 +189,15 @@ inherit what the last one changed. It puts back:
   `--fake` boot seeded (the 12 rows the queue panel, the stage's up next and "Next up" show before anything plays). That
   queue is the fresh state on purpose: the first mount of a server shows those 12 rows, so an emptied queue would make a
   later mount differ from it;
+- the video surface a `video=` mount opened: its placement (requested, preferred home, transport owner, through the one
+  write path `Video.State.Commit`) goes back to the boot's, and the idle player `player=fake` bound is unbound and disposed.
+  `status` shows it as `video{resolved, requested, preferred, transport, player}`;
 - every theme's option values (`option id=... value=...`), back to the theme's defaults. An `option` set while nothing is
   mounted is for the next mount, which keeps it.
 
-The first mount of a server finds the boot's own state, which is the fresh one. Not every static is reset (the video
-surface of a `video=` mount is not), so a fresh process per configuration is still the rule; `status` counts the `mounts`
-a server has done so a reused one shows. A mount without `theme` or `kind` keeps the active ones.
+The first mount of a server finds the boot's own state, which is the fresh one. Not every static is reset, so a fresh
+process per configuration is still the rule; `status` counts the `mounts` a server has done so a reused one shows. A mount
+without `theme` or `kind` keeps the active ones.
 
 | Arg | Values |
 |---|---|
@@ -223,31 +253,33 @@ Resizes the window and settles. Use it to check a tier crossing on a live mount.
 | `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
 | `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
-### `frames {n}` and `settle {max?}`
+### `frames {n}` and `settle {max?, loops?}`
 
 `frames` runs exactly `n` frames and replies with `{"frames":n,"animating":bool,"scrolling":bool,"wake":[...],"ambient":[...]}`:
 `animating` is a live animation track, `scrolling` a scroller in user-driven motion, `wake` the wake reasons that keep a
 settle going and `ambient` the ones it ignores (see Settling). With `FrameNeeded` in `wake` it adds `frameNeeded:[terms]`,
 as `busy` does. `settle` runs frames until nothing moves for two frames, for at most `max` frames, and replies with
-`{"frames","settled"}` (plus `busy` at the cap, and `ambient` when it saw any). `frames n` and `settle max` take 0 to
-100000; a value outside is refused.
+`{"frames","settled"}` (plus `busy` at the cap, `ambient` when it saw any, and `loops` when it did not wait for one; `loops=`
+as on every settling verb, see Settling). `frames n` and `settle max` take 0 to 100000; a value outside is refused.
 
 ### `reset`
 
 Unmounts, puts back what the mounts changed (as `mount` does: the `state` vacancy, the cold playlist, the stage, the tabs,
-playback and the queue, and the theme options, even one set while nothing was mounted), resets the navigation to a fresh
+the video surface and the fake player, playback and the queue, and the theme options, even one set while nothing was mounted), resets the navigation to a fresh
 Home, and makes Classic dark the active theme.
 
 ### `unmount`, `status`, `help`, `quit`
 
 - `status` reports whether something is mounted, the frames run so far, `mounts` (how many mounts this server has done:
-  above 1 means state that a mount does not clear may carry over), the theme and kind, the route, the text backend and the
-  network leaks. When something is mounted, it adds the mount facts, `animating` and `trimSource`.
+  above 1 means state that a mount does not clear may carry over), `video{resolved, requested, preferred, transport,
+  player}` (the video surface's placement and whether a player is bound; a fresh server reads `None`, `None`, `Docked`,
+  `GlobalBar`, `false`), the theme and kind, the route, the text backend and the network leaks. When something is mounted,
+  it adds the mount facts, `animating` and `trimSource`.
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
 
-### `click`, `hover {key | x,y, nth?, force?, mods?, button?}`
+### `click`, `hover {key | x,y, nth?, force?, stableMax?, mods?, button?}`
 
 These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no checks). Not both: `x` or `y` beside
 `key` is refused, and so are `nth` and `force` without `key`.
@@ -266,6 +298,27 @@ These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no
 | The hit test at the centre of its visible part lands inside it. A passive target (no pointer handler of its own: a label, an icon, a hint) may also be reached through what owns it: an ancestor, a sibling part of the same click owner, or a hit target painted beneath it (the press passes through it). Not the overlay host's input-blocking layer: a passive part of an open menu or dialog (its header text, its body) that lies over that layer is covered, because a press there reaches the layer (a light-dismiss one closes the menu). | `covered`, naming the key that covers it (or, when that key is the target's own ancestor, the covering part's dump path; the input-blocking layer is named as such) |
 | Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end). A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
 
+**Stable.** Then, as Playwright does, the target's presented rect must be the same on two consecutive frames: a target
+still moving (an entrance, a FLIP, a wheel glide carrying it) is waited for, one frame at a time, at most `stableMax` frames
+(30 by default, 0 to 600; 0 skips the check), and the matches are judged again after the wait. An idle host (no animation
+row, no scroller in motion, no wake reason but the caret's and the warm cadence's) owes no frame that could move it, so the
+target holds at once and no frame runs. The reply says how it held: `target.stable {how, frames}` with `how` = `idle` (no
+frame run), `held` (it held after `frames` frames) or `skipped` (`stableMax=0`). A target that moved on every frame waited is
+refused with `reason:"unstable"`, `frames`, its `rect` before the last frame and `now` after it; one that unmounted during the
+wait is refused as unmounted. `force=true`, a point target and `scroll` (the wheel needs no still target) skip the check and
+print no `stable`.
+
+```json
+{"cmd":"scroll","args":{"key":"recent:history","dy":6,"settle":false},"id":6}
+{"cmd":"click","args":{"key":"recent:history","stableMax":1},"id":7}       (the glide still carries it)
+→ {"id":7,"ok":false,"cmd":"click","error":"'recent:history' is not stable: its rect moved on every one of the 1 frames waited;
+   settle first, raise stableMax, or force=true aims at it anyway","reason":"unstable","frames":1,
+   "rect":{"x":1138,"y":614.2,"w":266,"h":64},"now":{"x":1138,"y":552.2,"w":266,"h":64}}
+{"cmd":"click","args":{"key":"recent:history"},"id":8}
+→ {"id":8,"ok":true,"cmd":"click","frames":35,"settled":true,"at":{"x":1271,"y":293.2},"key":"recent:history",
+   "target":{"nth":0,"of":1,"matches":1,"onScreen":1,"order":"...","stable":{"how":"held","frames":9}}, ...}
+```
+
 The pointer goes to the centre of the visible part. A refusal is `ok:false` with the reason, and `matches` lists every node
 keyed so with its `rect`, `onScreen` share, `actionable`, `reason`, `why` and `hit`. An accepted target can carry
 `target.note` (a press that passes through it, a passive target over nothing). `force=true` skips the checks (and aims at
@@ -273,7 +326,7 @@ the presented centre of a node with nothing visible); `nth` then counts every ma
 
 **`nth`** counts the actionable matches only (every match with `force=true`), in **reading order**: top first (to the whole
 DIP), then left. `find <key>` lists the matches in the same order with the `nth` each one answers to. The reply says which it
-took: `target {nth, of, matches, onScreen, order, forced?, note?}`, beside `at` and `key`; acting verbs add `after` (see
+took: `target {nth, of, matches, onScreen, order, forced?, note?, stable?}`, beside `at` and `key`; acting verbs add `after` (see
 Protocol).
 
 ```json
@@ -328,7 +381,8 @@ the remote line shows through the load as the title and artists do.
 ### `state {kind}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back); `loading` opens a search for
-`zzqx`, which the fake catalogue never answers (the page stays on its skeleton for the first frames). Any other search query is answered from the fake
+`zzqx`, which the fake catalogue never answers (the page stays on its skeleton for the first frames; `loading` and the `cold-*` states settle
+on their skeleton, `loops=skeletons` unless you pass `loops`). Any other search query is answered from the fake
 catalogue by name; `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
 `mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
@@ -431,7 +485,7 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `border?` | `{w, color}`. |
 | `corners?` | `[tl, tr, br, bl]`. |
 | `clip?` | `true` when the node clips to its bounds, or `{x, y, w, h}` for an authored clip rect. |
-| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, the `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), or `glyph:U+F5B0` when the engine's table has no name for it, with its `codepoint` beside it. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
+| `text?` | `string` (the resolved StringId), `sizeDip`, `lineHeight?`, `weight`, `family?`, `color`, `case?`, `maxLines?`, `wrap?`, `trim?`, `charSpacing?`, `trimmed`, `natural {w, h}`, `overflowX?`, `overflowY?`. A span run has an empty `string` and a `spans` count. An icon glyph (one or two private-use characters) prints as `glyph:<name>`, with its `codepoint` beside it. The name is the engine's `Icons` constant (`Icons.TryGetName`: `glyph:Bell`), else the app's own: the name a theme registered for a glyph it declares (`ThemeInspection.RegisterGlyphNames` in its composition file: `glyph:PlaySolid` for U+F5B0, `glyph:LyricsGlyph`), else `SegoeGlyphs` (`glyph:AddFriend`). Text in the app's own font (`WaveeIcons`, `family` ending `#WaveeIcons`) is named from that font's marks only (`glyph:Lyrics`, `glyph:PlayNext`), because they reuse Segoe code points (U+E900..U+E902). A glyph nothing names prints as `glyph:U+XXXX`. Text that mixes words and glyphs prints each glyph so, set apart from the words by a blank (`Afterglow glyph:U+E8B2`), and `codepoint` lists the glyphs' code points only. |
 | `flags` | `visible`, `focusable`, `focused`, `hovered`, `pressed`, `disabled`, `clipsToBounds`, `scrollable`, `hitTest`. |
 | `role?` | The automation role. |
 | `handlers?` | `click`, `key`, `pointer`, `char`, `repeat`, `pressed`, `context`, `focus`, `drag`, `wheel`, `selectableText`, `spanLinks`, `gesture`, `clickRequestsContext`, `rowCells`. |
@@ -468,12 +522,14 @@ cases it answers `{"ok":false,"error":...,"why":...}`.
 Returns the window's current `TierFacts`:
 
 - `window`, `height` and `content` tiers
-- `contentWidth`, `viewportWidth` and `viewportHeight`
+- `contentWidth`, `viewportWidth` and `viewportHeight`: the sizes the ladders read now, the window's layout viewport and the
+  content width estimated from it (the window less the pane and the docked panels the window tier lays out:
+  `WindowTiers.TryLiveSizes`)
 - `resizing`
 - the crossed `rungs`, by id (as `mount`, `status` and `crossing` list them)
-
-The three sizes are those of the last time the facts were published (the mount or a tier change). After a `resize` that
-stays in the same tier, they still show the old size; the tier names are current. `status` has the window's size.
+- `published`: `{contentWidth, viewportWidth, viewportHeight}` as the facts carry them, the sizes of their last publish (the
+  mount or a tier change). The app republishes the facts only when a tier, a rung or `resizing` changes, never per resized
+  frame, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
 
 It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
 mounted window.
@@ -555,7 +611,8 @@ Reading a crossing:
 
 - The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
   lists (the offscreen window reports the window flags the crossing sets, engine `9476a4bbe`). Only `settle.frames` varies:
-  it changes with the machine's load, on either device. `gpu=none` is faster; under the default, `render` works in the same
+  it changes with the machine's load, on either device. (A settle's `loops` can differ between servers on either device: the
+  playing-row race under Settling.) `gpu=none` is faster; under the default, `render` works in the same
   server after the crossing.
 - Start in the old tier. Edges hold differently each way: a narrowing drag keeps Zune's Huge tier down to 1904 wide, where a
   fresh mount is already Standard. The content tier also depends on the path: Classic resized from 3456 straight to 1136 is
@@ -565,20 +622,34 @@ Reading a crossing:
   first command at 1904, the same crossing crosses nothing, and still reads `heldOldTier:true`: compare `tierBefore` with
   `tierAfter`.
 - `committed` and `heldOldTier` compare the window and height tiers and the rungs, not the content tier: an edge where only
-  the content tier changes reads `committed:false`, and `tierAfter.content` shows the change.
+  the content tier changes reads `committed:false`. `contentCommitted` says where the content tier left its starting band:
+  `commit` (on the commit frame, as the window tier does in a drag), `resized` (already in the resized frames: it did not
+  hold), `settle` (later, on a frame of the settle) or `none`. Classic 624 to 608 (content Small to Compact) reads
+  `committed:false, contentCommitted:"commit"`; WinUI 992 to 976 (window Standard to Small, content Small throughout)
+  reads `committed:true, contentCommitted:"none"`.
 - Only `frames=1` models a drag: the old tier holds for one keep-alive paint after the resize (after the loop, when
   narrowing), and the next frame commits. From `frames=2` on, the new tier lands inside the resized frames, both ways:
   `heldOldTier` is false, `tierResized` is already the new tier, and the commit frame compares two frames after the
   commit. Zune home 1440x960 to 1440x400 reports 195 jumped at `frames=1`, 176 at `frames=2` and nothing changed at
   `frames=60`.
 - A width step with no tier edge already moves nodes on the commit frame (Zune home 1504 to 1488 wide: 8 snapped,
-  119 to 125 jumped, depending on how the page got to 1504). Set an edge's numbers against a 16 DIP step inside the same
-  tier, reached the same way, before you blame the tier change.
+  119 to 125 jumped, depending on how the page got to 1504). That is a continuous reflow landing one frame late, not a
+  quantised layout: a shelf (`PagedShelf`) fits its cards to its own measured width, which it learns from its bounds after
+  the resized frame's layout, so the strip's height follows on the next frame (the commit frame: Zune's
+  `zune-home-wide:*` 2 shorter, and the 119 nodes below it 2 up) and its cards a frame after that (each 4 narrower:
+  `trace` over a plain `resize` shows the three frames). The move scales with the step (Zune, `zune-home-column` from 1504: 16 DIP 2
+  shorter, 32 4, 64 9; chained from 1392, 96 widening 14 taller), and Classic and WinUI show the same pattern
+  (`home:column` 10 shorter at 16 DIP, their shelves glide). Small steps move by rounding, because the 16:9 tiles' height
+  is rounded: four 4 DIP steps from 1504 move 0, 1, 0, 1 (127 nodes changed on each step that moves), which add up to
+  the 16 DIP step's 2. So a 4 DIP step that moves 1 is no bug; small steps that do not add up to the big step's move, or a
+  move that does not scale with the step, are. Set an edge's numbers against a 16 DIP step inside the same tier, reached
+  the same way, before you blame the tier change.
 
 | Reply field | Meaning |
 |---|---|
-| `tierBefore`, `tierResized`, `tierAfter` | `{window, height, content, rungs}` at the start, after the resized frames and after the commit; `rungs` lists the crossed rung ids, as `tiers` does. |
+| `tierBefore`, `tierResized`, `tierAfter`, `tierSettled` | `{window, height, content, rungs}` at the start, after the resized frames, after the commit and after the settle; `rungs` lists the crossed rung ids, as `tiers` does. |
 | `committed` | The window or height tier or a rung changed (the content tier is not compared). `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
+| `contentCommitted` | Where the content tier first differed from `tierBefore.content`: `resized`, `commit`, `settle` or `none`. |
 | `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `remounted`, `vanished`, `appeared`, `recounted`. |
 | `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
@@ -596,8 +667,9 @@ Reading a crossing:
 → {"id":9,"ok":true,"cmd":"crossing","from":{"w":1440,"h":960},"to":{"w":1440,"h":400},"narrowing":true,"resizedFrames":1,
    "tierBefore":{"window":"Standard","height":"Regular","content":"Standard","rungs":["home.daylist.full"]},
    "tierResized":{"window":"Standard","height":"Regular","content":"Standard","rungs":["home.daylist.full"]},
-   "tierAfter":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},"committed":true,"heldOldTier":true,
-   "reducedMotion":false,"counts":{"tracked":402,"changedOnCommit":31,"glided":30,"snapped":1,"jumped":0,"remounted":0,
+   "tierAfter":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},
+   "tierSettled":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},"committed":true,"heldOldTier":true,
+   "contentCommitted":"none","reducedMotion":false,"counts":{"tracked":402,"changedOnCommit":31,"glided":30,"snapped":1,"jumped":0,"remounted":0,
    "vanished":0,"appeared":0,"recounted":0},"remounted":[],"vanished":[],"appeared":[],"recounted":[],
    "snapped":[{"key":"zune-home-daylist","from":{"x":48,"y":132,"w":1344,"h":220},"to":{"x":48,"y":132,"w":1344,"h":160},
                "dx":0,"dy":0,"dw":0,"dh":-60}],"jumped":[],"settle":{"frames":24,"settled":true},
@@ -608,7 +680,7 @@ Reading a crossing:
 crossing) as a head line (the summary, then the `outcomes` and `levels` counts) and one line per finding:
 `[warn ] target/target.size: ...` (the alias, then the id when they differ). A finding that is not a fail of a gate rule
 says what it is: `[warn ] align.baseline (review, todo): ...`, `[error] clip/text.clip (suppressed): ...`. An icon glyph in
-a message prints as `glyph:U+XXXX`.
+a message prints by name as `dump` names it (`glyph:PlaySolid`), or as `glyph:U+XXXX` when nothing names it.
 
 **A verdict: `--gate`.** `python -I tools/inspect.py --gate error -f lint.txt` runs the file as usual, then prints one
 summary line and exits **1** when any lint (or crossing's lint) listed a **failure of a gate-level rule** at or above the

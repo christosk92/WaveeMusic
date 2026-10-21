@@ -10,7 +10,7 @@
 //    "scroll"?:{offset,max,viewport,content,axis},"anim"?:true,"children"}
 // Defaults are omitted (no fill when transparent, no border when 0 wide...), so a dump of a page stays small enough to read.
 // `rect` is the PRESENTED absolute rect in window DIP (`SceneStore.PresentedAbsoluteRect`): what paint and hit-testing use.
-// An icon glyph prints as `glyph:<Icons name>` (dump and find alike), alone or inside words, so a label never holds an invisible
+// An icon glyph prints as `glyph:<name>` (the engine Icons name or the app's own; dump and find alike), alone or inside words, so a label never holds an invisible
 // private-use character.
 
 using System.Text.Json;
@@ -142,7 +142,7 @@ public static partial class Diagnostics
             StringTable strings = scene.Strings ?? Entities.Strings;
             string value = paint.Text.Value > 0 ? strings.Resolve(paint.Text) : "";
             w.WriteStartObject("text");
-            if (GlyphLabel(value) is { } glyph)
+            if (GlyphLabel(value, FamilyOf(strings, in style)) is { } glyph)
             {
                 w.WriteString("string", glyph);
                 w.WriteString("codepoint", Codepoints(value, privateUseOnly: true));
@@ -239,8 +239,7 @@ public static partial class Diagnostics
                 }
                 else w.WriteString("why", v.Why);
                 w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));
-                string? text = FirstText(scene, node);
-                if (text is not null) w.WriteString("text", GlyphLabel(text) ?? text);
+                if (FirstText(scene, node, out string? family) is { } text) w.WriteString("text", GlyphLabel(text, family) ?? text);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
@@ -267,26 +266,33 @@ public static partial class Diagnostics
             found.Sort((a, b) => Actionability.ReadingOrder(rects[a.Node], rects[b.Node]));
         }
 
-        /// <summary>The first text string at or under <paramref name="node"/> (a button's label), or null.</summary>
-        static string? FirstText(SceneStore scene, NodeHandle node)
+        /// <summary>The first text string at or under <paramref name="node"/> (a button's label), or null; <paramref name="family"/> is
+        /// the face it draws in (<see cref="FamilyOf"/>).</summary>
+        static string? FirstText(SceneStore scene, NodeHandle node, out string? family)
         {
             StringTable strings = scene.Strings ?? Entities.Strings;
             foreach (var n in InspectKit.Subtree(scene, node))
             {
                 ref NodePaint p = ref scene.Paint(n);
-                if (p.VisualKind == VisualKind.Text && p.Text.Value > 0) return strings.Resolve(p.Text);
+                if (p.VisualKind != VisualKind.Text || p.Text.Value <= 0) continue;
+                family = FamilyOf(strings, in scene.Layout(n).TextStyle);
+                return strings.Resolve(p.Text);
             }
+            family = null;
             return null;
         }
 
+        /// <summary>The font a text node names (`path#Family`), or null for the theme's default face.</summary>
+        public static string? FamilyOf(StringTable strings, in TextStyle style) => style.FontFamily.Value > 0 ? strings.Resolve(style.FontFamily) : null;
+
         // ── glyphs ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the <c>Icons</c> constant,
-        /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
+        /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the engine's <c>Icons</c> constant or
+        /// the app's own, <see cref="TryGlyphName"/>), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
         /// (`Afterglow glyph:U+E8B2`: a token stands apart from the words beside it by a blank); null for text with no glyph.</summary>
-        public static string? GlyphLabel(string text)
+        public static string? GlyphLabel(string text, string? family = null)
         {
-            if (IsGlyph(text)) return GlyphToken(text);
+            if (IsGlyph(text)) return GlyphToken(text, family);
             if (text.AsSpan().IndexOfAnyInRange(FirstPrivateUse, LastPrivateUse) < 0) return null;
             var sb = new System.Text.StringBuilder(text.Length + 16);
             for (int i = 0; i < text.Length;)
@@ -297,21 +303,50 @@ public static partial class Diagnostics
                 string run = text[start..i];
                 if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1])) sb.Append(' ');
                 // A run of two may be one glyph (a layered icon); a longer run, or two the table does not name together, is a token per glyph.
-                if (run.Length <= 2 && FluentGpu.Controls.Icons.TryGetName(run, out _)) sb.Append(GlyphToken(run));
+                if (run.Length <= 2 && TryGlyphName(run, family, out _)) sb.Append(GlyphToken(run, family));
                 else
                     for (int k = 0; k < run.Length; k++)
                     {
                         if (k > 0) sb.Append(' ');
-                        sb.Append(GlyphToken(run[k].ToString()));
+                        sb.Append(GlyphToken(run[k].ToString(), family));
                     }
                 if (i < text.Length && !char.IsWhiteSpace(text[i])) sb.Append(' ');
             }
             return sb.ToString();
         }
 
-        /// <summary>`glyph:<Icons name>`, or `glyph:U+XXXX` for a glyph the engine's table has no name for.</summary>
-        static string GlyphToken(string glyph)
-            => "glyph:" + (FluentGpu.Controls.Icons.TryGetName(glyph, out string? name) ? name : "U+" + Codepoints(glyph));
+        /// <summary>`glyph:<name>` (<see cref="TryGlyphName"/>), or `glyph:U+XXXX` for a glyph nothing names.</summary>
+        static string GlyphToken(string glyph, string? family)
+            => "glyph:" + (TryGlyphName(glyph, family, out string? name) ? name : "U+" + Codepoints(glyph));
+
+        /// <summary>The marks of the app's own font (<see cref="WaveeIcons"/>). They reuse code points Segoe Fluent Icons has too
+        /// (U+E900..U+E902), so they name a glyph only when its text draws in that face.</summary>
+        static readonly (string Name, string Glyph)[] s_waveeIcons =
+        [
+            (nameof(WaveeIcons.PlayNext), WaveeIcons.PlayNext), (nameof(WaveeIcons.PlayAfter), WaveeIcons.PlayAfter), (nameof(WaveeIcons.Lyrics), WaveeIcons.Lyrics),
+        ];
+
+        /// <summary>The Segoe marks the engine's table lacks (<see cref="SegoeGlyphs"/>), drawn in the default icon face.</summary>
+        static readonly (string Name, string Glyph)[] s_segoeGlyphs = [(nameof(SegoeGlyphs.AddFriend), SegoeGlyphs.AddFriend)];
+
+        /// <summary>The name of an icon glyph, as dump, find and lint print it. In the WaveeIcons face (<paramref name="family"/>, the
+        /// text's `path#Family`), only that font's marks name it. In any other face (the theme's icon font, Segoe Fluent Icons): the
+        /// engine's <c>Icons</c> constant first, then the name a theme gave a glyph it declares itself (<c>ThemeInspection.RegisterGlyphNames</c>,
+        /// in its composition file), then the app's <see cref="SegoeGlyphs"/>.</summary>
+        public static bool TryGlyphName(string glyph, string? family, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+        {
+            if (family is not null && family.EndsWith("#WaveeIcons", StringComparison.Ordinal)) return Named(s_waveeIcons, glyph, out name);
+            return FluentGpu.Controls.Icons.TryGetName(glyph, out name) || Wavee.Theming.ThemeInspection.TryGetGlyphName(glyph, out name)
+                || Named(s_segoeGlyphs, glyph, out name);
+
+            static bool Named((string Name, string Glyph)[] table, string glyph, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+            {
+                foreach ((string n, string g) in table)
+                    if (string.Equals(g, glyph, StringComparison.Ordinal)) { name = n; return true; }
+                name = null;
+                return false;
+            }
+        }
 
         const char FirstPrivateUse = '\uE000', LastPrivateUse = '\uF8FF';
 
@@ -340,19 +375,28 @@ public static partial class Diagnostics
             return sb.ToString();
         }
 
-        /// <summary>The window's tier facts (`ThemeHost.Facts.Tiers`) plus the active theme and kind.</summary>
+        /// <summary>The window's tier facts (`ThemeHost.Facts.Tiers`) plus the active theme and kind. The three sizes are the
+        /// live ones the ladders read now (`WindowTiers.TryLiveSizes`); the facts only carry the sizes of their last publish (a tier
+        /// change), which `published` lists.</summary>
         public static void WriteTiers(Utf8JsonWriter w)
         {
             TierFacts t = ThemeHost.Facts.Peek().Tiers;
+            if (!WindowTiers.TryLiveSizes(out float viewportWidth, out float viewportHeight, out float contentWidth))
+                (viewportWidth, viewportHeight, contentWidth) = (t.ViewportWidth, t.ViewportHeight, t.ContentWidth);
             w.WriteStartObject("tiers");
             w.WriteString("window", t.Window.ToString());
             w.WriteString("height", t.Height.ToString());
             w.WriteString("content", t.Content.ToString());
+            Inspect.Reply.Num(w, "contentWidth", contentWidth);
+            Inspect.Reply.Num(w, "viewportWidth", viewportWidth);
+            Inspect.Reply.Num(w, "viewportHeight", viewportHeight);
+            w.WriteBoolean("resizing", t.Resizing);
+            WriteRungs(w, in t);
+            w.WriteStartObject("published");
             Inspect.Reply.Num(w, "contentWidth", t.ContentWidth);
             Inspect.Reply.Num(w, "viewportWidth", t.ViewportWidth);
             Inspect.Reply.Num(w, "viewportHeight", t.ViewportHeight);
-            w.WriteBoolean("resizing", t.Resizing);
-            WriteRungs(w, in t);
+            w.WriteEndObject();
             w.WriteEndObject();
             w.WriteString("theme", InspectKit.ActiveThemeId);
             w.WriteString("kind", FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark");

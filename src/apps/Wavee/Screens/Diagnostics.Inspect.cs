@@ -114,6 +114,7 @@ public static partial class Diagnostics
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
+                InspectKit.RememberBootVideo();
                 InspectKit.RememberColdPlaylist();
                 host._session = new InspectSession(realText);
                 host.TextBackend = host._session.TextBackend;
@@ -255,6 +256,7 @@ public static partial class Diagnostics
         bool _quit;                 // `quit` ran (set by the verb itself, so a refused `quit x=1` does not end the server)
         string? _hit;               // the key the pointer resolved to on a pointer verb, for `after.hit`
         Point2? _pointer;           // where the pointer last went on this mount (pointer verbs), for `after.hit` of the others
+        FluentGpu.Media.MediaPlayer? _fakePlayer;   // the idle player `mount video=... player=fake` bound (ClearLeaks unbinds and disposes it)
         bool _optionsForNext;       // `option` set a value with nothing mounted: it is for the next mount, which keeps the options
 
         /// <summary>`dwrite` (real DirectWrite metrics on every mount) or `headless` (the shell tests' 0.55 x size model).</summary>
@@ -441,7 +443,7 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Settle:
                     {
-                        InspectKit.SettleResult r = Settle(a.Int("max", 600));
+                        InspectKit.SettleResult r = Settle(a.Int("max", 600), InspectKit.LoopsArg(a));
                         return Inspect.Reply.Ok(id, name, w =>
                         {
                             w.WriteNumber("frames", r.Frames);
@@ -565,7 +567,10 @@ public static partial class Diagnostics
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
-                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                        // A loading or cold state's skeleton IS the picture: its settle stops on the shimmer unless `loops` says otherwise.
+                        bool skeleton = kind == "loading" || kind.StartsWith("cold-", StringComparison.Ordinal);
+                        return Settled(id, name, a, w => w.WriteString("kind", kind),
+                            loops: skeleton ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
                     }
                 case Inspect.Verb.Find:
                     {
@@ -739,7 +744,10 @@ public static partial class Diagnostics
                 });
                 // `player=fake` binds an idle engine player (no source, no frames) so the presenter and its transport mount as they do while a video plays.
                 if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase))
-                    Playback.Video.Player.Value = new Playback.Video.Binding(FluentGpu.Media.MediaPlayer.Create(), 1);
+                {
+                    _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
+                    Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
+                }
             }
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
@@ -749,8 +757,8 @@ public static partial class Diagnostics
 
         /// <summary>What one mount must not inherit from the last (`mount` and `reset`, once a mount has run: before that the boot's own
         /// state is the fresh one): the `state` vacancy (a static probe signal, Shell.UI.cs), the cold playlist a `state kind=cold-*`
-        /// staged, the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever settling), the tab
-        /// workspace (unless <paramref name="keepRoute"/>), playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and
+        /// staged, the fullscreen stage (a static signal too: left up, its looping art kept the next mount from ever settling), the video
+        /// surface a `video=` mount opened and the fake player it bound (`InspectKit.ResetVideo`), the tab workspace (unless <paramref name="keepRoute"/>), playback as the boot left it (`InspectKit.ResetPlayback`: the boot's deck and
         /// queue, the play log emptied), and every theme's option values (unless `option` set one with nothing mounted, for this mount;
         /// <paramref name="keepOptions"/> false forgets them anyway: `reset`). Not every static: a fresh process is the only full reset,
         /// and `status` counts `mounts` so a reused server shows.</summary>
@@ -763,6 +771,8 @@ public static partial class Diagnostics
             InspectKit.RestoreColdPlaylist();
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
+            InspectKit.ResetVideo(_fakePlayer);
+            _fakePlayer = null;
             InspectKit.ResetPlayback();
             if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
@@ -811,6 +821,21 @@ public static partial class Diagnostics
             if (a.Has("gallery")) Prefs.Stage.SetGalleryOpen(a.Str("gallery").ToLowerInvariant() is "on" or "true" or "1");
             Prefs.Stage.SetTipSeen();
             return true;
+        }
+
+        /// <summary>`video{resolved, requested, preferred, transport, player}`: the one video surface's placement (process statics a
+        /// `mount video=` writes and a mount puts back, ClearLeaks) and whether a player is bound, so a reused server can be compared
+        /// with a fresh one.</summary>
+        static void WriteVideoFacts(Utf8JsonWriter w)
+        {
+            Video.PlacementState s = Video.State.Surface.Peek();
+            w.WriteStartObject("video");
+            w.WriteString("resolved", Video.State.Resolved.ToString());
+            w.WriteString("requested", s.Requested.ToString());
+            w.WriteString("preferred", s.Preferred.ToString());
+            w.WriteString("transport", Video.State.Transport.Peek().ToString());
+            w.WriteBoolean("player", Playback.Video.Player.Peek().Player is not null);
+            w.WriteEndObject();
         }
 
         void WriteMountFacts(Utf8JsonWriter w)
@@ -1053,7 +1078,44 @@ public static partial class Diagnostics
 
         /// <summary>Where a pointer verb aims and at what: <see cref="Node"/> and <see cref="Key"/> for a `key` target (null for
         /// a point), its index among the counted matches and how many there were.</summary>
-        readonly record struct Aim(Point2 Point, NodeHandle Node, string? Key, int Nth, int Counted, int Matches, bool Forced, float Fraction, string Note);
+        readonly record struct Aim(Point2 Point, NodeHandle Node, string? Key, int Nth, int Counted, int Matches, bool Forced, float Fraction, string Note)
+        {
+            /// <summary>How the target's rect was found still (click and hover; default for a point, a forced target and the wheel).</summary>
+            public Stability Stable { get; init; }
+        }
+
+        /// <summary>The stable check of a pointer target: <see cref="Held"/> when its presented rect was the same on two consecutive frames,
+        /// after <see cref="Frames"/> frames of waiting (0: the host was idle, so nothing could move it, or <see cref="How"/> is `skipped`);
+        /// otherwise the rect before the last frame and after it.</summary>
+        readonly record struct Stability(bool Held, int Frames, string How, RectF Before, RectF Last);
+
+        /// <summary>Wait, at most <paramref name="max"/> frames, until <paramref name="node"/>'s presented rect is the same on two consecutive
+        /// frames. An idle host (no animation track, no scroller in motion, no wake reason but the caret's and the warm cadence's) owes no
+        /// frame that could move it: held at once, with no frame run, so a target after a settled verb costs nothing. <paramref name="max"/>
+        /// 0 skips the check.</summary>
+        Stability WaitStable(NodeHandle node, int max)
+        {
+            Shell.HeadlessShell shell = _shell!;
+            SceneStore scene = shell.Host.Scene;
+            RectF before = scene.PresentedAbsoluteRect(node);
+            if (max <= 0) return new Stability(true, 0, "skipped", before, before);
+            const FluentGpu.Hosting.WakeReasons still = FluentGpu.Hosting.WakeReasons.Caret | FluentGpu.Hosting.WakeReasons.WarmCadence;
+            if (!shell.Host.Animation.HasActive && !shell.Host.AnyUserScrollMoving && (shell.Host.CurrentWakeReasons & ~still) == 0)
+                return new Stability(true, 0, "idle", before, before);
+            for (int i = 1; i <= max; i++)
+            {
+                RunFrames(1);
+                if (!scene.IsLive(node)) return new Stability(false, i, "gone", before, default);
+                RectF now = scene.PresentedAbsoluteRect(node);
+                if (Same(before, now)) return new Stability(true, i, "held", before, now);
+                if (i == max) return new Stability(false, i, "moving", before, now);
+                before = now;
+            }
+            return new Stability(false, max, "moving", before, before);
+
+            static bool Same(in RectF a, in RectF b)
+                => MathF.Abs(a.X - b.X) < 0.01f && MathF.Abs(a.Y - b.Y) < 0.01f && MathF.Abs(a.W - b.W) < 0.01f && MathF.Abs(a.H - b.H) < 0.01f;
+        }
 
         /// <summary>The point a pointer verb aims at: `key` (the visible centre of an ACTIONABLE node keyed so: shown, at least half
         /// visible, enabled, and hit at that centre by itself or a part of it; `nth` counts the actionable matches in reading order) or
@@ -1083,25 +1145,65 @@ public static partial class Diagnostics
                 refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + Inspect.Quote(key) + " lists near keys)");
                 return false;
             }
-            InspectDump.InReadingOrder(scene, found);
             bool force = a.Bool("force", false);
             int nth = a.Int("nth", 0);
             RectF window = InspectKit.WindowRect(shell);
-            var verdicts = new Actionability.Verdict[found.Count];
+            Actionability.Verdict[] verdicts = [];
             int counted = 0, pick = -1;
-            for (int i = 0; i < found.Count; i++)
+            void Resolve()
             {
-                verdicts[i] = InspectKit.Assess(shell, found[i].Node, window, wheel);
-                if (!force && !verdicts[i].Ok) continue;
-                if (counted == nth) pick = i;
-                counted++;
+                InspectDump.InReadingOrder(scene, found);
+                verdicts = new Actionability.Verdict[found.Count];
+                counted = 0;
+                pick = -1;
+                for (int i = 0; i < found.Count; i++)
+                {
+                    verdicts[i] = InspectKit.Assess(shell, found[i].Node, window, wheel);
+                    if (!force && !verdicts[i].Ok) continue;
+                    if (counted == nth) pick = i;
+                    counted++;
+                }
+            }
+            Resolve();
+            // Stable (click and hover; Playwright's check): the picked target's presented rect is the same on two consecutive frames. A
+            // target still moving (an entrance, a FLIP, a scroll glide carrying it) is waited for, at most `stableMax` frames, and refused
+            // as `unstable` when it never holds; the frames the wait ran can change what is actionable, so the matches are judged again.
+            Stability stable = default;
+            if (pick >= 0 && !force && !wheel)
+            {
+                NodeHandle target = found[pick].Node;
+                stable = WaitStable(target, a.Int("stableMax", 30));
+                if (!stable.Held)
+                {
+                    string why = stable.How == "gone"
+                        ? "'" + key + "' unmounted while its rect was waited for (" + stable.Frames + " frames)"
+                        : "'" + key + "' is not stable: its rect moved on every one of the " + stable.Frames + " frames waited; settle first, raise stableMax, or force=true aims at it anyway";
+                    refusal = Inspect.Reply.Fail(id, name, why, w =>
+                    {
+                        w.WriteString("reason", "unstable");
+                        w.WriteNumber("frames", stable.Frames);
+                        Inspect.Reply.Rect(w, "rect", stable.Before);
+                        if (stable.How != "gone") Inspect.Reply.Rect(w, "now", stable.Last);
+                    });
+                    return false;
+                }
+                if (stable.Frames > 0)
+                {
+                    found = InspectDump.Exact(shell, key);
+                    if (found.Count == 0)
+                    {
+                        refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' after the " + stable.Frames + " frames its rect was waited for");
+                        return false;
+                    }
+                    Resolve();
+                }
             }
             if (pick >= 0)
             {
                 Actionability.Verdict v = verdicts[pick];
                 // Forced onto a node with nothing visible: its presented centre, as before the checks existed.
                 Point2 at = force && v.Visible.IsEmpty ? InspectKit.CentreOf(scene.PresentedAbsoluteRect(found[pick].Node)) : v.Aim;
-                aim = new Aim(at, found[pick].Node, key, nth, counted, found.Count, force, v.Fraction, force ? "" : v.Note);
+                aim = new Aim(at, found[pick].Node, key, nth, counted, found.Count, force, v.Fraction, force ? "" : v.Note) { Stable = stable };
                 return true;
             }
             string error = counted == 0
@@ -1133,7 +1235,7 @@ public static partial class Diagnostics
             return false;
         }
 
-        /// <summary>A pointer verb's reply: `at` and, for a key target, `key` and `target {nth, of, matches, onScreen, order, forced?, note?}`.</summary>
+        /// <summary>A pointer verb's reply: `at` and, for a key target, `key` and `target {nth, of, matches, onScreen, order, forced?, note?, stable?}`.</summary>
         static void WriteAim(Utf8JsonWriter w, in Aim aim)
         {
             w.WriteStartObject("at");
@@ -1150,6 +1252,13 @@ public static partial class Diagnostics
             w.WriteString("order", aim.Forced ? "reading order (top, then left), every match (force=true: no checks)" : "reading order (top, then left), actionable matches only");
             if (aim.Forced) w.WriteBoolean("forced", true);
             if (aim.Note.Length > 0) w.WriteString("note", aim.Note);
+            if (aim.Stable.How is { Length: > 0 })   // default (a point, force=true, the wheel): no check ran, no field
+            {
+                w.WriteStartObject("stable");
+                w.WriteString("how", aim.Stable.How);
+                w.WriteNumber("frames", aim.Stable.Frames);
+                w.WriteEndObject();
+            }
             w.WriteEndObject();
         }
 
@@ -1241,9 +1350,9 @@ public static partial class Diagnostics
             }
         }
 
-        InspectKit.SettleResult Settle(int max)
+        InspectKit.SettleResult Settle(int max, InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
         {
-            InspectKit.SettleResult r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000));
+            InspectKit.SettleResult r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000), loops);
             _ms += (uint)(16 * r.Frames);
             _frames += r.Frames;
             return r;
@@ -1251,7 +1360,8 @@ public static partial class Diagnostics
 
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
         /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
-        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "")
+        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "",
+            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
         {
             InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
@@ -1261,7 +1371,7 @@ public static partial class Diagnostics
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 trace = RunTrace(shell, o);
             }
-            else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600));
+            else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600), InspectKit.LoopsArg(a, loops));
             bool acts = _acts;
             return Inspect.Reply.Ok(id, name, w =>
             {
@@ -1293,6 +1403,7 @@ public static partial class Diagnostics
             w.WriteBoolean("mounted", _shell is not null);
             w.WriteNumber("frames", _frames);
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
+            WriteVideoFacts(w);
             if (_shell is { } shell)
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)

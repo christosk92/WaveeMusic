@@ -40,6 +40,9 @@ public static class ZuneTheme
     public static ThemeComposition Create()
     {
         ThemeInspection.RegisterLintGuide(Id, new ZuneLintGuide());
+        ThemeInspection.RegisterGlyphNames(
+            (nameof(ZunePlayerLayout.PlaySolid), ZunePlayerLayout.PlaySolid), (nameof(ZunePlayerLayout.PauseSolid), ZunePlayerLayout.PauseSolid),
+            (nameof(ZuneListRules.OnPcArrow), ZuneListRules.OnPcArrow));
         return new(
             Manifest,
             new ZuneStructure(standIn: static views => new ClassicStructure().Register(views)),

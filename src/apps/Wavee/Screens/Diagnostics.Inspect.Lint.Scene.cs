@@ -242,21 +242,24 @@ public static partial class Diagnostics
         /// <summary>A private-use character or two: an icon glyph, not words.</summary>
         public static bool IsGlyph(string text) => InspectLint.IsGlyphText(text);
 
-        /// <summary>The icon name of a glyph label (<c>Icons.TryGetName</c>), "" when it is words or no named icon.</summary>
-        static string GlyphNameOf(string text) => IsGlyph(text) && Icons.TryGetName(text, out string? name) ? name : "";
+        /// <summary>The icon name of a glyph label in its face (<c>InspectDump.TryGlyphName</c>), "" when it is words or no named icon.</summary>
+        static string GlyphNameOf(string text, string? family) => IsGlyph(text) && InspectDump.TryGlyphName(text, family, out string? name) ? name : "";
 
         static bool IsActionRole(AutomationRole role) => role is AutomationRole.Button or AutomationRole.ToggleButton or AutomationRole.NavigationItem
             or AutomationRole.CheckBox or AutomationRole.RadioButton or AutomationRole.Hyperlink or AutomationRole.ToggleSwitch
             or AutomationRole.MenuItem or AutomationRole.Tab or AutomationRole.ComboBox or AutomationRole.Slider or AutomationRole.ScrollBar;
 
-        /// <summary>The first text at or under <paramref name="node"/>: a button's label, or its glyph.</summary>
-        static string LabelOf(SceneStore scene, StringTable strings, NodeHandle node)
+        /// <summary>The first text at or under <paramref name="node"/>: a button's label, or its glyph (<paramref name="family"/>: its face).</summary>
+        static string LabelOf(SceneStore scene, StringTable strings, NodeHandle node, out string? family)
         {
             foreach (NodeHandle n in InspectKit.Subtree(scene, node))
             {
                 ref NodePaint p = ref scene.Paint(n);
-                if (p.VisualKind == VisualKind.Text && p.Text.Value > 0) return strings.Resolve(p.Text);
+                if (p.VisualKind != VisualKind.Text || p.Text.Value <= 0) continue;
+                family = InspectDump.FamilyOf(strings, in scene.Layout(n).TextStyle);
+                return strings.Resolve(p.Text);
             }
+            family = null;
             return "";
         }
 
@@ -281,7 +284,7 @@ public static partial class Diagnostics
                 OverflowX = overflow.HorizontalOverflow,
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,
-                GlyphName = glyph ? GlyphNameOf(value) : "",
+                GlyphName = glyph ? GlyphNameOf(value, InspectDump.FamilyOf(strings, in style)) : "",
                 Spans = spans,
                 Color = paint.TextColor,
                 Align = style.Align.ToString(),
@@ -306,13 +309,14 @@ public static partial class Diagnostics
             Wrap = l.Wrap,
         };
 
-        /// <summary>The theme's design scale as named values: the active definition's <c>Spacing</c> rungs, and the style's <c>R.Space</c> rhythm
-        /// and <c>R.Shape</c> radii (what <c>space.scale</c> accepts besides 2 and the 4-grid up to 64).</summary>
+        /// <summary>The theme's design scale as named values: the active definition's <c>Spacing</c> rungs, the style's <c>R.Space</c> rhythm
+        /// and <c>R.Shape</c> radii, and the guide's board steps (<see cref="IThemeLintGuide.BoardScale"/>): what <c>space.scale</c> accepts
+        /// besides 2 and the 4-grid up to 64.</summary>
         public static IReadOnlyList<InspectLint.ScaleEntry> ScaleOf()
         {
             SpaceRoles space = R.Space;
             ShapeRoles shape = R.Shape;
-            return
+            List<InspectLint.ScaleEntry> scale =
             [
                 new("Spacing.XXS", Spacing.XXS), new("Spacing.XS", Spacing.XS), new("Spacing.S", Spacing.S), new("Spacing.M", Spacing.M),
                 new("Spacing.L", Spacing.L), new("Spacing.XL", Spacing.XL), new("Spacing.XXL", Spacing.XXL), new("Spacing.XXXL", Spacing.XXXL),
@@ -325,6 +329,20 @@ public static partial class Diagnostics
                 new("R.Shape.Avatar", shape.Avatar), new("R.Shape.CurrentMark", shape.CurrentMark), new("R.Shape.ContentSeam", shape.ContentSeam),
                 new("R.Shape.OmniRow", shape.OmniRow), new("R.Shape.SeekTrack", shape.SeekTrack),
             ];
+            // The steps the theme's boards space with beyond the shared tokens (Zune: 6, 10, 14, 18, 22): the guide declares them.
+            foreach (LintScaleStep step in ThemeInspection.ActiveLintGuide?.BoardScale ?? [])
+                scale.Add(new(step.Name, step.Value));
+            return scale;
+        }
+
+        /// <summary>What a node draws beyond a fill, a border, a text run or an image: a drawn visual kind (<c>Path</c>, <c>ListRow</c>, ...) by name,
+        /// else an SDF arc (<c>Arc</c>: a progress ring), a gradient border (<c>BorderBrush</c>) or a material (<c>Acrylic</c>); "" for none.</summary>
+        static string VisualOf(SceneStore scene, NodeHandle node, VisualKind kind)
+        {
+            if (kind is not (VisualKind.None or VisualKind.Box or VisualKind.Text or VisualKind.Image)) return kind.ToString();
+            if (scene.TryGetArc(node, out _)) return "Arc";
+            if (scene.TryGetBorderBrush(node, out _)) return "BorderBrush";
+            return scene.TryGetAcrylic(node, out _) ? "Acrylic" : "";
         }
 
         /// <summary>The route as `status` names it.</summary>
@@ -410,8 +428,11 @@ public static partial class Diagnostics
                     CollectHitBlockers(scene, node, blockers);
                     continue;
                 }
-                RectF rect = scene.PresentedAbsoluteRect(node);
-                float opacity = above * paint.Opacity;
+                // A spring mid-flight can overshoot: a presented width below 0, an opacity above 1. The snapshot keeps what the reader accepts
+                // (and what the rules mean): an empty box, a whole opacity, so a replay reads the page the live lint judged.
+                RectF presented = scene.PresentedAbsoluteRect(node);
+                RectF rect = new(presented.X, presented.Y, MathF.Max(0f, presented.W), MathF.Max(0f, presented.H));
+                float opacity = Math.Clamp(above * paint.Opacity, 0f, 1f);
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;
                 bool scrolls = scene.TryGetScroll(node, out ScrollState scroll);
@@ -447,7 +468,8 @@ public static partial class Diagnostics
                     }
                     if (scene.TryGetEdgeFade(node, out EdgeFadeSpec edgeFade) && !edgeFade.IsNone) fade |= (byte)edgeFade.Edges;
                     RectF authored = paint.ClipRect;
-                    string label = interactive ? LabelOf(scene, strings, node) : "";
+                    string? labelFamily = null;
+                    string label = interactive ? LabelOf(scene, strings, node, out labelFamily) : "";
                     int pathLength = NodeDescriber.Describe(scene, (int)node.Raw.Index, node.Raw.Gen, path);
                     ref LayoutInput layout = ref scene.Layout(node);
                     nodes.Add(new InspectLint.Node(self, parent, scene.DebugKeyOf(node), new string(path[..pathLength]), rect)
@@ -477,7 +499,7 @@ public static partial class Diagnostics
                         ClickId = clickId,
                         Drag = drag,
                         Label = label,
-                        LabelGlyph = GlyphNameOf(label),
+                        LabelGlyph = GlyphNameOf(label, labelFamily),
                         Animating = shell.Host.Animation.HasTracks(node),
                         Opacity = opacity,
                         Inert = inert,
@@ -487,6 +509,7 @@ public static partial class Diagnostics
                         BorderColor = paint.BorderColor,
                         Image = paint.VisualKind == VisualKind.Image,
                         Gradient = scene.TryGetGradient(node, out _),
+                        Visual = VisualOf(scene, node, paint.VisualKind),
                         Text = paint.VisualKind == VisualKind.Text ? TextOf(shell, node, ref paint, strings) : null,
                     });
                 }

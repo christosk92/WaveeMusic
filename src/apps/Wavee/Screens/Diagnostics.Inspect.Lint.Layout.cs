@@ -34,20 +34,27 @@ public static partial class Diagnostics
         static bool OffStart(string align) => align is "Center" or "End";
 
         /// <summary>Its x is set by centring or end alignment, not by a lead: the node or an ancestor up to its section root is placed Center or End
-        /// by itself or by its parent (a column's AlignItems, a row's Justify), or its text is aligned off the start.</summary>
+        /// on the HORIZONTAL axis, read per parent: in a ZStack by its JustifySelf (AlignSelf places it vertically there), in a column by its
+        /// AlignSelf or else the column's AlignItems, in a row by the row's Justify or its own JustifySelf (AlignSelf is vertical in a row: the
+        /// two copies of a pivot's label centred on its line still lead at the row's start), unless it is as wide as its parent's content (then
+        /// the placement moves nothing: a glyph centred in its own box); or its text is aligned off the start.</summary>
         static bool PlacedOffStart(Snapshot s, Node n)
         {
             if (n.Text is { } t && t.Align is "Center" or "End") return true;
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
             {
                 Node m = s.Nodes[i];
-                if (OffStart(m.Layout.AlignSelf) || OffStart(m.Layout.JustifySelf)) return true;
                 if (m.Parent >= 0)
                 {
                     Node p = s.Nodes[m.Parent];
-                    if (p.Column ? (m.Layout.AlignSelf == "Auto" && OffStart(p.Layout.AlignItems)) : p.Layout.Justify is "Center" or "End" or "SpaceAround" or "SpaceEvenly")
-                        return true;
+                    bool off = p.ZStack ? OffStart(m.Layout.JustifySelf)
+                        : p.Column ? (m.Layout.AlignSelf == "Auto" ? OffStart(p.Layout.AlignItems) : OffStart(m.Layout.AlignSelf))
+                        : p.Layout.Justify is "Center" or "End" or "SpaceAround" or "SpaceEvenly" || OffStart(m.Layout.JustifySelf);
+                    // Centring a node as wide as its parent's content moves nothing (a glyph centred in its own 10 DIP box still leads).
+                    bool fills = m.Rect.W >= p.Rect.W - p.Layout.Padding.Left - p.Layout.Padding.Right - Slack;
+                    if (off && !fills) return true;
                 }
+                else if (OffStart(m.Layout.AlignSelf) || OffStart(m.Layout.JustifySelf)) return true;
                 if (m.Key is { Length: > 0 }) break;   // the section root: its own placement was the last checked
             }
             return false;
@@ -141,6 +148,7 @@ public static partial class Diagnostics
                 list.Add(n);
             }
             var found = new Dictionary<string, InsetGroup>(StringComparer.Ordinal);
+            var regionLeads = new HashSet<int>();
             int judged = 0;
             foreach (var ((region, backdrop), list) in groups)
             {
@@ -189,7 +197,10 @@ public static partial class Diagnostics
                 }
                 var onLine = new List<Node>();
                 foreach (Node n in leads)
+                {
                     if (MathF.Abs(n.Rect.X - line) <= tolerance) onLine.Add(n);
+                    if (MathF.Abs(n.Rect.X - line) <= InsetMax) regionLeads.Add(n.Index);   // judged here; a lead farther off starts another column
+                }
                 string linePatterns = string.Join(", ", onLine.Select(static n => n.Pattern).Distinct().Take(4));
                 foreach (Node n in leads)
                 {
@@ -228,6 +239,266 @@ public static partial class Diagnostics
                     Pattern = pattern,
                     Cause = "lead:" + Signed(g.D),
                     Count = sections,
+                    Rects = rects,
+                    Nodes = Ids(g.Leads),
+                };
+                if (g.Intent is { } intent)
+                    f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = intent.Reason };
+                into.Add(f);
+            }
+            judged += ColumnInsets(s, regionLeads, into);
+            return judged;
+        }
+
+        /// <summary>The largest offset (DIP) the column pass of <c>align.inset</c> judges: past it, a lead starts another column.</summary>
+        public const float ColumnInsetMax = 32f;
+
+        sealed class ColumnGroup
+        {
+            public readonly List<Node> Leads = [];
+            public Node Reference = null!;
+            public float D;
+            public LintPolicy? Intent;
+        }
+
+        /// <summary>The thickest box (DIP) the column pass reads as a LINE, not a lead: a list header's rule, a selection bar beside a nav item.</summary>
+        const float LineMax = 4f;
+
+        /// <summary>The share of a column child's width a plate must span to be the child's GROUND (a selected row's fill) rather than a lead.</summary>
+        const float GroundShare = 0.9f;
+
+        /// <summary>The least alpha (times opacity) of a fill or border that FRAMES content for the column pass: fainter than ink (0.04) on purpose,
+        /// a settings info bar's 3 % plate is a card a person sees.</summary>
+        const float FrameAlpha = 0.02f;
+
+        /// <summary>The child that holds the lead also holds a FRAME on the reference's x (its <see cref="Intended"/> x): a fill, border, drawn
+        /// visual or line (not text, not an image) starting within <see cref="Slack"/> of it (the info bar's faint plate, a combo box's underline). What is padded inside a frame
+        /// that sits on the column is the frame's design.</summary>
+        static bool Framed(Snapshot s, Node child, Node reference, int[] last)
+        {
+            float x = Intended(s, reference);
+            for (int i = child.Index; i <= last[child.Index]; i++)
+            {
+                Node m = s.Nodes[i];
+                if (m.Text is not null || m.Image || m.Index == reference.Index || MathF.Abs(m.Rect.X - x) > Slack) continue;
+                if (m.Fill.A * m.Opacity >= FrameAlpha || (m.BorderWidth > 0f && m.BorderColor.A * m.Opacity >= FrameAlpha) || m.Visual.Length > 0
+                    || m.Gradient) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The lead of one child of a column: the leftmost start of the outermost ink in its subtree that is no GROUND (a plate as wide as
+        /// the child, <see cref="GroundShare"/>: what sits on it leads; a pill or a chip leads itself; a drawn visual counts as ink, a line as
+        /// none), not placed by centring or end alignment, not moving, reached by scrolling; null when none. A lead padded inside its plate is
+        /// judged by <see cref="ColumnInsets"/>' container test.</summary>
+        static Node? ChildLead(Snapshot s, Node child, int[] last)
+        {
+            Node? best = null;
+            for (int i = child.Index; i <= last[child.Index];)
+            {
+                Node m = s.Nodes[i];
+                if (!m.Ink && m.Visual.Length == 0) { i++; continue; }   // a progress ring's arc leads its row as ink does
+                // A ground as wide as the child (a selected row's fill, behind the row or under it) is no lead: what sits on it is. A narrower
+                // plate (a pill, a chip) and an outlined one (a field's border) are.
+                if (m.Text is null && !m.Image && m.Rect.W >= GroundShare * child.Rect.W && !(m.BorderWidth > 0f && m.BorderColor.A * m.Opacity >= FrameAlpha))
+                { i++; continue; }
+                if (m.InkCount > 1 && m.Layout.Margin.Left < 0f) { i++; continue; }   // a plate outdented on purpose: its words sit on the column
+                // A rule (flat) or a selection bar (upright, inside or beside the item it marks) is no lead. An upright bar that marks no click
+                // target is a heading's accent mark (Classic's section heads): it starts the heading, so it leads.
+                bool line = m.Text is null && !m.Image && (m.Rect.H <= LineMax || (m.Rect.W <= LineMax && MarksTarget(s, m, last)));
+                if (!line && !m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
+                i = last[i] + 1;
+            }
+            return best;
+        }
+
+        /// <summary>An upright bar MARKS A TARGET (a selection bar, no lead): it sits inside a click target, or, from the bar up through the wrappers
+        /// that hold only it, a sibling holds a click target on the bar's line (Classic's nav bar beside its item). A bar beside words that take no
+        /// click is a heading's accent mark.</summary>
+        static bool MarksTarget(Snapshot s, Node bar, int[] last)
+        {
+            if (TargetOf(s, bar) >= 0) return true;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int at = bar.Index;
+            for (int depth = 0; depth < 4 && nodes[at].Parent >= 0; depth++)
+            {
+                int p = nodes[at].Parent;
+                for (int i = p + 1; i <= last[p]; i++)
+                {
+                    if (Under(s, i, at)) continue;
+                    Node t = nodes[i];
+                    if (t.Interactive && MathF.Min(t.Rect.Bottom, bar.Rect.Bottom) - MathF.Max(t.Rect.Y, bar.Rect.Y) > 0f) return true;
+                }
+                if (last[p] - p > last[at] - at + 1) return false;   // the parent holds more than the bar: its siblings were looked at
+                at = p;
+            }
+            return false;
+        }
+
+        /// <summary>Where a lead would sit without its declared hang or indent (a guide <see cref="LintIntent.Hang"/> of -8 on the panorama: its
+        /// x + 8): what the column pass compares, so a designed hang neither becomes a column's lead nor reads as an inset.</summary>
+        static float Intended(Snapshot s, Node n)
+            => n.Rect.X - ((PolicyFor(s, n, LintIntent.Hang) ?? PolicyFor(s, n, LintIntent.Indent))?.Value ?? 0f);
+
+        /// <summary>The lead sits on a HANGING column of its column: ink in another child starts at its x (within <see cref="InsetMin"/>: closer is a
+        /// near miss, a later rule) while other ink starts left of it on its own line (the label beside a checkbox, a name beside its index letter,
+        /// a title beside its number). A checkbox's help text under its
+        /// label, and the rows of an indexed list that carry no letter, line up with that text column by design.</summary>
+        static bool Hangs(Snapshot s, Node column, Node lead, List<int> children, int[] last)
+        {
+            foreach (int k in children)
+            {
+                if (Under(s, lead.Index, k)) continue;
+                for (int i = k; i <= last[k]; i++)
+                {
+                    Node m = s.Nodes[i];
+                    if (!(m.Ink || m.Visual.Length > 0) || MathF.Abs(m.Rect.X - lead.Rect.X) > InsetMin || m.Reach.IsEmpty) continue;
+                    for (int j = k; j <= last[k]; j++)
+                    {
+                        Node o = s.Nodes[j];
+                        if (j == i || !(o.Ink || o.Visual.Length > 0) || Under(s, i, j) || Under(s, j, i) || o.Reach.IsEmpty) continue;
+                        if (o.Rect.Right <= m.Rect.X + Slack && o.Rect.X < m.Rect.X - Slack
+                            && MathF.Min(m.Rect.Bottom, o.Rect.Bottom) - MathF.Max(m.Rect.Y, o.Rect.Y) > 2f) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>The lead is padded inside an ITEM PLATE that sits on the column: the nearest click target holding it (not the reference) starts on
+        /// the reference's x (its <see cref="Intended"/> x, within <see cref="Slack"/>) and is one ITEM of an items control (walking up through
+        /// wrappers of its own box, its parent holds two or more children that carry a click target: list rows, selector tabs, cards). The item's
+        /// hover and selection plate starts on the column and its content is padded inside it by design (W-Search draws the best-match rows' art
+        /// 8 right of "Best matches" and "All" one SelectorBar padding right of "Results for"). A single control padded on no rest fill (a lone
+        /// "Check again" link) is no item: it is still judged. Only where the theme's guide declares <see cref="LintIntent.ItemPlate"/> (WinUI):
+        /// Zune's hover-plate rule wants the content on the column and the plate outdented.</summary>
+        static bool ItemPlate(Snapshot s, Node lead, Node reference, List<int>?[] kids, int[] last)
+        {
+            int t = TargetOf(s, lead);
+            if (t < 0 || Under(s, reference.Index, t)) return false;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            if (MathF.Abs(nodes[t].Rect.X - Intended(s, reference)) > Slack) return false;
+            int item = t;
+            while (nodes[item].Parent is int p and >= 0 && kids[p] is { Count: 1 } && MathF.Abs(nodes[p].Rect.X - nodes[item].Rect.X) <= 0.5f
+                   && MathF.Abs(nodes[p].Rect.W - nodes[item].Rect.W) <= 0.5f)
+                item = p;
+            int parent = nodes[item].Parent;
+            if (parent < 0 || kids[parent] is not { } peers) return false;
+            int targets = 0;
+            foreach (int k in peers)
+                for (int i = k; i <= last[k]; i++)
+                    if (nodes[i].Interactive && nodes[i].Pressable && !nodes[i].Disabled) { targets++; break; }
+            return targets >= 2;
+        }
+
+        /// <summary>The nearest keyed node that holds every one of <paramref name="members"/> (-1: none): what a column finding is named by.</summary>
+        static int CommonKeyed(Snapshot s, IReadOnlyList<Node> members)
+        {
+            var chain = new List<int>();
+            for (int i = members[0].Index; i >= 0; i = s.Nodes[i].Parent) chain.Add(i);
+            int at = 0;
+            foreach (Node m in members)
+                while (at < chain.Count && !Under(s, m.Index, chain[at])) at++;
+            for (; at < chain.Count; at++)
+                if (s.Nodes[chain[at]].Key is { Length: > 0 }) return chain[at];
+            return -1;
+        }
+
+        /// <summary><c>align.inset</c>'s COLUMN PASS: the content the region pass cannot judge because ink sits left of it on its line (an aside
+        /// beside a song list, the inside of a card, a right pane), measured against its own column. For each column box (a vertical stack, no
+        /// ZStack, not in a rail, not moving, two or more children, not a frame column that holds a page slot), the lead of each child is <see cref="ChildLead"/>; the column's lead is its
+        /// leftmost child lead (the REFERENCE). A child lead in scope that is no region lead and sits <see cref="InsetMin"/> &lt; d &lt;=
+        /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it (the plate it sits on
+        /// starts at or right of the reference: a filled card whose art is flush and whose words are padded; or its child holds a frame on the
+        /// reference's x, <see cref="Framed"/>: an info bar's faint plate, a combo box's underline; or it is padded inside an item of an items
+        /// control whose target starts on the column, <see cref="ItemPlate"/>, where the guide declares <see cref="LintIntent.ItemPlate"/>:
+        /// suppressed by intent) or it sits on a HANGING column
+        /// (<see cref="Hangs"/>: the text beside a checkbox, an index letter or a number in another child starts at its x). The about card's words at x=1152
+        /// under its art at 1132 sit on the page: +20. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node that holds
+        /// the reference and the leads. A lead's declared <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> is taken off its x
+        /// first (<see cref="Intended"/>: the panorama's -8 hang never becomes a column's lead). Cause <c>column:+d</c>.</summary>
+        static int ColumnInsets(Snapshot s, HashSet<int> regionLeads, List<Finding> into)
+        {
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int count = nodes.Count;
+            var last = new int[count];
+            var kids = new List<int>?[count];
+            for (int i = 0; i < count; i++) last[i] = i;
+            for (int i = count - 1; i >= 0; i--)
+            {
+                int p = nodes[i].Parent;
+                if (p >= 0 && last[i] > last[p]) last[p] = last[i];
+            }
+            for (int i = 0; i < count; i++)
+            {
+                int p = nodes[i].Parent;
+                if (p >= 0) (kids[p] ??= []).Add(i);
+            }
+            // The frame's own columns hold the pages (the title bar, the band and the page slot stacked): what the guide's edges judge, not a
+            // column of one page's content.
+            var holdsPage = new bool[count];
+            for (int i = 0; i < count; i++)
+                if (nodes[i].Key is { } key && TrySlotRoute(key, out _, out _))
+                    for (int a = nodes[i].Parent; a >= 0; a = nodes[a].Parent) holdsPage[a] = true;
+            var groups = new Dictionary<(int Reference, float D, bool Intended), ColumnGroup>();
+            var order = new List<(int Reference, float D, bool Intended)>();
+            var seen = new HashSet<int>();
+            int judged = 0;
+            foreach (Node c in nodes)
+            {
+                if (!c.Column || c.ZStack || c.InRail || c.Moving || c.ScrollAxis != 0 || holdsPage[c.Index] || kids[c.Index] is not { Count: >= 2 } children
+                    || !Reachable(c)) continue;
+                var leads = new List<Node>(children.Count);
+                var holders = new List<Node>(children.Count);
+                Node? reference = null;
+                foreach (int k in children)
+                    if (ChildLead(s, nodes[k], last) is { } lead)
+                    {
+                        leads.Add(lead);
+                        holders.Add(nodes[k]);
+                        if (reference is null || Intended(s, lead) < Intended(s, reference)) reference = lead;
+                    }
+                if (leads.Count < 2 || reference is null) continue;
+                for (int li = 0; li < leads.Count; li++)
+                {
+                    Node lead = leads[li];
+                    if (!lead.InScope || regionLeads.Contains(lead.Index) || !seen.Add(lead.Index)) continue;
+                    judged++;
+                    float d = Intended(s, lead) - Intended(s, reference);
+                    if (d <= InsetMin || d > ColumnInsetMax) continue;
+                    if (lead.Backdrop >= 0 && nodes[lead.Backdrop].Rect.X >= reference.Rect.X - Slack) continue;   // padded inside a visible container
+                    if (Hangs(s, c, lead, children, last)) continue;   // on the text column beside a marker: a checkbox's help, a row without its index letter
+                    if (Framed(s, holders[li], reference, last)) continue;   // padded inside a frame that sits on the column: an info bar, a combo box
+                    // Padded inside a list row's or a tab's plate that starts on the column, where the guide declares that design (WinUI's stock
+                    // items controls): intended. Zune declares none: there the plate outdents and the content sits on the column.
+                    LintPolicy? item = PolicyFor(s, lead, LintIntent.ItemPlate) is { } ip && ItemPlate(s, lead, reference, kids, last) ? ip : null;
+                    float bucket = MathF.Round(d);
+                    var key = (reference.Index, bucket, item is not null);
+                    if (!groups.TryGetValue(key, out ColumnGroup? g))
+                    {
+                        groups[key] = g = new ColumnGroup { Reference = reference, D = bucket, Intent = item };
+                        order.Add(key);
+                    }
+                    g.Leads.Add(lead);
+                }
+            }
+            foreach (var key in order)
+            {
+                ColumnGroup g = groups[key];
+                var all = new List<Node>(g.Leads) { g.Reference };
+                int holder = CommonKeyed(s, all);
+                string pattern = holder >= 0 ? PatternOfKey(nodes[holder].Key!) : "#root";
+                var (refs, rects) = Members(g.Leads);
+                string names = string.Join(", ", g.Leads.Take(4).Select(static n => n.Text is { } t ? TextName(t) : n.Ref)) + (g.Leads.Count > 4 ? ", ..." : "");
+                string refName = g.Reference.Text is { } rt ? TextName(rt) : (g.Reference.Image ? "image " : "") + g.Reference.Ref;
+                var f = new Finding(Rules.AlignInset, Severity.Warn,
+                    $"{g.Leads.Count} {Plural(g.Leads.Count, "lead", "leads")} in {pattern} start at x={F(g.Leads[0].Rect.X)}, {Signed(g.D)} right of their column's lead x={F(g.Reference.Rect.X)} ({refName}), on no visible container: {names}", refs)
+                {
+                    Measured = [M("x", g.Leads[0].Rect.X), M("d", g.D)],
+                    Expected = [M("x", g.Reference.Rect.X)],
+                    Pattern = pattern,
+                    Cause = "column:" + Signed(g.D),
+                    Count = g.Leads.Count,
                     Rects = rects,
                     Nodes = Ids(g.Leads),
                 };

@@ -69,6 +69,12 @@ public static partial class Diagnostics
             public int Quiet { get; init; }
             /// <summary>The theme epoch (Tok.Epoch) moved on the last frame: one of the FrameNeeded terms (<see cref="WriteFrameNeeded"/>).</summary>
             public bool EpochMoved { get; init; }
+            /// <summary>The keyed nodes whose tracks were all LOOPS when the settle ended on them (<see cref="LoopsOnly"/>): motion that
+            /// never ends by design (a marquee title, a looping indicator), not waited for. Null when the settle saw none.</summary>
+            public IReadOnlyList<string>? Loops { get; init; }
+            /// <summary>The keyed skeletons still loading when a settle that did not settle stopped: their shimmer is a loop, but a
+            /// page that shows one has not landed (<see cref="ShimmerKeys"/>). Null when none held the settle.</summary>
+            public IReadOnlyList<string>? Loading { get; init; }
 
             /// <summary>The settle's old shape, `var (frames, settled) = Settle(...)`.</summary>
             public void Deconstruct(out int frames, out bool settled)
@@ -83,12 +89,79 @@ public static partial class Diagnostics
         /// programmatic scroll, crossfades, exit orphans...). The reasons outside the ambient set, or None.</summary>
         public static FluentGpu.Hosting.WakeReasons BusyWake(Shell.HeadlessShell shell) => shell.Host.CurrentWakeReasons & ~AmbientWake;
 
+        /// <summary>Every live, unparked animation row is a LOOP (<c>AnimFlags.Loop</c>: a marquee's ping-pong, a looping indicator), so the
+        /// tracks that keep the frame awake never end by design. The settle treats them as ambient: it does not wait for them, and the
+        /// <see cref="FluentGpu.Hosting.WakeReasons.Anim"/> they raise is theirs. A row of any other kind (a FLIP, a fade, a spring) is busy
+        /// as before. (A connected-animation flight raises Anim with no row of its own: <c>AppHost.HasConnectedFlight</c> keeps it busy.)</summary>
+        public static bool LoopsOnly(Shell.HeadlessShell shell)
+            => shell.Host.Animation.HasActive && shell.Host.Animation.ActiveNonLoopCount == 0 && !shell.Host.HasConnectedFlight;
+
+        /// <summary>How a settle treats looping tracks (the settling verbs' `loops=` arg).</summary>
+        public enum LoopMode : byte
+        {
+            /// <summary>`ignore` (the default): a loop does not hold the settle (a playing row's indicator, a marquee, the stage's art),
+            /// except a loading indicator (a skeleton's shimmer, an indeterminate progress bar or ring: <see cref="ShimmerKeys"/>): a page that still shows one has not landed, so the settle waits for its data
+            /// (or its error) as it waits for any other motion.</summary>
+            Ignore,
+            /// <summary>`wait`: every loop holds the settle (the P1 settle): a page that shows one runs to the cap.</summary>
+            Wait,
+            /// <summary>`skeletons`: no loop holds the settle, a loading shimmer included, so it can end ON a skeleton (`state kind=loading`
+            /// and the cold states take this by default: their skeleton is the picture).</summary>
+            Skeletons,
+        }
+
+        /// <summary>`loops=ignore|wait|skeletons` (<see cref="LoopMode"/>); <paramref name="fallback"/> when the arg is absent.</summary>
+        public static LoopMode LoopsArg(Inspect.Args a, LoopMode fallback = LoopMode.Ignore) => a.Str("loops", "").ToLowerInvariant() switch
+        {
+            "wait" => LoopMode.Wait,
+            "skeletons" => LoopMode.Skeletons,
+            "ignore" => LoopMode.Ignore,
+            _ => fallback,
+        };
+
+        /// <summary>The keys of the SHOWN loading indicators still running: a looping track on the shimmer a <c>Skel.Region</c> (a
+        /// SkeletonRegion node) mounts while its data is pending (the engine pulses the shimmer's root, <c>SkeletonPulse</c>), on an
+        /// indeterminate progress bar (a node under an <see cref="AutomationRole.ProgressBar"/> role: its indicators sweep on loop
+        /// rows; WinUI and Classic search's <c>omni-progress</c> while a query is pending) or on a progress ring's arc (an SDF arc
+        /// whose trim loops). Each says the page has not landed. Null when none.</summary>
+        public static List<string>? ShimmerKeys(Shell.HeadlessShell shell, int max = 12)
+        {
+            SceneStore scene = shell.Host.Scene;
+            List<string>? keys = null;
+            foreach (NodeHandle n in Subtree(scene, scene.Root))
+            {
+                if (!shell.Host.Animation.HasTracks(n) || !scene.IsShown(n)) continue;
+                if (!IsLoadingIndicator(scene, n)) continue;
+                string key = KeyOf(scene, n);
+                keys ??= [];
+                if (!keys.Contains(key)) keys.Add(key);
+                if (keys.Count >= max) break;
+            }
+            return keys;
+        }
+
+        /// <summary>A node whose looping track means "still loading" (<see cref="ShimmerKeys"/>): a skeleton's shimmer root, a
+        /// progress ring's arc, or a node inside a progress bar (its role sits at most four levels up, on the bar's root).</summary>
+        static bool IsLoadingIndicator(SceneStore scene, NodeHandle n)
+        {
+            NodeHandle parent = scene.Parent(n);
+            if (!parent.IsNull && NodeDescriber.ElementTypeName(scene.ElementTypeId(parent)) == "SkeletonRegion") return true;
+            if (scene.TryGetArc(n, out _)) return true;
+            NodeHandle up = n;
+            for (int i = 0; i < 5 && !up.IsNull; i++, up = scene.Parent(up))
+                if (scene.Interaction(up).Role == AutomationRole.ProgressBar) return true;
+            return false;
+        }
+
         /// <summary>Run frames until nothing moves for two frames in a row (no animation track, no scroller in user motion, no
-        /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>.</summary>
-        public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600)
+        /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>. Tracks that are all loops
+        /// (<see cref="LoopsOnly"/>) count as quiet, with the Anim wake they raise, and the reply names their nodes (`loops`), unless
+        /// <paramref name="loops"/> says otherwise (<see cref="LoopMode"/>: by default a loading skeleton's shimmer still holds it).</summary>
+        public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600, LoopMode loops = LoopMode.Ignore)
         {
             int quiet = 0, ran = 0;
-            bool tracks = false, scrolling = false, epochMoved = false;
+            bool tracks = false, scrolling = false, epochMoved = false, looping = false;
+            List<string>? loading = null;
             FluentGpu.Hosting.WakeReasons wake = default, ambient = default;
             while (ran < maxFrames)
             {
@@ -101,14 +174,42 @@ public static partial class Diagnostics
                 FluentGpu.Hosting.WakeReasons all = shell.Host.CurrentWakeReasons;
                 wake = all & ~AmbientWake;
                 ambient |= all & AmbientWake;
+                looping = tracks && loops != LoopMode.Wait && LoopsOnly(shell);
+                loading = looping && loops == LoopMode.Ignore ? ShimmerKeys(shell) : null;
+                if (loading is not null) looping = false;   // a skeleton still loading: the page has not landed
+                if (looping)
+                {
+                    tracks = false;
+                    wake &= ~FluentGpu.Hosting.WakeReasons.Anim;
+                }
                 quiet = tracks || scrolling || wake != 0 ? 0 : quiet + 1;
-                if (quiet >= 2) return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet };
+                if (quiet >= 2)
+                    return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet, Loops = looping ? LoopKeys(shell) : null };
             }
-            return new SettleResult(ran, false, tracks, scrolling, wake) { Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved };
+            return new SettleResult(ran, false, tracks, scrolling, wake)
+            {
+                Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved, Loops = looping ? LoopKeys(shell) : null, Loading = loading,
+            };
         }
 
-        /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `anim` = a node with live tracks
-        /// (named by its nearest keyed ancestor), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
+        /// <summary>The keys of the nodes that carry live tracks (each named by its nearest keyed ancestor), read while every track is a loop.</summary>
+        static List<string> LoopKeys(Shell.HeadlessShell shell, int max = 12)
+        {
+            SceneStore scene = shell.Host.Scene;
+            var keys = new List<string>();
+            foreach (NodeHandle n in Subtree(scene, scene.Root))
+            {
+                if (!shell.Host.Animation.HasTracks(n)) continue;
+                string key = KeyOf(scene, n);
+                if (!keys.Contains(key)) keys.Add(key);
+                if (keys.Count >= max) break;
+            }
+            return keys;
+        }
+
+        /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `loading` = a skeleton's shimmer still
+        /// pulsing (<see cref="SettleResult.Loading"/>; the `loading` string beside the array says so), `anim` = a node with live tracks
+        /// (named by its nearest keyed ancestor; `tracks` beside the array is the engine's census of those rows), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
         /// reason with no node (`reason`; FrameNeeded adds its `terms`, <see cref="WriteFrameNeeded"/>). At most
         /// <paramref name="max"/> nodes per kind. Nothing busy (the cap came before two quiet frames): `quietFrames` and a `note`.</summary>
         public static void WriteBusy(System.Text.Json.Utf8JsonWriter w, Shell.HeadlessShell shell, in SettleResult r, int max = 12)
@@ -121,9 +222,10 @@ public static partial class Diagnostics
             {
                 if (anims < max && r.Tracks && shell.Host.Animation.HasTracks(n) && named.Add("anim|" + KeyOf(scene, n)))
                 {
+                    string key = KeyOf(scene, n);
                     w.WriteStartObject();
-                    w.WriteString("key", KeyOf(scene, n));
-                    w.WriteString("kind", "anim");
+                    w.WriteString("key", key);
+                    w.WriteString("kind", r.Loading?.Contains(key) == true ? "loading" : "anim");
                     w.WriteEndObject();
                     anims++;
                 }
@@ -149,6 +251,16 @@ public static partial class Diagnostics
                 wakes++;
             }
             w.WriteEndArray();
+            if (r.Tracks)
+            {
+                // The engine's live-row census behind the anim entries: `anim=N:Channel*k,... done=d parked=p loop=l`.
+                var census = new System.Text.StringBuilder();
+                shell.Host.Animation.AppendLiveTrackCensus(census);
+                w.WriteString("tracks", census.ToString().TrimStart(' ', '|'));
+            }
+            if (r.Loading is { Count: > 0 })
+                w.WriteString("loading", "still loading (" + string.Join(", ", r.Loading) + "): a skeleton's shimmer or a progress indicator loops until the data or its error lands, so "
+                    + "the settle waited for it; raise max, or loops=skeletons to stop on the skeleton");
             if (anims + scrolls + wakes == 0)
             {
                 w.WriteNumber("quietFrames", r.Quiet);
@@ -173,14 +285,23 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
-        /// <summary>`ambient:[names]` for the ambient wake reasons a settle saw (nothing when it saw none).</summary>
+        /// <summary>`ambient:[names]` for the ambient wake reasons a settle saw (nothing when it saw none), and `loops:[keys]` for the
+        /// nodes whose looping tracks it did not wait for (<see cref="SettleResult.Loops"/>).</summary>
         public static void WriteAmbient(System.Text.Json.Utf8JsonWriter w, in SettleResult r)
         {
-            if (r.Ambient == 0) return;
-            w.WriteStartArray("ambient");
-            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
-                if (bit != 0 && (r.Ambient & bit) == bit) w.WriteStringValue(bit.ToString());
-            w.WriteEndArray();
+            if (r.Ambient != 0)
+            {
+                w.WriteStartArray("ambient");
+                foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+                    if (bit != 0 && (r.Ambient & bit) == bit) w.WriteStringValue(bit.ToString());
+                w.WriteEndArray();
+            }
+            if (r.Loops is { Count: > 0 } loops)
+            {
+                w.WriteStartArray("loops");
+                foreach (string key in loops) w.WriteStringValue(key);
+                w.WriteEndArray();
+            }
         }
 
         /// <summary>`wake:[names]`: the bits of <paramref name="wake"/>, with `ambient:[names]` for those a settle ignores.</summary>
@@ -461,6 +582,31 @@ public static partial class Diagnostics
             if (Queue.State == EdgeState.Unknown) return;
             s_bootRefs = Queue.PackedRefs.ToArray();
             s_bootRows = Queue.Rows.ToArray();
+        }
+
+        static Video.PlacementState s_bootVideo = Video.PlacementState.Music;
+        static Playback.Video.Binding s_bootPlayer;
+
+        /// <summary>Remember the video surface's placement (the boot loaded the preferred home and committed it) and the player
+        /// binding as the boot left them. Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        public static void RememberBootVideo()
+        {
+            s_bootVideo = Video.State.Surface.Peek();
+            s_bootPlayer = Playback.Video.Player.Peek();
+        }
+
+        /// <summary>The video surface as the boot left it (between mounts): `mount video=...` opened it through <c>Video.State.OpenAt</c>,
+        /// which also made that home the preferred one, and `player=fake` bound an idle engine player of the inspector's own. Both are
+        /// process statics, so without this a later mount drew the video surface over its page (and its looping chrome kept it from
+        /// settling). The placement goes back through the one write path (<c>Video.State.Commit</c>: the transport owner and the
+        /// fullscreen bits follow it, the preferred home is stored again); <paramref name="fakePlayer"/>, the player `player=fake`
+        /// bound, is unbound and disposed. Before <see cref="ResetPlayback"/>, so the reducer hears the placement before its deck resets.</summary>
+        public static void ResetVideo(FluentGpu.Media.MediaPlayer? fakePlayer)
+        {
+            if (!Video.State.Surface.Peek().Equals(s_bootVideo)) Video.State.Commit(in s_bootVideo);
+            if (fakePlayer is null) return;
+            if (ReferenceEquals(Playback.Video.Player.Peek().Player, fakePlayer)) Playback.Video.Player.Value = s_bootPlayer;
+            _ = fakePlayer.DisposeAsync().AsTask();
         }
 
         /// <summary>Playback as a fresh session starts (between mounts): <c>Shell.Headless.ResetPlayback</c> (the boot's deck, the
