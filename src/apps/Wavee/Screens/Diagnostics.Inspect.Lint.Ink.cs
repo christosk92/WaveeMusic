@@ -268,7 +268,7 @@ public static partial class Diagnostics
                 string sizes = string.Join(", ", list.Take(4).Select(static n => n.Ref + " " + F(n.Rect.W) + " x " + F(n.Rect.H) + (n.Role.Length > 0 ? " (" + n.Role + ")" : "")))
                     + (list.Count > 4 ? ", ..." : "");
                 string head = list.Count > 1 ? $"{list.Count} click targets in {pattern} paint nothing" : $"click target {list[0].Ref} (in {pattern}) paints nothing";
-                into.Add(new Finding(Rules.TargetInk, Severity.Warn, $"{head} at rest, yet take clicks: {sizes}", refs)
+                into.Add(new Finding(Rules.TargetInk, Severity.Warn, $"{head} at rest, yet {(list.Count > 1 ? "take" : "takes")} clicks: {sizes}", refs)
                 {
                     Measured = [M("w", list.Min(static n => n.Rect.W)), M("h", list.Min(static n => n.Rect.H)), M("count", list.Count)],
                     Expected = [M("ink", 1)],

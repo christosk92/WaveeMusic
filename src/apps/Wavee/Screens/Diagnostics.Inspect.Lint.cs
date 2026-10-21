@@ -1964,7 +1964,7 @@ public static partial class Diagnostics
                 string how = t.Wraps
                     ? (t.MaxLines > 0 && t.OverflowY ? $"wraps past its {t.MaxLines}-line budget" : "wraps taller than its box")
                     : "is wider than its box";
-                string mode = t.Trim switch { "None" => "overflows", "Clip" => "hard-clipped", _ => "ellipsised" };
+                string mode = t.Trim switch { "None" => "overflowing", "Clip" => "hard-clipped", _ => "ellipsised" };
                 float over = Overrun(n, t);
                 string cls;
                 Severity sev;

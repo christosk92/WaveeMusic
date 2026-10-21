@@ -447,7 +447,9 @@ public static partial class Diagnostics
             new(Verb.State, "state", "Show a page state in place of the page (empty, nomatch, error, offline...), or put the page back (none)", "state kind=empty")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds))], s_settleArgs),
+                // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
+                Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
+                    Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
