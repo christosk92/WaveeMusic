@@ -206,6 +206,7 @@ public static partial class Diagnostics
         [
             Arg("settle", ArgType.Bool, "false: reply at once (frames:0, settled:false) and step with frames yourself", "true"),
             Arg("max", ArgType.Int, "the settle's frame cap (with trace=N: the most nodes watched)", "600"),
+            Arg("loops", ArgType.Enum, "looping tracks: ignore (they do not hold the settle, but a loading skeleton's shimmer does), wait (every loop holds it), skeletons (none holds it, so it can end on a skeleton)", "ignore", "ignore|wait|skeletons"),
             Arg("trace", ArgType.Int, "trace N frames from the action instead of settling (the trace options apply)"),
         ], Array.ConvertAll(s_traceOptions, static a => a with { Requires = "trace" }));
 
@@ -295,6 +296,13 @@ public static partial class Diagnostics
             Arg("force", ArgType.Bool, "skip the actionability checks (nth then counts every match)", "false", requires: "key"),
         ];
 
+        /// <summary>`click` and `hover` only: how long a key target's rect may take to hold still (Playwright's "stable": the same presented
+        /// rect on two consecutive frames) before the verb refuses it as `unstable`. The wheel (`scroll`) needs no still target.</summary>
+        static readonly ArgSpec[] s_stableArgs =
+        [
+            Arg("stableMax", ArgType.Int, "the most frames to wait for the target's rect to hold still for 2 frames in a row (0: one look, no wait)", "30", requires: "key") with { Min = 0, Max = 600 },
+        ];
+
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
         public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-rows", "cold-warm", "cold-faces", "none"];
@@ -331,18 +339,18 @@ public static partial class Diagnostics
             },
             new(Verb.Settle, "settle", "Run frames until nothing moves (tracks, user scroll, wake reasons) for 2 frames; busy names what still moves at the cap", "settle max=900")
             {
-                Positional = ["max"], NeedsMount = true, Args = [IntArg("max", "the frame cap", "600", 0, 100_000)],
+                Positional = ["max"], NeedsMount = true, Args = [IntArg("max", "the frame cap", "600", 0, 100_000), Arg("loops", ArgType.Enum, "looping tracks: ignore (they do not hold the settle, but a loading skeleton's shimmer does), wait (every loop holds it), skeletons (none holds it, so it can end on a skeleton)", "ignore", "ignore|wait|skeletons")],
             },
             new(Verb.Reset, "reset", "Unmount, put back what the mount changed (as mount does), reset navigation to Home, activate Classic dark", "reset"),
-            new(Verb.Click, "click", "Click a node's visible centre (refused unless actionable; force=true skips) or a point; then settle", "click key=zune-band-pivot:library")
+            new(Verb.Click, "click", "Click a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; then settle", "click key=zune-band-pivot:library")
             {
                 Positional = ["key"], NeedsMount = true, Acts = true,
-                Args = Join(s_aimArgs, [Arg("button", ArgType.Enum, "the button", "left", "left|right"),
+                Args = Join(s_aimArgs, s_stableArgs, [Arg("button", ArgType.Enum, "the button", "left", "left|right"),
                                         Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)")], s_settleArgs),
             },
-            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable; force=true skips) or a point; then settle", "hover key=zune-band-pivot:home")
+            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; then settle", "hover key=zune-band-pivot:home")
             {
-                Positional = ["key"], NeedsMount = true, Acts = true, Args = Join(s_aimArgs, s_settleArgs),
+                Positional = ["key"], NeedsMount = true, Acts = true, Args = Join(s_aimArgs, s_stableArgs, s_settleArgs),
             },
             new(Verb.Key, "key", "Press and release a key (ctrl+, shift+, alt+, win+ prefixes) repeat times; then settle", "key ctrl+f")
             {
