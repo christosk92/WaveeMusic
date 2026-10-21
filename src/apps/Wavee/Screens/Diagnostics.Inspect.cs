@@ -443,7 +443,7 @@ public static partial class Diagnostics
                     }
                 case Inspect.Verb.Settle:
                     {
-                        InspectKit.SettleResult r = Settle(a.Int("max", 600));
+                        InspectKit.SettleResult r = Settle(a.Int("max", 600), InspectKit.LoopsArg(a));
                         return Inspect.Reply.Ok(id, name, w =>
                         {
                             w.WriteNumber("frames", r.Frames);
@@ -567,7 +567,10 @@ public static partial class Diagnostics
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
-                        return Settled(id, name, a, w => w.WriteString("kind", kind));
+                        // A loading or cold state's skeleton IS the picture: its settle stops on the shimmer unless `loops` says otherwise.
+                        bool skeleton = kind == "loading" || kind.StartsWith("cold-", StringComparison.Ordinal);
+                        return Settled(id, name, a, w => w.WriteString("kind", kind),
+                            loops: skeleton ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
                     }
                 case Inspect.Verb.Find:
                     {
@@ -818,6 +821,21 @@ public static partial class Diagnostics
             if (a.Has("gallery")) Prefs.Stage.SetGalleryOpen(a.Str("gallery").ToLowerInvariant() is "on" or "true" or "1");
             Prefs.Stage.SetTipSeen();
             return true;
+        }
+
+        /// <summary>`video{resolved, requested, preferred, transport, player}`: the one video surface's placement (process statics a
+        /// `mount video=` writes and a mount puts back, ClearLeaks) and whether a player is bound, so a reused server can be compared
+        /// with a fresh one.</summary>
+        static void WriteVideoFacts(Utf8JsonWriter w)
+        {
+            Video.PlacementState s = Video.State.Surface.Peek();
+            w.WriteStartObject("video");
+            w.WriteString("resolved", Video.State.Resolved.ToString());
+            w.WriteString("requested", s.Requested.ToString());
+            w.WriteString("preferred", s.Preferred.ToString());
+            w.WriteString("transport", Video.State.Transport.Peek().ToString());
+            w.WriteBoolean("player", Playback.Video.Player.Peek().Player is not null);
+            w.WriteEndObject();
         }
 
         void WriteMountFacts(Utf8JsonWriter w)
@@ -1234,7 +1252,7 @@ public static partial class Diagnostics
             w.WriteString("order", aim.Forced ? "reading order (top, then left), every match (force=true: no checks)" : "reading order (top, then left), actionable matches only");
             if (aim.Forced) w.WriteBoolean("forced", true);
             if (aim.Note.Length > 0) w.WriteString("note", aim.Note);
-            if (aim.Stable.How.Length > 0)
+            if (aim.Stable.How is { Length: > 0 })   // default (a point, force=true, the wheel): no check ran, no field
             {
                 w.WriteStartObject("stable");
                 w.WriteString("how", aim.Stable.How);
@@ -1332,9 +1350,9 @@ public static partial class Diagnostics
             }
         }
 
-        InspectKit.SettleResult Settle(int max)
+        InspectKit.SettleResult Settle(int max, InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
         {
-            InspectKit.SettleResult r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000));
+            InspectKit.SettleResult r = InspectKit.Settle(_shell!, Math.Clamp(max, 0, 100_000), loops);
             _ms += (uint)(16 * r.Frames);
             _frames += r.Frames;
             return r;
@@ -1342,7 +1360,8 @@ public static partial class Diagnostics
 
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
         /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
-        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "")
+        string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "",
+            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
         {
             InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
@@ -1352,7 +1371,7 @@ public static partial class Diagnostics
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 trace = RunTrace(shell, o);
             }
-            else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600));
+            else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600), InspectKit.LoopsArg(a, loops));
             bool acts = _acts;
             return Inspect.Reply.Ok(id, name, w =>
             {
@@ -1384,6 +1403,7 @@ public static partial class Diagnostics
             w.WriteBoolean("mounted", _shell is not null);
             w.WriteNumber("frames", _frames);
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
+            WriteVideoFacts(w);
             if (_shell is { } shell)
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)

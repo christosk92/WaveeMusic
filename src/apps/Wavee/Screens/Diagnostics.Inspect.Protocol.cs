@@ -206,6 +206,7 @@ public static partial class Diagnostics
         [
             Arg("settle", ArgType.Bool, "false: reply at once (frames:0, settled:false) and step with frames yourself", "true"),
             Arg("max", ArgType.Int, "the settle's frame cap (with trace=N: the most nodes watched)", "600"),
+            Arg("loops", ArgType.Enum, "looping tracks: ignore (they do not hold the settle, but a loading skeleton's shimmer does), wait (every loop holds it), skeletons (none holds it, so it can end on a skeleton)", "ignore", "ignore|wait|skeletons"),
             Arg("trace", ArgType.Int, "trace N frames from the action instead of settling (the trace options apply)"),
         ], Array.ConvertAll(s_traceOptions, static a => a with { Requires = "trace" }));
 
@@ -338,7 +339,7 @@ public static partial class Diagnostics
             },
             new(Verb.Settle, "settle", "Run frames until nothing moves (tracks, user scroll, wake reasons) for 2 frames; busy names what still moves at the cap", "settle max=900")
             {
-                Positional = ["max"], NeedsMount = true, Args = [IntArg("max", "the frame cap", "600", 0, 100_000)],
+                Positional = ["max"], NeedsMount = true, Args = [IntArg("max", "the frame cap", "600", 0, 100_000), Arg("loops", ArgType.Enum, "looping tracks: ignore (they do not hold the settle, but a loading skeleton's shimmer does), wait (every loop holds it), skeletons (none holds it, so it can end on a skeleton)", "ignore", "ignore|wait|skeletons")],
             },
             new(Verb.Reset, "reset", "Unmount, put back what the mount changed (as mount does), reset navigation to Home, activate Classic dark", "reset"),
             new(Verb.Click, "click", "Click a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; then settle", "click key=zune-band-pivot:library")

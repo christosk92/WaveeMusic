@@ -142,7 +142,7 @@ public static partial class Diagnostics
             StringTable strings = scene.Strings ?? Entities.Strings;
             string value = paint.Text.Value > 0 ? strings.Resolve(paint.Text) : "";
             w.WriteStartObject("text");
-            if (GlyphLabel(value) is { } glyph)
+            if (GlyphLabel(value, FamilyOf(strings, in style)) is { } glyph)
             {
                 w.WriteString("string", glyph);
                 w.WriteString("codepoint", Codepoints(value, privateUseOnly: true));
@@ -239,8 +239,7 @@ public static partial class Diagnostics
                 }
                 else w.WriteString("why", v.Why);
                 w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));
-                string? text = FirstText(scene, node);
-                if (text is not null) w.WriteString("text", GlyphLabel(text) ?? text);
+                if (FirstText(scene, node, out string? family) is { } text) w.WriteString("text", GlyphLabel(text, family) ?? text);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
@@ -267,26 +266,33 @@ public static partial class Diagnostics
             found.Sort((a, b) => Actionability.ReadingOrder(rects[a.Node], rects[b.Node]));
         }
 
-        /// <summary>The first text string at or under <paramref name="node"/> (a button's label), or null.</summary>
-        static string? FirstText(SceneStore scene, NodeHandle node)
+        /// <summary>The first text string at or under <paramref name="node"/> (a button's label), or null; <paramref name="family"/> is
+        /// the face it draws in (<see cref="FamilyOf"/>).</summary>
+        static string? FirstText(SceneStore scene, NodeHandle node, out string? family)
         {
             StringTable strings = scene.Strings ?? Entities.Strings;
             foreach (var n in InspectKit.Subtree(scene, node))
             {
                 ref NodePaint p = ref scene.Paint(n);
-                if (p.VisualKind == VisualKind.Text && p.Text.Value > 0) return strings.Resolve(p.Text);
+                if (p.VisualKind != VisualKind.Text || p.Text.Value <= 0) continue;
+                family = FamilyOf(strings, in scene.Layout(n).TextStyle);
+                return strings.Resolve(p.Text);
             }
+            family = null;
             return null;
         }
+
+        /// <summary>The font a text node names (`path#Family`), or null for the theme's default face.</summary>
+        public static string? FamilyOf(StringTable strings, in TextStyle style) => style.FontFamily.Value > 0 ? strings.Resolve(style.FontFamily) : null;
 
         // ── glyphs ──────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the engine's <c>Icons</c> constant or
         /// the app's own, <see cref="TryGlyphName"/>), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
         /// (`Afterglow glyph:U+E8B2`: a token stands apart from the words beside it by a blank); null for text with no glyph.</summary>
-        public static string? GlyphLabel(string text)
+        public static string? GlyphLabel(string text, string? family = null)
         {
-            if (IsGlyph(text)) return GlyphToken(text);
+            if (IsGlyph(text)) return GlyphToken(text, family);
             if (text.AsSpan().IndexOfAnyInRange(FirstPrivateUse, LastPrivateUse) < 0) return null;
             var sb = new System.Text.StringBuilder(text.Length + 16);
             for (int i = 0; i < text.Length;)
@@ -297,12 +303,12 @@ public static partial class Diagnostics
                 string run = text[start..i];
                 if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1])) sb.Append(' ');
                 // A run of two may be one glyph (a layered icon); a longer run, or two the table does not name together, is a token per glyph.
-                if (run.Length <= 2 && TryGlyphName(run, out _)) sb.Append(GlyphToken(run));
+                if (run.Length <= 2 && TryGlyphName(run, family, out _)) sb.Append(GlyphToken(run, family));
                 else
                     for (int k = 0; k < run.Length; k++)
                     {
                         if (k > 0) sb.Append(' ');
-                        sb.Append(GlyphToken(run[k].ToString()));
+                        sb.Append(GlyphToken(run[k].ToString(), family));
                     }
                 if (i < text.Length && !char.IsWhiteSpace(text[i])) sb.Append(' ');
             }
@@ -310,26 +316,36 @@ public static partial class Diagnostics
         }
 
         /// <summary>`glyph:<name>` (<see cref="TryGlyphName"/>), or `glyph:U+XXXX` for a glyph nothing names.</summary>
-        static string GlyphToken(string glyph)
-            => "glyph:" + (TryGlyphName(glyph, out string? name) ? name : "U+" + Codepoints(glyph));
+        static string GlyphToken(string glyph, string? family)
+            => "glyph:" + (TryGlyphName(glyph, family, out string? name) ? name : "U+" + Codepoints(glyph));
 
-        /// <summary>The app's core marks that are not the engine's (<see cref="WaveeIcons"/>, its own font; <see cref="SegoeGlyphs"/>, the
-        /// Segoe marks the engine's table lacks), by their constant names.</summary>
-        static readonly (string Name, string Glyph)[] s_coreGlyphs =
+        /// <summary>The marks of the app's own font (<see cref="WaveeIcons"/>). They reuse code points Segoe Fluent Icons has too
+        /// (U+E900..U+E902), so they name a glyph only when its text draws in that face.</summary>
+        static readonly (string Name, string Glyph)[] s_waveeIcons =
         [
-            (nameof(WaveeIcons.PlayNext), WaveeIcons.PlayNext), (nameof(WaveeIcons.PlayAfter), WaveeIcons.PlayAfter),
-            (nameof(WaveeIcons.Lyrics), WaveeIcons.Lyrics), (nameof(SegoeGlyphs.AddFriend), SegoeGlyphs.AddFriend),
+            (nameof(WaveeIcons.PlayNext), WaveeIcons.PlayNext), (nameof(WaveeIcons.PlayAfter), WaveeIcons.PlayAfter), (nameof(WaveeIcons.Lyrics), WaveeIcons.Lyrics),
         ];
 
-        /// <summary>The name of an icon glyph, as dump, find and lint print it: the engine's <c>Icons</c> constant first, then the name a theme
-        /// gave a glyph it declares itself (<c>ThemeInspection.RegisterGlyphNames</c>, in its composition file), then the app's core marks.</summary>
-        public static bool TryGlyphName(string glyph, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+        /// <summary>The Segoe marks the engine's table lacks (<see cref="SegoeGlyphs"/>), drawn in the default icon face.</summary>
+        static readonly (string Name, string Glyph)[] s_segoeGlyphs = [(nameof(SegoeGlyphs.AddFriend), SegoeGlyphs.AddFriend)];
+
+        /// <summary>The name of an icon glyph, as dump, find and lint print it. In the WaveeIcons face (<paramref name="family"/>, the
+        /// text's `path#Family`), only that font's marks name it. In any other face (the theme's icon font, Segoe Fluent Icons): the
+        /// engine's <c>Icons</c> constant first, then the name a theme gave a glyph it declares itself (<c>ThemeInspection.RegisterGlyphNames</c>,
+        /// in its composition file), then the app's <see cref="SegoeGlyphs"/>.</summary>
+        public static bool TryGlyphName(string glyph, string? family, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
         {
-            if (FluentGpu.Controls.Icons.TryGetName(glyph, out name) || Wavee.Theming.ThemeInspection.TryGetGlyphName(glyph, out name)) return true;
-            foreach ((string n, string g) in s_coreGlyphs)
-                if (string.Equals(g, glyph, StringComparison.Ordinal)) { name = n; return true; }
-            name = null;
-            return false;
+            if (family is not null && family.EndsWith("#WaveeIcons", StringComparison.Ordinal)) return Named(s_waveeIcons, glyph, out name);
+            return FluentGpu.Controls.Icons.TryGetName(glyph, out name) || Wavee.Theming.ThemeInspection.TryGetGlyphName(glyph, out name)
+                || Named(s_segoeGlyphs, glyph, out name);
+
+            static bool Named((string Name, string Glyph)[] table, string glyph, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+            {
+                foreach ((string n, string g) in table)
+                    if (string.Equals(g, glyph, StringComparison.Ordinal)) { name = n; return true; }
+                name = null;
+                return false;
+            }
         }
 
         const char FirstPrivateUse = '\uE000', LastPrivateUse = '\uF8FF';

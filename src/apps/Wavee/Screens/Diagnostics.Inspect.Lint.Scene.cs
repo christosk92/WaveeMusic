@@ -242,21 +242,24 @@ public static partial class Diagnostics
         /// <summary>A private-use character or two: an icon glyph, not words.</summary>
         public static bool IsGlyph(string text) => InspectLint.IsGlyphText(text);
 
-        /// <summary>The icon name of a glyph label (<c>Icons.TryGetName</c>), "" when it is words or no named icon.</summary>
-        static string GlyphNameOf(string text) => IsGlyph(text) && InspectDump.TryGlyphName(text, out string? name) ? name : "";
+        /// <summary>The icon name of a glyph label in its face (<c>InspectDump.TryGlyphName</c>), "" when it is words or no named icon.</summary>
+        static string GlyphNameOf(string text, string? family) => IsGlyph(text) && InspectDump.TryGlyphName(text, family, out string? name) ? name : "";
 
         static bool IsActionRole(AutomationRole role) => role is AutomationRole.Button or AutomationRole.ToggleButton or AutomationRole.NavigationItem
             or AutomationRole.CheckBox or AutomationRole.RadioButton or AutomationRole.Hyperlink or AutomationRole.ToggleSwitch
             or AutomationRole.MenuItem or AutomationRole.Tab or AutomationRole.ComboBox or AutomationRole.Slider or AutomationRole.ScrollBar;
 
-        /// <summary>The first text at or under <paramref name="node"/>: a button's label, or its glyph.</summary>
-        static string LabelOf(SceneStore scene, StringTable strings, NodeHandle node)
+        /// <summary>The first text at or under <paramref name="node"/>: a button's label, or its glyph (<paramref name="family"/>: its face).</summary>
+        static string LabelOf(SceneStore scene, StringTable strings, NodeHandle node, out string? family)
         {
             foreach (NodeHandle n in InspectKit.Subtree(scene, node))
             {
                 ref NodePaint p = ref scene.Paint(n);
-                if (p.VisualKind == VisualKind.Text && p.Text.Value > 0) return strings.Resolve(p.Text);
+                if (p.VisualKind != VisualKind.Text || p.Text.Value <= 0) continue;
+                family = InspectDump.FamilyOf(strings, in scene.Layout(n).TextStyle);
+                return strings.Resolve(p.Text);
             }
+            family = null;
             return "";
         }
 
@@ -281,7 +284,7 @@ public static partial class Diagnostics
                 OverflowX = overflow.HorizontalOverflow,
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,
-                GlyphName = glyph ? GlyphNameOf(value) : "",
+                GlyphName = glyph ? GlyphNameOf(value, InspectDump.FamilyOf(strings, in style)) : "",
                 Spans = spans,
                 Color = paint.TextColor,
                 Align = style.Align.ToString(),
@@ -447,7 +450,8 @@ public static partial class Diagnostics
                     }
                     if (scene.TryGetEdgeFade(node, out EdgeFadeSpec edgeFade) && !edgeFade.IsNone) fade |= (byte)edgeFade.Edges;
                     RectF authored = paint.ClipRect;
-                    string label = interactive ? LabelOf(scene, strings, node) : "";
+                    string? labelFamily = null;
+                    string label = interactive ? LabelOf(scene, strings, node, out labelFamily) : "";
                     int pathLength = NodeDescriber.Describe(scene, (int)node.Raw.Index, node.Raw.Gen, path);
                     ref LayoutInput layout = ref scene.Layout(node);
                     nodes.Add(new InspectLint.Node(self, parent, scene.DebugKeyOf(node), new string(path[..pathLength]), rect)
@@ -477,7 +481,7 @@ public static partial class Diagnostics
                         ClickId = clickId,
                         Drag = drag,
                         Label = label,
-                        LabelGlyph = GlyphNameOf(label),
+                        LabelGlyph = GlyphNameOf(label, labelFamily),
                         Animating = shell.Host.Animation.HasTracks(node),
                         Opacity = opacity,
                         Inert = inert,
