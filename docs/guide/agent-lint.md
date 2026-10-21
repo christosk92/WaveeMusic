@@ -373,11 +373,11 @@ theme's spacing scale, and every captured node with its rect, flags, scroll rang
 `root=` subtree started from (`seed`, `seedContent`, `seedShown`), declared layout, paint, click identity and whether it drags,
 and text run (with the ground the rendered frame put under it, and over a busy ground its worst ratio, so `contrast.text`
 replays without pixels). Numbers are written at round-trip float precision. Derived fields (`on`, `covered`, `occluded`,
-`family`, `cell`) are written for a reader and recomputed on replay. A Zune Home 400 snapshot is about 0.27 MB, a Classic or
+`family`, `cell`) are written for a reader and recomputed on replay. A Zune Home 400 snapshot is about 0.33 MB, a Classic or
 WinUI Home at 1440 about 0.5-0.6 MB.
 
 `lint replay=<file>` runs the same pure rules on it: any scope, rules, baseline or `outcomes`. A replay of a live lint's
-snapshot gives the same findings, fingerprints and counts (checked on the Zune album at 1440: 59 of 59). The reader is strict:
+snapshot gives the same findings, fingerprints and counts (checked on the Zune album at 1440: 53 of 53). The reader is strict:
 a file that is not a lint snapshot, is newer than the reader, has no window size, has no nodes (a missing, empty or non-array
 `nodes`), a node without `p` or `r`, a rect that is not four finite numbers with w and h at or above 0, a parent that does not
 come before its child, a field of the wrong type (`"size":"big"`), an unknown policy intent, a policy without a prefix and a
@@ -402,14 +402,17 @@ its mount check, so a fresh server can lint a saved page at once (`status` still
 Zune Home 400 x 860 and 1440 x 960, Zune album al2 and artist ar2 at 1440 x 960, Classic and WinUI Home at 1440 x 960, each in
 a fresh server, `lint min=warn` (warn+ = warn or error findings with outcome fail):
 
-| Mount | Before: warn+ | After: gate warn+ (summary) | After: every level | review | suppressed.intent |
-|---|---|---|---|---|---|
-| Zune Home 400 | 19 | 0 | 5 (align.inset zune-history +8; key.hygiene x4) | 5 | 2 |
-| Zune Home 1440 | 33 | 4 | 8 (key.hygiene x4) | 4 | 4 |
-| Zune album 1440 | 66 | 10 | 12 (key.hygiene x2) | 5 | 0 |
-| Zune artist 1440 | 33 | 7 | 9 (align.inset album art +8; key.hygiene) | 2 | 0 |
-| Classic Home 1440 | 77 | 6 | 9 (key.hygiene x3) | 4 | 2 |
-| WinUI Home 1440 | 85 | 4 | 7 (key.hygiene x3) | 3 | 1 |
+| Mount | Before: warn+ | Lane i3: gate / every level | Integrated: gate warn+ (summary) | Integrated: every level | review | suppressed.intent |
+|---|---|---|---|---|---|---|
+| Zune Home 400 | 19 | 0 / 5 | 0 | 5 (align.inset zune-history +8; key.hygiene x4) | 0 | 2 |
+| Zune Home 1440 | 33 | 4 / 8 | 6 | 10 (key.hygiene x4) | 0 | 4 |
+| Zune album 1440 | 66 | 10 / 12 | 9 | 11 (key.hygiene x2) | 1 | 1 |
+| Zune artist 1440 | 33 | 7 / 9 | 8 | 10 (align.inset album art +8; key.hygiene) | 0 | 0 |
+| Classic Home 1440 | 77 | 6 / 9 | 5 | 8 (key.hygiene x3) | 1 | 2 |
+| WinUI Home 1440 | 85 | 4 / 7 | 3 | 6 (key.hygiene x3) | 0 | 1 |
+
+"Integrated" is feat/inspect-p1 with feat/themes-p6 951f4af2 (`C:/WAVEE/scratch/inspect-p1/integration/final/six`); the
+paragraph after the list says what changed between the two.
 
 `key.hygiene` reports at warn (level todo), so the "every level" column counts its true keys: the route host key's control
 character, `zune-home-scroll:`, `home:scroll:` and `facet:` with a trailing colon, and the form words in
@@ -424,10 +427,8 @@ wide zone's header sitting 4 lower in its zone (`scope=content`), the album's ba
 finding per token pair. Labels per finding (true / false / intended): `C:/WAVEE/scratch/inspect-p1/i3/r3/labels.txt`.
 
 After the integration (feat/inspect-p1 with feat/themes-p6 951f4af2: busy grounds judged on the rendered pixels, the
-designed top bleeds, the target hit rect; `C:/WAVEE/scratch/inspect-p1/integration/final/six`), warn+ fail findings, gate /
-every level: Zune Home 400 0 / 5, Zune Home 1440 6 / 10, Zune album 9 / 11 (its panorama cut is a suppressed designed bleed),
-Zune artist 8 / 10, Classic Home 5 / 8, WinUI Home 3 / 6. The busy-ground reviews are gone where the frame could be read:
-those runs are judged on their pixels now (Zune Home 400: 5 reviews before, none after, every run passing). The new fails
+designed top bleeds, the target hit rect), the album's panorama cut is a suppressed designed bleed. The busy-ground reviews
+are gone where the frame could be read: those runs are judged on their pixels now (Zune Home 400: 5 reviews before, none after, every run passing). The new fails
 are contrast over pictures: the Zune Home search hint's "ctrl f" over its pill (2.61 : 1) and "Pinned" over the wash (3.16),
 the Zune artist crumb over the material bleed (an error, 3.67). Still 0 of 286 screen findings name a wholly off-screen
 node, and the replay of each of the six snapshots gives the same findings, fingerprints and counts.

@@ -134,6 +134,8 @@ public static partial class Diagnostics
             public ArgSpec[] Args { get; init; } = [];
             /// <summary>Fails with "nothing is mounted" unless a mount is up.</summary>
             public bool NeedsMount { get; init; }
+            /// <summary>The arg that lifts <see cref="NeedsMount"/> (lint's replay= reads a saved snapshot with nothing mounted).</summary>
+            public string? MountUnless { get; init; }
             /// <summary>Replies `after:{route, focused, overlays, hit}`.</summary>
             public bool Acts { get; init; }
         }
@@ -410,7 +412,7 @@ public static partial class Diagnostics
             new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, sizes, rung ids", "tiers") { NeedsMount = true },
             new(Verb.Lint, "lint", "Check the mounted scene (or a saved snapshot: replay=) for design flaws: gate rules (clip, trim, type, target, duplicate, rhythm, contrast, theme edges) and todo rules (align, space, placeholder, keys)", "lint min=warn allowDuplicate=\"See all\"")
             {
-                Positional = ["rules"], NeedsMount = true,
+                Positional = ["rules"], NeedsMount = true, MountUnless = "replay",
                 Args = Join([Arg("root", ArgType.Key, "lint every node with this exact key (default: the whole tree and the overlays)"),
                              Arg("nth", ArgType.Int, "pick one of the root's matches (0 first, in slot order)", requires: "root") with { Min = 0 }],
                             s_lintOnlyArgs, s_lintArgs),
@@ -734,6 +736,7 @@ public static partial class Diagnostics
             w.WriteString("example", s.Example);
             WriteStrings(w, "positional", s.Positional);
             w.WriteBoolean("needsMount", s.NeedsMount);
+            if (s.MountUnless is { } unless) w.WriteString("needsMountUnless", unless);
             w.WriteBoolean("acts", s.Acts);
             w.WriteStartArray("args");
             foreach (ArgSpec a in s.Args)

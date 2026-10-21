@@ -174,6 +174,7 @@ a server has done so a reused one shows. A mount without `theme` or `kind` keeps
 | `scale` | DPI scale, 1 by default, at most 4. |
 | `theme` | `classic`, `zune` or `winui` (default: the active theme; a fresh server is on Classic). Zune turns Developer mode on; the others turn it off. |
 | `kind` | `dark` or `light`. |
+| `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey) or `greynow` (only the playing one grey). |
 | `gpu` | `warp` (default) or `hardware`: the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels). |
 | `images` | `fake` (default): the engine's deterministic decoder paints every image as a per-image gradient. `real`: the app's own pipeline (WIC behind the disk-first fetcher) decodes the bundled photographs as they are, so text over a photograph renders, and lints, over the real picture. The fake artist `ar9` (The Longtime) carries a bright header photograph (`assets/covers/header-bright.jpg`, a white sky over a pale ground): the worst case for text on a photograph. |
 | `keepRoute=true` | Keeps the current navigation and tabs. Without it, the mount starts from a fresh Home on the first tab. |
@@ -211,9 +212,16 @@ and `gallery=on|off` (set before the mount, the first-run tip marked seen), so `
 {"cmd":"goto","args":{"uri":"spotify:album:4aawyAB9vmqN3uQ7FjRGTy"},"id":3}
 ```
 
-### `resize {w, h}`
+### `resize {w, h, loop?, settle?, max?, trace?}`
 
 Resizes the window and settles. Use it to check a tier crossing on a live mount.
+
+| Arg | Values |
+|---|---|
+| `loop=true` | Commits the size through the OS modal size loop, as `crossing` does when it narrows. |
+| `settle=false` | Replies at once (`frames:0`, `settled:false`); step with `frames` yourself. |
+| `max` | The settle's frame cap (600). With `trace`, the most nodes watched. |
+| `trace=N` | Traces N frames from the resize instead of settling; the `trace` args (`keys`, `prefix`, `scroll`, `every`, ...) apply. |
 
 ### `frames {n}` and `settle {max?}`
 
@@ -440,11 +448,11 @@ host's own font system, and compares that with the laid-out box:
 `natural` is the size the run wants. `trimSource` says whether the answer rests on real metrics: `dwrite` means it
 does; `headless-model` means `--text headless` was used and the answer is not truthful.
 
-### `render {path, scale?, alpha?}`
+### `render {path, scale?, alpha?, max?}`
 
 Writes the current frame of the offscreen surface to a PNG. By default the image is flattened over the window
 background; `alpha=true` keeps the translucency. If `scale` differs from the mount's, the server renders at that scale
-and then restores the mount's.
+and then restores the mount's; `max` caps the settle after that rescale (600).
 
 ```json
 {"cmd":"render","args":{"path":"C:/tmp/zune-home-400.png"},"id":7}
@@ -529,7 +537,8 @@ Every key the lint reply had before the finding model stays (`rule`, `severity`,
 ### `crossing {from, to, frames?, items?, max?, ...}`
 
 Resizes across a tier edge the way the user does, and reports what broke on the way. `from` and `to` are
-`{"w":1440,"h":960}` objects (text form: `from=1440x960 to=1440x400`).
+`{"w":1440,"h":960}` objects (text form: `from=1440x960 to=1440x400`); `fromW`, `fromH`, `toW` and `toH` give the
+sizes one number at a time instead.
 
 1. It mounts at `from` (or resizes the mount you have, and navigates when `route`, `uri` or `deeplink` is given), settles, and
    remembers every shown keyed node and its rect. With nothing mounted, the mount args apply (`theme`, `kind`, `route`, `gpu`,
@@ -742,8 +751,8 @@ dump root=<the page's root key> depth=3
   not reboot.
 - **One session.** `Diagnostics.InspectSession` is the UI-thread half, and it owns no thread.
 - **One verb table.** `Diagnostics.Inspect.Specs` (`Diagnostics.Inspect.Protocol.cs`) declares every verb's positional
-  names, args (type, default, choices, aliases, doc), example, whether it needs a mount and whether it acts. The strict-arg
-  check, `help` and the `after` block all read it: a verb that reads a new arg declares it there, or the arg is refused.
+  names, args (type, default, choices, aliases, doc), example, whether it needs a mount (`needsMount`; `lint` has `needsMountUnless:"replay"`, since a replay needs
+  none) and whether it acts. The strict-arg check, `help` and the `after` block all read it: a verb that reads a new arg declares it there, or the arg is refused.
   The lint args are one line each in their own marked lists: the options `lint` and `crossing` share, and `lint`'s own
   (`save`, `replay`), which `crossing` refuses.
 - **The helpers are shared.** `Diagnostics.InspectKit` holds Until, Settle (and `busy`), Subtree and the actionability
