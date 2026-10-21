@@ -305,7 +305,9 @@ lead that differs from its column's lead without a visible container that would 
 1. Columns: every vertical stack with two or more children, not a ZStack, not in a rail, not moving, not a scroller, and not a
    frame column that holds a page slot (the title bar, band and page stacked are the guide's edges, not one page's content).
 2. A child's lead: the leftmost OUTERMOST ink in its subtree (a drawn visual such as a progress ring's arc counts as ink),
-   skipping lines (a rule or a selection bar, 4 DIP or thinner), anything placed by centring or end alignment, a GROUND (a fill
+   skipping lines (a flat rule 4 DIP or thinner, or an upright bar that MARKS a click target: inside it, or beside it on its line,
+   the nav's selection bar; an upright bar beside words that take no click is a heading's accent mark and leads: Classic's
+   "Genres" head), anything placed by centring or end alignment, a GROUND (a fill
    at least 90 % as wide as the child, behind its content or under it: a selected row's fill; what sits on it leads) and a plate
    outdented on purpose (a negative left margin: the library's "Your Episodes" row hangs its fill 8 left so its words sit on the
    column). A narrower plate (a pill, a chip) and an outlined one (a field's border) lead themselves. The column's lead (the REFERENCE) is its leftmost child lead; a lead's declared `Hang` or `Indent` is taken off
@@ -316,7 +318,12 @@ lead that differs from its column's lead without a visible container that would 
    reference's x, any fill or border of 2 % alpha or more, a drawn visual or a line: a settings info bar's faint plate, a combo
    box's underline) or it sits on a HANGING column (ink in
    another child starts within 4 of its x while other ink starts left of that ink on its line: a checkbox's help under its label,
-   the rows of an indexed list that carry no letter, a title beside its number).
+   the rows of an indexed list that carry no letter, a title beside its number). Where the theme's guide declares `ItemPlate` on
+   the lead's key (WinUI: the search hit rows and the search SelectorBar), a lead padded inside an ITEM's plate is intended
+   (suppressed by intent): the nearest click target holding it (not the reference) starts on the reference's x and is one item of
+   an items control (its parent, through wrappers of its own box, holds two or more children with a click target). Zune declares
+   none: its hover-plate rule puts content on the column and outdents the plate, so its padded rows stay findings. WinUI card
+   grids are not declared either (W-Search and W-Artist draw the cards' art flush with the heading).
 4. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node holding the reference and the leads.
 The window: the Zune boards put every section, card and row on the page column and inset only on plates; the smallest offset
 between two real columns they draw is 56 (a track number to its title; album art to its words is 68), so 32 (twice the 16 card
@@ -331,9 +338,10 @@ glance: a heading repeated as the eyebrow of the card under it.
    under `ignoreUnder` (the title bar's crumbs and the play bar repeat the page's words by design), not in `allowDuplicate`.
 2. Pairs: two runs of one folded text in one scroll region and one PAGE (the nearest keep-alive page slot: the band's title and
    the panorama are chrome and page, both drawn on Z-Album) whose boxes share x and stand at most 240 DIP apart vertically. Not a
-   glow copy (the same box); not REPEATED CONTENT: two instances of one repeated key family, two runs at the same child path below
-   their lowest common ancestor (unkeyed rows, release-note sections that each carry a "closed" tag, two rails showing one album
-   card), or two runs that both sit in click targets (cards and rows: a show named like its publisher; their words are content).
+   glow copy (the same box); not REPEATED CONTENT: two instances of one repeated key family, two runs at the same NON-EMPTY child
+   path below their lowest common ancestor (unkeyed rows, release-note sections that each carry a "closed" tag, two rails showing
+   one album card; two runs that are direct children of one stack are no repeated structure: a heading and a same-words line under
+   it), or two runs that both sit in click targets (cards and rows: a show named like its publisher; their words are content).
 3. One finding per (region, page, text); pattern the later copy's, cause `repeats:<the first copy's pattern>`.
 Fix: say it once; keep the heading and drop the repeat inside the section (or give the repeat its own words). Suppression: a guide
 `Allow` for `text.duplicate`.
@@ -341,8 +349,9 @@ Fix: say it once; keep the heading and drop the repeat inside the section (or gi
 **`target.ink`** (warn; the album list header's `c.num`). A click target a person cannot see: an in-scope, enabled, pressable
 target (the `target.size` set, its exemptions included) whose subtree draws nothing at rest (no text, image, gradient, visible
 fill or border, no drawn visual; a hover fill is not ink at rest). Not a finding: the click shows elsewhere (an ancestor running
-the same click draws), content another node draws covers a quarter of it or more (the Liked page's tempo chart under its hit
-bands), a drag bar, or a target over half the window or more (a light-dismiss catcher). Grouped as `target.size` groups (the
+the same click draws), content another node draws covers a quarter of it or more AND fits the target's group (its first
+ancestor larger than itself: the Liked page's tempo chart under its hit bands; a page backdrop that spreads past the group, the
+artist page's material bleed or a playlist's wash, excuses nothing), a drag bar, or a target over half the window or more (a light-dismiss catcher). Grouped as `target.size` groups (the
 parent's pattern), cause `no-ink`. Fix: give the target ink at rest (its label or glyph) or hand its click to a control a person
 can see; never remove the feature. The Zune list header's number column (28 x 36, sorts by track number) is the class.
 
@@ -410,7 +419,8 @@ A theme describes what only it knows as data, through `IThemeLintGuide` (registe
 - `Policies(LintContext)` (default: none): `LintPolicy(Intent, Prefix, Reason, Value, Rule)`, intents for every node whose key
   or an ancestor's starts with `Prefix`: `TrimOk`, `NeverTrim`, `Hang` (Value DIP, negative = left), `Indent`, `Bleed`,
   `OffScaleOk`, `RepeatOk`, `Allow` (any finding of `Rule` whose members ALL lie under the prefix: a reserved slot is
-  `Allow` for `space.dead` on the slot's key). The reason must let a reviewer check it: name the board. A board draws one page:
+  `Allow` for `space.dead` on the slot's key), `ItemPlate` (an items control whose items pad their content inside a plate
+  that starts on the column: the `align.inset` column pass suppresses such a lead by intent). The reason must let a reviewer check it: name the board. A board draws one page:
   `LintContext.Route` (`home`, `album`) scopes a page's policies.
 - `BoardScale` (default: none): `LintScaleStep(Name, Value, Reason)`, the steps the theme's boards space with beyond the shared
   tokens; the capture adds them to the snapshot's scale, so `space.scale` takes them as on the scale (a replay reads them back).
@@ -421,7 +431,7 @@ it in `suppressed.intent`; it never hides it from `outcomes=all`.
 | Theme | Edges | Policies |
 |---|---|---|
 | Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album), on `zune-artist-name` by `ZuneArtistRules.NameNudge` (Z-Artist) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings). `DesignedTopBleeds`: `zune.detail.panorama`, `zs:title`. `BoardScale`: 6, 10, 14, 18, 22 (the boards' 2-DIP steps to 24) |
-| WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | `Allow` for `align.inset` on `home:facet:words` (Home's facet words are a stock SelectorBar whose items pad their words 12 in, as W-Home draws them) |
+| WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | `Allow` for `align.inset` on `home:facet:words` (Home's facet words are a stock SelectorBar whose items pad their words 12 in, as W-Home draws them); `ItemPlate` on `hit:` (search hit rows, a ListView: W-Search draws the songs' art 8 right of "Songs") and `facets` (the search SelectorBar: W-Search draws "All" 12 right of "Results for") |
 | Classic | no guide: `guide:false`, no edges, no intents; findings are reported, not fixed | |
 
 ## Baselines (accepted findings)
@@ -548,6 +558,28 @@ None is promoted: `text.duplicate` and `target.ink` are 35 of 35 true but each r
 gallery; the column pass has a known false class. Labels, crops and transcripts: `C:/WAVEE/scratch/inspect-p2/lint`
 (`labels-gallery.txt`, `labels-six-screen.txt`, `labels-six-content.txt`, `final2/`, `gal-dev/`, `crops/`).
 
+**After review** (same day). The review ran the rules outside that set and found four holes; each is fixed and re-run:
+- the column pass reported WinUI Search's SelectorBar "All" (+12) and its hit rows' art (+8), both drawn so by W-Search: WinUI's
+  guide now declares `ItemPlate` on `hit:` and `facets` and they are `suppressed` (intended). Its card grids are not declared:
+  W-Search and W-Artist draw the cards flush, so their +8 stays a true finding;
+- the column pass skipped Classic's heading accent bar (3 x 14) as a line and measured "Genres" at +7: an upright bar that marks
+  no click target now leads (the nav's selection bar beside its item still does not);
+- `text.duplicate` took two copies that are direct children of one stack for repeated structure (both child paths empty): a
+  doctored album snapshot with the bio set to "30M Monthly listeners" now reports the pair;
+- `target.ink` let any image, gradient or visual covering a quarter of a target excuse it, a page backdrop included: the content
+  must now fit the target's group. A doctored artist snapshot with the band's shuffle stripped of ink now reports it, and five
+  playlist entries newly report `c.num`, which the playlist wash had hidden (true).
+
+The replay of all 240 readable snapshots (the gallery, the six, the review's probes and doctored saves) on the fixed build against
+the previous one changes exactly those findings; no true finding is lost. Fifteen mounts (the six, WinUI Search, album, artist and
+Liked, Classic Search scrolled, album and artist, Zune Liked and Search at 1440), each in a fresh server, replay identically. Labels
+of the gallery at `scope=content` (replays): `text.duplicate` 58 true (adds each storage section head repeated by its own row
+label, "Metadata cache" and "factory reset", and the compact album's "About the artist" head and eyebrow), `target.ink` 29 true,
+`space.dead` 141 true, column pass 63 true and 2 false (the segmented control again; adds the "Privacy policy" link on Z-Setup
+and the report dialog's "Report preview" fold button, both padded on no rest fill). On the probes: WinUI card grids +8 and
+"Show all 2 albums" +7 (true against W-Search and W-Artist), Classic's album avatar stack +6 and its video card +8 under the
+track rows (true). Files: `fix/` (`diff4.txt`, `labels-gallery-content.txt`, `labels-probes.txt`, `live4/`, `crops/`).
+
 ## Known limits
 
 - The text ink is a 1.2 em guess, not glyph ink metrics: a clip only the guess makes is a review until the engine reports ink.
@@ -556,6 +588,11 @@ gallery; the column pass has a known false class. Labels, crops and transcripts:
   declare none, so a board value of theirs reports as info.
 - The `align.inset` column pass cannot see a segmented control's unselected segment as a control: its words are padded inside
   a pill only the selection draws, and the pass reports them (+12 on Z-Settings-Sections-Huge).
+- The column pass measures a column against its own leftmost lead: when every child of a column sits off the page column, nothing
+  says so. Zune Liked's chip row ("all" at 53 against the page's 48, +5) is in a horizontal scroller the region pass skips, and
+  its column (the chip bar, the unavailable bar, the list header) leads with the chip itself, since the header's `c.num` draws
+  nothing and its next lead, the title, sits at 152.
+- `ItemPlate` is declared per key prefix; a WinUI items control whose board pads its items but that no prefix names still reports.
 - `text.duplicate` cannot tell a label from content by its words: two copies both in click targets are content and not judged, so a
   label repeated inside one card (an eyebrow and a title in the same link) goes unreported.
 - Contrast reads one rendered frame: over art the ground is the frame's pixels at their p90 worst, so the fake decoder's
