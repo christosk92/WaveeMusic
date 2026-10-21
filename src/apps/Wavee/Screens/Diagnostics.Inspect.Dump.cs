@@ -390,7 +390,6 @@ public static partial class Diagnostics
             Inspect.Reply.Num(w, "contentWidth", contentWidth);
             Inspect.Reply.Num(w, "viewportWidth", viewportWidth);
             Inspect.Reply.Num(w, "viewportHeight", viewportHeight);
-            w.WriteBoolean("resizing", t.Resizing);
             WriteRungs(w, in t);
             w.WriteStartObject("published");
             Inspect.Reply.Num(w, "contentWidth", t.ContentWidth);

@@ -86,7 +86,7 @@ public readonly record struct CommonDiagnosticsLayout(
     }
 
     /// <summary>Standard, for a card that no page hosts (a unit test of a widget).</summary>
-    public static CommonDiagnosticsLayout Standard => For(new TierFacts(WidthTier.Standard, HeightTier.Regular, WidthTier.Standard, 0f, 0f, 0f, false));
+    public static CommonDiagnosticsLayout Standard => For(new TierFacts(WidthTier.Standard, HeightTier.Regular, WidthTier.Standard, 0f, 0f, 0f));
 }
 
 /// <summary>The log viewer's tier layout.</summary>

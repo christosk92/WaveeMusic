@@ -3,7 +3,7 @@
 // `ThemeHost.Facts.Tiers` (core models) and `ctx.Tier()` (templates). Resolved by `Shell.WindowTiers` from the layout
 // viewport (after app zoom) and the content width the shell computes synchronously, through the structure's `TierPolicy`.
 //
-// WHEN IT CHANGES. The fact is a snapshot taken when a TIER crosses (or a rung, or `Resizing` flips), not a per-pixel feed:
+// WHEN IT CHANGES. The fact is a snapshot taken when a TIER crosses (or a rung, or a modal resize ends), not a per-pixel feed:
 // the engine's `UseTier` commits a crossing on the first frame that is not resized (plan 3.3), so a resized frame still
 // publishes the old tier while the views lay out at the new size, and a template that reads `ctx.Tier()` re-renders once
 // per crossing, never once per resized frame. The three size members are the sizes AT that snapshot; a reader that needs
@@ -20,14 +20,12 @@ namespace Wavee.Theming;
 /// <param name="ContentWidth">The content region's width at the snapshot.</param>
 /// <param name="ViewportWidth">The window's layout width at the snapshot.</param>
 /// <param name="ViewportHeight">The window's layout height at the snapshot.</param>
-/// <param name="Resizing">True inside the OS modal size-move loop.</param>
 /// <param name="Rungs">One bit per <see cref="TierPolicy.Rungs"/> entry, set while that rung is crossed.</param>
 /// <param name="Policy">The policy the snapshot was resolved against (what <see cref="Rung"/> reads its ids from).</param>
 public readonly record struct TierFacts(
     WidthTier Window, HeightTier Height,
     WidthTier Content, float ContentWidth,
     float ViewportWidth, float ViewportHeight,
-    bool Resizing,
     ulong Rungs = 0UL, TierPolicy? Policy = null)
 {
     /// <summary>No tier information: Compact and Short at size 0, no policy. What a view reads where no frame resolves tiers.</summary>

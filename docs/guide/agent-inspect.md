@@ -226,7 +226,7 @@ The navigation args are the ones `goto` takes.
 → {"id":1,"ok":true,"cmd":"mount","frames":41,"settled":true,"size":{"w":400,"h":860,"scale":1},"route":"home",
    "text":"dwrite","devices":"offscreen (D3D12 (WARP))","render":true,
    "tiers":{"window":"Compact","height":"Regular","content":"Compact","contentWidth":400,"viewportWidth":400,
-            "viewportHeight":860,"resizing":false,"rungs":[]},"theme":"zune","kind":"dark"}
+            "viewportHeight":860,"rungs":[]},"theme":"zune","kind":"dark"}
 ```
 
 If the offscreen surface cannot be created (no D3D12 or WARP), `devices` reads `headless-gpu+dwrite (<reason>)`. The
@@ -533,11 +533,10 @@ Returns the window's current `TierFacts`:
 - `contentWidth`, `viewportWidth` and `viewportHeight`: the sizes the ladders read now, the window's layout viewport and the
   content width estimated from it (the window less the pane and the docked panels the window tier lays out:
   `WindowTiers.TryLiveSizes`)
-- `resizing`
 - the crossed `rungs`, by id (as `mount`, `status` and `crossing` list them)
 - `published`: `{contentWidth, viewportWidth, viewportHeight}` as the facts carry them, the sizes of their last publish (the
-  mount or a tier change). The app republishes the facts only when a tier, a rung or `resizing` changes, never per resized
-  frame, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
+  mount or a tier change). The app republishes the facts only when a tier or a rung changes or a modal resize ends at a new size, never
+  per resized frame nor for a window move, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
 
 It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
 mounted window.
