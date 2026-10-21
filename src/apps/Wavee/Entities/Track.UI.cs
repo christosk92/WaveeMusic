@@ -693,8 +693,9 @@ public readonly partial struct Track
     /// <summary>The subtitle's data: what <see cref="SubtitleTree"/> reads, as values (an equal push does not re-render).</summary>
     readonly record struct SubtitleData(int Slot, uint Scope, ulong Digest, TrackRowRules.SubtitleParts Parts);
 
-    /// <summary>The versions of everything the subtitle reads, folded (FNV-1a over the words): the track row (explicit, video), its
-    /// artist edge (who is billed) and each billed artist's row (the name, the uri). Every write bumps its row's or edge's version.</summary>
+    /// <summary>Everything the subtitle reads, folded (FNV-1a over the words): the track row's version (explicit, video), its artist edge's
+    /// (who is billed) and each billed artist's name and identity (the link) — not the artist row's version, which an artist page's own
+    /// re-answer (bio, images, counts) bumps.</summary>
     static ulong DataDigest(Track t)
     {
         var scope = Entities.Current;
@@ -704,7 +705,8 @@ public readonly partial struct Track
         if (slot > global::Wavee.Table.None && slot < scope.Tracks.Count) h = Mix(h, scope.Tracks.Version[slot]);
         h = Mix(h, scope.Edges.TrackArtists.Version(slot));
         foreach (int a in t.ArtistSlots)
-            if (a > global::Wavee.Table.None && a < scope.Artists.Count) h = Mix(h, ((ulong)(uint)a << 32) | scope.Artists.Version[a]);
+            if (a > global::Wavee.Table.None && a < scope.Artists.Count)
+                h = Mix(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
         return h;
     }
 

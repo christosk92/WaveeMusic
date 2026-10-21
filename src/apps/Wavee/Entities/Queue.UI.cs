@@ -340,8 +340,9 @@ public static partial class Queue
 
         static readonly Func<ulong> s_rowsDigest = RowsDigest;
 
-        /// <summary>One digest over the versions of every row a queue surface can show (<see cref="TextOf"/>'s and the row adapters' reads):
-        /// the deck's current row and each queue row (the track, its display row, its album and artist edge; an episode and its show), and
+        /// <summary>One digest over what every row a queue surface can show reads (<see cref="TextOf"/>'s and the row adapters' reads): the
+        /// deck's current row and each queue row (the track and its display row by version, its album's title, its artist edge and each
+        /// artist's name and identity; an episode and its show by version), and
         /// the context entity "Playing from" names. It reads the tables' publications (so it re-runs on each) and the queue edge (the row
         /// set); it changes only when one of those rows was written. A theme's row builders read the table untracked
         /// (<c>Track.RowDataOptions.Tracked</c> false): this host re-pushes their props when a row changes.</summary>
@@ -380,9 +381,14 @@ public static partial class Queue
                 h = FoldVersion(h, scope.Tracks, r.Slot);
                 var d = t.ForDisplay;
                 if (d.Slot != r.Slot) h = FoldVersion(h, scope.Tracks, d.Slot);
-                h = FoldVersion(h, scope.Albums, d.Album.Slot);
+                // The album and the artists by what a row SHOWS of them (the album's title, each artist's name and identity), not by their row
+                // versions: an artist or album page re-answering its own row (bio, images, counts) must not re-render the queue.
+                int al = d.Album.Slot;
+                h = Fold(h, al > global::Wavee.Table.None && al < scope.Albums.Count ? (uint)scope.Albums.Title[al].Value : 0UL);
                 h = Fold(h, scope.Edges.TrackArtists.Version(d.Slot));
-                foreach (int a in d.ArtistSlots) h = FoldVersion(h, scope.Artists, a);
+                foreach (int a in d.ArtistSlots)
+                    if (a > global::Wavee.Table.None && a < scope.Artists.Count)
+                        h = Fold(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
             }
             else if (r.Kind == EntityKind.Episode && r.Slot > global::Wavee.Table.None)
             {
