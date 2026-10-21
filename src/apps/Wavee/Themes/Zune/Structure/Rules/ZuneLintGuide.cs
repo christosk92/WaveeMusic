@@ -12,7 +12,8 @@
 //     near-miss (a box a hair too narrow for its words) and a hard clip are still reported: the lint checks both before any intent;
 //   · the page title's x is the page column's ink line (`Column`): align.inset measures the page's leads against it;
 //   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album), and the settings
-//     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist) (`Hang`);
+//     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings), the what's-new panorama by `ZuneReleaseNotesRules.PanoramaBleed`
+//     (Z-ReleaseNotes), the artist name by `ZuneArtistRules.NameNudge` (Z-Artist) (`Hang`);
 //   · THE BOARD SCALE: the boards space on a 2-DIP step to 24, so 6, 10, 14, 18 and 22 are on Zune's scale (`BoardScale`: space.scale).
 
 using FluentGpu.Foundation;
@@ -102,6 +103,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// their own boards, and the lint's implicit class still counts a MaxLines + ellipsis caption in a repeated family as designed).</summary>
     private const string HomeRoute = "home";
 
+    /// <summary>The what's-new panorama's key (the literal `ZuneReleaseNotes.Frame` keys it with).</summary>
+    private const string ReleaseNotesTitleKey = "zrn:title";
+
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context)
     {
@@ -122,6 +126,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         policies.Add(new(LintIntent.Hang, ZuneArtistRules.NameKey,
             "the artist name stands NameNudge left of the gutter so the light face's glyph edge lines up with the copy under it (Z-Artist)",
             Value: -ZuneArtistRules.NameNudge));
+        policies.Add(new(LintIntent.Hang, ReleaseNotesTitleKey,
+            "the what's-new panorama bleeds left of the gutter (ZuneReleaseNotesRules.PanoramaBleed: Z-ReleaseNotes draws it as Z-Settings does)",
+            Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneReleaseNotesRules.PanoramaBleed)));
         policies.Add(new(LintIntent.Hang, ZuneSettings.TitleKey,
             "the settings panorama bleeds left of the gutter (ZuneSettingsRules.PanoramaBleed: Z-Settings draws it at 40 over a 48 gutter)",
             Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneSettingsRules.PanoramaBleed)));

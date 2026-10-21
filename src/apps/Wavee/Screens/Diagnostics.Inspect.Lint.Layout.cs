@@ -34,20 +34,24 @@ public static partial class Diagnostics
         static bool OffStart(string align) => align is "Center" or "End";
 
         /// <summary>Its x is set by centring or end alignment, not by a lead: the node or an ancestor up to its section root is placed Center or End
-        /// by itself or by its parent (a column's AlignItems, a row's Justify), or its text is aligned off the start.</summary>
+        /// on the HORIZONTAL axis, read per parent: in a ZStack by its JustifySelf (AlignSelf places it vertically there), in a column by its
+        /// AlignSelf or else the column's AlignItems, in a row by the row's Justify or its own JustifySelf (AlignSelf is vertical in a row: the
+        /// two copies of a pivot's label centred on its line still lead at the row's start); or its text is aligned off the start.</summary>
         static bool PlacedOffStart(Snapshot s, Node n)
         {
             if (n.Text is { } t && t.Align is "Center" or "End") return true;
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
             {
                 Node m = s.Nodes[i];
-                if (OffStart(m.Layout.AlignSelf) || OffStart(m.Layout.JustifySelf)) return true;
                 if (m.Parent >= 0)
                 {
                     Node p = s.Nodes[m.Parent];
-                    if (p.Column ? (m.Layout.AlignSelf == "Auto" && OffStart(p.Layout.AlignItems)) : p.Layout.Justify is "Center" or "End" or "SpaceAround" or "SpaceEvenly")
-                        return true;
+                    bool off = p.ZStack ? OffStart(m.Layout.JustifySelf)
+                        : p.Column ? (m.Layout.AlignSelf == "Auto" ? OffStart(p.Layout.AlignItems) : OffStart(m.Layout.AlignSelf))
+                        : p.Layout.Justify is "Center" or "End" or "SpaceAround" or "SpaceEvenly" || OffStart(m.Layout.JustifySelf);
+                    if (off) return true;
                 }
+                else if (OffStart(m.Layout.AlignSelf) || OffStart(m.Layout.JustifySelf)) return true;
                 if (m.Key is { Length: > 0 }) break;   // the section root: its own placement was the last checked
             }
             return false;
@@ -259,6 +263,26 @@ public static partial class Diagnostics
         /// <summary>The share of a column child's width a plate must span to be the child's GROUND (a selected row's fill) rather than a lead.</summary>
         const float GroundShare = 0.9f;
 
+        /// <summary>The least alpha (times opacity) of a fill or border that FRAMES content for the column pass: fainter than ink (0.04) on purpose,
+        /// a settings info bar's 3 % plate is a card a person sees.</summary>
+        const float FrameAlpha = 0.02f;
+
+        /// <summary>The child that holds the lead also holds a FRAME on the reference's x (its <see cref="Intended"/> x): a fill, border, drawn
+        /// visual or line (not text, not an image) starting within <see cref="Slack"/> of it (the info bar's faint plate, a combo box's underline). What is padded inside a frame
+        /// that sits on the column is the frame's design.</summary>
+        static bool Framed(Snapshot s, Node child, Node reference, int[] last)
+        {
+            float x = Intended(s, reference);
+            for (int i = child.Index; i <= last[child.Index]; i++)
+            {
+                Node m = s.Nodes[i];
+                if (m.Text is not null || m.Image || m.Index == reference.Index || MathF.Abs(m.Rect.X - x) > Slack) continue;
+                if (m.Fill.A * m.Opacity >= FrameAlpha || (m.BorderWidth > 0f && m.BorderColor.A * m.Opacity >= FrameAlpha) || m.Visual.Length > 0
+                    || m.Gradient) return true;
+            }
+            return false;
+        }
+
         /// <summary>The lead of one child of a column: the leftmost start of the outermost ink in its subtree that is no GROUND (a plate as wide as
         /// the child, <see cref="GroundShare"/>: what sits on it leads; a pill or a chip leads itself; a drawn visual counts as ink, a line as
         /// none), not placed by centring or end alignment, not moving, reached by scrolling; null when none. A lead padded inside its plate is
@@ -270,8 +294,11 @@ public static partial class Diagnostics
             {
                 Node m = s.Nodes[i];
                 if (!m.Ink && m.Visual.Length == 0) { i++; continue; }   // a progress ring's arc leads its row as ink does
-                // A ground as wide as the child (a selected row's fill) is no lead: what sits on it is. A narrower plate (a pill, a chip) is.
-                if (m.InkCount > (m.Ink ? 1 : 0) && m.Rect.W >= GroundShare * child.Rect.W) { i++; continue; }
+                // A ground as wide as the child (a selected row's fill, behind the row or under it) is no lead: what sits on it is. A narrower
+                // plate (a pill, a chip) and an outlined one (a field's border) are.
+                if (m.Text is null && !m.Image && m.Rect.W >= GroundShare * child.Rect.W && !(m.BorderWidth > 0f && m.BorderColor.A * m.Opacity >= FrameAlpha))
+                { i++; continue; }
+                if (m.InkCount > 1 && m.Layout.Margin.Left < 0f) { i++; continue; }   // a plate outdented on purpose: its words sit on the column
                 bool line = m.Text is null && !m.Image && (m.Rect.H <= LineMax || m.Rect.W <= LineMax);   // a rule or a selection bar: no lead
                 if (!line && !m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
                 i = last[i] + 1;
@@ -327,7 +354,8 @@ public static partial class Diagnostics
         /// ZStack, not in a rail, not moving, two or more children, not a frame column that holds a page slot), the lead of each child is <see cref="ChildLead"/>; the column's lead is its
         /// leftmost child lead (the REFERENCE). A child lead in scope that is no region lead and sits <see cref="InsetMin"/> &lt; d &lt;=
         /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it (the plate it sits on
-        /// starts at or right of the reference: a filled card whose art is flush and whose words are padded) or it sits on a HANGING column
+        /// starts at or right of the reference: a filled card whose art is flush and whose words are padded; or its child holds a frame on the
+        /// reference's x, <see cref="Framed"/>: an info bar's faint plate, a combo box's underline) or it sits on a HANGING column
         /// (<see cref="Hangs"/>: the text beside a checkbox, an index letter or a number in another child starts at its x). The about card's words at x=1152
         /// under its art at 1132 sit on the page: +20. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node that holds
         /// the reference and the leads. A lead's declared <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> is taken off its x
@@ -364,22 +392,26 @@ public static partial class Diagnostics
                 if (!c.Column || c.ZStack || c.InRail || c.Moving || c.ScrollAxis != 0 || holdsPage[c.Index] || kids[c.Index] is not { Count: >= 2 } children
                     || !Reachable(c)) continue;
                 var leads = new List<Node>(children.Count);
+                var holders = new List<Node>(children.Count);
                 Node? reference = null;
                 foreach (int k in children)
                     if (ChildLead(s, nodes[k], last) is { } lead)
                     {
                         leads.Add(lead);
+                        holders.Add(nodes[k]);
                         if (reference is null || Intended(s, lead) < Intended(s, reference)) reference = lead;
                     }
                 if (leads.Count < 2 || reference is null) continue;
-                foreach (Node lead in leads)
+                for (int li = 0; li < leads.Count; li++)
                 {
+                    Node lead = leads[li];
                     if (!lead.InScope || regionLeads.Contains(lead.Index) || !seen.Add(lead.Index)) continue;
                     judged++;
                     float d = Intended(s, lead) - Intended(s, reference);
                     if (d <= InsetMin || d > ColumnInsetMax) continue;
                     if (lead.Backdrop >= 0 && nodes[lead.Backdrop].Rect.X >= reference.Rect.X - Slack) continue;   // padded inside a visible container
                     if (Hangs(s, c, lead, children, last)) continue;   // on the text column beside a marker: a checkbox's help, a row without its index letter
+                    if (Framed(s, holders[li], reference, last)) continue;   // padded inside a frame that sits on the column: an info bar, a combo box
                     float bucket = MathF.Round(d);
                     var key = (reference.Index, bucket);
                     if (!groups.TryGetValue(key, out ColumnGroup? g))
