@@ -130,12 +130,17 @@ internal static partial class ZunePlaylist
         else
         {
             var title = R.Type.Heading(shown);
+            // In the panorama (a step above the heading voice) the read arm FITS like the plain title (ZuneDetailKit.Panorama: one line first, then two
+            // lines at the floor, then the ellipsis); the rail's heading-voice title has no floor and wraps as before.
+            float floor = ZuneDetailKit.PanoramaFloor(p.Size);
+            bool fit = !float.IsNaN(floor);
             // A title is a name (as written); the placeholder is a word the theme writes (lowercased by the heading case role).
             run = title with
             {
                 Size = p.Size, LineHeight = float.IsNaN(p.LineHeight) ? title.LineHeight : p.LineHeight,
                 LineStacking = float.IsNaN(p.LineHeight) ? title.LineStacking : LineStacking.BlockLineHeight, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Wrap = TextWrap.WrapWholeWords, MaxLines = Detail.VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
+                Wrap = TextWrap.WrapWholeWords, MaxLines = fit ? ZuneDetailRules.Compact.PanoramaLines : Detail.VerticalLayout.TitleLineCap,
+                Trim = TextTrim.CharacterEllipsis, MinSize = floor, FitMode = fit ? TextFitMode.OneLineFirst : TextFitMode.Lines,
                 Color = blank ? Tok.TextTertiary : Tok.TextPrimary, Case = blank ? R.Case.For(LabelKind.Heading) : TextCase.AsWritten,
             };
         }
