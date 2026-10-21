@@ -238,9 +238,13 @@ internal static class WinUiSearch
 
             // The stock AutoSuggestBox: 32 tall, the control radius, the text-box chrome (the bottom accent line on focus).
             // Small's field (filling the middle) reads "Search"; the centred 520 / 640 field and the flyout the long placeholder (Shell-Top).
+            // A BOUND placeholder: the box reads its arguments once, at mount, so a value picked here would keep the tier the field
+            // mounted in across a crossing; the bind re-reads the tier facts when they change.
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
-            bool fills = WinUiTiers.TitleBarOf(facts.Value.Tiers).SearchFills && presentation == AutoSuggestBoxSuggestionPresentation.Popup;
-            string placeholder = fills ? Loc.Get(Strings.Theme.Winui.Frame.Search) : Loc.Get(Strings.Shell.SearchPlaceholder);
+            bool popup = presentation == AutoSuggestBoxSuggestionPresentation.Popup;
+            Prop<string> placeholder = Prop.Of(() => popup && WinUiTiers.TitleBarOf(facts.Value.Tiers).SearchFills
+                ? Loc.Get(Strings.Theme.Winui.Frame.Search)
+                : Loc.Get(Strings.Shell.SearchPlaceholder));
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f,
