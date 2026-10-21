@@ -315,8 +315,8 @@ public static partial class Diagnostics
                 Positional = ["verb"],
                 Args = [Arg("verb", ArgType.String, "the verb to describe (an alias works too)"), Arg("schema", ArgType.Enum, "the whole table as JSON", null, "json", excludes: "verb")],
             },
-            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts when mounted", "status") { Aliases = ["ping"] },
-            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, cold playlist, stage, tabs, playback, queue, theme options", "mount w=400 h=860 theme=zune kind=dark route=home")
+            new(Verb.Status, "status", "The session: mounted, frames, mounts so far, theme, kind, route, text backend; the mount facts and the video surface when mounted", "status") { Aliases = ["ping"] },
+            new(Verb.Mount, "mount", "Mount the whole app at w x h DIP (theme, kind, route...); replaces any mount and puts back what the last one changed: state vacancy, cold playlist, stage, tabs, playback, queue, video surface, theme options", "mount w=400 h=860 theme=zune kind=dark route=home")
             {
                 Positional = ["w", "h"],
                 Args = Join([Arg("w", ArgType.Float, "window width (DIP)", "1180"), Arg("h", ArgType.Float, "window height (DIP)", "760")], s_mountArgs, s_settleArgs),
@@ -417,7 +417,7 @@ public static partial class Diagnostics
                     Arg("max", ArgType.Int, "the settle cap after a rescale", "600"),
                 ],
             },
-            new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, sizes, rung ids", "tiers") { NeedsMount = true },
+            new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, rung ids, the live sizes and the published ones the page reads", "tiers") { NeedsMount = true },
             new(Verb.Lint, "lint", "Check the mounted scene (or a saved snapshot: replay=) for design flaws: gate rules (clip, trim, type, target, duplicate, rhythm, contrast, theme edges) and todo rules (align, space, placeholder, keys)", "lint min=warn allowDuplicate=\"See all\"")
             {
                 Positional = ["rules"], NeedsMount = true, MountUnless = "replay",
@@ -444,7 +444,7 @@ public static partial class Diagnostics
                 Positional = ["frames"], NeedsMount = true,
                 Args = Join([IntArg("frames", "frames to trace", "60", 1, 5000), IntArg("max", "the most nodes watched", "20", 1, 500)], s_traceOptions),
             },
-            new(Verb.State, "state", "Show a page state in place of the page (empty, nomatch, error, offline...), or put the page back (none)", "state kind=empty")
+            new(Verb.State, "state", "Show a page state in place of the page (empty, nomatch, error, offline...), or put the page back (none); loading and cold-* settle with loops=skeletons unless loops is given", "state kind=empty")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds))], s_settleArgs),

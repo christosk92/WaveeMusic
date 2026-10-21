@@ -417,6 +417,22 @@ public static partial class Entities
                 Current.Edges.AlbumArtists.ReplaceRun(albumSlot, [artistSlot], default);
         }
 
+        // The two long-named daylists carry the fifty rows their headers count, so the title-fit renders show the list under the hero.
+        Span<int> longTargets = stackalloc int[50];
+        Span<PlaylistTrackEdge> longPayload = stackalloc PlaylistTrackEdge[50];
+        string[] longUris = ["spotify:playlist:plt0", "spotify:playlist:plt1"];
+        for (int p = 0; p < longUris.Length; p++)
+        {
+            int start = Wrap(p * 29 + 11, TrackCount);
+            for (int k = 0; k < longTargets.Length; k++)
+            {
+                longTargets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(start + k));
+                longPayload[k] = new PlaylistTrackEdge(StringId.Empty, (int)(now0 - (p + k) * 3600L), Table.None, 0, 0, 0, 0);
+            }
+            int slot = ResolveSeedSlot(EntityKind.Playlist, longUris[p]);
+            if (slot != Table.None) Current.Edges.PlaylistTracks.ReplaceRun(slot, longTargets, longPayload);
+        }
+
         // Prepend every mockup band ahead of the bundled capture's own sections (canvas order: Daylist, Made for you,
         // New Music Friday, Releases, clusters, Jump back in, Radio, THEN whatever the capture answered).
         string[] mockupUris =
