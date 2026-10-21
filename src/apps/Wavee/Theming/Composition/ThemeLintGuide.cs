@@ -87,6 +87,11 @@ public enum LintIntent : byte
 
     /// <summary>Any finding of <see cref="LintPolicy.Rule"/> here is intended: the generic form for the rules without a named intent.</summary>
     Allow,
+
+    /// <summary>Items of an items control here (list rows, selector tabs, cards) carry their hover and selection plate from the column and pad
+    /// their content inside it, as the stock WinUI ListView and SelectorBar do (`align.inset` column pass: a lead padded in such an item's plate
+    /// is the item's design). Without it the theme follows the owner's hover-plate rule: content sits on the column and the plate outdents.</summary>
+    ItemPlate,
 }
 
 /// <summary>One intent: <see cref="Intent"/> holds for every node whose key, or an ancestor's key, starts with <see cref="Prefix"/>.</summary>
@@ -96,6 +101,13 @@ public enum LintIntent : byte
 /// <param name="Value">The DIP a <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> declares.</param>
 /// <param name="Rule">The rule id an <see cref="LintIntent.Allow"/> covers (<c>align.baseline</c>).</param>
 public sealed record LintPolicy(LintIntent Intent, string Prefix, string Reason, float Value = 0f, string Rule = "");
+
+/// <summary>One step of a theme's BOARD spacing scale: a value its boards space with that the shared tokens (<c>Spacing.*</c>, <c>R.Space</c>) do
+/// not name (Zune's boards step by 2 DIP: 6, 10, 14, 18, 22). `space.scale` takes it as on the scale and offers it as the nearest step.</summary>
+/// <param name="Name">What the step is called in a finding (<c>board.10</c>).</param>
+/// <param name="Value">The step in DIP.</param>
+/// <param name="Reason">Where the boards draw it, in words a reviewer can check. Never empty.</param>
+public sealed record LintScaleStep(string Name, float Value, string Reason);
 
 /// <summary>A theme's edge expectations and intents for the window it is drawn in.</summary>
 public interface IThemeLintGuide
@@ -111,4 +123,7 @@ public interface IThemeLintGuide
     /// reads such a line as running past the top, so for text under these keys a cut at the TOP is reported as <c>info</c> ("designed bleed"),
     /// never an error; a cut at the bottom (descenders) still is. Empty by default.</summary>
     IReadOnlyList<string> DesignedTopBleeds => [];
+
+    /// <summary>The steps the theme's boards space with beyond the shared tokens (`space.scale` takes them as on the scale). Empty by default.</summary>
+    IReadOnlyList<LintScaleStep> BoardScale => [];
 }

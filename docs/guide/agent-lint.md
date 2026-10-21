@@ -4,8 +4,9 @@
 other verb). It reads the mounted scene, judges **what a person can see**, and returns findings an agent can act on: each
 with a rule id, an outcome, a level, a fingerprint, its members collapsed into one group, and a one-line fix.
 
-Code: `src/apps/Wavee/Screens/Diagnostics.Inspect.Lint*.cs` (the pure rules, `.Lint.Scene.cs` the capture and the reply,
-`.Lint.Store.cs` saved snapshots and baselines) and `Diagnostics.Inspect.Visible.cs` (visible rects). Theme intents:
+Code: `src/apps/Wavee/Screens/Diagnostics.Inspect.Lint*.cs` (the pure rules: `.Lint.cs` the gate rules, `.Lint.Layout.cs`,
+`.Lint.Content.cs` and `.Lint.Ink.cs` the todo rules; `.Lint.Scene.cs` the capture and the reply, `.Lint.Store.cs` saved
+snapshots and baselines) and `Diagnostics.Inspect.Visible.cs` (visible rects). Theme intents:
 `src/apps/Wavee/Theming/Composition/ThemeLintGuide.cs`; the Zune and WinUI guides in their themes' `Structure/Rules`.
 
 ## Running it
@@ -47,8 +48,8 @@ names what the lint could not decide, and the `todo` rules report the spacing an
 | `targetFloor`, `targetFloorCompact` | 32, 40 | `target.size`: the floors above Compact and at Compact. Numbers above 0. |
 | `gapMin` | 2 | `space.stack`: stacked text blocks closer than this TOUCH (a report); an overlap is a warning. 0 or more. |
 | `allowTrim` | none | Key prefixes whose text may ellipsise: a per-call `TrimOk` intent (a near-miss and a hard clip are still reported). An empty list means none. |
-| `allowDuplicate` | none | Labels (or glyph icon names, `Shuffle`) `duplicate.action` lets repeat. An empty list means none. |
-| `ignoreUnder` | `shell.titlebar,shell.playerbar` | Key prefixes `duplicate.action` skips. Passing it replaces the default; `ignoreUnder=[]` (or `ignoreUnder=`) clears it. |
+| `allowDuplicate` | none | Labels (or glyph icon names, `Shuffle`) `duplicate.action` and `text.duplicate` let repeat. An empty list means none. |
+| `ignoreUnder` | `shell.titlebar,shell.playerbar` | Key prefixes `duplicate.action` and `text.duplicate` skip. Passing it replaces the default; `ignoreUnder=[]` (or `ignoreUnder=`) clears it. |
 
 A number that is not a finite number in range, an empty `rules` or `outcomes`, and a path that is not a non-empty string fail
 the command and name the arg; nothing falls back silently. Every arg above is declared in the server's verb table
@@ -170,7 +171,10 @@ Severities below are the rule's own; `level` decides whether a fail counts in `s
 matching node whose measured EDGE is in scope (on screen and not cut: a page column taller than the screen still shows its
 left edge) is measured, matching its keys, prefixes, `UnderKey` and `GlyphsOnly`; off by more than max(tolerance, 0.5) is an
 error (an advisory edge: warn). A parked, covered, mid-animation or scrolled-away copy is never picked; an edge nothing matches is not
-checked (`guide.matched` counts the ones that were). Cause: right-of / left-of. FP classes: an edge whose key a view keyed on
+checked (`guide.matched` counts the ones that were). When the FIRST match on the window (the leftmost; the rightmost for
+`edge.right`) is hidden by an overlay (a modal scrim, or an opaque fill painted after it over half or more of what shows of it),
+the edge is not checked either: the next match is another node, not the edge (the search suggestions over the band's first
+pivots at Compact made the old rule measure the next visible pivot, +313.6 in the gallery's `Z-Overlays-Compact.1`/`.2`). Cause: right-of / left-of. FP classes: an edge whose key a view keyed on
 something else. Suppression: `Allow` policy, baseline.
 
 **`text.clip` (clip).** Word text whose ink runs past a clipping ancestor: vertical error, horizontal warn. The ink is the
@@ -265,12 +269,20 @@ that is not a node of its own reads as the page.
 
 Each ships with an algorithm note in its code and a guide policy to declare intent.
 
+**Promotion.** A rule starts at `todo` and earns `gate` only on evidence: every finding it gives on the replay set (the six
+reference mounts below, at `scope=screen` and `scope=content`, and the Zune gallery, `tools/themes/gallery.py --theme zune`) is
+labelled true, false or intended against the render and the board, no false finding is left without a known fix to the rule,
+and the set covers more than one distinct flaw on more than one theme. Promoting is a one-word change of its `Level` in the
+catalog (`Diagnostics.Inspect.Lint.cs`); it then counts in `summary` and in `--gate`. `space.dead` is a report rule and is
+never promoted.
+
 **`align.inset`** (warn; port of design-qa `proto/leads.py`). The owner's "history at 24 vs pins at 16" class.
 1. Members: ink (text, image, gradient, visible fill or border) that scrolling reaches (the WHOLE scroll content), not a
    glyph, not in an animating subtree (a page sliding in is not where it lands), not in a horizontal scroller, not a PLATE (an
    ink node other ink sits on), not a ground as wide as its scroll region (a full-bleed fill or image), not placed by centring
-   or end alignment (the node or an ancestor up to its section, by its own AlignSelf/JustifySelf or its parent's
-   AlignItems/Justify, or its text alignment), and not an end-aligned column (cells of one family and cell path whose right or
+   or end alignment on the horizontal axis (the node or an ancestor up to its section, read per parent: in a ZStack its
+   JustifySelf, in a column its AlignSelf or the column's AlignItems, in a row the row's Justify or its JustifySelf; AlignSelf is
+   vertical in a row and a ZStack; or its text alignment), and not an end-aligned column (cells of one family and cell path whose right or
    centre edges agree while their lefts do not).
 2. Groups: (scroll region x backdrop).
 3. Leads: members that nothing of their group STARTS to the left of on an overlapping line. "Nothing" counts every ink node of
@@ -287,6 +299,72 @@ reports itself, -d, rather than moving the line), a deliberately indented sub-li
 inset rows outnumber the leads on the real column more than two to one in a group whose sections do not nest them. Near misses
 (0.5-4 DIP) are a later rule (`align.near-miss`).
 
+THE COLUMN PASS (cause `column:+d`) judges what the region pass cannot: content that ink sits LEFT of on its line (an aside
+beside a song list, the inside of a card, a right pane), and leads more than 16 DIP off their region's line. A misalignment is a
+lead that differs from its column's lead without a visible container that would justify it:
+1. Columns: every vertical stack with two or more children, not a ZStack, not in a rail, not moving, not a scroller, and not a
+   frame column that holds a page slot (the title bar, band and page stacked are the guide's edges, not one page's content).
+2. A child's lead: the leftmost OUTERMOST ink in its subtree (a drawn visual such as a progress ring's arc counts as ink),
+   skipping lines (a flat rule 4 DIP or thinner, or an upright bar that MARKS a click target: inside it, or beside it on its line,
+   the nav's selection bar; an upright bar beside words that take no click is a heading's accent mark and leads: Classic's
+   "Genres" head), anything placed by centring or end alignment, a GROUND (a fill
+   at least 90 % as wide as the child, behind its content or under it: a selected row's fill; what sits on it leads) and a plate
+   outdented on purpose (a negative left margin: the library's "Your Episodes" row hangs its fill 8 left so its words sit on the
+   column). A narrower plate (a pill, a chip) and an outlined one (a field's border) lead themselves. The column's lead (the REFERENCE) is its leftmost child lead; a lead's declared `Hang` or `Indent` is taken off
+   its x first (the Zune panorama's -8 and the artist name's -8 never become a column's lead).
+3. A child lead in scope that the region pass did not judge (it is no region lead within 16 of its line) and that sits
+   4 < d <= 32 DIP right of the reference is a finding, unless a VISIBLE CONTAINER justifies it (the plate it sits on starts at or
+   right of the reference: a filled card whose art is flush and whose words are padded; or its child holds a FRAME on the
+   reference's x, any fill or border of 2 % alpha or more, a drawn visual or a line: a settings info bar's faint plate, a combo
+   box's underline) or it sits on a HANGING column (ink in
+   another child starts within 4 of its x while other ink starts left of that ink on its line: a checkbox's help under its label,
+   the rows of an indexed list that carry no letter, a title beside its number). Where the theme's guide declares `ItemPlate` on
+   the lead's key (WinUI: the search hit rows and the search SelectorBar), a lead padded inside an ITEM's plate is intended
+   (suppressed by intent): the nearest click target holding it (not the reference) starts on the reference's x and is one item of
+   an items control (its parent, through wrappers of its own box, holds two or more children with a click target). Zune declares
+   none: its hover-plate rule puts content on the column and outdents the plate, so its padded rows stay findings. WinUI card
+   grids are not declared either (W-Search and W-Artist draw the cards' art flush with the heading).
+4. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node holding the reference and the leads.
+The window: the Zune boards put every section, card and row on the page column and inset only on plates; the smallest offset
+between two real columns they draw is 56 (a track number to its title; album art to its words is 68), so 32 (twice the 16 card
+inset) keeps a second column out. The Zune album aside's about card is the class: its eyebrow, name and bio at x=1152 under its
+art at x=1132, on no fill (+20; the board, Z-Album, draws the aside on one x).
+
+**`text.duplicate`** (warn; the P1 verifier's "About the artist" twice). The same visible words twice in one column within a
+glance: a heading repeated as the eyebrow of the card under it.
+1. Runs: in-scope word runs (not glyphs, not mid-animation, at least half opaque) of 4 or more characters with a letter, compared
+   folded (case and runs of white space ignored: Zune lowercases a heading the view wrote capitalised); not a control's label (a
+   button's or a link's own words: a verb seen twice is `duplicate.action`'s, a "See all" per shelf one link per shelf), not
+   under `ignoreUnder` (the title bar's crumbs and the play bar repeat the page's words by design), not in `allowDuplicate`.
+2. Pairs: two runs of one folded text in one scroll region and one PAGE (the nearest keep-alive page slot: the band's title and
+   the panorama are chrome and page, both drawn on Z-Album) whose boxes share x and stand at most 240 DIP apart vertically. Not a
+   glow copy (the same box); not REPEATED CONTENT: two instances of one repeated key family, two runs at the same NON-EMPTY child
+   path below their lowest common ancestor (unkeyed rows, release-note sections that each carry a "closed" tag, two rails showing
+   one album card; two runs that are direct children of one stack are no repeated structure: a heading and a same-words line under
+   it), or two runs that both sit in click targets (cards and rows: a show named like its publisher; their words are content).
+3. One finding per (region, page, text); pattern the later copy's, cause `repeats:<the first copy's pattern>`.
+Fix: say it once; keep the heading and drop the repeat inside the section (or give the repeat its own words). Suppression: a guide
+`Allow` for `text.duplicate`.
+
+**`target.ink`** (warn; the album list header's `c.num`). A click target a person cannot see: an in-scope, enabled, pressable
+target (the `target.size` set, its exemptions included) whose subtree draws nothing at rest (no text, image, gradient, visible
+fill or border, no drawn visual; a hover fill is not ink at rest). Not a finding: the click shows elsewhere (an ancestor running
+the same click draws), content another node draws covers a quarter of it or more AND fits the target's group (its first
+ancestor larger than itself: the Liked page's tempo chart under its hit bands; a page backdrop that spreads past the group, the
+artist page's material bleed or a playlist's wash, excuses nothing), a drag bar, or a target over half the window or more (a light-dismiss catcher). Grouped as `target.size` groups (the
+parent's pattern), cause `no-ink`. Fix: give the target ink at rest (its label or glyph) or hand its click to a control a person
+can see; never remove the feature. The Zune list header's number column (28 x 36, sorts by track number) is the class.
+
+**`space.dead`** (info; a report rule, never promoted). A slot that keeps its room while nothing fills it: "Nothing playing" at
+x=72 beside the play bar's empty 44 x 44 art slot, no plate (Zune Home 400; 48 x 48 at 1440, and Classic and WinUI alike). An
+in-scope box, not moving, not a target, with a declared width and height of at least 24 DIP that draws nothing, LEADING a row (no
+ZStack): nothing before it in the row draws and a sibling after it does. Not reported: a gap between two groups (the title bar's
+drag room before the caption buttons) and a cell of a repeated family another instance fills (a column reserved across rows: the
+expand chevron some recents rows carry). A slot reserved ON PURPOSE (the no-jump rule: room kept for art that arrives) is
+declared in the theme's guide as an `Allow` for `space.dead` on its key prefix, naming the board: the finding is then
+suppressed by intent. Fix: give the empty slot its plate at rest (a placeholder fill or glyph), or declare the reservation;
+never drop a reservation that keeps the row from jumping.
+
 **`align.baseline`** (warn, outcome review; port of `proto/columns.py` row offsets). For each repeated key family: (a) a keyed
 CELL inside a row of another repeated family: its first text's offset from the row's top, one cell per row, grouped by (cell
 family, row family); (b) a ROW family's own texts by cell path. Only in-scope texts are measured. A group of 3 or more whose
@@ -302,10 +380,11 @@ Suppression: `Allow` policy with rule `align.baseline`.
 **`space.scale`** (info). Every DECLARED gap (with 2 or more children), padding side and margin side that is not 0, on an
 in-scope node with ink under it, must be on the scale: 2, a multiple of 4 up to 64, or a value of the active definition's
 `Spacing.*` (XXS..XXXL, Gutter, PageWide, PageNarrow, Card, Inner, StackS/M/L), the style's `R.Space` (SectionGap,
-SectionGapWide, GridGap) or `R.Shape` radii. A control-internal value (3, 5, 6, 7, 9, 10, 11, 14, 15) under a control with a
+SectionGapWide, GridGap), `R.Shape` radii, or a step the theme's guide declares from its boards (`BoardScale`: Zune's
+`board.6`, `board.10`, `board.14`, `board.18`, `board.22`). A control-internal value (3, 5, 6, 7, 9, 10, 11, 14, 15) under a control with a
 role is the control's. Grouped by (value, the node's nearest keyed pattern); the message names the nearest spacing token. Declared values, not
 measured gaps (45-53 % of measured insets are off the grid by centring and line boxes). Suppression: `OffScaleOk`. FP classes:
-values a board draws outside the tokens (Zune's 6, 10, 14, 18, 22), hairline nudges (1 DIP), positions a record derives
+values a board draws outside the tokens that its guide does not declare, hairline nudges (1 DIP), positions a record derives
 (a timeline's slot offsets past 64).
 
 **`text.placeholder`** (error for a missing loc key or argument, warn for a leaked value). On-screen word runs:
@@ -339,16 +418,20 @@ A theme describes what only it knows as data, through `IThemeLintGuide` (registe
   design; `text.clip` suppresses a cut at the top of text under them (above).
 - `Policies(LintContext)` (default: none): `LintPolicy(Intent, Prefix, Reason, Value, Rule)`, intents for every node whose key
   or an ancestor's starts with `Prefix`: `TrimOk`, `NeverTrim`, `Hang` (Value DIP, negative = left), `Indent`, `Bleed`,
-  `OffScaleOk`, `RepeatOk`, `Allow` (any finding of `Rule` whose members ALL lie under the prefix). The reason must let a
-  reviewer check it: name the board. A board draws one page: `LintContext.Route` (`home`, `album`) scopes a page's policies.
+  `OffScaleOk`, `RepeatOk`, `Allow` (any finding of `Rule` whose members ALL lie under the prefix: a reserved slot is
+  `Allow` for `space.dead` on the slot's key), `ItemPlate` (an items control whose items pad their content inside a plate
+  that starts on the column: the `align.inset` column pass suppresses such a lead by intent). The reason must let a reviewer check it: name the board. A board draws one page:
+  `LintContext.Route` (`home`, `album`) scopes a page's policies.
+- `BoardScale` (default: none): `LintScaleStep(Name, Value, Reason)`, the steps the theme's boards space with beyond the shared
+  tokens; the capture adds them to the snapshot's scale, so `space.scale` takes them as on the scale (a replay reads them back).
 
 Precedence: guide intent, then baseline, then the rule's default. A matched intent makes a finding `suppressed` and counts
 it in `suppressed.intent`; it never hides it from `outcomes=all`.
 
 | Theme | Edges | Policies |
 |---|---|---|
-| Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings). `DesignedTopBleeds`: `zune.detail.panorama`, `zs:title` |
-| WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | none |
+| Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album), on `zune-artist-name` by `ZuneArtistRules.NameNudge` (Z-Artist) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings). `DesignedTopBleeds`: `zune.detail.panorama`, `zs:title`. `BoardScale`: 6, 10, 14, 18, 22 (the boards' 2-DIP steps to 24) |
+| WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | `Allow` for `align.inset` on `home:facet:words` (Home's facet words are a stock SelectorBar whose items pad their words 12 in, as W-Home draws them); `ItemPlate` on `hit:` (search hit rows, a ListView: W-Search draws the songs' art 8 right of "Songs") and `facets` (the search SelectorBar: W-Search draws "All" 12 right of "Results for") |
 | Classic | no guide: `guide:false`, no edges, no intents; findings are reported, not fixed | |
 
 ## Baselines (accepted findings)
@@ -370,7 +453,9 @@ use a baseline to hide a feature someone switched off.
 
 `lint save=<file>` writes the snapshot the rules saw: window, theme, route, text source, the guide's edges, policies and top bleeds, the
 theme's spacing scale, and every captured node with its rect, flags, scroll range, fades and motion, authored clip, the cut a
-`root=` subtree started from (`seed`, `seedContent`, `seedShown`), declared layout, paint, click identity and whether it drags,
+`root=` subtree started from (`seed`, `seedContent`, `seedShown`), declared layout, paint (with `visual`: a drawn visual kind beyond
+a box, a text run or an image, such as `Path`, `ListRow`, an SDF `Arc`, a `BorderBrush` or an `Acrylic` material; a snapshot saved
+before it was captured reads none), click identity and whether it drags,
 and text run (with the ground the rendered frame put under it, and over a busy ground its worst ratio, so `contrast.text`
 replays without pixels). Numbers are written at round-trip float precision. Derived fields (`on`, `covered`, `occluded`,
 `family`, `cell`) are written for a reader and recomputed on replay. A Zune Home 400 snapshot is about 0.33 MB, a Classic or
@@ -433,12 +518,83 @@ are contrast over pictures: the Zune Home search hint's "ctrl f" over its pill (
 the Zune artist crumb over the material bleed (an error, 3.67). Still 0 of 286 screen findings name a wholly off-screen
 node, and the replay of each of the six snapshots gives the same findings, fingerprints and counts.
 
+## Validation P2 (2026-10-21, lane LINT: text.duplicate, target.ink, space.dead, the align.inset column pass, the covered first edge, the board scale)
+
+The six reference mounts above, each in a fresh server on feat/inspect-lint-p2, `lint min=info outcomes=all` live, `scope=content`,
+and `replay=` of the live save: the replay gave the same findings, fingerprints and counts on all six. New findings at
+`scope=screen` (all `todo`, so `summary` is unchanged on every mount):
+
+| Mount | New findings (label) | Gone (label) |
+|---|---|---|
+| Zune Home 400 | `space.dead` art slot beside "Nothing playing" (true) | 6 `space.scale` on 10/14/22 (board steps) |
+| Zune Home 1440 | `space.dead` art slot (true) | 9 `space.scale` on 10/14/22 |
+| Zune album 1440 | `text.duplicate` "About the artist" heading and eyebrow; `align.inset` column +20, 3 leads of the about card under its art; `target.ink` `c.num`; `space.dead` art slot (all true) | 13 `space.scale` on 6/10/14/18/22 |
+| Zune artist 1440 | `space.dead` art slot (true) | 6 `space.scale` on 6/10/14 |
+| Classic Home 1440 | `align.inset` column +7 "Check again" (a link padded on no rest fill; true); `space.dead` art slot (true) | none |
+| WinUI Home 1440 | the same two (true); the facet words +12 now measured and `suppressed` by the guide's `Allow` (intended, W-Home) | none |
+
+At `scope=content` (below the fold) also: `text.duplicate` "Charts / Updated daily" as the Charts head and its first row (Zune Home
+400 and 1440, Classic; true: the head repeats its first row's words), `align.inset` column +12 on the artist tour banner, +8 on
+the artist's Merch shelf and +8 on Classic's Made-for-you cards (true). No old finding was lost: the only fingerprints gone are the
+`space.scale` board steps (the guide declares them now).
+
+Zune gallery (195 entries, `tools/themes/gallery.py`'s map, one fresh server each, live lint with `save=` then `replay=`): live and
+replay agree on 185 of 195 entries on the dev build; 4 differ only in a `contrast.text` ratio on Z-Setup (4.47 against 4.45, the
+same on the base build: P1's), 2 time out on the never-settling stage (Z-NowPlaying-Huge, -Huge4K), and 4 saved snapshots the strict
+reader refused (Playlist-Page, Z-Frame-Panel, Z-Playlist-Owned-Followed.1/.2: a spring's negative width, an opacity of 1.0006; the
+same on the base build). The capture now clamps both, and the 20 entries re-run live on the final build (Z-ReleaseNotes*, Z-Lyrics*,
+Playlist-Page, Z-Frame-Panel*, Z-Playlist-Owned-Followed*) replay identically. Labels over the replay of the 193 readable snapshots
+on the final build:
+
+| Rule | Findings | True | False | Classes |
+|---|---|---|---|---|
+| `text.duplicate` | 11 | 11 | 0 | "About the artist" (7 album entries), the show page's "continue" heading and hero eyebrow (4) |
+| `target.ink` | 24 | 24 | 0 | the list header's `c.num` (every song list) |
+| `space.dead` | 140 | 140 | 0 | the play bar's empty art slot wherever nothing plays |
+| `align.inset` column | 26 | 25 | 1 | the about card (+20), episode titles 8 right of their descriptions, the transcript (+22), links and text buttons padded on no rest fill (settings, feedback, the crash report), playlist and cluster rows 8 in; false: an unselected segment of a segmented control (Z-Settings-Sections-Huge, +12) |
+| `edge.left` | 0 | | | the old false positive (`Z-Overlays-Compact.1`/`.2`, +313.6) is gone: the covered first pivot leaves the edge unchecked |
+
+None is promoted: `text.duplicate` and `target.ink` are 35 of 35 true but each rests on one or two flaws seen on one theme's
+gallery; the column pass has a known false class. Labels, crops and transcripts: `C:/WAVEE/scratch/inspect-p2/lint`
+(`labels-gallery.txt`, `labels-six-screen.txt`, `labels-six-content.txt`, `final2/`, `gal-dev/`, `crops/`).
+
+**After review** (same day). The review ran the rules outside that set and found four holes; each is fixed and re-run:
+- the column pass reported WinUI Search's SelectorBar "All" (+12) and its hit rows' art (+8), both drawn so by W-Search: WinUI's
+  guide now declares `ItemPlate` on `hit:` and `facets` and they are `suppressed` (intended). Its card grids are not declared:
+  W-Search and W-Artist draw the cards flush, so their +8 stays a true finding;
+- the column pass skipped Classic's heading accent bar (3 x 14) as a line and measured "Genres" at +7: an upright bar that marks
+  no click target now leads (the nav's selection bar beside its item still does not);
+- `text.duplicate` took two copies that are direct children of one stack for repeated structure (both child paths empty): a
+  doctored album snapshot with the bio set to "30M Monthly listeners" now reports the pair;
+- `target.ink` let any image, gradient or visual covering a quarter of a target excuse it, a page backdrop included: the content
+  must now fit the target's group. A doctored artist snapshot with the band's shuffle stripped of ink now reports it, and five
+  playlist entries newly report `c.num`, which the playlist wash had hidden (true).
+
+The replay of all 240 readable snapshots (the gallery, the six, the review's probes and doctored saves) on the fixed build against
+the previous one changes exactly those findings; no true finding is lost. Fifteen mounts (the six, WinUI Search, album, artist and
+Liked, Classic Search scrolled, album and artist, Zune Liked and Search at 1440), each in a fresh server, replay identically. Labels
+of the gallery at `scope=content` (replays): `text.duplicate` 58 true (adds each storage section head repeated by its own row
+label, "Metadata cache" and "factory reset", and the compact album's "About the artist" head and eyebrow), `target.ink` 29 true,
+`space.dead` 141 true, column pass 63 true and 2 false (the segmented control again; adds the "Privacy policy" link on Z-Setup
+and the report dialog's "Report preview" fold button, both padded on no rest fill). On the probes: WinUI card grids +8 and
+"Show all 2 albums" +7 (true against W-Search and W-Artist), Classic's album avatar stack +6 and its video card +8 under the
+track rows (true). Files: `fix/` (`diff4.txt`, `labels-gallery-content.txt`, `labels-probes.txt`, `live4/`, `crops/`).
+
 ## Known limits
 
 - The text ink is a 1.2 em guess, not glyph ink metrics: a clip only the guess makes is a review until the engine reports ink.
 - `align.baseline` compares line-box tops (review only) until the engine reports first baselines.
-- `space.scale` knows the token scale, not the boards': Zune's board values (6, 10, 14, 18, 22) report as info until the guide
-  declares them.
+- `space.scale` knows the token scale and the steps a guide declares (`BoardScale`: Zune's 6, 10, 14, 18, 22); WinUI and Classic
+  declare none, so a board value of theirs reports as info.
+- The `align.inset` column pass cannot see a segmented control's unselected segment as a control: its words are padded inside
+  a pill only the selection draws, and the pass reports them (+12 on Z-Settings-Sections-Huge).
+- The column pass measures a column against its own leftmost lead: when every child of a column sits off the page column, nothing
+  says so. Zune Liked's chip row ("all" at 53 against the page's 48, +5) is in a horizontal scroller the region pass skips, and
+  its column (the chip bar, the unavailable bar, the list header) leads with the chip itself, since the header's `c.num` draws
+  nothing and its next lead, the title, sits at 152.
+- `ItemPlate` is declared per key prefix; a WinUI items control whose board pads its items but that no prefix names still reports.
+- `text.duplicate` cannot tell a label from content by its words: two copies both in click targets are content and not judged, so a
+  label repeated inside one card (an eyebrow and a title in the same link) goes unreported.
 - Contrast reads one rendered frame: over art the ground is the frame's pixels at their p90 worst, so the fake decoder's
   gradients stand in for photographs unless the mount says `images=real`; under `root=` the plates outside the subtree are
   not seen.
