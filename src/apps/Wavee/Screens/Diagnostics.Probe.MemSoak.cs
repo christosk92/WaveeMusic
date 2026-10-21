@@ -140,6 +140,44 @@ public static partial class Diagnostics
             return routes;
         }
 
+        /// <summary>Where a probe run's window goes (called by the window factory, before the first frame, so it never
+        /// shows anywhere else). The memory soak and a bench run need a window nothing covers — a covered window stands its
+        /// presents down and evicts its tiles as hidden — and must never take over the screen of the person using the
+        /// machine: so, not topmost and never focused, either OFF every monitor (the default; the headless OffscreenSurface's
+        /// placement, which presents normally) or, with `--probe-monitor N`, on monitor N (0 = primary, 1 = the next one,
+        /// in EnumDisplayMonitors order) at its top-left, for a bench whose frame pacing needs a real monitor.</summary>
+        public static void PlaceProbeWindow()
+        {
+            string[] argv = Platform.Args.Argv;
+            bool probe = Array.IndexOf(argv, "--mem-soak") >= 0 || Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
+            if (!probe || FluentApp.WindowHandle == 0) return;
+            int x = -30000, y = -30000;
+            int at = Array.IndexOf(argv, "--probe-monitor");
+            if (at >= 0 && at + 1 < argv.Length && int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+                && MonitorTopLeft(index) is { } tl)
+                (x, y) = tl;
+            SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, 0, 0, 0x0001 | 0x0010 /*NOSIZE|NOACTIVATE*/);
+            Say("[probe] window placed at " + x.ToString(CultureInfo.InvariantCulture) + "," + y.ToString(CultureInfo.InvariantCulture));
+        }
+
+        static (int X, int Y)? MonitorTopLeft(int index)
+        {
+            var rects = new List<(int, int)>();
+            EnumDisplayMonitors(0, 0, (nint m, nint dc, nint r, nint data) =>
+            {
+                int left = System.Runtime.InteropServices.Marshal.ReadInt32(r), top = System.Runtime.InteropServices.Marshal.ReadInt32(r, 4);
+                rects.Add((left, top));
+                return true;
+            }, 0);
+            return index >= 0 && index < rects.Count ? rects[index] : null;
+        }
+
+        delegate bool MonitorEnumProc(nint monitor, nint dc, nint rect, nint data);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        static extern bool EnumDisplayMonitors(nint dc, nint clip, MonitorEnumProc proc, nint data);
+
         static string MemLine(AppHost host)
         {
             long priv = 0, ws = 0;
@@ -161,6 +199,9 @@ public static partial class Diagnostics
                 foreach (var t in scope.Tables) { rows += t.LiveCount; cap += t.Count; }
                 sb.Append(" rows=").Append(rows).Append('/').Append(cap).Append(" strings=").Append(Entities.Strings.MapCount);
             }
+            // Frames the window stood its presents down since start (covered / occluded): a phase measured while this moves
+            // measured a window that drew nothing, so the soak says so on every line.
+            sb.Append(" stoodDown=").Append(host.FramesStoodDown);
             sb.Append(" scene=").Append(host.Scene.LiveCount).Append('/').Append(host.Scene.Capacity)
               .Append(" pathSlab=").Append(Mb(FluentGpu.Render.PathRealizationCache.Shared.SlabBytes));
             return sb.ToString();

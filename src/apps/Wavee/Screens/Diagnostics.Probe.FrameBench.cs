@@ -7,7 +7,7 @@
 // Offline (no account, no network):
 //   Wavee.exe --fake --profile <scratch dir> --frame-bench[=a,b] [--bench-sec 10] [--bench-warmup-sec 2] --probe-out <dir>
 // Real data (the profile's own account, CDN images and audio, real lyrics; takes over that account's playback):
-//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] [--bench-queue] --probe-out <dir>
+//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] --probe-out <dir>
 // Real data is never implied: without `--fake` the arm refuses unless `--bench-real` is on the line, and `--bench-real` refuses
 // unless `--profile` is too (it plays on that profile's account and sets that profile's settings, restored at the end).
 //
@@ -58,6 +58,7 @@ public static partial class Diagnostics
         {
             var o = s_frameBench;
             if (!o.Enabled) return false;
+            ApplyInlineArg();
             if (window is not Win32Window w || device is not D3D12Device d3d) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
             s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;
@@ -66,10 +67,7 @@ public static partial class Diagnostics
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 
-            // Topmost, and at the PRIMARY monitor's origin (virtual-screen 0,0): a window the OS placed on another monitor (or spilling onto
-            // one) is paced to THAT monitor's refresh — 2026-10-21, the bench window opened on a 60 Hz DisplayLink screen in some runs and on the
-            // 120 Hz panel in others, and the two halves of an A/B measured different displays.
-            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0010 /*NOSIZE|NOACTIVATE*/);
+            // The window was placed by PlaceProbeWindow (off every monitor, or --probe-monitor N): never topmost.
             if (!PumpUntil(host, w, static () => NavigationFrameWatch.NavigationId > 0, 20)) { Say("[frame-bench] the shell never activated a route"); return true; }
             bool real = !fake;
             int quality = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
@@ -204,14 +202,10 @@ public static partial class Diagnostics
         {
             var home = new Shell.Route(Shell.RouteKind.Home);
             void Settle(double s) => Pump(host, w, s, null);
-            // `--bench-queue`: every scenario's base keeps the rail open on the queue (the owner's daily layout: the queue panel docked
-            // beside every page), so its re-renders are part of what each scenario measures. Without it the base closes the rail.
-            bool queueRail = Array.IndexOf(Platform.Args.Argv, "--bench-queue") >= 0;
             void Base(bool playing, string? track = null)
             {
                 if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
-                if (queueRail) Shell.Ui.Mode.Value = Shell.RailMode.Queue;
-                Shell.Ui.RailOpen.Value = queueRail;
+                Shell.Ui.RailOpen.Value = false;
                 Nav(home);
                 track ??= play;
                 if (!playing) { Playback.Stop(); Settle(1.0); return; }
