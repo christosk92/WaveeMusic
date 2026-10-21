@@ -3,7 +3,8 @@
 // The agent server (Screens/Diagnostics.Inspect*.cs) mounts a theme BY ID, reports which one is active and sets options on a
 // named theme: identity reads, which WVTH004 allows only in the composition layer. They live here, in one place, so the
 // diagnostics code never names ThemeHost.Current, ThemeCatalog or a manifest itself. The lint's per-theme edge guides
-// (ThemeLintGuide.cs) are registered and looked up here for the same reason.
+// (ThemeLintGuide.cs) are registered and looked up here for the same reason, and so are the names of the icon glyphs a theme declares
+// itself (the ones the engine's Icons table does not name), so a dump or a lint message prints `glyph:PlaySolid`, not `glyph:U+F5B0`.
 
 using System.Collections.Concurrent;
 
@@ -13,6 +14,7 @@ namespace Wavee.Theming;
 public static class ThemeInspection
 {
     private static readonly ConcurrentDictionary<string, IThemeLintGuide> s_guides = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, string> s_glyphNames = new(StringComparer.Ordinal);
 
     /// <summary>The active theme's id.</summary>
     public static string ActiveId => ThemeHost.Current.Peek().Manifest.Id;
@@ -36,4 +38,17 @@ public static class ThemeInspection
 
     /// <summary>The active theme's lint guide, or null when it registered none.</summary>
     public static IThemeLintGuide? ActiveLintGuide => s_guides.TryGetValue(ActiveId, out IThemeLintGuide? guide) ? guide : null;
+
+    /// <summary>Name the icon glyphs a theme declares itself (a constant of its rules: <c>(nameof(X.PlaySolid), X.PlaySolid)</c>), for the
+    /// inspector's `glyph:<name>`. Its composition file registers them when it builds the theme. Every theme's names stand at once (a page
+    /// can be another theme's stand-in), so a glyph keeps the first name it was given; the engine's <c>Icons</c> names come before these.</summary>
+    public static void RegisterGlyphNames(params (string Name, string Glyph)[] glyphs)
+    {
+        foreach ((string name, string glyph) in glyphs)
+            if (name.Length > 0 && glyph.Length > 0) s_glyphNames.TryAdd(glyph, name);
+    }
+
+    /// <summary>The name a theme registered for <paramref name="glyph"/> (<see cref="RegisterGlyphNames"/>).</summary>
+    public static bool TryGetGlyphName(string glyph, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+        => s_glyphNames.TryGetValue(glyph, out name);
 }

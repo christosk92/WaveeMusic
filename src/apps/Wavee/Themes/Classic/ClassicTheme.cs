@@ -16,8 +16,17 @@ public static class ClassicTheme
     /// <summary>The theme id: the stored value of <c>theme.id</c> and the fallback of every unresolvable id.</summary>
     public const string Id = ThemeCatalog.FallbackId;
 
-    /// <summary>Builds the composition. <c>App.BootCore</c> installs it.</summary>
-    public static ThemeComposition Create() => new(
+    /// <summary>Builds the composition. <c>App.BootCore</c> installs it. It also names, for the `--inspect` dump and lint, the icon glyphs
+    /// Classic declares itself (the engine's Icons table has no name for them).</summary>
+    public static ThemeComposition Create()
+    {
+        ThemeInspection.RegisterGlyphNames(
+            (nameof(ClassicPlayerBarLayout.PlaySolid), ClassicPlayerBarLayout.PlaySolid), (nameof(ClassicPlayerBarLayout.PauseSolid), ClassicPlayerBarLayout.PauseSolid),
+            (nameof(ClassicNavHeadLayout.BannerGlyph), ClassicNavHeadLayout.BannerGlyph), (nameof(SidebarGeometry.OfflineGlyph), SidebarGeometry.OfflineGlyph));
+        return Composition();
+    }
+
+    static ThemeComposition Composition() => new(
         new ThemeManifest(
             Id: Id,
             DisplayNameKey: Strings.Theme.Classic.Name,

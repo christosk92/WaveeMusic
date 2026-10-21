@@ -512,6 +512,31 @@ public static partial class Diagnostics
             s_bootRows = Queue.Rows.ToArray();
         }
 
+        static Video.PlacementState s_bootVideo = Video.PlacementState.Music;
+        static Playback.Video.Binding s_bootPlayer;
+
+        /// <summary>Remember the video surface's placement (the boot loaded the preferred home and committed it) and the player
+        /// binding as the boot left them. Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        public static void RememberBootVideo()
+        {
+            s_bootVideo = Video.State.Surface.Peek();
+            s_bootPlayer = Playback.Video.Player.Peek();
+        }
+
+        /// <summary>The video surface as the boot left it (between mounts): `mount video=...` opened it through <c>Video.State.OpenAt</c>,
+        /// which also made that home the preferred one, and `player=fake` bound an idle engine player of the inspector's own. Both are
+        /// process statics, so without this a later mount drew the video surface over its page (and its looping chrome kept it from
+        /// settling). The placement goes back through the one write path (<c>Video.State.Commit</c>: the transport owner and the
+        /// fullscreen bits follow it, the preferred home is stored again); <paramref name="fakePlayer"/>, the player `player=fake`
+        /// bound, is unbound and disposed. Before <see cref="ResetPlayback"/>, so the reducer hears the placement before its deck resets.</summary>
+        public static void ResetVideo(FluentGpu.Media.MediaPlayer? fakePlayer)
+        {
+            if (!Video.State.Surface.Peek().Equals(s_bootVideo)) Video.State.Commit(in s_bootVideo);
+            if (fakePlayer is null) return;
+            if (ReferenceEquals(Playback.Video.Player.Peek().Player, fakePlayer)) Playback.Video.Player.Value = s_bootPlayer;
+            _ = fakePlayer.DisposeAsync().AsTask();
+        }
+
         /// <summary>Playback as a fresh session starts (between mounts): <c>Shell.Headless.ResetPlayback</c> (the boot's deck, the
         /// play log emptied, a late post from the last mount run first), then the boot's queue rows back in place.</summary>
         public static void ResetPlayback()

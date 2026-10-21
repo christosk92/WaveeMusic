@@ -243,7 +243,7 @@ public static partial class Diagnostics
         public static bool IsGlyph(string text) => InspectLint.IsGlyphText(text);
 
         /// <summary>The icon name of a glyph label (<c>Icons.TryGetName</c>), "" when it is words or no named icon.</summary>
-        static string GlyphNameOf(string text) => IsGlyph(text) && Icons.TryGetName(text, out string? name) ? name : "";
+        static string GlyphNameOf(string text) => IsGlyph(text) && InspectDump.TryGlyphName(text, out string? name) ? name : "";
 
         static bool IsActionRole(AutomationRole role) => role is AutomationRole.Button or AutomationRole.ToggleButton or AutomationRole.NavigationItem
             or AutomationRole.CheckBox or AutomationRole.RadioButton or AutomationRole.Hyperlink or AutomationRole.ToggleSwitch

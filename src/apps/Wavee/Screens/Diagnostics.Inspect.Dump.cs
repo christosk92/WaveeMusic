@@ -10,7 +10,7 @@
 //    "scroll"?:{offset,max,viewport,content,axis},"anim"?:true,"children"}
 // Defaults are omitted (no fill when transparent, no border when 0 wide...), so a dump of a page stays small enough to read.
 // `rect` is the PRESENTED absolute rect in window DIP (`SceneStore.PresentedAbsoluteRect`): what paint and hit-testing use.
-// An icon glyph prints as `glyph:<Icons name>` (dump and find alike), alone or inside words, so a label never holds an invisible
+// An icon glyph prints as `glyph:<name>` (the engine Icons name or the app's own; dump and find alike), alone or inside words, so a label never holds an invisible
 // private-use character.
 
 using System.Text.Json;
@@ -281,8 +281,8 @@ public static partial class Diagnostics
 
         // ── glyphs ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the <c>Icons</c> constant,
-        /// `Icons.TryGetName`), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
+        /// <summary>`glyph:<name>` for an icon glyph (one or two private-use characters; the name is the engine's <c>Icons</c> constant or
+        /// the app's own, <see cref="TryGlyphName"/>), `glyph:U+XXXX` for one with no name; text that mixes words and glyphs with each glyph so named
         /// (`Afterglow glyph:U+E8B2`: a token stands apart from the words beside it by a blank); null for text with no glyph.</summary>
         public static string? GlyphLabel(string text)
         {
@@ -297,7 +297,7 @@ public static partial class Diagnostics
                 string run = text[start..i];
                 if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1])) sb.Append(' ');
                 // A run of two may be one glyph (a layered icon); a longer run, or two the table does not name together, is a token per glyph.
-                if (run.Length <= 2 && FluentGpu.Controls.Icons.TryGetName(run, out _)) sb.Append(GlyphToken(run));
+                if (run.Length <= 2 && TryGlyphName(run, out _)) sb.Append(GlyphToken(run));
                 else
                     for (int k = 0; k < run.Length; k++)
                     {
@@ -309,9 +309,28 @@ public static partial class Diagnostics
             return sb.ToString();
         }
 
-        /// <summary>`glyph:<Icons name>`, or `glyph:U+XXXX` for a glyph the engine's table has no name for.</summary>
+        /// <summary>`glyph:<name>` (<see cref="TryGlyphName"/>), or `glyph:U+XXXX` for a glyph nothing names.</summary>
         static string GlyphToken(string glyph)
-            => "glyph:" + (FluentGpu.Controls.Icons.TryGetName(glyph, out string? name) ? name : "U+" + Codepoints(glyph));
+            => "glyph:" + (TryGlyphName(glyph, out string? name) ? name : "U+" + Codepoints(glyph));
+
+        /// <summary>The app's core marks that are not the engine's (<see cref="WaveeIcons"/>, its own font; <see cref="SegoeGlyphs"/>, the
+        /// Segoe marks the engine's table lacks), by their constant names.</summary>
+        static readonly (string Name, string Glyph)[] s_coreGlyphs =
+        [
+            (nameof(WaveeIcons.PlayNext), WaveeIcons.PlayNext), (nameof(WaveeIcons.PlayAfter), WaveeIcons.PlayAfter),
+            (nameof(WaveeIcons.Lyrics), WaveeIcons.Lyrics), (nameof(SegoeGlyphs.AddFriend), SegoeGlyphs.AddFriend),
+        ];
+
+        /// <summary>The name of an icon glyph, as dump, find and lint print it: the engine's <c>Icons</c> constant first, then the name a theme
+        /// gave a glyph it declares itself (<c>ThemeInspection.RegisterGlyphNames</c>, in its composition file), then the app's core marks.</summary>
+        public static bool TryGlyphName(string glyph, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? name)
+        {
+            if (FluentGpu.Controls.Icons.TryGetName(glyph, out name) || Wavee.Theming.ThemeInspection.TryGetGlyphName(glyph, out name)) return true;
+            foreach ((string n, string g) in s_coreGlyphs)
+                if (string.Equals(g, glyph, StringComparison.Ordinal)) { name = n; return true; }
+            name = null;
+            return false;
+        }
 
         const char FirstPrivateUse = '\uE000', LastPrivateUse = '\uF8FF';
 
