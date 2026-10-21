@@ -94,6 +94,23 @@ public static class WindowTiers
     /// installed.</summary>
     public static Binding ForActiveStructure(IReadSignal<Size2> viewport) => new(ThemeHost.Facts.Peek().Policies.Tiers, viewport);
 
+    // ROOT-lifetime (RootScope.cs): the binding the mounted root resolves its tiers with; a remounted root binds its own.
+    private static readonly RootState<Binding?> s_live = new("WindowTiers.Live");
+
+    /// <summary>The sizes the ladders read NOW, untracked: the window's layout viewport and the content width estimated from it (the
+    /// same estimate the content ladder resolves). <c>ThemeHost.Facts.Tiers</c> keeps the sizes of its last publish (a tier change),
+    /// so after a resize inside one tier only these are current. False where no root has bound its tiers yet.</summary>
+    public static bool TryLiveSizes(out float viewportWidth, out float viewportHeight, out float contentWidth)
+    {
+        if (s_live.Value is not { } binding)
+        {
+            viewportWidth = viewportHeight = contentWidth = 0f;
+            return false;
+        }
+        binding.LiveSizes(out viewportWidth, out viewportHeight, out contentWidth);
+        return true;
+    }
+
     /// <summary>The frame root's tier hooks: one per root, created with the root's first render (a theme switch mounts a new
     /// root, so a new binding on the new structure's ladders). Call <see cref="Begin"/> and <see cref="Complete"/> from the
     /// root's <c>Render</c>, every render, in that order, with the sidebar's first values seeded in between: the window tier
@@ -160,6 +177,17 @@ public static class WindowTiers
             ArgumentNullException.ThrowIfNull(ctx);
             _window = ctx.UseTier(_policy.Window, TierSource.Estimate(_windowWidth));
             _height = ctx.UseTier(_policy.Height, TierSource.Estimate(_windowHeight));
+            s_live.Value = this;
+        }
+
+        /// <summary>The live sizes (<see cref="TryLiveSizes"/>): read without subscribing, and without advancing the logical window tier.</summary>
+        internal void LiveSizes(out float viewportWidth, out float viewportHeight, out float contentWidth)
+        {
+            Size2 size = _viewport.Peek();
+            viewportWidth = size.Width;
+            viewportHeight = size.Height;
+            float content = ContentWidth(track: false);
+            contentWidth = float.IsNaN(content) ? 0f : content;
         }
 
         /// <summary>Step two, after the sidebar's first values are seeded: the content tier, the rungs, the resizing fact and

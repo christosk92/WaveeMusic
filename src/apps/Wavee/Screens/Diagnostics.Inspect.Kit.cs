@@ -69,6 +69,9 @@ public static partial class Diagnostics
             public int Quiet { get; init; }
             /// <summary>The theme epoch (Tok.Epoch) moved on the last frame: one of the FrameNeeded terms (<see cref="WriteFrameNeeded"/>).</summary>
             public bool EpochMoved { get; init; }
+            /// <summary>The keyed nodes whose tracks were all LOOPS when the settle ended on them (<see cref="LoopsOnly"/>): motion that
+            /// never ends by design (a marquee title, a looping indicator), not waited for. Null when the settle saw none.</summary>
+            public IReadOnlyList<string>? Loops { get; init; }
 
             /// <summary>The settle's old shape, `var (frames, settled) = Settle(...)`.</summary>
             public void Deconstruct(out int frames, out bool settled)
@@ -83,12 +86,20 @@ public static partial class Diagnostics
         /// programmatic scroll, crossfades, exit orphans...). The reasons outside the ambient set, or None.</summary>
         public static FluentGpu.Hosting.WakeReasons BusyWake(Shell.HeadlessShell shell) => shell.Host.CurrentWakeReasons & ~AmbientWake;
 
+        /// <summary>Every live, unparked animation row is a LOOP (<c>AnimFlags.Loop</c>: a marquee's ping-pong, a looping indicator), so the
+        /// tracks that keep the frame awake never end by design. The settle treats them as ambient: it does not wait for them, and the
+        /// <see cref="FluentGpu.Hosting.WakeReasons.Anim"/> they raise is theirs. A row of any other kind (a FLIP, a fade, a spring) is busy
+        /// as before. (A connected-animation flight also raises Anim with no row of its own; one beside a loop is not waited for.)</summary>
+        public static bool LoopsOnly(Shell.HeadlessShell shell)
+            => shell.Host.Animation.HasActive && shell.Host.Animation.ActiveNonLoopCount == 0;
+
         /// <summary>Run frames until nothing moves for two frames in a row (no animation track, no scroller in user motion, no
-        /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>.</summary>
+        /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>. Tracks that are all loops
+        /// (<see cref="LoopsOnly"/>) count as quiet, with the Anim wake they raise: the reply names their nodes (`loops`).</summary>
         public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600)
         {
             int quiet = 0, ran = 0;
-            bool tracks = false, scrolling = false, epochMoved = false;
+            bool tracks = false, scrolling = false, epochMoved = false, looping = false;
             FluentGpu.Hosting.WakeReasons wake = default, ambient = default;
             while (ran < maxFrames)
             {
@@ -101,14 +112,36 @@ public static partial class Diagnostics
                 FluentGpu.Hosting.WakeReasons all = shell.Host.CurrentWakeReasons;
                 wake = all & ~AmbientWake;
                 ambient |= all & AmbientWake;
+                looping = tracks && LoopsOnly(shell);
+                if (looping)
+                {
+                    tracks = false;
+                    wake &= ~FluentGpu.Hosting.WakeReasons.Anim;
+                }
                 quiet = tracks || scrolling || wake != 0 ? 0 : quiet + 1;
-                if (quiet >= 2) return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet };
+                if (quiet >= 2)
+                    return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet, Loops = looping ? LoopKeys(shell) : null };
             }
-            return new SettleResult(ran, false, tracks, scrolling, wake) { Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved };
+            return new SettleResult(ran, false, tracks, scrolling, wake) { Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved, Loops = looping ? LoopKeys(shell) : null };
+        }
+
+        /// <summary>The keys of the nodes that carry live tracks (each named by its nearest keyed ancestor), read while every track is a loop.</summary>
+        static List<string> LoopKeys(Shell.HeadlessShell shell, int max = 12)
+        {
+            SceneStore scene = shell.Host.Scene;
+            var keys = new List<string>();
+            foreach (NodeHandle n in Subtree(scene, scene.Root))
+            {
+                if (!shell.Host.Animation.HasTracks(n)) continue;
+                string key = KeyOf(scene, n);
+                if (!keys.Contains(key)) keys.Add(key);
+                if (keys.Count >= max) break;
+            }
+            return keys;
         }
 
         /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `anim` = a node with live tracks
-        /// (named by its nearest keyed ancestor), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
+        /// (named by its nearest keyed ancestor; `tracks` beside the array is the engine's census of those rows), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
         /// reason with no node (`reason`; FrameNeeded adds its `terms`, <see cref="WriteFrameNeeded"/>). At most
         /// <paramref name="max"/> nodes per kind. Nothing busy (the cap came before two quiet frames): `quietFrames` and a `note`.</summary>
         public static void WriteBusy(System.Text.Json.Utf8JsonWriter w, Shell.HeadlessShell shell, in SettleResult r, int max = 12)
@@ -149,6 +182,13 @@ public static partial class Diagnostics
                 wakes++;
             }
             w.WriteEndArray();
+            if (r.Tracks)
+            {
+                // The engine's live-row census behind the anim entries: `anim=N:Channel*k,... done=d parked=p loop=l`.
+                var census = new System.Text.StringBuilder();
+                shell.Host.Animation.AppendLiveTrackCensus(census);
+                w.WriteString("tracks", census.ToString().TrimStart(' ', '|'));
+            }
             if (anims + scrolls + wakes == 0)
             {
                 w.WriteNumber("quietFrames", r.Quiet);
@@ -173,14 +213,23 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
-        /// <summary>`ambient:[names]` for the ambient wake reasons a settle saw (nothing when it saw none).</summary>
+        /// <summary>`ambient:[names]` for the ambient wake reasons a settle saw (nothing when it saw none), and `loops:[keys]` for the
+        /// nodes whose looping tracks it did not wait for (<see cref="SettleResult.Loops"/>).</summary>
         public static void WriteAmbient(System.Text.Json.Utf8JsonWriter w, in SettleResult r)
         {
-            if (r.Ambient == 0) return;
-            w.WriteStartArray("ambient");
-            foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
-                if (bit != 0 && (r.Ambient & bit) == bit) w.WriteStringValue(bit.ToString());
-            w.WriteEndArray();
+            if (r.Ambient != 0)
+            {
+                w.WriteStartArray("ambient");
+                foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
+                    if (bit != 0 && (r.Ambient & bit) == bit) w.WriteStringValue(bit.ToString());
+                w.WriteEndArray();
+            }
+            if (r.Loops is { Count: > 0 } loops)
+            {
+                w.WriteStartArray("loops");
+                foreach (string key in loops) w.WriteStringValue(key);
+                w.WriteEndArray();
+            }
         }
 
         /// <summary>`wake:[names]`: the bits of <paramref name="wake"/>, with `ambient:[names]` for those a settle ignores.</summary>

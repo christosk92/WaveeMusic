@@ -106,11 +106,18 @@ Every command gets exactly **one** reply line. A JSON command's `id` comes back 
 row, at most `max` frames (600 by default). Nothing moves means no animation track, no scroller in user-driven motion
 (`AppHost.AnyUserScrollMoving`: a wheel notch's glide, a fling), and no wake reason (`AppHost.CurrentWakeReasons`) but the
 ambient ones: the caret blink, the warm cadence, a host timer coming due, and the frame-clock tickers that run for as long
-as a track plays (the playhead, a visualizer). The replies report `frames` and `settled`, and `ambient:[...]` when the
-settle saw any of those ambient reasons: motion they drive (a frame-clock ticker) was not waited for. A settle that hit its
-cap adds `busy`, what still moved:
+as a track plays (the playhead, a visualizer). **Looping tracks** are ambient too: when every live, unparked animation row
+is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the engine's `AnimEngine.ActiveNonLoopCount`
+is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
+`ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
+for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
+when the reply was written. Check `loops`: not every loop row is ambient. A loading indicator (a progress bar or ring)
+runs on one too, and a loading indicator there (WinUI's search after `type`: `omni-progress`) means the page is still
+loading, not settled: step `frames N` and look again. A `render` after it catches a loop at whatever phase it has reached. A settle that hit its cap
+adds `busy`, what still moved:
 
-- `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor).
+- `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
+  engine's census of the live rows: `anim=N:Channel*k,...`, then `done=`, `parked=` and `loop=` counts when there are any.
 - `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
 - `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
   inspector can see: `themeEpoch` (a theme token was written on the last frame), `freeze`, `engineSettle`,
@@ -121,10 +128,17 @@ cap adds `busy`, what still moved:
 
 Pass `settle=false` to skip the settle and step the frames yourself with `frames`.
 
-A looping animation never ends, so a page that shows one never settles. While a track plays, its row animates on every
-page that lists it, in every theme: Home after a `play` (Classic and WinUI: the `recent:*` card; Zune: the
-`zune-cluster-row:*` row) and Liked Songs (`c.num`, `winui.row.now`, `zune.row.now`). A verb there runs to `max`, and `busy`
-names the row. Use `settle=false` with `frames N` there, or a small `max`.
+A looping animation never ends. Where its rows are loops the settle reads them as ambient (above): Classic's player bar at
+window Small below 760 wide lays the title out in an 88 DIP lane (the Compact bar level), "Nothing playing" is 107 DIP, so
+the bar's marquee (`np-title`, motion policy F239: an overflowing title always scrolls) loops for as long as the window
+stays there; a verb there settles as it does at any other width (a `resize` in 21 frames) and replies `loops:["np-title"]`
+(it ran to `max` before). While a track plays, its row's indicator is a loop row too, on every page that lists it, in every
+theme: Home after a `play` (Classic and WinUI: the `recent:*` cards; Zune: the `zune-cluster-row:*` row) and Liked Songs
+(`c.num`, `winui.row.now`, `zune.row.now`); look for those keys in `loops`. Whether it runs is decided per process, not by
+the device: WinUI Home 1440 `play`, one fresh server each, looped in 1 of 6 under WARP and 1 of 6 under `gpu=none` (the
+others never started it, even 600 frames later), and a build that waited for loops ran 3 of 6 to `max` under WARP. Motion
+that never ends but is not a loop row (a frame-clock ticker is ambient already; anything else) still runs a verb to `max`,
+and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 
 **Known issue: Classic with a second tab active.** In Classic, while any tab but the first is active, the app wakes a frame
 every frame (`busy` reads `FrameNeeded` with `terms:["explicit"]`, and nothing is drawn: an idle repaint in the app, not the
@@ -468,12 +482,14 @@ cases it answers `{"ok":false,"error":...,"why":...}`.
 Returns the window's current `TierFacts`:
 
 - `window`, `height` and `content` tiers
-- `contentWidth`, `viewportWidth` and `viewportHeight`
+- `contentWidth`, `viewportWidth` and `viewportHeight`: the sizes the ladders read now, the window's layout viewport and the
+  content width estimated from it (the window less the pane and the docked panels the window tier lays out:
+  `WindowTiers.TryLiveSizes`)
 - `resizing`
 - the crossed `rungs`, by id (as `mount`, `status` and `crossing` list them)
-
-The three sizes are those of the last time the facts were published (the mount or a tier change). After a `resize` that
-stays in the same tier, they still show the old size; the tier names are current. `status` has the window's size.
+- `published`: `{contentWidth, viewportWidth, viewportHeight}` as the facts carry them, the sizes of their last publish (the
+  mount or a tier change). The app republishes the facts only when a tier, a rung or `resizing` changes, never per resized
+  frame, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
 
 It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
 mounted window.
@@ -555,7 +571,8 @@ Reading a crossing:
 
 - The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
   lists (the offscreen window reports the window flags the crossing sets, engine `9476a4bbe`). Only `settle.frames` varies:
-  it changes with the machine's load, on either device. `gpu=none` is faster; under the default, `render` works in the same
+  it changes with the machine's load, on either device. (A settle's `loops` can differ between servers on either device: the
+  playing-row race under Settling.) `gpu=none` is faster; under the default, `render` works in the same
   server after the crossing.
 - Start in the old tier. Edges hold differently each way: a narrowing drag keeps Zune's Huge tier down to 1904 wide, where a
   fresh mount is already Standard. The content tier also depends on the path: Classic resized from 3456 straight to 1136 is
@@ -565,20 +582,34 @@ Reading a crossing:
   first command at 1904, the same crossing crosses nothing, and still reads `heldOldTier:true`: compare `tierBefore` with
   `tierAfter`.
 - `committed` and `heldOldTier` compare the window and height tiers and the rungs, not the content tier: an edge where only
-  the content tier changes reads `committed:false`, and `tierAfter.content` shows the change.
+  the content tier changes reads `committed:false`. `contentCommitted` says where the content tier left its starting band:
+  `commit` (on the commit frame, as the window tier does in a drag), `resized` (already in the resized frames: it did not
+  hold), `settle` (later, on a frame of the settle) or `none`. Classic 624 to 608 (content Small to Compact) reads
+  `committed:false, contentCommitted:"commit"`; WinUI 992 to 976 (window Standard to Small, content Small throughout)
+  reads `committed:true, contentCommitted:"none"`.
 - Only `frames=1` models a drag: the old tier holds for one keep-alive paint after the resize (after the loop, when
   narrowing), and the next frame commits. From `frames=2` on, the new tier lands inside the resized frames, both ways:
   `heldOldTier` is false, `tierResized` is already the new tier, and the commit frame compares two frames after the
   commit. Zune home 1440x960 to 1440x400 reports 195 jumped at `frames=1`, 176 at `frames=2` and nothing changed at
   `frames=60`.
 - A width step with no tier edge already moves nodes on the commit frame (Zune home 1504 to 1488 wide: 8 snapped,
-  119 to 125 jumped, depending on how the page got to 1504). Set an edge's numbers against a 16 DIP step inside the same
-  tier, reached the same way, before you blame the tier change.
+  119 to 125 jumped, depending on how the page got to 1504). That is a continuous reflow landing one frame late, not a
+  quantised layout: a shelf (`PagedShelf`) fits its cards to its own measured width, which it learns from its bounds after
+  the resized frame's layout, so the strip's height follows on the next frame (the commit frame: Zune's
+  `zune-home-wide:*` 2 shorter, and the 119 nodes below it 2 up) and its cards a frame after that (each 4 narrower:
+  `trace` over a plain `resize` shows the three frames). The move scales with the step (Zune, `zune-home-column` from 1504: 16 DIP 2
+  shorter, 32 4, 64 9; chained from 1392, 96 widening 14 taller), and Classic and WinUI show the same pattern
+  (`home:column` 10 shorter at 16 DIP, their shelves glide). Small steps move by rounding, because the 16:9 tiles' height
+  is rounded: four 4 DIP steps from 1504 move 0, 1, 0, 1 (127 nodes changed on each step that moves), which add up to
+  the 16 DIP step's 2. So a 4 DIP step that moves 1 is no bug; small steps that do not add up to the big step's move, or a
+  move that does not scale with the step, are. Set an edge's numbers against a 16 DIP step inside the same tier, reached
+  the same way, before you blame the tier change.
 
 | Reply field | Meaning |
 |---|---|
-| `tierBefore`, `tierResized`, `tierAfter` | `{window, height, content, rungs}` at the start, after the resized frames and after the commit; `rungs` lists the crossed rung ids, as `tiers` does. |
+| `tierBefore`, `tierResized`, `tierAfter`, `tierSettled` | `{window, height, content, rungs}` at the start, after the resized frames, after the commit and after the settle; `rungs` lists the crossed rung ids, as `tiers` does. |
 | `committed` | The window or height tier or a rung changed (the content tier is not compared). `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
+| `contentCommitted` | Where the content tier first differed from `tierBefore.content`: `resized`, `commit`, `settle` or `none`. |
 | `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `remounted`, `vanished`, `appeared`, `recounted`. |
 | `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
@@ -596,8 +627,9 @@ Reading a crossing:
 → {"id":9,"ok":true,"cmd":"crossing","from":{"w":1440,"h":960},"to":{"w":1440,"h":400},"narrowing":true,"resizedFrames":1,
    "tierBefore":{"window":"Standard","height":"Regular","content":"Standard","rungs":["home.daylist.full"]},
    "tierResized":{"window":"Standard","height":"Regular","content":"Standard","rungs":["home.daylist.full"]},
-   "tierAfter":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},"committed":true,"heldOldTier":true,
-   "reducedMotion":false,"counts":{"tracked":402,"changedOnCommit":31,"glided":30,"snapped":1,"jumped":0,"remounted":0,
+   "tierAfter":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},
+   "tierSettled":{"window":"Standard","height":"Short","content":"Standard","rungs":[]},"committed":true,"heldOldTier":true,
+   "contentCommitted":"none","reducedMotion":false,"counts":{"tracked":402,"changedOnCommit":31,"glided":30,"snapped":1,"jumped":0,"remounted":0,
    "vanished":0,"appeared":0,"recounted":0},"remounted":[],"vanished":[],"appeared":[],"recounted":[],
    "snapped":[{"key":"zune-home-daylist","from":{"x":48,"y":132,"w":1344,"h":220},"to":{"x":48,"y":132,"w":1344,"h":160},
                "dx":0,"dy":0,"dw":0,"dh":-60}],"jumped":[],"settle":{"frames":24,"settled":true},
