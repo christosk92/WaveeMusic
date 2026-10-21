@@ -58,6 +58,7 @@ public static partial class Diagnostics
         {
             var o = s_frameBench;
             if (!o.Enabled) return false;
+            ApplyInlineArg();
             if (window is not Win32Window w || device is not D3D12Device d3d) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
             s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;

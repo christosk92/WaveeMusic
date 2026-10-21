@@ -45,11 +45,15 @@ public static partial class Diagnostics
         static bool TryMemSoak(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
             if (!s_options.MemSoak) return false;
+            ApplyInlineArg();
             // Without --fake the soak tours the profile's REAL pages (its recent albums, playlists and artists): only on a
             // --profile copy, never the default profile, and it never plays anything.
             bool real = !Platform.Args.Fake;
             if (real && Platform.ProfileRoot.Length == 0) { Say("[mem-soak] without --fake it needs --profile <a copy of a signed-in profile>"); return true; }
             if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[mem-soak] unavailable: requires Win32Window + D3D12Device"); return true; }
+            // Topmost, without taking focus (the frame bench's rule): a window another one covers stands its presents down
+            // and the host evicts its tiles as hidden, so a covered soak measured a window that drew nothing.
+            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[mem-soak] the shell never activated a route"); return true; }
             if (real && !PumpUntil(host, w, static () => Spotify.Current.IsOnline, 60)) { Say("[mem-soak] the session never came online (is the profile signed in?)"); return true; }
 
@@ -217,6 +221,19 @@ public static partial class Diagnostics
             foreach (string u in t.Artists.Take(6)) routes.Add(Shell.For(EntityUri.Parse(u), "Soak artist"));
             routes.Add(new Shell.Route(Shell.RouteKind.Home));
             return routes;
+        }
+
+        /// <summary>`--inline-max-commands N` (the soak and the frame bench): the recorder's inline threshold for this run
+        /// (FluentGpu.Render.SliceRecorder.InlineMaxCommands; 0 = every static segment keeps tiles), so one binary A/Bs it.</summary>
+        static void ApplyInlineArg()
+        {
+            string[] argv = Platform.Args.Argv;
+            int at = Array.IndexOf(argv, "--inline-max-commands");
+            if (at >= 0 && at + 1 < argv.Length && int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n >= 0)
+            {
+                FluentGpu.Render.SliceRecorder.InlineMaxCommands = n;
+                Say("[probe] inline max commands = " + n);
+            }
         }
 
         static string MemLine(AppHost host)
