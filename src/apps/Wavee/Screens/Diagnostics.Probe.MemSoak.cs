@@ -144,8 +144,9 @@ public static partial class Diagnostics
         /// shows anywhere else). The memory soak and a bench run need a window nothing covers — a covered window stands its
         /// presents down and evicts its tiles as hidden — and must never take over the screen of the person using the
         /// machine: so, not topmost and never focused, either OFF every monitor (the default; the headless OffscreenSurface's
-        /// placement, which presents normally) or, with `--probe-monitor N`, on monitor N (0 = primary, 1 = the next one,
-        /// in EnumDisplayMonitors order) at its top-left, for a bench whose frame pacing needs a real monitor.</summary>
+        /// placement, which presents normally) or, with `--probe-monitor secondary` (the first monitor that is not the primary) or
+        /// `--probe-monitor N` (EnumDisplayMonitors order), at that monitor's top-left, for a bench whose frame pacing needs a real
+        /// monitor.</summary>
         public static void PlaceProbeWindow()
         {
             string[] argv = Platform.Args.Argv;
@@ -153,11 +154,23 @@ public static partial class Diagnostics
             if (!probe || FluentApp.WindowHandle == 0) return;
             int x = -30000, y = -30000;
             int at = Array.IndexOf(argv, "--probe-monitor");
-            if (at >= 0 && at + 1 < argv.Length && int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
-                && MonitorTopLeft(index) is { } tl)
-                (x, y) = tl;
+            if (at >= 0 && at + 1 < argv.Length)
+            {
+                // "secondary" = the first monitor that is not the primary (the primary is the one at 0,0); a number = that
+                // monitor in EnumDisplayMonitors order.
+                (int, int)? tl = argv[at + 1] == "secondary" ? FirstNonPrimaryTopLeft()
+                    : int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? MonitorTopLeft(index) : null;
+                if (tl is { } p) (x, y) = p;
+            }
             SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, 0, 0, 0x0001 | 0x0010 /*NOSIZE|NOACTIVATE*/);
             Say("[probe] window placed at " + x.ToString(CultureInfo.InvariantCulture) + "," + y.ToString(CultureInfo.InvariantCulture));
+        }
+
+        static (int X, int Y)? FirstNonPrimaryTopLeft()
+        {
+            for (int i = 0; MonitorTopLeft(i) is { } tl; i++)
+                if (tl != (0, 0)) return tl;
+            return null;
         }
 
         static (int X, int Y)? MonitorTopLeft(int index)
