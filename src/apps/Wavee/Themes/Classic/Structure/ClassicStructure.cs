@@ -190,6 +190,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.AddStyle(StyleKeys.DetailHero, ClassicDetailFrame.HeroStyle);
         views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");
         views.Add(ViewKeys.DetailInsightsToggle, ClassicInsights.ToggleTemplate, "classic.detail.insights-toggle");
+        views.AddStyle(StyleKeys.DetailFacts, User.FactsFluentStyle);
         // T9c: the Liked, show and episode pages (and the reader and discussion) over that frame. Each family registers its own keys.
         ClassicLiked.Register(views);
         ClassicShow.Register(views);
