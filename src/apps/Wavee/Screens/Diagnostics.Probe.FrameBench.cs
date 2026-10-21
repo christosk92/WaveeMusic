@@ -7,7 +7,7 @@
 // Offline (no account, no network):
 //   Wavee.exe --fake --profile <scratch dir> --frame-bench[=a,b] [--bench-sec 10] [--bench-warmup-sec 2] --probe-out <dir>
 // Real data (the profile's own account, CDN images and audio, real lyrics; takes over that account's playback):
-//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] --probe-out <dir>
+//   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] [--bench-queue] --probe-out <dir>
 // Real data is never implied: without `--fake` the arm refuses unless `--bench-real` is on the line, and `--bench-real` refuses
 // unless `--profile` is too (it plays on that profile's account and sets that profile's settings, restored at the end).
 //
@@ -201,10 +201,14 @@ public static partial class Diagnostics
         {
             var home = new Shell.Route(Shell.RouteKind.Home);
             void Settle(double s) => Pump(host, w, s, null);
+            // `--bench-queue`: every scenario's base keeps the rail open on the queue (the owner's daily layout: the queue panel docked
+            // beside every page), so its re-renders are part of what each scenario measures. Without it the base closes the rail.
+            bool queueRail = Array.IndexOf(Platform.Args.Argv, "--bench-queue") >= 0;
             void Base(bool playing, string? track = null)
             {
                 if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
-                Shell.Ui.RailOpen.Value = false;
+                if (queueRail) Shell.Ui.Mode.Value = Shell.RailMode.Queue;
+                Shell.Ui.RailOpen.Value = queueRail;
                 Nav(home);
                 track ??= play;
                 if (!playing) { Playback.Stop(); Settle(1.0); return; }
