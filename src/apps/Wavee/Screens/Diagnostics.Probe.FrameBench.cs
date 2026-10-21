@@ -66,7 +66,10 @@ public static partial class Diagnostics
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 
-            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
+            // Topmost, and at the PRIMARY monitor's origin (virtual-screen 0,0): a window the OS placed on another monitor (or spilling onto
+            // one) is paced to THAT monitor's refresh — 2026-10-21, the bench window opened on a 60 Hz DisplayLink screen in some runs and on the
+            // 120 Hz panel in others, and the two halves of an A/B measured different displays.
+            SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0010 /*NOSIZE|NOACTIVATE*/);
             if (!PumpUntil(host, w, static () => NavigationFrameWatch.NavigationId > 0, 20)) { Say("[frame-bench] the shell never activated a route"); return true; }
             bool real = !fake;
             int quality = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
