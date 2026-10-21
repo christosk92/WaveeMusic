@@ -1005,6 +1005,8 @@ public static partial class Log
     /// up. The only record of what opening a menu cost the whole window.</item>
     /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
     /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
+    /// <item><c>[window.msg.slow]</c> — one line per OS message dispatch over 25 ms (the message and its time): the frame ledger's pump
+    /// phase says the UI thread sat in dispatch (a 1.18 s stall in a real-data bench, 2026-10-21) but not in which message.</item>
     /// <item><c>[pointer]</c> — one line per LOST primary contact (capture stolen, leave-while-down, the OS move loop
     /// taking the press). The stuck-drag class ("the window follows my cursor with no button down") is invisible
     /// without it: a pop-out session on 2026-09-22 had two <c>[window.move] begin</c> per gesture and no way to tell
@@ -1031,6 +1033,7 @@ public static partial class Log
         || s.StartsWith("[window.move]", StringComparison.Ordinal)
         || s.StartsWith("[window.loop]", StringComparison.Ordinal)
         || s.StartsWith("[window.size]", StringComparison.Ordinal)
+        || s.StartsWith("[window.msg.slow]", StringComparison.Ordinal)
         || s.StartsWith("[pointer]", StringComparison.Ordinal)
         || s.StartsWith("[detached]", StringComparison.Ordinal)
         || s.StartsWith("[video.surface]", StringComparison.Ordinal)
