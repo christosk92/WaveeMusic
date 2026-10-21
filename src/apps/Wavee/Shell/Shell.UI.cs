@@ -996,17 +996,26 @@ public static partial class Shell
     /// <summary>`--inspect state kind=offline-rows`: the page stays and its rows read the session as down (a track not on this PC steps back). A developer's probe.</summary>
     internal static readonly Signal<bool> InspectOffline = new(false);
 
-    /// <summary>Show <paramref name="kind"/> in the page region (empty, nomatch, error, offline), put the page back (none), or open the pending search (loading). False for another word.</summary>
+    /// <summary>The pending search `state kind=loading` opened, while it is still the page showing; null otherwise.</summary>
+    static Route? s_inspectPending;
+
+    /// <summary>Show <paramref name="kind"/> in the page region (empty, nomatch, error, offline), put the page back (none: also steps back off the
+    /// pending search a `loading` opened, when it is still showing), or open the pending search (loading). False for another word.</summary>
     internal static bool SetInspectState(string kind)
     {
         switch (kind)
         {
-            case "none": case "": s_inspectState.Value = ""; InspectOffline.Value = false; return true;
+            case "none": case "":
+                s_inspectState.Value = "";
+                InspectOffline.Value = false;
+                LeaveInspectPending();
+                return true;
             case "offline-rows": InspectOffline.Value = true; return true;
             case "empty": case "nomatch": case "error": case "offline": s_inspectState.Value = kind; return true;
             case "loading":
                 s_inspectState.Value = "";
                 GoTo(new Route(RouteKind.Search, default, Intern("zzqx")));
+                s_inspectPending = Current.Peek();
                 return true;
             // The cold playlist (Entities.Fake.Cold.cs): stage a real list's load one step per command (`goto uri=` it after cold-list).
             case "cold-list": s_inspectState.Value = ""; Entities.StageColdList(); return true;
@@ -1015,6 +1024,17 @@ public static partial class Shell
             case "cold-faces": Entities.StageColdFaces(); return true;
             default: return false;
         }
+    }
+
+    /// <summary>The pending search never lands (its skeleton loops, so every settle on it runs to its frame cap): `none` puts back the page it
+    /// covered, Back when that is the step below it, else Home.</summary>
+    static void LeaveInspectPending()
+    {
+        if (s_inspectPending is not { } pending) return;
+        s_inspectPending = null;
+        if (!SameSlot(Current.Peek(), pending)) return;   // already left: the page showing is the caller's
+        if (TryPeekBack(out _)) GoBack();
+        else GoTo(new Route(RouteKind.Home));
     }
 
     /// <summary>The probe's state on the page's gutter (16 / 24 / 48 by the window's width: the frame's, which the pages themselves sit on).</summary>

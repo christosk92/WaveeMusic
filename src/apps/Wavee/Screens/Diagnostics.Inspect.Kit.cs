@@ -433,23 +433,26 @@ public static partial class Diagnostics
                     hitKey = PathOf(scene, hit);
                 }
             }
-            // The target's own parts that take the pointer are all inert (transparent or hit testing off on their chain below it: a reserved
-            // control's face dimmed by opacity alone, the WinUI bar's heart with nothing playing), so the press lands beside them, on what holds
-            // the target. A user's press there reaches none of them: refused, not "reached through what owns it".
-            bool partsInert = !wheel && relation is Actionability.Hit.Ancestor or Actionability.Hit.Through && PartsInert(scene, node);
+            // The target's own parts under its centre that take the pointer are all inert (transparent or hit testing off on their chain below it:
+            // a reserved control's face dimmed by opacity alone, the WinUI bar's heart with nothing playing), so the press lands through them, on
+            // what holds the target, and reaches none of them: refused, not "reached through what owns it". A part away from the centre does not
+            // count (a track title's badge line, hidden on a row without badges: the press there reaches the row, as a user's does).
+            bool partsInert = !wheel && relation is Actionability.Hit.Ancestor or Actionability.Hit.Through && PartsInert(scene, node, aim);
             Actionability.Verdict v = Actionability.Decide(shown, fraction, disabled, relation, wheel ? Actionability.Reach.None : ReachOf(scene, node),
                 aim, visible, hitKey, note, partsInert);
             return wheel ? v with { Note = "" } : v;   // the wheel reaches the scroller whatever is hit: no "nothing reacts" note
         }
 
-        /// <summary>True when parts strictly inside <paramref name="node"/> take hits (a button inside a keyed slot) and none of them can get
-        /// one: each has a transparent, hidden or hit-test-off node on its chain up to <paramref name="node"/>.</summary>
-        static bool PartsInert(SceneStore scene, NodeHandle node)
+        /// <summary>True when parts strictly inside <paramref name="node"/> whose box holds <paramref name="aim"/> take hits (a button inside a
+        /// keyed slot) and none of them can get one: each has a transparent, hidden or hit-test-off node on its chain up to <paramref name="node"/>.
+        /// Parts elsewhere in it (a hidden line, an empty box) are not where the press lands, so they do not count.</summary>
+        static bool PartsInert(SceneStore scene, NodeHandle node, Point2 aim)
         {
             bool any = false;
             foreach (NodeHandle n in Subtree(scene, node))
             {
                 if (n == node || (scene.Interaction(n).HandlerMask & TakesHits) == 0) continue;
+                if (!scene.PresentedAbsoluteRect(n).Contains(aim)) continue;
                 any = true;
                 bool inert = false;
                 for (NodeHandle a = n; !a.IsNull && a != node; a = scene.Parent(a))

@@ -160,7 +160,7 @@ Every settling verb, and `settle`, takes `loops`:
 |---|---|
 | `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
-| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row (`state kind=loading` replies `loops:["facet-body:0"]`). |
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
@@ -300,7 +300,7 @@ These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no
 | At least 50 % of its presented rect is visible after the window, every ancestor that clips (`ClipsToBounds`, a scroll viewport) and every ancestor's authored clip rect. | `offscreen` (scroll it into view first) |
 | It is enabled, and so is the click owner a press on it reaches (the nearest node up from the hit carrying a click handler, as the dispatcher finds it). A disabled container alone does not disable an enabled button inside it. | `disabled` |
 | The hit test at the centre of its visible part lands inside it. A passive target (no pointer handler of its own: a label, an icon, a hint) may also be reached through what owns it: an ancestor, a sibling part of the same click owner, or a hit target painted beneath it (the press passes through it). Not the overlay host's input-blocking layer: a passive part of an open menu or dialog (its header text, its body) that lies over that layer is covered, because a press there reaches the layer (a light-dismiss one closes the menu). | `covered`, naming the key that covers it (or, when that key is the target's own ancestor, the covering part's dump path; the input-blocking layer is named as such) |
-| Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end), or when every part of it that has one is inert (transparent, hidden or hit testing off below the target: WinUI's `winui-bar-like` with nothing playing, a reserved heart dimmed by opacity alone, whose centre hits `winui-bar-left`). A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
+| Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end), or when every part of it that has one and lies under that centre is inert (transparent, hidden or hit testing off below the target: WinUI's `winui-bar-like` and `winui-bar-lyrics` with nothing playing, reserved buttons dimmed by opacity alone, whose centres hit `winui-bar-left` and `winui-bar`). A part away from the centre does not count: a track title whose badge line is hidden (a row without badges) is reached through its row, as a user's press is. A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
 
 **Stable.** Then, as Playwright does, the target's presented rect must be the same on two consecutive frames: a target
 still moving (an entrance, a FLIP, a wheel glide carrying it) is waited for, one frame at a time, at most `stableMax` frames
@@ -384,7 +384,8 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 
 ### `state {kind}` and `dialog {kind}`
 
-`state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back); `loading` opens a search for
+`state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
+pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
 `zzqx`, which the fake catalogue never answers: its request stays in flight, so the page stays on its skeleton (the chips, the top result and the
 rows; it replies `loops:["facet-body:0"]`), and `loading` and the `cold-*` states settle on their skeleton, `loops=skeletons` unless you pass
 `loops`. Any other search query is answered from the fake catalogue by name (every fake row whose name contains it: `easy` finds the "Easy"
