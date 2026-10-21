@@ -111,14 +111,13 @@ is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the
 is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
 `ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
 for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
-when the reply was written. Check `loops`: not every loop row is ambient. A loading indicator (a progress bar or ring)
-runs on one too, and a loading indicator there (WinUI's search after `type`: `omni-progress`) means the page is still
-loading, not settled: step `frames N` and look again. A `render` after it catches a loop at whatever phase it has reached. A settle that hit its cap
-adds `busy`, what still moved:
+when the reply was written. Loading indicators are the exception (below): a skeleton's shimmer, an indeterminate
+progress bar or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
+reached. A settle that hit its cap adds `busy`, what still moved:
 
 - `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
   engine's census of the live rows: `anim=N:Channel*k,...`, then `done=`, `parked=` and `loop=` counts when there are any.
-- `{"key","kind":"loading"}`: a skeleton still loading (its shimmer pulses until the data or its error lands), with a
+- `{"key","kind":"loading"}`: a loading indicator still running (a skeleton's shimmer, a progress bar or ring, until the data or its error lands), with a
   `loading` sentence beside `busy` that names them (see Looping animations below).
 - `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
 - `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
@@ -144,18 +143,20 @@ that never ends but is not a loop row (a frame-clock ticker is ambient already; 
 and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) is still waited for.
 
-One loop is not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows while its
-data is pending). A page that still shows its skeleton has not landed, so the settle waits for the data or its error, and a
-settle that hits `max` there says `loading` (above). The fake catalogue answers on the wall clock, so a slow page can take
+Loading indicators are not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows
+while its data is pending), an **indeterminate progress bar** (a looping node under the `ProgressBar` role: WinUI and Classic
+search's `omni-progress` while a query is pending) and a **progress ring** (its arc's trim loops). A page that still shows one
+has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 24 frames on
+"No results found", not after 4 on the skeleton rows), and a settle that hits `max` there says `loading` (above). The fake catalogue answers on the wall clock, so a slow page can take
 several hundred frames (`goto uri=spotify:album:alq2`, seeded to fail, takes 200 to 900): raise `max`.
 
 Every settling verb, and `settle`, takes `loops`:
 
 | `loops=` | A loop holds the settle |
 |---|---|
-| `ignore` (default) | Only a loading skeleton's shimmer. |
+| `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
-| `skeletons` | None, the shimmer included, so the settle can end on a skeleton. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture. |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture. |
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
