@@ -111,7 +111,9 @@ is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the
 is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
 `ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
 for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
-when the reply was written. A `render` after it catches a loop at whatever phase it has reached. A settle that hit its cap
+when the reply was written. Check `loops`: not every loop row is ambient. A loading indicator (a progress bar or ring)
+runs on one too, and a loading indicator there (WinUI's search after `type`: `omni-progress`) means the page is still
+loading, not settled: step `frames N` and look again. A `render` after it catches a loop at whatever phase it has reached. A settle that hit its cap
 adds `busy`, what still moved:
 
 - `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
@@ -130,11 +132,13 @@ A looping animation never ends. Where its rows are loops the settle reads them a
 window Small below 760 wide lays the title out in an 88 DIP lane (the Compact bar level), "Nothing playing" is 107 DIP, so
 the bar's marquee (`np-title`, motion policy F239: an overflowing title always scrolls) loops for as long as the window
 stays there; a verb there settles as it does at any other width (a `resize` in 21 frames) and replies `loops:["np-title"]`
-(it ran to `max` before). Motion that
-never ends but is not a loop row (a frame-clock ticker is ambient already; anything else) still runs a verb to `max`, and
-`busy` names it: use `settle=false` with `frames N` there, or a small `max`. While a track plays, its row animates on every
-page that lists it, in every theme: Home after a `play` (Classic and WinUI: the `recent:*` card; Zune: the
-`zune-cluster-row:*` row) and Liked Songs (`c.num`, `winui.row.now`, `zune.row.now`).
+(it ran to `max` before). While a track plays, its row's indicator is a loop row too, on every page that lists it, in every
+theme: Home after a `play` (Classic and WinUI: the `recent:*` cards; Zune: the `zune-cluster-row:*` row) and Liked Songs
+(`c.num`, `winui.row.now`, `zune.row.now`); look for those keys in `loops`. Whether it runs is decided per process, not by
+the device: WinUI Home 1440 `play`, one fresh server each, looped in 1 of 6 under WARP and 1 of 6 under `gpu=none` (the
+others never started it, even 600 frames later), and a build that waited for loops ran 3 of 6 to `max` under WARP. Motion
+that never ends but is not a loop row (a frame-clock ticker is ambient already; anything else) still runs a verb to `max`,
+and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 
 **Known issue: Classic with a second tab active.** In Classic, while any tab but the first is active, the app wakes a frame
 every frame (`busy` reads `FrameNeeded` with `terms:["explicit"]`, and nothing is drawn: an idle repaint in the app, not the
@@ -567,7 +571,8 @@ Reading a crossing:
 
 - The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
   lists (the offscreen window reports the window flags the crossing sets, engine `9476a4bbe`). Only `settle.frames` varies:
-  it changes with the machine's load, on either device. `gpu=none` is faster; under the default, `render` works in the same
+  it changes with the machine's load, on either device. (A settle's `loops` can differ between servers on either device: the
+  playing-row race under Settling.) `gpu=none` is faster; under the default, `render` works in the same
   server after the crossing.
 - Start in the old tier. Edges hold differently each way: a narrowing drag keeps Zune's Huge tier down to 1904 wide, where a
   fresh mount is already Standard. The content tier also depends on the path: Classic resized from 3456 straight to 1136 is
@@ -592,10 +597,13 @@ Reading a crossing:
   quantised layout: a shelf (`PagedShelf`) fits its cards to its own measured width, which it learns from its bounds after
   the resized frame's layout, so the strip's height follows on the next frame (the commit frame: Zune's
   `zune-home-wide:*` 2 shorter, and the 119 nodes below it 2 up) and its cards a frame after that (each 4 narrower:
-  `trace` over a plain `resize` shows the three frames). The move scales with the step (Zune: 4 DIP moves nothing, 16 moves 2, 32 moves 4, 64 moves 10, 96 widening
-  moves 14, the 16:9 tiles' height rounded) and Classic and WinUI show the same pattern (`home:column` 10 shorter at 16
-  DIP, their shelves glide). Set an edge's numbers against a 16 DIP step inside the same tier, reached the same way,
-  before you blame the tier change.
+  `trace` over a plain `resize` shows the three frames). The move scales with the step (Zune, `zune-home-column` from 1504: 16 DIP 2
+  shorter, 32 4, 64 9; chained from 1392, 96 widening 14 taller), and Classic and WinUI show the same pattern
+  (`home:column` 10 shorter at 16 DIP, their shelves glide). Small steps move by rounding, because the 16:9 tiles' height
+  is rounded: four 4 DIP steps from 1504 move 0, 1, 0, 1 (127 nodes changed on each step that moves), which add up to
+  the 16 DIP step's 2. So a 4 DIP step that moves 1 is no bug; small steps that do not add up to the big step's move, or a
+  move that does not scale with the step, are. Set an edge's numbers against a 16 DIP step inside the same tier, reached
+  the same way, before you blame the tier change.
 
 | Reply field | Meaning |
 |---|---|
