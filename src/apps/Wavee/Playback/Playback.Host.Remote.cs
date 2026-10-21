@@ -411,7 +411,10 @@ public static partial class Playback
 
     /// <summary>One foreign-queue row as the pure layout reads it (<see cref="Queue.LayoutMirror"/>) plus the packed target
     /// it resolves to (0 = no playable identity, or one this scope cannot resolve — the layout drops it rather than
-    /// queueing a hole). Provenance comes off the wire: queued, autoplay, else context.</summary>
+    /// queueing a hole). Provenance comes off the wire: queued, autoplay, else context. The item id is the row's own: a
+    /// uid the owner repeats (every lap of a repeated context, a track both behind and ahead) is booked per occurrence
+    /// (<see cref="UidBook.ItemIdOf(ReadOnlySpan{byte}, int)"/>), so no two rows share one and the panel's keys, a play or a
+    /// remove each name the row they came from.</summary>
     static Queue.MirrorRow ForeignRow(int index, bool next, out int target)
     {
         target = 0;
@@ -422,7 +425,7 @@ public static partial class Playback
             if (id.IsPlayable) target = Queue.Pack(Entities.Ref(id));
         }
         ReadOnlySpan<byte> uid = s_foreign.Utf8Uid(next, index);
-        ulong itemId = target == 0 || uid.IsEmpty ? 0UL : (ulong)s_uids.ItemIdOf(uid);
+        ulong itemId = target == 0 || uid.IsEmpty ? 0UL : s_uids.ItemIdOf(uid, s_foreign.UidOccurrence(next, index));
         if (itemId != 0 && s_foreign.IsQueued(next, index))          // the owner's own account of who queued it travels with the row
             s_uids.NoteQueuedBy(itemId, Encoding.UTF8.GetString(s_foreign.Utf8QueuedBy(next, index)));
         return new Queue.MirrorRow(target != 0, s_foreign.IsQueued(next, index), s_foreign.IsAutoplay(next, index), itemId);

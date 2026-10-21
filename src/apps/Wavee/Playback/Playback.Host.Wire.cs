@@ -447,6 +447,24 @@ public static partial class Playback
         /// <inheritdoc cref="Utf8Uri(bool,int)"/>
         public ReadOnlySpan<byte> Utf8Uid(bool next, int index) => Slice(next, index, uid: true);
 
+        /// <summary>Which of the rows carrying this row's uid it is, counted outward from the deck: 0, 1, 2, ... through the
+        /// next tracks, −1, −2, ... back through the history (<see cref="UidBook.ItemIdOf(ReadOnlySpan{byte}, int)"/>). An
+        /// owner repeating its context sends every lap with the same uids, so the uid alone names several rows. 0 for a row
+        /// with no uid. Cold (a mirror replace): a scan of the side's rows ahead of it.</summary>
+        public int UidOccurrence(bool next, int index)
+        {
+            ReadOnlySpan<byte> uid = Slice(next, index, uid: true);
+            if (uid.IsEmpty) return 0;
+            int laps = 0;
+            if (next)
+            {
+                for (int k = 0; k < index; k++) if (Slice(true, k, uid: true).SequenceEqual(uid)) laps++;
+                return laps;
+            }
+            for (int k = index + 1; k < PrevCount; k++) if (Slice(false, k, uid: true).SequenceEqual(uid)) laps++;
+            return -1 - laps;
+        }
+
         /// <summary>Was this row the mirrored device's OWN user queue ("Next in queue"), by its wire provenance?</summary>
         public bool IsQueued(bool next, int index) => _rows[(next ? MaxRows : 0) + index].Queued;
 
