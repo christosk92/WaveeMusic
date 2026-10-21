@@ -433,9 +433,37 @@ public static partial class Diagnostics
                     hitKey = PathOf(scene, hit);
                 }
             }
+            // The target's own parts under its centre that take the pointer are all inert (transparent or hit testing off on their chain below it:
+            // a reserved control's face dimmed by opacity alone, the WinUI bar's heart with nothing playing), so the press lands through them, on
+            // what holds the target, and reaches none of them: refused, not "reached through what owns it". A part away from the centre does not
+            // count (a track title's badge line, hidden on a row without badges: the press there reaches the row, as a user's does).
+            bool partsInert = !wheel && relation is Actionability.Hit.Ancestor or Actionability.Hit.Through && PartsInert(scene, node, aim);
             Actionability.Verdict v = Actionability.Decide(shown, fraction, disabled, relation, wheel ? Actionability.Reach.None : ReachOf(scene, node),
-                aim, visible, hitKey, note);
+                aim, visible, hitKey, note, partsInert);
             return wheel ? v with { Note = "" } : v;   // the wheel reaches the scroller whatever is hit: no "nothing reacts" note
+        }
+
+        /// <summary>True when parts strictly inside <paramref name="node"/> whose box holds <paramref name="aim"/> take hits (a button inside a
+        /// keyed slot) and none of them can get one: each has a transparent, hidden or hit-test-off node on its chain up to <paramref name="node"/>.
+        /// Parts elsewhere in it (a hidden line, an empty box) are not where the press lands, so they do not count.</summary>
+        static bool PartsInert(SceneStore scene, NodeHandle node, Point2 aim)
+        {
+            bool any = false;
+            foreach (NodeHandle n in Subtree(scene, node))
+            {
+                if (n == node || (scene.Interaction(n).HandlerMask & TakesHits) == 0) continue;
+                if (!scene.PresentedAbsoluteRect(n).Contains(aim)) continue;
+                any = true;
+                bool inert = false;
+                for (NodeHandle a = n; !a.IsNull && a != node; a = scene.Parent(a))
+                    if ((scene.Flags(a) & (NodeFlags.HitTestVisible | NodeFlags.Visible)) != (NodeFlags.HitTestVisible | NodeFlags.Visible) || scene.Paint(a).Opacity <= 0f)
+                    {
+                        inert = true;
+                        break;
+                    }
+                if (!inert) return false;
+            }
+            return any;
         }
 
         /// <summary>Where the pointer handlers around <paramref name="node"/> sit: on it or an ancestor (a pointer at it is meant to
@@ -758,8 +786,11 @@ public static partial class Diagnostics
         }
 
         /// <summary><paramref name="reach"/>: where the target's pointer handlers sit (<see cref="Reach.None"/> for the wheel, which
-        /// needs none). <paramref name="hitNote"/> says what the occluder is, when its key alone does not.</summary>
-        public static Verdict Decide(bool shown, float fraction, bool disabled, Hit hit, Reach reach, Point2 aim, RectF visible, string? hitKey, string? hitNote = null)
+        /// needs none). <paramref name="hitNote"/> says what the occluder is, when its key alone does not.
+        /// <paramref name="partsInert"/>: the target's own parts that take the pointer are all inert (transparent, hidden or hit testing off),
+        /// so the centre hits what holds it.</summary>
+        public static Verdict Decide(bool shown, float fraction, bool disabled, Hit hit, Reach reach, Point2 aim, RectF visible, string? hitKey, string? hitNote = null,
+            bool partsInert = false)
         {
             if (!shown)
                 return new("notShown", "not shown (hidden, parked, transparent or no box on its chain)", aim, visible, fraction, hitKey);
@@ -771,6 +802,10 @@ public static partial class Diagnostics
             if (hit == Hit.Other)
                 return new("covered", string.Create(CultureInfo.InvariantCulture,
                     $"its visible centre ({aim.X:0.##}, {aim.Y:0.##}) hits '{hitKey}'{(hitNote is null ? "" : " (" + hitNote + ")")}, which is not inside it"),
+                    aim, visible, fraction, hitKey);
+            if (partsInert)
+                return new("unreachable", string.Create(CultureInfo.InvariantCulture,
+                    $"its visible centre ({aim.X:0.##}, {aim.Y:0.##}) hits '{hitKey}', not the target: the parts of it that take the pointer are inert (transparent, hidden or hit testing off on their chain), so a press reaches none of them"),
                     aim, visible, fraction, hitKey);
             if (hit == Hit.Nothing && reach == Reach.Chain)
                 return new("unreachable", string.Create(CultureInfo.InvariantCulture,
