@@ -1049,38 +1049,106 @@ public static partial class Entities
     static readonly HashSet<string> s_fakeSearched = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Under --fake, answer the search row's query from the fake catalogue (a name that contains the query, every kind), once per query; `a` keeps its hand-built
-    /// answer and <see cref="FakePendingQuery"/> none. True when the fake answered (the fetch is skipped).</summary>
-    internal static bool FakeSearchAnswer(Search row)
+    /// answer and <see cref="FakePendingQuery"/> none. True when the fake answered (the fetch is skipped). The skipped fetch still leaves the marks a real one
+    /// would (Search.Page.cs READINESS reads them): a group the fake left unknown is asked, and in flight for the pending query (the page stays on its
+    /// skeleton) or concluded for any other (the facet's empty), never un-asked (the error vacancy, a transport failure).</summary>
+    internal static bool FakeSearchAnswer(Search row, SearchFields wanted)
     {
         if (!s_fakeSearch) return false;
         string q = Strings.Resolve(row.QueryId).Trim();
         if (q.Length == 0 || string.Equals(q, FakeSearchQuery, StringComparison.OrdinalIgnoreCase)) return false;
-        if (string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase)) return true;
-        if (s_fakeSearched.Add(q)) SeedSearchQuery(q);
+        bool pending = string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase);
+        if (!pending && s_fakeSearched.Add(q)) SeedSearchQuery(q);
+        var t = Current.Searches;
+        int slot = row.Slot;
+        uint missing = (uint)wanted & ~t.Known[slot];
+        if (missing != 0)
+        {
+            t.Asked[slot] |= missing;
+            if (pending) t.Inflight[slot] = FakePendingStamp;
+        }
         return true;
+    }
+
+    /// <summary>The request stamp of the pending query's fetch that never lands.</summary>
+    const uint FakePendingStamp = 0x2A9Du;
+
+    /// <summary>The fake rows whose name contains the query, per kind, in slot order: the numbered catalogue and every hand-built row (Home's
+    /// recents, "Easy", ...), whatever the user can see in the app (the search answer and the omnibar's suggestions).</summary>
+    sealed record FakeMatches(List<int> Tracks, List<int> Artists, List<int> Albums, List<int> Playlists, List<int> Shows, List<int> Users)
+    {
+        public static FakeMatches Of(string q)
+        {
+            static List<int> Find(EntityKind kind, string q, int cap)
+            {
+                var found = new List<int>();
+                if (TableFor(kind) is not { } t) return found;
+                for (int slot = Table.None + 1; slot < t.Count && found.Count < cap; slot++)
+                    if (t.Id[slot].IsValid && Wavee.Search.TitleOf(new EntityRef(kind, slot)).Contains(q, StringComparison.OrdinalIgnoreCase)) found.Add(slot);
+                return found;
+            }
+
+            return new FakeMatches(Find(EntityKind.Track, q, 30), Find(EntityKind.Artist, q, ArtistCount), Find(EntityKind.Album, q, AlbumCount),
+                Find(EntityKind.Playlist, q, 20), Find(EntityKind.Show, q, ShowCount), Find(EntityKind.User, q, 3));
+        }
+
+        /// <summary>Up to <paramref name="cap"/> hits, the artist first (the Top Result), then the kinds taken in turn.</summary>
+        public List<EntityRef> Mixed(int cap)
+        {
+            var mixed = new List<EntityRef>(cap);
+            var lists = new (EntityKind Kind, List<int> Slots)[]
+                { (EntityKind.Artist, Artists), (EntityKind.Track, Tracks), (EntityKind.Album, Albums), (EntityKind.Playlist, Playlists), (EntityKind.Show, Shows), (EntityKind.User, Users) };
+            for (int round = 0; mixed.Count < cap; round++)
+            {
+                bool any = false;
+                foreach (var (kind, slots) in lists)
+                    if (round < slots.Count && mixed.Count < cap) { mixed.Add(new EntityRef(kind, slots[round])); any = true; }
+                if (!any) break;
+            }
+            return mixed;
+        }
+    }
+
+    /// <summary>Under --fake, the omnibar's suggestion source (Home.InstallPages): the related queries that start with the typed text, then the fake
+    /// catalogue's rows whose name contains it (<see cref="FakeMatches.Mixed"/>), answered at once. <see cref="FakePendingQuery"/> never answers (the
+    /// popup stays on its progress row), as its search page stays on its skeleton.</summary>
+    internal static Task<Shell.Omnibar.Suggestions> FakeSuggestAsync(string query, CancellationToken ct)
+    {
+        string q = query?.Trim() ?? "";
+        if (q.Length == 0) return Task.FromResult(Shell.Omnibar.Suggestions.Empty);
+        if (ct.IsCancellationRequested) return Task.FromCanceled<Shell.Omnibar.Suggestions>(ct);
+        if (string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            var never = new TaskCompletionSource<Shell.Omnibar.Suggestions>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ct.Register(static o => ((TaskCompletionSource<Shell.Omnibar.Suggestions>)o!).TrySetCanceled(), never);
+            return never.Task;
+        }
+
+        var queries = new List<string>();
+        foreach (string r in s_relatedQueries) if (r.StartsWith(q, StringComparison.OrdinalIgnoreCase) && !r.Equals(q, StringComparison.OrdinalIgnoreCase)) queries.Add(r);
+        var items = new List<Shell.Omnibar.Item>(Shell.Omnibar.MaxRichRows);
+        foreach (var hit in FakeMatches.Of(q).Mixed(Shell.Omnibar.MaxRichRows))
+        {
+            if (TableFor(hit.Kind) is not { } table) continue;
+            var card = new HomeCard(hit);
+            var (kind, detail) = hit.Kind switch
+            {
+                EntityKind.Track => (Shell.Omnibar.ItemKind.Track, card.Subtitle),
+                EntityKind.Album => (Shell.Omnibar.ItemKind.Album, card.Subtitle),
+                EntityKind.Playlist => (Shell.Omnibar.ItemKind.Playlist, card.OwnerName),
+                EntityKind.Show => (Shell.Omnibar.ItemKind.Podcast, card.Subtitle),
+                EntityKind.User => (Shell.Omnibar.ItemKind.User, (string?)null),
+                _ => (Shell.Omnibar.ItemKind.Artist, (string?)null),
+            };
+            items.Add(new Shell.Omnibar.Item(kind, new EntityUri(table.Id[hit.Slot]), Wavee.Search.TitleOf(hit), detail, Wavee.Search.CoverOf(hit)));
+        }
+        return Task.FromResult(queries.Count == 0 && items.Count == 0 ? Shell.Omnibar.Suggestions.Empty : new Shell.Omnibar.Suggestions(queries, items));
     }
 
     static void SeedSearchQuery(string q)
     {
-        static bool Has(EntityKind kind, int slot, string q) => Wavee.Search.TitleOf(new EntityRef(kind, slot)).Contains(q, StringComparison.OrdinalIgnoreCase);
-        static List<int> Find(EntityKind kind, int count, Func<int, string> uriOf, string q, int cap)
-        {
-            var found = new List<int>();
-            for (int i = 0; i < count && found.Count < cap; i++)
-            {
-                int slot = ResolveSeedSlot(kind, uriOf(i));
-                if (slot != Table.None && Has(kind, slot, q)) found.Add(slot);
-            }
-            return found;
-        }
-
-        var tracks = Find(EntityKind.Track, TrackCount, static i => TrackUri(i), q, 30);
-        var artists = Find(EntityKind.Artist, ArtistCount, static i => ArtistUri(i), q, ArtistCount);
-        var albums = Find(EntityKind.Album, AlbumCount, static i => AlbumUri(i), q, AlbumCount);
-        var playlists = Find(EntityKind.Playlist, PlaylistCount, static i => PlaylistUri(i), q, 20);
-        foreach (int slot in Find(EntityKind.Playlist, CatalogueCount, static i => CatalogueUri(i), q, 20)) if (playlists.Count < 20) playlists.Add(slot);
-        var shows = Find(EntityKind.Show, ShowCount, static i => ShowUri(i), q, ShowCount);
-        var users = Find(EntityKind.User, 3, static i => UserUri(i + 1), q, 3);
+        var m = FakeMatches.Of(q);
+        var (tracks, artists, albums, playlists, shows, users) = (m.Tracks, m.Artists, m.Albums, m.Playlists, m.Shows, m.Users);
 
         var genreTiles = new List<int>();
         for (int i = 0; i < s_browseTiles.Length && genreTiles.Count < 8; i++)
@@ -1095,16 +1163,7 @@ public static partial class Entities
         all.SetChips(facets.ToArray(), totals.ToArray());
 
         // The All facet: the artist first (the Top Result), then the kinds taken in turn.
-        var mixed = new List<EntityRef>(10);
-        var lists = new (EntityKind Kind, List<int> Slots)[]
-            { (EntityKind.Artist, artists), (EntityKind.Track, tracks), (EntityKind.Album, albums), (EntityKind.Playlist, playlists), (EntityKind.Show, shows), (EntityKind.User, users) };
-        for (int round = 0; mixed.Count < 10; round++)
-        {
-            bool any = false;
-            foreach (var (kind, slots) in lists)
-                if (round < slots.Count && mixed.Count < 10) { mixed.Add(new EntityRef(kind, slots[round])); any = true; }
-            if (!any) break;
-        }
+        var mixed = m.Mixed(10);
         all.ApplyResults(0, mixed.ToArray(), mixed.Count);
 
         void Facet(SearchFacet f, EntityKind kind, List<int> slots)
