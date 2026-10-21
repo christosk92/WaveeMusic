@@ -1025,6 +1025,8 @@ public static partial class Log
     /// </list></summary>
     static bool AlwaysOn(string s)
         => s.StartsWith("[video]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.untracked]", StringComparison.Ordinal)   // a jump in driver-internal GPU memory (it never comes back on UMA)
+        || s.StartsWith("[d3d12.mem]", StringComparison.Ordinal)         // the GPU memory breakdown at first present
         || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
         || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
         || s.StartsWith("[overlay.popup]", StringComparison.Ordinal)

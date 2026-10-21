@@ -134,10 +134,10 @@ public static partial class Diagnostics
                                 string? t = null;
                                 if (!FluentApp.RequestTileCensus(r => Volatile.Write(ref t, r))) continue;
                                 PumpUntil(host, w, () => Volatile.Read(ref t) is not null, 2);
-                                if (Volatile.Read(ref t) is not { } text) continue;
-                                var m = System.Text.RegularExpressions.Regex.Match(text, @"resident=\d+ tiles ([\d.]+) MiB");
+                                if (Volatile.Read(ref t) is not { } sample) continue;
+                                var m = System.Text.RegularExpressions.Regex.Match(sample, @"resident=\d+ tiles ([\d.]+) MiB");
                                 if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double mib) && mib > peakMiB)
-                                { peakMiB = mib; peakText = text; }
+                                { peakMiB = mib; peakText = sample; }
                             }
                             if (peakText is not null)
                                 try { File.AppendAllText(Path.Combine(OutDir(), "tile-peaks.txt"), "== hop=" + (hops + 1).ToString(CultureInfo.InvariantCulture) + " " + route.Kind + " scroll peak" + Environment.NewLine + peakText); } catch (IOException) { }
