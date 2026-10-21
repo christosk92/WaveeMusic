@@ -620,11 +620,14 @@ public readonly partial struct Track
     /// menu and drops the "…" button (the queue's rows and the rail's Next up: <see cref="QueueRowRules.ShowsMenuButton"/>,
     /// where the "…" overlay would cover the ✕). <see cref="MenuArgs"/> is the menu's own
     /// options (null = the defaults). <see cref="Trailing"/> is the right cluster (heart, duration, add) and
-    /// <see cref="Selected"/> the opened/chosen skin.</para></summary>
+    /// <see cref="Selected"/> the opened/chosen skin. <see cref="Tracked"/> false reads the track table WITHOUT subscribing the
+    /// caller: only for a caller whose host already re-pushes its props when one of ITS rows changes (the queue panels, whose host
+    /// gates on a digest of the shown rows' versions, <c>Queue.QueueSurface.RowsDigest</c>), so a publication of other tracks
+    /// re-renders nothing.</para></summary>
     public readonly record struct RowDataOptions(
         Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = false,
         bool Draggable = true, bool ShowMenu = true, MenuOptions? MenuArgs = null, ulong? QueueItemId = null,
-        Element? Trailing = null, bool Selected = false)
+        Element? Trailing = null, bool Selected = false, bool Tracked = true)
     {
         /// <summary><c>new RowDataOptions()</c> means the defaults above (artwork, menu and drag on), not a zeroed struct.</summary>
         public RowDataOptions() : this(OnClick: null) { }
@@ -640,8 +643,11 @@ public readonly partial struct Track
     /// own.</para></summary>
     public static Controls.CardData RowData(Track t, in RowDataOptions o)
     {
-        _ = Entities.ScopeEpoch.Value;                    // FIRST (G-179): a scope switch re-points the table read below
-        _ = Entities.Current.Tracks.Changed.Value;
+        if (o.Tracked)
+        {
+            _ = Entities.ScopeEpoch.Value;                // FIRST (G-179): a scope switch re-points the table read below
+            _ = Entities.Current.Tracks.Changed.Value;
+        }
         var track = t;
         int slot = t.Slot;
         var can = TrackRowRules.AffordancesOf(slot, o.Draggable);
@@ -669,8 +675,42 @@ public readonly partial struct Track
     }
 
     /// <summary>The artists subtitle: [E badge] · [film] · the artist links, "·" between the parts that exist. Null when
-    /// there is nothing to say.</summary>
+    /// there is nothing to say.
+    /// <para>A <see cref="Controls.FromData{T}"/> component keyed by the data it shows (<see cref="SubtitleData"/>: the row, the scope, the parts and one digest of
+    /// the versions of the track row, its artist edge and each billed artist row), never the tree itself: the tree carries a
+    /// children array and the links' click closure, so it never compared equal, and <see cref="Controls.CardData"/>'s data-only
+    /// equality failed on it for every track surface. A parent re-render therefore re-rendered EVERY row surface it pushed (its
+    /// plate, labels, trim tooltip and chrome), whatever changed: the docked queue panel's 52-130 surfaces on every track-table
+    /// publication anywhere in the app, 3-16 ms a time (2026-10-21, the owner's logs). Now an unchanged row is an equal
+    /// push and costs nothing; a changed track or artist row changes the digest and re-renders that row alone.</para></summary>
     static Element? RowSubtitle(Track t, in TrackRowRules.SubtitleParts p)
+    {
+        if (p.Children == 0) return null;
+        return Controls.FromData(new SubtitleData(t.Slot, Entities.ScopeEpoch.Peek(), DataDigest(t), p),
+                                 static d => SubtitleTree(new Track(d.Slot), d.Parts) ?? new BoxEl());
+    }
+
+    /// <summary>The subtitle's data: what <see cref="SubtitleTree"/> reads, as values (an equal push does not re-render).</summary>
+    readonly record struct SubtitleData(int Slot, uint Scope, ulong Digest, TrackRowRules.SubtitleParts Parts);
+
+    /// <summary>Everything the subtitle reads, folded (FNV-1a over the words): the track row's version (explicit, video), its artist edge's
+    /// (who is billed) and each billed artist's name and identity (the link) — not the artist row's version, which an artist page's own
+    /// re-answer (bio, images, counts) bumps.</summary>
+    static ulong DataDigest(Track t)
+    {
+        var scope = Entities.Current;
+        int slot = t.Slot;
+        ulong h = 14695981039346656037UL;
+        static ulong Mix(ulong h, ulong v) => (h ^ v) * 1099511628211UL;
+        if (slot > global::Wavee.Table.None && slot < scope.Tracks.Count) h = Mix(h, scope.Tracks.Version[slot]);
+        h = Mix(h, scope.Edges.TrackArtists.Version(slot));
+        foreach (int a in t.ArtistSlots)
+            if (a > global::Wavee.Table.None && a < scope.Artists.Count)
+                h = Mix(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
+        return h;
+    }
+
+    static Element? SubtitleTree(Track t, in TrackRowRules.SubtitleParts p)
     {
         if (p.Children == 0) return null;
         var kids = new Element[p.Children];

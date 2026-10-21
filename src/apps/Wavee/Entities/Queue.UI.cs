@@ -316,8 +316,10 @@ public static partial class Queue
             // The version restarts per scope, so the key carries the scope epoch too: a rebind re-asks for the rows.
             UseEffect(static () => EnsureRows(), DepKey.From(((long)Entities.Current.Epoch << 32) | Queue.Version));
             _ = Entities.Current.Edges.Queue.Changed.Value;
-            _ = Entities.Current.Tracks.Changed.Value;
-            _ = Entities.Current.Episodes.Changed.Value;
+            // The rows' DATA through one digest (RowsDigest), not the whole track and episode tables: a page loading its own tracks
+            // publishes the track table, and that re-rendered this host and its whole panel (1.7-3.5 ms, 89 times in a 12 s nav-burst,
+            // 2026-10-21) though no row it shows had changed. The memo re-runs on those publications and notifies only when a shown row did.
+            _ = UseComputed(s_rowsDigest).Value;
             _ = Playback.PhaseSignal.Value;
             Current = Playback.Current.Value;
             ContextId = Playback.ContextUri.Value;
@@ -334,6 +336,66 @@ public static partial class Queue
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : Playback.Snap().Cursor.Index, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
             if (!rail) Model = Model with { History = ReadHistory() };
+        }
+
+        static readonly Func<ulong> s_rowsDigest = RowsDigest;
+
+        /// <summary>One digest over what every row a queue surface can show reads (<see cref="TextOf"/>'s and the row adapters' reads): the
+        /// deck's current row and each queue row (the track and its display row by version, its album's title, its artist edge and each
+        /// artist's name and identity; an episode and its show by version), and
+        /// the context entity "Playing from" names. It reads the tables' publications (so it re-runs on each) and the queue edge (the row
+        /// set); it changes only when one of those rows was written. A theme's row builders read the table untracked
+        /// (<c>Track.RowDataOptions.Tracked</c> false): this host re-pushes their props when a row changes.</summary>
+        static ulong RowsDigest()
+        {
+            var scope = Entities.Current;
+            _ = Entities.ScopeEpoch.Value;
+            _ = scope.Tracks.Changed.Value;
+            _ = scope.Episodes.Changed.Value;
+            _ = scope.Albums.Changed.Value;
+            _ = scope.Artists.Changed.Value;
+            _ = scope.Shows.Changed.Value;
+            _ = scope.Playlists.Changed.Value;
+            _ = scope.Edges.Queue.Changed.Value;
+            ulong h = 14695981039346656037UL;
+            h = Fold(h, Entities.ScopeEpoch.Peek());
+            h = FoldRow(h, scope, Playback.Current.Value);
+            var refs = Queue.PackedRefs;
+            for (int i = 0; i < refs.Length; i++) h = FoldRow(h, scope, Queue.RefAt(i));
+            EntityId context = ContextTarget(Playback.ContextUri.Value, Playback.ContextLabel.Value);
+            if (Entities.TableFor(context.Kind) is { } ct && ct.TryGetSlot(context, out int cs)) h = FoldVersion(h, ct, cs);
+            return h;
+        }
+
+        static ulong Fold(ulong h, ulong v) => (h ^ v) * 1099511628211UL;
+
+        static ulong FoldVersion(ulong h, global::Wavee.Table table, int slot)
+            => slot > global::Wavee.Table.None && slot < table.Count ? Fold(h, ((ulong)(uint)slot << 32) | table.Version[slot]) : Fold(h, 0UL);
+
+        static ulong FoldRow(ulong h, Scope scope, EntityRef r)
+        {
+            h = Fold(h, ((ulong)(byte)r.Kind << 56) | (uint)r.Slot);
+            if (r.Kind == EntityKind.Track && r.Slot > global::Wavee.Table.None)
+            {
+                var t = new Track(r.Slot);
+                h = FoldVersion(h, scope.Tracks, r.Slot);
+                var d = t.ForDisplay;
+                if (d.Slot != r.Slot) h = FoldVersion(h, scope.Tracks, d.Slot);
+                // The album and the artists by what a row SHOWS of them (the album's title, each artist's name and identity), not by their row
+                // versions: an artist or album page re-answering its own row (bio, images, counts) must not re-render the queue.
+                int al = d.Album.Slot;
+                h = Fold(h, al > global::Wavee.Table.None && al < scope.Albums.Count ? (uint)scope.Albums.Title[al].Value : 0UL);
+                h = Fold(h, scope.Edges.TrackArtists.Version(d.Slot));
+                foreach (int a in d.ArtistSlots)
+                    if (a > global::Wavee.Table.None && a < scope.Artists.Count)
+                        h = Fold(h, ((ulong)(uint)scope.Artists.Name[a].Value << 32) | (uint)scope.Artists.Id[a].GetHashCode());
+            }
+            else if (r.Kind == EntityKind.Episode && r.Slot > global::Wavee.Table.None)
+            {
+                h = FoldVersion(h, scope.Episodes, r.Slot);
+                h = FoldVersion(h, scope.Shows, new Episode(r.Slot).Show.Slot);
+            }
+            return h;
         }
 
         // "Played before this": the play log's tail, read once per (log version, deck row), and its rows asked of the catalog (the queue's own rows are asked

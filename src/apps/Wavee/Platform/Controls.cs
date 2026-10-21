@@ -1058,6 +1058,27 @@ public static partial class Controls
             Opacity = restOpacity, HoverOpacity = 1f, BlocksDragArm = true,
         };
 
+    /// <summary>A small element with a HANDLER in it (a row's ✕, a trailing toggle) that a <see cref="CardData"/> slot or other re-pushed
+    /// props carry, built by a STATIC <paramref name="build"/> from <paramref name="data"/> inside a component keyed by that data. Built
+    /// inline, its closure (and any children array) made every push unequal, so the surface it sat in re-rendered on every parent
+    /// render: the queue rows' ✕ re-rendered all 52-130 queue surfaces per track-table publication (2026-10-21). Here an equal
+    /// <paramref name="data"/> is an equal element. <paramref name="build"/> must be a <c>static</c> lambda (one cached delegate): a
+    /// capturing one is a new delegate per call and every push is unequal again (the safe direction: it re-renders, as before). The
+    /// component re-renders on a theme change like any other, so the tokens it reads stay live.</summary>
+    public static Element FromData<T>(T data, Func<T, Element> build) where T : IEquatable<T>
+        => Embed.Comp(new FromDataProps<T>(data, build), static () => new FromDataHost<T>());
+
+    sealed record FromDataProps<T>(T Data, Func<T, Element> Build) where T : IEquatable<T>;
+
+    sealed class FromDataHost<T> : Component where T : IEquatable<T>
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FromDataProps<T>>();
+            return p.Build(p.Data);
+        }
+    }
+
     // ══ 6. THE SWIPE BELT (touch only) ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Is a touch swipe belt worth putting in the tree at all?

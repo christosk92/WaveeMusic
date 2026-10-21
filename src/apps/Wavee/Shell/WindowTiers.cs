@@ -14,7 +14,8 @@
 //     ordinary animated update: moved nodes FLIP, swapped subtrees cross-fade.
 //
 // WHAT IT PUBLISHES: `ThemeHost.Facts.Tiers` (core models) and, through `ThemeFactsContext`, `ctx.Tier()` (templates). The
-// fact is republished when a tier, a rung or `Resizing` changes, never once per resized frame.
+// fact is republished when a tier or a rung changes, or a modal resize ends at a new size; never once per resized frame, and
+// never for a window MOVE (its sizes are unchanged, so the snapshot is equal and `ThemeHost.PublishTiers` drops it).
 //
 // EDGE CASES. A non-positive or non-finite size (a minimised window reports 0, a headless host before its first publish)
 // resolves to NaN and the ladder keeps the previous tier, so restoring from minimised returns to the tier the window left,
@@ -64,7 +65,7 @@ public static class WindowTiers
     /// per its edges' directions. What the view harness uses for a view mounted without a frame, and what the tests compare
     /// the live binding against.</summary>
     public static TierFacts Resolve(TierPolicy policy, float viewportWidth, float viewportHeight, float contentWidth,
-        bool resizing = false, TierFacts? previous = null)
+        TierFacts? previous = null)
     {
         ArgumentNullException.ThrowIfNull(policy);
         float w = UsableSize(viewportWidth), h = UsableSize(viewportHeight), c = UsableSize(contentWidth);
@@ -82,7 +83,7 @@ public static class WindowTiers
             if (RungLadder(rung).Resolve(axisValue, was) != 0) rungs |= 1UL << i;
         }
         return new TierFacts((WidthTier)window, (HeightTier)height, (WidthTier)content,
-            float.IsNaN(c) ? 0f : c, float.IsNaN(w) ? 0f : w, float.IsNaN(h) ? 0f : h, resizing, rungs, policy);
+            float.IsNaN(c) ? 0f : c, float.IsNaN(w) ? 0f : w, float.IsNaN(h) ? 0f : h, rungs, policy);
     }
 
     /// <summary>The two-tier ladder of one rung: 0 below its edge, 1 at or above it.</summary>
@@ -190,7 +191,7 @@ public static class WindowTiers
             contentWidth = float.IsNaN(content) ? 0f : content;
         }
 
-        /// <summary>Step two, after the sidebar's first values are seeded: the content tier, the rungs, the resizing fact and
+        /// <summary>Step two, after the sidebar's first values are seeded: the content tier, the rungs, the modal edge and
         /// the effect that republishes <c>ThemeHost.Facts.Tiers</c>. The first publish happens here, so the first layout of
         /// every view already reads the final tiers.</summary>
         public void Complete(RenderContext ctx)
@@ -205,7 +206,10 @@ public static class WindowTiers
         }
 
         /// <summary>The effect body: subscribes to the committed tiers and the modal edge, then republishes. It reads no size, so
-        /// a resized frame that crosses nothing never wakes it.</summary>
+        /// a resized frame that crosses nothing never wakes it. The modal edge only refreshes the snapshot's sizes when a size-move
+        /// loop ends: the facts carry no "resizing" bit, so entering any loop, and a whole window MOVE, publish an equal snapshot
+        /// that <c>ThemeHost.PublishTiers</c> drops. (A bit here re-rendered every facts reader twice per window drag, 2026-10-21:
+        /// the queue panel's 52-130 surfaces each time, 5-17 ms; nothing read it but the inspector.)</summary>
         private void ObserveAndPublish()
         {
             _ = _window!.Value;
@@ -225,7 +229,7 @@ public static class WindowTiers
                 if (_rungs[i].Peek() != 0) mask |= 1UL << i;
             var facts = new TierFacts(
                 (WidthTier)_window!.Peek(), (HeightTier)_height!.Peek(), (WidthTier)_content!.Peek(),
-                float.IsNaN(content) ? 0f : content, size.Width, size.Height, _modal!.Peek(), mask, _policy);
+                float.IsNaN(content) ? 0f : content, size.Width, size.Height, mask, _policy);
             ThemeHost.PublishTiers(in facts);
         }
 

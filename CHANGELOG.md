@@ -26,6 +26,9 @@ versions separately under `v*` and is not tracked in this file.)
   cover cache keeps to its size instead of doubling on some machines, small thumbnails no longer take twice their room on
   the GPU, and the window's background, sidebar, title bar and player bar are drawn directly instead of being kept as cached
   pixels (about 25 MB less on every page).
+- **Moving between pages with the queue open is smoother.** Opening an album, artist or playlist no longer redraws the
+  queue panel and every row in it, and moving or resizing the window no longer redraws the page twice. Frames that take
+  longer than 8 ms while you click through pages are about eight times rarer.
 - **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
   sitting at the far left. Huge windows show a row of section links under the artist photo, a More button after Radio, Top tracks in three
   columns of five (four by four on 4K) and the artist's next concert under their pick. Narrow windows show the albums, singles and
@@ -328,6 +331,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Repeated songs in another device's queue are separate rows again.** When you watch the queue of a phone or another
+  computer that repeats its album or playlist, every copy of a song acted as the first one: clicking the second copy played
+  the first. Clicking a copy now plays that copy, and the queue no longer redraws every row each time the other device
+  updates it. The same holds when another device edits the queue on this one.
 - **The audio cache keeps caching once it is full.** When the cache sat just under its size limit, it refused every new piece of
   a song instead of making room, so new music stopped being cached until something else freed space. It now evicts the songs you
   played longest ago to fit the new one.

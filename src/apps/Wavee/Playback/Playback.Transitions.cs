@@ -469,7 +469,12 @@ public static partial class Playback
     /// <c>q2</c> is not hex (both captured, <c>set-queue-52.json</c>), so those get a locally minted item id and their text
     /// is kept here — and every shape echoes back in PutState as the controller sent it. The same text answers the same
     /// item id, so a controller re-sending its queue keeps the rows' identities. UI thread only; <see cref="Retain"/> after
-    /// each queue write keeps it to the live rows. Allocates one string per new booked uid, never on a lookup.</summary>
+    /// each queue write keeps it to the live rows. Allocates one string per new booked uid, never on a lookup.
+    ///
+    /// <para>A uid names a context TRACK, not a queue slot: an owner repeating its context lists the same tracks, with the
+    /// same uids, once per lap, and the same row can sit in its history and its next tracks. The mirror books each further
+    /// row carrying a uid under (uid, occurrence) (<see cref="ItemIdOf(ReadOnlySpan{byte}, int)"/>), so every row has its own
+    /// item id and still echoes the uid the owner sent.</para></summary>
     public sealed class UidBook
     {
         /// <summary>The longest uid kept; a longer one is not a uid and answers 0 ("no uid").</summary>
@@ -477,6 +482,8 @@ public static partial class Playback
 
         readonly Dictionary<ulong, string> _text = new();
         readonly Dictionary<ulong, ulong> _byHash = new();
+        readonly Dictionary<(ulong Hash, int Occurrence), ulong> _repeats = new();
+        readonly Dictionary<ulong, (ulong Hash, int Occurrence)> _repeatOf = new();
         readonly Dictionary<ulong, string> _queuedBy = new();
         readonly QueueUidCounter _counter = new();
 
@@ -533,6 +540,27 @@ public static partial class Playback
             return minted;
         }
 
+        /// <summary>The item id of a row whose <paramref name="uid"/> other rows of the same queue carry too.
+        /// <paramref name="occurrence"/> says which of them it is, counted outward from the deck: 0 the first in the next
+        /// tracks (the same id as <see cref="ItemIdOf(ReadOnlySpan{byte})"/>), 1, 2, ... the later laps, −1, −2, ... the
+        /// history from the newest back. The same (text, occurrence) answers the same id, so a refreshed mirror keeps its
+        /// rows' identities; the id's booked text is the uid itself, so every lap echoes back as the owner spelled it. A
+        /// controller naming the uid (<see cref="FindByHash"/>) finds occurrence 0, the nearest row ahead.</summary>
+        public ulong ItemIdOf(ReadOnlySpan<byte> uid, int occurrence)
+        {
+            if (occurrence == 0) return ItemIdOf(uid);
+            if (uid.IsEmpty || uid.Length > MaxChars) return 0;
+            _counter.NoteBooked(uid);
+            var key = (Hash(uid), occurrence);
+            if (_repeats.TryGetValue(key, out ulong known) && _text.TryGetValue(known, out string? same) && Same(same, uid))
+                return known;
+            ulong minted = Queue.MintItemIds(1);
+            _text[minted] = System.Text.Encoding.UTF8.GetString(uid);
+            _repeats[key] = minted;                          // a colliding hash re-points; the older id keeps its text
+            _repeatOf[minted] = key;
+            return minted;
+        }
+
         /// <summary>The item id a BOOKED uid is stored under, from the FNV-1a of its text (what a decoded command carries
         /// instead of a string), or 0. Never mints: a controller naming a uid we never booked finds nothing.</summary>
         public ulong FindByHash(ulong hash)
@@ -565,6 +593,8 @@ public static partial class Playback
                 _text.Remove(entry.Key);
                 ulong hash = Hash(entry.Value);
                 if (_byHash.TryGetValue(hash, out ulong id) && id == entry.Key) _byHash.Remove(hash);
+                if (_repeatOf.Remove(entry.Key, out var key) && _repeats.TryGetValue(key, out ulong lap) && lap == entry.Key)
+                    _repeats.Remove(key);
             }
             foreach (KeyValuePair<ulong, string> entry in _queuedBy)
             {
@@ -578,6 +608,8 @@ public static partial class Playback
         {
             _text.Clear();
             _byHash.Clear();
+            _repeats.Clear();
+            _repeatOf.Clear();
             _queuedBy.Clear();
             _counter.Reset();
         }
