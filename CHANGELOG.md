@@ -22,6 +22,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Wavee holds less memory while you browse and listen.** Covers no longer stay in memory after they reach the screen, the
+  cover cache keeps to its size instead of doubling on some machines, small thumbnails no longer take twice their room on
+  the GPU, and the window's background, sidebar, title bar and player bar are drawn directly instead of being kept as cached
+  pixels (about 25 MB less on every page).
 - **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
   sitting at the far left. Huge windows show a row of section links under the artist photo, a More button after Radio, Top tracks in three
   columns of five (four by four on 4K) and the artist's next concert under their pick. Narrow windows show the albums, singles and
