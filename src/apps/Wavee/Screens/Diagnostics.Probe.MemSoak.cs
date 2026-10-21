@@ -71,6 +71,16 @@ public static partial class Diagnostics
                 {
                     PumpUntil(host, w, () => Volatile.Read(ref tiles) is not null, 3);
                     string images = FluentApp.EngineImages?.MemoryCensus() ?? "";   // UI thread, like the cache
+                    // `--d3d12-debug`: the runtime's live object counts on this page (pipelines, allocators, heaps), first line only
+                    if (Array.IndexOf(Platform.Args.Argv, "--d3d12-debug") >= 0)
+                    {
+                        string? live = null;
+                        if (FluentApp.RequestGpuLiveCensus(r => Volatile.Write(ref live, r)))
+                        {
+                            PumpUntil(host, w, () => Volatile.Read(ref live) is not null, 5);
+                            if (Volatile.Read(ref live) is { } lv) images += lv.Split((char)10)[0] + Environment.NewLine;
+                        }
+                    }
                     try { File.AppendAllText(tileFile, "== " + name + Environment.NewLine + (Volatile.Read(ref tiles) ?? "(no census within 3 s)" + Environment.NewLine) + images); } catch (IOException) { }
                 }
             }
@@ -111,7 +121,27 @@ public static partial class Diagnostics
                         PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
                         PumpPaced(host, w, 2.0);
                         var scroll = new ScrollState(depthViewports: 6);
-                        if (scroll.WaitReady(host, w, 3)) Pump(host, w, 5.0, scroll.Driver(host));
+                        if (scroll.WaitReady(host, w, 3))
+                        {
+                            // Scroll in 1 s slices with a tile census after each: a transient (the scroll band at speed,
+                            // effect surfaces re-sized) never shows in the census taken once the page settles, and on a
+                            // driver that keeps freed GPU memory the transient is what the process keeps.
+                            var drive = scroll.Driver(host);
+                            string? peakText = null; double peakMiB = -1;
+                            for (int sl = 0; sl < 5 && !w.IsClosed; sl++)
+                            {
+                                Pump(host, w, 1.0, drive);
+                                string? t = null;
+                                if (!FluentApp.RequestTileCensus(r => Volatile.Write(ref t, r))) continue;
+                                PumpUntil(host, w, () => Volatile.Read(ref t) is not null, 2);
+                                if (Volatile.Read(ref t) is not { } text) continue;
+                                var m = System.Text.RegularExpressions.Regex.Match(text, @"resident=\d+ tiles ([\d.]+) MiB");
+                                if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double mib) && mib > peakMiB)
+                                { peakMiB = mib; peakText = text; }
+                            }
+                            if (peakText is not null)
+                                try { File.AppendAllText(Path.Combine(OutDir(), "tile-peaks.txt"), "== hop=" + (hops + 1).ToString(CultureInfo.InvariantCulture) + " " + route.Kind + " scroll peak" + Environment.NewLine + peakText); } catch (IOException) { }
+                        }
                         PumpPaced(host, w, 0.5);
                     }
                     // Enough frames for the page to mount, its rows to bind and the fake provider's answers to land.
