@@ -42,7 +42,7 @@ internal static class ZuneDevicePicker
             [
                 new ScrollEl
                 {
-                    MaxHeight = props.MaxHeight(windowH), AutoEdgeFade = true,
+                    MaxHeight = props.MaxHeight(windowH), ContentSized = true, AutoEdgeFade = true,
                     Content = new BoxEl { Direction = 1, Padding = new Edges4(0f, P.PickerPadY, 0f, P.PickerPadY), Children = rows.ToArray() },
                 },
             ],
