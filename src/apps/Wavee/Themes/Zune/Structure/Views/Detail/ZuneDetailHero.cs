@@ -1,7 +1,7 @@
 // ── Themes/Zune/Structure/Views/Detail/ZuneDetailHero.cs — Zune's vertical hero and its loading band (themes plan 6.3; P5 Z6a1) ───────────────
 //
 // Board Z-Album-Compact: the vertical arm's item 0 (the table pins it with `Sticky(0)` and collapses it with `Collapse`, around the `Detail.Hero`
-// slot this file draws). The EXPANDED presentation is the Compact panorama (64/72, wrapping over two lines with its band hugging it), the cover (144 at 400, 0.42 of the
+// slot this file draws). The EXPANDED presentation is the Compact panorama (64/72, fitted: one smaller line, or two at 40, its band hugging it), the cover (144 at 400, 0.42 of the
 // column, 96 to 144) beside the artist (18/24) and the meta line, the 40 ring row (play and saved with their words where the column has the room,
 // share and "..." pushed to its end), the description when the page has one, then the table's list bar. The STUCK band (56) is the title and the
 // byline beside the table's Find · Filter · Play words; the selection arm swaps the band's content at the same height; the expanded search field
@@ -58,7 +58,7 @@ internal static class ZuneDetailHero
         bool words = Z.HeroWords(w, gutter);
         var id = spec.Identity;
         // One home per verb (audit A4): play and saved leave the ring row where the window's band carries them; the panorama is the vertical hero's
-        // step for every kind (a long title wraps and the band hugs it), and the skeleton reads the same geometry.
+        // step for every kind (a long title fits smaller and the band hugs it), and the skeleton reads the same geometry.
         var lay = ZuneDetailTiers.Hero with { PlayWord = words, SaveWord = words, PrimaryInHero = ZuneDetailTiers.PrimaryInHero(in tiers) };
         float cover = Z.HeroCoverFor(w, gutter);
         bool description = (id.EditableMetadata && spec.Slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };

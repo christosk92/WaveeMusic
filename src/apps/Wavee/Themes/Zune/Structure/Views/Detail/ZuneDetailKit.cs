@@ -107,9 +107,12 @@ internal static class ZuneDetailKit
 
     // ── the panorama ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The page's title in the panorama voice (the record's step, for every kind): WRAPPED by whole words over up to
-    /// <see cref="ZuneDetailLayout.PanoramaLines"/> lines and hugged by its band, so a long name keeps its size (an ellipsis only after the last line). A
-    /// folded band (a short window) hides the title on one line. A title is a name: never re-cased.</summary>
+    /// <summary>The page's title in the panorama voice (the record's step, for every kind), FITTED to its band (owner exception 2026-10-21, the one Zune
+    /// title that shrinks): the record's step when it fits one line; else smaller, down to <see cref="PanoramaFloor"/>, until it fits one line; a name
+    /// the floor cannot hold on one line wraps by whole words at the floor over up to <see cref="ZuneDetailLayout.PanoramaLines"/> lines, then ends in an
+    /// ellipsis. The engine's one-line-first auto-fit (<see cref="TextFitMode.OneLineFirst"/>) does it at layout, and scales the exact line with the size,
+    /// so two lines at the floor (about half the step) take about the band one full-size line takes. A folded band (a short window) hides the title on
+    /// one line. A title is a name: never re-cased.</summary>
     public static TextEl Panorama(string title, ZuneDetailLayout lay)
     {
         var text = lay.PanoramaLarge ? R.Type.Panorama(title) : R.Type.PanoramaCompact(title);
@@ -121,6 +124,7 @@ internal static class ZuneDetailKit
             {
                 Color = Tok.TextPrimary, MaxLines = lay.PanoramaLines, Wrap = TextWrap.WrapWholeWords,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                MinSize = PanoramaFloor(text.Size), FitMode = TextFitMode.OneLineFirst,
             };
         return text with
         {
@@ -128,15 +132,27 @@ internal static class ZuneDetailKit
         };
     }
 
+    /// <summary>The hero title's floor for a <paramref name="size"/>-DIP step: the display rung about half of it, so two lines at the floor keep about the
+    /// block of one full-size line. Under the 120 and 150 panoramas the hero rung (64/72, <c>PanoramaCompact</c>: the step Compact itself draws, the
+    /// largest rung whose two lines fit under one 130 or 160 line); under the 64 compact panorama the page-title rung (40/48, <c>PageHero</c>: the
+    /// smallest rung that still reads as Zune's display type; the 28 below it is the pivots' voice). NaN (no fit) at or under 40: the rail's heading-voice
+    /// title keeps its size.</summary>
+    public static float PanoramaFloor(float size)
+    {
+        float hero = R.Type.PanoramaCompact("").Size, page = R.Type.PageHero("").Size;
+        return size > hero ? hero : size > page ? page : float.NaN;
+    }
+
     /// <summary>The panorama's band: its reserved height (eased: a short window folds it), the title nudged onto the gutter's optical edge. Clipped, so
     /// a folded band hides the title. <paramref name="gutter"/> is the inset the band adds itself (0 inside the page column, which pads the gutter: the
     /// nudge then becomes a negative margin).
     ///
-    /// THE TITLE. The title keeps its tier's step and WRAPS by whole words over <see cref="ZuneDetailLayout.PanoramaLines"/> lines; the band HUGS it (its
-    /// reserved height a floor, eased on the size channel), so a long name pushes the body down instead of shrinking or clipping. An editable playlist
-    /// hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as under Classic); the editor takes
-    /// the same step and the band hugs it likewise (the edit arm's field and words push the body down). A folded band (a short window) draws the plain
-    /// title, hidden: the identity column leads with the editor there.</summary>
+    /// THE TITLE. The title FITS its band (<see cref="Panorama"/>: the tier's step on one line, else smaller on one line, else two lines at the floor) and
+    /// stands on the band's FOOT, so a shrunk one-line title keeps the full-size line's baseline and the band its reserved height (the list under it does
+    /// not move); two lines at the floor take about that height, and the band HUGS whatever is taller (its reserved height a floor, eased on the size
+    /// channel). An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as
+    /// under Classic); the editor's read arm fits the same way and the band hugs it likewise (the edit arm's field and words push the body down). A folded
+    /// band (a short window) draws the plain title, hidden: the identity column leads with the editor there.</summary>
     public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter)
     {
         float lead = gutter + lay.PanoramaNudgeX;
@@ -164,6 +180,8 @@ internal static class ZuneDetailKit
                 new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = inside ? 1f : 0f,
+                    // On the band's foot: a fitted title smaller than the step sits on the step's baseline, the reserved air above it.
+                    AlignSelf = inside ? FlexAlign.End : FlexAlign.Auto,
                     Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, inside ? lay.PanoramaGap : 0f),
                     Animate = ZuneMotion.TitleScale, Opacity = Z.PanoramaOpacity,
                     Children = [title],

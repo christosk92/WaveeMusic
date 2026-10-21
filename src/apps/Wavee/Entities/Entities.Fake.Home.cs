@@ -210,6 +210,13 @@ public static partial class Entities
                 "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
             StageDaylistSection(s, "spotify:section:wavee-mockup-daylist", daylistId,
                 ["scream", "teen pop", "belter", "garage band", "international", "hollywood"]);
+            // Two long daylist names on no shelf, opened by uri only: the detail hero title's fit (one line, then two smaller lines, then the
+            // ellipsis; owner 2026-10-21) needs a name the size of the owner's own and one far past two lines.
+            MockPlaylist(s, "spotify:playlist:plt0", "throwback pop 2010s wednesday morning",
+                "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
+            MockPlaylist(s, "spotify:playlist:plt1",
+                "throwback pop 2010s wednesday morning with the windows down and the volume all the way up because nothing else matters right now honestly",
+                "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
 
             // -- Made for you --
             var dw = MockPlaylist(s, "spotify:playlist:37i9dQZEVXcKDbGa6CckPI", "Discover Weekly",
