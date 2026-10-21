@@ -620,11 +620,14 @@ public readonly partial struct Track
     /// menu and drops the "…" button (the queue's rows and the rail's Next up: <see cref="QueueRowRules.ShowsMenuButton"/>,
     /// where the "…" overlay would cover the ✕). <see cref="MenuArgs"/> is the menu's own
     /// options (null = the defaults). <see cref="Trailing"/> is the right cluster (heart, duration, add) and
-    /// <see cref="Selected"/> the opened/chosen skin.</para></summary>
+    /// <see cref="Selected"/> the opened/chosen skin. <see cref="Tracked"/> false reads the track table WITHOUT subscribing the
+    /// caller: only for a caller whose host already re-pushes its props when one of ITS rows changes (the queue panels, whose host
+    /// gates on a digest of the shown rows' versions, <c>Queue.QueueSurface.RowsDigest</c>), so a publication of other tracks
+    /// re-renders nothing.</para></summary>
     public readonly record struct RowDataOptions(
         Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = false,
         bool Draggable = true, bool ShowMenu = true, MenuOptions? MenuArgs = null, ulong? QueueItemId = null,
-        Element? Trailing = null, bool Selected = false)
+        Element? Trailing = null, bool Selected = false, bool Tracked = true)
     {
         /// <summary><c>new RowDataOptions()</c> means the defaults above (artwork, menu and drag on), not a zeroed struct.</summary>
         public RowDataOptions() : this(OnClick: null) { }
@@ -640,8 +643,11 @@ public readonly partial struct Track
     /// own.</para></summary>
     public static Controls.CardData RowData(Track t, in RowDataOptions o)
     {
-        _ = Entities.ScopeEpoch.Value;                    // FIRST (G-179): a scope switch re-points the table read below
-        _ = Entities.Current.Tracks.Changed.Value;
+        if (o.Tracked)
+        {
+            _ = Entities.ScopeEpoch.Value;                // FIRST (G-179): a scope switch re-points the table read below
+            _ = Entities.Current.Tracks.Changed.Value;
+        }
         var track = t;
         int slot = t.Slot;
         var can = TrackRowRules.AffordancesOf(slot, o.Draggable);

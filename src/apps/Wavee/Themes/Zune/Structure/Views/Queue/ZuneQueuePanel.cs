@@ -177,7 +177,8 @@ internal sealed class ZuneQueuePanelView : Component
             default:
             {
                 var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: true, ShowExplicit: false, ShowVideo: true,
-                    Draggable: draggable, ShowMenu: QueueRowRules.ShowsMenuButton, QueueItemId: queueItem, Trailing: trailing);
+                    Draggable: draggable, ShowMenu: QueueRowRules.ShowsMenuButton, QueueItemId: queueItem, Trailing: trailing,
+                    Tracked: false);   // the host re-pushes when a shown row changes (its rows digest)
                 var data = Track.RowData(new Track(r.Slot).ForDisplay, in options) with { Uri = text.Uri };
                 if (menu is not null) data = data with { Menu = menu };
                 return text.Unavailable ? data with { Title = text.Title, Subtitle = null, CoverUrl = null } : data;
