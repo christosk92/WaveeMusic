@@ -100,7 +100,7 @@ public static partial class Diagnostics
         public enum LoopMode : byte
         {
             /// <summary>`ignore` (the default): a loop does not hold the settle (a playing row's indicator, a marquee, the stage's art),
-            /// except a loading skeleton's shimmer: a page that still shows its skeleton has not landed, so the settle waits for its data
+            /// except a loading indicator (a skeleton's shimmer, an indeterminate progress bar or ring: <see cref="ShimmerKeys"/>): a page that still shows one has not landed, so the settle waits for its data
             /// (or its error) as it waits for any other motion.</summary>
             Ignore,
             /// <summary>`wait`: every loop holds the settle (the P1 settle): a page that shows one runs to the cap.</summary>
@@ -119,8 +119,11 @@ public static partial class Diagnostics
             _ => fallback,
         };
 
-        /// <summary>The keys of the SHOWN skeletons still loading: a looping track on the shimmer a <c>Skel.Region</c> (a SkeletonRegion
-        /// node) mounts while its data is pending (the engine pulses the shimmer's root, <c>SkeletonPulse</c>). Null when none.</summary>
+        /// <summary>The keys of the SHOWN loading indicators still running: a looping track on the shimmer a <c>Skel.Region</c> (a
+        /// SkeletonRegion node) mounts while its data is pending (the engine pulses the shimmer's root, <c>SkeletonPulse</c>), on an
+        /// indeterminate progress bar (a node under an <see cref="AutomationRole.ProgressBar"/> role: its indicators sweep on loop
+        /// rows; WinUI and Classic search's <c>omni-progress</c> while a query is pending) or on a progress ring's arc (an SDF arc
+        /// whose trim loops). Each says the page has not landed. Null when none.</summary>
         public static List<string>? ShimmerKeys(Shell.HeadlessShell shell, int max = 12)
         {
             SceneStore scene = shell.Host.Scene;
@@ -128,14 +131,26 @@ public static partial class Diagnostics
             foreach (NodeHandle n in Subtree(scene, scene.Root))
             {
                 if (!shell.Host.Animation.HasTracks(n) || !scene.IsShown(n)) continue;
-                NodeHandle region = scene.Parent(n);
-                if (region.IsNull || NodeDescriber.ElementTypeName(scene.ElementTypeId(region)) != "SkeletonRegion") continue;
+                if (!IsLoadingIndicator(scene, n)) continue;
                 string key = KeyOf(scene, n);
                 keys ??= [];
                 if (!keys.Contains(key)) keys.Add(key);
                 if (keys.Count >= max) break;
             }
             return keys;
+        }
+
+        /// <summary>A node whose looping track means "still loading" (<see cref="ShimmerKeys"/>): a skeleton's shimmer root, a
+        /// progress ring's arc, or a node inside a progress bar (its role sits at most four levels up, on the bar's root).</summary>
+        static bool IsLoadingIndicator(SceneStore scene, NodeHandle n)
+        {
+            NodeHandle parent = scene.Parent(n);
+            if (!parent.IsNull && NodeDescriber.ElementTypeName(scene.ElementTypeId(parent)) == "SkeletonRegion") return true;
+            if (scene.TryGetArc(n, out _)) return true;
+            NodeHandle up = n;
+            for (int i = 0; i < 5 && !up.IsNull; i++, up = scene.Parent(up))
+                if (scene.Interaction(up).Role == AutomationRole.ProgressBar) return true;
+            return false;
         }
 
         /// <summary>Run frames until nothing moves for two frames in a row (no animation track, no scroller in user motion, no
@@ -244,7 +259,7 @@ public static partial class Diagnostics
                 w.WriteString("tracks", census.ToString().TrimStart(' ', '|'));
             }
             if (r.Loading is { Count: > 0 })
-                w.WriteString("loading", "a skeleton is still loading (" + string.Join(", ", r.Loading) + "): its shimmer loops until the data or its error lands, so "
+                w.WriteString("loading", "still loading (" + string.Join(", ", r.Loading) + "): a skeleton's shimmer or a progress indicator loops until the data or its error lands, so "
                     + "the settle waited for it; raise max, or loops=skeletons to stop on the skeleton");
             if (anims + scrolls + wakes == 0)
             {
