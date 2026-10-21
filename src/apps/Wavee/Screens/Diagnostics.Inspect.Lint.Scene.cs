@@ -425,8 +425,11 @@ public static partial class Diagnostics
                     CollectHitBlockers(scene, node, blockers);
                     continue;
                 }
-                RectF rect = scene.PresentedAbsoluteRect(node);
-                float opacity = above * paint.Opacity;
+                // A spring mid-flight can overshoot: a presented width below 0, an opacity above 1. The snapshot keeps what the reader accepts
+                // (and what the rules mean): an empty box, a whole opacity, so a replay reads the page the live lint judged.
+                RectF presented = scene.PresentedAbsoluteRect(node);
+                RectF rect = new(presented.X, presented.Y, MathF.Max(0f, presented.W), MathF.Max(0f, presented.H));
+                float opacity = Math.Clamp(above * paint.Opacity, 0f, 1f);
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;
                 bool scrolls = scene.TryGetScroll(node, out ScrollState scroll);

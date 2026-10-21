@@ -4,6 +4,9 @@
 // tier's inset (16 / 24 / 36 / 48) and ends at its mirror. The guide only DESCRIBES those edges as `LintEdge` data (core resolves them
 // against the scene by key); it measures nothing and lays nothing out. An edge whose key no node carries is skipped, so the guide is inert
 // over the Classic stand-in and starts checking as the family lanes key their WinUI views (`WinUiFrameLayout.PageTitleKey`).
+//
+// THE POLICIES say what WinUI means where a rule would guess: Home's facet words are a stock SelectorBar, whose items pad their words 12 in
+// from the page column (W-Home draws "All" one item padding right of the greeting), so `align.inset` there is intended (`Allow`).
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -33,4 +36,18 @@ public sealed class WinUiLintGuide : IThemeLintGuide
                 Keys: [WinUiFrameLayout.PageTitleKey], Column: true),
         ];
     }
+
+    /// <summary>Home's facet words (the key `WinUiHomeFacetRow` gives the SelectorBar's box).</summary>
+    private const string FacetWordsKey = "home:facet:words";
+
+    /// <summary>The intents, built once: none depends on the window.</summary>
+    private static readonly LintPolicy[] s_policies =
+    [
+        new(LintIntent.Allow, FacetWordsKey,
+            "the facet words are a stock SelectorBar: each item pads its words in from the column (W-Home draws 'All' one item padding right of the greeting)",
+            Rule: "align.inset"),
+    ];
+
+    /// <inheritdoc />
+    public IReadOnlyList<LintPolicy> Policies(LintContext context) => s_policies;
 }

@@ -36,7 +36,8 @@ public static partial class Diagnostics
         /// <summary>Its x is set by centring or end alignment, not by a lead: the node or an ancestor up to its section root is placed Center or End
         /// on the HORIZONTAL axis, read per parent: in a ZStack by its JustifySelf (AlignSelf places it vertically there), in a column by its
         /// AlignSelf or else the column's AlignItems, in a row by the row's Justify or its own JustifySelf (AlignSelf is vertical in a row: the
-        /// two copies of a pivot's label centred on its line still lead at the row's start); or its text is aligned off the start.</summary>
+        /// two copies of a pivot's label centred on its line still lead at the row's start), unless it is as wide as its parent's content (then
+        /// the placement moves nothing: a glyph centred in its own box); or its text is aligned off the start.</summary>
         static bool PlacedOffStart(Snapshot s, Node n)
         {
             if (n.Text is { } t && t.Align is "Center" or "End") return true;
@@ -49,7 +50,9 @@ public static partial class Diagnostics
                     bool off = p.ZStack ? OffStart(m.Layout.JustifySelf)
                         : p.Column ? (m.Layout.AlignSelf == "Auto" ? OffStart(p.Layout.AlignItems) : OffStart(m.Layout.AlignSelf))
                         : p.Layout.Justify is "Center" or "End" or "SpaceAround" or "SpaceEvenly" || OffStart(m.Layout.JustifySelf);
-                    if (off) return true;
+                    // Centring a node as wide as its parent's content moves nothing (a glyph centred in its own 10 DIP box still leads).
+                    bool fills = m.Rect.W >= p.Rect.W - p.Layout.Padding.Left - p.Layout.Padding.Right - Slack;
+                    if (off && !fills) return true;
                 }
                 else if (OffStart(m.Layout.AlignSelf) || OffStart(m.Layout.JustifySelf)) return true;
                 if (m.Key is { Length: > 0 }) break;   // the section root: its own placement was the last checked
