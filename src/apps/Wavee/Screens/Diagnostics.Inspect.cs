@@ -532,7 +532,12 @@ public static partial class Diagnostics
                         }
                         if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
-                        return Settled(id, name, a, w => w.WriteString("uri", uri));
+                        // The load opens on the audio chain on the wall clock, which a frame-counted settle can outrun (the reply then read the bar and the
+                        // rows before the track played: no playing row, no lyrics button). Wait for it to land first; `phase` says where it stands.
+                        long before = _frames;
+                        string phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
+                        long loadFrames = _frames - before;
+                        return Settled(id, name, a, w => { w.WriteString("uri", uri); w.WriteString("phase", phase); w.WriteNumber("loadFrames", loadFrames); });
                     }
                 case Inspect.Verb.Dialog:
                     {
@@ -1338,6 +1343,22 @@ public static partial class Diagnostics
         {
             string dir = Path.Combine(AppContext.BaseDirectory, "assets", "covers");
             return [Path.Combine(dir, "header-bright.jpg"), Path.Combine(dir, "cover01.jpg"), Path.Combine(dir, "cover05.jpg"), Path.Combine(dir, "cover09.jpg")];
+        }
+
+        /// <summary>How long `play` waits, on the wall clock, for its load to land.</summary>
+        const int PlayLoadBudgetMs = 5_000;
+
+        /// <summary>Step frames until the playback phase leaves Loading (the load landed, or failed) or <paramref name="budgetMs"/> of wall
+        /// clock runs out; the phase, lower case ("loading" when it ran out).</summary>
+        string AwaitPlaybackLoad(int budgetMs)
+        {
+            long until = Environment.TickCount64 + budgetMs;
+            while (Playback.PhaseSignal.Peek() == Playback.Phase.Loading && Environment.TickCount64 < until)
+            {
+                RunFrames(1);
+                if (Playback.PhaseSignal.Peek() == Playback.Phase.Loading) Thread.Sleep(2);
+            }
+            return Playback.PhaseSignal.Peek().ToString().ToLowerInvariant();
         }
 
         void RunFrames(int n)

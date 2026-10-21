@@ -34,7 +34,7 @@ public readonly partial struct Home
     /// <summary>THE install method (contract §7): the eight routes owner P renders, the omnibar's suggestion source, and
     /// every notification seam the feed host fills. The composition calls it once, from App.cs, after
     /// <c>Track.InstallActions</c>. UI thread. Assignments: <c>Shell.SetPage</c> × 8, <c>Shell.Omnibar.Source</c>
-    /// (live builds only — <c>--fake</c> keeps the navigation-log answer), <c>Notify.RefreshFeeds</c>, and the feed host's
+    /// (live builds ask Spotify, <c>--fake</c> the fake catalogue), <c>Notify.RefreshFeeds</c>, and the feed host's
     /// three watches (<see cref="Feeds"/>: the feeds once per online session, the update row merge, the daylist note).</summary>
     public static void InstallPages()
     {
@@ -49,7 +49,7 @@ public readonly partial struct Home
         Shell.SetPage(Shell.RouteKind.Browse, Browse.DirectoryPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseCategory, Browse.CategoryPageFor);
         Shell.SetPage(Shell.RouteKind.Recents, Recents.PageFor);
-        if (!Platform.Args.Fake) Shell.Omnibar.Source = Spotify.Api.SuggestAsync;
+        Shell.Omnibar.Source = Platform.Args.Fake ? Entities.FakeSuggestAsync : Spotify.Api.SuggestAsync;
         Notify.RefreshFeeds = Feeds.Refresh;
         Feeds.Install();
     }
