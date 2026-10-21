@@ -306,13 +306,14 @@ public static partial class Diagnostics
             Wrap = l.Wrap,
         };
 
-        /// <summary>The theme's design scale as named values: the active definition's <c>Spacing</c> rungs, and the style's <c>R.Space</c> rhythm
-        /// and <c>R.Shape</c> radii (what <c>space.scale</c> accepts besides 2 and the 4-grid up to 64).</summary>
+        /// <summary>The theme's design scale as named values: the active definition's <c>Spacing</c> rungs, the style's <c>R.Space</c> rhythm
+        /// and <c>R.Shape</c> radii, and the guide's board steps (<see cref="IThemeLintGuide.BoardScale"/>): what <c>space.scale</c> accepts
+        /// besides 2 and the 4-grid up to 64.</summary>
         public static IReadOnlyList<InspectLint.ScaleEntry> ScaleOf()
         {
             SpaceRoles space = R.Space;
             ShapeRoles shape = R.Shape;
-            return
+            List<InspectLint.ScaleEntry> scale =
             [
                 new("Spacing.XXS", Spacing.XXS), new("Spacing.XS", Spacing.XS), new("Spacing.S", Spacing.S), new("Spacing.M", Spacing.M),
                 new("Spacing.L", Spacing.L), new("Spacing.XL", Spacing.XL), new("Spacing.XXL", Spacing.XXL), new("Spacing.XXXL", Spacing.XXXL),
@@ -325,6 +326,20 @@ public static partial class Diagnostics
                 new("R.Shape.Avatar", shape.Avatar), new("R.Shape.CurrentMark", shape.CurrentMark), new("R.Shape.ContentSeam", shape.ContentSeam),
                 new("R.Shape.OmniRow", shape.OmniRow), new("R.Shape.SeekTrack", shape.SeekTrack),
             ];
+            // The steps the theme's boards space with beyond the shared tokens (Zune: 6, 10, 14, 18, 22): the guide declares them.
+            foreach (LintScaleStep step in ThemeInspection.ActiveLintGuide?.BoardScale ?? [])
+                scale.Add(new(step.Name, step.Value));
+            return scale;
+        }
+
+        /// <summary>What a node draws beyond a fill, a border, a text run or an image: a drawn visual kind (<c>Path</c>, <c>ListRow</c>, ...) by name,
+        /// else an SDF arc (<c>Arc</c>: a progress ring), a gradient border (<c>BorderBrush</c>) or a material (<c>Acrylic</c>); "" for none.</summary>
+        static string VisualOf(SceneStore scene, NodeHandle node, VisualKind kind)
+        {
+            if (kind is not (VisualKind.None or VisualKind.Box or VisualKind.Text or VisualKind.Image)) return kind.ToString();
+            if (scene.TryGetArc(node, out _)) return "Arc";
+            if (scene.TryGetBorderBrush(node, out _)) return "BorderBrush";
+            return scene.TryGetAcrylic(node, out _) ? "Acrylic" : "";
         }
 
         /// <summary>The route as `status` names it.</summary>
@@ -487,6 +502,7 @@ public static partial class Diagnostics
                         BorderColor = paint.BorderColor,
                         Image = paint.VisualKind == VisualKind.Image,
                         Gradient = scene.TryGetGradient(node, out _),
+                        Visual = VisualOf(scene, node, paint.VisualKind),
                         Text = paint.VisualKind == VisualKind.Text ? TextOf(shell, node, ref paint, strings) : null,
                     });
                 }

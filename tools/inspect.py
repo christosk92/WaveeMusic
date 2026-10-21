@@ -8,7 +8,7 @@ and prints the one reply line it gets back. Standard library only; runs under `p
     python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py --trace -c "mount w=1440 h=900 theme=zune" -c "goto album:spotify:album:x settle=false trace=90"
     python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, 2 on any ok:false, plus a summary line
-    python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys) count too
+    python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys, duplicate text, inkless targets) count too
     python -I tools/inspect.py                      # interactive: type commands, Ctrl+Z / Ctrl+D to end
 
 Commands are the server's own grammar: a JSON object {"cmd","args","id"} or a text line `verb key=value k="a b" k=[a,b] ...`
@@ -322,7 +322,7 @@ def main():
                          "(outcome 'fail', level 'gate'; review, suppressed and report findings never count), 2 on any ok:false "
                          "reply, else 0; prints a one-line summary last")
     ap.add_argument("--gate-todo", action="store_true",
-                    help="with --gate: failures of the todo-level rules (align, space, placeholder, keys) count too")
+                    help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets) count too")
     args = ap.parse_args()
 
     if args.gate_todo and not args.gate:

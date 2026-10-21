@@ -4,7 +4,8 @@
 //
 // Role: CORE (pure: no engine, no host, no thread; the scene is read into a `Snapshot` by Diagnostics.Inspect.Lint.Scene.cs, or a saved one
 // is read back by Diagnostics.Inspect.Lint.Store.cs). The report-only rules (align.inset, align.baseline, space.scale, text.placeholder,
-// key.hygiene) are Diagnostics.Inspect.Lint.Layout.cs and .Lint.Content.cs. User reference: docs/guide/agent-lint.md.
+// key.hygiene, text.duplicate, target.ink, space.dead) are Diagnostics.Inspect.Lint.Layout.cs, .Lint.Content.cs and .Lint.Ink.cs. User
+// reference: docs/guide/agent-lint.md.
 // Spec: scratch/agentic-e2e/PLAN.md 4.5 and 5.1-5.5; the algorithms and false-positive classes: scratch/agentic-e2e/design/design-qa.md.
 //
 // THE SNAPSHOT is the dump's node list without the JSON: depth-first, `Nodes[i].Index == i`, a node's `Parent` an earlier index (-1 for a
@@ -54,7 +55,8 @@ public static partial class Diagnostics
                 DuplicateAction = "duplicate.action", SpaceStack = "space.stack", ContrastText = "contrast.text";
 
             public const string AlignInset = "align.inset", AlignBaseline = "align.baseline", SpaceScale = "space.scale",
-                TextPlaceholder = "text.placeholder", KeyHygiene = "key.hygiene";
+                TextPlaceholder = "text.placeholder", KeyHygiene = "key.hygiene", TextDuplicate = "text.duplicate", TargetInk = "target.ink",
+                SpaceDead = "space.dead";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -91,6 +93,9 @@ public static partial class Diagnostics
             new(Rules.SpaceScale, "", Level.Todo, "declared gap, padding and margin off the theme's spacing scale"),
             new(Rules.TextPlaceholder, "", Level.Todo, "a missing loc key, a missing argument, NaN or null on screen"),
             new(Rules.KeyHygiene, "", Level.Todo, "keys that break selectors: duplicates, control characters, run ids, tier words"),
+            new(Rules.TextDuplicate, "", Level.Todo, "the same visible words twice in one column within a glance (a heading repeated as an eyebrow)"),
+            new(Rules.TargetInk, "", Level.Todo, "a click target that paints nothing at rest"),
+            new(Rules.SpaceDead, "", Level.Todo, "an empty slot that keeps its room beside content, with no plate (a report)"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -355,6 +360,11 @@ public static partial class Diagnostics
             public ColorF BorderColor { get; init; }
             public bool Image { get; init; }
             public bool Gradient { get; init; }
+
+            /// <summary>A drawn visual beyond a box, a text run or an image (<c>Path</c>, <c>PolylineStroke</c>, <c>IconLayer</c>, <c>TabShape</c>,
+            /// <c>Video</c>, <c>ListRow</c>, <c>Series</c>, <c>Sprites</c>, an SDF <c>Arc</c>, a <c>BorderBrush</c>, an <c>Acrylic</c> material): it
+            /// paints though no fill, image or text says so (a progress ring's arc). "" for none. Read by the rules that ask whether a node draws anything at all (<c>target.ink</c>, <c>space.dead</c>).</summary>
+            public string Visual { get; init; } = "";
 
             public TextRun? Text { get; init; }
 
@@ -973,6 +983,9 @@ public static partial class Diagnostics
                     Rules.SpaceScale => SpaceScaleRule(s, found),
                     Rules.TextPlaceholder => PlaceholderRule(s, found),
                     Rules.KeyHygiene => KeyHygieneRule(s, found),
+                    Rules.TextDuplicate => DuplicateTextRule(s, o, found),
+                    Rules.TargetInk => TargetInkRule(s, o, found),
+                    Rules.SpaceDead => DeadSpaceRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;
@@ -1187,6 +1200,9 @@ public static partial class Diagnostics
             Rules.SpaceScale => "take the value from Spacing.* or the theme's R.Space/tier record (or declare OffScaleOk with a reason)",
             Rules.TextPlaceholder => "a missing string or argument: add the loc key or pass the argument; never blank the text",
             Rules.KeyHygiene => "key the node by its entity or slot id, without tier, form, count or run-id parts (keys must be stable selectors)",
+            Rules.TextDuplicate => "say it once: keep the heading and drop the repeat inside the section (or give the repeat its own words); the section stays",
+            Rules.TargetInk => "give the target ink at rest (its label or glyph), or hand its click to a control a person can see; never remove the feature",
+            Rules.SpaceDead => "give the empty slot its plate at rest (a placeholder fill or glyph), or declare the reservation in the guide (Allow space.dead, naming the board); never drop a reservation that keeps the row from jumping",
             _ => "",
         };
 
@@ -1651,6 +1667,12 @@ public static partial class Diagnostics
             RectF seen = n.Seen;
             if (seen.IsEmpty) return false;
             if (e.Side == LintSide.Left ? MathF.Abs(seen.X - n.Rect.X) > Slack : MathF.Abs(seen.Right - n.Rect.Right) > Slack) return false;
+            return EdgeKeyed(s, n, e);
+        }
+
+        /// <summary>The node matches the edge's keys, prefixes, <c>UnderKey</c> and <c>GlyphsOnly</c>, wherever it is.</summary>
+        static bool EdgeKeyed(Snapshot s, Node n, LintEdge e)
+        {
             bool keyed = e.Keys is { Count: > 0 } || e.Prefixes is { Count: > 0 };
             if (keyed)
             {
@@ -1670,8 +1692,15 @@ public static partial class Diagnostics
             return true;
         }
 
+        /// <summary>An overlay hides the node: a modal scrim, or an opaque fill painted after it over half or more of what shows of it (a menu's
+        /// plate, the search suggestions' card).</summary>
+        static bool Hidden(Node n) => n.Covered || n.Occluded >= MinOccluded;
+
         /// <summary>For each of the guide's edges of the rule: find the leftmost (or rightmost) matching node IN SCOPE (a parked keep-alive copy or a
-        /// node scrolled away is never picked) and compare its edge. Returns the edges that matched; an edge nothing matches is not checked.</summary>
+        /// node scrolled away is never picked) and compare its edge. When the FIRST match on the window is covered by an overlay (the search
+        /// suggestions over the band's first pivot at Compact), the edge is not checked: the next match is another node, not the edge (the
+        /// first pivot's x is the edge, the second's is a pivot's width further). Returns the edges that matched; an edge nothing matches is not
+        /// checked.</summary>
         static int EdgeRule(Snapshot s, string id, List<Finding> into)
         {
             string guideRule = id == Rules.EdgeLeft ? Rules.Gutter : Rules.RightEdge;
@@ -1680,15 +1709,23 @@ public static partial class Diagnostics
             {
                 if (!string.Equals(e.Rule, guideRule, StringComparison.Ordinal)) continue;
                 bool left = e.Side == LintSide.Left;
-                Node? pick = null;
-                float at = 0f;
+                Node? pick = null, covered = null;
+                float at = 0f, coveredAt = 0f;
                 foreach (Node n in s.Nodes)
                 {
-                    if (!EdgeMatches(s, n, e)) continue;
-                    float x = left ? n.Rect.X : n.Rect.Right;
-                    if (pick is null || (left ? x < at : x > at)) { pick = n; at = x; }
+                    if (EdgeMatches(s, n, e))
+                    {
+                        float x = left ? n.Rect.X : n.Rect.Right;
+                        if (pick is null || (left ? x < at : x > at)) { pick = n; at = x; }
+                    }
+                    else if (Hidden(n) && !n.Moving && n.Rect.W > 0f && n.Rect.H > 0f && n.Rect.Right > 0f && n.Rect.X < s.Width && EdgeKeyed(s, n, e))
+                    {
+                        float x = left ? n.Rect.X : n.Rect.Right;
+                        if (covered is null || (left ? x < coveredAt : x > coveredAt)) { covered = n; coveredAt = x; }
+                    }
                 }
                 if (pick is null) continue;
+                if (covered is not null && (left ? coveredAt < at - Slack : coveredAt > at + Slack)) continue;   // the first match is under an overlay
                 looked++;
                 float delta = at - e.Expected;
                 if (MathF.Abs(delta) <= MathF.Max(e.Tolerance, Slack)) continue;

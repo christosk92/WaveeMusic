@@ -12,7 +12,8 @@
 //     near-miss (a box a hair too narrow for its words) and a hard clip are still reported: the lint checks both before any intent;
 //   · the page title's x is the page column's ink line (`Column`): align.inset measures the page's leads against it;
 //   · the panorama hangs left of the page column by its record's `PanoramaNudgeX` (the light face's side bearing, Z-Album), and the settings
-//     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings) (`Hang`).
+//     panorama by `ZuneSettingsRules.PanoramaBleed` (Z-Settings) (`Hang`);
+//   · THE BOARD SCALE: the boards space on a 2-DIP step to 24, so 6, 10, 14, 18 and 22 are on Zune's scale (`BoardScale`: space.scale).
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -42,6 +43,20 @@ public sealed class ZuneLintGuide : IThemeLintGuide
 
     /// <inheritdoc />
     public IReadOnlyList<string> DesignedTopBleeds => s_topBleeds;
+
+    /// <summary>Why the half steps are Zune's: its boards space on a 2-DIP step up to 24, and these five are the ones the shared 4-grid lacks.</summary>
+    private const string BoardSteps = "the Zune boards space on a 2-DIP step up to 24 (docs/themes/boards/zune/project: gap, padding and margin of 10px x408, "
+        + "6px x293, 14px x259, 18px x68, 22px x58)";
+
+    /// <summary>Zune's board steps between the 4-grid's rungs (`space.scale` takes them as on the scale).</summary>
+    private static readonly LintScaleStep[] s_boardScale =
+    [
+        new("board.6", 6f, BoardSteps), new("board.10", 10f, BoardSteps), new("board.14", 14f, BoardSteps),
+        new("board.18", 18f, BoardSteps), new("board.22", 22f, BoardSteps),
+    ];
+
+    /// <inheritdoc />
+    public IReadOnlyList<LintScaleStep> BoardScale => s_boardScale;
 
     /// <inheritdoc />
     public IReadOnlyList<LintEdge> Edges(LintContext context)

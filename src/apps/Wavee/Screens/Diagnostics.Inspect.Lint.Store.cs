@@ -221,6 +221,7 @@ public static partial class Diagnostics
             }
             if (n.Image) w.WriteBoolean("image", true);
             if (n.Gradient) w.WriteBoolean("gradient", true);
+            if (n.Visual.Length > 0) w.WriteString("visual", n.Visual);
             if (n.Text is { } t) WriteText(w, t);
             if (n.TextCount != 0) w.WriteNumber("tc", n.TextCount);
             if (n.ImageCount != 0) w.WriteNumber("ic", n.ImageCount);
@@ -563,6 +564,7 @@ public static partial class Diagnostics
                 BorderColor = borderC,
                 Image = r.Bool(e, "image"),
                 Gradient = r.Bool(e, "gradient"),
+                Visual = r.Str(e, "visual", ""),
                 Text = text,
                 TextCount = r.Int(e, "tc", 0),
                 ImageCount = r.Int(e, "ic", 0),

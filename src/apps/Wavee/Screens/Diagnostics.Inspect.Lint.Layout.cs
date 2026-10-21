@@ -141,6 +141,7 @@ public static partial class Diagnostics
                 list.Add(n);
             }
             var found = new Dictionary<string, InsetGroup>(StringComparer.Ordinal);
+            var regionLeads = new HashSet<int>();
             int judged = 0;
             foreach (var ((region, backdrop), list) in groups)
             {
@@ -189,7 +190,10 @@ public static partial class Diagnostics
                 }
                 var onLine = new List<Node>();
                 foreach (Node n in leads)
+                {
                     if (MathF.Abs(n.Rect.X - line) <= tolerance) onLine.Add(n);
+                    if (MathF.Abs(n.Rect.X - line) <= InsetMax) regionLeads.Add(n.Index);   // judged here; a lead farther off starts another column
+                }
                 string linePatterns = string.Join(", ", onLine.Select(static n => n.Pattern).Distinct().Take(4));
                 foreach (Node n in leads)
                 {
@@ -233,6 +237,141 @@ public static partial class Diagnostics
                 };
                 if (g.Intent is { } intent)
                     f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = intent.Reason };
+                into.Add(f);
+            }
+            judged += ColumnInsets(s, regionLeads, into);
+            return judged;
+        }
+
+        /// <summary>The largest offset (DIP) the column pass of <c>align.inset</c> judges: past it, a lead starts another column.</summary>
+        public const float ColumnInsetMax = 32f;
+
+        sealed class ColumnGroup
+        {
+            public readonly List<Node> Leads = [];
+            public Node Reference = null!;
+            public float D;
+        }
+
+        /// <summary>The lead of one child of a column: the leftmost start of the OUTERMOST ink in its subtree (an ink node stops the descent: what
+        /// sits on a plate is the plate's design), not placed by centring or end alignment, not moving, reached by scrolling; null when none.</summary>
+        static Node? ChildLead(Snapshot s, Node child, int[] last)
+        {
+            Node? best = null;
+            for (int i = child.Index; i <= last[child.Index];)
+            {
+                Node m = s.Nodes[i];
+                if (!m.Ink && m.Visual.Length == 0) { i++; continue; }   // a progress ring's arc leads its row as ink does
+                if (!m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
+                i = last[i] + 1;
+            }
+            return best;
+        }
+
+        /// <summary>Where a lead would sit without its declared hang or indent (a guide <see cref="LintIntent.Hang"/> of -8 on the panorama: its
+        /// x + 8): what the column pass compares, so a designed hang neither becomes a column's lead nor reads as an inset.</summary>
+        static float Intended(Snapshot s, Node n)
+            => n.Rect.X - ((PolicyFor(s, n, LintIntent.Hang) ?? PolicyFor(s, n, LintIntent.Indent))?.Value ?? 0f);
+
+        /// <summary>The nearest keyed node that holds every one of <paramref name="members"/> (-1: none): what a column finding is named by.</summary>
+        static int CommonKeyed(Snapshot s, IReadOnlyList<Node> members)
+        {
+            var chain = new List<int>();
+            for (int i = members[0].Index; i >= 0; i = s.Nodes[i].Parent) chain.Add(i);
+            int at = 0;
+            foreach (Node m in members)
+                while (at < chain.Count && !Under(s, m.Index, chain[at])) at++;
+            for (; at < chain.Count; at++)
+                if (s.Nodes[chain[at]].Key is { Length: > 0 }) return chain[at];
+            return -1;
+        }
+
+        /// <summary><c>align.inset</c>'s COLUMN PASS: the content the region pass cannot judge because ink sits left of it on its line (an aside
+        /// beside a song list, the inside of a card, a right pane), measured against its own column. For each column box (a vertical stack, no
+        /// ZStack, not in a rail, not moving, two or more children, not a frame column that holds a page slot), the lead of each child is <see cref="ChildLead"/>; the column's lead is its
+        /// leftmost child lead (the REFERENCE). A child lead in scope that is no region lead and sits <see cref="InsetMin"/> &lt; d &lt;=
+        /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it: the plate it sits on
+        /// starts at or right of the reference (a filled card whose art is flush and whose words are padded). The about card's words at x=1152
+        /// under its art at 1132 sit on the page: +20. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node that holds
+        /// the reference and the leads. A lead's declared <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> is taken off its x
+        /// first (<see cref="Intended"/>: the panorama's -8 hang never becomes a column's lead). Cause <c>column:+d</c>.</summary>
+        static int ColumnInsets(Snapshot s, HashSet<int> regionLeads, List<Finding> into)
+        {
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int count = nodes.Count;
+            var last = new int[count];
+            var kids = new List<int>?[count];
+            for (int i = 0; i < count; i++) last[i] = i;
+            for (int i = count - 1; i >= 0; i--)
+            {
+                int p = nodes[i].Parent;
+                if (p >= 0 && last[i] > last[p]) last[p] = last[i];
+            }
+            for (int i = 0; i < count; i++)
+            {
+                int p = nodes[i].Parent;
+                if (p >= 0) (kids[p] ??= []).Add(i);
+            }
+            // The frame's own columns hold the pages (the title bar, the band and the page slot stacked): what the guide's edges judge, not a
+            // column of one page's content.
+            var holdsPage = new bool[count];
+            for (int i = 0; i < count; i++)
+                if (nodes[i].Key is { } key && TrySlotRoute(key, out _, out _))
+                    for (int a = nodes[i].Parent; a >= 0; a = nodes[a].Parent) holdsPage[a] = true;
+            var groups = new Dictionary<(int Reference, float D), ColumnGroup>();
+            var order = new List<(int Reference, float D)>();
+            var seen = new HashSet<int>();
+            int judged = 0;
+            foreach (Node c in nodes)
+            {
+                if (!c.Column || c.ZStack || c.InRail || c.Moving || c.ScrollAxis != 0 || holdsPage[c.Index] || kids[c.Index] is not { Count: >= 2 } children
+                    || !Reachable(c)) continue;
+                var leads = new List<Node>(children.Count);
+                Node? reference = null;
+                foreach (int k in children)
+                    if (ChildLead(s, nodes[k], last) is { } lead)
+                    {
+                        leads.Add(lead);
+                        if (reference is null || Intended(s, lead) < Intended(s, reference)) reference = lead;
+                    }
+                if (leads.Count < 2 || reference is null) continue;
+                foreach (Node lead in leads)
+                {
+                    if (!lead.InScope || regionLeads.Contains(lead.Index) || !seen.Add(lead.Index)) continue;
+                    judged++;
+                    float d = Intended(s, lead) - Intended(s, reference);
+                    if (d <= InsetMin || d > ColumnInsetMax) continue;
+                    if (lead.Backdrop >= 0 && nodes[lead.Backdrop].Rect.X >= reference.Rect.X - Slack) continue;   // padded inside a visible container
+                    float bucket = MathF.Round(d);
+                    var key = (reference.Index, bucket);
+                    if (!groups.TryGetValue(key, out ColumnGroup? g))
+                    {
+                        groups[key] = g = new ColumnGroup { Reference = reference, D = bucket };
+                        order.Add(key);
+                    }
+                    g.Leads.Add(lead);
+                }
+            }
+            foreach (var key in order)
+            {
+                ColumnGroup g = groups[key];
+                var all = new List<Node>(g.Leads) { g.Reference };
+                int holder = CommonKeyed(s, all);
+                string pattern = holder >= 0 ? PatternOfKey(nodes[holder].Key!) : "#root";
+                var (refs, rects) = Members(g.Leads);
+                string names = string.Join(", ", g.Leads.Take(4).Select(static n => n.Text is { } t ? TextName(t) : n.Ref)) + (g.Leads.Count > 4 ? ", ..." : "");
+                string refName = g.Reference.Text is { } rt ? TextName(rt) : (g.Reference.Image ? "image " : "") + g.Reference.Ref;
+                var f = new Finding(Rules.AlignInset, Severity.Warn,
+                    $"{g.Leads.Count} {Plural(g.Leads.Count, "lead", "leads")} in {pattern} start at x={F(g.Leads[0].Rect.X)}, {Signed(g.D)} right of their column's lead x={F(g.Reference.Rect.X)} ({refName}), on no visible container: {names}", refs)
+                {
+                    Measured = [M("x", g.Leads[0].Rect.X), M("d", g.D)],
+                    Expected = [M("x", g.Reference.Rect.X)],
+                    Pattern = pattern,
+                    Cause = "column:" + Signed(g.D),
+                    Count = g.Leads.Count,
+                    Rects = rects,
+                    Nodes = Ids(g.Leads),
+                };
                 into.Add(f);
             }
             return judged;
