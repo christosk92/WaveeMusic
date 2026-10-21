@@ -61,6 +61,10 @@ public static class ZuneFrameContext
     /// <summary>The primary panel's top edge in DIP below the window's top (under the title bar docked; under the band floating), read live: where a panel
     /// that paints its own surface picks the page wash up.</summary>
     public static readonly Context<Func<float>?> PanelTop = new(null);
+
+    /// <summary>The docked panels' width now (the primary's reservation and every docked pane's; 0 while closed, floating or a sheet), read
+    /// live: their full-height surface runs up under the title bar's end, so the title bar keeps its pill off it.</summary>
+    public static readonly Context<Func<float>?> DockedWidth = new(null);
 }
 
 /// <summary>Zune's window frame.</summary>
@@ -76,6 +80,7 @@ internal static class ZuneFrame
         // The band slot's laid-out height (what the band draws now: 84 or 52, easing between them), for the floating panel's top.
         var bandH = ctx.Hooks.UseSignal(float.NaN);
         bool reduced = ctx.Reduced;
+        Func<float> docked = () => DockedWidth(props);
         var column = new BoxEl
         {
             // Window-tall, bound: the body yields instead of shoving the play bar off the bottom.
@@ -91,7 +96,7 @@ internal static class ZuneFrame
                     ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                     Children =
                     [
-                        Embed.Comp(new ZunePanelSurfaceProps(props.Panel, () => DockedWidth(props)), static () => new ZunePanelSurface())
+                        Embed.Comp(new ZunePanelSurfaceProps(props.Panel, docked), static () => new ZunePanelSurface())
                             with { Visible = Prop.Of(props.ChromeMounted) },
                         new BoxEl
                         {
@@ -119,7 +124,7 @@ internal static class ZuneFrame
             ? bandH.Value : placement() == PanelPlacement.Float ? ZuneTiers.FrameOf(tiers()).BandH : 0f);
         return Ctx.Provide(ZuneFrameContext.PageChrome, props.NavPane.Band?.Chrome,
             Ctx.Provide(ZuneFrameContext.Material, props.Material.State, Ctx.Provide(ZuneFrameContext.PanelTop, panelTop,
-            Ctx.Provide(SelectionDockHost.Context, dockHost, ZStack(
+            Ctx.Provide(ZuneFrameContext.DockedWidth, docked, Ctx.Provide(SelectionDockHost.Context, dockHost, ZStack(
             ground,
             // The immersive stage covers the whole frame and sits below the banner, the drop cue and the toasts.
             Flow.Show(props.ImmersiveOpen, new BoxEl
@@ -136,7 +141,7 @@ internal static class ZuneFrame
             ctx.View(ViewKeys.ShellCommandPalette, props.CommandPalette),
             ctx.View(ViewKeys.ShellCoverScrim, props.CoverScrim),
             ctx.View(ViewKeys.ShellDragChip, props.DragChip),
-            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f }))));
+            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f })))));
     }
 
     /// <summary>The title bar's slot (`shell.titlebar`): the record's height (48, 56 at Huge 4K), easing across the 3200 crossing so the band

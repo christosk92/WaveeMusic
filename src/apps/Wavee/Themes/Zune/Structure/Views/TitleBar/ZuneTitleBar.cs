@@ -13,6 +13,8 @@
 //     filling the lead beside Back instead of the magnifier (Z-Search-Compact: "the field takes the title bar"), so the query stays visible.
 //   · TRAILING: the search (the pill from Standard up, 220 / 320 / 400, growing while focused; the magnifier below), the account (the core's
 //     chip host; "Connecting" as a caption; "Sign in" / "Reconnect" as the accent button) and, on the pill tiers, the bell with the accent dot.
+//     While a panel docks, its surface runs up under the bar's end: the account and the bell stay on it, the pill stands wholly on the page
+//     side, one gap before the panel's edge (a spacer after it in its host, easing as the island does; `ZuneFrameRules.PillBesidePanel`).
 //   · NOT HERE, by Zune's capabilities (`ThemeFactsContext`): no pane toggle (NavTree false; the engine part is keyed so a test can hold it
 //     to that), no tabs and no tab count (Tabs false), no Forward (ForwardButton false). The friends toggle and the pin are not drawn either:
 //     friends is a pivot of the panel, the pins are the band's.
@@ -43,10 +45,53 @@ internal static class ZuneTitleBar
         var tiers = ctx.TierReader();
         var chrome = ctx.Hooks.UseContext(ZuneFrameContext.PageChrome);
         var facts = TierContext.DrawnIn(ctx.Hooks.UseContext(ThemeFactsContext.Signal));
-        return Embed.Comp(() => Bar(props, tiers, chrome, facts));
+        var room = ctx.Hooks.UseRef<PillRoom?>(null);
+        var r = room.Value ??= new PillRoom();
+        r.Tiers = tiers;
+        r.Viewport = ctx.Hooks.UseContextSignal(Viewport.Size);
+        r.Docked = ctx.Hooks.UseContext(ZuneFrameContext.DockedWidth);
+        return Embed.Comp(() => Bar(props, tiers, chrome, facts, r));
     }
 
-    private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts)
+    /// <summary>The pill's place beside a docked panel (<see cref="ZuneFrameRules.PillBesidePanel"/>), read live by the pill host's spacer and the
+    /// pill's width: the docked width (the frame's), the window, and the laid-out widths of the row's own account host and wordmark.</summary>
+    private sealed class PillRoom
+    {
+        public Func<TierFacts> Tiers = static () => default;
+        public IReadSignal<Size2>? Viewport;
+        public Func<float>? Docked;
+        public readonly Signal<float> AccountW = new(float.NaN), WordmarkW = new(float.NaN);
+
+        /// <summary>Bumped when the spacer's laid-out width settles on its target: the bar folds it into its content version, so the trailing
+        /// island's region is pushed at its settled width (a dock moves the pill without any other term changing).</summary>
+        public readonly Signal<int> Settled = new(0);
+        float _settledShift = -1f;
+
+        public PillPlace Place()
+        {
+            var t = Tiers();
+            return ZuneFrameRules.PillBesidePanel(ZuneFrameRules.TitleBarOf(t), Viewport?.Value.Width ?? 0f, Docked?.Invoke() ?? 0f,
+                AccountW.Value, WordmarkW.Value, ZuneTiers.GutterOf(in t));
+        }
+
+        public float Shift() => Place().Shift;
+
+        public float MaxW() => Place().MaxW;
+
+        public void ReportShift(float laidOut)
+        {
+            float target = Shift();
+            if (MathF.Abs(laidOut - target) > ZuneFrameRules.SettleSlop || _settledShift == target) return;
+            _settledShift = target;
+            Settled.Value = Settled.Peek() + 1;
+        }
+    }
+
+    /// <summary>The pill's widest now (<see cref="PillPlace.MaxW"/>), provided by the pill host to the pill it mounts; null elsewhere.</summary>
+    internal static readonly Context<Func<float>?> PillMaxW = new(null);
+
+    private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts,
+        PillRoom room)
     {
         var caps = facts.Peek().Capabilities;
         var parts = new TemplateParts();
@@ -58,7 +103,7 @@ internal static class ZuneTitleBar
             // ZK hand-off: the pane toggle follows the capabilities, never a hard-coded true.
             ShowPaneToggle = caps.NavTree, OnPaneToggle = props.OnPaneToggle,
             PaneToggleEnabledSignal = props.PaneToggleEnabled, PaneToggleToolTip = props.PaneToggleTip,
-            Tabs = () => LeadIsland(props, tiers, chrome, facts),
+            Tabs = () => LeadIsland(props, tiers, chrome, facts, room),
             // The trail is part of the lead island's shape: a navigation re-renders the bar and re-pushes its regions.
             // The Compact field's place (lead or trailing) is part of both islands' shapes: its flip re-renders the bar.
             TabsVersion = () => HashCode.Combine(props.TabsVersion(), chrome?.Value, FieldInLead(props, tiers())),
@@ -66,9 +111,10 @@ internal static class ZuneTitleBar
             // Z-Search-Compact: the field FILLS the lead island beside Back (a hugging island left it at the omnibar's 38 natural width, its suggestions
             // flyout as narrow); the drag bands give it the free lane.
             TabsFill = () => FieldInLead(props, tiers()),
-            Trailing = () => TrailingIsland(props, tiers),
-            // The tier is part of every island's shape (pill or magnifier, the bell, the gaps): a crossing re-renders the bar.
-            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers())),
+            Trailing = () => TrailingIsland(props, tiers, room),
+            // The tier is part of every island's shape (pill or magnifier, the bell, the gaps): a crossing re-renders the bar. The pill's
+            // spacer beside a docked panel widens the trailing island: its settle re-pushes the regions.
+            ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers()), room.Settled.Value),
             RowSpacing = () => ZuneFrameRules.SpacingOf(tiers()),
             BarHeight = Prop.Of(() => ZuneTiers.FrameOf(tiers()).TitleBarH),
             Parts = parts,
@@ -102,7 +148,8 @@ internal static class ZuneTitleBar
         return ZuneFrameRules.FieldInLead(rec, props.OnSearchRoute(), model.FlyoutOpen.Peek(), model.SearchFocused.Peek());
     }
 
-    private static Element LeadIsland(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts)
+    private static Element LeadIsland(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<PageChrome?>? chrome, IReadSignal<ThemeFacts> facts,
+        PillRoom room)
     {
         var t = tiers();
         var rec = ZuneFrameRules.TitleBarOf(t);
@@ -115,6 +162,8 @@ internal static class ZuneTitleBar
             {
                 Key = ZuneFrameRules.WordmarkKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
                 Animate = Design.Reduced ? null : ZuneFrameTiers.WordmarkMotion,
+                // The lead's fixed part the pill leaves room for beside a docked panel.
+                OnBoundsChanged = b => room.WordmarkW.SetIfChanged(b.W),
                 Children =
                 [
                     R.Type.Wordmark(Loc.Get(Strings.Theme.Zune.Frame.Wordmark)) with
@@ -180,7 +229,7 @@ internal static class ZuneTitleBar
 
     // ── the trailing island ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static Element TrailingIsland(ShellTitleBarProps props, Func<TierFacts> tiers)
+    private static Element TrailingIsland(ShellTitleBarProps props, Func<TierFacts> tiers, PillRoom room)
     {
         var t = tiers();
         var rec = ZuneFrameRules.TitleBarOf(t);
@@ -194,7 +243,19 @@ internal static class ZuneTitleBar
                 {
                     Key = "zune-search-pill-host", Direction = 0, AlignItems = FlexAlign.Center,
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                    Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field })],
+                    Children =
+                    [
+                        Ctx.Provide(PillMaxW, room.MaxW, ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field })),
+                        // Beside a docked panel the pill stands on the page side, one gap before the panel's edge: this spacer is how far left
+                        // of its place at the account it stands, easing as the island does (a size channel: the pill rides the re-solve).
+                        new BoxEl
+                        {
+                            Key = ZuneFrameRules.PillShiftKey, Shrink = 0f, HitTestVisible = false,
+                            Width = Prop.Of(room.Shift),
+                            Animate = Design.Reduced ? null : ZuneFrameTiers.PillShiftMotion,
+                            OnBoundsChanged = b => room.ReportShift(b.W),
+                        },
+                    ],
                 }
                 : new BoxEl
                 {
@@ -202,7 +263,7 @@ internal static class ZuneTitleBar
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                     Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Icon })],
                 });
-        kids.Add(Account(props, l.Chip, rec));
+        kids.Add(Account(props, l.Chip, rec, room));
         // The bell comes and goes at the 1008 crossing (the pill tiers): its keyed host fades, never pops (ZT1).
         if (rec.BellInRow)
             kids.Add(new BoxEl
@@ -224,7 +285,7 @@ internal static class ZuneTitleBar
 
     /// <summary>The identity, from the AUTH FOLD the allocator resolved (a silent resume is Connecting, never an actionable "Sign in"): the
     /// core's chip host when signed in, a caption while a resume is in flight, the accent button otherwise (at least 40 x 40).</summary>
-    private static Element Account(ShellTitleBarProps props, ChromeChipForm chip, ZuneTitleBarLayout rec)
+    private static Element Account(ShellTitleBarProps props, ChromeChipForm chip, ZuneTitleBarLayout rec, PillRoom room)
     {
         Element el = chip switch
         {
@@ -249,6 +310,8 @@ internal static class ZuneTitleBar
             // The identity's own box changes height with the chip's form per tier (32 <-> 40 at 640): a size reflow, never a snap. Its place
             // rides the island's width reflow above.
             Animate = Design.Reduced ? null : ZuneFrameTiers.AccountSizeMotion,
+            // Its width places the pill beside a docked panel (the pill host's right edge sits that much further left).
+            OnBoundsChanged = b => room.AccountW.SetIfChanged(b.W),
             Children = [el],
         };
     }

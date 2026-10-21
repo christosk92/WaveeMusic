@@ -123,6 +123,45 @@ public static class ZuneFrameRules
     public static readonly LayoutTransition PillWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
 
+    // ── the pill beside a docked panel (the owner, 2026-10-21: "the searchbar is in between the colors") ─────────────────────────
+    //
+    // The docked panel's surface runs up under the title bar's end (ZuneFrame, design B), so the trailing island's account and bell sit
+    // on the panel's wash while the pill, left of them, could straddle the page/panel seam. While a panel docks, the pill stands wholly on
+    // the PAGE side: its right edge one row gap before the panel's left edge (a spacer after it in its host, easing as the island does); the
+    // account and the bell keep their places. It narrows (never below `PillMinW`) when the page side is short of room for the lead's
+    // wordmark and Back beside it; only below that floor does it keep today's place at the account (the pill tiers' own answer: the
+    // magnifier is a window-tier swap, never a panel's). With no panel docked nothing moves. At every docking size the whole pill fits
+    // (Standard's narrowest docked page is 668: 152 for the lead, 492 for a 220 pill), so the narrowing is the guard, not the rule.
+
+    /// <summary>The spacer after the pill in its host (its width is how far left of the account the pill stands).</summary>
+    public const string PillShiftKey = "zune-search-pill-shift";
+
+    /// <summary>A laid-out width within this of its target has settled (the omnibar model's half DIP).</summary>
+    public const float SettleSlop = 0.5f;
+
+    /// <summary>The pill's floor beside a docked panel: below it the pill keeps its place at the account (see the block above).</summary>
+    public const float PillMinW = 160f;
+
+    /// <summary>The engine bar's caption cluster after the drag strip: minimise, maximise, close (`CaptionButton.Width` each).</summary>
+    public const float CaptionCluster = 3f * CaptionButton.Width;
+
+    /// <summary>Where the pill stands beside a docked panel <paramref name="dockedW"/> wide (0: none) in a window <paramref name="viewportW"/>
+    /// wide: the spacer after it (<see cref="PillPlace.Shift"/>) and its widest (<see cref="PillPlace.MaxW"/>, infinite where nothing caps
+    /// it). <paramref name="accountW"/> is the account host's laid-out width, <paramref name="wordmarkW"/> the wordmark's, <paramref
+    /// name="gutter"/> the lead's start (the frame's gutter).</summary>
+    public static PillPlace PillBesidePanel(ZuneTitleBarLayout rec, float viewportW, float dockedW, float accountW, float wordmarkW, float gutter)
+    {
+        if (!rec.Pill || !(dockedW > 0f) || !float.IsFinite(accountW)) return PillPlace.AtAccount;
+        // The pill host's right edge from the window's right edge: the caption cluster, the drag strip, the bell and its gap, the account,
+        // the account's margin and the row's gap (right-anchored: the window's width never moves it).
+        float hostRight = CaptionCluster + rec.DragStrip + (rec.BellInRow ? Button + rec.Gap : 0f) + accountW + AccountMargin.Left + rec.Gap;
+        float shift = MathF.Max(0f, dockedW + rec.Gap - hostRight);
+        // The page side's room for the pill: from the lead's fixed parts (the wordmark, Back) and a row gap to the pill's right edge.
+        float leadEnd = gutter + (rec.Wordmark && float.IsFinite(wordmarkW) ? wordmarkW + rec.Gap : 0f) + Button;
+        float room = viewportW - hostRight - shift - rec.Gap - leadEnd;
+        return room < PillMinW ? PillPlace.AtAccount : new PillPlace(shift, room);
+    }
+
     /// <summary>The account chip's name cap on the pill tiers (the T1 audit's A9: "Wavee List..." truncated under the core's 76).</summary>
     public const float AccountNameMaxW = 160f;
 
@@ -365,4 +404,13 @@ public static class ZuneFrameRules
 
     /// <summary>The gap between an arm's parts.</summary>
     public const float PanelArmGap = 12f;
+}
+
+/// <summary>Where the title bar's pill stands beside a docked panel (<see cref="ZuneFrameRules.PillBesidePanel"/>).</summary>
+/// <param name="Shift">The spacer after the pill in its host: how far left of its place at the account it stands (0: there).</param>
+/// <param name="MaxW">The pill's widest (infinite: its record's width, rest or focused, uncapped).</param>
+public readonly record struct PillPlace(float Shift, float MaxW)
+{
+    /// <summary>Today's place at the account, uncapped: no panel docks, or the page side has no room for the pill's floor.</summary>
+    public static PillPlace AtAccount => new(0f, float.PositiveInfinity);
 }

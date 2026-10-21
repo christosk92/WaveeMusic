@@ -37,6 +37,13 @@ public static class ZuneFrameTiers
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing, Axes: SizeAxes.Width);
 
+    /// <summary>The spacer after the pill beside a docked panel (`ZuneFrameRules.PillBesidePanel`): its width eases on the island's own dynamics,
+    /// so the island's width ease and the spacer's cancel and the identity and the bell hold still while the pill moves (on the dock's 300 ms
+    /// they drifted 7 DIP and back). Null under reduced motion at the call site.</summary>
+    public static readonly LayoutTransition PillShiftMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
     /// <summary>The identity's host when its chip changes size across a crossing (32 <-> 40 at 640): a reflow of its own box on both axes.</summary>
     public static readonly LayoutTransition AccountSizeMotion = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),

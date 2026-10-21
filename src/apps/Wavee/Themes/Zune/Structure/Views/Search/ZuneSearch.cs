@@ -83,6 +83,10 @@ internal static class ZuneSearch
             // always fits the new row: a widening has the room, and a narrowing commits only 24 below the edge, where the wider pill sat a frame ago.
             bool expanded = model.FieldExpanded;
             float width = expanded ? rec.PillW + ZuneFrameRules.PillFocusGrow : rec.PillW;
+            // Beside a docked panel the page side may cap it (the title bar's pill host provides the cap; it never binds at a docking size
+            // today, see ZuneFrameRules.PillBesidePanel): bound, so a resize narrows it with no re-render, eased by the same width motion.
+            var maxW = UseContext(ZuneTitleBar.PillMaxW);
+            float Fit() => maxW is null ? width : MathF.Min(width, maxW());
             // Off the pill tiers the field is the title bar's (Compact, Z-Search-Compact: it fills the lead island beside Back), no rest width.
             bool fill = !rec.Pill;
 
@@ -93,9 +97,9 @@ internal static class ZuneSearch
             return new BoxEl
             {
                 Key = ZuneFrameRules.PillKey, Direction = 1, Shrink = fill ? 1f : 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = fill ? float.NaN : width, Grow = fill ? 1f : 0f, MinWidth = 0f,
+                Width = fill ? float.NaN : Prop.Of(Fit), Grow = fill ? 1f : 0f, MinWidth = 0f,
                 Animate = Design.Reduced || fill ? null : ZuneFrameRules.PillWidthMotion,
-                OnBoundsChanged = r => model.ReportFieldWidth(r.W, fill ? r.W : width),
+                OnBoundsChanged = r => model.ReportFieldWidth(r.W, fill ? r.W : Fit()),
                 Children =
                 [
                     new BoxEl
