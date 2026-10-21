@@ -160,6 +160,15 @@ public static partial class Diagnostics
 
         static bool SameTiers(in TierFacts a, in TierFacts b) => a.Window == b.Window && a.Height == b.Height && a.Rungs == b.Rungs;
 
+        /// <summary>Where the CONTENT tier first left its starting band (`committed` and `heldOldTier` compare the window and height tiers and
+        /// the rungs only): `resized` (already in the resized frames: it did not hold), `commit` (on the commit frame, as a drag commits),
+        /// `settle` (on a frame of the settle after the commit frame), or `none`.</summary>
+        static string ContentCommitted(in TierFacts before, in TierFacts resized, in TierFacts commit, in TierFacts settled)
+            => resized.Content != before.Content ? "resized"
+             : commit.Content != before.Content ? "commit"
+             : settled.Content != before.Content ? "settle"
+             : "none";
+
         string Crossing(int id, string name, Inspect.Args a)
         {
             if (!TrySize(a, "from", "fromW", "fromH", out float fromW, out float fromH)) return Inspect.Reply.Fail(id, name, "crossing wants from {w,h} (or from=WxH)");
@@ -191,7 +200,7 @@ public static partial class Diagnostics
 
             bool narrowing = toW < fromW || toH < fromH;
             bool wasComposited = shell.Window.Composited;
-            TierFacts tiersResized, tiersCommit;
+            TierFacts tiersResized, tiersCommit, tiersSettled;
             InspectKit.SettleResult settle;
             int changed = 0;
             shell.Window.Composited = true;
@@ -240,6 +249,7 @@ public static partial class Diagnostics
 
                 // 4. settle
                 settle = Settle(max);
+                tiersSettled = ThemeHost.Facts.Peek().Tiers;
             }
             finally
             {
@@ -312,6 +322,7 @@ public static partial class Diagnostics
             }
             bool committed = !SameTiers(tiersBefore, tiersCommit);
             bool heldOldTier = SameTiers(tiersBefore, tiersResized);
+            string contentCommitted = ContentCommitted(in tiersBefore, in tiersResized, in tiersCommit, in tiersSettled);
             int trackedCount = tracked.Count;
 
             return Inspect.Reply.Ok(id, name, w =>
@@ -329,8 +340,10 @@ public static partial class Diagnostics
                 WriteTierState(w, "tierBefore", in tiersBefore);
                 WriteTierState(w, "tierResized", in tiersResized);
                 WriteTierState(w, "tierAfter", in tiersCommit);
+                WriteTierState(w, "tierSettled", in tiersSettled);
                 w.WriteBoolean("committed", committed);
                 w.WriteBoolean("heldOldTier", heldOldTier);
+                w.WriteString("contentCommitted", contentCommitted);
                 w.WriteBoolean("reducedMotion", Design.Reduced);
                 w.WriteStartObject("counts");
                 w.WriteNumber("tracked", trackedCount);
