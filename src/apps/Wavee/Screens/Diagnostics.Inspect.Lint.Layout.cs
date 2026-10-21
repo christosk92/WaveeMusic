@@ -253,8 +253,16 @@ public static partial class Diagnostics
             public float D;
         }
 
-        /// <summary>The lead of one child of a column: the leftmost start of the OUTERMOST ink in its subtree (an ink node stops the descent: what
-        /// sits on a plate is the plate's design), not placed by centring or end alignment, not moving, reached by scrolling; null when none.</summary>
+        /// <summary>The thickest box (DIP) the column pass reads as a LINE, not a lead: a list header's rule, a selection bar beside a nav item.</summary>
+        const float LineMax = 4f;
+
+        /// <summary>The share of a column child's width a plate must span to be the child's GROUND (a selected row's fill) rather than a lead.</summary>
+        const float GroundShare = 0.9f;
+
+        /// <summary>The lead of one child of a column: the leftmost start of the outermost ink in its subtree that is no GROUND (a plate as wide as
+        /// the child, <see cref="GroundShare"/>: what sits on it leads; a pill or a chip leads itself; a drawn visual counts as ink, a line as
+        /// none), not placed by centring or end alignment, not moving, reached by scrolling; null when none. A lead padded inside its plate is
+        /// judged by <see cref="ColumnInsets"/>' container test.</summary>
         static Node? ChildLead(Snapshot s, Node child, int[] last)
         {
             Node? best = null;
@@ -262,7 +270,10 @@ public static partial class Diagnostics
             {
                 Node m = s.Nodes[i];
                 if (!m.Ink && m.Visual.Length == 0) { i++; continue; }   // a progress ring's arc leads its row as ink does
-                if (!m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
+                // A ground as wide as the child (a selected row's fill) is no lead: what sits on it is. A narrower plate (a pill, a chip) is.
+                if (m.InkCount > (m.Ink ? 1 : 0) && m.Rect.W >= GroundShare * child.Rect.W) { i++; continue; }
+                bool line = m.Text is null && !m.Image && (m.Rect.H <= LineMax || m.Rect.W <= LineMax);   // a rule or a selection bar: no lead
+                if (!line && !m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
                 i = last[i] + 1;
             }
             return best;
@@ -272,6 +283,31 @@ public static partial class Diagnostics
         /// x + 8): what the column pass compares, so a designed hang neither becomes a column's lead nor reads as an inset.</summary>
         static float Intended(Snapshot s, Node n)
             => n.Rect.X - ((PolicyFor(s, n, LintIntent.Hang) ?? PolicyFor(s, n, LintIntent.Indent))?.Value ?? 0f);
+
+        /// <summary>The lead sits on a HANGING column of its column: ink in another child starts at its x (within <see cref="InsetMin"/>: closer is a
+        /// near miss, a later rule) while other ink starts left of it on its own line (the label beside a checkbox, a name beside its index letter,
+        /// a title beside its number). A checkbox's help text under its
+        /// label, and the rows of an indexed list that carry no letter, line up with that text column by design.</summary>
+        static bool Hangs(Snapshot s, Node column, Node lead, List<int> children, int[] last)
+        {
+            foreach (int k in children)
+            {
+                if (Under(s, lead.Index, k)) continue;
+                for (int i = k; i <= last[k]; i++)
+                {
+                    Node m = s.Nodes[i];
+                    if (!(m.Ink || m.Visual.Length > 0) || MathF.Abs(m.Rect.X - lead.Rect.X) > InsetMin || m.Reach.IsEmpty) continue;
+                    for (int j = k; j <= last[k]; j++)
+                    {
+                        Node o = s.Nodes[j];
+                        if (j == i || !(o.Ink || o.Visual.Length > 0) || Under(s, i, j) || Under(s, j, i) || o.Reach.IsEmpty) continue;
+                        if (o.Rect.Right <= m.Rect.X + Slack && o.Rect.X < m.Rect.X - Slack
+                            && MathF.Min(m.Rect.Bottom, o.Rect.Bottom) - MathF.Max(m.Rect.Y, o.Rect.Y) > 2f) return true;
+                    }
+                }
+            }
+            return false;
+        }
 
         /// <summary>The nearest keyed node that holds every one of <paramref name="members"/> (-1: none): what a column finding is named by.</summary>
         static int CommonKeyed(Snapshot s, IReadOnlyList<Node> members)
@@ -290,8 +326,9 @@ public static partial class Diagnostics
         /// beside a song list, the inside of a card, a right pane), measured against its own column. For each column box (a vertical stack, no
         /// ZStack, not in a rail, not moving, two or more children, not a frame column that holds a page slot), the lead of each child is <see cref="ChildLead"/>; the column's lead is its
         /// leftmost child lead (the REFERENCE). A child lead in scope that is no region lead and sits <see cref="InsetMin"/> &lt; d &lt;=
-        /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it: the plate it sits on
-        /// starts at or right of the reference (a filled card whose art is flush and whose words are padded). The about card's words at x=1152
+        /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it (the plate it sits on
+        /// starts at or right of the reference: a filled card whose art is flush and whose words are padded) or it sits on a HANGING column
+        /// (<see cref="Hangs"/>: the text beside a checkbox, an index letter or a number in another child starts at its x). The about card's words at x=1152
         /// under its art at 1132 sit on the page: +20. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node that holds
         /// the reference and the leads. A lead's declared <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> is taken off its x
         /// first (<see cref="Intended"/>: the panorama's -8 hang never becomes a column's lead). Cause <c>column:+d</c>.</summary>
@@ -342,6 +379,7 @@ public static partial class Diagnostics
                     float d = Intended(s, lead) - Intended(s, reference);
                     if (d <= InsetMin || d > ColumnInsetMax) continue;
                     if (lead.Backdrop >= 0 && nodes[lead.Backdrop].Rect.X >= reference.Rect.X - Slack) continue;   // padded inside a visible container
+                    if (Hangs(s, c, lead, children, last)) continue;   // on the text column beside a marker: a checkbox's help, a row without its index letter
                     float bucket = MathF.Round(d);
                     var key = (reference.Index, bucket);
                     if (!groups.TryGetValue(key, out ColumnGroup? g))
