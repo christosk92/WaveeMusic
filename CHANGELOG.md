@@ -22,6 +22,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Moving between pages with the queue open is smoother.** Opening an album, artist or playlist no longer redraws the
+  queue panel and every row in it, and moving or resizing the window no longer redraws the page twice. Frames that take
+  longer than 8 ms while you click through pages are about eight times rarer.
 - **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
   sitting at the far left. Huge windows show a row of section links under the artist photo, a More button after Radio, Top tracks in three
   columns of five (four by four on 4K) and the artist's next concert under their pick. Narrow windows show the albums, singles and
