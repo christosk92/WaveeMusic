@@ -136,9 +136,12 @@ the bar's marquee (`np-title`, motion policy F239: an overflowing title always s
 stays there; a verb there settles as it does at any other width (a `resize` in 21 frames) and replies `loops:["np-title"]`
 (it ran to `max` before). While a track plays, its row's indicator is a loop row too, on every page that lists it, in every
 theme: Home after a `play` (Classic and WinUI: the `recent:*` cards; Zune: the `zune-cluster-row:*` row) and Liked Songs
-(`c.num`, `winui.row.now`, `zune.row.now`); look for those keys in `loops`. Whether it runs is decided per process, not by
-the device: WinUI Home 1440 `play`, one fresh server each, looped in 1 of 6 under WARP and 1 of 6 under `gpu=none` (the
-others never started it, even 600 frames later), and a build that waited for loops ran 3 of 6 to `max` under WARP. Motion
+(`c.num`, `winui.row.now`, `zune.row.now`); look for those keys in `loops`. `play` waits for its load before it settles: the
+fake load opens a silent voice on the audio chain on the wall clock, which a frame-counted settle used to outrun (the reply then
+read the page before the track played: no playing row, Classic's `lyrics` button still hidden, the row starting a verb later).
+Its reply carries `phase` (`playing` once the load landed; `loading` if 5 s of wall clock ran out) and `loadFrames` (the
+frames stepped while waiting); WinUI and Classic Home `play` then reply with the `recent:*` loops (12 of 12 fresh servers,
+WARP and `gpu=none`). Motion
 that never ends but is not a loop row (a frame-clock ticker is ambient already; anything else) still runs a verb to `max`,
 and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) is still waited for.
@@ -146,8 +149,9 @@ Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) 
 Loading indicators are not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows
 while its data is pending), an **indeterminate progress bar** (a looping node under the `ProgressBar` role: WinUI and Classic
 search's `omni-progress` while a query is pending) and a **progress ring** (its arc's trim loops). A page that still shows one
-has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 24 frames on
-"No results found", not after 4 on the skeleton rows), and a settle that hits `max` there says `loading` (above). The fake catalogue answers on the wall clock, so a slow page can take
+has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 30 frames on its
+suggestion rows `omni-row:0:spotify:artist:ar5` "Sable & Sun" and "Coffee Table Jazz", not after 4 on the progress rows), and a
+settle that hits `max` there says `loading` (above): `type text=zzqx` keeps its progress row and runs to `max`. The fake catalogue answers on the wall clock, so a slow page can take
 several hundred frames (`goto uri=spotify:album:alq2`, seeded to fail, takes 200 to 900): raise `max`.
 
 Every settling verb, and `settle`, takes `loops`:
@@ -156,7 +160,7 @@ Every settling verb, and `settle`, takes `loops`:
 |---|---|
 | `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
-| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture. |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). |
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
@@ -296,7 +300,7 @@ These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no
 | At least 50 % of its presented rect is visible after the window, every ancestor that clips (`ClipsToBounds`, a scroll viewport) and every ancestor's authored clip rect. | `offscreen` (scroll it into view first) |
 | It is enabled, and so is the click owner a press on it reaches (the nearest node up from the hit carrying a click handler, as the dispatcher finds it). A disabled container alone does not disable an enabled button inside it. | `disabled` |
 | The hit test at the centre of its visible part lands inside it. A passive target (no pointer handler of its own: a label, an icon, a hint) may also be reached through what owns it: an ancestor, a sibling part of the same click owner, or a hit target painted beneath it (the press passes through it). Not the overlay host's input-blocking layer: a passive part of an open menu or dialog (its header text, its body) that lies over that layer is covered, because a press there reaches the layer (a light-dismiss one closes the menu). | `covered`, naming the key that covers it (or, when that key is the target's own ancestor, the covering part's dump path; the input-blocking layer is named as such) |
-| Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end). A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
+| Something takes the pointer at that centre, when the target is meant to take it: refused when the target or an ancestor has a pointer handler but the hit test finds nothing there (hit testing off, a sticky or collapse cut), or when only parts of it have one, elsewhere (a section header whose only link is at its end), or when every part of it that has one is inert (transparent, hidden or hit testing off below the target: WinUI's `winui-bar-like` with nothing playing, a reserved heart dimmed by opacity alone, whose centre hits `winui-bar-left`). A target with no handler anywhere on its chain or in it is accepted with a `note`: nothing reacts there. | `unreachable` |
 
 **Stable.** Then, as Playwright does, the target's presented rect must be the same on two consecutive frames: a target
 still moving (an entrance, a FLIP, a wheel glide carrying it) is waited for, one frame at a time, at most `stableMax` frames
@@ -375,15 +379,18 @@ stage's "up next" page has rows. The lyrics media clock runs in the harness fram
 track follows its lyrics: render the stage while playing, no pause needed. `ago=N` backdates the play in the play log by N minutes (the Up next page's "played before this" reads it).
 
 `remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
-`uri` only the output changes. The fake load lands on the wall clock: a short burst of commands can read the bar while it is still loading;
-the remote line shows through the load as the title and artists do.
+`uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
+`phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
 ### `state {kind}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back); `loading` opens a search for
-`zzqx`, which the fake catalogue never answers (the page stays on its skeleton for the first frames; `loading` and the `cold-*` states settle
-on their skeleton, `loops=skeletons` unless you pass `loops`). Any other search query is answered from the fake
-catalogue by name; `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
+`zzqx`, which the fake catalogue never answers: its request stays in flight, so the page stays on its skeleton (the chips, the top result and the
+rows; it replies `loops:["facet-body:0"]`), and `loading` and the `cold-*` states settle on their skeleton, `loops=skeletons` unless you pass
+`loops`. Any other search query is answered from the fake catalogue by name (every fake row whose name contains it: `easy` finds the "Easy"
+single and "Easy On Saturday"); a facet with no match is that facet's empty, a query with none "No results found". The search box's suggestions
+come from the same catalogue (`--fake` installs that source; a live build asks Spotify), and `zzqx` keeps them on their progress row.
+`goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
 `mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
 photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. Lint the lightbox with `root=` its key,
