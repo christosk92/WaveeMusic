@@ -6,7 +6,9 @@
 // over the Classic stand-in and starts checking as the family lanes key their WinUI views (`WinUiFrameLayout.PageTitleKey`).
 //
 // THE POLICIES say what WinUI means where a rule would guess: Home's facet words are a stock SelectorBar, whose items pad their words 12 in
-// from the page column (W-Home draws "All" one item padding right of the greeting), so `align.inset` there is intended (`Allow`).
+// from the page column (W-Home draws "All" one item padding right of the greeting), so `align.inset` there is intended (`Allow`). Search's
+// hit rows (a ListView) and its facet SelectorBar pad their items' content inside the item's plate, which starts on the column (`ItemPlate`,
+// W-Search). Card grids are NOT declared: W-Search and W-Artist draw the cards' art flush with the heading above them.
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -40,12 +42,19 @@ public sealed class WinUiLintGuide : IThemeLintGuide
     /// <summary>Home's facet words (the key `WinUiHomeFacetRow` gives the SelectorBar's box).</summary>
     private const string FacetWordsKey = "home:facet:words";
 
+    /// <summary>The search page's hit rows (`WinUiSearchBody`) and its facet SelectorBar (`WinUiSearchPage`).</summary>
+    private const string SearchHitKey = "hit:", SearchFacetsKey = "facets";
+
     /// <summary>The intents, built once: none depends on the window.</summary>
     private static readonly LintPolicy[] s_policies =
     [
         new(LintIntent.Allow, FacetWordsKey,
             "the facet words are a stock SelectorBar: each item pads its words in from the column (W-Home draws 'All' one item padding right of the greeting)",
             Rule: "align.inset"),
+        new(LintIntent.ItemPlate, SearchHitKey,
+            "search hits are ListView rows: the row's hover plate starts on the column and pads the art in (W-Search draws the song rows' art 8 right of 'Songs')"),
+        new(LintIntent.ItemPlate, SearchFacetsKey,
+            "the search facets are a stock SelectorBar: each item pads its words in from the column (W-Search draws 'All' one item padding right of 'Results for')"),
     ];
 
     /// <inheritdoc />

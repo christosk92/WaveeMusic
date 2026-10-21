@@ -97,7 +97,9 @@ public static partial class Diagnostics
             for (int i = a.Index; s.Nodes[i].Parent != lca; i = s.Nodes[i].Parent) pa.Add(ordinal[i]);
             var pb = new List<int>();
             for (int i = b.Index; s.Nodes[i].Parent != lca; i = s.Nodes[i].Parent) pb.Add(ordinal[i]);
-            return pa.SequenceEqual(pb);
+            // Two runs that are direct children of one stack are no repeated structure (both paths empty): a heading and a same-words eyebrow
+            // under it in one column, the core case.
+            return pa.Count > 0 && pa.SequenceEqual(pb);
         }
 
         sealed class DuplicateGroup
@@ -198,16 +200,28 @@ public static partial class Diagnostics
         const float ContentUnder = 0.25f;
 
         /// <summary>Content another node draws (not its ancestors' or its own subtree's) covers at least <see cref="ContentUnder"/> of the target's box
-        /// where it shows: the target is the clickable part of something a person sees (the tempo chart's bands).</summary>
+        /// where it shows, and fits the target's group (its first larger ancestor): the target is the clickable part of something a person sees (the
+        /// tempo chart's bands). A page backdrop that spreads past the group (a material bleed, a wash) excuses nothing.</summary>
         static bool OverContent(Snapshot s, Node t, bool[] draws)
         {
             float area = t.Rect.W * t.Rect.H;
             if (area <= 0f) return false;
+            // The target's GROUP: its first ancestor whose box is larger than its own (the tempo chart's band row). Content that shows through a
+            // target belongs to that group and fits its box (the chart's curve); a page backdrop (the artist page's material bleed, a wash
+            // gradient) spreads far past it and excuses nothing.
+            RectF group = t.Rect;
+            for (int i = t.Parent; i >= 0; i = s.Nodes[i].Parent)
+            {
+                RectF r = s.Nodes[i].Rect;
+                if (r.W > t.Rect.W + 0.5f || r.H > t.Rect.H + 0.5f) { group = r; break; }
+            }
             foreach (Node m in s.Nodes)
             {
                 if (m.Index == t.Index || !(m.Text is not null || m.Image || m.Gradient || m.Visual.Length > 0) || m.Visible.IsEmpty) continue;
                 RectF both = m.Visible.Intersect(t.Rect);
                 if (both.IsEmpty || both.W * both.H < ContentUnder * area || Related(s, m, t)) continue;
+                if (m.Rect.X < group.X - Slack || m.Rect.Y < group.Y - Slack || m.Rect.Right > group.Right + Slack || m.Rect.Bottom > group.Bottom + Slack)
+                    continue;   // a backdrop behind the group, not its content
                 return true;
             }
             return false;
@@ -217,7 +231,7 @@ public static partial class Diagnostics
         /// 28 x 36, sorts by track number) that paints nothing at rest. Algorithm: in-scope, enabled, pressable targets (the target rule's set;
         /// the track controls it exempts too) whose subtree holds no ink (no text, image, gradient, visible fill or border: a hover fill is not
         /// ink at rest), unless the click shows elsewhere (an ancestor that runs the same click holds ink: the row a target sits in), content
-        /// another node draws covers a quarter of it or more (<see cref="OverContent"/>: the tempo chart's hit bands), it is a drag bar (a splitter shows its cursor, not ink), or it covers half the window or more (a light-dismiss catcher). Grouped by the target
+        /// another node draws covers a quarter of it or more (<see cref="OverContent"/>: the tempo chart's hit bands; never a page backdrop), it is a drag bar (a splitter shows its cursor, not ink), or it covers half the window or more (a light-dismiss catcher). Grouped by the target
         /// family (its parent's pattern), as `target.size` groups. Fix: give the target ink at rest (its label or glyph), or take the click away
         /// from a slot that draws nothing (never hide a feature).</summary>
         static int TargetInkRule(Snapshot s, Options o, List<Finding> into)

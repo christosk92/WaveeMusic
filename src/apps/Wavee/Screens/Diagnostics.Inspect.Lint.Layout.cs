@@ -258,6 +258,7 @@ public static partial class Diagnostics
             public readonly List<Node> Leads = [];
             public Node Reference = null!;
             public float D;
+            public LintPolicy? Intent;
         }
 
         /// <summary>The thickest box (DIP) the column pass reads as a LINE, not a lead: a list header's rule, a selection bar beside a nav item.</summary>
@@ -302,11 +303,36 @@ public static partial class Diagnostics
                 if (m.Text is null && !m.Image && m.Rect.W >= GroundShare * child.Rect.W && !(m.BorderWidth > 0f && m.BorderColor.A * m.Opacity >= FrameAlpha))
                 { i++; continue; }
                 if (m.InkCount > 1 && m.Layout.Margin.Left < 0f) { i++; continue; }   // a plate outdented on purpose: its words sit on the column
-                bool line = m.Text is null && !m.Image && (m.Rect.H <= LineMax || m.Rect.W <= LineMax);   // a rule or a selection bar: no lead
+                // A rule (flat) or a selection bar (upright, inside or beside the item it marks) is no lead. An upright bar that marks no click
+                // target is a heading's accent mark (Classic's section heads): it starts the heading, so it leads.
+                bool line = m.Text is null && !m.Image && (m.Rect.H <= LineMax || (m.Rect.W <= LineMax && MarksTarget(s, m, last)));
                 if (!line && !m.Moving && Reachable(m) && !PlacedOffStart(s, m) && (best is null || m.Rect.X < best.Rect.X)) best = m;
                 i = last[i] + 1;
             }
             return best;
+        }
+
+        /// <summary>An upright bar MARKS A TARGET (a selection bar, no lead): it sits inside a click target, or, from the bar up through the wrappers
+        /// that hold only it, a sibling holds a click target on the bar's line (Classic's nav bar beside its item). A bar beside words that take no
+        /// click is a heading's accent mark.</summary>
+        static bool MarksTarget(Snapshot s, Node bar, int[] last)
+        {
+            if (TargetOf(s, bar) >= 0) return true;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            int at = bar.Index;
+            for (int depth = 0; depth < 4 && nodes[at].Parent >= 0; depth++)
+            {
+                int p = nodes[at].Parent;
+                for (int i = p + 1; i <= last[p]; i++)
+                {
+                    if (Under(s, i, at)) continue;
+                    Node t = nodes[i];
+                    if (t.Interactive && MathF.Min(t.Rect.Bottom, bar.Rect.Bottom) - MathF.Max(t.Rect.Y, bar.Rect.Y) > 0f) return true;
+                }
+                if (last[p] - p > last[at] - at + 1) return false;   // the parent holds more than the bar: its siblings were looked at
+                at = p;
+            }
+            return false;
         }
 
         /// <summary>Where a lead would sit without its declared hang or indent (a guide <see cref="LintIntent.Hang"/> of -8 on the panorama: its
@@ -339,6 +365,32 @@ public static partial class Diagnostics
             return false;
         }
 
+        /// <summary>The lead is padded inside an ITEM PLATE that sits on the column: the nearest click target holding it (not the reference) starts on
+        /// the reference's x (its <see cref="Intended"/> x, within <see cref="Slack"/>) and is one ITEM of an items control (walking up through
+        /// wrappers of its own box, its parent holds two or more children that carry a click target: list rows, selector tabs, cards). The item's
+        /// hover and selection plate starts on the column and its content is padded inside it by design (W-Search draws the best-match rows' art
+        /// 8 right of "Best matches" and "All" one SelectorBar padding right of "Results for"). A single control padded on no rest fill (a lone
+        /// "Check again" link) is no item: it is still judged. Only where the theme's guide declares <see cref="LintIntent.ItemPlate"/> (WinUI):
+        /// Zune's hover-plate rule wants the content on the column and the plate outdented.</summary>
+        static bool ItemPlate(Snapshot s, Node lead, Node reference, List<int>?[] kids, int[] last)
+        {
+            int t = TargetOf(s, lead);
+            if (t < 0 || Under(s, reference.Index, t)) return false;
+            IReadOnlyList<Node> nodes = s.Nodes;
+            if (MathF.Abs(nodes[t].Rect.X - Intended(s, reference)) > Slack) return false;
+            int item = t;
+            while (nodes[item].Parent is int p and >= 0 && kids[p] is { Count: 1 } && MathF.Abs(nodes[p].Rect.X - nodes[item].Rect.X) <= 0.5f
+                   && MathF.Abs(nodes[p].Rect.W - nodes[item].Rect.W) <= 0.5f)
+                item = p;
+            int parent = nodes[item].Parent;
+            if (parent < 0 || kids[parent] is not { } peers) return false;
+            int targets = 0;
+            foreach (int k in peers)
+                for (int i = k; i <= last[k]; i++)
+                    if (nodes[i].Interactive && nodes[i].Pressable && !nodes[i].Disabled) { targets++; break; }
+            return targets >= 2;
+        }
+
         /// <summary>The nearest keyed node that holds every one of <paramref name="members"/> (-1: none): what a column finding is named by.</summary>
         static int CommonKeyed(Snapshot s, IReadOnlyList<Node> members)
         {
@@ -358,7 +410,9 @@ public static partial class Diagnostics
         /// leftmost child lead (the REFERENCE). A child lead in scope that is no region lead and sits <see cref="InsetMin"/> &lt; d &lt;=
         /// <see cref="ColumnInsetMax"/> right of the reference is a misalignment unless a VISIBLE CONTAINER justifies it (the plate it sits on
         /// starts at or right of the reference: a filled card whose art is flush and whose words are padded; or its child holds a frame on the
-        /// reference's x, <see cref="Framed"/>: an info bar's faint plate, a combo box's underline) or it sits on a HANGING column
+        /// reference's x, <see cref="Framed"/>: an info bar's faint plate, a combo box's underline; or it is padded inside an item of an items
+        /// control whose target starts on the column, <see cref="ItemPlate"/>, where the guide declares <see cref="LintIntent.ItemPlate"/>:
+        /// suppressed by intent) or it sits on a HANGING column
         /// (<see cref="Hangs"/>: the text beside a checkbox, an index letter or a number in another child starts at its x). The about card's words at x=1152
         /// under its art at 1132 sit on the page: +20. One finding per (reference, d rounded to 1 DIP), named by the nearest keyed node that holds
         /// the reference and the leads. A lead's declared <see cref="LintIntent.Hang"/> or <see cref="LintIntent.Indent"/> is taken off its x
@@ -386,8 +440,8 @@ public static partial class Diagnostics
             for (int i = 0; i < count; i++)
                 if (nodes[i].Key is { } key && TrySlotRoute(key, out _, out _))
                     for (int a = nodes[i].Parent; a >= 0; a = nodes[a].Parent) holdsPage[a] = true;
-            var groups = new Dictionary<(int Reference, float D), ColumnGroup>();
-            var order = new List<(int Reference, float D)>();
+            var groups = new Dictionary<(int Reference, float D, bool Intended), ColumnGroup>();
+            var order = new List<(int Reference, float D, bool Intended)>();
             var seen = new HashSet<int>();
             int judged = 0;
             foreach (Node c in nodes)
@@ -415,11 +469,14 @@ public static partial class Diagnostics
                     if (lead.Backdrop >= 0 && nodes[lead.Backdrop].Rect.X >= reference.Rect.X - Slack) continue;   // padded inside a visible container
                     if (Hangs(s, c, lead, children, last)) continue;   // on the text column beside a marker: a checkbox's help, a row without its index letter
                     if (Framed(s, holders[li], reference, last)) continue;   // padded inside a frame that sits on the column: an info bar, a combo box
+                    // Padded inside a list row's or a tab's plate that starts on the column, where the guide declares that design (WinUI's stock
+                    // items controls): intended. Zune declares none: there the plate outdents and the content sits on the column.
+                    LintPolicy? item = PolicyFor(s, lead, LintIntent.ItemPlate) is { } ip && ItemPlate(s, lead, reference, kids, last) ? ip : null;
                     float bucket = MathF.Round(d);
-                    var key = (reference.Index, bucket);
+                    var key = (reference.Index, bucket, item is not null);
                     if (!groups.TryGetValue(key, out ColumnGroup? g))
                     {
-                        groups[key] = g = new ColumnGroup { Reference = reference, D = bucket };
+                        groups[key] = g = new ColumnGroup { Reference = reference, D = bucket, Intent = item };
                         order.Add(key);
                     }
                     g.Leads.Add(lead);
@@ -445,6 +502,8 @@ public static partial class Diagnostics
                     Rects = rects,
                     Nodes = Ids(g.Leads),
                 };
+                if (g.Intent is { } intent)
+                    f = f with { Outcome = Outcome.Suppressed, SuppressedBy = "intent", Reason = intent.Reason };
                 into.Add(f);
             }
             return judged;

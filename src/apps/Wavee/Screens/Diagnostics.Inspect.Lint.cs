@@ -1195,6 +1195,8 @@ public static partial class Diagnostics
                 "covered" => "close the overlay and lint again, or look at the render: the ground read under these runs may be the overlay's",
                 _ => "change the theme's ink or ground role for every run of this pair, never node by node",
             },
+            Rules.AlignInset when cause.StartsWith("column:", StringComparison.Ordinal)
+                => "put the lead on its column's x (drop the extra padding on a part with no rest fill), or give it the visible container (plate, frame) that justifies the inset",
             Rules.AlignInset => "move the section's extra lead into its plate (padding on the hover plate only) so its ink sits on the column; leave the column alone",
             Rules.AlignBaseline => "anchor the cell's first line at one offset in every row (AlignItems=Start, or reserve the optional line in every row)",
             Rules.SpaceScale => "take the value from Spacing.* or the theme's R.Space/tier record (or declare OffScaleOk with a reason)",

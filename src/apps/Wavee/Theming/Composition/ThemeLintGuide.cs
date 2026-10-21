@@ -87,6 +87,11 @@ public enum LintIntent : byte
 
     /// <summary>Any finding of <see cref="LintPolicy.Rule"/> here is intended: the generic form for the rules without a named intent.</summary>
     Allow,
+
+    /// <summary>Items of an items control here (list rows, selector tabs, cards) carry their hover and selection plate from the column and pad
+    /// their content inside it, as the stock WinUI ListView and SelectorBar do (`align.inset` column pass: a lead padded in such an item's plate
+    /// is the item's design). Without it the theme follows the owner's hover-plate rule: content sits on the column and the plate outdents.</summary>
+    ItemPlate,
 }
 
 /// <summary>One intent: <see cref="Intent"/> holds for every node whose key, or an ancestor's key, starts with <see cref="Prefix"/>.</summary>
