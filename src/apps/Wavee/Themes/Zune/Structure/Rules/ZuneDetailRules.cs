@@ -37,9 +37,9 @@
 // title FITS its band (owner exception 2026-10-21: two full-size lines squeezed the list to three rows): the step when it fits one line; else smaller,
 // down to the floor (`ZuneDetailKit.PanoramaFloor`: 64 under the 120 and 150 steps, 40 under 64), until it fits one line; a name the floor cannot
 // hold on one line wraps by whole words at the floor over up to `PanoramaLines` (2) lines, then ends in an ellipsis. The exact line scales with the
-// size (the engine's one-line-first auto-fit), so two lines at the floor take about the band one full-size line takes. A fitted title stands on the
-// band's foot (the step's baseline), and the band keeps its reserved height as a floor and HUGS anything taller (its height glides on the size
-// channel, `PanoramaFold`, and everything below rides the presented extent, so nothing jumps). Every other Zune title keeps its size. Only a folded
+// size (the engine's one-line-first auto-fit), so two lines at the floor take about the band one full-size line takes. The band HUGS the fitted
+// title (a smaller title, a shorter band and the list higher: no air left over it, owner 2026-10-21; the reserved height holds only an empty,
+// loading title), its height gliding on the size channel (`PanoramaFold`), and everything below rides the presented extent, so nothing jumps. Every other Zune title keeps its size. Only a folded
 // band (a short window) draws the title on one line, hidden.
 //
 // THE LADDERS the core resolves by id (`DetailLadders`, declared through `ZuneTiers.LaddersDetail`, Tiers.Detail.cs):

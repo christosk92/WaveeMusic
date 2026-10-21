@@ -148,9 +148,9 @@ internal static class ZuneDetailKit
     /// nudge then becomes a negative margin).
     ///
     /// THE TITLE. The title FITS its band (<see cref="Panorama"/>: the tier's step on one line, else smaller on one line, else two lines at the floor) and
-    /// stands on the band's FOOT, so a shrunk one-line title keeps the full-size line's baseline and the band its reserved height (the list under it does
-    /// not move); two lines at the floor take about that height, and the band HUGS whatever is taller (its reserved height a floor, eased on the size
-    /// channel). An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as
+    /// the band HUGS it (eased on the size channel): a shrunk one-line title takes a shorter band, so the list rises with it and no air is left over
+    /// the title (owner 2026-10-21); two lines at the floor take about one full-size line. The reserved height holds only while the title is empty
+    /// (loading). An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as
     /// under Classic); the editor's read arm fits the same way and the band hugs it likewise (the edit arm's field and words push the body down). A folded
     /// band (a short window) draws the plain title, hidden: the identity column leads with the editor there.</summary>
     public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter)
@@ -170,7 +170,7 @@ internal static class ZuneDetailKit
         return new BoxEl
         {
             Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-            Height = inside ? float.NaN : lay.PanoramaH, MinHeight = inside ? lay.PanoramaH : 0f,
+            Height = inside ? float.NaN : lay.PanoramaH, MinHeight = inside && id.Title.Length == 0 ? lay.PanoramaH : 0f,
             Animate = Z.PanoramaFold, HitTestVisible = editor,
             // The editor and the title wrap inside the page (the editor's words and pencil must stay on screen).
             Padding = new Edges4(MathF.Max(0f, lead), 0f, gutter, 0f),
@@ -180,7 +180,6 @@ internal static class ZuneDetailKit
                 new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = inside ? 1f : 0f,
-                    // On the band's foot: a fitted title smaller than the step sits on the step's baseline, the reserved air above it.
                     AlignSelf = inside ? FlexAlign.End : FlexAlign.Auto,
                     Margin = new Edges4(0f, lay.PanoramaNudgeY, 0f, inside ? lay.PanoramaGap : 0f),
                     Animate = ZuneMotion.TitleScale, Opacity = Z.PanoramaOpacity,
