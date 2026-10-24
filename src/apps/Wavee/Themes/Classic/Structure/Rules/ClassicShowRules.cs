@@ -14,8 +14,8 @@ internal static class ClassicShowRules
     public const string DisplayFace = "Segoe UI Variable Display";
 
     /// <summary>The reader's voice: Classic's semibold, the weight of every other Classic page's heads (owner, 2026-10-24: semibold sentence case;
-    /// the light 300 lowercase heads were Zune's voice). It sets the section heads, "Nothing matches", the month headers and the continue hero's
-    /// minutes; the words are the loc values as written (sentence case).</summary>
+    /// the light 300 lowercase heads were Zune's voice). It sets the section heads, "Nothing matches", the month headers, the continue hero's
+    /// minutes and the up-next numerals; the words are the loc values as written (sentence case).</summary>
     public const ushort VoiceWeight = 600;
 
     // ── the section rhythm ──
@@ -66,7 +66,7 @@ internal static class ClassicShowRules
     public const float HeroArt = 96f, HeroArtNarrow = 64f, HeroTrackMax = 420f, HeroRuleHeight = 4f, CardPad = 14f,
                        HeroTitleSize = 17f, HeroTitleLine = 22f, HeroLeftDisplay = 30f, HeroLeftDisplayLine = 34f, HeroLeftSize = 12.5f;
 
-    /// <summary>The up-next card: art, the numeral column (Display 22/28), the plate's gap and the seed's figure-space runs.</summary>
+    /// <summary>The up-next card: art, the numeral column (Display 22/28 in <see cref="VoiceWeight"/>), the plate's gap and the seed's figure-space runs.</summary>
     public const float MiniArt = 40f, MiniNumeral = 34f, MiniNumeralSize = 22f, MiniNumeralLine = 28f, MiniGap = 10f;
 
     /// <summary>The seed's U+2007 runs that make the derived shimmer draw a title bar and a meta bar.</summary>
