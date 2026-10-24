@@ -308,7 +308,9 @@ internal static partial class WinUiDetailFrame
     static Element ToolbarOf(HeroParts parts, WinUiDetailTier tier, WinUiHeroForm form)
         => new BoxEl
         {
-            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f),
+            // It FLIPs with the cover and the words (a form change moves it: the short form's smaller cover and title): laid out at its new place at
+            // once, it sat under the still-shrinking cover on the 720 crossing.
+            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f), Animate = HeroReflowMotion,
             Padding = new Edges4(MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f, MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f),
             Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
