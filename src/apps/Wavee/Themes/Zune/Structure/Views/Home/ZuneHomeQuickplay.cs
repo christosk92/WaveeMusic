@@ -89,6 +89,8 @@ internal static class ZuneHomeQuickplay
     static Element Group(string id, string head, Element? link, Element body) => new BoxEl
     {
         Key = H.QuickGroupPrefix + id, Direction = 1, Gap = H.QuickHeadGap, Shrink = 0f, MinWidth = 0f,
+        // A group that wraps to the next line or back (the page narrowing beside a docking panel, a crossing) slides there.
+        Layout = Design.Reduced ? null : ZuneMotion.PivotSlide,
         Children =
         [
             new BoxEl

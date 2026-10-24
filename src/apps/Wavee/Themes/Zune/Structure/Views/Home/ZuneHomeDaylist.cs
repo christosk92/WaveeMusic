@@ -91,8 +91,9 @@ internal static class ZuneHomeDaylist
 
     /// <summary>The strip inside its host: a z-stack whose height eases (<see cref="ZuneHomeRules.DaylistResize"/>), the strip under a layer keyed by its form's
     /// family (the strip, art | copy | clock, or the bled art). A crossing within a family keeps every node (the strip's own height glides, the rings slide);
-    /// a crossing between them (the strip's content rung, Small &lt;-&gt; Standard at a docked panel) fades the old layer out over the new one (`SwapFade`)
-    /// instead of snapping the art's width, the copy's inset and the clock column, and the host's height carries the page below.</summary>
+    /// a crossing between them (the strip's content rung, Small &lt;-&gt; Standard at a docked panel) fades the old layer out, then the new one in
+    /// (`SwapThrough`: the two forms' titles never show at once) instead of snapping the art's width, the copy's inset and the clock column, and the
+    /// host's height carries the page below.</summary>
     static Element Swap(Element strip, ZuneHomeLayout lay) => new BoxEl
     {
         Key = H.DaylistHostKey, Direction = 1, ZStack = true, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
@@ -102,7 +103,7 @@ internal static class ZuneHomeDaylist
             new BoxEl
             {
                 Key = H.DaylistFormPrefix + (lay.DaylistBleed ? "bleed" : "strip"), Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = [strip],
+                Enter = ZuneMotion.SwapThrough, Exit = ZuneMotion.SwapThrough, Transition = ZuneMotion.SwapThroughMotion, Children = [strip],
             },
         ],
     };
