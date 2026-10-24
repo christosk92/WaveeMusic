@@ -59,6 +59,12 @@ public static partial class Diagnostics
                 SpaceDead = "space.dead";
 
             public const string PictureBlank = "picture.blank", PictureUnpainted = "picture.unpainted", OverlayOpen = "overlay.open";
+
+            // lane A3 (2026-10-24), report-only: Diagnostics.Inspect.Lint.Audit.cs and Diagnostics.Inspect.Picture.cs
+            public const string StageOverlap = "stage.overlap", TextCopies = "text.copies", OverlayTranslucent = "overlay.translucent",
+                OverlayNarrow = "overlay.narrow", TextRuled = "text.ruled", EdgeGutter = "edge.gutter", EdgeHuge = "edge.huge",
+                TypeVoice = "type.voice", StateRest = "state.rest", PlayingStatus = "playing.status", ControlRequired = "control.required",
+                EdgeWindow = "edge.window", SpaceHuge = "space.huge", PictureText = "picture.text";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -101,6 +107,20 @@ public static partial class Diagnostics
             new(Rules.TextDuplicate, "", Level.Todo, "the same visible words twice in one column within a glance (a heading repeated as an eyebrow)"),
             new(Rules.TargetInk, "", Level.Todo, "a click target that paints nothing at rest"),
             new(Rules.SpaceDead, "", Level.Todo, "an empty slot that keeps its room beside content, with no plate (a report)"),
+            new(Rules.StageOverlap, "", Level.Todo, "now-playing stage layers whose plates collide, or text straddling another layer's plate edge"),
+            new(Rules.TextCopies, "", Level.Todo, "two different lines of one text family drawn over each other (a crossfade stacking both)"),
+            new(Rules.OverlayTranslucent, "", Level.Todo, "a popup plate the page bleeds through (its empty plate is not one colour)"),
+            new(Rules.OverlayNarrow, "", Level.Todo, "an overlay narrower than its content: most of its rows trimmed to a few letters"),
+            new(Rules.TextRuled, "", Level.Gate, "a rule or line crossing a text's glyph box (an underline through descenders); promoted 10-24: every sweep hit real"),
+            new(Rules.EdgeGutter, "", Level.Todo, "page text leading left of the theme guide's gutter on a column the guide does not list"),
+            new(Rules.EdgeHuge, "", Level.Todo, "right edges at Huge and Huge4K, mirrored from the guide's left lead (the guide declares them at Small and Standard)"),
+            new(Rules.TypeVoice, "", Level.Gate, "UI copy in another theme's voice (Title Case on Zune; light lowercase heads on Classic); promoted 10-24: every sweep hit real"),
+            new(Rules.StateRest, "", Level.Todo, "a detail page whose subject shows no saved or following state at rest"),
+            new(Rules.PlayingStatus, "", Level.Todo, "now-playing surfaces disagreeing with the player (Nothing playing while a track plays, an empty source line)"),
+            new(Rules.ControlRequired, "", Level.Todo, "a surface without a control it must offer (a held-open transport with no play/pause or seek)"),
+            new(Rules.EdgeWindow, "", Level.Todo, "content laid out past the window's right edge, outside any rail"),
+            new(Rules.SpaceHuge, "", Level.Todo, "a band of the page at Huge or Huge4K with nothing in it, as wide as a column"),
+            new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -236,6 +256,17 @@ public static partial class Diagnostics
 
             /// <summary>An icon glyph (a private-use character), not words: out of the type scale and the clip rule.</summary>
             public bool Glyph { get; init; }
+
+            /// <summary>The words are the app's own copy: a base-culture loc string, compared case-folded (Zune lowercases on screen), not data (a
+            /// title, a name). What <c>type.voice</c> judges.</summary>
+            public bool Copy { get; init; }
+
+            /// <summary>The case transform the run is shaped with (<c>TextStyle.Case</c>: <c>Lower</c>, <c>Upper</c>; "" as written): the string
+            /// is stored as written, the screen shows it transformed.</summary>
+            public string Case { get; init; } = "";
+
+            /// <summary>The words as the screen shows them (<see cref="Case"/> applied).</summary>
+            public string Shown => Case switch { "Lower" => String.ToLowerInvariant(), "Upper" => String.ToUpperInvariant(), _ => String };
 
             /// <summary>The glyph's icon name (<c>Icons.TryGetName</c>: <c>Play</c>), "" for words or an unnamed glyph.</summary>
             public string GlyphName { get; init; } = "";
@@ -450,6 +481,10 @@ public static partial class Diagnostics
             public string Ref => Key ?? Path;
         }
 
+        /// <summary>A words run an exiting subtree still draws: the nearest key at or above it, its presented rect (window DIP), its words and the
+        /// opacity that reaches the screen.</summary>
+        public readonly record struct ExitingRun(string Key, RectF Rect, string Text, float Opacity);
+
         /// <summary>A named value of the theme's design scale (<c>Spacing.M</c> = 12): what <c>space.scale</c> accepts and names.</summary>
         public readonly record struct ScaleEntry(string Name, float Value);
 
@@ -498,6 +533,29 @@ public static partial class Diagnostics
 
             /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
             public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
+
+            /// <summary>The player's phase as `play` names it (<c>playing</c>, <c>paused</c>, <c>idle</c>, <c>loading</c>, <c>ended</c>; "" when not
+            /// read) and the title of what it holds ("" when nothing): what <c>playing.status</c> holds the now-playing surfaces to.</summary>
+            public string Playing { get; init; } = "";
+            public string PlayingTitle { get; init; } = "";
+
+            /// <summary>The inspector holds the transport chrome shown (`chrome=shown`): a stage or a video's transport must be on screen.</summary>
+            public bool ChromeHeld { get; init; }
+
+            /// <summary>The page band (DIP, at the bottom of the content host) the active theme RESERVES for the floating video card while it sits
+            /// at its home: <c>Video.FloatingSurfaceReserve</c>, which the card writes from the theme's <c>PanelPolicy.Pip</c> (a theme whose card
+            /// floats over the page, <c>PipBounds.OverlaysContent</c>, reserves 0). Classic's 0.2.9 design ends the page above the card on
+            /// purpose; <c>picture.unpainted</c> does not call that band a page that stopped painting. 0 when nothing is reserved, and in a
+            /// snapshot saved before the field existed.</summary>
+            public float Reserved { get; init; }
+
+            /// <summary>The text runs of subtrees on their way out (an exit animation still drawing them: the outgoing lyric line of a crossfade).
+            /// The node list leaves exiting subtrees out (they are not the page); <c>text.copies</c> reads these. Not saved by `save=`.</summary>
+            public IReadOnlyList<ExitingRun> ExitingText { get; init; } = [];
+
+            /// <summary>The right edges the guide declares at Standard, moved by how far this tier's left lead sits from Standard's (<c>edge.huge</c>):
+            /// filled at Huge and Huge4K only, where the guide declares none.</summary>
+            public IReadOnlyList<LintEdge> MirrorEdges { get; init; } = [];
 
             /// <summary>The scope <see cref="Prepare"/> derived the node fields for (null: not prepared).</summary>
             public InspectVisible.Scope? PreparedFor { get; init; }
@@ -795,6 +853,10 @@ public static partial class Diagnostics
             /// <summary>The most findings one rule lists.</summary>
             public int MaxPerRule { get; init; } = 100;
 
+            /// <summary>`moving=judge`: judge the frame as it is, animating subtrees included (looping text, the stage's captions, which never
+            /// settle): no node counts as mid-flight, so contrast and the geometry rules give verdicts instead of "still animating" reviews.</summary>
+            public bool JudgeMoving { get; init; }
+
             /// <summary>Findings below this severity are left out of the report.</summary>
             public Severity Min { get; init; } = Severity.Info;
 
@@ -981,6 +1043,8 @@ public static partial class Diagnostics
         public static Report Run(Snapshot snapshot, Options? options = null)
         {
             Options o = options ?? new Options();
+            if (o.JudgeMoving)   // `moving=judge`: this frame is the verdict, whatever still animates
+                snapshot = snapshot with { Nodes = snapshot.Nodes.Select(static n => n.Animating ? n with { Animating = false } : n).ToList() };
             Snapshot s = Prepare(snapshot, o.Scope);
             var all = new List<Finding>();
             var every = new List<Finding>();
@@ -1023,6 +1087,20 @@ public static partial class Diagnostics
                     Rules.TextDuplicate => DuplicateTextRule(s, o, found),
                     Rules.TargetInk => TargetInkRule(s, o, found),
                     Rules.SpaceDead => DeadSpaceRule(s, found),
+                    Rules.StageOverlap => StageOverlapRule(s, found),
+                    Rules.TextCopies => TextCopiesRule(s, found),
+                    Rules.OverlayTranslucent => TranslucentRule(s, found),
+                    Rules.OverlayNarrow => OverlayNarrowRule(s, found),
+                    Rules.TextRuled => TextRuledRule(s, found),
+                    Rules.EdgeGutter => GutterRule(s, found),
+                    Rules.EdgeHuge => HugeEdgeRule(s, found),
+                    Rules.TypeVoice => VoiceRule(s, found),
+                    Rules.StateRest => StateRestRule(s, found),
+                    Rules.PlayingStatus => PlayingStatusRule(s, found),
+                    Rules.ControlRequired => ControlRequiredRule(s, found),
+                    Rules.EdgeWindow => PastWindowRule(s, found),
+                    Rules.SpaceHuge => HugeSpaceRule(s, found),
+                    Rules.PictureText => UnpaintedTextRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;
@@ -2718,9 +2796,11 @@ public static partial class Diagnostics
         static bool IsVerb(Node n) => n.Role is "Button" or "ToggleButton" or "MenuItem" or "" && n.ImageCount == 0 && n.TextCount < 2;
 
         /// <summary>What a verb acts on: the first spotify entity in its key or an ancestor's; else the row or card it sits in (an instance of a
-        /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else the
-        /// page's own entity, else the page.</summary>
-        static string SubjectOf(Snapshot s, Node n)
+        /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else, in
+        /// window chrome (<paramref name="paged"/>: the capture holds a page slot, and the verb sits outside the content card that hosts the page
+        /// and its band: the nav column, the title bar), the window itself: the nav pane's "+" makes a playlist, it never follows the show on
+        /// screen, while Zune's band (in the card, outside the page slot) acts on the page; else the page's own entity, else the page.</summary>
+        static string SubjectOf(Snapshot s, Node n, bool paged = false)
         {
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
             {
@@ -2729,7 +2809,26 @@ public static partial class Diagnostics
                 if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
                     return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
             }
+            if (paged && !KeyedUnder(s, n, ContentCard)) return "the window";
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
+        }
+
+        /// <summary>The content card: the frame that hosts the page and what speaks for it (Zune's band); outside it is window chrome.</summary>
+        static readonly string[] ContentCard = ["shell.content.card"];
+
+        /// <summary>The capture holds a page slot and the content card around it (a `root=` lint of one subtree holds neither): what tells window
+        /// chrome from the page.</summary>
+        static bool HasPageSlot(Snapshot s)
+        {
+            bool slot = false, card = false;
+            foreach (Node n in s.Nodes)
+            {
+                if (n.Key is not { } key) continue;
+                if (TrySlotRoute(key, out _, out _)) slot = true;
+                else if (string.Equals(key, ContentCard[0], StringComparison.Ordinal)) card = true;
+                if (slot && card) return true;
+            }
+            return false;
         }
 
         /// <summary>The same verb on the same subject offered in two homes on screen (the band's Shuffle and the song list's Shuffle on an album). A
@@ -2738,6 +2837,7 @@ public static partial class Diagnostics
         static int DuplicateRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
+            bool paged = HasPageSlot(s);
             var groups = new Dictionary<string, List<Node>>(StringComparer.Ordinal);
             foreach (Node n in s.Nodes)
             {
@@ -2752,7 +2852,7 @@ public static partial class Diagnostics
                 if (inner) continue;
                 looked++;
                 string verb = n.LabelGlyph.Length > 0 ? "glyph:" + n.LabelGlyph : IsGlyphText(n.Label) ? GlyphRef(n.Label, "") : n.Label.ToLowerInvariant();
-                string group = n.Role + "|" + verb + "|" + SubjectOf(s, n);
+                string group = n.Role + "|" + verb + "|" + SubjectOf(s, n, paged);
                 if (!groups.TryGetValue(group, out List<Node>? list)) groups[group] = list = [];
                 list.Add(n);
             }

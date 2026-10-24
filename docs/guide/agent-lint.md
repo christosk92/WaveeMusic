@@ -57,6 +57,8 @@ names what the lint could not decide, and the `todo` rules report the spacing an
 | `allowTrim` | none | Key prefixes whose text may ellipsise: a per-call `TrimOk` intent (a near-miss and a hard clip are still reported). An empty list means none. |
 | `allowDuplicate` | none | Labels (or glyph icon names, `Shuffle`) `duplicate.action` and `text.duplicate` let repeat. An empty list means none. |
 | `ignoreUnder` | `shell.titlebar,shell.playerbar` | Key prefixes `duplicate.action` and `text.duplicate` skip. Passing it replaces the default; `ignoreUnder=[]` (or `ignoreUnder=`) clears it. |
+| `moving` | `review` | `review`: a node in an animating subtree is a review ("lint again once it settles"). `judge`: this frame is the verdict, nothing counts as mid-flight: looping text (the stage's captions, lyrics) that never settles gets a contrast verdict (Zune visualizer 1440: the captions' `contrast.text (review)` becomes a pass). |
+| `frame` | none | With `replay`: a PNG `render` of the same frame, decoded (WIC) as the pixels contrast and the picture rules read; its scale is its width over the snapshot's. Judges an older exe's capture with today's rules. |
 
 A number that is not a finite number in range, an empty `rules` or `outcomes`, and a path that is not a non-empty string fail
 the command and name the arg; nothing falls back silently. Every arg above is declared in the server's verb table
@@ -287,10 +289,77 @@ mini player, a pane) is one colour (98 % within 8 of 255): the page stops painti
 an edge fade, a sticky header's plate or a translucent cover hides text on purpose in ways the snapshot cannot tell from a
 fault. `overlay.open`: an overlay layer the `state` verb opened (its reply's `leftOpen`) is still open (Zune Compact's
 `state kind=loading` leaves the omni flyout up): close it (`key esc`) before judging the state.
+A band as tall as the page band the active theme RESERVES for the floating video card (`Video.FloatingSurfaceReserve`, written from
+the theme's `PanelPolicy.Pip`; the snapshot's `reserved`) is the layout's design, not a page that stopped painting: `picture.unpainted`
+lists it as `info` suppressed (cause `reserved`). Classic's 0.2.9 design ends the page above the parked card on purpose (kept by owner
+decision); a theme whose card floats over the page (`PipBounds.OverlaysContent`: WinUI since C0, Zune) reserves nothing, so the same
+band there stays an error. The scene cannot tell a wrong declaration from a right one: pre-C0 WinUI inherited Classic's reservation.
+
+**`text.ruled`** (warn; promoted 10-24). A rule or line primitive (a fill at most 2.5 DIP thick and 16 long, not a slider's,
+progress bar's or scroll bar's track, nor a thin drag bar) crosses a text's glyph box: horizontal, inside the run's ink from a
+quarter down to 1 DIP under the descenders, across 12 DIP or more; vertical, through half its height. The line and the words share
+a plane: the same scroll region, page and overlay (the play bar's top edge over content scrolled under it is not). Built from Zune's
+owned playlist: the title editor's underline at rest through the 120 title's descenders (`zune.playlist.read/1` on pl0, every size).
+
+**`type.voice`** (warn; promoted 10-24). The app's own copy (a run whose words, case-folded, are a string of the base culture's loc
+file, `assets/loc/en-US.json`, outside a row about another entity and outside a data column) in another theme's voice, as the screen
+shows it (`TextStyle.Case` applied). Zune: Title Case copy (two or more capitalised words of three letters or more), or a
+capitalised head of 20 DIP or more (a semibold one is not: Zune lights its selected pivot so). Classic: a light (300 or less)
+all-lowercase head of 18 DIP or more (Zune's voice leaking in). WinUI is not judged. Built from Classic's show reader ("continue",
+"new since you were here") and Zune's stand-ins (History, "Featured on"), it also finds Zune's crumbs ("Your Library", board:
+lowercase).
 
 ### Report-only rules (level `todo`)
 
 Each ships with an algorithm note in its code and a guide policy to declare intent.
+
+**The audit's blind spots (lane A3, 10-24; `Diagnostics.Inspect.Lint.Audit.cs`, the pixel ones in `Diagnostics.Inspect.Picture.cs`).**
+All warn, all todo; each was built from a case of the 10-23 audit and caught it; the sweep counts are under Validation A3.
+
+- **`stage.overlap`**: the now-playing stage's layers (the outermost `stage:*` key) collide: two plates (an opaque fill or an
+  image, 48 DIP or more, under 60 % of the window) of different layers overlap by 12 or more and neither holds the other, or a
+  text line of one layer straddles another layer's plate edge by 8 or more. Moving nodes are judged (the stage loops). Zune card and
+  visualizer at 1440 (`stage:npcard` over the art plate, the caption half on it) and 400 (the art plate under the cover).
+- **`text.copies`**: two lines of one key family (its first segment: `cap` of `cap:a:1:0`) drawn over each other, 40 % of the
+  smaller box or more, both at opacity 0.2 or more (colour alpha included: a width sizer drawn in no colour is not a line); the
+  same words on the same box are a designed layer (a karaoke fill, a glow), the same words at another size are one line in two
+  roles. Reads the exit orphans too (`Snapshot.ExitingText`: the crossfade's outgoing line is detached while it fades; not saved).
+  Zune visualizer mid-crossfade: "morning on word under moon" (exiting) under "you a tonight radio song turn". Sample frames to
+  catch one (`frames 2`, `lint rules=text.copies moving=judge` repeated).
+- **`overlay.translucent`** (pixels): an overlay layer's plate (its largest box with an opaque fill or an Acrylic material, 80 x
+  60 or more, under 90 % of the window) is not one colour where nothing of its own draws (6 DIP in from its edge, its words, art and
+  separators skipped; 90 % of the pixels within 8 of one colour). Zune's search suggestions and notifications (Acrylic) at 400 and
+  1440; the device picker (opaque) passes.
+- **`overlay.narrow`**: an overlay whose word runs are mostly cut: three or more, and half or more, ellipsised to under 40 % of
+  their words. Zune search at 400: 17 of 18 rows show 2 of 84 DIP ("L...").
+- **`edge.gutter`**: page text (in a page slot, not in a rail) leading 3 DIP or more left of the guide's gutter (its `page.title`
+  or `band.first-pivot` lead) on a column the guide's edges do not list; a guide `Hang` within its value or a `Bleed` excuses it,
+  and a run starting off the window is a bleed. Zune episode at 400 (`episode-section:*` at x0 under a 16 gutter); WinUI's
+  stand-in library, show and episode pages (x292-308 against 316). At Zune Huge4K the guide's lead is the centred 2400 column
+  (720), which D3 replaces with the window gutter: read those hits against the board.
+- **`edge.huge`**: the right edges the guide declares at Standard, checked at Huge and Huge4K, where it declares none
+  (`Snapshot.MirrorEdges`: the guide asked at Standard with the real width, each edge moved by how far this tier's left lead sits
+  from Standard's). A staged replay (the band's actions 60 short at 2560) reads `right edge at 2420, expected 2480 (-60)`.
+- **`state.rest`** (owner rule "state is visible at rest"): an album, artist or show page whose subject shows no saved or
+  following toggle on screen at rest (a toggle that acts on the page's entity, outside the play bar and title bar, reading
+  follow/following/save/saved/... or drawing a heart, a person or a star). Playlists are not judged (an owned one has no such
+  state). Zune 800x600 album and artist (the short layout drops the band's verb row).
+- **`playing.status`**: while the player holds a track (`Snapshot.Playing`: playing or paused), a run reading "Nothing playing"
+  (Zune's device picker), or a `stage:*:source` line with no words (`stage:transport:source`, the board's "playing from").
+- **`control.required`**: with the transport held shown (`chrome=shown`, `Snapshot.ChromeHeld`), a full-window video
+  (`video-area`, `media-stage`) or stage without a play/pause target and a seek control (a slider or a drag bar 100 wide) on
+  screen. Zune fullscreen video at 1440 (the top row only); Classic's black fullscreen frame too.
+- **`edge.window`**: content (words or a target) that starts inside the window and is laid out 2 DIP or more past its right
+  edge, outside any rail and not cut inside the window by a clipping ancestor (a clip at the window's own edge is the window). The
+  topmost such node speaks. WinUI 800 artists: `verbs:row` to x840, the reader's rows' more buttons to x808.
+- **`space.huge`**: at Huge and Huge4K, a band of the page from top to bottom with no ink in it, 320 DIP and 15 % of the page or
+  wider (the page's own full-width plates and art are its ground). Zune 4K centres a 2400 column (720 empty each side); Zune and
+  WinUI settings use under half the width.
+- **`picture.text`** (pixels; A1's dropped text branch with a cover model): a words run the scene shows (in scope, opacity and
+  colour alpha 0.6 or more, at rest, not under an opaque plate) whose ink box paints one colour (99.9 % within 8): text that
+  never reaches the frame. Not judged within 64 DIP of a scroller's faded edge, under a sticky node, or where the ink barely differs
+  from its ground (contrast's). A replay of Zune album 1440 with a frame where an unseen layer covers the track list's left half:
+  8 findings; the true frame: none.
 
 **Promotion.** A rule starts at `todo` and earns `gate` only on evidence: every finding it gives on the replay set (the six
 reference mounts below, at `scope=screen` and `scope=content`, and the Zune gallery, `tools/themes/gallery.py --theme zune`) is
@@ -484,7 +553,12 @@ replays without pixels). Numbers are written at round-trip float precision. Deri
 `family`, `cell`) are written for a reader and recomputed on replay. A Zune Home 400 snapshot is about 0.33 MB, a Classic or
 WinUI Home at 1440 about 0.5-0.6 MB.
 
-`lint replay=<file>` runs the same pure rules on it: any scope, rules, baseline or `outcomes`. A replay of a live lint's
+Since 10-24 it also keeps the player's phase and title (`playing`, `playingTitle`), whether the chrome is held (`chromeHeld`), the
+floating card's reservation (`reserved`), the mirrored Huge edges (`mirrorEdges`) and per text run whether it is the app's copy and
+its case transform (`copy`, `case`); the exiting runs `text.copies` reads are not saved.
+
+`lint replay=<file>` runs the same pure rules on it: any scope, rules, baseline or `outcomes`; `frame=<png>` gives it the pixels of a
+render of that frame. A replay of a live lint's
 snapshot gives the same findings, fingerprints and counts (checked on the Zune album at 1440: 53 of 53). The reader is strict:
 a file that is not a lint snapshot, is newer than the reader, has no window size, has no nodes (a missing, empty or non-array
 `nodes`), a node without `p` or `r`, a rect that is not four finite numbers with w and h at or above 0, a parent that does not
@@ -624,6 +698,24 @@ glyph ink clears (Zune What's new at every size, Zune Albums "Alex Rivers" at 14
 the picture rules report nothing on it. They fire where they should: `video=fullscreen` (blank), WinUI `video=floating` (the
 unpainted band under the mini player, dark and light), `state kind=loading` at Zune 400 (the omni flyout left open).
 
+## Validation A3 (2026-10-24, lane A3: the blind-spot rules)
+
+The audit's sweep routes (22) x 3 themes x {400x860, 1440x960} dark, plus the same at 2560x1440 and 3840x2160 (264 lints; `goto`,
+`frames 30`, `lint min=info limit=50 save=`, `render` per page; scratch/a3/sweep). Every hit's render was looked at.
+
+| Rule | Source case caught | Hits 400+1440 | Hits 2560+3840 | False | Level |
+|---|---|---|---|---|---|
+| `text.ruled` | Zune pl0 editor underline | 1 | 2 | 0 (13 before the one-plane rule) | gate |
+| `type.voice` | Classic show "continue"; Zune History | 11 | 20 | 0 | gate |
+| `edge.gutter` | Zune episode 400 | 11 | 71 | 0 (Zune Huge4K hits are against the 720 column D3 replaces) | todo |
+| `overlay.translucent` | Zune suggestions, notifications | 1 | 0 | 0 | todo (WinUI's Acrylic flyouts unsampled) |
+| `space.huge` | Zune 4K column, Zune settings | - | 52 | 17 (Classic's capped columns: its shipped design) | todo |
+| `stage.overlap`, `text.copies`, `overlay.narrow`, `edge.huge`, `state.rest`, `playing.status`, `control.required`, `edge.window`, `picture.text` | each its own (above) | 0 | 0 | 0 | todo (no sweep hit to judge) |
+
+The gate rules' counts did not move over the 132 lints at 400 and 1440 against the audit's sweep, bar what A1 and C0 changed
+(`duplicate.action` 34 = 34: Zune's band Shuffle still pairs with the song list's; the nav pane's "+" no longer pairs with a show's
+Follow "+": a verb outside the content card acts on the window).
+
 ## Known limits
 
 - A snapshot saved before glyph ink was captured (and the headless model) falls back to the 1.2 em ink guess: reviews only.
@@ -646,5 +738,6 @@ unpainted band under the mini player, dark and light), `state kind=loading` at Z
   a node does not take it off the screen.
 - `crossing` lints the settled scene without reading a frame: its `contrast.text` and picture rules check nothing (`checked`
   0); its head names the devices it ran on.
-- `picture.unpainted` judges bands under scrollers only; a region the page leaves unpainted elsewhere, or text that never reached
-  the screen, is for the eyes.
+- `picture.unpainted` judges bands under scrollers only; text that never reached the screen is `picture.text`'s (todo), and a
+  region the page leaves unpainted elsewhere is for the eyes. A designed reservation is known only from the active theme's
+  declared `PanelPolicy.Pip`: a theme that declares the wrong one (pre-C0 WinUI) passes.

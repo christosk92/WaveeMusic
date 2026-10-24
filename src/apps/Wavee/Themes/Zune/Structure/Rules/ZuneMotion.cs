@@ -78,5 +78,5 @@ public static class ZuneMotion
 
     /// <summary>A part the new tier draws as a different tree (the mini bar ↔ the desktop bar, a panel's sheet ↔ overlay): the same
     /// opacity cross-fade as the grid's.</summary>
-    public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
+    public static readonly EnterExit SwapFade = SwapFamilies.Declare("Zune.SwapFade", new(Opacity: 0f, Active: true));
 }
