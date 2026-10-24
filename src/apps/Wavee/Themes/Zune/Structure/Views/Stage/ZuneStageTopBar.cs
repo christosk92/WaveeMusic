@@ -41,7 +41,7 @@ internal static class ZuneStageTopBar
 {
     static readonly string[] s_modes = [Strings.Stage.Mode.Lyrics, Strings.Stage.Mode.Visualizer, Strings.Stage.Mode.Queue, Strings.Stage.Mode.Artist];
 
-    /// <summary>The key of the pivots' scroller (at every tier: their own row at Compact, a run in the bar above it).</summary>
+    /// <summary>The key of the pivots' run (at every tier: their own row at Compact, a run in the bar above it).</summary>
     public const string PivotRowKey = "stage:pivots:row";
 
     /// <summary>The registered template of <see cref="ViewKeys.StageTopBar"/>.</summary>
@@ -141,20 +141,27 @@ internal static class ZuneStageTopBar
         Children = [body],
     };
 
-    /// <summary>The pivots' scroller, the same node at every tier: their own row at Compact (the stage's width, bled over the bar's padding, the
-    /// run inset by the gutter and scrolling under an edge fade, so a pivot never clips at 300 wide); a run sized to its words in the bar above it
-    /// (where the bar runs short it scrolls under the fade, never clips).</summary>
-    static ScrollEl PivotRow(Stage.StageCtx st, Stage.Mode mode, ZuneStageLayout t, float stageW, bool own, LayoutTransition? slide) => new()
+    /// <summary>The pivots' run, the same nodes at every tier: their own row at Compact (the stage's width, bled over the bar's padding, the
+    /// words inset by the gutter and scrolling under an edge fade, so a pivot never clips at 300 wide); sized to its words in the bar above it
+    /// (where the bar runs short it scrolls under the fade, never clips). The box carries the slide (a scroller takes no layout transition).</summary>
+    static BoxEl PivotRow(Stage.StageCtx st, Stage.Mode mode, ZuneStageLayout t, float stageW, bool own, LayoutTransition? slide) => new()
     {
-        Key = PivotRowKey, Horizontal = true, ContentSized = true, Shrink = own ? 0f : 1f, MinWidth = 0f,
+        Key = PivotRowKey, Direction = 0, Shrink = own ? 0f : 1f, MinWidth = 0f, Layout = slide,
         Width = own ? stageW : float.NaN, Height = own ? t.PivotRowH : float.NaN,
-        Margin = own ? new Edges4(-t.BarPadL, 0f, -t.BarPadR, 0f) : default, Layout = slide,
-        AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
-        Content = new BoxEl
-        {
-            Padding = own ? new Edges4(t.Gutter, 0f, t.Gutter, 0f) : default, Direction = 0, Shrink = 0f,
-            Children = [Pivots(st, mode, t, rotate: own)],
-        },
+        Margin = own ? new Edges4(-t.BarPadL, 0f, -t.BarPadR, 0f) : default,
+        Children =
+        [
+            new ScrollEl
+            {
+                Horizontal = true, ContentSized = true, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
+                Content = new BoxEl
+                {
+                    Padding = own ? new Edges4(t.Gutter, 0f, t.Gutter, 0f) : default, Direction = 0, Shrink = 0f,
+                    Children = [Pivots(st, mode, t, rotate: own)],
+                },
+            },
+        ],
     };
 
     static Element Label(string text, ZuneStageLayout t) => new TextEl(text)
