@@ -165,7 +165,9 @@
 // 1.56 (audit B4): `VideoFullscreenProps.Transport` (the fullscreen surface owns the transport: the theme draws the on-media strip in its chrome).
 // 1.59 (audit B7): `PageChromeRow.ViewsPending` / `PageChrome.ViewsPending` (a page whose views are still loading: a band keeps row 2's place) and
 // `PageAction.Reserve` (a word action's other word: a theme holds the wider of the two, so follow / following never changes the action's width);
-// `ConcertDetailProps.Failed` / `.Retry` (a concert row whose ask failed is the error vacancy with Retry, never the skeleton forever).
+// `ConcertDetailProps.Failed` / `.Retry` (a concert row whose ask failed is the error vacancy with Retry, never the skeleton forever);
+// `LibraryPageProps.CountKnown` and `LibraryGroupSet.Known` (no count beside a loading library); `NotificationsProps.Loading` (a feed still loading
+// draws its skeleton, not "Loading...").
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

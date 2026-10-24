@@ -1120,6 +1120,10 @@ public static partial class Notify
     /// <summary>"Clear" is rendered ONLY while the Activity pill is selected.</summary>
     public static bool ShowsClear(NotifyFilter filter) => filter == NotifyFilter.Activity;
 
+    /// <summary>Is a filter with no rows still WAITING on a remote feed it shows (the ladder's "Loading" rung below)? The feed's skeleton stands then.</summary>
+    public static bool FeedLoading(NotifyFilter filter, FeedState social, FeedState releases)
+        => EmptyMessageKey(filter, social, releases) == Strings.Notifications.Loading;
+
     /// <summary>THE EMPTY LADDER. A remote category with zero rows is only EMPTY when its feed actually loaded — a
     /// loading, failed or offline fetch must say so instead of masquerading as "no notifications". Returns a loc key.</summary>
     public static string EmptyMessageKey(NotifyFilter filter, FeedState social, FeedState releases)

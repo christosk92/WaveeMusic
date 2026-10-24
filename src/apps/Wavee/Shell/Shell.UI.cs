@@ -1439,6 +1439,7 @@ public static partial class Shell
                 Now = now,
                 ExpandedId = expandedId,
                 EmptyText = rows.Count == 0 ? Loc.Get(Notify.EmptyMessageKey(filter, social, releases)) : "",
+                Loading = rows.Count == 0 && Notify.FeedLoading(filter, social, releases),
                 Clear = Notify.ShowsClear(filter) ? Notify.ClearActivity : null,
                 CanUndo = Notify.UndoActivity is not null,
                 UpdateProgress = Notify.UpdateProgress,
