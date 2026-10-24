@@ -17,8 +17,9 @@
 // WHAT IT REPORTS.
 //   remounted  a keyed node (unique before) that is a different node after the settle: its subtree and state were thrown away. `family` names
 //              the swap it sits under (owner rule "a tier crossing keeps its parts": a genuinely different tree swaps keyed per family under
-//              the theme's opacity-only cross-fade, SwapFade): the key of the nearest node this step mounted whose registered enter and exit
-//              are that cross-fade; null when none is, a rebuilt part (`counts.remountedOutside`, what the gate fails on).
+//              a cross-fade the theme DECLARED as a swap, `SwapFamilies.Declare`): the key of the nearest node this step mounted whose registered
+//              enter and exit are a declared swap fade; null when none is, a rebuilt part (`counts.remountedOutside`, what the gate fails on).
+//              An undeclared opacity fade (an arm cross-fade, a control's appear) is no family.
 //   vanished   a keyed node that is gone (or no longer shown) after the settle; tiers that drop a part on purpose show up here.
 //   appeared   keys shown after the settle that were not before.
 //   snapped    nodes whose laid-out rect changed ON THE COMMIT FRAME (against the resized frame, so plain window resizing is not counted) with
@@ -588,14 +589,15 @@ public static partial class Diagnostics
             });
         }
 
-        /// <summary>An enter or exit terminal is a swap cross-fade: opacity only (no offset, scale or blur; a stagger delay aside). Every theme
-        /// declares its tier swap so (`ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`, `WinUiDiscoveryMotion.SwapFade`,
-        /// `WinUiScreenMotion.SwapFade`: `new EnterExit(Opacity: 0f, Active: true)`); core code may not name a theme's types (WVTH001), so the
-        /// inspector reads the swap off the node's registered transition by that shape. A part under it fades, it never pops.</summary>
+        /// <summary>An enter or exit terminal is a DECLARED swap cross-fade: opacity only (no offset, scale or blur; a stagger delay aside) and
+        /// carrying a family a theme declared through <see cref="SwapFamilies.Declare"/> (`ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`,
+        /// `WinUiDiscoveryMotion.SwapFade`, `WinUiScreenMotion.SwapFade`). Core code may not name a theme's types (WVTH001), so the theme declares
+        /// the fade and the inspector reads the id off the node's registered transition. An undeclared opacity fade (an arm cross-fade such as
+        /// Zune's `ArmFade`, a control's appear) is no swap: a part under it that remounts was rebuilt.</summary>
         static bool IsSwapFade(in EnterExit e)
-            => e.Active && e.Opacity < 1f && e.Dx == 0f && e.Dy == 0f && e.Sx == 1f && e.Sy == 1f && e.Blur == 0f;
+            => e.Active && e.Opacity < 1f && e.Dx == 0f && e.Dy == 0f && e.Sx == 1f && e.Sy == 1f && e.Blur == 0f && SwapFamilies.TryName(e.SwapFamily, out _);
 
-        /// <summary>A node the reconciler registered with the swap cross-fade on both its entry and its exit (`Enter = SwapFade, Exit = SwapFade`).</summary>
+        /// <summary>A node the reconciler registered with a declared swap cross-fade on both its entry and its exit (`Enter = SwapFade, Exit = SwapFade`).</summary>
         static bool SwapsOut(Shell.HeadlessShell shell, NodeHandle n)
             => shell.Host.Animation.TryGetTransition(n, out LayoutTransition t) && IsSwapFade(t.Enter) && IsSwapFade(t.Exit);
 
