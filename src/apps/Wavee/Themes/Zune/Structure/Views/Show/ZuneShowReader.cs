@@ -271,7 +271,7 @@ internal static partial class ZuneShow
     /// <summary>The find box. At rest it sits at its own <see cref="Controls.FindBoxWidth"/> measure past the row's flexible spacer; the collapsed
     /// row's OPENED arm lets the same control fill the middle, so the query survives either transition and the row's height never changes.</summary>
     static Element FindField(ShowToolbarArgs a, bool fill)
-        => AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Find), width: Controls.FindBoxWidth, text: a.Find,
+        => AutoSuggestBox.Create(s_noSuggest, ZuneText.Word(Loc.Get(Strings.Podcast.Find)), width: Controls.FindBoxWidth, text: a.Find,
                                  queryIcon: Icons.Search, minHeight: FindMinHeight, cornerRadius: R.Shape.For(ShapeRole.Control),
                                  grow: fill ? 1f : 0f, maxFillWidth: fill ? FindFillMax : 0f);
 

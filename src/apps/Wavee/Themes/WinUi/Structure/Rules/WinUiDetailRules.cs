@@ -33,9 +33,11 @@ public static class WinUiDetailRules
     /// <inheritdoc cref="ArmFade"/>
     public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
 
-    /// <summary>The docked slot easing its width open and closed (350 ms open, 120 ms close, the WinUI sheet spline), the column inside keeping its full width.</summary>
+    /// <summary>The docked slot easing its width open and closed (350 ms open, 120 ms close, the WinUI sheet spline), the column inside keeping its full width.
+    /// The width eases through REAL layout, so the page column beside it (the list, the hero) yields frame by frame: revealed, the slot was laid out at its
+    /// new width at once and the page column snapped its whole width (488 at the 1920 crossing) under the easing edge.</summary>
     public static readonly LayoutTransition DockReveal = new(TransitionChannels.Size | TransitionChannels.Position,
-        TransitionDynamics.Tween(350f, SheetSpline), SizeMode.Reveal, ExitDynamics: TransitionDynamics.Tween(120f, SheetSpline));
+        TransitionDynamics.Tween(350f, SheetSpline), SizeMode.Reflow, ExitDynamics: TransitionDynamics.Tween(120f, SheetSpline), Axes: SizeAxes.Width);
 
     /// <summary>The title wraps to at most this many lines.</summary>
     public const int TitleMaxLines = 2;

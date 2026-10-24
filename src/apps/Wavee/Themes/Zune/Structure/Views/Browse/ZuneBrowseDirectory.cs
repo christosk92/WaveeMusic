@@ -192,7 +192,7 @@ internal static class ZuneBrowseDirectory
                     new BoxEl
                     {
                         Width = lay.ForYouTile, Height = lay.ForYouTile, Shrink = 0f,
-                        Fill = colour ? ColorScience.ToColor(m.Color!.Value) : Prop.Of(static () => Tok.AccentDefault),
+                        Fill = colour ? H.MutedPlate(ColorScience.ToColor(m.Color!.Value)) : Prop.Of(static () => Tok.AccentDefault),
                     },
                     R.Type.TrackTitle(m.Title) with
                     {

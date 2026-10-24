@@ -158,7 +158,8 @@ internal static class CommonCustomize
         }
     }
 
-    static string ZoneLabel(LayoutZone zone) => zone switch
+    /// <summary>A Home section's word (a theme that draws its own customizer reads the same words).</summary>
+    internal static string ZoneLabel(LayoutZone zone) => zone switch
     {
         LayoutZone.Daylist => Loc.Get(Strings.Home.Layout.Daylist),
         LayoutZone.Recents => Loc.Get(Strings.Sidebar.Section.RecentlyPlayed),

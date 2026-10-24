@@ -25,7 +25,12 @@ namespace Wavee.Theming.Contracts;
 /// never clickable).</summary>
 /// <param name="Label">The crumb's text.</param>
 /// <param name="Go">What clicking the crumb does (navigate to its route); null when it is not clickable.</param>
-public sealed record PageCrumb(string Label, Action? Go);
+public sealed record PageCrumb(string Label, Action? Go)
+{
+    /// <summary>The crumb is one of the core's own words (a destination: "Your Library", "Albums", "Browse", the trail's "Search" head), not a
+    /// name (an album's, an artist's, a category's, a query): a theme may re-case a word in its voice, never a name (contract 1.62).</summary>
+    public bool Word { get; init; }
+}
 
 /// <summary>What a route's head holds, decided per route (never per trail), so the head keeps one height on its route whatever the
 /// trail turns out to be.</summary>

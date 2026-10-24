@@ -70,11 +70,12 @@ namespace Wavee.Themes.Zune;
 /// <see cref="PivotOverflow.EdgeFadeScroll"/> parameter the run still scrolls rather than clip).</param>
 /// <param name="Narrow">The tier is narrow enough that the <see cref="PivotOverflow.MoreMenu"/> parameter folds the other pivots into
 /// a "more" word (Compact and Small).</param>
-/// <param name="ViewMinW">A row-2 view's hit box is at least this wide (Compact: 40, the touch floor, so a short word such as "all" is a 40 x 40
-/// target; the word is centred in it. 0 = the word's own width).</param>
+/// <param name="ViewSlopX">How far a row-2 view's hit rect reaches past its word on each side (Compact: 14, so the shortest word, "all", is a 40+
+/// target while the word itself leads on the gutter and keeps the board's 22 to the next, Z-Home-Podcasts-Compact; two neighbours' slops overlap
+/// by 6). 0 = the word's own width.</param>
 public sealed record ZuneBandLayout(WidthTier Tier, float Inset, float Row1H, float Row2H, float UnderH, float PivotGap, float RowGap,
     bool Pins, float PinArt, float Row2Gap, float Row2End, bool TitleAndActions, bool Collapses, bool Rotate, bool Fade, bool Narrow,
-    float ViewMinW = 0f)
+    float ViewSlopX = 0f)
     : ITierLayoutRecord
 {
     /// <summary>The band with both rows.</summary>
@@ -95,6 +96,15 @@ public static class ZuneBandRules
 {
     // ── the node keys the views carry (the tests find them) ──────────────────────────────────────────────────────────────
 
+    /// <summary>The band's height rung (`Tiers.Band.cs`): from this window height a destination's row 2 rests open (Z-PlayBar 1440 x 680 draws the facets at rest);
+    /// under it, folded (Z-Shell-Short 330, Z-Home-Small 800 x 600). Z-Frame-Small draws 600 open, but beside the 112 daylist row the owner set aside
+    /// for the bled one (`ZuneHomeTiers`, Small), which needs row 2's 32 DIP: from 660 the bled daylist's rings stand above the page's foot fade at
+    /// Small and Standard widths, so the page keeps both.</summary>
+    public const string Row2Rung = "band.row2";
+
+    /// <inheritdoc cref="Row2Rung"/>
+    public const float Row2RestsFrom = 660f;
+
     /// <summary>The band's root, its two rows, the pivot run, a pivot (`zune-band-pivot:<id>`), the "more" word, the pins cluster, a pin
     /// (`zune-band-pin:<id>`), a pin's play affordance, a row-2 view (`zune-band-view:<id>`), a row-2 action (`zune-band-action:<id>`),
     /// the row-2 title.</summary>
@@ -112,7 +122,7 @@ public static class ZuneBandRules
     private static readonly ZuneBandLayout[] s_bands =
     [
         new(WidthTier.Compact, Inset: 16f, Row1H: 44f, Row2H: 40f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
-            Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true, ViewMinW: 40f),
+            Row2Gap: 22f, Row2End: 0f, TitleAndActions: false, Collapses: true, Rotate: true, Fade: true, Narrow: true, ViewSlopX: 14f),
         new(WidthTier.Small, Inset: 24f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: false, PinArt: 32f,
             Row2Gap: 20f, Row2End: 24f, TitleAndActions: true, Collapses: false, Rotate: false, Fade: true, Narrow: true),
         new(WidthTier.Standard, Inset: 48f, Row1H: 44f, Row2H: 32f, UnderH: 8f, PivotGap: 24f, RowGap: 24f, Pins: true, PinArt: 32f,
@@ -237,6 +247,11 @@ public static class ZuneBandRules
 
     /// <summary>Row 2: the title's widest (it ellipsizes before it crowds the views), the hairline after it.</summary>
     public const float TitleMaxW = 360f, HairlineW = 1f, HairlineH = 16f;
+
+    /// <summary>Room row 2's scroller keeps inside its clip before the first word, at every tier: the scroller starts this far into the gutter and its
+    /// run pads it back, so the words stay on the gutter while the first view's hit slop (<see cref="ZuneBandLayout.ViewSlopX"/>, at most this) is
+    /// not cut by the clip. The same at every tier, so a crossing moves nothing.</summary>
+    public const float Row2SlopRoom = 14f;
 
     /// <summary>The current view's underline on a detail page (the tab style): 2 tall, the accent.</summary>
     public const float UnderlineH = 2f;
