@@ -511,6 +511,17 @@ public static partial class Diagnostics
             return new Edges4(left, -1f, right, bottom);
         }
 
+        /// <summary>The shell's own intents, under every theme (a theme guide's follow them). The Winamp deck face (`Deck.Faces.cs`, key
+        /// <c>deck:winamp@&lt;side&gt;</c>) is a scale model of the 275 x 116 Winamp 2 window: its title bars, LCD title and status letters are the
+        /// skin's pixel type at a fixed fraction of the deck's side (6-7 DIP at the rail's 324), part of the device's look and never reading copy
+        /// (the same title and time read at full size in the rail beside it). Enlarging them would break the skin's proportions, so the type floor
+        /// allows them there (B11, audit B8).</summary>
+        static readonly IReadOnlyList<LintPolicy> CorePolicies =
+        [
+            new(LintIntent.Allow, "deck:winamp@", "the Winamp deck's pixel type is the skin's (a scale model of the 275 x 116 window), never reading copy",
+                Rule: InspectLint.Rules.TypeFloor),
+        ];
+
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's guide and scale. UI thread, between
         /// frames. <paramref name="pixels"/> is the rendered frame the grounds under the text are read from (null: none read).</summary>
         public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, InspectLint.Pixels? pixels = null, string devices = "")
@@ -696,7 +707,7 @@ public static partial class Diagnostics
             }
             IReadOnlyList<LintEdge> edges = [];
             IReadOnlyList<LintEdge> mirror = [];
-            IReadOnlyList<LintPolicy> policies = [];
+            IReadOnlyList<LintPolicy> policies = CorePolicies;
             string guideId = "";
             IReadOnlyList<string> bleeds = ThemeInspection.ActiveLintGuide?.DesignedTopBleeds ?? [];
             if (ThemeInspection.ActiveLintGuide is { } guide)
@@ -709,7 +720,7 @@ public static partial class Diagnostics
                 var context = new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey) { Route = InspectLint.RouteNameOf(route) };
                 edges = guide.Edges(context);
                 mirror = MirrorEdges(guide, context, edges);
-                policies = guide.Policies(context);
+                policies = [.. CorePolicies, .. guide.Policies(context)];
                 guideId = InspectKit.ActiveThemeId;
             }
             return new InspectLint.Snapshot(width, height, tiers.Window, nodes)
