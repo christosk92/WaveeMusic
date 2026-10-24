@@ -68,6 +68,12 @@ internal sealed class ZuneBand : Component
     readonly ZunePivotCarousel<string> _carousel = new(StringComparer.Ordinal);
     IReadOnlyList<BandDestination> _destinations = [];
     Action<string>? _goTo;
+    /// <summary>The band's small grey words' ink this render (<see cref="ZuneMaterial.StripInk"/>: one step brighter over a photo bleed), and the live
+    /// read of it the cached pins' word binds.</summary>
+    ColorF _rest;
+    bool _photo;
+    IReadSignal<PageChrome?>? _chromeSig;
+    Func<ColorF>? _restInk;
     IReadSignal<PageScroll>? _scroll;
     NodeHandle _moreAnchor;
     OverlayHandle? _moreMenu;
@@ -86,6 +92,8 @@ internal sealed class ZuneBand : Component
         // The frame provides the core's chrome signal; a band mounted alone reads the band record's own.
         var frameChrome = UseContext(ZuneFrameContext.PageChrome);
         var chromeSig = frameChrome ?? band.Chrome;
+        _chromeSig = chromeSig;
+        _restInk ??= () => ZuneMaterial.StripInk(_chromeSig?.Value);
         // In the frame, the band slot eases the height (ZuneFrame.BandSlot) and clips this root's foot; mounted alone the root does it itself.
         bool inFrame = frameChrome is not null;
         // The fade tiers' edge fade follows the band's width (A7; at Compact and Small the panel floats, so the band spans the window). A memo
@@ -95,6 +103,8 @@ internal sealed class ZuneBand : Component
         var fade = UseComputed(() => ZuneBandRules.EdgeFade(ZuneBandRules.BandOf(factsSignal.Value.Tiers), viewport.Value.Width));
 
         var chrome = chromeSig.Value;
+        _rest = ZuneMaterial.StripInk(chrome);
+        _photo = ZuneMaterial.PhotoBleed(chrome);
         float edgeFade = fade.Value;
         var destinations = band.Destinations();
         int current = band.Current();
@@ -300,7 +310,7 @@ internal sealed class ZuneBand : Component
         var bold = text with { Weight = (ushort)R.Type.FacetTitleStyle.SelectedWeight, Color = Tok.TextPrimary };
         text = lit
             ? bold
-            : text with { Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary };
+            : text with { Color = _rest, HoverColor = Tok.TextPrimary };
         text = text with { Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f };
         // The word's width is the SELECTED weight's whether it is lit or not: an unlit word carries its bold twin, unseen, as the width it
         // keeps, so lighting it never widens the word by 4 DIP and the pivots beside it never shift.
@@ -345,7 +355,7 @@ internal sealed class ZuneBand : Component
             [
                 PivotText(R.Type.Pivot(Loc.Get(Strings.Common.More)), type) with
                 {
-                    Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
+                    Color = _rest, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Navigation), MaxLines = 1, Shrink = 0f,
                 },
             ],
         };
@@ -380,17 +390,17 @@ internal sealed class ZuneBand : Component
             && culture == _pinsCulture && reduced == _pinsReduced)
             return _pinsEl;
         _pinsFor = pins; _pinsRec = rec; _pinsTok = tok; _pinsStyle = style; _pinsCulture = culture; _pinsReduced = reduced;
-        return _pinsEl = Pins(pins, rec);
+        return _pinsEl = Pins(pins, rec, _restInk!);
     }
 
     /// <summary>"pinned", then the pins (at most the core's cap, six).</summary>
-    static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec)
+    static Element Pins(IReadOnlyList<BandPin> pins, ZuneBandLayout rec, Func<ColorF> ink)
     {
         var kids = new Element[pins.Count + 1];
         kids[0] = new BoxEl
         {
             Height = rec.PinArt, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Margin = ZuneBandRules.PinnedWordMargin,
-            Children = [R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Band.Pinned)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 }],
+            Children = [R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Band.Pinned)) with { Color = Prop.Of(ink), Case = R.Case.For(LabelKind.Label), MaxLines = 1 }],
         };
         for (int i = 0; i < pins.Count; i++) kids[i + 1] = Pin(pins[i], rec);
         return new BoxEl
@@ -538,7 +548,7 @@ internal sealed class ZuneBand : Component
         };
 
         var kids = new List<Element>(2) { viewsRun };
-        if (actions.Count > 0) kids.Add(Actions(actions));
+        if (actions.Count > 0) kids.Add(Actions(actions, _photo));
         // The row's words are the page's: when the page swaps (the chrome moves to the incoming page as its enter starts, Shell.PageChromeChannel.
         // PublishCurrent) the set of views and actions changes, and the old row fades out where it stands as the new one fades in, in step with
         // the page's own enter, instead of the words popping. The slot is a ZStack keyed by the row's own makeup (never by its title, which a
@@ -615,11 +625,12 @@ internal sealed class ZuneBand : Component
         };
     }
 
-    /// <summary>The page's actions: the play disc, the shuffle ring and the word pills, 14 apart.</summary>
-    static Element Actions(IReadOnlyList<PageAction> actions)
+    /// <summary>The page's actions: the play disc, the shuffle ring and the word pills, 14 apart. Over a photo bleed (<paramref name="photo"/>) a word
+    /// pill stands on the ground's plate: its accent word read 3.3 : 1 over the lighter shade (variant D), 5.5 : 1 on the ground.</summary>
+    static Element Actions(IReadOnlyList<PageAction> actions, bool photo)
     {
         var kids = new Element[actions.Count];
-        for (int i = 0; i < actions.Count; i++) kids[i] = ActionButton(actions[i]);
+        for (int i = 0; i < actions.Count; i++) kids[i] = ActionButton(actions[i], photo);
         // Compact draws no actions: crossing 640 they fade, never pop.
         return new BoxEl
         {
@@ -628,7 +639,7 @@ internal sealed class ZuneBand : Component
         };
     }
 
-    static Element ActionButton(PageAction a)
+    static Element ActionButton(PageAction a, bool photo)
     {
         float h = ZuneBandRules.ActionH;
         var round = CornerRadius4.All(h / 2f);
@@ -656,7 +667,9 @@ internal sealed class ZuneBand : Component
             {
                 Height = h, Corners = round, Padding = ZuneBandRules.PillPadding,
                 BorderWidth = ZuneBandRules.PillBorder, BorderColor = Tok.AccentDefault,
-                HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
+                Fill = photo ? R.Layer.ShellGround : ColorF.Transparent,
+                HoverFill = photo ? ColorContrast.Over(R.Layer.ChromeHover, R.Layer.ShellGround) : R.Layer.ChromeHover,
+                PressedFill = photo ? ColorContrast.Over(R.Layer.ChromePressed, R.Layer.ShellGround) : R.Layer.ChromePressed,
                 Children = [PillWord(a)],
             },
         };

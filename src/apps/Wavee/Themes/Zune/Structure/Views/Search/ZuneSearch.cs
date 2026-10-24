@@ -61,6 +61,8 @@ internal static class ZuneSearch
         {
             var hooks = UseContext(InputHooks.Current);
             var rec = RecordOf(UseContext(ThemeFactsContext.Signal));
+            // The hint is one of the band strip's small grey words: one step brighter over a photo bleed (ZuneMaterial.StripInk).
+            var pageChrome = UseContext(ZuneFrameContext.PageChrome);
             var field = UseRef<NodeHandle>(default);
             var model = props.Model;
             var parts = UseMemo(() =>
@@ -125,7 +127,7 @@ internal static class ZuneSearch
                                         [
                                             R.Type.MicroMeta(Loc.Get(Strings.Theme.Zune.Frame.SearchHint)) with
                                             {
-                                                Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+                                                Color = Prop.Of(() => ZuneMaterial.StripInk(pageChrome?.Value)), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
                                             },
                                         ],
                                     },

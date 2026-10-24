@@ -314,14 +314,25 @@ public static class ZuneBandRules
     // ── the bleed's adaptive scrim (V14) ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The scrim's fade under the band strip: full over the title bar and the band, clear this far below their foot (the head's photo
-    /// comes in under it).</summary>
-    public const float BleedScrimFade = 96f;
+    /// comes in under it), along an EASED curve (<see cref="BleedScrimLevel"/>), not a straight ramp: no edge where the shade starts or ends (the
+    /// owner's variant D, 2026-10-24).</summary>
+    public const float BleedScrimFade = 160f;
+
+    /// <summary>The steps the eased fade is drawn in (a gradient carries four stops, so the scrim stacks three boxes of them).</summary>
+    public const int BleedScrimSteps = 8;
+
+    /// <summary>The scrim's level (of its full opacity) at step <paramref name="i"/> of <see cref="BleedScrimSteps"/> down the fade: 1 - smoothstep(t).</summary>
+    public static float BleedScrimLevel(int i)
+    {
+        float t = Math.Clamp(i / (float)BleedScrimSteps, 0f, 1f);
+        return 1f - t * t * (3f - 2f * t);
+    }
 
     /// <summary>The dark kind's scrim: black, as the on-media scrims are (the light kind's is its ground).</summary>
     public static readonly ColorF BleedScrimDark = ColorF.FromRgba(0, 0, 0);
 
-    /// <summary>The ratio the band strip's dimmest words (the crumbs and the pins' word: 13 and 11 DIP in the tertiary ink) need over the photo: 4.5
-    /// and a little headroom, since the map is a downsampled estimate of the photo (the dark kind's tertiary ink tops out near 4.9 on black).</summary>
+    /// <summary>The ratio the band strip's dimmest words (the crumbs and the pins' word: 13 and 11 DIP, in the SECONDARY ink over a photo bleed,
+    /// <see cref="ZuneMaterial.StripInk"/>) need over the photo: 4.5 and a little headroom, since the map is a downsampled estimate of the photo.</summary>
     public const float BleedScrimNeed = 4.7f;
 
     /// <summary>The scrim's opacity over the band strip for a bleed photograph measured as <paramref name="map"/>: the least that brings
