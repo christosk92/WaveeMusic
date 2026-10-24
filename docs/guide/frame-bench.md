@@ -82,6 +82,8 @@ The full suite at the default windows takes about 3–4 minutes.
 | `gpu-pass-overhead` | `--bench-gpu-passes` only: the same A/B with pass timing off/on (GPU ms per frame and CPU, ledger on throughout). |
 | `sidebar-disclosure` | Opt-in, by name only: the Classic sidebar's Playlists section collapsing and expanding every 0.6 s (the reveal band in a virtual list). Skipped when no sidebar pane is mounted. Also writes `sidebar-disclosure-pose.csv`: the band's presented extent after every UI frame, which shows whether the pose advances every frame (the present count alone cannot). |
 | `drawer-toggle` | Opt-in, by name only: the first bench playlist, its third row's drawer opening and closing every 0.6 s (a `FlowReveal` drawer in the track table). |
+| `playlist-playing` | Opt-in, by name only: the first bench playlist playing as the context, its page on screen (the playing row's equalizer, the seek bar), rail closed. The owner's "playing, looking at a playlist" steady state. |
+| `playlist-lyrics` | Opt-in, by name only: the same with the lyrics rail open. |
 | `hide-restore` | Opt-in, by name only (it minimizes and hides the window): minimize, tray-hide and cover cycles, memory sampled visible / hidden / restored plus the restore latency. See `docs/guide/hidden-memory.md` and `ops/tools/hidden-mem.ps1`. |
 
 The scroll scenarios first wait (Home 20 s, the list 30 s) for a scroller whose content is at least three viewports long —

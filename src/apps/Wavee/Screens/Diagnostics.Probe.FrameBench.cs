@@ -294,6 +294,23 @@ public static partial class Diagnostics
                     Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
+                case FrameBenchScenarios.PlaylistPlaying:
+                case FrameBenchScenarios.PlaylistLyrics:
+                {
+                    // The playlist playing as the context, its page on screen: the playing row's equalizer and the seek bar move.
+                    if (t.Playlists.Length == 0) return Skip("no playlist");
+                    string pl = t.Playlists[0];
+                    Base(playing: true, pl);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(pl), "Bench playlist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    bool rail = name == FrameBenchScenarios.PlaylistLyrics;
+                    if (rail) { Shell.Ui.Mode.Value = Shell.RailMode.Lyrics; Shell.Ui.RailOpen.Value = true; }
+                    Settle(1.5);
+                    var r = Measure(null, "playlist=" + pl + (rail ? " rail=lyrics" : ""));
+                    if (rail) Shell.Ui.RailOpen.Value = false;
+                    return r;
+                }
                 case FrameBenchScenarios.StageLyrics:
                 case FrameBenchScenarios.StageVisualizer:
                 {
