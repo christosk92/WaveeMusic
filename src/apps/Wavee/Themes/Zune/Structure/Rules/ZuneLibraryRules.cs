@@ -188,6 +188,13 @@ public static class ZuneLibraryRules
     /// air under the head.</summary>
     public const float PlaylistHeadCover = 152f, PlaylistHeadGap = 24f, PlaylistTitleGap = 4f, PlaylistVerbsTop = 16f, PlaylistHeadBottom = 16f;
 
+    /// <summary>The playlists reader's verbs as words (play · shuffle · open playlist, 20 apart: about 334 in en-US). A narrower lane keeps play's word and names the other
+    /// two by their tooltips (Z-Library-Playlists-Small draws the rings alone).</summary>
+    public const float PlaylistVerbsWordsW = 340f;
+
+    /// <summary>Does the playlists reader's verb lane hold the words (<see cref="PlaylistVerbsWordsW"/>)?</summary>
+    public static bool PlaylistVerbWords(float laneWidth) => laneWidth >= PlaylistVerbsWordsW;
+
     /// <summary>The pane's command targets: the stock edge, and the Compact tier's (a 40 target).</summary>
     public const float CommandBox = 36f, CompactCommandBox = 40f;
 

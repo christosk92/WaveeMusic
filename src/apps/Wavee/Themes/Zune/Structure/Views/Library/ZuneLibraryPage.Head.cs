@@ -86,16 +86,16 @@ internal static partial class ZuneLibraryPage
         };
     }
 
-    /// <summary>The head's first group: Podcasts' mode words, the sort button (Small, Compact, a split under the pane's rung), or the kind's sort words. The button and the words are different trees in ONE
+    /// <summary>The head's first group: Podcasts' mode words, the sort button (Small, Compact, the grouped albums under the pane's rung), or the kind's sort words. The button and the words are different trees in ONE
     /// slot: a crossing swaps them under the shared cross-fade in a slot that RESERVES the row's height, so nothing under it jumps. Only the kinds that can show either form swap
     /// (Podcasts keeps its mode words at every tier).</summary>
     static Element Lead(LibraryPageProps p, ZuneLibraryLayout l)
     {
         if (p.IsPodcasts && p.Episodes is null)
             return Embed.Comp(l, () => new ModeWords(p.PodcastsMode())) with { Key = "lib:lead:mode" };
-        // Small's sort button, also wherever the split stands in Small's arrangement (the pane stepped aside under its rung): the kind's words need the room the
-        // third column's width gave them, and the head never runs past the page.
-        bool menu = l.SortMenu || !p.PaneBeside;
+        // Small's sort button, and the grouped albums' wherever that page stands in Small's arrangement (its pane stepped aside under the rung): their five words
+        // with the view, the find field and the count run past a 1008 page. The other kinds' words fit there and stay words.
+        bool menu = l.SortMenu || (HasGroups(p) && !p.PaneBeside);
         Element form = menu
             ? Embed.Comp(l, () => new SortButton(p.Entity, p.Sort(), p.Desc())) with { Key = "lib:lead:button" }
             : Embed.Comp(l, () => new SortWords(p.Entity, p.Sort(), p.Desc())) with { Key = "lib:lead:words" };

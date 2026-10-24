@@ -20,6 +20,19 @@ internal static class ZuneLibraryPlaylistHead
     /// <summary>The style Zune registers under <see cref="StyleKeys.LibraryPlaylistHead"/>. Stateless.</summary>
     public static readonly LibraryPlaylistHeadStyle Style = new(Head);
 
+    /// <summary>Play (the accent disc and its word), shuffle, open playlist; <paramref name="words"/> false names the last two by their tooltips. The rings' wrapper is the
+    /// same either way (<c>stableName</c>), so a lane crossing the width keeps every node.</summary>
+    static Element Verbs(LibraryPlaylistHeadArgs a, bool words) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.PaneCommandsGap, Shrink = 0f, MinWidth = 0f, Margin = new Edges4(0f, LR.PlaylistVerbsTop - LR.PlaylistTitleGap, 0f, 0f),
+        Children =
+        [
+            K.Ring("lib-playlist-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true, a.Play),
+            K.Ring("lib-playlist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: words, primary: false, a.Shuffle, stableName: true),
+            K.Ring("lib-playlist-open", Icons.ChevronRight, Loc.Get(Strings.Library.OpenPlaylist), showLabel: words, primary: false, a.Open, stableName: true),
+        ],
+    };
+
     static Element Head(LibraryPlaylistHeadArgs a)
     {
         var words = new List<Element>(3)
@@ -32,16 +45,9 @@ internal static class ZuneLibraryPlaylistHead
         };
         if (a.Meta.Length > 0)
             words.Add(R.Type.DenseMeta(a.Meta) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
-        words.Add(new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.PaneCommandsGap, Shrink = 0f, MinWidth = 0f, Margin = new Edges4(0f, LR.PlaylistVerbsTop - LR.PlaylistTitleGap, 0f, 0f),
-            Children =
-            [
-                K.Ring("lib-playlist-play", Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true, a.Play),
-                K.Ring("lib-playlist-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: true, primary: false, a.Shuffle),
-                K.Ring("lib-playlist-open", Icons.ChevronRight, Loc.Get(Strings.Library.OpenPlaylist), showLabel: true, primary: false, a.Open),
-            ],
-        });
+        // The verbs measure their lane: the words where they fit (Standard, Huge), else play keeps its word and shuffle and open playlist are rings named by their
+        // tooltips (Small's board draws the rings alone): every verb stays, none runs past the pane.
+        words.Add(Responsive.Of("lib-playlist-verbs", LR.PlaylistVerbWords, w => Verbs(a, w), fallback: LR.PlaylistVerbsWordsW));
         return new BoxEl
         {
             Key = "lib-playlist-head", Direction = 0, Gap = LR.PlaylistHeadGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
