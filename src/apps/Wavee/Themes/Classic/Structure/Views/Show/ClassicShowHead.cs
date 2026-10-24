@@ -343,7 +343,7 @@ internal static partial class ClassicShow
             kids.Add(new BoxEl
             {
                 Width = MiniNumeral, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
-                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = MiniNumeralSize, LineHeight = MiniNumeralLine, Weight = 300, Color = Tok.TextTertiary, MaxLines = 1 }],
+                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = MiniNumeralSize, LineHeight = MiniNumeralLine, Weight = VoiceWeight, Color = Tok.TextTertiary, MaxLines = 1 }],
             });
         else if (lead == ShowReaderRules.MiniLeadKind.Art)
             kids.Add(new BoxEl
