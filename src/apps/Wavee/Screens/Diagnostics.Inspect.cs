@@ -299,6 +299,8 @@ public static partial class Diagnostics
         /// shell tests' devices.</summary>
         Shell.HeadlessShell MountOn(float widthDip, float heightDip, float scale, string gpu, bool realImages = false)
         {
+            // Without `images=real` the engine's fake decoder paints every image: the palette's luminance maps measure what it paints.
+            Palette.FakePixels = !realImages;
             if (!_realText)
             {
                 _devices = "headless";
