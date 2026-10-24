@@ -11,7 +11,8 @@
 //                       the status layer (the busy bar over the top edge, the failed-switch bar: neither moves the zones) ] ]
 //
 //   THE COLUMN (`ZuneHomePlan.Rows`): on All the quickplay strip first (pins · history · new: `Home.Quickplay` through its core host, with the
-//   Recents zone as its history), then the zones in the planner's order, 28 apart; two neighbours that pair (the release list and the
+//   Recents zone as its history; under the daylist's height rung the one-row daylist leads instead and the strip follows it, Z-Shell-Short: the
+//   two chapters glide past each other on the crossing, `H.ChapterMove`), then the zones in the planner's order, 28 apart; two neighbours that pair (the release list and the
 //   clusters, the new and continue episodes) share a row 1 : 1 where the tier has room (`PairBeside`, `PairGap` apart), and stack where it has not (the same
 //   two nodes: only the row's direction is a live prop). Every zone is a chapter keyed by its zone: the entrance row rides its inner box
 //   (`Design.Entrance.Row`, production motion), and a tier crossing reflows it (`H.ChapterResize`). On All "customize home" closes the page.
@@ -109,7 +110,7 @@ internal static class ZuneHomePage
         var kinds = new ZoneKind[zones.Count];
         for (int i = 0; i < kinds.Length; i++) kinds[i] = zones[i].Kind;
         bool all = ZuneHomePlan.HasQuickplay(m.Facet);
-        var rows = ZuneHomePlan.Rows(kinds, all);
+        var rows = ZuneHomePlan.Rows(kinds, all, daylistLeads: lay.DaylistForm == ZuneDaylistForm.OneRow);
 
         var kids = new List<Element>(rows.Length * 2 + 1);
         for (int r = 0; r < rows.Length; r++)
@@ -153,7 +154,7 @@ internal static class ZuneHomePage
     {
         Element host = Embed.Comp(new QuickplayHostProps(history, fresh, overlay), static () => new QuickplayHost())
             with { SkeletonProxy = () => ZuneHomeQuickplay.Skeleton(history, fresh, lay) };
-        return Box(H.QuickplayKey, host, index);
+        return Box(H.QuickplayKey, host, index, layout: H.ChapterMove);
     }
 
     /// <summary>Two zones side by side (1 : 1, 48 apart) where the tier has room, stacked at the zone gap where it has not: the SAME two chapters
@@ -178,12 +179,14 @@ internal static class ZuneHomePage
     /// <summary>One zone's chapter: the keyed box (its height resizes by `H.ChapterResize` on a crossing) carrying its entrance on an inner box, around the
     /// zone's body. A chapter in a pair does not reveal itself: the pair does (two nested flow reveals would count a height change twice).</summary>
     static BoxEl Chapter(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay, int index, bool reveal = true)
-        => Box(H.ZonePrefix + zone.Key, Body(zone, overlay, lay), index, reveal);
+        => Box(H.ZonePrefix + zone.Key, Body(zone, overlay, lay), index, reveal, zone.Kind == ZoneKind.Daylist ? H.ChapterMove : null);
 
-    static BoxEl Box(string key, Element body, int index, bool reveal = true) => new()
+    /// <summary>A chapter's keyed box: its height resizes on a crossing (<paramref name="layout"/>: <see cref="H.ChapterResize"/> unless the chapter
+    /// also moves, <see cref="H.ChapterMove"/>).</summary>
+    static BoxEl Box(string key, Element body, int index, bool reveal = true, LayoutTransition? layout = null) => new()
     {
         Key = key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-        Layout = reveal ? H.ChapterResize : null,
+        Layout = reveal ? layout ?? H.ChapterResize : null,
         Children =
         [
             new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Animate = Design.Entrance.Row(index), Children = [body] },
