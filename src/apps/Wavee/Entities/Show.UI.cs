@@ -44,12 +44,12 @@ public readonly partial struct Show
 
     /// <summary>ONE cache and ONE thunk for every month word the reader prints: the group header and the sticky month
     /// say the same thing about the same <see cref="DateKeys"/> month key, so they share the string.
-    /// <para>The month name is culture text and is lowered with the CURRENT culture. A key that is not a month key — the
+    /// <para>The month name is the CURRENT culture's own text, as written ("August 2026"): its case is the style's voice, so a structure
+    /// cases it at draw (Zune lowers it through its case roles, Classic draws it as written). A key that is not a month key — the
     /// undated run's -1, a recycled slot's default, a key from anywhere else — reads "", because
     /// <see cref="DateKeys.MonthLabel"/> is TOTAL: this thunk runs on the render path and may not throw.</para></summary>
     static readonly FormatCache<int> s_monthWords = new();
-    static readonly Func<int, string> s_monthWord = static key =>
-        DateKeys.MonthLabel(key, CultureInfo.CurrentCulture).ToLower(CultureInfo.CurrentCulture);
+    static readonly Func<int, string> s_monthWord = static key => DateKeys.MonthLabel(key, CultureInfo.CurrentCulture);
 
     /// <summary>The month word of a <see cref="DateKeys"/> month key (the sticky month's text; "" for a key that is not one).</summary>
     internal static string MonthWordOf(int monthKey) => s_monthWords.Get(monthKey, s_monthWord);
