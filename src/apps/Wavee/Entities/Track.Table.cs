@@ -374,6 +374,11 @@ public readonly partial struct Track
         public string ScrollKey { get; init; } = "";
         /// <summary>The page's place hand-over across an arm swap (Track.Table.Place.cs): the frame host's, outliving its arms. Null: none.</summary>
         public ListPlace? Place { get; init; }
+        /// <summary>The ONE-TREE page's arrangement (audit B9): the hero list hosts the structure's hero at every width, and this live value says
+        /// whether it is the collapsing hero or the columns beside the rows. Never part of a key.</summary>
+        public global::Wavee.Theming.Contracts.DetailForm Form { get; init; }
+        /// <summary>The columns form's parts (the rail, the head, the aside, the sheet), handed to the hero; null where the page is not one tree.</summary>
+        public global::Wavee.Theming.Contracts.DetailColumnsProps? Columns { get; init; }
 
         public bool Equals(TableArgs? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -383,10 +388,10 @@ public readonly partial struct Track
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
-                   && ReferenceEquals(Place, other.Place)));
+                   && ReferenceEquals(Place, other.Place) && Form == other.Form && ReferenceEquals(Columns, other.Columns)));
 
         public override int GetHashCode()
-            => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey);
+            => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey, Form);
     }
 
     /// <summary>The table's live view, for the page-supplied rows it hosts (the Liked chip rail and lens header set and
@@ -437,16 +442,41 @@ public readonly partial struct Track
         /// <summary>The structure's page inset for the list under the hero (`DetailTierLayout.PageInsetX`; 0: none, the table's own gutter).</summary>
         float PageInsetNow() => ShellPolicy.Tracked.DetailTiers.For(TiersNow()).PageInsetX;
 
-        /// <summary>The page inset the hero arm's VIRTUALISED list stands in (<see cref="Theming.ListPolicy.InsetHeroList"/>; 0 where the structure keeps it full
-        /// width, or the page has a trailing band, which pads itself). Tracked: a tier crossing re-pads.</summary>
-        internal float HeroListInset() => VerticalArm && !ConfigOf(_latest).HasTrailing && ShellPolicy.Tracked.Lists.InsetHeroList ? PageInsetNow() : 0f;
+        /// <summary>The hero list's COLUMNS form (audit B9): the hero's side columns stand beside the rows (a plain read: the host re-renders with its args).</summary>
+        bool ColumnsForm => VerticalArm && _latest.Form == global::Wavee.Theming.Contracts.DetailForm.Columns;
 
-        /// <summary><paramref name="e"/> on the hero list's inset (<see cref="HeroListInset"/>); itself where there is none.</summary>
-        internal Element InsetHeroItem(Element e)
+        /// <summary>The hero list in its collapsing HERO form (the vertical arm's own look: the stacked rows, the hero's list bar, no column header where
+        /// the form drops it), read TRACKED: a component that draws by it re-renders when a crossing flips the form (audit B9).</summary>
+        internal bool HeroFormLive => _args.Value is { Vertical: not null, Embedded: false } a && a.Form != global::Wavee.Theming.Contracts.DetailForm.Columns;
+
+        /// <summary>The list column's insets in the hero list, TRACKED (the args, the tiers, and whatever the structure reads), so a bound spacer follows a
+        /// crossing on the frame it commits: the structure's page inset (<see cref="Theming.ListPolicy.InsetHeroList"/>, or a trailing band's, which pads
+        /// the rows and the band alike), and the width its hero's side columns take in the columns form (<c>DetailHeroStyle.ListInsets</c>, audit B9).</summary>
+        internal global::Wavee.Theming.Contracts.DetailListInsets InsetsNow()
         {
-            float inset = HeroListInset();
-            return inset > 0f ? new BoxEl { Direction = 1, Padding = new Edges4(inset, 0f, inset, 0f), Children = [e] } : e;
+            var a = _args.Value!;
+            if (a.Vertical is null || a.Embedded) return default;
+            float page = ConfigOf(a).HasTrailing || ShellPolicy.Tracked.Lists.InsetHeroList ? PageInsetNow() : 0f;
+            var side = _heroStyle?.ListInsets is { } insets
+                ? insets(new global::Wavee.Theming.Contracts.DetailInsetQuery(a.Form, TiersNow(), a.Columns))
+                : default;
+            return new global::Wavee.Theming.Contracts.DetailListInsets(page + side.Lead, page + side.Trail);
         }
+
+        /// <summary>A lead / trail spacer of the list column: its width BOUND to <see cref="InsetsNow"/> (a crossing re-binds it, nothing re-renders) and
+        /// eased with the structure's column motion, so the rows move in step with the hero's identity column.</summary>
+        BoxEl InsetSpacer(bool lead) => new()
+        {
+            Width = Prop.Of(lead ? _leadInset : _trailInset), Shrink = 0f, HitTestVisible = false, Animate = _heroStyle?.InsetMotion,
+        };
+
+        /// <summary><paramref name="e"/> in the list column: between the lead and trail spacers (always the same three children, whatever the insets, so an
+        /// inset that comes or goes moves the item instead of re-parenting it).</summary>
+        internal Element InsetList(Element e, string? key = null) => new BoxEl
+        {
+            Key = key, Direction = 0, MinWidth = 0f,
+            Children = [InsetSpacer(true), new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [e] }, InsetSpacer(false)],
+        };
         Detail.Config Cfg => ConfigOf(_latest);
 
         /// <summary>The config the host actually lays out with. An EMBEDDED table has no trailing band by default — the
@@ -511,6 +541,8 @@ public readonly partial struct Track
         /// so a wheel over the header (laid out ABOVE the list, outside its viewport) glides the rows exactly as a wheel
         /// over them would.</summary>
         readonly ScrollHandle _listScroll = new();
+        /// <summary>The album list's ONE outer scroller (the trailing body): its viewport's height is what the columns form's side columns fill.</summary>
+        readonly ScrollHandle _trailScroll = new();
         readonly Signal<int> _visible = new(0);
         readonly Signal<int> _listCount = new(0);
         readonly Signal<string> _expanded = new("");   // MembershipDiff.RowKey of the ONE open drawer, "" = none
@@ -575,6 +607,7 @@ public readonly partial struct Track
         readonly Func<ColorF> _accent;
         readonly Func<int, (float dx, float dy)?> _flipFrom, _verticalFlipFrom;
         readonly Func<int, (float from, float delayMs)?> _fadeFrom, _verticalFadeFrom;
+        readonly Func<float> _leadInset, _trailInset;
 
         public TableHost()
         {
@@ -591,6 +624,8 @@ public readonly partial struct Track
             _fadeFrom = display => _fade.TryGetValue(display, out var f) ? f : null;
             _verticalFlipFrom = item => IsVerticalRow(item) ? _flipFrom(item - Detail.VerticalLayout.PrefixCount) : null;
             _verticalFadeFrom = item => IsVerticalRow(item) ? _fadeFrom(item - Detail.VerticalLayout.PrefixCount) : null;
+            _leadInset = () => InsetsNow().Lead;
+            _trailInset = () => InsetsNow().Trail;
             InitChrome();
         }
 
@@ -763,9 +798,9 @@ public readonly partial struct Track
             bool measured = _tierMeasured.Peek();
             // The tier ladder's source (value-gated). Its crossing is the host's: pending until the first non-resized frame, then animated.
             // The list column's own width: the table's, less the structure's page inset on both sides (the hero arm's list stands inside it).
-            float listW = VerticalArm && (Cfg.HasTrailing || ShellPolicy.Now.Lists.InsetHeroList)
-                ? MathF.Max(1f, r.W - 2f * ShellPolicy.Now.DetailTiers.For((_facts ?? global::Wavee.Theming.ThemeHost.Facts).Peek().Tiers).PageInsetX)
-                : r.W;
+            // In the hero list the list column stands between its insets (the page inset, the hero's side columns: their TARGET widths, so the tier
+            // follows the form's commit and never the insets' ease).
+            float listW = VerticalArm ? MathF.Max(1f, r.W - Reactive.Untrack(_leadInset) - Reactive.Untrack(_trailInset)) : r.W;
             if (listW != _listW.Peek()) _listW.Value = listW;
             int relief = TableRules.ReliefFor(in _reliefLanes, listW, _reliefGap, _reliefPad, _relief.Peek(), measured);
             if (relief != _relief.Peek()) _relief.Value = relief;
@@ -882,7 +917,7 @@ public readonly partial struct Track
 
         /// <summary>The list CAN group by date: a <see cref="Detail.Config.DateGroups"/> page's own table in its wide arm (never the library
         /// pane's embedded one). Fixed for the host (the arm is in the table's key), so a slot decides once whether it carries a head.</summary>
-        internal bool GroupsCapable => Cfg.DateGroups && !VerticalArm && !_latest.Embedded;
+        internal bool GroupsCapable => Cfg.DateGroups && (!VerticalArm || ColumnsForm) && !_latest.Embedded;
 
         /// <summary>The list groups by date now: it can, and it is sorted by when its songs were added.</summary>
         bool GroupsOn(in Snapshot s) => GroupsCapable && s.Sort.Column == SortColumn.DateAdded && _latest.Source.HasDateAdded;
@@ -1168,7 +1203,7 @@ public readonly partial struct Track
             Element? lens = P.LensHeader?.Invoke();
             // The unavailable-songs bar rides the pinned chrome while it is on (contract 1.22): the rows clip under it too.
             float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
-            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), BandNow());
+            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), StickLine());
             _placeBand = vertical ? stickyInset : 0f;
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
@@ -1217,9 +1252,11 @@ public readonly partial struct Track
 
             // Density · skin · (two-column only) query+filter · reset epoch · recs, and `vh:` for the vertical arm. NOT the
             // tier and NOT the sort (ch 04 §0.3/§0.5, ch 30 §5.3).
+            // The hero list counts its recommendations live (`_verticalItemCount`): they never re-key it (a tier that docks them in the aside must not
+            // remount the list, audit B9).
             string filterKey = vertical ? "" : ":q" + HashCode.Combine(snap.Query, snap.Filters).ToString(System.Globalization.CultureInfo.InvariantCulture);
             string listKey = "list:" + args.ScrollKey + ":" + (vertical ? "vh:" : "") + "d" + shape.Density
-                             + (shape.Set.Classic ? ":classic" : ":modern") + filterKey + ":r" + _resetEpoch + (recsCapable ? ":rec" : "");
+                             + (shape.Set.Classic ? ":classic" : ":modern") + filterKey + ":r" + _resetEpoch + (recsCapable && !vertical ? ":rec" : "");
             // The list's box names the hero arm's sticky SCOPE: the prefix items pin inside the list's viewport, and a scope
             // that encloses the whole scroller releases only at the content's end (see VerticalList).
             Element listKeyed = new BoxEl
@@ -1467,6 +1504,7 @@ public readonly partial struct Track
                     Scroll = new ScrollOptions
                     {
                         ScrollKey = ListScrollKey,
+                        Handle = _listScroll,
                         AutoEdgeFade = false,
                         EdgeCues = ScrollEdgeCues.None,
                         ItemClipTopInset = stickyInset,
@@ -1510,23 +1548,24 @@ public readonly partial struct Track
                     EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
                     Children = [listKeyed],
                 }.StickyClip(stickyInset);
-                // The structure's page inset (WinUI): the list under the hero sits inside the page's gutter while the scroller (and its bar) keeps the card's edge.
-                float pageInset = PageInsetNow();
-                var insetPad = pageInset > 0f ? new Edges4(pageInset, 0f, pageInset, 0f) : default;
-                Element tableBlock = new BoxEl
+                // The pinned line: the band the collapsing hero leaves, or the pinned head of the columns form (audit B9).
+                float line = StickLine();
+                // The list column's insets (the structure's page inset, WinUI: the list under the hero inside the page's gutter while the scroller and
+                // its bar keep the card's edge; the hero's side columns in the columns form): bound spacers, never a padding, so they ease.
+                Element tableBlock = InsetList(new BoxEl
                 {
-                    Direction = 1, ScrollScope = TableBlockScope, Padding = insetPad,
+                    Direction = 1, ScrollScope = TableBlockScope,
                     Children =
                     [
-                        Chrome(in shape, chips, lens).Sticky(BandNow(), TableBlockScope, engaged: _compactInteractive),
+                        Chrome(in shape, chips, lens).Sticky(line, TableBlockScope, engaged: _compactInteractive),
                         listBlock,
                     ],
-                };
-                Element trailBlock = new BoxEl { Direction = 1, Padding = insetPad, Children = kids.ToArray() }
-                    .StickyClip(BandNow());
+                });
+                Element trailBlock = InsetList(new BoxEl { Direction = 1, Children = kids.ToArray() })
+                    .StickyClip(line);
                 // A structure with its own band (WinUI's opaque 48 bar) also clips the block at the band's line: the chrome that the block's end pushes up must
                 // not paint over the bar it passes under. The shell's transparent 56 band leaves it as it was.
-                if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(BandNow());
+                if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(line);
                 children = [TrailHero(spec), tableBlock, trailBlock];
             }
             else
@@ -1551,6 +1590,7 @@ public readonly partial struct Track
             {
                 Key = "trail:" + _latest.ScrollKey,
                 ScrollKey = TrailScrollKey,
+                Handle = _trailScroll,
                 Grow = 1f,
                 // WinUI's per-notch distance (15 % of the viewport, floored at 48 DIP) snapped to a whole number of
                 // rows at the live density, so a notch lands on a row boundary instead of slicing one in half. Dynamic
@@ -1568,13 +1608,15 @@ public readonly partial struct Track
         {
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
-            return new BoxEl
+            bool columns = ColumnsForm;
+            var root = new BoxEl
             {
-                Key = "vertical:hero-root", Direction = 1, ClipToBounds = true,
+                // The columns form (audit B9) pins the head whole and its side columns hang below it, beside the rows: no clip there.
+                Key = "vertical:hero-root", Direction = 1, ClipToBounds = !columns,
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
             }
-            .Sticky(0f, TrailScope)
-            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
+            .Sticky(0f, TrailScope);
+            return columns ? root : root.Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
         }
 
         /// <summary>The hero's spec with its shuffle satellite pointed at THIS table's <see cref="Shuffle"/> (G-264): the
@@ -1621,7 +1663,10 @@ public readonly partial struct Track
                 ColumnWidth: colW,
                 CompactLeft: left,
                 HeroHeight: heroH,
-                OnHeroMeasured: _onHeroMeasured);
+                OnHeroMeasured: _onHeroMeasured,
+                Form: _latest.Form,
+                Columns: _latest.Columns,
+                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal);
         }
 
         // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
@@ -1640,12 +1685,24 @@ public readonly partial struct Track
         /// equality (which covers <c>Vertical</c>), so this item re-renders exactly when its spec changes.</para></summary>
         internal Element HeroItem()
         {
-            var spec = _args.Value!.Vertical!;
+            var args = _args.Value!;
+            var spec = args.Vertical!;
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
-            return Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))
-                .Sticky(0f, TableScope)
-                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
+            var hero = Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH)).Sticky(0f, TableScope);
+            // The columns form (audit B9) pins the hero whole: it is the page head above the rows, its side columns hanging beside them.
+            return args.Form == global::Wavee.Theming.Contracts.DetailForm.Columns
+                ? hero
+                : hero.Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
+        }
+
+        /// <summary>The line the hero list's chrome pins at and its rows clip under: the band the collapsing hero leaves (the hero form), or the pinned
+        /// hero's own laid-out height (the columns form, audit B9: the head stands whole above the chrome). Tracked.</summary>
+        float StickLine()
+        {
+            if (!ColumnsForm) return BandNow();
+            float h = _heroH.Value;
+            return h > 1f ? h : 0f;
         }
 
         /// <summary>Item 1: chips · lens · column header, sticky at the compact band (56) against <see cref="TableScope"/>
@@ -1656,7 +1713,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return InsetHeroItem(Chrome(in shape, chips, lens)).Sticky(BandNow(), TableScope, engaged: _compactInteractive);
+            return InsetList(Chrome(in shape, chips, lens)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
         }
 
         internal Element EmptyItem()
@@ -1665,7 +1722,7 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             int visible = _rowItems!.Count.Value;
             var state = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
-            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetHeroItem(Placeholder(state, in shape))] };
+            return new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] };
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
@@ -1737,7 +1794,7 @@ public readonly partial struct Track
         /// 40 DIP below the bars); the heads further down depend on the dates, which have not landed.</summary>
         Element RowsShimmer(in Shape shape)
         {
-            Edges4 inset = !shape.Set.Classic && !VerticalArm ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
+            Edges4 inset = !shape.Set.Classic && (!VerticalArm || ColumnsForm) ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
             var rows = new Element[Design.RevealRamp.Chunk];
             for (int i = 0; i < rows.Length; i++)
@@ -1780,9 +1837,9 @@ public readonly partial struct Track
                 Direction = 1,
                 Children =
                 [
-                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow()) ?? new BoxEl(),
-                    InsetHeroItem(Chrome(in shape, chips, lens)),
-                    InsetHeroItem(RowsShimmer(in shape)),
+                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form) ?? new BoxEl(),
+                    InsetList(Chrome(in shape, chips, lens)),
+                    InsetList(RowsShimmer(in shape)),
                 ],
             };
         }
@@ -2307,7 +2364,7 @@ public readonly partial struct Track
             var isSel = scope.IsSelected;
             var interact = scope.OnInteraction;
             bool classic = shape.Set.Classic;
-            bool plain = !classic && VerticalArm && !rowFlow;   // the hero system's STACKED flow: plain full-bleed rows
+            bool plain = !classic && VerticalArm && !ColumnsForm && !rowFlow;   // the hero form's STACKED flow: plain full-bleed rows
             var drop = Video.Overrides.Present ? VideoDrop(index, start) : null;
             Func<bool> cue = drop is null ? _false : () => _videoDropRow.Value == index.Value;
 
@@ -2785,13 +2842,8 @@ public readonly partial struct Track
                     var host = _host;
                     var scope = _scope;
                     bool narrate = _narrate;
-                    // The structure's list inset (ListPolicy.InsetHeroList): the row and its hover plate on the page's gutter.
-                    float inset = host.HeroListInset();
-                    return new BoxEl
-                    {
-                        Key = "vitem:row", Direction = 1, Padding = inset > 0f ? new Edges4(inset, 0f, inset, 0f) : default,
-                        Children = [Embed.Comp(() => new TableSlot(host, scope, prefix, narrate))],
-                    };
+                    // The list column's insets (the page inset, the hero's side columns in the columns form): the row and its hover plate in the column.
+                    return host.InsetList(Embed.Comp(() => new TableSlot(host, scope, prefix, narrate)), "vitem:row");
                 }
                 case VerticalItemRole.Recommendations:
                 {
@@ -2800,7 +2852,7 @@ public readonly partial struct Track
                     return new BoxEl
                     {
                         Key = section is null ? "vitem:blank" : "vitem:recs", Direction = 1,
-                        Children = section is null ? [] : [_host.InsetHeroItem(section)],
+                        Children = section is null ? [] : [_host.InsetList(section)],
                     };
                 }
                 default:

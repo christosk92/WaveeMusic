@@ -236,7 +236,7 @@ internal static class ZuneDetailHero
 
     /// <summary>The loading band: the same blocks at the same heights, unfilled (the deriver paints the bars); a known cover is painted for real. The
     /// band's floor is the hero's own height, the number the collapse assumes until the hero is measured.</summary>
-    static Element Skeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers)
+    static Element Skeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm form)
     {
         var g = GeometryOf(spec, columnWidth, tiers);
         var lay = g.Layout;

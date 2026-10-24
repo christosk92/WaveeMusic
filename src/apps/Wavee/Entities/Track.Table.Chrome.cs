@@ -151,7 +151,7 @@ public readonly partial struct Track
             // and eases its own height, so it never moves the rows by a snap.
             if (HasUnavailableBar)
                 stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable" });
-            if (chips is not null && !(toolbar && pageBar) && (vertical || _latest.ShowToolbar))
+            if (chips is not null && !pageBar && (vertical || _latest.ShowToolbar))
                 stack.Add(Gutter(chips) with { Key = "chrome:chips" });
             if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
             stack.Add(header);
@@ -179,7 +179,7 @@ public readonly partial struct Track
 
         /// <summary>The list bar is the PAGE's bar (tuned Classic D16): a page with no rail (<see cref="Detail.Config.Rail"/> false) in its
         /// wide arm leads the bar with its Play split, a labelled Shuffle and its chips, under the page head.</summary>
-        bool PageBar => !VerticalArm && !_latest.Embedded && !Cfg.Rail;
+        bool PageBar => (!VerticalArm || ColumnsForm) && !_latest.Embedded && !Cfg.Rail;
 
         /// <summary>The list bar (tuned Classic D3, decisions D-6 / D-10): left [Play next │ ⌄] [Shuffle] [Tune]; right [Filter (n)]
         /// [Sort ⌄] [Find] [Insights] [⋯]. Row size, Select and the column opt-ins live in "…" only.</summary>
@@ -188,10 +188,11 @@ public readonly partial struct Track
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
             if (_selectionVisible?.Value == true && _dockHost is null) return SelectionSurface("selection");
 
-            bool vertical = VerticalArm;
+            // The hero list's columns form (audit B9) draws the two-column arm's bar; the read is tracked, so a crossing that flips the form rebuilds it.
+            bool vertical = VerticalArm && HeroFormLive;
             bool pageBar = PageBar;
             // A structure that draws Tune in its hero at this tier (DetailTableTier.TuneInHero, WinUI) leaves it off the bar: one home per verb.
-            bool hasTune = P.Tune is not null && !(VerticalArm && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.TuneInHero);
+            bool hasTune = P.Tune is not null && !(vertical && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.TuneInHero);
             var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
@@ -606,7 +607,7 @@ public readonly partial struct Track
                 return template(new TrackHeaderArgs
                 {
                     Set = shape.Set, Tracks = shape.Tracks, Sort = sort, SortSignal = h._sort,
-                    Checks = h._checksVisible?.Value ?? false, Vertical = h.VerticalArm,
+                    Checks = h._checksVisible?.Value ?? false, Vertical = h.HeroFormLive,
                     OnSort = h.SortBy,
                 });
             }
@@ -815,7 +816,7 @@ public readonly partial struct Track
                 bool shown = template is not null && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
                 if (template is null) return new BoxEl();
-                bool vertical = h.VerticalArm;
+                bool vertical = h.HeroFormLive;
                 float insetX = vertical ? RowMetrics.PadXFor(h.ShapeValue.Set.Tier) : RowMetrics.RowInset;
                 int count = Math.Max(1, tally.Total);
                 return template(new TrackUnavailableBarArgs

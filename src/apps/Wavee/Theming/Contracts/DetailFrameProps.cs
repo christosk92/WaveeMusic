@@ -312,7 +312,7 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
             && ReferenceEquals(a.CompactInteractive, b.CompactInteractive)
             && ReferenceEquals(a.SearchExpanded, b.SearchExpanded)
             && (a.OnHeroMeasured is null) == (b.OnHeroMeasured is null)
-            && a.Form == b.Form && ReferenceEquals(a.Columns, b.Columns) && ReferenceEquals(a.Viewport, b.Viewport);
+            && a.Form == b.Form && ReferenceEquals(a.Columns, b.Columns) && ReferenceEquals(a.ViewportHeight, b.ViewportHeight);
     }
 
     /// <inheritdoc />

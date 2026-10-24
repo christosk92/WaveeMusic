@@ -367,7 +367,8 @@ internal static partial class ClassicDetailFrame
     /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes from the same resolver as the
     /// loaded hero, bucketed once. Unfilled boxes — the table mounts this as its skeleton region's shimmer SOURCE and
     /// the engine's deriver paints the bars; a usable preview cover is painted for real (exempt from the deriver).</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, global::Wavee.Theming.TierFacts tiers)
+    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, global::Wavee.Theming.TierFacts tiers,
+        DetailForm pageForm = DetailForm.Hero)
     {
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);

@@ -92,10 +92,11 @@ public static partial class Detail
         float CompactLeft,                        // gutter: RowMetrics.PadXFor(tier) (+48 chips, +36 lens)
         float HeroHeight,                         // the band height the table's Collapse bind uses (measured, else HeroBandHeight)
         Action<float>? OnHeroMeasured,
-        // ── the one-tree page (audit B9): the arrangement, the columns form's parts, the list's viewport size (the side columns' height) ──
+        // ── the one-tree page (audit B9): the arrangement, the columns form's parts, and the height of the list's viewport (what the columns form's
+        //    side columns, which hang below the hero beside the rows, fill) ──
         Contracts.DetailForm Form = Contracts.DetailForm.Hero,
         Contracts.DetailColumnsProps? Columns = null,
-        IReadSignal<Size2>? Viewport = null);
+        IReadSignal<double>? ViewportHeight = null);
 
     // ══ 2. THE PRESENCE FLAGS — one set for the hero, its skeleton and its reserved height ═══════════════════════════
 

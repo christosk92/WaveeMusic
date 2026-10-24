@@ -392,7 +392,7 @@ internal static partial class WinUiDetailFrame
 
     /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes as the loaded hero, unfilled boxes the deriver paints as bones; a usable
     /// preview cover is painted for real.</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers)
+    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm pageForm = DetailForm.Hero)
     {
         var tier = WinUiDetailTiers.Of(in tiers);
         var form = WinUiDetailTiers.HeroOf(in tiers);
