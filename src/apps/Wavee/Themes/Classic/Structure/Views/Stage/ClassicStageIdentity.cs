@@ -51,14 +51,32 @@ internal static class ClassicStageIdentity
         float titleW = L.TitleW(in k);
         int heroArtist = k.Eff == Stage.VizLayout.Artist && !k.HeroLyrics ? sc.HeroArtist.Value : 0;
         string shown = props.Title();
+        ushort titleWeight = k.Eff is Stage.VizLayout.LargeArt or Stage.VizLayout.Centered ? (ushort)700 : (ushort)600;
+        // a one-line, left-aligned title scrolls under the marquee preference (the play bar's cadence) instead of ellipsising (audit B3, Vr)
+        bool marquee = titleLines == 1 && !center && props.Marquee?.Invoke() == true;
         var titleKids = new List<Element>(3)
         {
-            new TextEl(shown)
-            {
-                Size = ts, LineHeight = tl, Weight = k.Eff is Stage.VizLayout.LargeArt or Stage.VizLayout.Centered ? (ushort)700 : (ushort)600, FontFamily = G.DisplayFace, Color = Ink.Ink,
-                Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                MaxWidth = center ? titleW : float.NaN,
-            },
+            marquee
+                ? new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f,   // the row is the text's own height: its line box holds the descenders
+                    Children =
+                    [
+                        Marquee.Of(shown, new Marquee.Style
+                        {
+                            FontSize = ts, LineHeight = tl, Weight = titleWeight, FontFamily = G.DisplayFace, Foreground = Ink.Ink,
+                            Speed = ClassicPlayerBarLayout.MarqueeSpeed, CycleMs = ClassicPlayerBarLayout.MarqueeCycleMs,
+                            EndPauseMs = ClassicPlayerBarLayout.MarqueeEndPauseMs, StartDelayMs = ClassicPlayerBarLayout.MarqueeStartDelayMs,
+                            Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                        }),
+                    ],
+                }
+                : new TextEl(shown)
+                {
+                    Size = ts, LineHeight = tl, Weight = titleWeight, FontFamily = G.DisplayFace, Color = Ink.Ink,
+                    Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    MaxWidth = center ? titleW : float.NaN,
+                },
             Embed.Comp(new ClassicStageMetaLink.Props(props.Meta, props.OpenArtist, meta.Size, meta.Line, set.Text, center, heroArtist), static () => new ClassicStageMetaLink()),
         };
         if (L.ShowChipsFor(in k)) titleKids.Add(Embed.Comp(new ClassicStageChips.Props(props.Chips), static () => new ClassicStageChips()) with { Key = "stage:chips" });

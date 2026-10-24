@@ -40,6 +40,7 @@ public static partial class Stage
     {
         Stage = ctx,
         Facts = () => TransportFacts(ctx),
+        Next = s_nextFacts,
         Verbs = PlayerVerbs.Default,
         // the bar's own seek; its scrub edge holds the chrome through the onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
         SeekBar = static onScrubbing => Shell.SeekBar(onScrubbing: onScrubbing),
@@ -75,6 +76,26 @@ public static partial class Stage
         string playingFrom = hasSource ? Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)) : "";
         return new StageTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
             repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "");
+    }
+
+    static readonly Func<StageNextFacts> s_nextFacts = NextFacts;
+
+    /// <summary>The track up next (the first row of the user's queue, else of next up): its title, its billed artists and its cover. Subscribes to
+    /// the queue and to the tables the names land in, so the "next" part re-renders when the queue moves or a name arrives. Nothing for an
+    /// episode or an empty queue.</summary>
+    static StageNextFacts NextFacts()
+    {
+        _ = Entities.ScopeEpoch.Value;                    // FIRST: a scope switch re-points the table reads below
+        _ = Entities.Current.Edges.Queue.Changed.Value;
+        _ = Entities.Current.Tracks.Changed.Value;
+        _ = Entities.Current.Artists.Changed.Value;
+        _ = Entities.Current.Edges.TrackArtists.Changed.Value;
+        if (!Queue.UpNext(out int start, out int length) || length == 0) return default;
+        var r = Queue.RefAt(start);
+        if (r.IsNone || r.Kind != EntityKind.Track) return default;
+        var track = new Track(r.Slot);
+        if (!track.IsValid || !Transport.UsesTitle(track.Title, track.Uri.Text)) return default;
+        return new StageNextFacts(track.Title, ArtistNames(track), Controls.ArtUrl(track.ImageId));
     }
 
     /// <summary>"This PC ▾": the output device button's glyph and name.</summary>

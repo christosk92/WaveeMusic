@@ -292,13 +292,23 @@ internal static class ZuneHomeDaylist
                     new BoxEl { Key = "zune-daylist-scrim", HitTestVisible = false, MinWidth = 0f, Gradient = parked ? H.DaylistScrim(Tok.FillSolidBase) : bleed ? H.DaylistWideScrim(Tok.FillSolidBase) : null },
                 ],
             },
+            // The copy's side pads are spacers whose widths ease (a padding cannot): the tier's pad changes at 1008, and the words ride it.
             new BoxEl
             {
-                Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), ZStack = parked, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                Justify = end || parked ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
-                Gap = end ? lay.DaylistPad : H.DaylistCopyGap,
-                Padding = bleed ? new Edges4(lay.DaylistPad, lay.DaylistPadY, lay.DaylistPad, lay.DaylistPadY) : new Edges4(lay.DaylistPad, 0f, lay.DaylistPad, 0f),
-                Children = copyKids,
+                Key = "zune-daylist-copy-row", Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children =
+                [
+                    ZuneFrameRules.Gutter(lay.DaylistPad),
+                    new BoxEl
+                    {
+                        Key = "zune-daylist-copy", Direction = (byte)(end ? 0 : 1), ZStack = parked, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Justify = end || parked ? FlexJustify.Start : FlexJustify.Center, AlignItems = end ? FlexAlign.Center : FlexAlign.Stretch,
+                        Gap = end ? lay.DaylistPad : H.DaylistCopyGap,
+                        Padding = bleed ? new Edges4(0f, lay.DaylistPadY, 0f, lay.DaylistPadY) : default,
+                        Children = copyKids,
+                    },
+                    ZuneFrameRules.Gutter(lay.DaylistPad),
+                ],
             },
             new BoxEl
             {

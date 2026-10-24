@@ -1465,6 +1465,12 @@ public static partial class Lyrics
             ? large ? new(20f, 30f, 6f, 64f, 500) : new(16f, 24f, 6f, 22f, 500)
             : large ? new(36f, 46f, 9f, 64f) : new(26f, 33f, 7f, 22f);
 
+        /// <summary>The edge feather of the stage's lyrics viewport (audit B3, T4 / V3): one timed row at the stage's type scale, so a line
+        /// scrolled under the pane's edge (the pivots, the transport, the Large art column's titles) dissolves whole instead of being sliced
+        /// by the standard 40-DIP band. 0 (the engine's standard band) off the stage.</summary>
+        public static float StageEdgeFade(bool onStage, bool large, bool podcast, float typeScale)
+            => onStage ? Timed(large, podcast).Scaled(typeScale).Estimate : 0f;
+
         /// <summary>The UNSYNCED reading block: smaller reading type (19/26 · 28/36), the same side gutter.</summary>
         public static RowMetrics Unsynced(bool large, bool podcast = false) => podcast ? Timed(large, true)
             : large ? new(28f, 36f, 7f, 64f) : new(19f, 26f, 5f, 22f);

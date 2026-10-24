@@ -2888,6 +2888,7 @@
         "options": "Options",
         "layoutWord": "Layout · {layout}",
         "faceWord": "Face · {face}",
+        "next": "Next",
         "$comment2": "Z4c: the rest of the stage, the Up next column, the lyrics view and video (lowercased by the case roles; names are never re-cased).",
         "aboutArtist": "About the artist",
         "upNextFrom": "From",

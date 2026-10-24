@@ -4,7 +4,8 @@
 // stay-mounted presenter (`Video.Pip`'s overlay fills the window); the core's surface keeps the mode (the OS window goes borderless-
 // fullscreen on its monitor and restores what it found, mount = enter, unmount = exit), the focus scope, Escape / F at the root and
 // the never-leave-focus-null guard. This template draws the hover band: the title at top-left (the only identity on screen) and the way
-// out at top-right. The opacity is on THIS band only, never on an ancestor of the hole.
+// out at top-right, and under it the transport the surface owns (`props.Transport`, the on-media strip). The opacity is on THIS band only,
+// never on an ancestor of the hole.
 //
 // The way out over undimmed video is a 44-DIP ink-made plate with a card shadow: the one separation channel that survives the stage's
 // inverted light ink ladder. Its glyph never dims on hover. Its accessibility role and name (the tooltip) are the button's.
@@ -48,6 +49,13 @@ internal static class ClassicVideoFullscreen
                     },
                     ToolTip.Wrap(ExitPlate(props), Loc.Get(Strings.Player.VideoExitFullScreen)),
                 ],
+            },
+            // the transport the fullscreen surface owns (the presenter's own strip stands down while it does): the on-media strip, revealed by
+            // the window's idle machine; on this layer it stays over the join poster while the first frame is still coming (audit B3, item 11)
+            new BoxEl
+            {
+                Grow = 1f, Direction = 1, MinHeight = 0f, HitTestPassThrough = true,
+                Children = props.Transport is { } transport ? [ctx.View(ViewKeys.OnMediaTransport, transport)] : [],
             },
         ],
     };
