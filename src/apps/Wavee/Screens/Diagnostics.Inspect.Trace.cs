@@ -51,6 +51,9 @@ public static partial class Diagnostics
             /// <summary>A tracked move is INSTANT when one frame carries at least this many DIP and most of its run (<see cref="InstantShare"/>):
             /// the change landed in a frame while something above it animated (a page reflowing at once beside a sliding pane).</summary>
             public float InstantDip = 4f;
+            /// <summary>The window in DIP, set by the runner: a move wholly outside it in both frames (a part below the fold, which the engine lands at once
+            /// on purpose: a flow reveal off the view does not animate) is no snap and no jump. Empty: every move counts.</summary>
+            public RectF Window;
             public bool Rows = true;
             /// <summary>Turn the host's render census on: a slow frame's row then names the components that made it slow (`census`). Off by default (it costs frame time).</summary>
             public bool Census;
@@ -273,7 +276,7 @@ public static partial class Diagnostics
                 if (r.Cpu > 16.67) s.CpuOver16++;
             }
             if (rows.Count > 0) s.SettledAt = s.LastAnimatingFrame < 0 ? rows[0].Frame : (s.LastAnimatingFrame == rows[^1].Frame ? -1 : s.LastAnimatingFrame + 1);
-            DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s);
+            DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s, o.Window);
             DetectInstants(s, o.InstantDip);
             DetectScroll(rows, s);
             return s;
@@ -282,8 +285,9 @@ public static partial class Diagnostics
         /// <summary>Snaps (laid-out AND presented rect changed with no track on the node or an ancestor, in either frame) and jumps
         /// (presented rect moved more than <paramref name="jumpDip"/> in one frame while a track was active). A node that is not
         /// shown or not present resets its history. A move of the presented rect alone (scroll content translate) is neither.</summary>
-        public static void DetectMoves(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, float jumpDip, float snapDip, Summary into)
+        public static void DetectMoves(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, float jumpDip, float snapDip, Summary into, RectF window = default)
         {
+            bool clip = window.W > 0f && window.H > 0f;
             var prev = new NodeSample?[watch.Count];
             var prevMag = new float[watch.Count];
             var first = new int[watch.Count];
@@ -310,8 +314,11 @@ public static partial class Diagnostics
                                               MathF.Max(MathF.Abs(cur.Laid.W - p.Laid.W), MathF.Abs(cur.Laid.H - p.Laid.H)));
                         bool track = cur.Track || p.Track;
                         var move = new Move(watch[w], r.Frame, dx, dy, dw, dh, mag, prevMag[w], p.Pres, cur.Pres, track);
-                        if (track && mag > jumpDip) into.Jumps.Add(move);
-                        else if (!track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
+                        // A move nobody can see counts as neither: the part of the rect inside the window is what is drawn (a part below the fold, a tall
+                        // column whose foot moved off the window).
+                        bool visible = !clip || VisibleChange(window, p.Pres, cur.Pres);
+                        if (visible && track && mag > jumpDip) into.Jumps.Add(move);
+                        else if (visible && !track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
                         prevMag[w] = mag;
                     }
                     prev[w] = cur;
@@ -321,6 +328,17 @@ public static partial class Diagnostics
             }
             for (int w = 0; w < watch.Count; w++)
                 if (first[w] >= 0) into.NodeLife.Add((watch[w], first[w], last[w]));
+        }
+
+        /// <summary>Does the part of a rect the window shows change between <paramref name="a"/> and <paramref name="b"/> (by half a DIP or more)?</summary>
+        static bool VisibleChange(RectF window, RectF a, RectF b)
+        {
+            bool ia = window.Overlaps(a), ib = window.Overlaps(b);
+            if (!ia && !ib) return false;
+            if (ia != ib) return true;
+            float ax0 = MathF.Max(window.X, a.X), ay0 = MathF.Max(window.Y, a.Y), ax1 = MathF.Min(window.Right, a.Right), ay1 = MathF.Min(window.Bottom, a.Bottom);
+            float bx0 = MathF.Max(window.X, b.X), by0 = MathF.Max(window.Y, b.Y), bx1 = MathF.Min(window.Right, b.Right), by1 = MathF.Min(window.Bottom, b.Bottom);
+            return MathF.Abs(ax0 - bx0) >= 0.5f || MathF.Abs(ay0 - by0) >= 0.5f || MathF.Abs(ax1 - bx1) >= 0.5f || MathF.Abs(ay1 - by1) >= 0.5f;
         }
 
         /// <summary>The share of a run's whole move one frame must carry for the run to be instant: an eased glide spreads its move over
@@ -669,6 +687,8 @@ public static partial class Diagnostics
             var result = new InspectTrace.Result { Options = o };
             var watchIndex = new Dictionary<string, int>(StringComparer.Ordinal);
             var seen = new HashSet<uint>();
+            var reflowScratch = new List<NodeHandle>(8);   // the live reflow rows after each frame (a sibling reflow is a watched node's track)
+            var reflowParents = new HashSet<uint>();
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
             var lastNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);   // the node of each lone watched key on the frame before
             var nowNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);
@@ -722,6 +742,16 @@ public static partial class Diagnostics
                 {
                     keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
                     seen.Clear();
+                    // A node a live REFLOW moves or resizes though no row sits on it or an ancestor (the page beside a docking panel's easing
+                    // reservation, the zones after a hero whose height eases, the columns that hold it) rides the reflow's re-solve: that is its track.
+                    // The ancestors of the live reflow rows hold such flows: they resize with it, and the children of the ones that lay their children out
+                    // in a flow ride it (a z-stack's children overlay: a sibling's size moves none of them). A one-frame move under it still reads as an
+                    // INSTANT (InspectTrace.DetectMoves): this only says what has a track.
+                    anim.CollectLiveReflowNodes(reflowScratch);
+                    reflowParents.Clear();
+                    foreach (var rn in reflowScratch)
+                        for (var rp = scene.Parent(rn); !rp.IsNull; rp = scene.Parent(rp))
+                            if (!reflowParents.Add(rp.Raw.Index)) break;   // the chain above is already in
                     dup.Clear();
                     nowNode.Clear();
                     foreach (var (node, key) in keyed)
@@ -743,6 +773,10 @@ public static partial class Diagnostics
                         {
                             opacity *= scene.Paint(up).Opacity;
                             if (!track && anim.HasTracks(up)) track = true;
+                            if (!track && reflowParents.Count > 0
+                                && (reflowParents.Contains(up.Raw.Index)
+                                    || scene.Parent(up) is var pu && !pu.IsNull && (scene.Flags(pu) & NodeFlags.ZStack) == 0 && reflowParents.Contains(pu.Raw.Index)))
+                                track = true;
                         }
                         row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), scene.PresentedAbsoluteRect(node), track, opacity));
                         if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
@@ -765,6 +799,8 @@ public static partial class Diagnostics
                 }
                 result.Rows.Add(row);
             }
+            float winScale = Math.Max(0.01f, shell.Window.Scale);
+            o.Window = new RectF(0f, 0f, shell.Window.ClientSizePx.Width / winScale, shell.Window.ClientSizePx.Height / winScale);
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
             return result;
         }

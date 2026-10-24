@@ -401,6 +401,11 @@ public static class WinUiDiscoveryMotion
     /// <summary>A surviving cell that only moves (a grid cell whose column changed): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 
+    /// <summary>A part whose HEIGHT steps with the tier and that carries what follows it (the home head when the greeting changes rung: 52 to 36 a
+    /// line): the height eases through real layout, so the facet row and the zones under it ride it instead of stepping in one frame.</summary>
+    public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone (the shared tier cross-fade).</summary>
     public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
 

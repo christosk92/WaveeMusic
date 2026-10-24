@@ -71,6 +71,8 @@ internal static class WinUiHomePage
         {
             Key = "home:head", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
             Padding = new Edges4(inset, 0f, inset, layout.GreetingGap),
+            // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes: the head's height eases, the page rides it.
+            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
             Children = layout.Following == WinUiFollowingPlace.GreetingRow
                 ? [greeting with { Grow = 1f, Shrink = 1f }, WinUiHomeFacetRow.Following(props.FacetRow, layout)]
                 : [greeting with { Grow = 1f, Shrink = 1f }],
