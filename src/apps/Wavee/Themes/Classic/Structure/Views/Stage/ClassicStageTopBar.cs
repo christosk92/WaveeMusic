@@ -60,13 +60,19 @@ internal static class ClassicStageTopBar
             [
                 new BoxEl
                 {
-                    // the brand never paints over the selector: clipped, and the subtitle is the part that gives way
+                    // the brand never paints over the selector: clipped, and the subtitle is the part that gives way. Beside the icon-only
+                    // selector (a Compact bar) the column holds the mark and "Wavee" only, so the subtitle shows whole or not at all (never
+                    // "N…", audit V40; the exit label's rule, `ExitLabelShown`)
                     Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, ClipToBounds = true,
                     Children =
                     [
                         new BoxEl { Width = ClassicStageGeometry.BrandMark, Height = ClassicStageGeometry.BrandMark, Corners = ClassicStageGeometry.BrandMarkCorners, Fill = Prop.Bind(st.Slab.Accent), Shrink = 0f },
                         new TextEl("Wavee") { Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Weight = ClassicStageGeometry.BrandWeight, Color = Ink.Ink, Shrink = 0f },
-                        new TextEl(Loc.Get(Strings.Stage.Brand)) { Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                        new TextEl(Loc.Get(Strings.Stage.Brand))
+                        {
+                            Size = ClassicStageGeometry.BrandSize, LineHeight = ClassicStageGeometry.BrandLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            MinWidth = 0f, Shrink = 1f, Visible = !L.IconOnlySelector,
+                        },
                     ],
                 },
                 SelectorBar.Create(items, index, onChange: i => setMode((Stage.Mode)Math.Clamp(i, 0, Stage.ModeRules.Count - 1)), parts: parts, icons: icons, style: style),
