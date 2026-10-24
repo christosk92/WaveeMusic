@@ -390,8 +390,10 @@ public readonly partial struct Track
             return rows.IsUnset ? TrackRowMetrics.Standard : rows;
         }
 
-        /// <summary>Full at wide tiers, tighter as the pane narrows; tier 0 is the unchanged constants.</summary>
-        public static float PadXFor(int tier) => tier <= 3 ? PadX : tier <= 5 ? Spacing.M : Spacing.S;
+        /// <summary>Full at wide tiers, tighter as the pane narrows; tier 0 is the unchanged constants. Never under the style's
+        /// <see cref="StyleMetrics.RowPadXFloor"/> (Zune's 16: its Compact rows keep the board's gutter; audit B8). A tracked read of the
+        /// style's metrics, like <see cref="Rows"/>.</summary>
+        public static float PadXFor(int tier) => MathF.Max(tier <= 3 ? PadX : tier <= 5 ? Spacing.M : Spacing.S, ThemeHost.Metrics.Value.RowPadXFloor);
         public static float ColGapFor(int tier) => tier <= 4 ? ColGap : Spacing.S;
 
         /// <summary>BPM·Key shows only when asked AND tier ≤ 3 — read by the row AND the tracks, so they never disagree.</summary>

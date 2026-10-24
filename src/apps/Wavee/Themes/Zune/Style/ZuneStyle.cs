@@ -255,7 +255,8 @@ public sealed class ZuneStyle : IStyleLayer
     /// 32 (chips, the pill); the band's rows 52 + 32 = 84; the bar's seek row 2 over a 70 transport row = 72; the search pill 220 (Z-Part-TitleBar's
     /// Standard; the Huge 320 and 4K 400 are the structure's tier values); the page gutter 48 and sections 32 apart; a page column keeps 480; the
     /// panorama falls back to <c>PanoramaCompact</c> under a 640 page (Z-Sizes-Breakpoints: 64 in the compact window); each docked pane is 360
-    /// (Z-Part-Panel's docked2 / docked3 columns, 4K too); a pane item and the card gap follow the density.</summary>
+    /// (Z-Part-Panel's docked2 / docked3 columns, 4K too); a pane item and the card gap follow the density; a track row's gutter never
+    /// drops under 16 (Z-Album-Compact's rows, audit B8).</summary>
     public static StyleMetrics MetricsFor(ZuneDensity density)
     {
         float row = ZuneDensityOption.Row(density);
@@ -264,6 +265,6 @@ public sealed class ZuneStyle : IStyleLayer
             PivotRow: 52f, SubPivotRow: 32f, SeekRow: 2f, TransportRow: 70f, SearchWidth: 220f,
             Gutter: 48f, Section: 32f, MinPageColumn: 480f, PanoramaCompactBelow: 640f,
             DockedPane: 360f, DockedPane4K: 360f, PaneItem: ZuneDensityOption.PaneItem(density), CardGap: ZuneDensityOption.CardGap(density),
-            TrackRows: ZuneDensityOption.Rows(density));
+            TrackRows: ZuneDensityOption.Rows(density), RowPadXFloor: 16f);
     }
 }
