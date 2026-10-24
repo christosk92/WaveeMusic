@@ -4,6 +4,8 @@
 // `cold-rows`, `cold-faces`), one step per command, so an agent can trace each frame of the transition:
 //
 //   · cold-list   the playlist's title and cover are known, its length and membership are NOT (the meta line loading, the rows' shimmer);
+//   · cold-head   (instead of cold-list) the HEADER is not known either: no title, description or owner, only the cover (a deep link's first
+//                 frames); the page shows its pending head until cold-rows / cold-warm land the header with the membership (one answer);
 //   · cold-rows   the membership lands: 50 rows, of which rows 1 and 4 already know their face (cached elsewhere) and the rest are still in flight
 //                 (the owner's recording: "Smart" alone, rows 1 and 4 with a hole between);
 //   · cold-warm   (instead of cold-rows) the membership lands with every row restored from disk: faces known, credits in flight;
@@ -40,6 +42,91 @@ public static partial class Entities
         Current.PublishAll();
     }
 
+    // The header cold-head took away (title, description, owner and the Identity bit), put back by the stage that lands the membership.
+    static (StringId Title, StringId Description, int Owner)? s_coldHead;
+
+    /// <summary>Stage 0b, instead of <see cref="StageColdList"/> (`state cold-head`): the membership AND the header are unknown (a deep link's
+    /// first frames): title, description and owner are empty and Identity is not known, so the page draws its pending head. The cover stays (a
+    /// card that led here had it).</summary>
+    public static void StageColdHead()
+    {
+        RestoreColdHead();
+        StageColdList();
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        var t = Current.Playlists;
+        s_coldHead = (t.Title[list], t.Description[list], t.Owner[list]);
+        t.Title[list] = StringId.Empty;
+        t.Description[list] = StringId.Empty;
+        t.Owner[list] = 0;
+        t.Known[list] &= ~(uint)PlaylistFields.Identity;
+        t.Version[list]++;
+        Current.PublishAll();
+    }
+
+    /// <summary>The header <see cref="StageColdHead"/> took away, back (Identity known again); nothing when no cold-head ran. The stages that land
+    /// the membership call it (the header and the rows are one answer), and so does the inspector's restore on the next mount.</summary>
+    public static void RestoreColdHead()
+    {
+        if (s_coldHead is not { } head) return;
+        s_coldHead = null;
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        var t = Current.Playlists;
+        t.Title[list] = head.Title;
+        t.Description[list] = head.Description;
+        t.Owner[list] = head.Owner;
+        t.Known[list] |= (uint)PlaylistFields.Identity;
+        t.Version[list]++;
+    }
+
+    // ── any detail page's header, unknown in place (`state kind=head uri=<uri>`, then `state kind=head-land`) ──
+    // An album's, a list's, a show's or an episode's title is taken away with every field it knows (a cold open: no title, publisher, rating, cover), so
+    // the page draws its pending head; the landing puts them back on the page that shows it, so a trace sees the head land as the real client's first
+    // read does (audit B7 r2).
+
+    /// <summary>The header <see cref="StageHead"/> took away: the table, the slot, the title and the known fields.</summary>
+    static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Known)? s_head;
+
+    /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
+    /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
+    public static bool StageHead(string uri)
+    {
+        RestoreHead();
+        var kind = EntityUri.KindOf(uri.AsSpan());
+        int slot = ResolveSeedSlot(kind, uri);
+        if (slot == Table.None) return false;
+        Scope s = Current;
+        (Table Table, Column<StringId> Title)? head = kind switch
+        {
+            EntityKind.Album => (s.Albums, s.Albums.Title),
+            EntityKind.Playlist => (s.Playlists, s.Playlists.Title),
+            EntityKind.Show => (s.Shows, s.Shows.Title),
+            EntityKind.Episode => (s.Episodes, s.Episodes.Title),
+            _ => null,
+        };
+        if (head is not { } h) return false;
+        s_head = (h.Table, h.Title, slot, h.Title[slot], h.Table.Known[slot]);
+        h.Title[slot] = StringId.Empty;
+        h.Table.Known[slot] = 0;
+        h.Table.Version[slot]++;
+        h.Table.MarkDirty();   // a publication carries only the tables marked
+        s.PublishAll();
+        return true;
+    }
+
+    /// <summary>The header <see cref="StageHead"/> took away, back in place (the landing); nothing when none is staged.</summary>
+    public static void RestoreHead()
+    {
+        if (s_head is not { } h) return;
+        s_head = null;
+        h.Title[h.Slot] = h.Value;
+        h.Table.Known[h.Slot] = h.Known;
+        h.Table.Version[h.Slot]++;
+        h.Table.MarkDirty();
+        Current.PublishAll();
+    }
+
     /// <summary>Stage 1: the membership lands, Complete; rows 1 and 4 are pool tracks that know their face, the rest fresh rows still in flight.</summary>
     public static void StageColdRows()
     {
@@ -55,6 +142,7 @@ public static partial class Entities
             payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
             if (!warm && targets[k] != Table.None) Current.Tracks.Inflight[targets[k]] = stamp;
         }
+        RestoreColdHead();
         Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, ColdRows);
         Current.PublishAll();
     }

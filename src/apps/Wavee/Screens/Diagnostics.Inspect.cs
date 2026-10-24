@@ -592,9 +592,27 @@ public static partial class Diagnostics
                         string kind = a.Str("kind").ToLowerInvariant();
                         BeforeState(shell);
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
+                        // A detail page's header unknown in place, then its landing (Entities.Fake.Cold.cs, audit B7 r2).
+                        if (kind == "head")
+                        {
+                            string uri = a.Str("uri");
+                            if (!Entities.StageHead(uri)) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show or episode the fake holds>, not '" + uri + "'");
+                            InspectKit.ColdStaged = true;   // the next mount puts the header back
+                            Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("uri", uri); AfterState(w, shell, kind); },
+                                loops: InspectKit.LoopMode.Skeletons);
+                        }
+                        if (kind == "head-land")
+                        {
+                            Entities.RestoreHead();
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); });
+                        }
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
-                        RunFrames(30);
+                        // A traced (or unsettled) state shows its own frames from the first: 30 frames run first hid a staged landing from its trace (audit B7 r2).
+                        if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
                         // A loading or cold state's skeleton IS the picture: its settle stops on the shimmer unless `loops` says otherwise.
                         bool skeleton = kind == "loading" || kind.StartsWith("cold-", StringComparison.Ordinal);
                         return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); },
@@ -624,7 +642,7 @@ public static partial class Diagnostics
         }
 
         /// <summary>`state kind=loading|empty page=<p>`: a page's OWN loading or empty state, not the shared vacancy. A library tab (`library` is
-        /// albums) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
+        /// albums) or Liked Songs (`liked`) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
         /// and `episode` open a fixture in that state: the pending show and episode (`shzzqx`, `epzzqx`: the fake never answers them) and the show
         /// with no episodes (`sh8`). The next mount puts the shelves back.</summary>
         string PageState(int id, string name, Inspect.Args a, string kind, Shell.HeadlessShell shell)
@@ -637,7 +655,7 @@ public static partial class Diagnostics
             Shell.Route route;
             switch (page)
             {
-                case "albums" or "artists" or "podcasts" or "audiobooks":
+                case "albums" or "artists" or "podcasts" or "audiobooks" or "liked":
                     if (!Entities.StageLibraryShelf(page, loading)) return Inspect.Reply.Fail(id, name, "the account has no library rows to stage");
                     route = Wavee.Shell.Parse(page);
                     break;
@@ -649,7 +667,7 @@ public static partial class Diagnostics
                     route = Wavee.Shell.For(EntityUri.Parse("spotify:episode:epzzqx"));
                     break;
                 default:
-                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|show|episode, not '" + page + "'");
+                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|liked|show|episode, not '" + page + "'");
             }
             Wavee.Shell.GoTo(route);
             RunFrames(30);

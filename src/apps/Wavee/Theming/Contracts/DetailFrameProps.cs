@@ -325,16 +325,17 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
     public override int GetHashCode() => HashCode.Combine(Spec, Parts.ColumnWidth, Parts.HeroHeight, Parts.Form);
 }
 
-/// <summary>The style behind <see cref="StyleKeys.DetailHero"/>: the hero's LOADING band as a pure builder. The table mounts it as the
-/// shimmer SOURCE of its skeleton region, and the engine's deriver cannot run a view slot (a component's render), so it is a style the
-/// table reads through the ambient registry, the way it reads <see cref="TrackListStyle"/>.</summary>
+/// <summary>The style behind <see cref="StyleKeys.DetailHero"/>: the hero list's one-tree capabilities and, for a hero that does not shimmer in place,
+/// its LOADING band as a pure builder (the table mounts it as the shimmer SOURCE of its skeleton region; the engine's deriver cannot run a view slot,
+/// so it is a style the table reads through the ambient registry, the way it reads <see cref="TrackListStyle"/>).</summary>
 public sealed class DetailHeroStyle
 {
     /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled. The last arguments are the
     /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too, the
     /// page's arrangement and the columns form's parts (audit B9: the columns form reserves the columns the hero lays out there, at the rail's live
-    /// width).</summary>
-    public required Func<Detail.VerticalSpec, float, float, TierFacts, DetailForm, DetailColumnsProps?, Element> Skeleton { get; init; }
+    /// width). NULL (contract 1.72, audit B7 r2): the hero shimmers its own identity in place while the header is unread, so the table mounts the
+    /// list at once (the rows shimmer in its empty slot) and the header's landing eases the hero's height with the rows riding it.</summary>
+    public Func<Detail.VerticalSpec, float, float, TierFacts, DetailForm, DetailColumnsProps?, Element>? Skeleton { get; init; }
 
     /// <summary>The ONE-TREE capability (audit B9): the hero draws the COLUMNS form too (the identity column beside the rows), and this answers the
     /// width its side columns take beside the list in each form, so the table insets its rows, chrome and tail by exactly that. Null: the hero draws

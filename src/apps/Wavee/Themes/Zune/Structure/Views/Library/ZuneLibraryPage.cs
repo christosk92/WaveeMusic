@@ -30,6 +30,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.HomeUi;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
@@ -122,10 +123,11 @@ internal static partial class ZuneLibraryPage
         {
             OnBounds ??= Measured;
             NavContent ??= _ => NavList(this);
-            // An empty navigator says why: a filter that matched nothing, or a library that holds none of this kind yet (no filter typed).
-            NavNoMatch ??= () => EmptyCompact(Props.Filter().Peek().AsSpan().Trim().Length > 0
-                ? Loc.Get(Strings.Library.NoMatch)
-                : Strings.Theme.Zune.Collection.Library.EmptyKind(Props.Title.ToLower(System.Globalization.CultureInfo.CurrentCulture)));
+            // An empty navigator says why: a filter that matched nothing, or a library that holds none of this kind yet (no filter typed). A show tab with
+            // nothing saved is the Empty vacancy with its kind's words and Browse (audit B7 r2, V22: Audiobooks was one bare line).
+            NavNoMatch ??= () => Props.Filter().Peek().AsSpan().Trim().Length > 0 ? EmptyCompact(Loc.Get(Strings.Library.NoMatch))
+                : Props.Entity == EntityKind.Show ? EmptyShows(Props.IsPodcasts)
+                : EmptyCompact(Strings.Theme.Zune.Collection.Library.EmptyKind(Props.Title.ToLower(System.Globalization.CultureInfo.CurrentCulture)));
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount.
             NavShimmer ??= () => NavSkeleton(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps);
         }
@@ -214,6 +216,14 @@ internal static partial class ZuneLibraryPage
 
     static Element EmptyCompact(string text)
         => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact, title: text, subtitle: "");
+
+    /// <summary>Podcasts or Audiobooks with nothing saved: the kind's title, body and the way to find some (Browse).</summary>
+    static Element EmptyShows(bool podcasts)
+    {
+        var (title, body, action) = EmptyFacetCopy.LibraryShows(podcasts);
+        return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(title), subtitle: Loc.Get(body),
+            actionLabel: Loc.Get(action), onAction: HomeVerbs.OpenBrowse);
+    }
 
     // ══ THE COLLAPSED DRILL-IN ═══════════════════════════════════════════════════════════════════════════════════════
 

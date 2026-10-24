@@ -422,7 +422,8 @@ so the page under the modal is not judged. `key esc` closes it.
 shared vacancy: `page=albums|artists|podcasts|audiobooks` (`library` is albums) writes the account's relations behind that Library tab
 back to Unknown (`loading`: the navigator's skeleton, as on a cold start; the fake never answers the ask again) or to Complete with no
 rows (`empty`: the tab's empty state), then opens the tab (`Entities.Fake.Shelves.cs`; Artists stages followed artists, saved albums and
-likes, Podcasts and Audiobooks share saved shows). `page=show` opens the pending show `spotify:show:shzzqx` (loading: header and rows on
+likes, Podcasts and Audiobooks share saved shows); `page=liked` does the same for Liked Songs (the account's likes: its loading band, or its
+empty state). `page=show` opens the pending show `spotify:show:shzzqx` (loading: header and rows on
 their skeleton) or the show with no episodes `sh8` (empty); `page=episode kind=loading` opens the pending episode `epzzqx` (an episode has
 no empty state). `loading` settles on the skeleton (`loops=skeletons`). The next `mount` (or `reset`) puts the account's rows back.
 
@@ -438,7 +439,13 @@ the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, th
 and 4 know their face, the rest in flight: the hero arm (Compact, and Classic/Zune's vertical page) paints rows 1 and 4 over the
 others' placeholders; the two-column arm keeps the whole first page on its shimmer until the first page's faces are in,
 `TableRules.RowsPending`'s hot-row gate, by design) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
-credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). Pass `trace=N` on a `state` command to trace its
+credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). `state cold-head` instead of `cold-list` also takes the
+HEADER away (title, description and owner unknown, Identity not known; the cover stays: a deep link's first frames), so the page shows its
+pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
+uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
+rating or cover; its rows stay), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
+in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). A `state` with `trace=N` (or `settle=false`) runs no frames before its
+trace, so the trace starts on the frame the state lands. Pass `trace=N` on a `state` command to trace its
 frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
 skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
 `settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. Without `loops=skeletons` the goto waits on the
@@ -658,9 +665,11 @@ which keys on a page are a stand-in's, `find prefix=<p>` prints each node's `tem
 ### `skeleton {loaded, pending?, max?, items?, tolerance?}`
 
 Compares a page's loading skeleton with the page loaded, in DIP. It goes to `pending` (a fixture the fake catalogue never answers,
-so the page stays on its skeleton: by default `spotify:artist:arzzqx`, `spotify:show:shzzqx` or `spotify:episode:epzzqx` for the
-kind of `loaded`), settles with `loops=skeletons`, then goes to `loaded` and settles. Every shown key of the content card (unique
-keys, the pending id read as the loaded one) and every `Skel.Region` is compared: `moved[{key, skeleton, loaded, dy, dh}]` (top
+so the page stays on its skeleton: by default the `zzqx` id of the kind of `loaded`: `spotify:artist:arzzqx`, `album:alzzqx`,
+`playlist:plzzqx`, `concert:cczzqx`, `show:shzzqx`, `episode:epzzqx`), settles with `loops=skeletons`, then goes to `loaded` and settles.
+Liked Songs (`loaded=spotify:collection:tracks`, `pending=staged` by default) has no other uri: the verb stages the account's likes Unknown
+on the page itself and puts them back in place, so its band lands as the real page's does. Every shown key of the content card (unique
+keys, the pending id read as the loaded one) and every `Skel.Region` is compared: `moved[{key, skeleton, loaded, dy, dh, dx, dw}]` (a key that moved down, up or sideways, or resized; top
 first), `regions[{key, skeleton, loaded, dh}]`, `counts{skeletonKeys, loadedKeys, matched, moved, regions}` and `firstMoved{key,
 dy}`: the first key on screen that moved down, the jump a person sees when the data lands (null when nothing did). Report-only:
 no gate reads it. `inspect.py --findings` prints it as lines.

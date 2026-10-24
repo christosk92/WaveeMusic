@@ -34,6 +34,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.HomeUi;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
@@ -187,15 +188,14 @@ internal static partial class ClassicLibraryPage
     static Element EmptyCompact(string text)
         => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact, title: text, subtitle: "");
 
-    /// <summary>A library kind with nothing in it (no filter typed): the Empty voice, in the kind's own words where the app has them.</summary>
+    /// <summary>A library kind with nothing in it (no filter typed): the Empty voice, in the kind's own words where the app has them; a show tab (Podcasts,
+    /// Audiobooks) also offers Browse, as Home's empty facet does (audit B7 r2, V22: Audiobooks' empty state was its title and body alone).</summary>
     static Element EmptyKind(LibraryPageProps p)
     {
-        (string? title, string? body) = p.Entity == EntityKind.Show
-            ? p.IsPodcasts
-                ? (Loc.Get(Strings.Home.Empty.PodcastsTitle), Loc.Get(Strings.Home.Empty.PodcastsBody))
-                : (Loc.Get(Strings.Home.Empty.AudiobooksTitle), Loc.Get(Strings.Home.Empty.AudiobooksBody))
-            : (null, null);
-        return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: title, subtitle: body);
+        if (p.Entity != EntityKind.Show) return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact);
+        var (title, body, action) = EmptyFacetCopy.LibraryShows(p.IsPodcasts);
+        return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(title), subtitle: Loc.Get(body),
+            actionLabel: Loc.Get(action), onAction: HomeVerbs.OpenBrowse);
     }
 
     // ══ THE RIGHT COLUMN (BROWSE) ════════════════════════════════════════════════════════════════════════════════════

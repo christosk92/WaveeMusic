@@ -2,12 +2,11 @@
 //
 // From `Entities\Detail.UI.Hero.cs`: THE VERTICAL HERO SYSTEM (ch 03 §0.3, §0.6-§0.8, §0.14-§0.18; W6-W9, W12-W14, W27-W28) — the expanded
 // presentation and the 56-DIP context band with its scroll binds and input handoff (`HeroHost`), the hero's actions and attribution, and
-// `HeroSkeleton`, the loading band that IS the loaded band.
+// `HeroIdentitySkeleton`, the identity's own loading state (the hero shimmers in place; the list has no loading band, audit B7 r2).
 //
 // WHO CALLS WHAT. The TABLE (`Track.Table.cs`) owns the vertical list: it calls `Detail.Hero(spec, parts)` for item 0 (a plain box that the table
-// pins with `Sticky(0)` and collapses with `Collapse`, around the `Detail.Hero` slot this file's `HeroTemplate` draws) and reads the loading band
-// from `StyleKeys.DetailHero` (`HeroStyle`: the skeleton deriver cannot run a view slot, so it is a pure builder the table takes from the
-// registry). This file never scrolls anything: the expanded presentation binds TransY/Opacity to the NEAREST scroller, the band reveals over the
+// pins with `Sticky(0)` and collapses with `Collapse`, around the `Detail.Hero` slot this file's `HeroTemplate` draws) and reads the hero's style
+// from `StyleKeys.DetailHero` (`HeroStyle`: the list insets beside the rail and their motion; no loading band, the identity shimmers in place). This file never scrolls anything: the expanded presentation binds TransY/Opacity to the NEAREST scroller, the band reveals over the
 // last 44 DIP of the collapse, and the chrome's engaged edge the table publishes (`CompactInteractive`) moves hit-testing between the two.
 //
 // THE THREE NUMBERS THAT MUST AGREE (D49). The skeleton's reserved band, the pre-measure collapse height and the loaded hero are all derived from
@@ -60,7 +59,7 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The hero's loading band, the list's inset beside the columns form's rail and its ease, as the style the table reads
     /// (<see cref="StyleKeys.DetailHero"/>).</summary>
-    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton, ListInsets = ListInsets, InsetMotion = ClassicTierMotion.SizeReflow };
+    public static readonly DetailHeroStyle HeroStyle = new() { ListInsets = ListInsets, InsetMotion = ClassicTierMotion.SizeReflow };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>: the table's item 0 at every width (audit B9), ONE tree for both of the page's
     /// forms. The HERO form (the narrow page): the expanded presentation (artwork · eyebrow · title · rule · attribution · meta · pulse · chart · actions ·
@@ -549,8 +548,9 @@ internal static partial class ClassicDetailFrame
                     }],
         };
         // The identity's loading state: the header shimmers it whole until it has answered, cross-dissolving once (the rail's rows at the columns form, the
-        // hero's at the hero form; before the rows have answered too the table shimmers the whole band instead). One boundary in every form, so the
-        // column never re-parents.
+        // hero's at the hero form). The hero list mounts at once (no loading band, audit B7 r2), so this is the head's one loading state, and the swap EASES
+        // its height (SmoothResize): rows the data brings (a second title line, the description) open with the chrome and the rows riding them, never a
+        // jump. One boundary in every form, so the column never re-parents.
         Func<bool> pending = rail?.Pending ?? s_false;
         Element region = new SkelRegionEl(
             Pending: pending, Failed: s_false,
@@ -558,7 +558,7 @@ internal static partial class ClassicDetailFrame
             ShimmerSource: railForm
                 ? () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines)
                 : () => HeroIdentitySkeleton(spec, availW, rowFlow, tiers),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
 
         // The rail's own scroller (the last resort once its text has given): as tall as the list's viewport at the columns form, so what the rail holds past
         // the fold stays reachable; at the hero form it sizes to the column (never scrolls: the list carries the hero). The collapsed strip stands in its
@@ -677,46 +677,10 @@ internal static partial class ClassicDetailFrame
         };
     }
 
-    // ══ 4. THE SKELETON BAND (D49) ═══════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes from the same resolver as the
-    /// loaded hero, bucketed once. Unfilled boxes — the table mounts this as its skeleton region's shimmer SOURCE and
-    /// the engine's deriver paints the bars; a usable preview cover is painted for real (exempt from the deriver).</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, global::Wavee.Theming.TierFacts tiers,
-        DetailForm pageForm = DetailForm.Hero, DetailColumnsProps? columns = null)
-    {
-        if (pageForm == DetailForm.Columns) return ColumnsSkeleton(spec, tiers, columns);
-        float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
-        bool rowFlow = VerticalLayout.RowFlow(w);
-        float bw = VerticalLayout.BucketW(w);
-        var f = Detail.FlagsOf(spec);
-        // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
-        // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
-        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, spec.Identity.Title,
-            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
-        return new BoxEl
-        {
-            Key = "detail-skeleton:hero",
-            Direction = 1,
-            // A FLOOR (never a cap): the SAME number the loaded hero's collapse binds assume before their first measure.
-            MinHeight = VerticalLayout.HeroBandHeight(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart),
-            Children =
-            [
-                HeroIdentitySkeleton(spec, w, rowFlow, tiers),
-                new BoxEl
-                {
-                    Direction = 1,
-                    Padding = new Edges4(compactLeft, VerticalLayout.ExpandedToolbarTopPad,
-                                         compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                    Children = [SkeletonToolbarRow(spec, w - 2f * compactLeft)],
-                },
-            ],
-        };
-    }
+    // ══ 4. THE IDENTITY, LOADING ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The hero form's identity, loading: the padded [artwork | rows] block and the description's lines, the loaded identity's own boxes at its
-    /// sizes (the band's top half, and the hero's own pending region's shimmer source while the page's header has not answered).</summary>
+    /// sizes (the hero's own pending region's shimmer source while the page's header has not answered).</summary>
     static Element HeroIdentitySkeleton(VerticalSpec spec, float w, bool rowFlow, global::Wavee.Theming.TierFacts tiers)
     {
         float bw = VerticalLayout.BucketW(w);
@@ -740,7 +704,21 @@ internal static partial class ClassicDetailFrame
             Width = Skeleton.RuleWidth, Height = Skeleton.RuleHeight, AlignSelf = FlexAlign.Start,
             Margin = new Edges4(0f, Skeleton.RuleGap, 0f, 0f), Corners = CornerRadius4.All(Skeleton.RuleRadius),
         });
-        if (f.Attribution) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight));
+        // A list's attribution is its owner block, reserved at the block's own height (the 24 portrait and the name in ClassicPlaylistLayout.OwnerRowHeight:
+        // the 16-DIP text bar it shimmered as left the actions 16 high, audit B7 r2); any other kind's is the one text line.
+        if (f.Attribution)
+            blocks.Add(id.Kind == DetailKind.Playlist && spec.Slots.Attribution is not null
+                ? new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ClassicPlaylistLayout.OwnerRowHeight,
+                    Children =
+                    [
+                        new BoxEl { Width = ClassicPlaylistLayout.OwnerAvatar, Height = ClassicPlaylistLayout.OwnerAvatar, Shrink = 0f,
+                                    Corners = CornerRadius4.All(ClassicPlaylistLayout.OwnerAvatar / 2f) },
+                        Bar(Skeleton.BarWidth(contentW, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight),
+                    ],
+                }
+                : Bar(Skeleton.BarWidth(contentW, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight));
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
@@ -771,53 +749,6 @@ internal static partial class ClassicDetailFrame
                       VerticalLayout.DescriptionMaxLines(rowFlow), Skeleton.DescriptionLastLineFraction) with
                       { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }]
                 : [hero],
-        };
-    }
-
-    /// <summary>The columns form's reserved band (audit B9): the rail's loading column (the rows the loaded rail lays out, at its live width), or the collapsed
-    /// strip's, hanging beside the list bar's reserved block; a page with no rail reserves its head's two lines over the bar. The rail's fill is the frame's
-    /// ground (never a bar), and the bar's block is empty air.</summary>
-    static Element ColumnsSkeleton(VerticalSpec spec, global::Wavee.Theming.TierFacts tiers, DetailColumnsProps? columns)
-    {
-        var id = spec.Identity;
-        float barBlock = VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight;
-        Element bar = new BoxEl { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = barBlock }.Skeletonized(false);
-        if (columns?.TwoColumn is not { } tc)
-        {
-            float gutter = ClassicTiers.PageOf(tiers).Gutter;
-            return new BoxEl
-            {
-                Key = "detail-skeleton:hero", Direction = 1,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Gap = ClassicTiers.HeadMetaGap,
-                        Padding = new Edges4(gutter, ClassicTiers.HeadTop, gutter, ClassicDetailLayout.HeadPadBottom),
-                        Children =
-                        [
-                            new BoxEl { Height = ClassicDetailLayout.HeadTitleLine, Direction = 0, AlignItems = FlexAlign.Center,
-                                        Children = [Bar(Skeleton.BarWidth(ClassicDetailLayout.HeadSkeletonMeasure, Skeleton.AttributionFraction), ClassicDetailLayout.HeadSkeletonTitleBar)] },
-                            new BoxEl { Height = ClassicDetailLayout.HeadMetaLine, Direction = 0, AlignItems = FlexAlign.Center,
-                                        Children = [Bar(Skeleton.BarWidth(ClassicDetailLayout.HeadSkeletonMeasure, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight)] },
-                        ],
-                    },
-                    new BoxEl { Direction = 0, Children = [bar] },
-                ],
-            };
-        }
-        var rail = ClassicDetailTiers.Of(tiers).Rail;
-        Element column = tc.Collapsed
-            ? new BoxEl
-            {
-                Direction = 1, Width = tc.CompactWidth, Padding = new Edges4(Spacing.S, Spacing.L, Spacing.S, Spacing.L),
-                Children = [CompactRailSkeleton(id.CoverUrl, CompactCover(tc.CompactWidth))],
-            }
-            : RailSkeletonColumn(id, spec.Config, spec.Slots, spec.Actions, tc.RailWidth, rail, tc.Rail?.TitleSize ?? 0f, tc.Rail?.DescriptionLines ?? 0);
-        return new BoxEl
-        {
-            Key = "detail-skeleton:hero", Direction = 0, AlignItems = FlexAlign.Start,
-            Children = [new BoxEl { Width = RailLead(tc), Height = 0f, Shrink = 0f, Direction = 1, Children = [column] }, bar],
         };
     }
 
@@ -853,48 +784,4 @@ internal static partial class ClassicDetailFrame
         return ClassicDetailKit.ActionRow("vhero-skel-actions", split, fabs, Spacing.XS);
     }
 
-    /// <summary>The list bar's reserved box (tuned Classic X2): the 44 band the arithmetic charges, inset 6/5, holding the bar the vertical arm
-    /// lays out (CT5b): the commands the same fit (<see cref="Track.CommandBarLayout.Resolve"/> over the first-frame widths) keeps inline at
-    /// this width (Filter, labelled or not, and Sort), then Find, Insights on a facts page and "…", 2 apart. The left group is empty: the
-    /// vertical arm's Play and Shuffle are the hero's. It used to draw three pills on the left and a 240 search field on the right.</summary>
-    static Element SkeletonToolbarRow(VerticalSpec spec, float rowWidth)
-    {
-        bool insights = spec.Insights is not null;
-        float pane = MathF.Max(0f, rowWidth - 2f * VerticalLayout.ToolbarSurfacePadX);
-        var fit = Track.CommandBarLayout.Resolve(pane, Track.CommandBarLayout.Nominal, vertical: true, hasTune: false,
-                                                 hasInsights: insights, explicitSearch: false);
-        var right = new List<Element>(5);
-        if (fit.Has(Track.InlineCommand.Filter))
-            right.Add(ToolbarPill(fit.Has(Track.InlineCommand.FilterLabel) ? Track.CommandBarLayout.Nominal.Filter : Track.CommandBarLayout.FilterIconWidth));
-        if (fit.Has(Track.InlineCommand.Sort)) right.Add(ToolbarPill(Track.CommandBarLayout.Nominal.Sort));
-        right.Add(ToolbarPill(Track.CommandBarLayout.SearchIconWidth) with
-        {
-            Margin = new Edges4(Track.CommandBarLayout.SearchGap - Track.CommandBarLayout.Gap, 0f, 0f, 0f),
-        });
-        if (insights) right.Add(ToolbarPill(Track.CommandBarLayout.InsightsWidth));
-        right.Add(ToolbarPill(Track.CommandBarLayout.MoreWidth));
-        return new BoxEl
-        {
-            Direction = 1, Height = VerticalLayout.ToolbarRowHeight,
-            Padding = new Edges4(VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY,
-                                 VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY),
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
-                    Children =
-                    [
-                        new BoxEl { Grow = 1f, Height = 1f },
-                        new BoxEl { Direction = 0, Gap = Track.CommandBarLayout.Gap, AlignItems = FlexAlign.Center, Children = right.ToArray() },
-                    ],
-                },
-            ],
-        };
-    }
-
-    static BoxEl ToolbarPill(float width) => new BoxEl
-    {
-        Width = width, Height = VerticalLayout.ToolbarPillHeight, Shrink = 0f, Corners = Radii.ControlAll,
-    };
 }
