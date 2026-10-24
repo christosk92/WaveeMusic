@@ -33,6 +33,10 @@ public static class WinUiDetailRules
     /// <inheritdoc cref="ArmFade"/>
     public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
 
+    /// <summary>A hero piece only one form draws (audit B9: the billed avatars the stacked hero drops, the eyebrow and the description the short form drops):
+    /// it enters and leaves on its opacity alone while the rest of the hero re-arranges.</summary>
+    public static readonly EnterExit FormSwap = SwapFamilies.Declare("WinUi.Detail.FormSwap", new(Opacity: 0f, Active: true));
+
     /// <summary>The docked slot easing its width open and closed (350 ms open, 120 ms close, the WinUI sheet spline), the column inside keeping its full width.
     /// The width eases through REAL layout, so the page column beside it (the list, the hero) yields frame by frame: revealed, the slot was laid out at its
     /// new width at once and the page column snapped its whole width (488 at the 1920 crossing) under the easing edge.</summary>

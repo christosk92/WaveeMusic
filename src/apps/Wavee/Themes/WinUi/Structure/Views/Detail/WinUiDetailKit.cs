@@ -409,38 +409,16 @@ internal static partial class WinUiDetailKit
         return spans;
     }
 
-    /// <summary>The attribution row of a horizontal hero (W-Album): the avatars (ringed, overlapping) then one line, "Artist, Artist · 15 songs · 57 min", the names
-    /// links in the accent. <paramref name="avatar"/> 0 draws no portraits (the short hero).</summary>
-    public static Element AttributionLine(IReadOnlyList<Controls.Face>? artists, string? meta, float avatar, float measure)
-    {
-        var kids = new List<Element>(2);
-        if (avatar > 0f && artists is { Count: > 0 }) kids.Add(AvatarPile(artists, avatar));
-        var spans = new List<TextSpan>(artists is { Count: > 0 } ? artists.Count * 2 + 1 : 1);
-        if (artists is { Count: > 0 }) spans.AddRange(ArtistSpans(artists));
-        if (meta is { Length: > 0 })
-            spans.Add(new TextSpan((spans.Count > 0 ? WinUiDetailRules.MetaLead : "") + meta, Weight: 400, Color: Tok.TextSecondary));
-        if (spans.Count > 0)
-            kids.Add(new SpanTextEl(spans.ToArray())
-            {
-                Size = WinUiDetailRules.AttributionSize, LineHeight = WinUiDetailRules.AttributionLine, Color = Tok.TextSecondary,
-                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-            });
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.AvatarGap, MinWidth = 0f, MaxWidth = measure, Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The stacked hero's attribution: the names alone, centred (the meta is its own line).</summary>
-    public static Element NamesLine(IReadOnlyList<Controls.Face> artists, float measure)
-        => new SpanTextEl(ArtistSpans(artists))
+    /// <summary>The billed names as one run of links (the hero's facts line, in either form: after the avatars, or centred over the meta).</summary>
+    public static SpanTextEl Names(IReadOnlyList<Controls.Face> artists)
+        => new(ArtistSpans(artists))
         {
             Size = WinUiDetailRules.AttributionSize, LineHeight = WinUiDetailRules.AttributionLine, Color = Tok.TextSecondary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = measure, MinWidth = 0f,
-            AlignSelf = FlexAlign.Center,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
 
-    static Element AvatarPile(IReadOnlyList<Controls.Face> artists, float avatar)
+    /// <summary>The billed artists' portraits, ringed and overlapping.</summary>
+    public static BoxEl AvatarPile(IReadOnlyList<Controls.Face> artists, float avatar)
     {
         int shown = Math.Min(artists.Count, WinUiDetailRules.AvatarMax);
         var kids = new Element[shown];
