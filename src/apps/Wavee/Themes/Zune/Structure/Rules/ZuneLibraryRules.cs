@@ -431,8 +431,23 @@ public static class ZuneLibraryLadders
         new TierEdge(SplitFrom, NarrowHold: SplitHold, WidenHold: SplitHold),
         new TierEdge(PaneFrom, NarrowHold: PaneHold, WidenHold: 0f));
 
+    /// <summary>The library artist reader's arms (<see cref="ArtistLadders.Reader"/>, measured on the reader's own width): narrow under 640 (the 88 cover, the stacked album
+    /// heads), medium under the wide band's lane (<see cref="Artist.ReaderShape.WideBandLaneW"/>, 748: no cover spine, the stacked band), wide over it. Zune draws that
+    /// reader in the one-column drill-in only (the split draws the board), so a Compact reader stands in its narrow arm; with no ladder declared the core answered its
+    /// top arm, and the drill-in squeezed the wide band's name to nothing and laid the sub-rail's words over each other.</summary>
+    public const float ReaderNarrowBelow = 640f, ReaderMediumBelow = Artist.ReaderShape.WideBandLaneW;
+
+    /// <summary>The reader ladder's hold, Zune's: each edge commits at the line on widening and holds 24 on narrowing.</summary>
+    public const float ReaderHold = 24f;
+
+    /// <summary>The reader's arms: 0 narrow, 1 medium, 2 wide.</summary>
+    public static TierLadder Reader { get; } = TierLadder.Of(
+        new TierEdge(ReaderNarrowBelow, NarrowHold: ReaderHold, WidenHold: 0f),
+        new TierEdge(ReaderMediumBelow, NarrowHold: ReaderHold, WidenHold: 0f));
+
     /// <summary>The ladders this family adds to <see cref="ZuneTiers.Policy"/>: the core host resolves them by id.</summary>
-    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(new NamedLadder(LibraryLadders.Layout, Layout));
+    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(
+        new NamedLadder(LibraryLadders.Layout, Layout), new NamedLadder(ArtistLadders.Reader, Reader));
 }
 
 public static class ZuneLibraryTiers
