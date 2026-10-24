@@ -149,12 +149,14 @@ public static partial class Diagnostics
             var size = w.ClientSizePx;
             string json = FrameBenchMath.Json(VersionLabel(), o.Label, real, Environment.ProcessorCount, w.CurrentRefreshHz(),
                 ((int)size.Width).ToString(CultureInfo.InvariantCulture) + "x" + ((int)size.Height).ToString(CultureInfo.InvariantCulture),
-                o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses);
+                o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses,
+                new FrameBenchLook(Wavee.Theming.ThemeInspection.ActiveId, FluentGpu.Dsl.Tok.Theme == FluentGpu.Dsl.ThemeKind.Light ? "light" : "dark",
+                    w.Scale, Prefs.Lyrics.BlurStrength(), ((Stage.VizLayout)Prefs.Stage.Layout()).ToString()));
             WriteArtifact(dir, "frame-bench-summary.json", json);
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE FRAME BENCH (" + (real ? "real data" : "--fake") + (o.Label.Length > 0 ? ", " + o.Label : "") + ") ===")
                 .AppendLine("version=" + VersionLabel() + "  processors=" + Environment.ProcessorCount + "  panel=" + w.CurrentRefreshHz() + "Hz  window="
-                    + (int)size.Width + "x" + (int)size.Height + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
+                    + (int)size.Width + "x" + (int)size.Height + "  theme=" + Wavee.Theming.ThemeInspection.ActiveId + "  blur=" + Prefs.Lyrics.BlurStrength() + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
                     + "  cyclesPerMs=" + rate.ToString("0", CultureInfo.InvariantCulture))
                 .AppendLine("output=" + Path.GetFullPath(dir)).AppendLine()
                 .Append(FrameBenchMath.Table(results)).ToString();

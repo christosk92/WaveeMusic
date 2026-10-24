@@ -48,6 +48,8 @@ second is **warm**. Label them (`--bench-label`) and compare the two summaries.
 | `--bench-hide-cycles N` / `--bench-hidden-sec S` | `hide-restore` only: cycles per mode (1–100, default 3) and seconds hidden per minimize / hide cycle (3–900, default 30). |
 | `--bench-uris k=uri,...` | Explicit targets: `track`, `lyrics` (word-synced), `lyrics-line`, `album`, `playlist`, `artist`, `big` (`liked` = Liked Songs). |
 | `--bench-label NAME` | Stored in the summary (`cold`, `warm`, a branch name). |
+| `--bench-size WxH` | The window's CLIENT size in DIP at its monitor's DPI (`--bench-size 1440x960`), so two runs measure one layout; without it the window keeps the size it came up at. `windowPx` in the summary says what landed. |
+| `--theme ID`, `--bench-blur N`, `--bench-layout card\|large` | The theme the run uses (`--fake` keeps it in memory), and for the stage scenarios the lyrics blur (0–100) and the stage layout. The summary records the look the run had: `theme`, `kind`, `scale`, `lyricsBlur`, `stageLayout` (schema 2.2), and the stdout head line prints `theme=` and `blur=`. |
 | `--probe-out DIR` | Where everything is written (default `<profile>\bench`). |
 | `--fake-video PATH` | With `--fake`: enables the `video` scenario. |
 | `--bench-shots` | `sidebar-disclosure` / `drawer-toggle` only: before the measured window, two toggles from rest with every presented frame captured for 0.6 s into `shots\<scenario>-<toggle>-<frame>-<ms>.png`. A capture stalls the GPU for its turn, so the frames are spaced wider than the display's; the motion is time-based, so each is the true pose at its moment. |
@@ -168,7 +170,7 @@ Every scenario therefore carries rate-free metrics, computed from raw cycle delt
 `processGcyclesPerSec`, `uiMcyclesPerSec`, `renderMcyclesPerSec`, `otherMcyclesPerSec` (process - UI - render),
 `uiKcyclesPerPaintedFrame` (all UI-thread cycles in the window / painted frames) and `renderKcyclesPerTurn`. The stdout table
 shows them (`procGc/s`, `uiMc/s`, `rdMc/s`, `othMc/s`). `processCpuPct`, `uiCoresTimes`, `renderCoresTimes` and `paintedCpuMs.*`
-stay in the JSON (schema `wavee-frame-bench/2.1`) as **info only**: the compare tool never flags them. Cycles are not
+stay in the JSON (schema `wavee-frame-bench/2.2`; 2.2 adds the look: `theme`, `kind`, `scale`, `lyricsBlur`, `stageLayout`) as **info only**: the compare tool never flags them. Cycles are not
 frequency-normalised, so compare runs on the same machine and power plan.
 
 ## Comparing

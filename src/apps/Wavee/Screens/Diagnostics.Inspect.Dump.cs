@@ -28,7 +28,7 @@ public static partial class Diagnostics
     {
         /// <summary>What `dump` was asked for.</summary>
         public readonly record struct Request(int MaxDepth = int.MaxValue, bool KeysOnly = false, bool VisibleOnly = true,
-                                              int MaxNodes = 4000, bool Text = true);
+                                              int MaxNodes = 4000, bool Text = true, int MaxKeyDepth = int.MaxValue);
 
         /// <summary>What the trim answers rest on: `dwrite` (the engine's TextOverflow query over real DirectWrite metrics) or
         /// `headless-model` (the same query over the 0.55 x size font model: not truthful).</summary>
@@ -42,16 +42,19 @@ public static partial class Diagnostics
         public static int Write(Utf8JsonWriter w, Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, in Request request)
         {
             SceneStore scene = shell.Host.Scene;
-            var stack = new Stack<(NodeHandle Node, int Parent, int Depth)>();
+            // Slot: the view slot anchor above the node that no emitted node has named yet (an anchor is a zero-size node the default
+            // dump skips, so the first node it emits under the anchor carries the template). KeyDepth: keyed nodes above it, below the root.
+            var stack = new Stack<(NodeHandle Node, int Parent, int Depth, FluentGpu.Theming.ViewSlotInfo? Slot, int KeyDepth)>();
             var children = new List<NodeHandle>();
             Span<char> path = stackalloc char[256];
+            Dictionary<NodeHandle, FluentGpu.Theming.ViewSlotInfo> slots = InspectViews.Slots(shell);
             int written = 0;
             bool truncated = false;
             w.WriteStartArray("nodes");
-            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0));
+            for (int r = roots.Length - 1; r >= 0; r--) stack.Push((roots[r], -1, 0, null, 0));
             while (stack.Count > 0)
             {
-                var (node, parent, depth) = stack.Pop();
+                var (node, parent, depth, pendingSlot, keyDepth) = stack.Pop();
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
@@ -60,17 +63,20 @@ public static partial class Diagnostics
                 string? key = scene.DebugKeyOf(node);
                 RectF rect = scene.PresentedAbsoluteRect(node);
                 bool emit = (!request.KeysOnly || key is not null) && (!request.VisibleOnly || (rect.W > 0f && rect.H > 0f));
+                if (slots.TryGetValue(node, out FluentGpu.Theming.ViewSlotInfo anchor)) pendingSlot = anchor;
                 int self = parent;
                 if (emit)
                 {
                     if (written >= request.MaxNodes) { truncated = true; break; }
                     self = written++;
-                    WriteNode(w, shell, node, key, rect, flags, ref paint, self, parent, depth, path, request.Text);
+                    WriteNode(w, shell, node, key, rect, flags, ref paint, self, parent, depth, path, request.Text, pendingSlot);
+                    pendingSlot = null;
                 }
-                if (depth >= request.MaxDepth) continue;
+                int keyed = key is not null && parent >= 0 ? keyDepth + 1 : keyDepth;   // the root's own key is level 0
+                if (depth >= request.MaxDepth || keyed > request.MaxKeyDepth) continue;
                 children.Clear();
                 for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) children.Add(c);
-                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, emit ? depth + 1 : depth));
+                for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, emit ? depth + 1 : depth, pendingSlot, keyed));
             }
             w.WriteEndArray();
             w.WriteNumber("count", written);
@@ -80,7 +86,8 @@ public static partial class Diagnostics
         }
 
         static void WriteNode(Utf8JsonWriter w, Shell.HeadlessShell shell, NodeHandle node, string? key, in RectF rect, NodeFlags flags,
-                              ref NodePaint paint, int self, int parent, int depth, Span<char> path, bool text)
+                              ref NodePaint paint, int self, int parent, int depth, Span<char> path, bool text,
+                              FluentGpu.Theming.ViewSlotInfo? slot)
         {
             SceneStore scene = shell.Host.Scene;
             w.WriteStartObject();
@@ -91,6 +98,11 @@ public static partial class Diagnostics
             int pathLength = NodeDescriber.Describe(scene, (int)node.Raw.Index, node.Raw.Gen, path);
             w.WriteString("path", path[..pathLength]);
             w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));
+            if (slot is { } drawn)   // the first node of a view slot (its anchor, or the first node shown under it): the template the theme gave it
+            {
+                w.WriteString("template", drawn.TemplateId);
+                w.WriteString("view", drawn.ViewId);
+            }
             if (paint.VisualKind != VisualKind.None) w.WriteString("visual", paint.VisualKind.ToString());
             Inspect.Reply.Rect(w, "rect", rect);
             if (paint.Opacity < 1f) Inspect.Reply.Num(w, "opacity", paint.Opacity);
@@ -213,17 +225,36 @@ public static partial class Diagnostics
         /// <paramref name="key"/> (or, with <paramref name="key"/> empty, starting with <paramref name="prefix"/>), in reading order.
         /// `onScreen` is the visible share of the rect (0..1, after the window and every clipping ancestor); `actionable` is what
         /// `click`/`hover`/`scroll` check, and `nth` the index a pointer verb's `nth` takes for this key (actionable matches only).</summary>
-        public static int WriteFind(Utf8JsonWriter w, Shell.HeadlessShell shell, string key, string prefix)
+        public static int WriteFind(Utf8JsonWriter w, Shell.HeadlessShell shell, string key, string prefix, bool visibleOnly = false, int depth = int.MaxValue)
         {
             SceneStore scene = shell.Host.Scene;
             List<(NodeHandle Node, string Key)> found = key.Length > 0 ? Exact(shell, key) : shell.FindPrefix(prefix);
+            int matched = found.Count;
+            if (depth < int.MaxValue)
+            {
+                // `depth=N`: a match nested inside more than N other matches is left out (0: the outermost matches only), so a broad
+                // prefix lists the layers, not every part inside them.
+                var all = new HashSet<NodeHandle>();
+                foreach (var (node, _) in found) all.Add(node);
+                found.RemoveAll(e =>
+                {
+                    int above = 0;
+                    for (NodeHandle p = scene.Parent(e.Node); !p.IsNull; p = scene.Parent(p))
+                        if (all.Contains(p) && ++above > depth) return true;
+                    return false;
+                });
+            }
             InReadingOrder(scene, found);
             RectF window = InspectKit.WindowRect(shell);
+            Dictionary<NodeHandle, FluentGpu.Theming.ViewSlotInfo> slots = InspectViews.Slots(shell);
             var nth = new Dictionary<string, int>(StringComparer.Ordinal);
+            int listed = 0;
             w.WriteStartArray("nodes");
             foreach (var (node, k) in found)
             {
                 Actionability.Verdict v = InspectKit.Assess(shell, node, window);
+                if (visibleOnly && (!scene.IsShown(node) || v.Fraction <= 0f)) continue;   // `visibleOnly`: shown and at least partly on screen
+                listed++;
                 w.WriteStartObject();
                 w.WriteString("key", k);
                 Inspect.Reply.Rect(w, "rect", scene.PresentedAbsoluteRect(node));
@@ -240,14 +271,16 @@ public static partial class Diagnostics
                 else w.WriteString("why", v.Why);
                 w.WriteString("kind", NodeDescriber.ElementTypeName(scene.ElementTypeId(node)));
                 if (FirstText(scene, node, out string? family) is { } text) w.WriteString("text", GlyphLabel(text, family) ?? text);
+                if (InspectViews.TryDrawnBy(scene, slots, node, out FluentGpu.Theming.ViewSlotInfo slot)) w.WriteString("template", slot.TemplateId);   // the template that drew it
                 w.WriteEndObject();
             }
             w.WriteEndArray();
-            w.WriteNumber("count", found.Count);
+            w.WriteNumber("count", listed);
+            if (listed != matched) w.WriteNumber("matched", matched);   // before depth= and visibleOnly= left some out
             w.WriteString("order", "reading order (top, then left); nth counts the actionable matches of a key");
             if (key.Length > 0 && found.Count == 0 && shell.FindPrefix(key).Count is > 0 and int near)   // `find <x>` was a prefix search once
                 w.WriteString("hint", "0 nodes keyed exactly '" + key + "'; " + near + " keys start with it: find prefix=" + Inspect.Quote(key));
-            return found.Count;
+            return listed;
         }
 
         /// <summary>Every live node keyed exactly <paramref name="key"/>, in slot order.</summary>

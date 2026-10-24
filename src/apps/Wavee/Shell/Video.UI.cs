@@ -485,6 +485,7 @@ public static partial class Video
                         SurfacePresented = host.SurfacePresented,
                         HostFullscreen = hostFullscreen,
                         CursorAutoHide = cursor,
+                        AutoHideTransportControls = !Wavee.Theming.InspectSwitches.HoverChromeAtRest,   // `mount chrome=shown`: the chrome at rest, no auto-hide
                         ChromeVisibleOut = chromeVisible,
                         ChromeFeed = feed,
                     }) with

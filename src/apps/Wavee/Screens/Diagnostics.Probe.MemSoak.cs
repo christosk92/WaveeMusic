@@ -286,8 +286,34 @@ public static partial class Diagnostics
                     : int.TryParse(argv[at + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int index) ? MonitorTopLeft(index) : null;
                 if (tl is { } p) (x, y) = p;
             }
-            SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, 0, 0, 0x0001 | 0x0010 /*NOSIZE|NOACTIVATE*/);
-            Say("[probe] window placed at " + x.ToString(CultureInfo.InvariantCulture) + "," + y.ToString(CultureInfo.InvariantCulture));
+            // `--bench-size WxH` (DIP at the window's DPI): the frame bench measures at a stated size instead of whatever size the window
+            // came up at, so two runs (and a run against the inspector's renders) compare one layout. The summary's `windowPx` says what landed.
+            int cx = 0, cy = 0;
+            int sizeAt = Array.IndexOf(argv, "--bench-size");
+            if (sizeAt >= 0 && sizeAt + 1 < argv.Length && TryBenchSize(argv[sizeAt + 1], out float wDip, out float hDip))
+            {
+                float scale = GetDpiForWindow(FluentApp.WindowHandle) is > 0 and uint dpi ? dpi / 96f : 1f;
+                (cx, cy) = ((int)MathF.Round(wDip * scale), (int)MathF.Round(hDip * scale));
+            }
+            uint flags = 0x0010u /*NOACTIVATE*/ | (cx > 0 ? 0u : 0x0001u /*NOSIZE*/);
+            SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, cx, cy, flags);
+            // The size is the OUTER rect: grow it by what the frame (the invisible resize borders) takes, so the CLIENT is the size asked.
+            if (cx > 0 && GetClientRect(FluentApp.WindowHandle, out ClientRect client) && (client.Right != cx || client.Bottom != cy))
+            {
+                (cx, cy) = (2 * cx - client.Right, 2 * cy - client.Bottom);
+                SetWindowPos(FluentApp.WindowHandle, 1 /*HWND_BOTTOM*/, x, y, cx, cy, flags);
+            }
+            Say("[probe] window placed at " + x.ToString(CultureInfo.InvariantCulture) + "," + y.ToString(CultureInfo.InvariantCulture)
+                + (cx > 0 ? " sized " + cx.ToString(CultureInfo.InvariantCulture) + "x" + cy.ToString(CultureInfo.InvariantCulture) + " px" : ""));
+        }
+
+        /// <summary>`1440x960` (DIP, both above 0).</summary>
+        static bool TryBenchSize(string text, out float w, out float h)
+        {
+            w = h = 0f;
+            string[] parts = text.ToLowerInvariant().Split('x');
+            return parts.Length == 2 && float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out w)
+                && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out h) && w > 0f && h > 0f;
         }
 
         static (int X, int Y)? FirstNonPrimaryTopLeft()
@@ -314,6 +340,16 @@ public static partial class Diagnostics
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         static extern bool EnumDisplayMonitors(nint dc, nint clip, MonitorEnumProc proc, nint data);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern uint GetDpiForWindow(nint hwnd);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct ClientRect { public int Left, Top, Right, Bottom; }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        static extern bool GetClientRect(nint hwnd, out ClientRect rect);
 
         static string MemLine(AppHost host)
         {
