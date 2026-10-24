@@ -68,6 +68,7 @@ public readonly partial struct Track
         // A structure's worded Find and inline Select (ITrackCommandKit.FindCommand / SelectCommand): their measured widths join the fit's budget (the
         // first frame resolves against the nominals), and an inline Select leaves the "…" menu.
         float _findWordW = FindWordNominal, _selectW = SelectNominal;
+        Action<RectF>? _measureFindWord;
         bool _inlineSelect;
         const float FindWordNominal = 72f, SelectNominal = 64f;
 
@@ -262,13 +263,14 @@ public readonly partial struct Track
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
                 with { Key = "search-host" };
-            if (findWord)
-                search = new BoxEl
-                {
-                    Key = "search-host:worded", Direction = 1, Shrink = 0f,
-                    OnBoundsChanged = r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); },
-                    Children = [search],
-                };
+            // One slot in every fit (audit B9): the worded Find measures its width through it, the glyph form simply sits in it, so a crossing that
+            // gives Find its word or takes it keeps the search host's node (and a typed query) instead of re-parenting it.
+            search = new BoxEl
+            {
+                Key = "search-host:slot", Direction = 1, Shrink = 0f,
+                OnBoundsChanged = findWord ? _measureFindWord ??= r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); } : null,
+                Children = [search],
+            };
             return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail, chips));
         }
 

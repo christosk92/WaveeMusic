@@ -47,8 +47,9 @@ internal static partial class WinUiDetailFrame
     static readonly LayoutTransition HeroHeightMotion = new(
         TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
-    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>).</summary>
-    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton };
+    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>); the list's page inset eases through real layout when
+    /// a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
+    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton, InsetMotion = WinUiDiscoveryMotion.WidthReflow };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>.</summary>
     public static Element HeroTemplate(DetailHeroProps p, in ViewContext ctx) => Embed.Comp(p, static () => new HeroHost());

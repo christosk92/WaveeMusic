@@ -495,34 +495,29 @@ internal static class ClassicTrackChrome
                 left = lead.ToArray();
                 view = rest.ToArray();
             }
+            // ONE row of keyed commands (audit B9): the sort word that leads the Compact bar is reordered in place, never re-parented into another
+            // group's box (which rebuilt it). The groups are the order: [left] [gap or chips] [view] [find] [tail]; an empty left group keeps its slot.
+            var kids = new List<Element>(left.Length + view.Length + tail.Length + 3);
+            if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f });
+            kids.AddRange(left);
+            kids.Add(middle is null
+                ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                : new BoxEl
+                {
+                    Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                });
+            kids.AddRange(view);
+            kids.Add(new BoxEl
+            {
+                Key = "bar:find", Direction = 1, Shrink = 0f,
+                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+            });
+            kids.AddRange(tail);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
-                    middle is null
-                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                        : new BoxEl
-                        {
-                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                        },
-                    new BoxEl
-                    {
-                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children =
-                        [
-                            .. view,
-                            new BoxEl
-                            {
-                                Key = "bar:find", Direction = 1, Shrink = 0f,
-                                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
-                            },
-                            .. tail,
-                        ],
-                    },
-                ],
+                Children = kids.ToArray(),
             };
         }
 

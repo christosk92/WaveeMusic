@@ -55,12 +55,12 @@ internal static class ClassicInsights
     public static Element ToggleTemplate(DetailInsightsToggleProps p, in ViewContext ctx)
     {
         var toggle = p.Toggle;
-        // The bar's commands take the tier's target edge (40 at Compact, the brief's rule); the edge is in the key, so a crossing re-mounts the
-        // one button at its new size.
+        // The bar's commands take the tier's target edge (40 at Compact, the brief's rule); a crossing resizes the one button and keeps its node, its
+        // focus and its hover (audit B9: never a key built from the edge).
         float edge = MathF.Max(SheetToggleEdge, ClassicDetailTiers.Of(ctx.Tier()).Target);
         return p.Form == DetailInsightsToggleForm.BandWord
             ? Embed.Comp(() => new InsightsBandWord(toggle))
-            : ToolTip.Wrap(Embed.Comp(() => new InsightsBarButton(toggle, edge)) with { Key = "insights:toggle:" + edge },
+            : ToolTip.Wrap(Embed.Comp(new BarProps(toggle, edge), static () => new InsightsBarButton()) with { Key = "insights:toggle:bar" },
                 Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 
@@ -286,16 +286,19 @@ internal static class ClassicInsights
     /// <summary>The list bar's 32-DIP glyph button (the two-column arm's bar, and the vertical arm's hero bar while the hero is expanded — the
     /// range the pinned band cannot serve). Pressed, it takes the accent plate and accent ink (board C-Liked: <c>aria-pressed</c>). Its own
     /// component: the open signal is the only thing it reads, so a toggle never re-renders the bar that hosts it.</summary>
-    sealed class InsightsBarButton(InsightsToggle toggle, float edge) : Component
+    sealed record BarProps(InsightsToggle Toggle, float Edge);
+
+    sealed class InsightsBarButton : Component
     {
         public override Element Render()
         {
-            var t = toggle;
+            var (t, edge) = UseProps<BarProps>();
             bool open = t.Open.Value;
-            return new BoxEl
+            // The tier's edge eases on the button's own box, never on the component's root (whose size would land at once).
+            return new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [new BoxEl
             {
                 Key = "insights:toggle",
-                Width = edge, Height = edge, Shrink = 0f,
+                Width = edge, Height = edge, Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Reflow,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
                 Fill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
                 HoverFill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
@@ -315,7 +318,7 @@ internal static class ClassicInsights
                         Stroke = new StrokeStyle(2.2f, LineCap.Round, LineJoin.Round),
                     },
                 ],
-            };
+            }] };
         }
     }
 

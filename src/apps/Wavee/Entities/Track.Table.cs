@@ -595,6 +595,19 @@ public readonly partial struct Track
         long _lastDealtAtMs;
         global::Wavee.Theming.Contracts.DetailForm _formSeen;
         long _formChangedAtMs;
+        float _rowHSeen;
+
+        /// <summary>A row whose height a crossing changes (audit B9: WinUI's Compact two-line rows, 40 ↔ 56): its presented height eases while its content is
+        /// laid out at the final size (a reveal), so a row never steps; its place glides on the seeds <see cref="ReRow"/> writes.</summary>
+        static readonly LayoutTransition s_rowResize = new(TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), SizeMode.Reveal);
+
+        /// <summary>An album's list (its rows in the outer scroller) across a row-height change: its height eases through real layout, the trailing band
+        /// under it riding it (audit B9).</summary>
+        static readonly LayoutTransition s_listResize = new(TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut),
+            Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+        /// <summary>The row skin's own transition (<see cref="s_rowResize"/>), none under reduced motion.</summary>
+        internal LayoutTransition? RowResize => Design.Reduced ? null : s_rowResize;
         Snapshot _orderSeen;
         Track[] _curTracks = [], _prevTracks = [];
         StringId[] _curIds = [], _prevIds = [];
@@ -1239,9 +1252,13 @@ public readonly partial struct Track
 
             // ── membership choreography (§4.6) + the breakpoint re-deal, seeded in the render that commits the order ──
             int resetBefore = _resetEpoch;
+            int dealBefore = _dealEpoch;
             TrackOrder(in snap, shape.RowH);
             if (_latest.Form != _formSeen) { _formSeen = _latest.Form; _formChangedAtMs = Environment.TickCount64; }
             ReDeal(shape.Set.Tier, shape.RowH);
+            // A row-height change no deal narrates glides the rows to their new places (a deal owns the rows when one ran).
+            if (_dealEpoch == dealBefore) ReRow(shape.RowH, trailing);
+            else _rowHSeen = shape.RowH;
             _dealtThisFrame = false;
             UseLayoutEffect(BumpDisplacement, DepKey.From(_dealEpoch));
             bool narrate = _resetEpoch != resetBefore;
@@ -1315,6 +1332,9 @@ public readonly partial struct Track
             Element listKeyed = new BoxEl
             {
                 Key = listKey, Grow = trailing ? 0f : 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Children = [region],
+                // An album's rows stand in the outer scroller: across a row-height change the list's height eases through real layout (the rows glide
+                // inside it), so the trailing band under it rides it frame by frame (audit B9).
+                Layout = trailing && !Design.Reduced ? s_listResize : null,
                 ScrollScope = vertical && !trailing ? TableScope : null,
             };
 
@@ -2671,6 +2691,30 @@ public readonly partial struct Track
         /// <summary>A breakpoint cross narrated as ONE deal: realized rows rise 6 DIP and fade in top-down behind a capped
         /// stagger. Never the first tier a list measures, never within 200 ms of the last cross (the rapid-reversal gate —
         /// the one sanctioned TickCount64 read, a gesture-rate debounce), never under reduced motion.</summary>
+        /// <summary>The rows across a row-height change (audit B9: a crossing to or from WinUI's Compact two-line rows): every realized row keeps its node and
+        /// glides from where it stood to where the new height puts it (a FLIP seed per row, the same channel a reorder uses), while its own height eases
+        /// (<see cref="RowResize"/>). The hero list re-anchors its scroll on its first visible row, so the residual counts from there; an album's rows sit in
+        /// the outer scroller and count from the first row. Never the first height a list lays out, never under reduced motion.</summary>
+        void ReRow(float rowH, bool trailing)
+        {
+            float old = _rowHSeen;
+            _rowHSeen = rowH;
+            if (old <= 0f || rowH <= 0f || MathF.Abs(old - rowH) < 0.5f || Design.Reduced) return;
+            int visible = _visible.Peek();
+            if (visible <= 0) return;
+            float d = old - rowH;
+            int anchor = trailing ? 0 : Math.Clamp((int)((_listCtl.ScrollOffset - _heroH.Peek()) / old), 0, visible - 1);
+            int first = trailing ? 0 : Math.Max(0, anchor - ReDealRows);
+            int last = Math.Min(visible, (trailing ? 0 : anchor) + 2 * ReDealRows);
+            _flip.Clear(); _fade.Clear();
+            for (int i = first; i < last; i++)
+            {
+                float residual = (i - anchor) * d;
+                if (MathF.Abs(residual) > 0.5f) _flip[i] = (0f, residual);
+            }
+            _dealEpoch++;
+        }
+
         void ReDeal(int tier, float rowH)
         {
             if (_lastDealtTier == tier) return;
@@ -2762,7 +2806,8 @@ public readonly partial struct Track
             var titem = _trackItem!;
             int tstart = _start;
             Element content = Embed.Comp(() => new TableRowContent(thost, tscope, titem, tstart, hovered));
-            Element row = _host.Skin(_scope, content, in shape, flow, isOpen || tail.Value, _start, hovered, _narrate) with { Key = "row" };
+            // Its height eases across a row-height change (a skin's own entrance, where it has one, wins: a fresh row has no height to ease from).
+            Element row = _host.Skin(_scope, content, in shape, flow, isOpen || tail.Value, _start, hovered, _narrate) with { Key = "row", Layout = _host.RowResize };
             // A row that starts a date group (tuned Classic D16) carries the group's head above its plate, inside its slot: the list stays
             // one row per song, so selection, keys, drag and the drawer never see the heads. The head is BOUND (its presence and words read
             // the slot's memo inside props), so scrolling recycles the slot without a render.
