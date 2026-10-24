@@ -83,10 +83,14 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(r), ClipToBounds = true,
-                // Keyed by geometry: the component freezes its size at mount.
-                Children = [Embed.Comp(() => new LikedArt(size, r)) with { Key = "liked-cover:" + FormatCache.Int((int)size) }],
+                // Keyed by identity; the geometry is a re-pushed prop (audit B8: never a key built from a size), so a
+                // size change re-lays the same art instead of remounting it.
+                Children = [Embed.Comp(new LikedArtProps(size, r), static () => new LikedArt()) with { Key = "liked-cover" }],
             };
         }
+
+        /// <summary>The Liked art's geometry, re-pushed on every parent render (equal values coalesce).</summary>
+        sealed record LikedArtProps(float Size, float Radius);
 
         /// <summary>Cover art: the image when there is one; for a cover-less entry a 2×2 mosaic of ≥4 tiles, else its first
         /// tile; else the neutral placeholder tile (the tint comes from the url's graded colour, and a url-less slot takes
@@ -133,28 +137,27 @@ public static partial class Sidebar
         /// table while a page's covers stream in.</summary>
         sealed class LikedArt : Component
         {
-            readonly float _size, _radius;
             readonly Func<NavLikedCovers> _stamp;
             readonly string[] _tiles = new string[4];
 
-            public LikedArt(float size, float radius)
+            public LikedArt()
             {
-                _size = size;
-                _radius = radius;
                 _stamp = Sidebar.Model.ReadLikedCovers;   // the first four distinct liked covers: the model's read
             }
 
             public override Element Render()
             {
+                var g = UseProps<LikedArtProps>();
+                float size = g.Size, radius = g.Radius;
                 var s = UseComputed(_stamp).Value;
-                if (s.Found == 0) return Glyph(Icons.Heart, _size);
+                if (s.Found == 0) return Glyph(Icons.Heart, size);
                 string? first = Controls.ArtUrl(s.A);
-                if (s.Found < 4 || first is null) return Controls.Artwork(first, _size, _size, _radius, decodePx: DecodeBucket(_size));
+                if (s.Found < 4 || first is null) return Controls.Artwork(first, size, size, radius, decodePx: DecodeBucket(size));
                 _tiles[0] = first;
                 _tiles[1] = Controls.ArtUrl(s.B) ?? first;
                 _tiles[2] = Controls.ArtUrl(s.C) ?? first;
                 _tiles[3] = Controls.ArtUrl(s.D) ?? first;
-                return Controls.Mosaic(_tiles, _size, _size, _radius);
+                return Controls.Mosaic(_tiles, size, size, radius);
             }
         }
     }

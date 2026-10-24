@@ -1,8 +1,9 @@
 // ── Themes/Zune/Style/ZuneRoles.cs — the roles of the Zune style (themes plan 5.4, 6.3, Z1) ──────────────────────────────────
 //
 // Every number and colour below is read off the Zune boards (Z-Tokens first, then the surface that draws it): the ground ladder
-// #161616 / #111111 / #1b1b1b / #242424 and its light twin #f5f5f5 / #ebebeb / #ffffff / #ffffff, the ink #fff / #a8a8a8 / #7a7a7a
-// (light #111 / #4c4c4c / #646464, the boards' #5a5a5a / #8a8a8a darkened so both hold 4.5 : 1), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
+// #161616 / #111111 / #1b1b1b / #242424 and its light twin #f5f5f5 / #ebebeb / #ffffff / #ffffff, the ink #fff / #a8a8a8 / #848484 (the
+// boards' #7a7a7a lightened so it holds 4.5 : 1 on the ground and the well) (light #111 / #4c4c4c / #646464, the boards' #5a5a5a / #8a8a8a
+// darkened so both hold 4.5 : 1), a 5 % ink wash for hover, a 12 % accent wash for selection, the type in Segoe UI Variable Display
 // from 20 DIP up at the light weights (200 panorama, 300 titles and headings, 350 pivots at rest) and Segoe UI Variable Text below,
 // the square corners (0 everywhere, 2 on covers, full on the round metro buttons and the people), and lowercase for every word the
 // theme writes (labels, navigation, headings, commands; never a name or a title someone typed).
@@ -49,8 +50,10 @@ public static class ZuneTokens
     public static ColorF DarkInk { get; } = ColorF.FromRgba(0xFF, 0xFF, 0xFF);
     /// <summary>The dark secondary ink.</summary>
     public static ColorF DarkInkSecondary { get; } = ColorF.FromRgba(0xA8, 0xA8, 0xA8);
-    /// <summary>The dark tertiary ink: numbers, pivots at rest.</summary>
-    public static ColorF DarkInkTertiary { get; } = ColorF.FromRgba(0x7A, 0x7A, 0x7A);
+    /// <summary>The dark tertiary ink: numbers, pivots at rest. #848484, not the boards' #7a7a7a, which read 4.2 : 1 on the #161616 ground and 4.0 : 1
+    /// on the #1b1b1b well under the 11-14 DIP counts, dates, captions and crumbs it inks (the light ink's reason, audit B8): 4.9 : 1 on the ground,
+    /// 4.6 : 1 on the well, and still a clear step under the secondary #a8a8a8.</summary>
+    public static ColorF DarkInkTertiary { get; } = ColorF.FromRgba(0x84, 0x84, 0x84);
 
     /// <summary>The light ground.</summary>
     public static ColorF LightGround { get; } = ColorF.FromRgba(0xF5, 0xF5, 0xF5);
@@ -85,7 +88,7 @@ public static class ZuneTokens
 
     /// <summary>An unselected word's opacity in a word rail (the show's filters and sorts, History's): the shared 50 % on dark; on the light ground 50 %
     /// of the ink read 3.5 : 1, so the light rest is 68 % (about 5 : 1 on the light page).</summary>
-    public static readonly ModePair<float> WordRest = new(Light: 0.68f, Dark: Controls.Words.RestInk);
+    public static readonly ModePair<float> WordRest = new(Light: Controls.Words.RestInkLight, Dark: Controls.Words.RestInk);
 
     /// <summary><see cref="WordRest"/> for the active kind, as a rail reads it (a live read: a kind switch re-reads it).</summary>
     public static readonly Func<float> WordRestNow = static () => WordRest.Now;

@@ -205,6 +205,7 @@ public static partial class Diagnostics
                 if (!n.SeedShown) w.WriteBoolean("seedShown", false);
             }
             if (n.FadeEdges != 0) w.WriteNumber("fade", n.FadeEdges);
+            if (n.FadeBand > 0f) w.WriteNumber("fadeBand", n.FadeBand);
             if (!n.ClipRect.IsInfinite) Rect(w, "clip", n.ClipRect);
             if (n.ZStack) w.WriteBoolean("zstack", true);
             if (!n.Column) w.WriteBoolean("row", true);
@@ -566,6 +567,7 @@ public static partial class Diagnostics
                 SeedContent = r.Rect(e, "seedContent", RectF.Infinite),
                 SeedShown = !e.TryGetProperty("seedShown", out _) || r.Bool(e, "seedShown"),
                 FadeEdges = (byte)fade,
+                FadeBand = r.Finite(e, "fadeBand", 0f),
                 ClipRect = r.Rect(e, "clip", RectF.Infinite),
                 ZStack = r.Bool(e, "zstack"),
                 Column = !r.Bool(e, "row"),

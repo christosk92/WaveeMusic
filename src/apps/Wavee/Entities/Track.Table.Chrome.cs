@@ -1187,11 +1187,31 @@ public readonly partial struct Track
     /// its width tracks all read (library rework §5.5); the host hands the pane the set its table will lay out.
     /// <para>A video is the film glyph after the title, never a lane (<c>TableRules.TrailingColumns</c>), so the shim
     /// needs nothing the rows will carry and the real header lands on exactly the shim's geometry.</para></summary>
-    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist) => new(
-        Album: false, By: false, Date: false, Plays: false, Heart: true, Thumb: false,
-        Actions: true, Tier: EmbeddedTier,
-        Artist: TableRules.IdentityColumns(classic, showArtThumb: false, artworkHidden: false, showTrackArtist, EmbeddedTier).Artist,
-        Classic: classic);
+    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist) => EmbeddedColumns(classic, showTrackArtist, EmbeddedForm());
+
+    /// <summary><see cref="EmbeddedColumns(bool, bool)"/> for the embedded table's <paramref name="form"/> (<see cref="EmbeddedForm"/>): the lanes
+    /// <c>TableHost.SetFor</c> lays out for an album at <see cref="EmbeddedTier"/>, so the shim and the rows agree. A Modern row under a
+    /// structure whose rows stand the heart and the "…" in the time lane (<see cref="Theming.DetailTableTier.HoverActions"/>) has neither lane.</summary>
+    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist, global::Wavee.Theming.DetailTableTier form)
+    {
+        bool hover = form.HoverActions && !classic;
+        return new(
+            Album: false, By: false, Date: false, Plays: false, Heart: !hover, Thumb: false,
+            Actions: !hover, Tier: EmbeddedTier,
+            Artist: TableRules.IdentityColumns(classic, showArtThumb: false, artworkHidden: false, showTrackArtist, EmbeddedTier).Artist,
+            Classic: classic, HoverActions: hover, DurationWidth: form.DurationWidth);
+    }
+
+    /// <summary>The embedded table's form (a library pane): every lane and the density's rows (the core's Standard record), with the structure's own
+    /// time lane where its Standard rows stand the heart and the "…" in it on hover (Zune, Z-Library-Albums: # · title · time, the time at the pane's
+    /// right edge; the pane laid a heart lane and an empty "…" lane out after the time, which ended 64 short, audit B8). A tracked read of the policy.</summary>
+    public static global::Wavee.Theming.DetailTableTier EmbeddedForm()
+    {
+        var own = ShellPolicy.Tracked.DetailTiers.Standard.Table;
+        return own.HoverActions
+            ? global::Wavee.Theming.DetailTableTier.Standard with { HoverActions = true, DurationWidth = own.DurationWidth }
+            : global::Wavee.Theming.DetailTableTier.Standard;
+    }
 
     /// <summary>The width tracks for an <see cref="EmbeddedColumns"/> set — the SAME cached instance the real rows would get
     /// (<see cref="TracksFor"/>), so the shimmer rows and the header shim share the array the table itself hands out. Art is irrelevant

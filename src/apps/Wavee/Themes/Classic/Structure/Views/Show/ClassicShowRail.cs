@@ -65,7 +65,7 @@ internal static partial class ClassicShow
         float played = sum > 0 ? a.Played / (float)sum : 0f, progress = sum > 0 ? a.InProgress / (float)sum : 0f;
         TextSpan[] line = a.Fresh > 0
             ? [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo) + " · "),
-               new TextSpan(Strings.Podcast.LedgerNew(a.Fresh), Weight: 600, Color: a.Tone())]
+               new TextSpan(Strings.Podcast.LedgerNew(a.Fresh), Weight: 600, Color: Design.Palette.ReadableInk(a.Tone()))]
             : [new TextSpan(Strings.Podcast.Ledger(a.Played, a.InProgress, a.ToGo))];
         return new BoxEl
         {
@@ -89,7 +89,7 @@ internal static partial class ClassicShow
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = a.Toggle, OnRealized = a.Realized,
             Children =
             [
-                Icon(Icons.FavoriteStarFill, RatingStar) with { Color = Prop.Of(a.Tone) },
+                Icon(Icons.FavoriteStarFill, RatingStar) with { Color = Prop.Of(() => Design.Palette.ReadableInk(a.Tone())) },
                 R.Type.DenseTitle(a.Average) with { Color = Tok.TextPrimary, MaxLines = 1 },
                 R.Type.DenseMeta(a.Count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
             ],

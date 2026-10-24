@@ -52,9 +52,12 @@ internal static class ClassicRecentsRows
     static readonly Track.ColumnSet ChildCols = new(Album: false, By: false, Date: false, Plays: false,
         Heart: true, Thumb: true, Actions: true);
     static readonly Track.ColumnSet ChildColsNoArt = ChildCols with { Thumb = false };
+    // The lean child (C-Recents-Compact, `ClassicRecentsLayout.LeanChildren`): no "#" lane, and the Compact row form's set lays out no duration lane.
+    static readonly Track.ColumnSet LeanChildCols = ChildCols with { IndexHidden = true, Compact = true };
+    static readonly Track.ColumnSet LeanChildColsNoArt = LeanChildCols with { Thumb = false };
 
     static int s_epoch = -1;
-    static TrackSize[] s_childTracks = [], s_childTracksNoArt = [], s_singleTracks = [], s_singleTracksNoArt = [];
+    static TrackSize[] s_childTracks = [], s_childTracksNoArt = [], s_singleTracks = [], s_singleTracksNoArt = [], s_leanChildTracks = [], s_leanChildTracksNoArt = [];
 
     static void Lanes()
     {
@@ -67,6 +70,10 @@ internal static class ClassicRecentsRows
         s_childTracksNoArt =
             [TrackSize.Px(ClassicRecentsRules.ChildNumCol), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(1f), TrackSize.Px(ClassicRecentsRules.DurationCol),
              TrackSize.Px(ClassicRecentsRules.ChildActionsCol)];
+        // The lean drawer child (Compact): ♥ · art · title* · when.
+        s_leanChildTracks =
+            [TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Px(Track.RowMetrics.ThumbSize), TrackSize.Star(1f), TrackSize.Px(ClassicRecentsRules.ChildWhenCol)];
+        s_leanChildTracksNoArt = [TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(1f), TrackSize.Px(ClassicRecentsRules.ChildWhenCol)];
         // The single-play arm: # · ♥ · art · title* · duration · "…" — static, the surface has no width tiers.
         s_singleTracks =
             [TrackSize.Px(ClassicRecentsRules.SingleNumCol), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Px(Track.RowMetrics.ThumbSize), TrackSize.Star(1f),
@@ -277,9 +284,10 @@ internal static class ClassicRecentsRows
             rendered.Add(new BoxEl
             {
                 Key = "child:" + key + ":" + FormatCache.Int(i), Direction = 1,
-                Children = [ChildRow(host, targets[i], ordinal, entries[i].PlayedAtMs, art, layout.ChildRowH)],
+                Children = [ChildRow(host, targets[i], ordinal, entries[i].PlayedAtMs, art, layout.ChildRowH, layout.LeanChildren)],
             });
         }
+        float padX = float.IsNaN(layout.DrawerPadX) ? Spacing.L + Spacing.S : layout.DrawerPadX;
         Element body = new BoxEl
         {
             Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -294,7 +302,7 @@ internal static class ClassicRecentsRows
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 0f,
-                    Padding = new Edges4(Spacing.L + Spacing.S, 0f, Spacing.S, 0f),
+                    Padding = new Edges4(padX, 0f, Spacing.S, 0f),
                     Children = rendered.ToArray(),
                 },
             ],
@@ -310,21 +318,23 @@ internal static class ClassicRecentsRows
 
     /// <summary>ch 16 §1.3's <c>Recents.ChildRow</c>: a drawer member at 40 — the shared eager row (its own menu, heart,
     /// now-playing ink) with the actions lane [played-at · "…"] in a FIXED 60-DIP caption lane so every "…" aligns. An
-    /// episode member is the shared media surface (<see cref="EpisodeRow"/>) with the same played-at lane.</summary>
-    static Element ChildRow(IRecentsHost host, EntityRef target, int ordinal, long playedAtMs, bool art, float rowH)
+    /// episode member is the shared media surface (<see cref="EpisodeRow"/>) with the same played-at lane. A <paramref name="lean"/> child
+    /// (<see cref="ClassicRecentsLayout.LeanChildren"/>, Compact) is ♥ · art · title · when: the menu stays on the right button.</summary>
+    static Element ChildRow(IRecentsHost host, EntityRef target, int ordinal, long playedAtMs, bool art, float rowH, bool lean)
     {
         Lanes();
         string when = host.PlayedAt(playedAtMs);
         if (target.Kind == EntityKind.Episode)
         {
             var episode = new Episode(target.Slot);
-            return EpisodeRow(episode, ChildEpisodeShape, when, () => host.PlayContext(episode.Id));
+            return EpisodeRow(episode, ChildEpisodeShape, when, () => host.PlayContext(episode.Id), lean);
         }
         if (target.Kind != EntityKind.Track) return new BoxEl { Height = rowH };
         var track = new Track(target.Slot);
-        return Track.EagerRow(track, ordinal, art ? ChildCols : ChildColsNoArt, art ? s_childTracks : s_childTracksNoArt,
-            rowH, () => host.PlayContext(track.Id),
-            new Track.EagerRowOptions(ShowTrackArtist: true, ActionsCell: ChildActions(when)));
+        var set = lean ? art ? LeanChildCols : LeanChildColsNoArt : art ? ChildCols : ChildColsNoArt;
+        var tracks = lean ? art ? s_leanChildTracks : s_leanChildTracksNoArt : art ? s_childTracks : s_childTracksNoArt;
+        return Track.EagerRow(track, ordinal, set, tracks, rowH, () => host.PlayContext(track.Id),
+            new Track.EagerRowOptions(ShowTrackArtist: true, ActionsCell: lean ? ChildWhen(when) : ChildActions(when)));
     }
 
     static Element ChildActions(string when) => new BoxEl
@@ -335,14 +345,32 @@ internal static class ClassicRecentsRows
             : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }, Track.MoreCell(true, false)],
     };
 
+    /// <summary>The lean child's last lane: the played-at stamp alone, right-aligned.</summary>
+    static Element ChildWhen(string when) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f,
+        Children = when.Length == 0 ? [] : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }],
+    };
+
     /// <summary>An episode member (the track grid's rows are Track-only): the app's shared media surface at the lane's
     /// <paramref name="shape"/>, fed by the episode's own adapter — the show name under the title, the length at the right
     /// (then the played-at stamp in a drawer: <paramref name="when"/> null = none, "" = a reserved lane with nothing in
     /// it), and the episode menu behind the "…" and the right-click (the lane used to be an inert placeholder). A click
     /// plays the member, as the row always did. The surface owns click and focus here (this slot provides no
-    /// <c>SlotRow</c>), exactly as the group card does.</summary>
-    static Element EpisodeRow(Episode e, SurfaceShape shape, string? when, Action play)
+    /// <c>SlotRow</c>), exactly as the group card does. A <paramref name="lean"/> drawer child keeps the played-at lane alone, in line with
+    /// the lean track children's.</summary>
+    static Element EpisodeRow(Episode e, SurfaceShape shape, string? when, Action play, bool lean = false)
     {
+        if (lean && when is not null)
+        {
+            Element whenLane = new BoxEl
+            {
+                Width = ClassicRecentsRules.ChildWhenCol, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
+                Children = when.Length == 0 ? [] : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }],
+            };
+            var leanOptions = new Episode.RowOptions(OnClick: play, OnPlay: play, ShowMeta: false, Trailing: whenLane);
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Controls.Surface(Episode.RowData(e, in leanOptions), shape)] };
+        }
         Element trailing = new BoxEl
         {
             Width = ClassicRecentsRules.DurationCol, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,

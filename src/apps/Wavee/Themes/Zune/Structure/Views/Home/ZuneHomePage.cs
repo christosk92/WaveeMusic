@@ -71,7 +71,7 @@ internal static class ZuneHomePage
         // at-top test (FacetSwitch.Landed).
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, MinWidth = 0f, Children = [column] }) with
         {
-            Key = "zune-home-scroll:" + props.Facet, Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll,
+            Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll,
         };
 
         return new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [props.Wash, scroll] };

@@ -209,7 +209,9 @@ guide `Bleed` makes it intended. Under the headless text model: review.
 ZStack and no scroller: warn. FP classes: an overlay drawn without a ZStack. (A bar collapsed to no height under a clip no
 longer counts: the capture keeps the collapsed clip, so the bar is off screen.)
 
-**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause):
+**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause). One unwrapped
+line whose words fit its width is no trim, whatever the engine reports for its height (a display title on its exact line: Zune's 130 line in
+a 122 box draws no ellipsis; its ink is `text.clip`'s; audit B8):
 
 | Class | When | Severity, outcome |
 |---|---|---|
@@ -260,7 +262,9 @@ VISIBLE part of its box was rendered in (a run cut by a scroller, a sticky heade
 39 crumb and meta runs are one finding; art that tints the ground a little differently under every run stays one finding, and
 the message lists the grounds read, the worst first). The fingerprint is the ink and that plate, never the sampled colour.
 Needs 4.5 : 1, or 3 : 1 for glyphs, 24 DIP and up and bold 18.66 and up. Small type and glyphs are read without their own
-anti-aliased ink. A **busy ground** (no colour holds 45 % of a box) is judged against its solid plate's declared fill only when
+anti-aliased ink. A run whose box is held by a colour its ink itself can paint (the ink's blend over some ground, under 1.5 : 1 from the
+declared ink: a filled heart, a solid glyph; a translucent ink renders as its blend, WinUI's light `#000000e4` heart as `#1a1a1a`) is read
+again without that colour (audit B8: WinUI's 400 bar heart read 1.19 : 1 against its own ink). A **busy ground** (no colour holds 45 % of a box) is judged against its solid plate's declared fill only when
 the frame agrees (the colour that covers most of the box is that fill, within 10 of 255 a channel: anti-aliasing spread it
 thin). Otherwise (art, a scrim, a gradient, a wash) it is judged against the **rendered pixels around its glyphs at their
 worst** (`Pixels.TryWorstContrast`, read with the frame and saved with the snapshot as the run's `worst`): the glyphs are found
@@ -272,7 +276,8 @@ is judged over every pixel, which says it does not read. A failure over an image
 `error`, over a gradient or a wash a `warn`, both `fail`, grouped and fingerprinted by (ink, what it sits on: cause
 `media:gradient over a plate zune-search-hint`): "6 runs (...) in #ffffff87 over a
 gradient artist-veil-tone:* over an image read 3.57 : 1 on their p90 ground #43506d". To judge text over a real photograph,
-mount with `images=real` (the fake decoder paints every image as a gradient). A busy run with no worst read (a snapshot saved
+mount with `images=real` (the fake decoder paints every image as a gradient; the palette's luminance maps, which solve the on-media
+scrims, measure that gradient too, so a scrim agrees with the frame either way: `Palette.FakePixels`). A busy run with no worst read (a snapshot saved
 before it was) is a `review` grouped by that ground ("13 runs (3 inks) sit on a busy ground (a gradient
 zune.material.wash:*)"). A run the frame gave no ground for, a run in a subtree still animating (a page fading in or out:
 `mid-animation`), and a run an opaque overlay partly covers (`covered`) are reviews too, before any pixel judgement: never
@@ -527,6 +532,15 @@ it in `suppressed.intent`; it never hides it from `outcomes=all`.
 | Zune | `ZuneLintGuide`: titlebar.lead, band.first-pivot, page.column, page.title (`Column`); Small and Standard also band.last-action, page.column right, playbar.last-glyph | On Home only: `TrimOk` on `zune-home-pin:`, `zune-history:`, `zune-surface-shelf`, `zune-shelf-card:`, `zune-tile:`, `zune-cluster-row:`, `zune-chart:` (Home captions ellipsise on one line, Z-Home and Z-Home-Compact). Everywhere: `Hang` on `zune.detail.panorama` by the record's `PanoramaNudgeX` (Z-Album), on `zune-artist-name` by `ZuneArtistRules.NameNudge` (Z-Artist) and on `zs:title` by `ZuneSettingsRules.PanoramaBleed` (Z-Settings). `DesignedTopBleeds`: `zune.detail.panorama`, `zs:title`. `BoardScale`: 6, 10, 14, 18, 22 (the boards' 2-DIP steps to 24) |
 | WinUI | `WinUiLintGuide`: page.title on the content inset (`Column`) | `Allow` for `align.inset` on `home:facet:words` (Home's facet words are a stock SelectorBar whose items pad their words 12 in, as W-Home draws them); `ItemPlate` on `hit:` (search hit rows, a ListView: W-Search draws the songs' art 8 right of "Songs") and `facets` (the search SelectorBar: W-Search draws "All" 12 right of "Results for") |
 | Classic | no guide: `guide:false`, no edges, no intents; findings are reported, not fixed | |
+
+The shell adds its own intents under every theme (a guide's follow them; `CorePolicies` in `Diagnostics.Inspect.Lint.Scene.cs`): `Allow`
+for `type.floor` on `deck:winamp@` (the Winamp deck face is a scale model of the 275 x 116 Winamp window: its title bars, LCD title and status
+letters are the skin's 6-8 DIP pixel type, never reading copy; the same title reads at full size beside it. B11, audit B8), and `Allow` for
+`contrast.text` on `deco:` (a key that marks an illustration: a glyph standing in for art, such as an event's calendar where it has no photograph
+or the concerts browse-all pictogram; never information). Key a decorative mark `deco:<what>` rather than baselining it. `TrimOk` on
+`tab#` (the title-bar tabs cap their width and ellipsise the page title: Shell-Top and C-TitleBar draw nowrap + ellipsis).
+`contrast.text` also skips a run passing under its nearest scroller's edge fade (inside the recorded feather, on an edge with content past it):
+it is on its way out of view and is read once scrolled in (snapshot field `fadeBand`).
 
 ## Baselines (accepted findings)
 

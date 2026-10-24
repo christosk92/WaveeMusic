@@ -116,7 +116,7 @@ internal static class WinUiHomePage
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [column] })
             with
             {
-                Key = "home:scroll:" + props.Facet, Grow = 1f, MinWidth = 0f,
+                Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
                 EdgeCues = ScrollEdgeCues.None,   // the band's own cut does the dissolving: a viewport top cue would fade the pinned row
@@ -152,7 +152,7 @@ internal static class WinUiHomePage
         props.OnContent(m);
         return new BoxEl
         {
-            Key = "facet:" + m.Facet, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Key = m.Facet.Length > 0 ? "facet:" + m.Facet : "facet", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
             Transition = MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
             Children =

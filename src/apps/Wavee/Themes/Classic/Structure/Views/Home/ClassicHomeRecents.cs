@@ -124,7 +124,7 @@ internal static class ClassicHomeRecents
         => layout.RecentsArt == shape.ArtEdge ? shape : shape with { ArtEdge = layout.RecentsArt, MinHeight = layout.RecentsRowH };
 
     /// <summary>One played tile: <c>Surface(…, Shape.RowTile)</c> whose subtitle is [equalizer · detail · when], the
-    /// equalizer PRESENT and the tertiary tail swapped to "playing on {device}" / "Playing now" exactly while the
+    /// equalizer PRESENT and the tail swapped to "playing on {device}" / "Playing now" exactly while the
     /// card relates to what is playing (<see cref="Controls.RelatesNow"/> — a bound prop each, so a track change
     /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
     /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
@@ -147,9 +147,11 @@ internal static class ClassicHomeRecents
                     Children = [Controls.Equalizer(Controls.PlayingWhenRelates(p.Playing, uri), Tok.AccentDefault, ClassicHomeRules.EqualizerH)],
                 }.Skeletonized(false),
                 ClassicHomeZones.Meta(cell.Detail) with { Shrink = 1f },
+                // The tail wears the line's own secondary ink: the boards draw the whole subtitle in one ink ("Playlist · 6 min ago", C-Home),
+                // and the tertiary tail read 3.3-4.4 : 1 (audit B8).
                 ClassicHomeZones.Meta("") with
                 {
-                    Color = Tok.TextTertiary, Shrink = 0f,
+                    Shrink = 0f,
                     Text = Prop.Of(() => Controls.RelatesNow(uri)
                         ? " · " + RecentsCells.NowCaption(remoteDevice())
                         : whenTail),

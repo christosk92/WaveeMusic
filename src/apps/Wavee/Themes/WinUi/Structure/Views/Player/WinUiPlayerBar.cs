@@ -419,15 +419,9 @@ internal static partial class WinUiPlayerBar
                     ],
                 }
                 : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] };
-            // The swap rides an outer box of no set height: the marquee's line has one, and the layout reads an exit with a set height as one that
-            // still holds its space (a reflow's), so the meta column would grow for the fade and its lines drift.
-            kids.Add(mini
-                ? new BoxEl
-                {
-                    Key = artistsKey, Direction = 1, MinWidth = 0f, Enter = PL.LineSwap, Exit = PL.LineSwap, Transition = PL.LineSwapMotion,
-                    Children = [line with { Key = null }],
-                }
-                : line);
+            // The Mini bar's line cross-fades with "Playing on" on the line itself: an exit with a set height (the marquee line's) fades where it
+            // stands, it holds no space (FlexLayout's exit rule, audit B3bc), so no outer box of its own is needed.
+            kids.Add(mini ? line with { Enter = PL.LineSwap, Exit = PL.LineSwap, Transition = PL.LineSwapMotion } : line);
         }
         if (!mini && v.RemoteLine)
             kids.Add(new BoxEl

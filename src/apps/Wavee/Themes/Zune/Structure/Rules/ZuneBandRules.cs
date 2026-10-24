@@ -347,6 +347,13 @@ public static class ZuneBandRules
         return hi;
     }
 
+    /// <summary>The sRGB grey with <paramref name="c"/>'s relative luminance (what the scrim's grey math reads a tinted ground as).</summary>
+    public static float GreyOf(ColorF c)
+    {
+        float l = ColorContrast.RelativeLuminance(c);
+        return l <= 0.0031308f ? 12.92f * l : 1.055f * MathF.Pow(l, 1f / 2.4f) - 0.055f;
+    }
+
     /// <summary>The mix's opacity on the ground of the kind.</summary>
     public static float MixOpacityOf(bool light) => light ? MixOpacityLight : MixOpacity;
 

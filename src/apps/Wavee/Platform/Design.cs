@@ -199,6 +199,22 @@ public static partial class Design
         public static ColorF TextInk(ColorF seed)
             => ColorScience.TextInk(seed, R.Kind, CardGround(Tok.FillCardDefault));
 
+        /// <summary>A chrome tone (a show's, a page's accent fill) worn as TEXT or a glyph: the tone itself where it already reads at
+        /// <see cref="ReadableContrast"/> on the active theme's card surface, else the identity-hairline hue solved to it (the contrast picker
+        /// when no V of the hue gets there). A light page's mid-bright tone (an orange, a yellow) read 2-3 : 1 as text (audit B8); a dark
+        /// page's usually passes and keeps its exact colour.</summary>
+        public static ColorF ReadableInk(ColorF seed)
+        {
+            ColorF ground = CardGround(Tok.FillCardDefault);
+            if (ColorContrast.Ratio(ColorContrast.Flatten(seed, ground), ground) >= ReadableContrast) return seed;
+            ColorF ink = ColorScience.Hairline(seed, R.Kind, ground, ReadableContrast);
+            return ColorContrast.MeetsAaText(ink, ground, ReadableContrast) ? ink : ColorContrast.PickContrast(ground);
+        }
+
+        /// <summary>What <see cref="ReadableInk"/> solves to on the card: AA's 4.5 plus the half a page's cover wash takes back (a light show
+        /// page's ground sits ~6 % darker than the card, which turned an exact 4.5 into 4.2).</summary>
+        public const float ReadableContrast = ColorScience.TextContrast + 0.5f;
+
         /// <summary>Chrome fill from a raw wire colour (see <see cref="ColorScience.ChromeFromPayload"/>); 0 (no payload) and a
         /// greyscale hue are the active semantic accent.</summary>
         public static ColorF ChromeFromPayload(uint argb) => ColorScience.ChromeFromPayload(argb, Tok.AccentDefault);

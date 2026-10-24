@@ -2,7 +2,7 @@
 //
 // Board Z-PlayBar-Huge ("play on"): the body of the picker the bar's device word and its "playing on" line open (the core owns the overlay:
 // upward, light dismiss, the picker-opened side effect). A 340 column: the "play on" head, then the core's decided entries as Zune rows,
-// a device row 52 tall with an 8 dot (the accent on the device in use), its name (14/20, the accent in use; a name keeps its own casing, the core's
+// a device row 52 tall with an 8 dot (the accent on the device in use, a dim dot on the chosen output, a dim ring elsewhere), its name (14/20, the accent in use; a name keeps its own casing, the core's
 // "system default" takes Zune's) over
 // its note (12/16), an information row (a section's header, the quality echo, "no devices") as a small cased line, a divider between the
 // sections. It scrolls well before the window edge (`props.MaxHeight`) and re-renders while open, so a transfer landing moves the accent in
@@ -97,10 +97,13 @@ internal static class ZuneDevicePicker
             OnClick = enabled ? () => { invoke!(); close(); } : null,
             Children =
             [
+                // Z-Overlays' three dots: the accent on the one in use, a filled dim dot on the chosen output while playback is elsewhere, a hollow
+                // dim ring on every other output and device (audit B8: they were all filled). The dim ink is the head's, as the board draws both.
                 new BoxEl
                 {
                     Width = P.PickerDot, Height = P.PickerDot, Shrink = 0f, Corners = Radii.Circle(P.PickerDot),
-                    Fill = on ? Tok.AccentDefault : Tok.TextPrimary with { A = P.PickerDotRestA },
+                    Fill = on ? Tok.AccentDefault : e.Chosen ? Tok.TextTertiary : ColorF.Transparent,
+                    BorderWidth = on || e.Chosen ? 0f : P.PickerRing, BorderColor = Tok.TextTertiary,
                 },
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = text.ToArray() },
             ],

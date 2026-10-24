@@ -780,9 +780,9 @@ public readonly partial struct Track
             // Two ladders, in order: the tier admits the lanes this WIDTH allows, then relief takes back the ones the
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
             // The window tier's table form (the structure's record: the Compact row, the lanes a band never admits, the row floors). Tracked, so
-            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane.
+            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm).
             var form = args.Embedded
-                ? global::Wavee.Theming.DetailTableTier.Standard
+                ? Track.EmbeddedForm()
                 : ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table;
             var admitted = SetFor(in snap, args, TierNow(), form);
             var set = TableRules.ApplyRelief(in admitted, ReliefStepFor(in admitted));

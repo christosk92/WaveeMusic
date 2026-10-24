@@ -58,7 +58,8 @@ internal static class ZuneMaterial
             },
         };
 
-        if (ZunePageWash.Of(state, backdrop, ctx.Tier().Window) is { } wash)
+        var pageWash = ZunePageWash.Of(state, backdrop, ctx.Tier().Window);
+        if (pageWash is { } wash)
         {
             kids.Add(new BoxEl
             {
@@ -87,7 +88,10 @@ internal static class ZuneMaterial
                 });
             }
             // Over the photo, under the chrome: the adaptive scrim that keeps the band's words legible over a bright photograph (V14).
-            kids.Add(Embed.Comp(new BleedScrimProps(bleed, bandFoot, frameY), static () => new ZuneBleedScrim())
+            // The scrim is solved over what the photo lies on: the ground under the wash's deepest stop (the strip's top), not the bare ground (audit B8:
+            // ar9's light crumbs read 3.5 : 1 where the wash darkened the strip under a scrim solved for the bare ground).
+            ColorF under = pageWash is { } w ? ColorContrast.Flatten(w.At(0f), R.Layer.ShellGround) : R.Layer.ShellGround;
+            kids.Add(Embed.Comp(new BleedScrimProps(bleed, bandFoot, frameY, under), static () => new ZuneBleedScrim())
                 with { Key = ZuneBandRules.BleedKey + "-scrim:" + bleed });
         }
 
@@ -146,7 +150,7 @@ internal static class ZuneMaterial
 }
 
 /// <summary>What the bleed's scrim reads: the photograph, the band strip's foot and where the bleed places the photograph's subject.</summary>
-internal sealed record BleedScrimProps(string Url, float BandFoot, float SubjectAt);
+internal sealed record BleedScrimProps(string Url, float BandFoot, float SubjectAt, ColorF Under);
 
 /// <summary>The bleed's ADAPTIVE scrim (V14): over the photo, under the chrome, in the ground's direction (black on the dark kind, the ground on
 /// the light one), full over the title bar and the band and clear <see cref="ZuneBandRules.BleedScrimFade"/> below their foot. Its opacity is solved
@@ -161,10 +165,11 @@ internal sealed class ZuneBleedScrim : Component
         bool light = R.IsLight;
         ColorF ground = R.Layer.ShellGround;
         ColorF scrim = light ? ground : ZuneBandRules.BleedScrimDark;
+        float under = ZuneBandRules.GreyOf(p.Under);   // the ground the photo lies on (the wash over the shell ground), as the grey of its luminance
         MediaScrim.LumaMap? map = Palette.Tone(p.Url);
         PhotoSubject? subject = Palette.Subject(p.Url);
         float target = map is null || subject is not { } s ? 0f : ZuneBandRules.BleedScrimAlpha(map, width, ZuneBandRules.BleedH, p.BandFoot, s, p.SubjectAt,
-            ZuneBandRules.BleedOpacityOf(light), ground.R, scrim.R, Tok.TextTertiary);
+            ZuneBandRules.BleedOpacityOf(light), under, scrim.R, Tok.TextTertiary);
         var shown = UseRef(target);
         float from = shown.Value;
         shown.Value = target;

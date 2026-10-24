@@ -190,13 +190,15 @@ internal static partial class WinUiReleaseNotes
         for (int i = 0; i < shown; i++)
         {
             string login = contributors[i].Login;
+            ColorF tint = K.AvatarTints[AvatarTintIndex(login)];
             kids.Add(ToolTip.Wrap(new BoxEl
             {
                 Width = K.AvatarSize, Height = K.AvatarSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = CornerRadius4.All(K.AvatarSize / 2f), Fill = K.AvatarTints[AvatarTintIndex(login)],
+                Corners = CornerRadius4.All(K.AvatarSize / 2f), Fill = tint,
                 BorderWidth = K.AvatarRing, BorderColor = Tok.FillSolidBase,             // cuts the disc out of the one behind it
                 Margin = i == 0 ? default : new Edges4(-5f, 0f, 0f, 0f),
-                Children = [new TextEl(Initials(login)) { Size = K.AvatarInitialsSize, Weight = 700, Color = Tok.TextOnAccentPrimary }],
+                // The initials take the ink the disc's own tint reads with (the kind's on-accent ink read 1.6-3.4 : 1 on half the tints; audit B8).
+                Children = [new TextEl(Initials(login)) { Size = K.AvatarInitialsSize, Weight = 700, Color = ColorContrast.PickContrast(tint) }],
             }, contributors[i].FirstTime ? Strings.WhatsNew.FirstContribution(login) : login));
         }
         if (contributors.Length > shown)

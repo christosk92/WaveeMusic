@@ -191,6 +191,9 @@
 // one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
 // 1.72 (audit B7 r2): `DetailHeroStyle.Skeleton` is optional. Null: the hero shimmers its own identity in place while the page's header is unread, so the
 // hero list mounts at once (no loading band) and the header's landing eases the hero's height, the rows riding it. A style that hands a band keeps it.
+// 1.73 (audit B8): `DevicePickerEntry.Chosen` (the this-computer output the user chose, also while playback is elsewhere: Z-Overlays draws it as a
+// filled dim dot and the unused outputs as hollow rings); `StyleMetrics.RowPadXFloor` (the least gutter a track row pads to at any relief tier:
+// Zune's Compact rows keep the board's 16).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -206,7 +209,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 72;
+    public const int Minor = 73;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
