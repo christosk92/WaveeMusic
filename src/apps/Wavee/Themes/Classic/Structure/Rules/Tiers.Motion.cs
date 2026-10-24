@@ -35,11 +35,12 @@ public static class ClassicTierMotion
     public static readonly LayoutTransition Resize = new(
         TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
-    /// <summary>A surviving part whose HEIGHT changes with its form and that draws its own fill (the daylist card between the tuned card and the
-    /// banner): the height eases through real layout, so the fill shrinks or grows with it and everything after it rides the re-solve frame by
-    /// frame. A presented-size reveal laid the card out at its new height at once and left an empty band under it while the next zone slid up.</summary>
-    public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
-        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+    /// <summary>A surviving part whose size changes with its form and that draws its own fill (the daylist card between the tuned card, the banner
+    /// and the hero beside the recents): its size eases through real layout, so the fill shrinks or grows with it and everything after it rides the
+    /// re-solve frame by frame. A presented-size reveal laid the card out at its new height at once and left an empty band under it while the next
+    /// zone slid up; a card that narrowed at once (the band turning from a column into a row) stepped its edge in by the recents' width.</summary>
+    public static readonly LayoutTransition SizeReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width | SizeAxes.Height);
 
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));

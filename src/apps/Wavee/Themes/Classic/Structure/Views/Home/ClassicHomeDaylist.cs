@@ -170,7 +170,7 @@ internal static class ClassicHomeDaylist
     /// (the border paints after the children, so it stays on top of the art), around the layers built at the card's
     /// width (<see cref="Row"/>). The card is the tier's height: a 320 floor for the tuned card, a fixed 216 / 400 / 126, or the stack's own, each
     /// carried by the layers (the copy's floor, the layered forms' height) and never declared on the card: a crossing between forms (the content tier a
-    /// docked panel or a window resize changes) eases the card's height through real layout (<see cref="ClassicTierMotion.HeightReflow"/>), the layers
+    /// docked panel or a window resize changes) eases the card's size through real layout (<see cref="ClassicTierMotion.SizeReflow"/>), the layers
     /// filling it, so its fill shrinks or grows and the zones under it ride it. A declared height would be mirrored by the view's anchor and hold the
     /// zone at the new height while the card eased inside it.</summary>
     static BoxEl CardShape(Parts parts, ClassicDaylistLayout dl, float firstWidth)
@@ -179,7 +179,7 @@ internal static class ClassicHomeDaylist
             {
                 Padding = default, ClipToBounds = true,
                 MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                Animate = Design.Reduced ? null : ClassicTierMotion.HeightReflow,
+                Animate = Design.Reduced ? null : ClassicTierMotion.SizeReflow,
             };
 
     /// <summary>The art layer: <see cref="Controls.CoverFill"/> across the whole card, corner 0 (the card's rounded clip
