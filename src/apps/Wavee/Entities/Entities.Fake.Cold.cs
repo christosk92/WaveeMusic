@@ -81,14 +81,15 @@ public static partial class Entities
     }
 
     // ── any detail page's header, unknown in place (`state kind=head uri=<uri>`, then `state kind=head-land`) ──
-    // An album's, a list's, a show's or an episode's title is taken away with the bit that says it is known, so the page draws its pending head; the
-    // landing puts both back on the page that shows it, so a trace sees the head land as the real client's first read does (audit B7 r2).
+    // An album's, a list's, a show's or an episode's title is taken away with every field it knows (a cold open: no title, publisher, rating, cover), so
+    // the page draws its pending head; the landing puts them back on the page that shows it, so a trace sees the head land as the real client's first
+    // read does (audit B7 r2).
 
-    /// <summary>The header <see cref="StageHead"/> took away: the table, the slot, the title and the known bit.</summary>
-    static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Bit)? s_head;
+    /// <summary>The header <see cref="StageHead"/> took away: the table, the slot, the title and the known fields.</summary>
+    static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Known)? s_head;
 
-    /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and the known bit the page's
-    /// HeaderPending reads). False for another kind or an unknown uri.</summary>
+    /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
+    /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
     public static bool StageHead(string uri)
     {
         RestoreHead();
@@ -96,18 +97,18 @@ public static partial class Entities
         int slot = ResolveSeedSlot(kind, uri);
         if (slot == Table.None) return false;
         Scope s = Current;
-        (Table Table, Column<StringId> Title, uint Bit)? head = kind switch
+        (Table Table, Column<StringId> Title)? head = kind switch
         {
-            EntityKind.Album => (s.Albums, s.Albums.Title, (uint)AlbumFields.Title),
-            EntityKind.Playlist => (s.Playlists, s.Playlists.Title, (uint)PlaylistFields.Identity),
-            EntityKind.Show => (s.Shows, s.Shows.Title, (uint)ShowFields.Title),
-            EntityKind.Episode => (s.Episodes, s.Episodes.Title, (uint)EpisodeFields.Title),
+            EntityKind.Album => (s.Albums, s.Albums.Title),
+            EntityKind.Playlist => (s.Playlists, s.Playlists.Title),
+            EntityKind.Show => (s.Shows, s.Shows.Title),
+            EntityKind.Episode => (s.Episodes, s.Episodes.Title),
             _ => null,
         };
         if (head is not { } h) return false;
-        s_head = (h.Table, h.Title, slot, h.Title[slot], h.Bit);
+        s_head = (h.Table, h.Title, slot, h.Title[slot], h.Table.Known[slot]);
         h.Title[slot] = StringId.Empty;
-        h.Table.Known[slot] &= ~h.Bit;
+        h.Table.Known[slot] = 0;
         h.Table.Version[slot]++;
         h.Table.MarkDirty();   // a publication carries only the tables marked
         s.PublishAll();
@@ -120,7 +121,7 @@ public static partial class Entities
         if (s_head is not { } h) return;
         s_head = null;
         h.Title[h.Slot] = h.Value;
-        h.Table.Known[h.Slot] |= h.Bit;
+        h.Table.Known[h.Slot] = h.Known;
         h.Table.Version[h.Slot]++;
         h.Table.MarkDirty();
         Current.PublishAll();
