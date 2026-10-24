@@ -588,10 +588,20 @@ public static class ZuneDetailTiers
         return For(facts.Content == WidthTier.Compact ? WidthTier.Small : facts.Content);
     }
 
+    /// <summary><see cref="Of"/>, with play, saved and shuffle back in the identity column where the band's row 2 cannot carry them (a Short window
+    /// folds it: <see cref="ZuneBandTiers.FoldsRow2AtRest"/>). What the column's rings read.</summary>
+    public static ZuneDetailLayout ColumnOf(in TierFacts facts)
+    {
+        var record = Of(in facts);
+        return !record.PrimaryInHero && PrimaryInHero(in facts) ? record with { PrimaryInHero = true } : record;
+    }
+
     /// <summary>The vertical hero's record: the Compact composition at any width it occurs (the vertical arm is the page column below 640).</summary>
     public static ZuneDetailLayout Hero => ZuneDetailRules.Compact;
 
     /// <summary>Do play, saved and shuffle stand in a hero or column drawn in <paramref name="facts"/>? The band's row 2 carries them by the WINDOW tier,
-    /// so a vertical arm inside a Small window (a docked panel narrowed the page) leaves them to the band too. True where no frame resolved the tiers.</summary>
-    public static bool PrimaryInHero(in TierFacts facts) => facts.Policy is null || For(facts.Window).PrimaryInHero;
+    /// so a vertical arm inside a Small window (a docked panel narrowed the page) leaves them to the band too; a Short window that folds row 2 at rest
+    /// gives them back to the page (V4: state visible at rest). True where no frame resolved the tiers.</summary>
+    public static bool PrimaryInHero(in TierFacts facts)
+        => facts.Policy is null || For(facts.Window).PrimaryInHero || ZuneBandTiers.FoldsRow2AtRest(in facts);
 }

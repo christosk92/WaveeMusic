@@ -227,7 +227,7 @@ internal static class ZuneFrame
             // Compact with the page off its top: the band's height is tied to the scroll, so the slot must not ease it.
             var tiedNow = UseComputed(() => tiedTier && scroll is { } s && s.Value.Offset > 0f);
             // A Short window rests with row 2 folded (Z-Shell-Short): its fold waits for the row's fade-out like a page without one.
-            bool folding = !hasRow2.Value || (ZuneBandTiers.RestsCollapsed(tiers) && parameter);
+            bool folding = !hasRow2.Value || ZuneBandTiers.FoldsRow2AtRest(tiers);
             var bandH = p.BandH;
             return new BoxEl
             {

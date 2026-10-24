@@ -32,6 +32,9 @@ public enum ZuneArtistActions : byte
     Band,
     /// <summary>A 40 row under the hero, with radio and "..." (Compact: the band carries no actions).</summary>
     BelowHero,
+    /// <summary>The hero's row under the caption, beside the secondary rings where the tier has that row: a Short window folds the band's row 2 at
+    /// rest, so play, shuffle and follow come back to the page (V4: the follow state is visible at rest; Z-Artist-Small).</summary>
+    Hero,
 }
 
 /// <summary>Where the hero's secondary rings (radio · "...", the verbs the band does not carry) stand in a tier.</summary>
@@ -491,6 +494,8 @@ public static class ZuneArtistTiers
     public static ZuneArtistLayout Of(in TierFacts facts)
     {
         var record = OfContent(in facts);
+        // The band's verbs come back to the hero where a Short window folds its row 2 at rest.
+        if (record.Actions == ZuneArtistActions.Band && ZuneBandTiers.FoldsRow2AtRest(in facts)) record = record with { Actions = ZuneArtistActions.Hero };
         float gutter = ZuneTiers.GutterOf(in facts);
         return facts.Policy is null || record.Gutter == gutter ? record : record with { Gutter = gutter };
     }

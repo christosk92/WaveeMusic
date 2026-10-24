@@ -91,7 +91,14 @@ internal static class ZuneArtistHero
         // Huge's secondary row stands in a slot that is ALWAYS mounted: its room (the gap above the rings and the rings) opens and closes as an
         // easing height while the row fades, so the name and the caption over it glide when Huge comes or goes (two docked panes take the content
         // to Standard). The rings fade inside it.
-        bool row = lay.Secondary == ZuneArtistSecondary.Row && !shimmer;
+        // A Short window folds the band's row 2 at rest: play, shuffle and follow open the same slot (before the secondary rings where the tier has them),
+        // so the follow state stays visible at rest and nothing that was there remounts.
+        bool primary = lay.Actions == ZuneArtistActions.Hero && !shimmer;
+        bool secondaryRow = lay.Secondary == ZuneArtistSecondary.Row && !shimmer;
+        bool row = primary || secondaryRow;
+        var rowKids = new List<Element>(2);
+        if (primary) rowKids.Add(Actions(text.Name, uri, lay, acts, labels: false, radio: false, more: false) with { Key = Rules.ActionsKey + ":primary" });
+        if (secondaryRow) rowKids.Add(Secondary(uri, lay, acts));
         kids.Add(new BoxEl
         {
             Key = Rules.ActionsKey + ":row", Direction = 1, MinWidth = 0f, MinHeight = 0f, Shrink = 0f, ClipToBounds = true,
@@ -101,9 +108,9 @@ internal static class ZuneArtistHero
                 [
                     new BoxEl
                     {
-                        Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
+                        Direction = 0, MinWidth = 0f, Gap = Rules.ActionsGap, AlignItems = FlexAlign.Center, Margin = new Edges4(0f, Rules.ActionsTop, 0f, 0f),
                         Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
-                        Children = [Secondary(uri, lay, acts)],
+                        Children = rowKids.ToArray(),
                     },
                 ]
                 : [],
@@ -218,7 +225,7 @@ internal static class ZuneArtistHero
 
     /// <summary>Play · shuffle · follow (· radio) · more: the Compact row's, where the band carries no actions. <paramref name="spread"/> parks the more
     /// ring at the end of the row.</summary>
-    static Element Actions(string name, string uri, ZuneArtistLayout lay, in Acts acts, bool labels, bool radio, bool spread = false)
+    static Element Actions(string name, string uri, ZuneArtistLayout lay, in Acts acts, bool labels, bool radio, bool spread = false, bool more = true)
     {
         float target = lay.Target;
         var kids = new List<Element>(7)
@@ -229,7 +236,7 @@ internal static class ZuneArtistHero
         };
         if (radio) kids.Add(Ring("radio", Icons.RadioTower, Loc.Get(Strings.Artist.ArtistRadio), labels, primary: false, acts.Radio, target));
         if (spread) kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-        if (acts.Menu is { } menu) kids.Add(Embed.Comp(new MoreProps(target, menu), static () => new MoreRing()) with { Key = "zune-artist-more:" + uri });
+        if (more && acts.Menu is { } menu) kids.Add(Embed.Comp(new MoreProps(target, menu), static () => new MoreRing()) with { Key = "zune-artist-more:" + uri });
         return new BoxEl
         {
             Key = Rules.ActionsKey, Direction = 0, Gap = Rules.ActionsGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
