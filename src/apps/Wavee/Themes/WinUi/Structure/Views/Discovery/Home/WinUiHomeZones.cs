@@ -91,16 +91,34 @@ internal static class WinUiHomeZones
             if (pairClusters && (i == cluster || i == cont)) continue;
             kids.Add(Chapter(zone, i, overlay, layout));
         }
+        // The Customize link moves like a chapter (a FLIP into its new place: the chapters above it lay out their new heights at once and reveal them),
+        // its entrance on the inner box.
         if (all)
             kids.Add(new BoxEl
             {
-                Key = "customize", Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(zones.Count),
-                Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize)],
+                Key = "customize", Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(zones.Count),
+                        Children = [HyperlinkButton.Create(Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize)],
+                    },
+                ],
             });
+        // The air between chapters is a spacer whose height eases through real layout (the tier's ZoneGap changes at every window edge): a Gap
+        // stepped every chapter at once (each slid back over its FLIP) and the Customize link under them, which has no FLIP, jumped the sum.
+        // Each spacer is keyed by the chapter it precedes, so a Huge pairing that drops a chapter drops its spacer with it.
+        var spaced = new List<Element>(kids.Count * 2);
+        for (int i = 0; i < kids.Count; i++)
+        {
+            if (i > 0) spaced.Add(WinUiDiscoveryMotion.AirV("zone-air:" + kids[i].Key, layout.ZoneGap));
+            spaced.Add(kids[i]);
+        }
         return new BoxEl
         {
-            Direction = 1, Gap = layout.ZoneGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = kids.ToArray(),
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = spaced.ToArray(),
         };
     }
 

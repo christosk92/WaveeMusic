@@ -93,12 +93,13 @@ internal static class WinUiHomeFacetRow
                     ],
                 }, horizontal: true) with
                 {
-                    Key = "home:facet:row", Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 0f,
+                    Key = "home:facet:row", Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
                 }
             : new BoxEl
             {
                 Key = "home:facet:row",
                 Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Gap = Spacing.XS,
+                Grow = 1f, Shrink = 1f, Basis = 0f,
                 // Small leaves the button out (the greeting's row has it): no stand-in, so the host LEAVES (its exit fade) instead of being reused empty.
                 Children = following
                     ? [wordBox, new BoxEl { Key = "home:facet:spacer", Grow = 1f, MinWidth = 0f }, Following(p, layout)]
@@ -139,11 +140,16 @@ internal static class WinUiHomeFacetRow
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = WinUiHomeRules.BandH, ZStack = true,
             Children =
             [
+                // The insets are spacers that ease their width (a crossing changes them); the Compact strip bleeds to the window's edge (no end inset).
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Center,
-                    Padding = new Edges4(inset, 0f, strip ? 0f : inset, 0f),   // the Compact strip bleeds to the window's edge
-                    Children = [row],
+                    Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        WinUiDiscoveryMotion.AirH("home:facet:lead", inset),
+                        row,
+                        WinUiDiscoveryMotion.AirH("home:facet:end", strip ? 0f : inset),
+                    ],
                 },
                 busy,
                 line,
