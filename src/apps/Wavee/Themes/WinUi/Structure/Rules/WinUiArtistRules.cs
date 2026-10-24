@@ -13,6 +13,7 @@
 //
 // Public, so `Wavee.Tests` pins the numbers.
 
+using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
@@ -255,12 +256,35 @@ public static class WinUiArtistMotion
     /// width, then releases it): <see cref="Column"/> without the delay, which the hold has already spent.</summary>
     public static readonly LayoutTransition ColumnReleased = Column with { DelayMs = 0f };
 
+    /// <summary>The restack's cross-fade, a DECLARED swap family: the overview's arrangements (one column, two, three at Huge) are different trees of
+    /// the same blocks (the latest release over Discography beside Popular; Discography its own column with the release, upcoming and the pick in a
+    /// third), so a restack fades the old column out where it stands and the new one in at its slot, and nothing travels across Popular.</summary>
+    public const string RestackFamily = "WinUi.Artist.Restack";
+
     /// <summary>The side column in one arrangement: a restack replaces it (keyed by the arrangement), so the outgoing one fades out where it stands and
     /// the incoming one fades in at its slot once Popular has resized. Inside one arrangement its layout changes hold <see cref="HoldMs"/>, then glide.</summary>
     public static readonly LayoutTransition Side = new(TransitionChannels.Position | TransitionChannels.Size | TransitionChannels.Opacity,
         TransitionDynamics.Tween(FadeInMs, Easing.SmoothOut), SizeMode.Reveal,
-        Enter: new EnterExit(Opacity: 0f, Active: true, DelayMs: FadeInDelayMs), Exit: new EnterExit(Opacity: 0f, Active: true),
+        Enter: SwapFamilies.Declare(RestackFamily, new EnterExit(Opacity: 0f, Active: true, DelayMs: FadeInDelayMs)),
+        Exit: SwapFamilies.Declare(RestackFamily, new EnterExit(Opacity: 0f, Active: true)),
         ExitDynamics: TransitionDynamics.Tween(FadeOutMs, Easing.Linear), DelayMs: HoldMs, ExitDelayMs: 0f);
+
+    /// <summary>The hero card's height across a tier crossing (200 / 220 / 260 / 420): it eases through real layout, so the pivot and the page under the
+    /// card ride it; the photograph, the veil and the copy stretch with the card.</summary>
+    public static readonly LayoutTransition HeroHeight = new(TransitionChannels.Size, TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>A section's height across a tier crossing (a discography grid re-fitting its columns, a shelf re-sizing its cards): it eases through real layout,
+    /// so the sections under it ride it.</summary>
+    public static readonly LayoutTransition SectionHeight = new(TransitionChannels.Size, TransitionDynamics.Tween(RestackMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>The hero's actions between their two presentations, a DECLARED swap family: on-media plated controls inside the card (32, words at Huge)
+    /// and the Compact page row under it (the 40 targets, unplated, "..." at the row's end). The row's slot eases its height.</summary>
+    public static readonly EnterExit ActionsSwap = SwapFamilies.Declare("WinUi.Artist.Actions", new EnterExit(Opacity: 0f, Active: true));
+
+    /// <summary>The actions' cross-fade timing.</summary>
+    public static MotionTokenDef ActionsSwapMotion => MotionTok.ControlFast;
 
     /// <summary>A block inside the side column (the latest release, the upcoming card, the pick, the discography preview): it moves and resizes with the
     /// column inside one arrangement, the size laid out at once and revealed.</summary>

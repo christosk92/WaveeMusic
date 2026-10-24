@@ -108,15 +108,16 @@ internal static class WinUiArtistPivot
             };
             // NO FILL: the band paints nothing of its own (an opaque stand-in read lighter than the translucent page layer over Mica, edge to edge); the
             // page's content cuts itself at the band's lower edge instead (`StickyClip(PivotClearance)` on the magazine, `WinUiArtistPage`).
-            return new BoxEl
+            // The page's side insets are spacers that ease (a crossing changes them), never padding.
+            return WinUiArtistPage.Inset("artist-pivot", p.Inset, new BoxEl
             {
-                Direction = 1, Padding = new Edges4(p.Inset, 0f, p.Inset, 0f),
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                 Children =
                 [
                     new BoxEl { Direction = 0, Height = WinUiArtistRules.PivotItemHeight, MinWidth = 0f, Children = [scroller] },
                     new BoxEl { Height = WinUiArtistRules.PivotHairline, AlignSelf = FlexAlign.Stretch, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                 ],
-            };
+            });
         }
     }
 }
