@@ -204,7 +204,7 @@ internal static class ZuneDetailHero
                         Padding = new Edges4(Z.SongsHeadingInset, 0f, Z.SongsHeadingInset, 0f),
                         Children = [K.Heading(Loc.Get(Strings.Theme.Zune.Detail.Songs))],
                     },
-                    ToolbarBlock(parts, columns, g),
+                    ToolbarBlock(parts, columns, hasRail),
                 ],
             };
             Element body = new BoxEl
@@ -330,10 +330,14 @@ internal static class ZuneDetailHero
 
         /// <summary>The list bar's block: the hero form's (the rows' gutter either side, 8 over and 4 under the bar) or the columns form's (8 over the bar, the
         /// rows' plate inset at its end: the two-column list bar's). Spacers, so the bar glides between them.</summary>
-        static Element ToolbarBlock(Detail.HeroParts parts, bool columns, Geometry g)
+        static Element ToolbarBlock(Detail.HeroParts parts, bool columns, bool hasRail)
         {
-            float lead = columns ? 0f : parts.CompactLeft;
-            float trail = columns ? Track.RowMetrics.RowInset : parts.CompactLeft;
+            // The columns form of a page with no rail draws the PAGE bar (Liked Songs: the chips inline): its commands start on the head's words (the rows'
+            // plate inset less the bar's own 6, both sides) and 4 of air part it from the column header, as the two-column arm's page bar did.
+            bool pageBar = columns && !hasRail;
+            float pageInset = Track.RowMetrics.RowInset - VerticalLayout.ToolbarSurfacePadX;
+            float lead = pageBar ? pageInset : columns ? 0f : parts.CompactLeft;
+            float trail = pageBar ? pageInset : columns ? Track.RowMetrics.RowInset : parts.CompactLeft;
             return new BoxEl
             {
                 Key = "hero:toolbar", Direction = 1, MinWidth = 0f,
@@ -351,7 +355,7 @@ internal static class ZuneDetailHero
                             ZuneFrameRules.Gutter(trail),
                         ],
                     },
-                    ZuneMotion.Air("hero:toolbar-bottom", columns ? 0f : VerticalLayout.ExpandedToolbarBottomPad),
+                    ZuneMotion.Air("hero:toolbar-bottom", pageBar ? Spacing.XS : columns ? 0f : VerticalLayout.ExpandedToolbarBottomPad),
                 ],
             };
         }
