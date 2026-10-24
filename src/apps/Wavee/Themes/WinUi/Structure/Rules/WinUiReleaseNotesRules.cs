@@ -73,8 +73,9 @@ public static class WinUiReleaseNotesRules
     /// <summary>The chip's height.</summary>
     public const float ChipHeight = 18f;
 
-    /// <summary>An avatar's disc, its ring, the overflow count's size and the initials' size; at most <see cref="AvatarMax"/> discs show.</summary>
-    public const float AvatarSize = 18f, AvatarRing = 1.5f, AvatarInitialsSize = 9f, AvatarMoreSize = 10f;
+    /// <summary>An avatar's disc, its ring, the initials' size and the overflow count's size; at most <see cref="AvatarMax"/> discs show. The
+    /// initial and the count sit at the type floor (11; they were 9 and 10, under it): one letter still fits the 18 disc.</summary>
+    public const float AvatarSize = 18f, AvatarRing = 1.5f, AvatarInitialsSize = 11f, AvatarMoreSize = 11f;
 
     /// <summary>The most avatars one row stacks.</summary>
     public const int AvatarMax = 4;
