@@ -35,7 +35,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.WinUi;
 
 /// <summary>The structure of WinUI.</summary>
-public sealed partial class WinUiStructure : IStructureLayer
+public sealed partial class WinUiStructure : IStandInStructure
 {
     /// <summary>The structure id.</summary>
     public const string LayerId = "WinUi.Structure";
@@ -53,6 +53,9 @@ public sealed partial class WinUiStructure : IStructureLayer
 
     /// <summary>True when this instance fills the keys WinUI does not draw from the stand-in.</summary>
     public bool UsesStandIn => _standIn is not null;
+
+    /// <inheritdoc />
+    void IStandInStructure.RegisterOwnViews(ViewRegistryBuilder views) => RegisterOwn(views);
 
     /// <inheritdoc />
     public void Register(ViewRegistryBuilder views)

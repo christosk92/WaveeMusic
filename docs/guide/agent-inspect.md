@@ -429,10 +429,13 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
-### `find {key | prefix}`
+### `find {key | prefix, visibleOnly?, depth?}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is
-in reading order (top, then left). `find` used to be a prefix search, so an exact miss that `prefix=` would answer says so:
+in reading order (top, then left). Two args cut a broad prefix down (`find prefix=stage:` alone lists 30 full-window layers):
+`visibleOnly=true` keeps only nodes that are shown and at least partly on screen, and `depth=N` leaves out a match nested inside
+more than N other matches (`depth=0`: the outermost matches only, so `find prefix=stage: depth=0 visibleOnly=true` lists the
+stage's top layers and not every part inside them). When they leave some out, `matched` is the count before they did. `find` used to be a prefix search, so an exact miss that `prefix=` would answer says so:
 `"hint":"0 nodes keyed exactly 'zune-band-pivot:'; 4 keys start with it: find prefix=zune-band-pivot:"`. Each entry has:
 
 | Field | Meaning |
@@ -442,6 +445,7 @@ in reading order (top, then left). `find` used to be a prefix search, so an exac
 | `onScreen` | The share of the rect that can be seen, 0..1, after the window and every clipping ancestor (0 when not shown). |
 | `actionable` | What `click` and `hover` check (see `click`; `scroll` needs no handler at the centre). An actionable entry has `nth`, the index a pointer verb's `nth` takes for this key, and sometimes a `note`; any other has `why`. |
 | `kind`, `text?` | The element type and the first text under it (a button's label; an icon glyph prints as `glyph:<name>`, alone or inside words, see `dump`). |
+| `template?` | The template that drew the node: the id of the nearest view slot at or above it (`winui.shell.frame`, `classic.lyrics.view`). A `classic.*` template under WinUI or Zune is a stand-in (`views` lists them all). |
 
 ```json
 {"cmd":"find","args":{"prefix":"zune-band-pivot:"},"id":5}
@@ -451,7 +455,7 @@ in reading order (top, then left). `find` used to be a prefix search, so an exac
    "actionable":true,"nth":0,"kind":"Box","text":"Recents"}],"count":4,"order":"reading order (top, then left); ..."}
 ```
 
-### `dump {root?, nth?, depth?, keysOnly?, visibleOnly?, text?, max?}`
+### `dump {root?, nth?, depth?, keyDepth?, keysOnly?, visibleOnly?, text?, max?}`
 
 Dumps the scene as one flat array in depth-first child order. `parent` is an index into that array.
 
@@ -460,7 +464,8 @@ Dumps the scene as one flat array in depth-first child order. `parent` is an ind
 | `root` | Starts at the node with that key (every match; `nth` picks one). Without it, the dump covers the whole tree plus the overlays that do not hang under the root. |
 | `visibleOnly` | `true` by default: skips hidden, parked and transparent subtrees, and nodes with an empty box. |
 | `keysOnly=true` | Lists keyed nodes only. |
-| `depth` | Limits how deep the walk goes. |
+| `depth` | Limits how deep the walk goes, counting every listed node (each unkeyed wrapper box is a level). |
+| `keyDepth` | Limits the walk to this many KEYED levels below the root, whatever the boxes between: `dump root=lyrics:stage keyDepth=2` reaches the lyric lines (`ll1:0:N`, 14 boxes down), where `depth=12` lists none. |
 | `text=false` | Leaves out the text blocks. |
 | `max` | The most nodes to list; 4000 by default. The reply says `"truncated":true` when the limit cuts the list. |
 
@@ -486,6 +491,7 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `key?` | The node key (`Element.Key`, from `SceneStore.DebugKeyOf`). |
 | `path` | The nearest keyed ancestor and the child-index path below it (`NodeDescriber`). |
 | `kind` | The element type. |
+| `template?`, `view?` | On the first node of a view slot (its anchor, or the first node listed under it when the anchor has no box): the template id the theme's registry gave the slot and the view key id (`"template":"classic.lyrics.view","view":"Lyrics.View"`). |
 | `visual?` | The visual kind. |
 | `rect` | The presented absolute rect. |
 | `opacity?` | The node's own opacity, when below 1. |
@@ -540,6 +546,25 @@ Returns the window's current `TierFacts`:
 
 It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
 mounted window.
+
+### `views {theme?, filter?, prefix?}`
+
+Which template draws every view key of a theme (the active one, or `theme=`; nothing needs to be mounted) and which structure
+layer registered every view and style key. A theme still being built (WinUI) fills the keys it does not draw yet from a stand-in
+(Classic's structure): such a key is `"standin":true` and its `layer` is the stand-in's. Style keys (`AddStyle`) carry no
+template id, so a style lists its key and layer only. `standins` counts both kinds; the counts cover every key whatever the
+filter. `filter=standins` lists only the stand-ins, `filter=own` only the theme's own; `prefix=` only keys starting with it.
+
+```json
+{"cmd":"views","args":{"theme":"winui","filter":"standins"},"id":9}
+→ {"id":9,"ok":true,"cmd":"views","theme":"winui","layer":"WinUi.Structure","standins":54,
+   "counts":{"views":193,"styles":11,"standinViews":52,"standinStyles":2},
+   "views":[{"key":"Concert.PlacePicker","templateId":"classic.concerts.place-picker","layer":"Classic.Structure","standin":true}, ...],
+   "styles":[{"key":"Detail.Facts","layer":"Classic.Structure","standin":true},{"key":"Show.Reader","layer":"Classic.Structure","standin":true}]}
+```
+
+Classic reports `standins: 0` (it has no stand-in); WinUI 54 on 2026-10-24 (52 view keys, `Detail.Facts`, `Show.Reader`). To see
+which keys on a page are a stand-in's, `find prefix=<p>` prints each node's `template`.
 
 ### `lint {rules?, scope?, root?, nth?, min?, limit?, outcomes?, baseline?, save?, replay?, ...}`
 

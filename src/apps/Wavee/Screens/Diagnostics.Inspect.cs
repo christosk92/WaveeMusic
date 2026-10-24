@@ -402,6 +402,8 @@ public static partial class Diagnostics
                     return Option(id, name, a);
                 case Inspect.Verb.Crossing:
                     return Crossing(id, name, a);   // mounts by itself when nothing is
+                case Inspect.Verb.Views:
+                    return Views(id, name, a);
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
@@ -582,7 +584,9 @@ public static partial class Diagnostics
                         // `find <key>` is exact; a prefix says so (`find prefix=zune-band-`).
                         string key = a.Str("key"), prefix = a.Str("prefix");
                         if (key.Length == 0 && !a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find wants a key (exact) or prefix=");
-                        return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix));
+                        bool visibleOnly = a.Bool("visibleOnly", false);
+                        int depth = a.Int("depth", int.MaxValue);
+                        return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix, visibleOnly, depth));
                     }
                 case Inspect.Verb.Dump:
                     return Dump(id, name, a, shell);
@@ -1075,7 +1079,8 @@ public static partial class Diagnostics
                 KeysOnly: a.Bool("keysOnly", false),
                 VisibleOnly: a.Bool("visibleOnly", true),
                 MaxNodes: Math.Clamp(a.Int("max", 4000), 1, 200_000),
-                Text: a.Bool("text", true));
+                Text: a.Bool("text", true),
+                MaxKeyDepth: a.Int("keyDepth", int.MaxValue));
             return Inspect.Reply.Ok(id, name, w => InspectDump.Write(w, shell, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(roots), in request));
         }
 

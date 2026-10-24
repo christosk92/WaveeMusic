@@ -97,7 +97,8 @@ public static partial class Diagnostics
         public enum Verb : byte
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
-            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog, Quit,
+            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
+            Views, Crossings, Setting, Drag, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -390,7 +391,9 @@ public static partial class Diagnostics
             new(Verb.Find, "find", "Nodes keyed exactly key (or starting with prefix=), in reading order, with shown, onScreen and actionable", "find see-all:home:made-for-you")
             {
                 Positional = ["key"], NeedsMount = true,
-                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead", excludes: "key")],
+                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead", excludes: "key"),
+                        Arg("visibleOnly", ArgType.Bool, "only nodes that are shown and at least partly on screen", "false"),
+                        Arg("depth", ArgType.Int, "leave out a match nested inside more than this many other matches (0: the outermost only)") with { Min = 0 }],
             },
             new(Verb.Dump, "dump", "The scene (or the subtree root names) as a flat node array: rects, paint, text metrics, flags", "dump root=zune-daylist-play depth=2")
             {
@@ -400,6 +403,7 @@ public static partial class Diagnostics
                     Arg("root", ArgType.Key, "start at every node with this exact key (default: the whole tree and the overlays)"),
                     Arg("nth", ArgType.Int, "pick one of the root's matches (0 first, in slot order)", requires: "root") with { Min = 0 },
                     Arg("depth", ArgType.Int, "how deep the walk goes (0: the root only)") with { Min = 0 },
+                    Arg("keyDepth", ArgType.Int, "how many KEYED levels below the root the walk goes, whatever the unkeyed boxes between (lyric lines sit 16 boxes under lyrics:stage, 2 keyed levels)") with { Min = 0 },
                     Arg("keysOnly", ArgType.Bool, "keyed nodes only", "false"),
                     Arg("visibleOnly", ArgType.Bool, "skip hidden, parked, transparent and empty-box nodes", "true"),
                     Arg("text", ArgType.Bool, "write the text blocks", "true"),
@@ -456,6 +460,15 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
             },
+            new(Verb.Views, "views", "Which template draws every view key of a theme (the active one) and which layer registered every view and style key; standins counts the keys a stand-in fills", "views filter=standins")
+            {
+                Args =
+                [
+                    Arg("theme", ArgType.Enum, "the theme to report (default: the active one)", null, ThemeChoices),
+                    Arg("filter", ArgType.Enum, "list every key, only the stand-ins, or only the theme's own (the counts cover every key)", "all", "all|standins|own"),
+                    Arg("prefix", ArgType.String, "list only keys starting with this"),
+                ],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -481,6 +494,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
+            "views" => Verb.Views, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

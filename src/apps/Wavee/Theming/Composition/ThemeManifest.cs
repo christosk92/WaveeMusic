@@ -45,6 +45,17 @@ public readonly record struct RoleSet(ImmutableArray<string> RoleIds)
 /// <param name="Group">The group label's loc key.</param>
 public sealed record LegacyOptionRow(string RowId, string Group);
 
+/// <summary>A structure still being built: it draws some view keys itself and fills every other key from a stand-in structure
+/// (<c>ViewRegistryBuilder.AddMissing</c>). The `--inspect` `views` verb registers its own views alone to count the stand-ins.</summary>
+public interface IStandInStructure : IStructureLayer
+{
+    /// <summary>True when this instance fills the keys it does not draw from the stand-in.</summary>
+    bool UsesStandIn { get; }
+
+    /// <summary>Registers the structure's own views and styles only, without the stand-in's.</summary>
+    void RegisterOwnViews(ViewRegistryBuilder views);
+}
+
 /// <summary>The STRUCTURE layer of a theme: registers its views and decides the policies and capabilities of the shell.</summary>
 public interface IStructureLayer
 {
