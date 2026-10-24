@@ -197,15 +197,18 @@ internal sealed class ZuneBand : Component
         _views.Begin();
         // Row 2 sits in a holder that carries the scroll-tied motion (bound channels; at rest away from Compact): the row slides up by the fold under the
         // holder's clip at row 1's foot and fades by the same share, so it scrolls away with the page; the row's own entrance and exit keep their channels.
+        // The holder's clip reaches Row2SlopRoom into the gutter (its inner box pads it back), so row 2's scroller, which reaches as far, keeps its
+        // first word's hit slop.
         kids.Add(new BoxEl
         {
             Key = ZuneBandRules.Row2HolderKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            Margin = new Edges4(-ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             Opacity = Prop.Of(() => 1f - Tie() / row2H),
             Children =
             [
                 new BoxEl
                 {
-                    Direction = 1, Shrink = 0f, MinWidth = 0f,
+                    Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
                     Transform = Prop.Of(() => Affine2D.Translation(0f, -Tie())),
                     Children = row2 ? [Row2(views, actions, title, rec, type, edgeFade, OnTabKey)] : [],
                 },
@@ -481,12 +484,15 @@ internal sealed class ZuneBand : Component
         Element viewsRun = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Row2Gap, Height = rec.Row2H, Shrink = 0f,
+            Padding = new Edges4(ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             Children = run.ToArray(),
         };
-        // One element type at every tier (ZT1), as row 1's run: a crossing keeps the views' nodes.
+        // One element type at every tier (ZT1), as row 1's run: a crossing keeps the views' nodes. The scroller reaches Row2SlopRoom into the gutter
+        // and the run pads it back: the first word's hit slop stays inside the clip.
         viewsRun = new ScrollEl
         {
             Horizontal = true, Content = viewsRun, Height = rec.Row2H, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+            Margin = new Edges4(-ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             AutoEdgeFade = rec.Fade, AutoEdgeFadeBand = edgeFade, SuppressScrollBar = true,
         };
 
@@ -548,14 +554,15 @@ internal sealed class ZuneBand : Component
         }
         return new BoxEl
         {
-            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, MinWidth = rec.ViewMinW, Shrink = 0f,
+            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, Shrink = 0f,
+            HitSlop = new Edges4(rec.ViewSlopX, 0f, rec.ViewSlopX, 0f),
             Role = AutomationRole.Tab, Focusable = true, TabStop = tabStop, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = v.Go,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => nodes.Realized(v.Id, h),
             Children =
             [
-                // Centred: at Compact the hit box is 40 wide even for a one-word "all" (ViewMinW).
+                // The box hugs the word, so the first one leads on the gutter; at Compact the hit rect reaches past it (ViewSlopX), so "all" is a 40 target.
                 new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [word] },
                 // The underline's place is always kept, so the word sits at one height lit or not.
                 new BoxEl

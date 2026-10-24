@@ -127,6 +127,11 @@ public static class ZuneLibraryRules
     /// <summary>A list row's art, the corner of a square one is the cover role's, the gap between art and words, the row's side padding.</summary>
     public const float RowArt = 40f, RowGap = 12f, RowPadX = 8f;
 
+    /// <summary>A navigator row's padding: none at the lead, so its art (or its first word) sits on the column's edge with the plate flush with it, as
+    /// the boards' plates are (Z-Library-Podcasts' followed shows on the gutter beside the flush "your episodes" plate, Z-Library-Albums' "daft punk");
+    /// <see cref="RowPadX"/> at the end.</summary>
+    public static readonly Edges4 RowPadding = new(0f, 0f, RowPadX, 0f);
+
     /// <summary>A grid card: the name under the cover (13) and the count line (12), the gap between cover and name.</summary>
     public const float CardNameGap = 6f, CardDecodePx = 256f, CardRing = 2f;
 

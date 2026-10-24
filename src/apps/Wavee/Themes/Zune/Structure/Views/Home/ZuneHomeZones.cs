@@ -164,7 +164,7 @@ internal static class ZuneHomeZones
         return new BoxEl
         {
             Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + c.Uri,
-            Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)],
+            Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape), Children = [Controls.Surface(data, shape)],
         };
     }
 
@@ -213,7 +213,7 @@ internal static class ZuneHomeZones
             kids[i + 1] = new BoxEl
             {
                 Key = c.IsBlank ? "zune-cluster-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-cluster-row:" + c.Uri,
-                Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, rowShape)],
+                Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in rowShape), Children = [Controls.Surface(data, rowShape)],
             };
         }
         return new BoxEl
@@ -315,7 +315,8 @@ internal static class ZuneHomeZones
         return new BoxEl
         {
             Key = e.IsBlank ? "zune-episode-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-episode:" + uri,
-            Direction = 1, MinWidth = 0f, Children = [Controls.Surface(Episode.RowData(episode, in facts, in options), Shape.EpisodeRow)],
+            Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in Shape.EpisodeRow),
+            Children = [Controls.Surface(Episode.RowData(episode, in facts, in options), Shape.EpisodeRow)],
         };
     }
 

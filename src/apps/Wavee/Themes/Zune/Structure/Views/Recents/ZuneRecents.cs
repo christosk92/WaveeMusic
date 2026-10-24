@@ -152,8 +152,16 @@ internal static class ZuneRecents
                     Direction = 0, Height = RecentsLayout.RowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
                     Children =
                     [
-                        new BoxEl { Width = layout.KindLane, Shrink = 0f },
-                        new BoxEl { Width = Z.CardArt, Height = Z.CardArt, Shrink = 0f, Corners = R.Shape.All(ShapeRole.Cover) },
+                        // The kind lane and the art side by side, as the loaded row lays them (its plate pads nothing: Z.RowPadX).
+                        new BoxEl
+                        {
+                            Direction = 0, Shrink = 0f,
+                            Children =
+                            [
+                                new BoxEl { Width = layout.KindLane, Shrink = 0f },
+                                new BoxEl { Width = Z.CardArt, Height = Z.CardArt, Shrink = 0f, Corners = R.Shape.All(ShapeRole.Cover) },
+                            ],
+                        },
                         new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS, Children = [R.Type.TrackTitle(""), R.Type.DenseMeta("")] },
                         R.Type.DenseMeta(""),
                     ],
