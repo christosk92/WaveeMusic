@@ -29,16 +29,24 @@ public readonly partial struct Concert
         EntityUri _subject;
         Concert _concert;
         string _routeTitle = "";
-        bool _pending;
-        readonly Func<bool> _pendingFn;
+        bool _pending, _failed;
+        readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<ConcertDetailView> _detail;
-        readonly Action _demand;
+        readonly Action _demand, _retry;
 
         public DetailHost()
         {
             _pendingFn = () => _pending;
+            _failedFn = () => _failed;
             _detail = () => DetailViewOf(_concert, _routeTitle);
             _demand = () => { if (_concert.IsValid && !_concert.Knows(ConcertFields.All)) Entities.Ensure(_concert, ConcertFields.All); };
+            _retry = () =>
+            {
+                var c = _concert;
+                if (!c.IsValid) return;
+                int slot = c.Slot;
+                Entities.Refresh(Entities.Current.Concerts, new ReadOnlySpan<int>(in slot), (uint)ConcertFields.All);
+            };
         }
 
         public override Element Render()
@@ -66,13 +74,20 @@ public readonly partial struct Concert
             // Settled = the whole row was asked and nothing is in flight: a group that never landed stays unknown (W22).
             bool all = c.IsValid && c.Knows(ConcertFields.All);
             bool settled = !c.IsValid || ((scope.Concerts.Asked[c.Slot] & (uint)ConcertFields.All) != 0 && scope.Concerts.Inflight[c.Slot] == 0);
-            _pending = !all && !settled;
+            // A TERMINAL failure un-asks the groups (so a remount retries) and marks them failed on the row (Fetch.MarkFailed): un-asked, the row is never
+            // "settled" by the test above, so the page shimmered forever (audit B7, V30: cc0n0). A row with no identity whose ask failed, with nothing in
+            // flight, is the error vacancy with Retry; one that knows its identity draws what it has.
+            _failed = c.IsValid && !c.Knows(ConcertFields.Identity) && scope.Concerts.Inflight[c.Slot] == 0
+                      && (scope.Concerts.Failed[c.Slot] & (uint)ConcertFields.All) != 0;
+            _pending = !all && !settled && !_failed;
             return Slots.View(ViewKeys.ConcertDetail, new ConcertDetailProps
             {
                 RouteKey = p.RouteKey,
                 ScrollScope = UseContext(Shell.PageScrollScope),
                 Pending = _pendingFn,
-                Unavailable = !_pending && (!c.IsValid || !c.Knows(ConcertFields.Identity)),
+                Failed = _failedFn,
+                Retry = _retry,
+                Unavailable = !_pending && !_failed && (!c.IsValid || !c.Knows(ConcertFields.Identity)),
                 Detail = _detail,
             });
         }

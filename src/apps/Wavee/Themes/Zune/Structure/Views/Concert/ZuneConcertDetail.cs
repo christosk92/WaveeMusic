@@ -45,10 +45,6 @@ internal static class ZuneConcertDetail
 {
     static readonly Action s_goHub = static () => ConcertVerbs.OpenHub();
 
-    static readonly Func<bool> s_never = static () => false;
-
-    static readonly Func<Element> s_empty = static () => new BoxEl();
-
     /// <summary>The view's one hook cell: the viewport's scroll handle, the section anchors (details · lineup · related) and the spy's answer, with
     /// the stable callbacks (a fresh delegate would re-arm what holds it).</summary>
     internal sealed class Cell
@@ -84,8 +80,9 @@ internal static class ZuneConcertDetail
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),
                 subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
             : Compose(props.Detail(), lay, rings, gutter, cell);
-        Element region = Cells.Region(props.Pending, s_never, content, () => Compose(ConcertDetailView.Seed, lay, rings, gutter, cell),
-            s_empty, "concert-detail:" + props.RouteKey);
+        // A failed ask is the error vacancy with Retry (contract 1.59), never the skeleton forever (audit B7, V30).
+        Element region = Cells.Region(props.Pending, props.Failed, content, () => Compose(ConcertDetailView.Seed, lay, rings, gutter, cell),
+            () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "concert-detail:" + props.RouteKey);
         Element scroll = Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region, gutter) with
         {
             Handle = cell.Scroll, OnRealized = cell.CaptureViewport,
@@ -178,10 +175,16 @@ internal static class ZuneConcertDetail
             MaxLines = Rules.TitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f,
         };
 
+        // The title's slot holds the tier's reserved lines (unseen, the title's own type) whatever the name, so the skeleton's one bar and the loaded
+        // name of up to that many lines take the same height and nothing under the title moves when it lands (audit B7, V30).
         var kids = new List<Element>(4)
         {
             new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = caption.ToArray() },
-            title,
+            new BoxEl
+            {
+                Key = "zune-concert:title", ZStack = true, Direction = 1, MinWidth = 0f,
+                Children = [Controls.LineReserve(title, lay.TitleReserveLines), title with { JustifySelf = FlexAlign.Stretch, AlignSelf = FlexAlign.Start }],
+            },
         };
 
         if (date is { } moment)
@@ -197,8 +200,28 @@ internal static class ZuneConcertDetail
                 Key = "zune-concert:date", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, lay.DateTop, 0f, 0f),
                 Children = [Facts(d, lay, null, culture)],
             });
-        if (!seed && ActionRing(d, lay, rings) is { } actions) kids.Add(actions);
+        if (seed) kids.Add(PendingRing(lay, rings));
+        else if (ActionRing(d, lay, rings) is { } actions) kids.Add(actions);
         return new BoxEl { Direction = 1, Gap = lay.IdentityGap, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    static readonly Action s_noop = static () => { };
+
+    /// <summary>The pending ring row's share link: present, so the row holds the share ring's room; never copied (the row takes no hits).</summary>
+    const string PendingShareUrl = "https://seed.invalid/";
+
+    /// <summary>The skeleton's ring row: the row's own rings (interested, share, play the lineup) on no-op verbs, drawn as is at the band's pending
+    /// opacity, so the loaded row lands in the place (and the lines: Compact wraps the three labelled rings) the skeleton held, instead of growing
+    /// the identity (audit B7, V30). Never a derived bar. The share word is never acted on (the row takes no hits).</summary>
+    static Element PendingRing(ZuneConcertLayout lay, ZuneDetailLayout rings)
+    {
+        var view = ConcertDetailView.Seed with { ToggleInterested = s_noop, PlayLineup = s_noop, ShareUrl = PendingShareUrl };
+        Element row = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Opacity = ZuneBandRules.DisabledOpacity, HitTestVisible = false, IsEnabled = false,
+            Children = ActionRing(view, lay, rings) is { } ring ? [ring] : [],
+        };
+        return row.Skel(row);
     }
 
     /// <summary>The board's ring row under the facts: share (the page's web link, copied with the confirmation toast) and play the lineup (the headliner's
@@ -310,7 +333,8 @@ internal static class ZuneConcertDetail
     {
         Size = lay.FactsSize, LineHeight = lay.FactsLine, Color = primary ? Tok.TextPrimary : Tok.TextSecondary,
         Case = lowered ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
-        MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        // Shrink: a long venue or place gives way and trims in its row (its skeleton bar likewise) instead of running past the window (audit B7, V30).
+        MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
     };
 
     // ══ THE TICKETS SLAB ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -529,7 +553,7 @@ internal static class ZuneConcertDetail
             // "details" is always there once the event exists (so the band's row 2 stands at its height from the first frame); the lineup and the related
             // concerts join it when the row has answered.
             _shown = !props.Unavailable;
-            bool answered = _shown && !props.Pending();
+            bool answered = _shown && !props.Pending() && !props.Failed();   // a failed ask offers no verb on a concert it never read
             var d = answered ? props.Detail() : null;
             _lineup = d is { Lineup.Length: > 0 };
             _related = d is { Related.Length: > 0 };
@@ -598,7 +622,8 @@ internal static class ZuneConcertDetail
             if (_lineup) views.Add(new PageView("lineup", Loc.Get(Strings.Concerts.Detail.Lineup), active == 1, _go[1]));
             if (_related) views.Add(new PageView("related", Loc.Get(Strings.Concerts.Detail.RelatedConcerts), active == 2, _go[2]));
             var actions = _toggleInterested is { } toggle
-                ? new List<PageAction>(1) { new("interested", Loc.Get(_interested ? Strings.Concerts.Detail.InterestedOn : Strings.Concerts.Detail.Interested), toggle) }
+                ? new List<PageAction>(1) { new("interested", Loc.Get(_interested ? Strings.Concerts.Detail.InterestedOn : Strings.Concerts.Detail.Interested), toggle,
+                    Reserve: Loc.Get(_interested ? Strings.Concerts.Detail.Interested : Strings.Concerts.Detail.InterestedOn)) }
                 : new List<PageAction>(0);
             _sink.Publish(new PageChromeRow(views, actions, Title: _title));
         }

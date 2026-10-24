@@ -341,4 +341,11 @@ public sealed record ConcertDetailProps
 
     /// <summary>The page's content, read at build time off the concert row.</summary>
     public required Func<ConcertDetailView> Detail { get; init; }
+
+    /// <summary>The row's ask failed and nothing is in flight (contract 1.59, audit B7): the error vacancy with <see cref="Retry"/>, never the
+    /// skeleton forever. Default: never.</summary>
+    public Func<bool> Failed { get; init; } = static () => false;
+
+    /// <summary>Asks the row again (the error vacancy's action); null where nothing can.</summary>
+    public Action? Retry { get; init; }
 }
