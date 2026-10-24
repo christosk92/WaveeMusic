@@ -217,10 +217,7 @@ public readonly partial struct Track
             // The page bar's lead (split · Shuffle · divider) is ONE measured command in the Play slot and Shuffle never leaves it; the chips
             // keep their least width (D8), so the view commands are what a narrow bar evicts.
             Element? chips = pageBar ? P.ContentFilterBar?.Invoke() : null;
-            // A structure whose hero's Shuffle is the page's one at this tier (DetailTableTier.HeroShuffle: Classic from Small up, C-Album and C-Playlist
-            // draw one Shuffle, under Play) leaves it off the bar, inline and folded alike: one home per verb (audit B8 r3). The bar never fits it.
-            bool heroShuffle = !pageBar && _latest.Vertical?.Actions.Shuffle is not null && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.HeroShuffle;
-            var widths = new CommandWidths(w[0], w[1], pageBar ? 0f : heroShuffle ? float.PositiveInfinity : w[2], w[3], w[4]);
+            var widths = new CommandWidths(w[0], w[1], pageBar ? 0f : w[2], w[3], w[4]);
             float pane = HeldPane(MathF.Max(0f, available - ToolbarPaneInset));
             float fitPane = chips is null ? pane : MathF.Max(0f, pane - CommandBarLayout.InlineChipsMin - CommandBarLayout.InlineChipsTrail);
             // A structure's worded Find and inline Select take their measured room before the ladder runs (the fit itself reserves the 32-DIP glyph).
@@ -237,7 +234,6 @@ public readonly partial struct Track
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _searchOpenFit = (pane, fit);
             fit = HoldThroughCrossing(fit, available);
-            if (heroShuffle) fit = fit with { Inline = fit.Inline & ~InlineCommand.Shuffle };   // a held fit from the tier before never brings it back
             _toolbarFit = fit;
 
             var left = new List<Element>(3);
@@ -267,7 +263,7 @@ public readonly partial struct Track
             if (fit.Has(InlineCommand.Sort))
                 view.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
 
-            var overflow = ((heroShuffle ? InlineCommand.None : InlineCommand.Shuffle) | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
+            var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
             _moreOverflow = overflow;
             if (_latest.MenuBridge is { } bridge) bridge.List = _bridgeList ??= BridgeListItems;
             var tailList = new List<Element>(3);
