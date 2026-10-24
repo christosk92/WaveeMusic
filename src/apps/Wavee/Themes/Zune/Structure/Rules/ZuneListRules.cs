@@ -372,7 +372,7 @@ public static class ZuneListRules
     /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
     /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true),
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane),
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
@@ -381,7 +381,7 @@ public static class ZuneListRules
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
         AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW,
-        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim },
+        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim, DurationWidth = HoverTimeLane },
     };
 
     /// <summary>Huge (Z-Album-Huge, Z-Liked-Huge, Z-Playlist-*-Huge): Standard's, the identity column resting at 320 (Z6a1), and the insights REST OPEN
@@ -409,6 +409,10 @@ public static class ZuneListRules
 
     /// <summary>A liked track's resting heart in the time lane: its glyph and its gap to the time.</summary>
     public const float RestHeartGlyph = 12f, RestHeartGap = 6f;
+
+    /// <summary>The time lane where the heart and the "..." stand on row hover: the core's 64 widened so a withheld row's resting heart, its gap and
+    /// "not on PC" (11, about 50) fit at rest without touching or clipping (12 + 6 + 50).</summary>
+    public const float HoverTimeLane = 68f;
 
     /// <summary>An album's number sits this far in from its lane's start (Z-Album: 4), and the hover "..." target in the time lane.</summary>
     public const float NumberInset = 4f, HoverMoreBox = 28f;

@@ -103,7 +103,7 @@ internal static class ZuneTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(PlaysCell(r), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(r), CellKey.Tempo);
         if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(HeartReveal(r, set.Quiet), CellKey.HeartTrailing);
-        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r, set.HoverActions, set.Quiet), CellKey.Duration);
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r, set.HoverActions, set.Quiet, Track.DurationLaneOf(in set)), CellKey.Duration);
         // The Compact row's "..." is a 40 target shown on every row (Z-State-Rows-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
             ? Track.MoreCell(true, classic: true, CellKey.More, () => r.Focused, box: ZuneListRules.CompactTarget, atRest: true)
@@ -339,10 +339,16 @@ internal static class ZuneTrackTable
         var marquee = Flow.Show(() => r.P.State.IsNow && r.P.Marquee,
             Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), Track.s_rowMarqueeStyle));
         var film = Glyph(Icons.Movie, ZuneListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary), Prop.Of(() => r.P.Track.HasVideo)) with { Shrink = 0f };
+        // The "on this PC" ring leads the subline where the subline has words; a row whose subline would hold the ring alone (an album's table, a
+        // queue) carries it after the title instead, so the row keeps one line and every row of the table one height (V15: 42 / 50 rows).
+        var lone = ZuneRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with
+        {
+            Visible = Prop.Of(() => r.P.State.OnThisPc && !SublineSpeaks(r.P, setArtist, setAlbum, durationInline)),
+        };
         var line = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, film],
+            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, film, lone],
         };
         var column = new BoxEl
         {
@@ -354,6 +360,18 @@ internal static class ZuneTrackTable
             Key = CellKey.Title, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
             Children = [column],
         };
+    }
+
+    /// <summary>Does the subline have something besides the ring to show: the Compact form's inline duration, the episode eyebrow, the explicit mark,
+    /// or a linked artist or album? The "on this PC" ring alone does not make one: it then rides the title line.</summary>
+    static bool SublineSpeaks(in RowPresentation p, bool setArtist, bool setAlbum, bool durationInline)
+    {
+        if (durationInline || Track.Badge(in p)) return true;
+        var d = p.Track.ForDisplay;
+        if (d.IsPodcast) return true;
+        int artists = Track.ArtistInTitle(in p, setArtist) ? d.ArtistSlots.Length : 0;
+        bool container = Track.ShowAlbumInMeta(in p, false, setAlbum) && Track.ContainerOf(d).Name.Length > 0;
+        return RowCellRules.LinkSpanCount(artists, container) > 0;
     }
 
     /// <summary>The subline: [EPISODE] · [E] · the artists · the album as one bound span run that collapses when it has nothing to say;
@@ -369,12 +387,7 @@ internal static class ZuneTrackTable
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneListRules.MetaGap, MinWidth = 0f, ClipToBounds = true,
-            Visible = durationInline ? (Prop<bool>)true : Prop.Of(() =>
-            {
-                var p = r.P;
-                return p.State.OnThisPc
-                    || RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
-            }),
+            Visible = durationInline ? (Prop<bool>)true : Prop.Of(() => SublineSpeaks(r.P, setArtist, setAlbum, durationInline)),
             Children =
             [
                 new TextEl(Prop.Of(() => Loc.Get(Strings.Detail.Badge.Episode)))
@@ -385,7 +398,7 @@ internal static class ZuneTrackTable
                     Visible = Prop.Of(() => r.P.Track.ForDisplay.IsPodcast),
                 },
                 // The "on this PC" ring leads the subline (Z-Liked). A Visible flip, not a mount: an absent mount would still cost the subline's gap.
-                ZuneRowCells.OnThisPcMark(ink) with { Visible = Prop.Of(() => r.P.State.OnThisPc) },
+                ZuneRowCells.OnThisPcMark(ink) with { Visible = Prop.Of(() => r.P.State.OnThisPc && SublineSpeaks(r.P, setArtist, setAlbum, durationInline)) },
                 ZuneRowCells.ExplicitMark() with { Visible = Prop.Of(() => Track.Badge(r.P)) },
                 new SpanTextEl(Prop.Of(() =>
                 {
@@ -520,7 +533,7 @@ internal static class ZuneTrackTable
 
     /// <summary>The time, or for a withheld row its short reason at the reason rung with the long reason as its tooltip (a real mount on the
     /// rare withheld flip, so a playable row carries no tooltip host). Z-State-Rows: "unavailable · 45% ink, says why in the time column".</summary>
-    static Element DurationCell(BoundRow r, bool hoverActions, bool quiet)
+    static Element DurationCell(BoundRow r, bool hoverActions, bool quiet, float lane)
     {
         Func<bool> withheld = () =>
         {
@@ -563,8 +576,10 @@ internal static class ZuneTrackTable
                     : clock,
                 Flow.Show(withheld, new BoxEl
                 {
-                    // On row hover (and focus) the heart and "..." take the lane, the reason with the clock (never one over the other).
+                    // On row hover (and focus) the heart and "..." take the lane, the reason with the clock (never one over the other). The resting
+                    // heart's gap stands before the reason as before the clock ("not on PC" touched the heart); the lane is the tier's HoverTimeLane.
                     Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                    Margin = new Edges4(hoverActions ? ZuneListRules.RestHeartGap : 0f, 0f, 0f, 0f),
                     Opacity = hoverActions ? Prop.Of(() => r.Focused ? 0f : 1f) : 1f, HoverOpacity = hoverActions ? 0f : float.NaN,
                     Children = [ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix) ?? Loc.Get(Strings.Track.NotOnThisPcReason)))],
                 }),
@@ -574,10 +589,10 @@ internal static class ZuneTrackTable
         // The heart and the "..." take the time's place on row hover and focus (Z-Album, Z-Liked): no lane of their own, no reserve.
         return new BoxEl
         {
-            ZStack = true, Width = Track.Lane.DurationHover, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+            ZStack = true, Width = lane, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
             Children =
             [
-                time with { Width = Track.Lane.DurationHover, AlignSelf = FlexAlign.Stretch },
+                time with { Width = lane, AlignSelf = FlexAlign.Stretch },
                 // The cluster overlays the reserved time lane (this ZStack's fixed width), so mounting it on the row's first
                 // hover / focus (Track.Affordance) moves nothing: about twenty nodes the row no longer mounts up front.
                 Track.Affordance(r, () => new BoxEl

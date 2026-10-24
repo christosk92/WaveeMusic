@@ -126,6 +126,12 @@ public readonly partial struct Track
     /// The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
     /// trimming would hand the header and the rows two different instances for one shape. The KEY is the whole
     /// <see cref="ColumnSet"/>, so <see cref="ColumnSet.HeartTrailing"/> forks the cache by construction.</summary>
+    /// <summary>The time lane's width for <paramref name="set"/>: the structure's own (<see cref="ColumnSet.DurationWidth"/>) where it widens the core's,
+    /// else the hover lane's 64 (the heart and the "..." stand in it on row hover) or the plain 52. A hover lane widens too (Zune: a withheld row's resting
+    /// heart beside "Not on PC").</summary>
+    public static float DurationLaneOf(in ColumnSet set)
+        => set.HoverActions ? MathF.Max(Lane.DurationHover, set.DurationWidth) : set.DurationWidth > 0f ? set.DurationWidth : Lane.Duration;
+
     public static TrackSize[] TracksFor(in ColumnSet set, float art)
     {
         var key = (set, art);
@@ -147,7 +153,7 @@ public readonly partial struct Track
         // The trailing ♥ — the SAME gate the cell reads, and it sits IMMEDIATELY before the duration (the reader's
         // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
         if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(set.HeartWidth > 0f ? set.HeartWidth : Lane.HeartTrailing);
-        if (RowMetrics.ShowDuration(in set)) arr[i++] = TrackSize.Px(set.HoverActions ? Lane.DurationHover : set.DurationWidth > 0f ? set.DurationWidth : Lane.Duration);
+        if (RowMetrics.ShowDuration(in set)) arr[i++] = TrackSize.Px(DurationLaneOf(in set));
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
         if (set.Expand) arr[i++] = TrackSize.Px(Lane.Expand);
         s_rowTrackCache[key] = arr;
