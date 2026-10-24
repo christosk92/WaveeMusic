@@ -286,6 +286,12 @@ public static class WinUiArtistMotion
     /// <summary>The actions' cross-fade timing.</summary>
     public static MotionTokenDef ActionsSwapMotion => MotionTok.ControlFast;
 
+    /// <summary>The card's plated actions coming and going with the Compact form: the cross-fade, and their width eased through real layout (clipped: a wipe
+    /// from their end as they leave, an opening as they come).</summary>
+    public static readonly LayoutTransition CardActions = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(FadeOutMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Width,
+        Enter: ActionsSwap, Exit: ActionsSwap);
+
     /// <summary>A block inside the side column (the latest release, the upcoming card, the pick, the discography preview): it moves and resizes with the
     /// column inside one arrangement, the size laid out at once and revealed.</summary>
     public static readonly LayoutTransition Block = new(TransitionChannels.Position | TransitionChannels.Size,

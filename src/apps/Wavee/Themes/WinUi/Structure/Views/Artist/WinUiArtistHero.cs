@@ -65,7 +65,9 @@ internal static class WinUiArtistHero
             bottom.Add(new BoxEl
             {
                 Key = "artist-hero-actions:card", Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, WinUiArtistRules.ActionsBottom),
-                Enter = WinUiArtistMotion.ActionsSwap, Exit = WinUiArtistMotion.ActionsSwap, Transition = WinUiArtistMotion.ActionsSwapMotion,
+                // Leaving (into Compact) it closes its width as it fades (a wipe from its end), so less of it lies over the copy, which the engine
+                // widens at once (a leaving flex sibling gives its room back on the commit).
+                Layout = WinUiArtistMotion.CardActions,
                 Children = [Actions(text.Name, uri, acts, WinUiDetailRules.Target, words: tier >= WidthTier.Huge, plated: true)],
             });
         Element overlay = new BoxEl
