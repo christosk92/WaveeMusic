@@ -1155,7 +1155,20 @@ public static partial class Shell
     // exit leg after the commit), not only when the workspace or the selection changes.
     static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value);
 
-    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
+    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value, TabTitlesVersion());
+
+    /// <summary>The names the labels read (each tab's page publishes its entity's name, <see cref="PageChromeChannel.PublishedTitle"/>), folded so a
+    /// name landing after its page mounted relabels the tab ("Playlist" -> "Late Night"). Subscribes to the publications; moves only when a name does.</summary>
+    static int TabTitlesVersion()
+    {
+        _ = PageChromeChannel.Version.Value;
+        var tabs = Tabs.Tabs;
+        var shown = Shown.Peek();
+        var hash = new HashCode();
+        for (int i = 0; i < tabs.Count; i++)
+            hash.Add(PageChromeChannel.PublishedTitle(TabLabelStaging.LabelRoute(tabs[i].Route, shown)), StringComparer.Ordinal);
+        return hash.ToHashCode();
+    }
 
     static IReadOnlyList<TabViewItem> BuildTabItems()
     {
@@ -1168,9 +1181,10 @@ public static partial class Shell
             var route = tab.Route;
             // The header and icon name the page ON SCREEN (the staged route lags the commit by the exit leg); the pin
             // id, the drag payload's title and the drop target describe the tab's DESTINATION and keep its own route.
-            var (destTitle, destGlyph) = Dest(route);
+            // Both name the ENTITY once its page has published it (W-Shell-Top: "LoL Worlds Songs 201...", not "Playlist").
+            var (destTitle, destGlyph) = Dest(route, PageChromeChannel.PublishedTitle(route));
             var staged = TabLabelStaging.LabelRoute(route, shown);
-            var (label, glyph) = staged == route ? (destTitle, destGlyph) : Dest(staged);
+            var (label, glyph) = staged == route ? (destTitle, destGlyph) : Dest(staged, PageChromeChannel.PublishedTitle(staged));
             int id = tab.Id;
             string? pinId = FrameRules.PinIdFor(route);
             string pinTitle = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : destTitle;
