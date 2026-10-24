@@ -100,6 +100,9 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-eyebrow", ChipRow(id, spec.Config)
                     ? WinUiDetailKit.EyebrowWithChip(eyebrow, form, WinUiDetailKit.SaveTargetOf(id).Text, center)
                     : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true));
+            // An album not read yet holds its eyebrow's line ("Album · 2020" lands into it), as the names and the meta below (audit B7).
+            else if (form.Eyebrow && id.HeaderPending && id.Kind == DetailKind.Album)
+                rows.Add(Block("hero-eyebrow", Reserved(null, form.EyebrowLine, center)));
             rows.Add(Block("hero-title", TitleOf(spec, form, center)));
             // The description under the title (W-Playlist: the owner's own list edits it in place, "Add an optional description" while empty; W-PlaylistFollowed: the
             // list's own words). It lands with the header, as the title does.
@@ -117,11 +120,15 @@ internal static partial class WinUiDetailFrame
             // while a part of it is still on its way (the count held with the list, Identity.MetaLoading; the duration or the owner, Identity.MetaSettling) the box
             // stays reserved and empty, and the words fade in whole.
             var faces = FacesOf(id);
-            bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
+            // A head not read yet holds its KIND's lines (audit B7: the stacked album hero grew 40 when its artists and meta landed): an album states its
+            // billed artists and its meta, a playlist its owner and meta; the words fade into the reserved boxes.
+            bool kindLines = id.HeaderPending && id.Kind is DetailKind.Album or DetailKind.Playlist;
+            bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 } || kindLines;
             bool settled = !id.MetaSettling && !id.MetaLoading;
             if (center)
             {
                 if (faces is { Count: > 0 }) rows.Add(Block("hero-attribution", WinUiDetailKit.NamesLine(faces, measure), late: true));
+                else if (kindLines) rows.Add(Block("hero-attribution", Reserved(null, WinUiDetailRules.AttributionLine, center)));
                 if (metaLine) rows.Add(Block("hero-meta", Reserved(settled && id.Meta is { Length: > 0 } meta ? MetaRun(meta, form) : null, WinUiDetailRules.MetaLine, center)));
             }
             else if (faces is { Count: > 0 } || metaLine)
@@ -417,6 +424,13 @@ internal static partial class WinUiDetailFrame
                 .. avatar > 0f ? [new BoxEl { Width = avatar, Height = avatar, Shrink = 0f, Corners = CornerRadius4.All(avatar / 2f) }] : Array.Empty<Element>(),
                 new BoxEl { Width = WinUiDetailRules.SkelNameW, Height = WinUiDetailRules.AttributionLine, Corners = CornerRadius4.All(WinUiDetailRules.BoneRadius) },
             ],
+        });
+        // The stacked (centred) hero lays the meta as its OWN reserved line under the names (`hero-meta`, every kind has one): the band reserves it too, or
+        // the actions rode 40 down when the page landed (audit B7: WinUI album at 400).
+        if (center) rows.Add(new BoxEl
+        {
+            Height = WinUiDetailRules.MetaLine, Direction = 0, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Center,
+            Children = [Bone(WinUiDetailRules.SkelNameW, WinUiDetailRules.MetaLine, center)],
         });
         if (Pulses(spec)) rows.Add(PulseRow(Bone(WinUiDetailRules.SkelNameW, WinUiDetailRules.AttributionLine, center), center));
         rows.Add(SkeletonActions(spec, tier, form, center));

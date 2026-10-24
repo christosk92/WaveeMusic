@@ -68,7 +68,9 @@ public enum PageActionKind : byte
 /// <param name="Invoke">The verb.</param>
 /// <param name="Kind">Play, shuffle or a word.</param>
 /// <param name="Enabled">The verb can run now (drawn disabled otherwise).</param>
-public sealed record PageAction(string Id, string Label, Action Invoke, PageActionKind Kind = PageActionKind.Word, bool Enabled = true);
+/// <param name="Reserve">A word action's OTHER word ("following" beside "follow", "saved" beside "save"), contract 1.59 (audit B7): a theme that sizes
+/// the action to its word holds the wider of the two, so a toggle (or the state landing with the page) never changes the action's width. Null = none.</param>
+public sealed record PageAction(string Id, string Label, Action Invoke, PageActionKind Kind = PageActionKind.Word, bool Enabled = true, string? Reserve = null);
 
 /// <summary>What the page claims for the material behind the frame (contract 1.26): the image a theme bleeds under its band and page
 /// head, or the covers a "mix" background blends. Image references are the same uri strings every other props record carries.</summary>
@@ -92,8 +94,10 @@ public sealed record PageBackdrop(string? Bleed, IReadOnlyList<string>? Mix = nu
 /// <param name="Title">The page's entity name (an album's, an artist's, a playlist's title), contract 1.30: a detail page publishes it once
 /// its model is loaded, and the frame folds it into <see cref="PageChrome.Title"/> so a band draws the name, not the kind ("Album"). Null or empty
 /// while the model loads: the destination's kind stands, and the title slot keeps its height. Never re-cased: it is the entity's own name.</param>
+/// <param name="ViewsPending">The page HAS views but they are not known yet (an artist's pivot waits for its section plan), contract 1.59 (audit B7):
+/// a band keeps row 2's place while <see cref="Views"/> is empty, so the row arriving with the data moves nothing under it.</param>
 public sealed record PageChromeRow(IReadOnlyList<PageView> Views, IReadOnlyList<PageAction> Actions, PageBackdrop? Backdrop = null,
-    string? Title = null)
+    string? Title = null, bool ViewsPending = false)
 {
     /// <summary>Publishes nothing.</summary>
     public static PageChromeRow Empty { get; } = new([], []);
@@ -118,6 +122,10 @@ public sealed record PageChrome(string Title, IReadOnlyList<PageCrumb> Crumbs, b
 
     /// <summary>Row 2's actions, in order (contract 1.26).</summary>
     public IReadOnlyList<PageAction> Actions { get; init; } = [];
+
+    /// <summary>The page's views are still loading (<see cref="PageChromeRow.ViewsPending"/>, contract 1.59): a band that draws row 2 for its views
+    /// keeps the row's place while <see cref="Views"/> is empty.</summary>
+    public bool ViewsPending { get; init; }
 
     /// <summary>The page's backdrop claim (contract 1.26); <see cref="PageBackdrop.None"/> when it claims none.</summary>
     public PageBackdrop Backdrop { get; init; } = PageBackdrop.None;

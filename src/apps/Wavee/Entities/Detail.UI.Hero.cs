@@ -108,9 +108,14 @@ public static partial class Detail
     {
         var id = spec.Identity;
         var slots = spec.Slots;
+        // A head not read yet holds its KIND's rows, never the data's (audit B7: Classic's album skeleton at 400 lacked its eyebrow and its artists
+        // line, so the title and the actions rode 20 and 40 down when the album landed): an album always states its eyebrow and its billed artists,
+        // a playlist its owner. Rows that depend on the data (a description, a pulse, a chart) stay off until the data says so.
+        bool kindRows = id.HeaderPending && id.Kind is DetailKind.Album or DetailKind.Playlist;
         return new HeroFlags(
-            Eyebrow: id.Eyebrow.Length > 0,
-            Attribution: (slots.Attribution is not null && id.Kind != DetailKind.Album)
+            Eyebrow: id.Eyebrow.Length > 0 || (kindRows && id.Kind == DetailKind.Album),
+            Attribution: kindRows
+                || (slots.Attribution is not null && id.Kind != DetailKind.Album)
                 || (id.Collaborators is { Count: > 0 } c && Text.ShowCollaborators(c.Count, id.Collaborative))
                 || id.OwnerName is { Length: > 0 }
                 || id.Artists is { Count: > 0 },

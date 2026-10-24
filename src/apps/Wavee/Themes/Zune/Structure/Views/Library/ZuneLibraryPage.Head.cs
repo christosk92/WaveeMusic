@@ -146,7 +146,7 @@ internal static partial class ZuneLibraryPage
     static Element Count(LibraryPageProps p, bool withArtists) => R.Type.DenseMeta("") with
     {
         // The board's "312 albums": the number and the kind's noun, one ICU plural per kind ("1 album", "18 albums"), cased by the label role.
-        Text = Prop.Of(() => CountWords(p, p.Count.Current(), withArtists)), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
+        Text = Prop.Of(() => p.CountKnown.Current() ? CountWords(p, p.Count.Current(), withArtists) : ""), Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f,
     };
 
     static string CountWords(LibraryPageProps p, int n, bool withArtists)

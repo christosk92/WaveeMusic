@@ -639,11 +639,16 @@ public readonly partial struct Artist
             if (lib is not null)
             {
                 string uri = _chromeUri, name = _chromeName;
+                // The other word rides along (contract 1.59): a band sizes the pill to the wider of the two, so neither a toggle nor the saved state
+                // landing with the page changes its width.
                 actions.Add(new PageAction(FollowActionId, Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
-                    () => lib.ToggleSaved(uri, name), PageActionKind.Word, Enabled: _chromeReady));
+                    () => lib.ToggleSaved(uri, name), PageActionKind.Word, Enabled: _chromeReady,
+                    Reserve: Loc.Get(following ? Strings.Artist.Follow : Strings.Artist.Following)));
             }
+            // While the body loads the pivot is unknown but certain to come (every artist page has one): the row says so, and a band keeps row 2's
+            // place, so the pivot landing with the page moves nothing under it (audit B7, V11: the Compact band grew 40 on load).
             _chromeRow = new PageChromeRow(views, actions, _chromeBleed is { Length: > 0 } bleed ? new PageBackdrop(Bleed: bleed) : null,
-                Title: _chromeName.Length > 0 ? _chromeName : null);
+                Title: _chromeName.Length > 0 ? _chromeName : null, ViewsPending: !_chromeReady);
             _sink.Publish(_chromeRow);
         }
 

@@ -379,6 +379,7 @@ public readonly partial struct User
         /// rewrites one text node instead of re-rendering the toolbar.</summary>
         readonly Prop<string> _countText;
         readonly Prop<int> _count;
+        readonly Prop<bool> _countKnown;
         LibraryNavigatorProps? _navigator;
         readonly Func<LibraryNavMountPlan> _resolveMount;
         readonly Func<IReadOnlyList<LibraryHitRow>> _artistHitRows, _albumHitRows, _artistAlbumHitRows;
@@ -500,8 +501,10 @@ public readonly partial struct User
             _extentOf = ExtentOf;
             _contentType = ContentTypeOf;
             _watchLetters = WatchLetters;
-            _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
+            // While the relation has not answered the list is a skeleton: no count beside it ("0" stated an empty library, audit B7).
+            _countText = Prop.Of(() => _shape is { } shape && shape.Value.Answered ? FormatCache.Int(shape.Value.Count) : "");
             _count = Prop.Of(() => _shape is { } shape ? shape.Value.Count : 0);
+            _countKnown = Prop.Of(() => _shape is { } shape && shape.Value.Answered);
             _resolveMount = ResolveMount;
             _artistHitRows = ArtistHitRows;
             _albumHitRows = AlbumHitRows;
@@ -649,7 +652,7 @@ public readonly partial struct User
                 RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
                 SetPageWidth = _setPageWidth, Kinds = _kinds, PickDepth = _pickDepth,
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
-                CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText, Count = _count,
+                CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText, Count = _count, CountKnown = _countKnown,
                 Pane = () => PaneFor(selectedSlot),
                 SavedEpisodes = () => Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch },
                 SkelGroup = _skelGroup, Navigator = _navigator,

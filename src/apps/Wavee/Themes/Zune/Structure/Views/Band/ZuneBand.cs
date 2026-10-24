@@ -99,7 +99,8 @@ internal sealed class ZuneBand : Component
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
-        bool hasRow2 = views.Count > 0 || actions.Count > 0;
+        // A page whose views are still loading (contract 1.59) keeps row 2's place: the row arriving with the data moves nothing (audit B7).
+        bool hasRow2 = views.Count > 0 || actions.Count > 0 || chrome is { ViewsPending: true };
         bool row2 = ZuneBandRules.Row2Shown(hasRow2, collapsed);
         // SCROLL-TIED (Compact): row 2 scrolls away with the page: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same
         // share, continuously, in step with the scroll position (bound channels: no re-render, no timed fade, nothing to toggle or snap).
@@ -605,13 +606,7 @@ internal sealed class ZuneBand : Component
                 Height = h, Corners = round, Padding = ZuneBandRules.PillPadding,
                 BorderWidth = ZuneBandRules.PillBorder, BorderColor = Tok.AccentDefault,
                 HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
-                Children =
-                [
-                    new TextEl(a.Label)
-                    {
-                        Size = ZuneBandRules.PillText, Color = R.Ink.AccentDecor, MaxLines = 1, Case = R.Case.For(LabelKind.Command),
-                    },
-                ],
+                Children = [PillWord(a)],
             },
         };
         box = box with
@@ -623,6 +618,23 @@ internal sealed class ZuneBand : Component
             OnClick = a.Enabled ? a.Invoke : null,
         };
         return a.Kind == PageActionKind.Word ? box : ToolTip.Wrap(box, a.Label);
+    }
+
+    /// <summary>A word action's word. With a reserve (contract 1.59: "following" beside "follow") both words stand in one ZStack, the reserve
+    /// unseen, so the pill is as wide as the wider of the two and a toggle, or the state landing with the page, never moves its neighbours.</summary>
+    static Element PillWord(PageAction a)
+    {
+        TextEl Word(string text) => new(text) { Size = ZuneBandRules.PillText, Color = R.Ink.AccentDecor, MaxLines = 1, Case = R.Case.For(LabelKind.Command) };
+        if (a.Reserve is not { Length: > 0 } reserve) return Word(a.Label);
+        return new BoxEl
+        {
+            ZStack = true, Direction = 0,
+            Children =
+            [
+                new BoxEl { JustifySelf = FlexAlign.Center, AlignSelf = FlexAlign.Center, Children = [Word(a.Label)] },
+                new BoxEl { Opacity = 0f, HitTestVisible = false, JustifySelf = FlexAlign.Center, Children = [Word(reserve)] },
+            ],
+        };
     }
 }
 

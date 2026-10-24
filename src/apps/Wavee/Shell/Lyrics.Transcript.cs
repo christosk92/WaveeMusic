@@ -230,7 +230,7 @@ public static partial class Lyrics
         {
             try
             {
-                var result = Platform.Args.Fake ? PodcastReaderFixtures.Transcript
+                var result = Platform.Args.Fake ? await PodcastReaderFixtures.Answer(identity.Key.Episode.Text, PodcastReaderFixtures.Transcript, request.Token).ConfigureAwait(false)
                     : identity.Url.Length == 0 ? new Spotify.Podcasts.Transcript(identity.Key.Language, [], 404)
                     : await Spotify.Podcasts.TranscriptAsync(identity.Key, identity.Url, identity.Account, request.Token).ConfigureAwait(false);
                 var doc = FromTranscript(identity.Key.Episode.Text, result, duration);

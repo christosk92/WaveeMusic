@@ -87,6 +87,11 @@ public sealed record ZuneArtistLayout : ITierLayoutRecord
     /// <inheritdoc cref="NameSize"/>
     public required float NameTracking { get; init; }
 
+    /// <summary>The name lines the hero holds whatever the name (audit B7, V11): the loading skeleton does not know the name, so the hero reserves
+    /// the lines a name of this tier commonly takes, in the skeleton and on the loaded page alike, and the name landing moves nothing. Compact's
+    /// 64 name wraps most two-word names at a phone's width (two lines); the wider tiers hold one. A name past the reserve still grows the hero.</summary>
+    public int NameReserveLines { get; init; } = 1;
+
     /// <summary>Where the primary actions stand.</summary>
     public required ZuneArtistActions Actions { get; init; }
 
@@ -442,7 +447,7 @@ public static class ZuneArtistTiers
         // the drawer one column of 40 rows.
         Make(WidthTier.Compact, zoneGap: 22f, bodyTop: 8f, heroH: 220f, eyebrowTop: 16f, captionBottom: 10f, compactName: true, nameSize: 0f,
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.BelowHero, ZuneArtistSecondary.None, target: 40f, chartCols: 1, chartMaxW: 0f,
-            railBeside: false, railW: 0f, railGap: 22f, latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false) with { ChartRowH = 56f, ChartArt = 44f, ChartLead = 40f },
+            railBeside: false, railW: 0f, railGap: 22f, latestArt: 96f, pickArt: 64f, drawerCols: 1, drawerPitch: 40f, drawerHead: 48f, aboutBeside: false) with { ChartRowH = 56f, ChartArt = 44f, ChartLead = 40f, NameReserveLines = ZuneArtistRules.NameLines },
         // Small (Z-Artist-Small): a 140 hero with the compact name, play · shuffle · follow in the band, radio and "..." at the hero's bottom right,
         // one chart column beside a 220 rail.
         Make(WidthTier.Small, zoneGap: 28f, bodyTop: 12f, heroH: 140f, eyebrowTop: 12f, captionBottom: 8f, compactName: true, nameSize: 0f,

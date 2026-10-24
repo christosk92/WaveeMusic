@@ -214,6 +214,8 @@ public static partial class Shell
                 // The crumbs keep the destination's own words. Only the band reads this title: Classic's masthead is the masthead's.
                 Title = row?.Title is { Length: > 0 } name ? name : head.Title,
                 Views = views,
+                // Contract 1.59 (audit B7): the page's views are coming; a band keeps row 2's place until they land.
+                ViewsPending = views.Count == 0 && row is { ViewsPending: true },
                 Actions = row?.Actions ?? [],
                 Backdrop = row?.Backdrop ?? PageBackdrop.None,
             };

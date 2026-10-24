@@ -394,7 +394,7 @@ public static class ZuneConcertTiers
     /// under them, the slab stacked and bled to the gutters, the lineup and the related concerts as 64 and 56 rows.</summary>
     public static ZuneConcertLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, TitleSize = 64f, TitleLine = 72f, NumeralSize = 64f, NumeralLine = 64f,
+        Tier = WidthTier.Compact, TitleSize = 64f, TitleLine = 72f, TitleReserveLines = ZuneConcertRules.TitleLines, NumeralSize = 64f, NumeralLine = 64f,
         DateStacked = false, DateGap = 12f, DateTop = 6f, DateWordsSize = 15f, DateWordsLine = 20f, FactsSize = 15f, FactsLine = 22f, FactsGap = 4f,
         IdentityGap = 6f, SectionGap = 20f, HeroGap = 0f, SlabTop = 20f, TicketsW = 0f, SlabBleed = true, BuyButton = true, SlabPadX = 0f, SlabPadY = 14f,
         SlabHeadSize = 26f, SlabHeadLine = 32f, OfferRowH = 48f, OfferSize = 15f, LineupAvatar = 48f, LineupRows = true, LineupRowH = 64f,
@@ -416,7 +416,7 @@ public static class ZuneConcertTiers
     /// and the related concerts as four plate cards across.</summary>
     public static ZuneConcertLayout Standard { get; } = Small with
     {
-        Tier = WidthTier.Standard, TitleSize = 64f, TitleLine = 72f, DateGap = 40f, DateTop = 8f, DateWordsSize = 14f, DateWordsLine = 20f, FactsGap = 6f,
+        Tier = WidthTier.Standard, TitleSize = 64f, TitleLine = 72f, TitleReserveLines = 1, DateGap = 40f, DateTop = 8f, DateWordsSize = 14f, DateWordsLine = 20f, FactsGap = 6f,
         IdentityGap = 10f, SectionGap = 32f, HeroGap = 56f, TicketsW = 320f, SlabPadX = 24f, SlabPadY = 20f, SlabHeadSize = 26f, SlabHeadLine = 32f,
         OfferRowH = 40f, OfferSize = 15f, LineupAvatar = 64f, LineupRows = false, LineupRowH = 64f, RelatedColumns = 4, RelatedPlate = true, RelatedRowH = 72f,
         RelatedGap = 16f, RelatedDateW = 44f, RelatedDaySize = 32f, RelatedDayLine = 32f, GridMinColumn = 200f, ZoneGap = 32f, ScheduleWide = true,
@@ -485,6 +485,11 @@ public sealed record ZuneConcertLayout : ITierLayoutRecord
 
     /// <summary>See <see cref="TitleSize"/>.</summary>
     public required float TitleLine { get; init; }
+
+    /// <summary>The title lines the identity holds whatever the title (audit B7, V30): the skeleton does not know the words, so the page reserves the
+    /// lines a concert's name commonly takes at this tier, on the skeleton and loaded alike, and the title landing moves nothing under it. Compact's
+    /// and Small's narrow identity wrap most names (two); the wider tiers hold one. A longer name still grows the identity.</summary>
+    public int TitleReserveLines { get; init; } = 1;
 
     /// <summary>The date numeral's size and line.</summary>
     public required float NumeralSize { get; init; }

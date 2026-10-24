@@ -342,7 +342,8 @@ internal static partial class ClassicDetailFrame
             };
         }
         var artists = id.Artists;
-        if (artists is not { Count: > 0 }) return new BoxEl();
+        // No names yet (a head still loading holds its kind's artists line, Detail.FlagsOf): the line's box, empty, so the names fade into it (audit B7).
+        if (artists is not { Count: > 0 }) return new BoxEl { Height = ClassicDetailLayout.AttributionLine };
         var spans = new TextSpan[artists.Count * 2 - 1];
         int at = 0;
         for (int i = 0; i < artists.Count; i++)

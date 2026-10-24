@@ -34,4 +34,26 @@ public static partial class Controls
         Width = width, Height = height, Shrink = 0f,
         Corners = CornerRadius4.All(MathF.Min(height / 2f, Radii.Control)), Fill = Tok.FillSubtleSecondary,
     };
+
+    /// <summary>The floor of a text slot that must hold <paramref name="lines"/> lines whatever text lands in it (audit B7: "skeletons of the
+    /// final size"): that many lines of <paramref name="style"/>'s own type (font, size, line height, stacking), unseen and never hit, as a layer of
+    /// the slot's ZStack. The loading skeleton does not know the words, so a title that may wrap reserves its lines by route kind, on the skeleton
+    /// and on the loaded page alike, and the words landing move nothing. The same element on the skeleton arm, drawn as is (derived, it would be
+    /// bars). Lines past the reserve still grow the slot.</summary>
+    public static Element LineReserve(TextEl style, int lines)
+    {
+        var rows = new Element[Math.Max(1, lines)];
+        for (int i = 0; i < rows.Length; i++)
+            rows[i] = style with
+            {
+                Text = "M", MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.None, MinSize = 0f, Key = null,
+                Width = float.NaN, MinWidth = 0f, MaxWidth = float.NaN, Grow = 0f, Shrink = 0f, Margin = default, AlignSelf = FlexAlign.Auto,
+            };
+        Element reserve = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start, Opacity = 0f, HitTestVisible = false,
+            IsEnabled = false, Children = rows,
+        };
+        return reserve.Skel(reserve);
+    }
 }

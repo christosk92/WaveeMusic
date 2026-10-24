@@ -46,13 +46,21 @@ internal static class ZuneNotifications
         for (int i = 0; i < props.Rows.Count; i++)
             rows.Add(Row(props, props.Rows[i], overlay, layout));
 
-        Element body = rows.Count > 0
+        Element loaded = rows.Count > 0
             ? new ScrollEl
             {
                 MaxHeight = feedMax, ContentSized = true, AutoEdgeFade = true, ScrollKey = "notifications",
                 Content = new BoxEl { Direction = 1, Width = inner, Children = rows.ToArray() },
             }
             : PanelEmpty(props.EmptyText, inner);
+        // A feed still loading is its skeleton at the feed's loaded size (the rows' own shape, derived, filling the feed's height), never a bare
+        // "Loading..." line that the rows then push open (audit B7, V24). One region in every state: the rows landing replace the bars in place.
+        var cell = ctx.Hooks.UseRef<LoadingCell?>(null);
+        var loading = cell.Value ??= new LoadingCell();
+        loading.Now = props.Loading;
+        Element body = new SkelRegionEl(
+            Pending: loading.Read, Failed: s_never, Content: () => loaded, ShimmerSource: () => FeedShimmer(props.Now, inner, feedMax, layout),
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
 
         var pending = props.PendingEdits;
         return new BoxEl
@@ -66,6 +74,35 @@ internal static class ZuneNotifications
                 Embed.Comp(() => new PendingSyncRow(pending)) with { Key = "zn:pending-sync" },
                 body,
             ],
+        };
+    }
+
+    /// <summary>The feed's pending flag for its region: one stable reader per mounted panel, written each render.</summary>
+    sealed class LoadingCell
+    {
+        public bool Now;
+        public readonly Func<bool> Read;
+        public LoadingCell() => Read = () => Now;
+    }
+
+    static readonly Func<bool> s_never = static () => false;
+
+    /// <summary>The loading feed's shimmer SOURCE: release rows (the common row: art, title, line, age) over a seed notification, as many as the feed's
+    /// height holds, in the feed's own width. Never mounted: the region derives its bars from it.</summary>
+    static Element FeedShimmer(long now, float inner, float feedMax, ZuneOverlayLayout layout)
+    {
+        float pitch = layout.RowMinHeight + 2f * ZuneOverlayRules.RowPadY;
+        int count = Math.Max(1, (int)MathF.Ceiling(feedMax / MathF.Max(1f, pitch)));
+        var rows = new Element[count];
+        for (int i = 0; i < count; i++)
+        {
+            var seed = new Notification("seed:" + i, now, false, NotifyCategory.NewRelease, Title: "Release title", Body: "Artist name");
+            rows[i] = Card("ntf:seed:" + i, ReleaseRow(seed), false, null, layout);
+        }
+        return new ScrollEl
+        {
+            MaxHeight = feedMax, ContentSized = true,
+            Content = new BoxEl { Direction = 1, Width = inner, Children = rows },
         };
     }
 
