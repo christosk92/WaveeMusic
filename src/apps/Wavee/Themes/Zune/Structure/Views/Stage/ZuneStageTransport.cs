@@ -164,12 +164,16 @@ internal static class ZuneStageTransport
             Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Height = s.AsideH, Gap = s.RightGap,
             Children = [kit.Mute(), kit.Volume(), kit.Device()],
         };
+        // the "next" card over the aside, on its right edge (Z-NowPlaying-Card)
+        float k = G.NextScale(s.SourceSize), nextH = G.NextThumb * k;
+        var next = new ZuneRect(a.Aside.X, a.Aside.Y - G.NextAboveAside * k - nextH, a.Aside.W, nextH);
         return Stage.Layer with
         {
             Children =
             [
                 Placed(kit, a.Source, kit.Source(), "stage:transport:source"),
                 Placed(kit, a.Controls, controls, "stage:transport:controls"),
+                Placed(kit, next, new BoxEl { Direction = 0, Justify = FlexJustify.End, Children = [kit.Next(ZuneStageNext.Form.Card)] }, "stage:transport:next"),
                 Placed(kit, a.Aside, aside, "stage:transport:aside"),
             ],
         };
@@ -197,9 +201,11 @@ internal static class ZuneStageTransport
                 Children = [kit.Mute(), kit.Volume(), new BoxEl { Grow = 1f, MinWidth = 0f }, kit.Device(), kit.More()],
             });
         var controls = new BoxEl { Direction = 1, Padding = new Edges4(0f, seekTop, 0f, 0f), Children = rows.ToArray() };
+        // "playing from … · next …" on the column's top line (the column's lyrics take the room of the board's next row)
+        var source = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [kit.Source(), kit.Next(ZuneStageNext.Form.Inline)] };
         var kids = new List<Element>(3)
         {
-            Placed(kit, a.Source, kit.Source(), "stage:transport:source"),
+            Placed(kit, a.Source, source, "stage:transport:source"),
             Placed(kit, a.Controls, controls, "stage:transport:controls"),
         };
         if (!volumeRow)
@@ -240,6 +246,8 @@ internal static class ZuneStageTransport
             Children = [kit.Heart(), kit.Volume(), kit.Device(), kit.More()],
         };
         var left = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f, Children = [kit.Source()] };
+        // the foot's centre: "next · Get Lucky · Daft Punk" between its two sides (Z-NowPlaying-Centered)
+        var centre = new ZuneRect(a.Source.Right, a.Foot.Y, MathF.Max(0f, a.Aside.X - a.Source.Right), a.Foot.H);
         return Stage.Layer with
         {
             Children =
@@ -247,6 +255,7 @@ internal static class ZuneStageTransport
                 foot,
                 Placed(kit, a.Controls, controls, "stage:transport:controls"),
                 Placed(kit, a.Source, left, "stage:transport:source"),
+                Placed(kit, centre, new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [kit.Next(ZuneStageNext.Form.Line)] }, "stage:transport:next"),
                 Placed(kit, a.Aside, right, "stage:transport:aside"),
             ],
         };
@@ -360,6 +369,11 @@ internal static class ZuneStageTransport
             };
         }
 
+        /// <summary>The track up next in <paramref name="form"/>: its own component, so a queue change re-renders it alone. Nothing without a next track.</summary>
+        public Element Next(ZuneStageNext.Form form) => props.Next is { } next
+            ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine), static () => new ZuneStageNext())
+            : new BoxEl { HitTestVisible = false };
+
         /// <summary>shuffle · previous · the disc · next · repeat, the gap apart.</summary>
         public Element Centre(float disc) => new BoxEl
         {
@@ -447,6 +461,67 @@ internal static class ZuneStageTransport
         /// <summary>Shuffle / repeat: the accent INK while latched, never a plate.</summary>
         BoxEl Latch(string glyph, Action onClick, bool enabled, bool latched) => Glyph(glyph, onClick, enabled, latched ? set.Text : Ink.InkSecondary);
     }
+}
+
+/// <summary>The track up next (contract 1.57): its own component, so the queue moving re-renders it alone. Three forms from the boards: the
+/// Centered foot's line ("next · Get Lucky · Daft Punk", Z-NowPlaying-Centered), the Card arrangement's card (the thumb flush in a flat plate,
+/// "next" over the line, Z-NowPlaying-Card) and the Large art column's tail to its "playing from …" line. Nothing up next: nothing drawn.</summary>
+internal sealed class ZuneStageNext : Component
+{
+    public enum Form : byte { Line, Card, Inline }
+
+    public sealed record Props(Func<StageNextFacts> Next, Form Shape, float Size, float Line);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var n = p.Next();
+        if (n.IsEmpty) return new BoxEl { HitTestVisible = false };
+        string label = Loc.Get(Strings.Theme.Zune.Stage.Next);
+        if (p.Shape == Form.Card)
+        {
+            float k = G.NextScale(p.Size), thumb = G.NextThumb * k;
+            return new BoxEl
+            {
+                Height = thumb, Direction = 0, AlignItems = FlexAlign.Center, Gap = G.NextTextGap * k, MinWidth = 0f, Shrink = 1f,
+                Padding = new Edges4(0f, 0f, G.NextPadR * k, 0f), Fill = R.Layer.PlayerBar, Corners = R.Shape.All(ShapeRole.Card), HitTestVisible = false,
+                Children =
+                [
+                    Controls.Artwork(n.ArtUrl, thumb, thumb, 0f, decodePx: G.CoverDecodeSmall),
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f, Shrink = 1f,
+                        Children =
+                        [
+                            new TextEl(label) { Size = G.NextEyebrowSize * k, LineHeight = G.NextEyebrowLine * k, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 },
+                            Words(n, p.Size, p.Line),
+                        ],
+                    },
+                ],
+            };
+        }
+        var kids = new List<Element>(4);
+        if (p.Shape == Form.Inline) kids.Add(Dot(p));
+        kids.Add(new TextEl(label) { Size = p.Size, LineHeight = p.Line, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Shrink = 0f });
+        kids.Add(Dot(p));
+        kids.Add(Words(n, p.Size, p.Line));
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, HitTestVisible = false, Children = kids.ToArray() };
+    }
+
+    static TextEl Dot(Props p) => new(" · ") { Size = p.Size, LineHeight = p.Line, Color = Ink.InkTertiary, Shrink = 0f };
+
+    /// <summary>"Get Lucky · Daft Punk": the title in the ink, the artists in the secondary ink, one line that gives way at the artists first.</summary>
+    static Element Words(StageNextFacts n, float size, float line) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
+        Children = n.Artists is { Length: > 0 } artists
+            ?
+            [
+                new TextEl(n.Title!) { Size = size, LineHeight = line, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                new TextEl(" · " + artists) { Size = size, LineHeight = line, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 2f },
+            ]
+            : [new TextEl(n.Title!) { Size = size, LineHeight = line, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+    };
 }
 
 /// <summary>The mute glyph: its own component, so a mute re-renders it alone.</summary>

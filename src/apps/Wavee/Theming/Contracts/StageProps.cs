@@ -184,6 +184,10 @@ public sealed record StageTransportProps
     /// <summary>Everything the card draws that is playback state; the call reads the signals, so the card re-renders on them.</summary>
     public required Func<StageTransportFacts> Facts { get; init; }
 
+    /// <summary>The track after this one (the boards' "next · Get Lucky · Daft Punk"): read in the render that draws it, so a queue change
+    /// re-renders that part. Empty when nothing is up next. Null: a core with nothing to hand. Appended (contract 1.57, audit B3).</summary>
+    public Func<StageNextFacts>? Next { get; init; }
+
     /// <summary>TogglePlay, Previous, Next, ToggleShuffle, CycleRepeat.</summary>
     public required IPlayerVerbs Verbs { get; init; }
 
@@ -231,6 +235,16 @@ public readonly record struct StageTransportFacts(bool Playing, bool PrimaryEnab
 
 /// <summary>The output device button's face.</summary>
 public readonly record struct StageDeviceFacts(string Glyph, string Name);
+
+/// <summary>The track up next on the stage (contract 1.57).</summary>
+/// <param name="Title">Its title; empty: nothing is up next.</param>
+/// <param name="Artists">Its billed artists, ", " joined.</param>
+/// <param name="ArtUrl">Its cover, or null.</param>
+public readonly record struct StageNextFacts(string? Title, string? Artists, string? ArtUrl)
+{
+    /// <summary>Nothing is up next (draw no "next" part).</summary>
+    public bool IsEmpty => Title is not { Length: > 0 };
+}
 
 /// <summary>The props of <see cref="ViewKeys.StageGallery"/>. The pane's size is the layout's (<c>Stage.Layout.GalleryW/GalleryH</c>).</summary>
 public sealed record StageGalleryProps
