@@ -977,17 +977,17 @@ public readonly partial struct User
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
             if (EpisodesFirst && PodcastsMode.Peek() == 1) PodcastsMode.Value = 0;   // a show picked in the list is the body again
-            if (Collapsed) _depth.Value = 1;
         }
 
-        /// <summary>A click or Enter on a navigator item (<c>InvokeOnTap</c>: a click on the album already selected acts too; arrows and Space only move and
-        /// select). The grouped albums page without a songs pane (Small, or a split page under the pane's rung) opens the album's own page: a selection that
-        /// arrows move must never navigate.</summary>
+        /// <summary>A click or Enter on a navigator item (<c>InvokeOnTap</c>: a click on the item already selected acts too; arrows and Space only move and
+        /// select, after the selection-changed pick above). The one-column drill-in drills to the picked item's reader; the grouped albums page without a songs
+        /// pane (Small, or a split page under the pane's rung) opens the album's own page. A selection that arrows move never navigates.</summary>
         void OnNavInvoked(int flat)
         {
-            if (Collapsed || !GroupPaneHidden) return;
             int row = RowOfFlat(flat);
             if (row < 0 || row >= _sortedCount) return;
+            if (Collapsed) { _depth.Value = 1; return; }
+            if (!GroupPaneHidden) return;
             var album = new Album(_sorted[row]);
             if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
         }
