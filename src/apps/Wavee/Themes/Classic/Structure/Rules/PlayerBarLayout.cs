@@ -33,6 +33,11 @@ internal static class ClassicPlayerBarLayout
         Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
     };
 
+    /// <summary>The seek row the full form adds on the 528 widen: <see cref="FormMotion"/>, its fade-in held until the centre column has glided
+    /// in from the mini bar's right end. The row is laid out in that column at its final width, so while the column still travelled it rode the
+    /// glide and its tail (the rail and the remaining time) overlapped the right cluster fading in beside it for two or three frames (audit B6b).</summary>
+    public static readonly LayoutTransition SeekFormMotion = FormMotion with { Enter = new EnterExit(Opacity: 0f, Active: true, DelayMs: Design.Motion.Fast) };
+
     /// <summary>A line entering/leaving a column: fade + size 0 → natural, so neighbours SLIDE over (Reflow is not
     /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out. ONLY the remote-device line and the
     /// two time labels carry it: every command slot is fixed by the level and lights its face instead (<see cref="FaceMotion"/>),

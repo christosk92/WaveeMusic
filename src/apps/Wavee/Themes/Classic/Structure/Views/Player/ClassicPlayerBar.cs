@@ -102,6 +102,7 @@ internal static partial class ClassicPlayerBar
         // What the form adds on a crossing fades in; the bar's first frame (a mount) does not replay it.
         var shown = rc.UseRef(false);
         LayoutTransition formMotion = shown.Value ? ClassicPlayerBarLayout.FormMotion : ClassicPlayerBarLayout.MoveMotion;
+        LayoutTransition seekFormMotion = shown.Value ? ClassicPlayerBarLayout.SeekFormMotion : ClassicPlayerBarLayout.MoveMotion;
         shown.Value = true;
 
         // ── LEFT — the now-playing identity ──────────────────────────────────────────────────────────────────────
@@ -373,7 +374,7 @@ internal static partial class ClassicPlayerBar
             {
                 Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(m.ClusterGap, 0f, 0f, 0f),
-                Gap = m.SeekGap, Animate = formMotion, Children = seekKids.ToArray(),
+                Gap = m.SeekGap, Animate = seekFormMotion, Children = seekKids.ToArray(),
             };
             var kids = new List<Element>(5);
             if (huge)
