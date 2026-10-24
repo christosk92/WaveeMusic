@@ -729,6 +729,7 @@ public static partial class Diagnostics
                 MirrorEdges = mirror,
                 Playing = Playback.PhaseSignal.Peek().ToString().ToLowerInvariant(),
                 PlayingTitle = PlayingTitle(),
+                PlayingFromContext = PlayingFromContext(),
                 ChromeHeld = InspectSwitches.HoverChromeAtRest,
                 Reserved = Video.FloatingSurfaceReserve.Peek(),
                 ExitingText = exiting,
@@ -760,6 +761,14 @@ public static partial class Diagnostics
                 if (text.Length > 0 && !IsGlyph(text) && r.W > 0f && r.H > 0f) into.Add(new InspectLint.ExitingRun(key, r, text, Math.Clamp(opacity * paint.TextColor.A, 0f, 1f)));
             }
             for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) CollectExiting(scene, strings, c, opacity, key, origin, into);
+        }
+
+        /// <summary>The player plays from a context the stage's source line names (the same read <c>Stage.Frame</c> makes).</summary>
+        static bool PlayingFromContext()
+        {
+            EntityId context = Playback.ContextUri.Peek();
+            Queue.ContextWire wire = Playback.ContextLabel.Peek();
+            return Queue.ContextName(context, in wire) is { Length: > 0 };
         }
 
         /// <summary>The title of what the player holds ("" when nothing).</summary>

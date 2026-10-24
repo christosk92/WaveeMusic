@@ -63,6 +63,10 @@ public sealed record StageArtistNameProps
     /// <summary>The name of the artist whose photo shows (the first billed artist while the overview is pending), "" when unknown. The call
     /// subscribes to the entity tables it reads.</summary>
     public required Func<string> Name { get; init; }
+
+    /// <summary>The Artist pane's facts and verbs for the layout's own "about the artist" block (Z-NowPlaying-Artist: the bio and its word
+    /// actions beside the name); null: the theme draws none. (1.63, audit B3bc)</summary>
+    public StageArtistPaneProps? Pane { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StageIdentity"/>: the title, the "Artist · Album" line and the chips are facts read inside

@@ -54,17 +54,18 @@ internal static class WinUiHomeRecents
         }, layout, firstWidth: MathF.Max(layout.Recents.MinCol, 160f) * layout.Recents.MaxCols + layout.RecentsGap * (layout.Recents.MaxCols - 1));
     }
 
-    /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid at its measured width. The ONE builder both the
-    /// template and the skeleton call.</summary>
+    /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid when its measured width changes its COLUMN count,
+    /// the only thing the grid reads from the width (the grid fits its own tracks): a width that keeps the count re-lays the tiles out and
+    /// re-renders nothing (audit B3bc). The ONE builder both the template and the skeleton call.</summary>
     static Element Tree(HomeRecentsProps p, WinUiHomeLayout layout, float firstWidth)
-        => Responsive.Of("home:recents", w => Grid(w, p, layout), fallback: firstWidth);
+        => Responsive.Of("home:recents", w => GridEl.AutoFillColumnCount(w, layout.Recents.Floor, layout.RecentsGap, layout.Recents.MaxCols),
+                         cols => Grid(cols, p, layout), fallback: firstWidth);
 
-    /// <summary>The grid at one measured width: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
-    static Element Grid(float w, HomeRecentsProps p, WinUiHomeLayout layout)
+    /// <summary>The grid at <paramref name="cols"/> columns: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
+    static Element Grid(int cols, HomeRecentsProps p, WinUiHomeLayout layout)
     {
         var cells = p.Cells;
         var band = layout.Recents;
-        int cols = GridEl.AutoFillColumnCount(w, band.Floor, layout.RecentsGap, band.MaxCols);
         int n = layout.RecentsCells(cols, cells.Count);
         var rows = new Element[n + 1];
         for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
@@ -103,7 +104,7 @@ internal static class WinUiHomeRecents
                 new BoxEl
                 {
                     Shrink = 0f, Visible = Prop.Of(() => Controls.RelatesNow(uri)),
-                    Children = [Controls.Equalizer(p.Playing, Tok.AccentDefault, WinUiHomeRules.EqualizerH)],
+                    Children = [Controls.Equalizer(Controls.PlayingWhenRelates(p.Playing, uri), Tok.AccentDefault, WinUiHomeRules.EqualizerH)],
                 }.Skeletonized(false),
                 WinUiHomeZones.Meta(cell.Detail) with { Shrink = 1f },
             ],

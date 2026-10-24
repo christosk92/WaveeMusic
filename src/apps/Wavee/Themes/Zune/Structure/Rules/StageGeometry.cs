@@ -106,6 +106,14 @@ public static partial class ZuneStageGeometry
     /// and 16 from the plate's right edge, 12 over the aside) at the Standard source type; it scales with the voice's source type.</summary>
     public const float NextThumb = 48f, NextTextGap = 12f, NextPadR = 16f, NextAboveAside = 12f, NextEyebrowSize = 11f, NextEyebrowLine = 14f;
 
+    /// <summary>The Large art column's "next" row under its "playing from …" line (Z-NowPlaying-LargeArt: the thumb, "next" over the words, no
+    /// plate), this far under the line. Reserved whether or not anything is up next, so the lyrics pane never moves for the queue.</summary>
+    public const float NextRowGap = 16f;
+
+    /// <summary>The Compact stack's "up next" bar across the stage's foot (Z-NowPlaying-Compact): 64 tall, the 40 thumb at the gutter, "up next" over
+    /// "Get Lucky · Daft Punk" 12 from it, the chevron at the right gutter; the stack's controls end this far over it.</summary>
+    public const float NextBarH = 64f, NextBarThumb = 40f, NextBarGap = 16f, NextBarChevron = 12f, NextBarWordSize = 14f, NextBarWordLine = 20f;
+
     /// <summary>The "next" card's scale in a voice: its source type over the Standard one.</summary>
     public static float NextScale(float sourceSize) => sourceSize / SourceSize;
 

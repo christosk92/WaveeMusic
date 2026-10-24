@@ -175,6 +175,9 @@
 // `PageCrumb.Word` (a crumb that is the core's word, not a name: a theme may re-case it); `StyleKeys.LibraryPlaylistHead` with `LibraryPlaylistHeadStyle` /
 // `LibraryPlaylistHeadArgs` (the library playlists reader's head as a theme draws it); `AlbumTrailStackProps.Name` (the name a stack's title carries);
 // `BrowseCategoryProps.Color` / `.Parent` (a category page's own colour and the page it was opened from).
+// 1.63 (audit B3bc): `SurfaceStackBodyTemplate` takes the shelf card's live width (`IReadSignal<float>? liveWidth`): a shelf body binds its
+// sizes to it, so a card width change re-lays the card out instead of re-rendering it; the stack's label block is width-free.
+// `StageArtistNameProps.Pane` (the Artist layout's "about the artist" block reads the Artist pane's facts and verbs).
 // 1.66 (audit B11): `PlayerCredits.Line(separator)` (the credits line as plain words: what the bar's credits marquee restarts on and shows as its
 // tooltip). `StageIdentityProps.Marquee` stays as it is: the marquee control behind it now rests at the start and passes a bounded number of times.
 // 1.68 (audit B5b): `DevicePickerEntry.Word` (the picker's "System default" is the core's word, not a device's name: a theme may re-case it);

@@ -880,12 +880,12 @@ public static partial class Diagnostics
             return true;
         }
 
-        /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off`: the fullscreen stage's preferences, set
-        /// before the mount (the stage reads them as it opens: `key f11` then opens it on that mode, layout and gallery, with the first-run tip already seen).</summary>
+        /// <summary>`mount stage=lyrics|visualizer|queue|artist layout=card|large|centered|artist gallery=on|off heroLyrics=on|off`: the fullscreen stage's
+        /// preferences (heroLyrics: the Artist layout's "lyrics over the photo"), set before the mount (the stage reads them as it opens: `key f11` then opens it on that mode, layout and gallery, with the first-run tip already seen).</summary>
         static bool StagePrefs(Inspect.Args a, out string error)
         {
             error = "";
-            if (!(a.Has("stage") || a.Has("layout") || a.Has("gallery"))) return true;
+            if (!(a.Has("stage") || a.Has("layout") || a.Has("gallery") || a.Has("heroLyrics"))) return true;
             if (a.Has("stage"))
             {
                 int mode = a.Str("stage").ToLowerInvariant() switch { "lyrics" => 0, "visualizer" => 1, "queue" => 2, "artist" => 3, _ => -1 };
@@ -899,6 +899,7 @@ public static partial class Diagnostics
                 Prefs.Stage.SetLayout(layout);
             }
             if (a.Has("gallery")) Prefs.Stage.SetGalleryOpen(a.Str("gallery").ToLowerInvariant() is "on" or "true" or "1");
+            if (a.Has("heroLyrics")) Prefs.Stage.SetHeroLyrics(a.Str("heroLyrics").ToLowerInvariant() is "on" or "true" or "1");
             Prefs.Stage.SetTipSeen();
             return true;
         }

@@ -52,13 +52,18 @@ public static partial class Controls
     }
 
     /// <summary>The surface's re-pushed props: the data (<see cref="CardData"/>'s data-only equality), the shape (a value)
-    /// and the shelf's card width (NaN for every fluid/row shape — <c>float.Equals</c>, so NaN equals NaN). No focus
-    /// signal: the host learns slot mode from context. Public only so the equality rule can be pinned by a fact.</summary>
+    /// and the shelf's card width (NaN for every fluid/row shape). No focus signal: the host learns slot mode from context.
+    /// Public only so the equality rule can be pinned by a fact.
+    /// <para>The render gate compares a shelf width by KIND only (fixed or fluid): the value reaches the drawn card through
+    /// the host's live width signal, which the shelf body binds its sizes to, so a new card width (every tick of a
+    /// docking pane's reflow, a window drag) re-lays the card out and re-renders nothing (audit B3bc). A seed face is
+    /// built from the value itself, so a seed still re-renders on it.</para></summary>
     public sealed record SurfaceProps(CardData Data, SurfaceShape Shape, float Width = float.NaN)
     {
         public bool Equals(SurfaceProps? o)
             => o is not null && (ReferenceEquals(this, o)
-               || (Shape.Equals(o.Shape) && Width.Equals(o.Width) && Data.Equals(o.Data)));
+               || (Shape.Equals(o.Shape) && float.IsNaN(Width) == float.IsNaN(o.Width)
+                   && (!Data.IsSeed || Width.Equals(o.Width)) && Data.Equals(o.Data)));
 
         public override int GetHashCode() => HashCode.Combine(Data, Shape, Width);
     }
@@ -75,6 +80,8 @@ public static partial class Controls
     {
         SurfaceProps? _latest;
         readonly Signal<SurfaceProps?> _props = new(null);
+        // The shelf card's width, written on every re-push: the shelf body and the gutter bind their sizes to it.
+        readonly Signal<float> _width = new(float.NaN);
         readonly Signal<bool> _hot = new(false);
         bool _pointerIn, _selfFocus, _innerFocus;
         // The label block / text column, built once per GATED props instance: the hot edge re-renders this host to mount
@@ -109,6 +116,7 @@ public static partial class Controls
         public void ApplyProps(object props)
         {
             _latest = (SurfaceProps)props;
+            if (!_latest.Width.Equals(_width.Peek())) _width.Value = _latest.Width;
             _props.Value = _latest;
         }
 
@@ -147,11 +155,12 @@ public static partial class Controls
             if (!ReferenceEquals(_textFor, p))
             {
                 _textFor = p;
-                _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, SurfaceParts.InnerOf(p.Width));
+                // The stack's label block is width-free (its column sizes it), so a shelf's width change keeps it and its trim tooltip.
+                _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, float.NaN);
             }
             Element body = s.IsRow
                 ? style.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
-                : style.StackBody(d, in s, p.Width, overlayOn, chrome, hasMenu, play, _text);
+                : style.StackBody(d, in s, _width.Peek(), float.IsNaN(p.Width) ? null : _width, overlayOn, chrome, hasMenu, play, _text);
             // FOCUS WITHIN, with no scene walk: the dispatcher fires OnFocusChanged on an ancestor as a ROUTED boundary
             // event (focus entering/leaving its SUBTREE), so this NON-focusable wrapper hears a Tab from the shell onto
             // the surface's own FAB as an ENTRY — the very move the shell itself reads as a loss. Layout-transparent (a
@@ -184,7 +193,7 @@ public static partial class Controls
             if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
             if (hasMenu) shell = ContextSheets.Attach(shell, overlay!, _menu);
-            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, p.Width);
+            Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, _width);
             return SurfaceRules.TitleTip(trimmed: false, hasLabels: s.Labels) ? LabelTip(root, d.Title) : root;
         }
 

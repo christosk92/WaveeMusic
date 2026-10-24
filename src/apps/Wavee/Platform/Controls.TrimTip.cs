@@ -114,7 +114,6 @@ public static partial class Controls
     {
         TrimTipProps? _p;
         readonly Signal<TrimTipProps?> _props = new(null);
-        TrimTipProps? _measuredFor; float _measuredW = float.NaN; bool _trimmed;
         string? _memKey;   // the keyed-measurement role (E17c), composed once from the first text: a remount starts measured
 
         public void ApplyProps(object props) { _p = (TrimTipProps)props; _props.Value = _p; }
@@ -123,15 +122,18 @@ public static partial class Controls
         {
             _ = _props.Value;
             _memKey ??= "trim:" + _p!.Text;
-            float w = UseMeasuredWidth(_memKey, 4f).Value;              // written during layout → this re-renders next frame
-            var p = _p!;
-            if (w > 0f && (w != _measuredW || !p.SameMeasure(_measuredFor)))
+            // The measured width (written during layout) feeds a MEMO of the one bit the tree reads: a width that keeps the
+            // run trimmed (or fitting) re-renders nothing, so a reflow tick that narrows every card re-lays them out and only
+            // a title that starts or stops overflowing re-renders (audit B3bc: 88 hosts per tick of a Classic dock).
+            var width = UseMeasuredWidth(_memKey, 4f);
+            var trimmed = UseComputed(() =>
             {
-                _measuredFor = p; _measuredW = w;
-                _trimmed = Measure(p, w, Context.Scene?.Strings);
-            }
+                float w = width.Value;
+                return _props.Value is { } q && w > 0f && Measure(q, w, Context.Scene?.Strings);
+            });
+            var p = _p!;
             // Not measured yet (w == 0) or fits: a null tip mounts no wiring and leaves the target alone.
-            string? tip = w > 0f && _trimmed ? p.Text : null;
+            string? tip = trimmed.Value ? p.Text : null;
             return ToolTip.Wrap(p.Target, (Prop<string?>)tip);
         }
 

@@ -673,6 +673,19 @@ public static partial class Controls
         public bool Peek() => value;
     }
 
+    /// <summary>The <c>playing</c> input of a meter that a card shows only while it relates to what is playing (a bound
+    /// <c>Visible = RelatesNow(uri)</c>): playing AND relating, so the meter moves only while it can be seen. Fed the bare
+    /// transport signal, every card's hidden meter looped whenever anything played (audit B3bc: the Recents tiles in
+    /// <c>loops</c> on Home). Reading <see cref="IReadSignal{T}.Value"/> subscribes the meter to both edges, so a track
+    /// change re-renders only the meters whose relation flipped.</summary>
+    public static IReadSignal<bool> PlayingWhenRelates(IReadSignal<bool> playing, string uri) => new RelatesPlaying(playing, uri);
+
+    sealed class RelatesPlaying(IReadSignal<bool> playing, string uri) : IReadSignal<bool>
+    {
+        public bool Value => playing.Value && RelatesNow(uri);
+        public bool Peek() => Reactive.Untrack(() => Value);
+    }
+
     sealed record EqHostProps(IReadSignal<bool> Playing, Func<ColorF> Color, float Height, IReadSignal<bool>? Paused);
 
     /// <summary>What one bar's ScaleY track does: settle at <see cref="EqBarProps.Rest"/> (not playing, or reduced motion's

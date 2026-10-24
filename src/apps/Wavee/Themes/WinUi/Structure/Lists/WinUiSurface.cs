@@ -132,8 +132,8 @@ internal static class WinUiSurface
     /// <paramref name="overlay"/> mounts the now-playing overlay (hot, relating, or a video at rest); the corner "…" mounts
     /// with <paramref name="chrome"/> when the shape and the data both have one (<see cref="SurfaceRules.ShowsMenuCorner"/>).
     /// <paramref name="labels"/> is the host's cached label block (built here when null).</summary>
-    static Element StackBody(Controls.CardData d, in SurfaceShape s, float width, bool overlay, bool chrome, bool hasMenu,
-                                    Action? onPlay, Element? labels = null)
+    static Element StackBody(Controls.CardData d, in SurfaceShape s, float width, IReadSignal<float>? liveWidth, bool overlay, bool chrome,
+                                    bool hasMenu, Action? onPlay, Element? labels = null)
     {
         // A circle only on a square cover (`CoverShape`): the radius, the clip and the labels all read this one bit.
         bool circular = Controls.CoverShape.IsCircular(d.Circular, d.CoverAspect);
@@ -164,19 +164,20 @@ internal static class WinUiSurface
             };
         }
 
-        float inner = SurfaceParts.InnerOf(width, s.Flush);
         float padX = SurfaceGeometry.PlateInsetX(s.Flush);   // 0 on a Flush shape: the cover meets the cell's edges (the section title's line)
+        // The cover's box is BOUND to the host's live card width (audit B3bc): a width change re-lays the card out, nothing
+        // re-renders. The art fills it (a layer of no size), so a circle is the full radius, not half a width.
+        var (coverW, coverH) = SurfaceParts.ShelfCover(width, liveWidth, padX, d.CoverAspect);
         // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
         bool square = d.CoverAspect == 1f;
-        float coverH = SurfaceGeometry.CoverHeight(inner, d.CoverAspect);
         Element art = d.CoverOverride
-            ?? Controls.Artwork(d.CoverUrl, inner, coverH, circular ? inner / 2f : Radii.Card,
+            ?? Controls.Artwork(d.CoverUrl, float.NaN, float.NaN, circular ? Radii.Full : Radii.Card,
                                 decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx);
         return new BoxEl
         {
             Direction = 1, Gap = SurfaceGeometry.ShelfPlatePad, Grow = 1f,
             Padding = new Edges4(padX, SurfaceGeometry.ShelfPlatePad, padX, SurfaceGeometry.ShelfPlatePad),
-            Children = [Controls.CardCover(art, inner, coverH, circular, fab, corner), labels ?? Labels(d, in s, inner)],
+            Children = [Controls.CardCover(art, coverW, coverH, d.CoverAspect, circular, fab, corner), labels ?? Labels(d, in s, float.NaN)],
         };
     }
 

@@ -36,11 +36,17 @@ internal static class ZuneStageGallery
         // the docked column starts under the tier's head (taller than the allocator's 48 bar at Huge 4K and on a Compact window); the sheet
         // rises from the foot and keeps its height
         float drop = layout.Aspect == Stage.Aspect.Portrait ? 0f : ZuneStageTiers.StageOf(in tiers).Drop;
+        // the drop is AIR, a spacer that eases when a crossing changes the head (W1920: 56 -> 48), so the tiles ride it instead of snapping
+        // (audit B3bc): padding cannot ease
         return new BoxEl
         {
-            Margin = new Edges4(0f, drop, 0f, 0f),
+            Direction = 1,
             OnHoverMove = _ => stage.OverControls(true), OnPointerExit = () => stage.OverControls(false),
-            Children = [Embed.Comp(new ZuneGalleryPane.Props(layout.GalleryW, MathF.Max(0f, layout.GalleryH - drop), props), static () => new ZuneGalleryPane())],
+            Children =
+            [
+                new BoxEl { Height = drop, Shrink = 0f, HitTestVisible = false, Layout = ZuneMotion.HeightResize },
+                Embed.Comp(new ZuneGalleryPane.Props(layout.GalleryW, MathF.Max(0f, layout.GalleryH - drop), props), static () => new ZuneGalleryPane()),
+            ],
         };
     }
 }
