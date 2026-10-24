@@ -449,6 +449,26 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
+### `setting {tab?, id?, value?}`
+
+The app's own settings (a theme's options are `option`). `setting` lists every Settings row as data (`SettingsDoc`): `{tab, section,
+id, kind, value, writer, readOnly?, enabled?, reason?}`; `tab=appearance` lists one tab's. `setting id=<row>` reads one row;
+`setting id=<row> value=<v>` sets it through the row's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a
+slider's number, a choice's, a segmented row's or a picker's index; an action runs with no value), and bumps the page epoch when the
+writer asks the page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a
+click. With nothing mounted the store keeps it for the next mount. A mount does NOT put app settings back: use a fresh server per
+configuration. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
+
+```text
+setting id=lyricsBlur value=0        # the lyrics blur off (0..100)
+setting id=marquee value=false
+setting tab=appearance               # the tab's rows with their values
+```
+
+The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's areas, WinUI's tabs; Zune's section list is
+`zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
+arg=appearance` opens it directly).
+
 ### `find {key | prefix, visibleOnly?, depth?}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is

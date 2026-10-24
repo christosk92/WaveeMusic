@@ -513,6 +513,13 @@ public static partial class Diagnostics
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
                 ], s_settleArgs),
             },
+            new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
+            {
+                Positional = ["id", "value"],
+                Args = Join([Arg("tab", ArgType.String, "only this tab's rows (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); needed when an id is on several tabs"),
+                             Arg("id", ArgType.String, "the row (any case)"),
+                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
