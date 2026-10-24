@@ -401,6 +401,9 @@ public static class ZuneFrameRules
     /// soft edges: the left one lies over the empty gutter (a word sliding out fades there; the lead never stands under it), the right one, drawn
     /// only while the words run past the strip, over the strip's last <see cref="PanelEdgeFade"/>, so a trailing word reads until it leaves.</summary>
     public const string PanelPivotsKey = "zune-panel-pivots";
+
+    /// <summary>The panel column's docked video card and its body slot (the column reorders the card and the head; the keys keep their nodes).</summary>
+    public const string PanelCardKey = "zune-panel-card", PanelBodyKey = "zune-panel-body";
     public const float PanelEdgeFade = 24f;
 
     /// <summary>A pivot word that moved less than this did not move (half a DIP); the radix that folds the words' order into one key.</summary>

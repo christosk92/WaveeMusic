@@ -40,6 +40,7 @@ internal static partial class ZuneLibraryArtistReader
         public Func<RowScope, Element>? ItemAt, DotAt;
         public Element? SubRail;
         public Signal<int>? RailScope, RailSort;
+        public bool RailNarrow;
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.LibraryArtistReader"/>.</summary>
@@ -193,6 +194,9 @@ internal static partial class ZuneLibraryArtistReader
         {
             Color = Tok.TextPrimary, HoverColor = Tok.TextSecondary, BrushTransitionMs = Design.Motion.Faster,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, LineHeight = Artist.ReaderShape.NameLine,
+            // The shape's exact line (Zune's compact title is the 40 voice, whose natural line is taller than the 40 the column states): two lines stand in the
+            // stated column and never run into the "in your library" line under them.
+            LineStacking = LineStacking.BlockLineHeight,
             Wrap = stacked ? TextWrap.Wrap : TextWrap.NoWrap,
             MaxLines = stacked ? Artist.ReaderShape.NameLines : 1,
         };
@@ -226,24 +230,28 @@ internal static partial class ZuneLibraryArtistReader
 
     // ── the sub-rail ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>ITEM 1, cached per (scope, sort) pair of signal instances. Built ONCE: every state inside a word is a bind, and the release total rides a <see cref="Prop{T}"/>,
-    /// so the facets answering re-fires one text bind rather than re-rendering the rail.
+    /// <summary>ITEM 1, cached per (scope, sort) pair of signal instances and arm. Built ONCE per arm: every state inside a word is a bind, and the release total rides a
+    /// <see cref="Prop{T}"/>, so the facets answering re-fires one text bind rather than re-rendering the rail. The narrow arm is a list mount input, so its flip
+    /// re-asks this slot.
     /// <para>It is a plain Element and NOT a component, which is the one structural thing that makes the pin work: a sticky scroll effect with no named scope is a
     /// containing-block-clamped <c>position:sticky</c> against the node's IMMEDIATE parent, and a component anchor is layout-TRANSPARENT.</para></summary>
     static Element Rail(Holder h)
     {
         var p = h.Props;
         if (p.Scope?.Invoke() is not { } scope || p.Sort?.Invoke() is not { } sort) return new BoxEl { Height = Artist.ReaderShape.SubRailH };
-        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail;
+        bool narrow = p.Host.NarrowNow();
+        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort) && h.RailNarrow == narrow) return h.SubRail;
         h.RailScope = scope;
         h.RailSort = sort;
-        return h.SubRail = SubRail(p.Host, scope, sort);
+        h.RailNarrow = narrow;
+        return h.SubRail = SubRail(p.Host, scope, sort, narrow);
     }
 
     /// <summary>The two word groups, scope (in your library · all releases · N), a spacer, sort (newest · oldest · a-z), over the page's own Signal INSTANCES, PINNED at the
     /// viewport top. A plain band: the 1-DIP divider under it is the edge. A pinned direct child of the content paints ABOVE the blocks sliding under it; what stops a track
-    /// row showing through it is the list's pinned clip inset (<see cref="Artist.ReaderShape.SubRailH"/>).</summary>
-    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort) => new BoxEl
+    /// row showing through it is the list's pinned clip inset (<see cref="Artist.ReaderShape.SubRailH"/>). In the NARROW arm (a Compact drill-in) the sort is its lit word
+    /// and a chevron opening the three as a radio menu: the six words of the wide rail ran into each other there.</summary>
+    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort, bool narrow) => new BoxEl
     {
         Direction = 1, Shrink = 0f, Height = Artist.ReaderShape.SubRailH, MinWidth = 0f,
         Children =
@@ -252,7 +260,11 @@ internal static partial class ZuneLibraryArtistReader
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(LR.ReaderInset, Artist.ReaderShape.SubRailPadTop, LR.ReaderInset, Artist.ReaderShape.SubRailPadBottom),
-                Children = [ScopeWords(scope, host.ReleaseTotal, () => host.NarrowNow()), new BoxEl { Grow = 1f, MinWidth = 0f }, SortWords(sort)],
+                Children =
+                [
+                    ScopeWords(scope, host.ReleaseTotal, () => host.NarrowNow()), new BoxEl { Grow = 1f, MinWidth = 0f },
+                    narrow ? Embed.Comp(sort, static () => new SortMenuWord()) with { Key = "reader:sort" } : SortWords(sort),
+                ],
             },
             new BoxEl { Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
         ],
@@ -289,6 +301,51 @@ internal static partial class ZuneLibraryArtistReader
         for (int i = 0; i < words.Length; i++)
             words[i] = BoundWord("reader:sort:" + FormatCache.Int(i), Loc.Bind(ReaderSortKey(i)), sort, i);
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordGap, MinWidth = 0f, Shrink = 0f, Children = words };
+    }
+
+    static readonly ContextMenuOptions s_sortMenu = new()
+    {
+        PointerPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+        KeyboardPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+    };
+
+    /// <summary>The narrow rail's sort: the lit word (a bind) and a chevron, a click opening newest · oldest · a-z as a radio menu that sets the same signal.</summary>
+    sealed class SortMenuWord : Component
+    {
+        Signal<int>? _sort;
+        Func<ContextMenuModel?>? _menu;
+
+        public override Element Render()
+        {
+            var sort = _sort = UseProps<Signal<int>>();
+            var overlay = UseContext(Overlay.Service);
+            _menu ??= () =>
+            {
+                var s = _sort!;
+                int current = s.Peek();
+                var rows = new MenuFlyoutItem[LR.ReaderSortWords];
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    int code = i;
+                    rows[i] = MenuFlyoutItem.RadioItem(Loc.Get(ReaderSortKey(code)), current == code, () => s.Value = code);
+                }
+                return new ContextMenuModel(rows);
+            };
+            var box = new BoxEl
+            {
+                Key = "reader:sort:menu", Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.WordChevronGap, Shrink = 0f, Height = LR.HeadH,
+                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, ClickRequestsContext = true,
+                Children =
+                [
+                    R.Type.DenseMeta("") with
+                    {
+                        Text = Prop.Of(() => Loc.Get(ReaderSortKey(sort.Value))), Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                    Ui.Icon(Icons.ChevronDown, LR.ChevronGlyph, Tok.TextTertiary),
+                ],
+            };
+            return Controls.IsNullOverlay(overlay) ? box : ContextSheets.Attach(box, overlay, _menu, s_sortMenu);
+        }
     }
 
     static string ReaderSortKey(int code) => code switch

@@ -189,6 +189,21 @@
 // hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
 // A show's or an episode's vertical arm also carries `DetailFrameProps.TwoColumn` (the rail's props) and `DetailRailProps.Stacked`, so a structure can draw
 // one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
+// 1.72 (audit B7 r2): `DetailHeroStyle.Skeleton` is optional. Null: the hero shimmers its own identity in place while the page's header is unread, so the
+// hero list mounts at once (no loading band) and the header's landing eases the hero's height, the rows riding it. A style that hands a band keeps it.
+// 1.73 (audit B8): `DevicePickerEntry.Chosen` (the this-computer output the user chose, also while playback is elsewhere: Z-Overlays draws it as a
+// filled dim dot and the unused outputs as hollow rings); `StyleMetrics.RowPadXFloor` (the least gutter a track row pads to at any relief tier:
+// Zune's Compact rows keep the board's 16).
+// 1.75 (audit Z-OWNER): `ShowReaderStyle.YearsInMargin` (the show reader's year strip stands in the frame's outer margin: the reader reserves no strip
+// column and, where it ends on the column edge, pads no trailing gutter, so its rows run to that edge; `ShowReaderRules.HeadColumns` and `ShowToolbarLayout.For`
+// take the flag); `ShowToolbarArgs.Trailing` (whether the toolbar pads that gutter); `Show.ReaderOwnsEdge` (the reader's trailing edge is the window's or its
+// pane's, the vertical arm's and a Compact drill-in's: a margin strip then stands inside the reader's own gutter).
+// 1.76 (audit B8 r2): `DetailTableTier.PageMenu` (`DetailPageMenu`: where the page's "…" lives at a tier; one "…" per page at Compact, carrying
+// the other's items: Classic the list bar's, Zune and WinUI the hero's).
+// 1.77 (audit Z-OWNER jump list): `ShowJumpList` (the months the reader's view holds and the verb that brings one's header to the list's top) and
+// `ShowGroupArgs.Jump` / `.MonthKey`, so a structure can open a jump list (Windows Phone's semantic zoom) from a month header.
+// 1.79 (audit Z-LIB): the library's third column steps aside on the page's own width. `LibraryTierPolicy.PaneFromLayout` (the layout ladder's index from which the
+// pane stands beside the middle column; default 1, every split) and `LibraryPageProps.PaneBeside`; under it the host opens a picked grouped album's page.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -204,7 +219,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 69;
+    public const int Minor = 79;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

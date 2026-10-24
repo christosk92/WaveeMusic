@@ -92,24 +92,39 @@ internal static class ZuneArtistChart
 
     /// <summary>One realized cell: the row with the cell's drag; selection is the 12 % accent wash (no pill), compositor-only through the bound
     /// opacity the core hands for the single-selection cue.</summary>
-    static BoxEl Cell(ArtistChartCellArgs a) => new()
+    static BoxEl Cell(ArtistChartCellArgs a)
     {
-        ZStack = true,
-        Draggable = a.Draggable,
-        // The air between two columns, split over their inner edges: the first column gives its right, the last its left (the board's 48 gap).
-        Padding = a.Columns > 1 && a.ColumnGap > 0f
-            ? new Edges4(a.Column > 0 ? a.ColumnGap / 2f : 0f, 0f, a.Column < a.Columns - 1 ? a.ColumnGap / 2f : 0f, 0f)
-            : default,
-        Children =
-        [
-            new BoxEl
-            {
-                Key = "row-pill", Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                Fill = Prop.Of(static () => R.Layer.SelectedRest), HitTestVisible = false, Opacity = a.PillOpacity,
-            },
-            a.Content,
-        ],
-    };
+        // The air between two columns, split over their inner edges: the first column gives its right, the last its left (the board's 48 gap). It is
+        // two spacers, never padding: a re-fit (one column ↔ two at the pair rung, a docking panel) eases the air with the cell's own width, so neither the
+        // row's trailing lane nor its lead ever jumps (padding cannot ease).
+        bool pair = a.Columns > 1 && a.ColumnGap > 0f;
+        float lead = pair && a.Column > 0 ? a.ColumnGap / 2f : 0f;
+        float trail = pair && a.Column < a.Columns - 1 ? a.ColumnGap / 2f : 0f;
+        return new BoxEl
+        {
+            Direction = 0,
+            Draggable = a.Draggable,
+            Layout = ZuneListRules.ChartCellResize,
+            Children =
+            [
+                ZuneFrameRules.Gutter(lead),
+                new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Key = "row-pill", Grow = 1f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                            Fill = Prop.Of(static () => R.Layer.SelectedRest), HitTestVisible = false, Opacity = a.PillOpacity,
+                        },
+                        a.Content,
+                    ],
+                },
+                ZuneFrameRules.Gutter(trail),
+            ],
+        };
+    }
 
     static Element Failed(string title, ColorF accent, Action retry) => new BoxEl
     {

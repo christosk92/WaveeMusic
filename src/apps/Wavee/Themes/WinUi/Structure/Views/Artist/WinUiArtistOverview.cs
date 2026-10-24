@@ -49,8 +49,17 @@ internal static class WinUiArtistOverview
             Element? latestCard = latest ? LatestCard(a, target) with { Layout = WinUiArtistMotion.Block } : null;
             var after = new List<Element>(2);
             if (upcoming)
-                after.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), WinUiArtistBanners.UpcomingCard(a, accentFn, wide: false))
-                    with { Key = "ov:upcoming", Layout = WinUiArtistMotion.Block });
+            {
+                // The band arm (cover · copy · date · actions in one row) left the copy ~33 DIP at Compact and "Upcoming · Album" ran out of it
+                // (audit B8): Compact stacks the column arm; the arms swap on a declared fade across the edge.
+                bool column = tier == WidthTier.Compact;
+                Element card = WinUiArtistBanners.UpcomingCard(a, accentFn, wide: column) with
+                {
+                    Key = column ? "upcoming:column" : "upcoming:band",
+                    Enter = WinUiScreenMotion.SwapFade, Exit = WinUiScreenMotion.SwapFade, Transition = WinUiScreenMotion.SwapFadeMotion,
+                };
+                after.Add(WinUiArtistSections.SectionBlock(Loc.Get(Strings.Artist.Upcoming), card) with { Key = "ov:upcoming", Layout = WinUiArtistMotion.Block });
+            }
             // The compact pick is one composition in every arrangement, so it moves with the restack like any other block.
             if (a.HasPick)
                 after.Add(WinUiArtistPick.Card(a, accentFn, horizontal: false, overlay, surface, target, photo: false) with { Key = "ov:pick", Layout = WinUiArtistMotion.Block });

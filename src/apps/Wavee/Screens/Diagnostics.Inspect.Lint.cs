@@ -345,6 +345,9 @@ public static partial class Diagnostics
             /// <summary>The edges it feathers (an edge fade, or a scroller's auto fade): <see cref="EdgeMask"/> bits.</summary>
             public byte FadeEdges { get; init; }
 
+            /// <summary>How deep its widest feather reaches in from the edge, DIP (0: unknown or none).</summary>
+            public float FadeBand { get; init; }
+
             /// <summary>An authored clip on its children in window DIP (a sticky or collapse cut, a reveal box); <see cref="RectF.Infinite"/> when none.</summary>
             public RectF ClipRect { get; init; } = RectF.Infinite;
 
@@ -1706,9 +1709,11 @@ public static partial class Diagnostics
             RectF seen = visible.Intersect(new RectF(n.Rect.X, n.Rect.Y, w, n.Rect.H));
             if (seen.W < MathF.Min(2f, w) || seen.H < MathF.Min(2f, n.Rect.H)) return t;
             if (!px.TryBackground(seen, null, 0f, out ColorF ground, out float share)) return t;
-            if (t.Color.A > 0f && ContrastOf(t.Color, ground, n.Opacity) < 1.15)
+            if (t.Color.A > 0f && ContrastOf(t.Color, ground, n.Opacity) < InkGroundRatio && InkCanPaint(t.Color, n.Opacity, ground))
             {
-                if (!px.TryBackground(seen, t.Color, 0.03f, out ground, out share)) return t;
+                // The colour holding the box is the ink itself: read again without it. Ignore the colour READ, not the declared one: a translucent ink
+                // renders as its blend over the real ground (WinUI's light #000000e4 heart is #1a1a1a), which the declared colour misses (audit B8).
+                if (!px.TryBackground(seen, ground, 0.03f, out ground, out share)) return t;
             }
             // Small type and glyphs anti-alias into many blends of ink and ground, so no single colour may hold half the box over a plain ground.
             // Leave out every pixel near the ink: what remains over a plain ground is one colour; over art or a gradient it stays busy.
@@ -1722,6 +1727,40 @@ public static partial class Diagnostics
                 && px.TryWorstContrast(seen, t.Color, n.Opacity, MediaPercentile, out double worst, out ColorF worstGround, out int gaps, icon: t.Glyph))
                 return t with { Ground = ground, GroundShare = share, Worst = (float)worst, WorstGround = worstGround, GapPixels = gaps };
             return t with { Ground = ground, GroundShare = share };
+        }
+
+        /// <summary>Is the run's visible box inside the feather of its nearest scroller's edge fade, on an edge that fades now (content beyond it): a
+        /// run sliding under the fade is on its way out of view and is read once it is scrolled in (audit B8: WinUI's concert "Buy tickets" read
+        /// 1.05 : 1 half-dissolved under the list's foot fade). A scroller with no recorded band is never skipped.</summary>
+        static bool UnderScrollFade(Snapshot s, Node n)
+        {
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node up = s.Nodes[a];
+                if (up.ScrollAxis == 0) continue;
+                if (up.FadeBand <= 0f || up.Visible.IsEmpty) return false;
+                RectF v = n.Visible, sv = up.Visible;
+                if (up.ScrollAxis == 2)
+                    return (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
+                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand);
+                return (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
+                    || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+            }
+            return false;
+        }
+
+        /// <summary>Under this declared contrast against the colour holding a run's box, that colour may be the run's own ink (a filled glyph covers
+        /// most of its box): <see cref="InkCanPaint"/> decides.</summary>
+        const double InkGroundRatio = 1.5;
+
+        /// <summary>Can <paramref name="ink"/> (at <paramref name="opacity"/>) itself render as <paramref name="read"/>: its blend over SOME ground
+        /// (black to white) lands within <see cref="SameColour"/>'s tolerance of it, channel by channel. An opaque ink paints only itself; a
+        /// translucent one a band (black at 89 % paints #000 to #1c1c1c). A real ground of a low-contrast run falls outside the band.</summary>
+        static bool InkCanPaint(ColorF ink, float opacity, ColorF read)
+        {
+            float a = Math.Clamp(ink.A * opacity, 0f, 1f);
+            static bool In(float c, float a, float v) => v >= a * c - 0.04f && v <= a * c + (1f - a) + 0.04f;
+            return In(ink.R, a, read.R) && In(ink.G, a, read.G) && In(ink.B, a, read.B);
         }
 
         // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -2135,6 +2174,9 @@ public static partial class Diagnostics
                 if (!n.InScope || n.Text is not { } t || !IsWords(n)) continue;
                 looked++;
                 if (!t.Trimmed) continue;
+                // One unwrapped line whose words fit its width ellipsises nothing: the engine reports its line box taller than its box (a display
+                // title on its exact line, Zune's 130 line in a 122 box; "Episodes 14" at 31.92 in 30). Whether its ink is cut is text.clip's (audit B8).
+                if (!t.Wraps && t.NaturalW <= n.Rect.W + Slack) continue;
                 string how = t.Wraps
                     ? (t.MaxLines > 0 && t.OverflowY ? $"wraps past its {t.MaxLines}-line budget" : "wraps taller than its box")
                     : "is wider than its box";
@@ -2389,6 +2431,7 @@ public static partial class Diagnostics
                 if (t.Color.A * n.Opacity < 0.02f || !framed || n.Visible.IsEmpty) continue;
                 if (n.Opacity < o.IncidentalOpacity) continue;   // faded on purpose (a lyric's distance fade): incidental, not read
                 if (IsGlowCopy(s, n, t)) continue;                // a bloom or shadow drawn under the same words: the readable copy is judged
+                if (UnderScrollFade(s, n)) continue;              // passing under a scroller's edge fade: on its way out of view, read once scrolled in
                 looked++;
                 float need = ContrastNeeded(t, o);
                 string ink = HexA(t.Color) + (n.Opacity < 0.995f ? "@" + F(n.Opacity) : "");
@@ -2693,6 +2736,16 @@ public static partial class Diagnostics
             // A target not wholly in its scroller's view is judged as if scrolled in: that scroller, and every ancestor above it, cut only across
             // its axis. A target in view meets every clip as the hit test does (a pager at the end of a paged shelf is cut at the shelf's edge).
             bool scrollsH = false, scrollsV = false;
+            // A hit rect (the box grown by its slop) that crosses its scroller's view on an axis is judged as if scrolled in on that axis, by every clip
+            // on the way (a row at the list's foot whose slop pokes 0.8 under the view read 39.2 tall; audit B8 r2): the pass finds it before the clips.
+            for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
+            {
+                Node anc = s.Nodes[a];
+                // Only where scrolling can bring it in (content past that edge): a pager at the end of a paged shelf stays cut at the shelf's edge.
+                bool before = anc.ScrollOffset > Slack, after = anc.ScrollOffset < anc.ScrollMax - Slack;
+                if (anc.ScrollAxis == 1 && ((l < anc.Rect.X - Slack && before) || (rr > anc.Rect.Right + Slack && after))) scrollsH = true;
+                if (anc.ScrollAxis == 2 && ((t < anc.Rect.Y - Slack && before) || (b > anc.Rect.Bottom + Slack && after))) scrollsV = true;
+            }
             for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
             {
                 Node anc = s.Nodes[a];
@@ -2818,10 +2871,24 @@ public static partial class Diagnostics
                 if (EntityIn(m.Key) is { Length: > 0 } entity) return entity;
                 if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
                     return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
+                // A row cell (`c.heart`, `c.more`: Track.CellKey) acts on its row's track, never on the list's container (audit B8 r2: a pane's track
+                // heart read as the pane album's save).
+                if (m.Key is { } cell && cell.StartsWith("c.", StringComparison.Ordinal) && m.Parent >= 0)
+                    return "the row of " + m.Ref + " #" + m.Parent.ToString(CultureInfo.InvariantCulture);
+                // A card that is a click target of its own and carries art (an episode card, the artist's pick) acts on what it shows (audit B8 r2).
+                if (i != n.Index && m.Interactive && m.ImageCount > 0 && !string.Equals(m.Label, n.Label, StringComparison.Ordinal))
+                    return "the card " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
+                // A library page's detail pane acts on the item it shows, never on the library page around it (audit B8 r2).
+                if (m.Key is { } pane && PaneKey(pane)) return "the pane " + m.Ref;
             }
             if (paged && !KeyedUnder(s, n, ContentCard)) return "the window";
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
         }
+
+        /// <summary>A library page's detail pane: the keys the structures give it (`pane`, `pane:<slot>`, Classic's and WinUI's `lib:detail` region) and Zune's
+        /// pane verbs (`lib-pane-*`).</summary>
+        static bool PaneKey(string key)
+            => key is "pane" or "lib:detail" || key.StartsWith("pane:", StringComparison.Ordinal) || key.StartsWith("lib-pane", StringComparison.Ordinal);
 
         /// <summary>The content card: the frame that hosts the page and what speaks for it (Zune's band); outside it is window chrome.</summary>
         static readonly string[] ContentCard = ["shell.content.card"];

@@ -73,6 +73,7 @@ public readonly partial struct Track
         const float FindWordNominal = 72f, SelectNominal = 64f;
 
         Func<float, Element> _buildToolbar = null!;
+        Func<Element> _headerShape = null!;
         Func<int, Element> _selectionCommands = null!;
         Action _openSearch = null!, _toggleFind = null!, _exitSelection = null!, _selectAllTracks = null!;
         Action<NodeHandle> _captureSearchButton = null!;
@@ -90,6 +91,7 @@ public readonly partial struct Track
         void InitChrome()
         {
             _buildToolbar = BuildToolbar;
+            _headerShape = HeaderOf;
             _hideUnavailable = () => { var f = _filters.Peek(); SetFilters(f with { Flags = f.Flags | FilterFlags.PlayableOnly }); };
             _selectionCommands = SelectionCommands;
             _openSearch = () => _searchExpanded.Value = true;
@@ -132,7 +134,11 @@ public readonly partial struct Track
             // edge, tuned Classic D9 / V10); the toolbar sits at the plates' edge less the bar's own 6-DIP inset and keeps the
             // rows' right inset (the list bar's 6 / 14, board C-Album); the chips and the lens keep the rows' gutter.
             Element Gutter(Element e) => new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(padX, 0f, padX, 0f), Children = [e] };
-            Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header" };
+            // The loading band derives its shimmer from this chrome: each opaque part names its resting shape (audit B7 r2: the header, the
+            // unavailable bar and the lens each shimmered as a default 10-DIP bar, so the band's chrome was 30 where the loaded hero form's is a
+            // 1-DIP rule, and 34 where the columns form's header is 37 + 4: the rows moved by the difference on load). The header shimmers its own
+            // template (the hero form's rule, the columns form's labels as bars).
+            Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header", SkeletonProxy = _headerShape };
             var stack = new List<Element>(4);
             // The page bar (a page with no rail, tuned Classic D16) sits under the page head: its commands start on the head's words (the
             // rows' 8-DIP plate inset less the bar's own 6) on both sides, it carries the chips inline (D8), and 4 DIP of air part it from
@@ -151,7 +157,7 @@ public readonly partial struct Track
             // list bar in the two-column arm, first in the hero arm's pinned chrome (the hero above it). Its slot stays mounted on a track list
             // and eases its own height, so it never moves the rows by a snap.
             if (HasUnavailableBar)
-                stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable" });
+                stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable", SkeletonProxy = s_shut });
             // The chips stand in the page bar where the columns form draws one, else here: ONE slot in both forms whose height eases through real layout
             // (audit B9: Liked's crossing moved the rows by the chips' 40 at once), the chips themselves cross-fading between their two places.
             if (chips is not null && (vertical || _latest.ShowToolbar))
@@ -258,13 +264,17 @@ public readonly partial struct Track
                 view.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
 
             var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
-            Element more = Embed.Comp(() => new TableMoreButton(this, overflow))
-                with { Key = "cmd:more:" + (int)overflow + ":" + _contextText };
+            _moreOverflow = overflow;
+            if (_latest.MenuBridge is { } bridge) bridge.List = _bridgeList ??= BridgeListItems;
             var tailList = new List<Element>(3);
             if (insights is not null) tailList.Add(Detail.InsightsBarButton(insights));
             if (select is not null)
                 tailList.Add(Kit.Command("cmd:select", select, w => MeasureExtra(ref _selectW, w)));
-            tailList.Add(more);
+            // Where the tier gives the page ONE "…" in the hero (Zune and WinUI Compact), the bar draws none: the hero's carries the list options. The
+            // button is keyed on the page alone (the evicted commands are a re-pushed prop, never a key), and it fades in and out across the edge.
+            if (PageMenuNow() != global::Wavee.Theming.DetailPageMenu.Hero)
+                tailList.Add(Embed.Comp(new MoreProps(overflow), () => new TableMoreButton(this))
+                    with { Key = "cmd:more:" + _contextText, Enter = MoreFade, Exit = MoreFade, Transition = MoreFadeMotion });
             Element[] tail = tailList.ToArray();
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
@@ -273,7 +283,7 @@ public readonly partial struct Track
             // gives Find its word or takes it keeps the search host's node (and a typed query) instead of re-parenting it.
             search = new BoxEl
             {
-                Key = "search-host:slot", Direction = 1, Shrink = 0f,
+                Key = "search-host:slot", Direction = 1, Shrink = 0f, OnRealized = _anchorFilter ??= h => _filterAnchor.Value = h,
                 OnBoundsChanged = findWord ? _measureFindWord ??= r => { if (!_searchExpanded.Peek()) MeasureExtra(ref _findWordW, r.W); } : null,
                 Children = [search],
             };
@@ -281,6 +291,11 @@ public readonly partial struct Track
         }
 
         Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
+
+        /// <summary>The list bar's "…" coming or going where a tier moves the page's ONE "…" to the hero: an opacity fade, never a cut.</summary>
+        static readonly EnterExit MoreFade = new(Opacity: 0f, Active: true);
+        static global::FluentGpu.Animation.MotionTokenDef MoreFadeMotion => global::FluentGpu.Animation.MotionTok.ControlFast;
+        Action<NodeHandle>? _anchorFilter;
 
         // ── the fit across a crossing (audit B9) ──
         global::Wavee.Theming.TierFacts _fitTiers;
@@ -652,21 +667,25 @@ public readonly partial struct Track
         /// is in (333 ms), with a 1-DIP divider as the band's single hairline.</summary>
         sealed class TableHeader(TableHost host) : Component
         {
-            public override Element Render()
-            {
-                var h = host;
-                var shape = h.ShapeValue;
-                var sort = h._sort.Value;
-                var template = h._listStyle?.Chrome.Header;
-                if (template is null) return new BoxEl();
-                return template(new TrackHeaderArgs
-                {
-                    Set = shape.Set, Tracks = shape.Tracks, Sort = sort, SortSignal = h._sort,
-                    Checks = h._checksVisible?.Value ?? false, Vertical = h.HeroFormLive,
-                    OnSort = h.SortBy,
-                });
-            }
+            public override Element Render() => host.HeaderOf();
         }
+
+        /// <summary>The structure's column header over the current shape, sort and form (the header component's render, and its shape in a loading band).</summary>
+        Element HeaderOf()
+        {
+            var shape = ShapeValue;
+            var template = _listStyle?.Chrome.Header;
+            if (template is null) return new BoxEl();
+            return template(new TrackHeaderArgs
+            {
+                Set = shape.Set, Tracks = shape.Tracks, Sort = _sort.Value, SortSignal = _sort,
+                Checks = _checksVisible?.Value ?? false, Vertical = HeroFormLive,
+                OnSort = SortBy,
+            });
+        }
+
+        /// <summary>A part that rests shut until the rows say otherwise (the unavailable bar while no row is known): its loading shape is nothing.</summary>
+        static readonly Func<Element> s_shut = static () => new BoxEl { Height = 0f, HitTestVisible = false };
 
         /// <summary>A header was clicked: the sort cycle (<see cref="TableRules.NextSort"/>) is the core's.</summary>
         void SortBy(SortColumn col, bool artistColumn) => SetSort(TableRules.NextSort(_sort.Peek(), col, artistColumn));
@@ -700,14 +719,19 @@ public readonly partial struct Track
             }
         }
 
+        /// <summary>The list bar's "…" props: the commands the bar's fit evicted (a re-pushed prop, never a key: the button keeps its node as the fit moves).</summary>
+        sealed record MoreProps(InlineCommand Overflow);
+
         /// <summary>"…": the evicted commands first (Shuffle · Sort ▸ · Filter…), then what the bar never carries (tuned Classic D3):
         /// Row size ▸, the two column opt-ins and the Select toggle; then a separator and the playlist deposit ("Copy to playlist" on a
-        /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
-        sealed class TableMoreButton(TableHost host, InlineCommand overflow) : Component
+        /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21). Where the tier gives the page ONE "…" in the bar
+        /// (<see cref="global::Wavee.Theming.DetailPageMenu.ListBar"/>), the page menu's items follow after a separator (<see cref="PageMenuRows"/>).</summary>
+        sealed class TableMoreButton(TableHost host) : Component
         {
             public override Element Render()
             {
                 var h = host;
+                InlineCommand overflow = UseProps<MoreProps>().Overflow;
                 var overlay = UseContext(Overlay.Service);
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
@@ -722,8 +746,28 @@ public readonly partial struct Track
 
                 List<MenuFlyoutItem> Items()
                 {
+                    var items = h.ListMenuItems(overflow, overlay, OpenFilter);
+                    if (h.PageMenuNow() == global::Wavee.Theming.DetailPageMenu.ListBar) h.AppendPageMenu(items);
+                    return items;
+                }
+
+                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
+                return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
+            }
+        }
+
+        /// <summary>The list options the bar's "…" holds (see <see cref="TableMoreButton"/>), for <paramref name="overflow"/>: the bar's own menu, and the
+        /// hero's where the tier gives the page ONE "…" there (<see cref="HeroPageMenu"/>).</summary>
+        List<MenuFlyoutItem> ListMenuItems(InlineCommand overflow, IOverlayService? overlay, Action openFilter)
+        {
+            var h = this;
+            bool filterInMore = (overflow & InlineCommand.Filter) != 0;
+            void OpenFilter() => openFilter();
+            {
+                {
                     var cfg = h.Cfg;
-                    var items = new List<MenuFlyoutItem>(10);
+                    var items = new List<MenuFlyoutItem>(16);
                     if ((overflow & InlineCommand.Shuffle) != 0)
                         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, true, h.Shuffle));
                     if ((overflow & InlineCommand.Sort) != 0)
@@ -761,11 +805,72 @@ public readonly partial struct Track
                     });
                     return items;
                 }
-
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
-                Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
-                return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
             }
+        }
+
+        /// <summary>Where the page's "…" lives at the committed window tier (the structure's table record, <see cref="global::Wavee.Theming.DetailTableTier.PageMenu"/>),
+        /// for a table that hosts the hero; two "…" (Both) anywhere else. Tracked.</summary>
+        internal global::Wavee.Theming.DetailPageMenu PageMenuNow()
+            => _args.Value is { Embedded: false } a && (a.Vertical is not null || a.Columns is not null)
+                ? ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.PageMenu
+                : global::Wavee.Theming.DetailPageMenu.Both;
+
+        /// <summary>The page menu's rows after the list options (the bar's ONE "…", Classic Compact): a separator, then the hero's page menu as it would open
+        /// there (C-Album-Compact's "More list options" carries both groups).</summary>
+        void AppendPageMenu(List<MenuFlyoutItem> items)
+        {
+            if (_latest.Vertical?.Actions.More?.Invoke() is not { } page || page.Rows.Count == 0) return;
+            // The page's own "Add to playlist" says what the list's deposit says (an album's tracks): one row of it, the page's.
+            DropSaidBy(items, page.Rows);
+            items.Add(MenuFlyoutItem.Separator);
+            items.AddRange(page.Rows);
+        }
+
+        /// <summary>Drops from <paramref name="list"/> each row whose words a row of <paramref name="page"/> already says (the merged "…" offers a verb once),
+        /// and any separator left leading, trailing or doubled.</summary>
+        static void DropSaidBy(List<MenuFlyoutItem> list, IReadOnlyList<MenuFlyoutItem> page)
+        {
+            list.RemoveAll(r => r.Kind != MenuItemKind.Separator && r.Label.Length > 0
+                && page.Any(p => p.Kind != MenuItemKind.Separator && string.Equals(p.Label, r.Label, StringComparison.CurrentCultureIgnoreCase)));
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (list[i].Kind == MenuItemKind.Separator && (i == 0 || i == list.Count - 1 || list[i - 1].Kind == MenuItemKind.Separator)) list.RemoveAt(i);
+        }
+
+        /// <summary>The hero's ONE "…" (Zune and WinUI Compact): the page menu's own items, then a separator and the list options the bar's "…" held (the
+        /// commands its fit evicts included), so no option is lost when the bar draws none. Opened by the hero; the filter card anchors to the bar's search
+        /// slot, the bar's "…" being gone.</summary>
+        ContextMenuModel? HeroPageMenu() => MergePageMenu(_latest.Vertical?.Actions.More?.Invoke(), BridgeListItems());
+
+        /// <summary>The list options as the page's ONE "…" lists them (the commands the bar's fit evicted included); published on the frame's bridge.</summary>
+        List<MenuFlyoutItem> BridgeListItems() => ListMenuItems(_moreOverflow, _overlay, _openFilterFromHero ??= OpenFilterFromHero);
+        Func<List<MenuFlyoutItem>>? _bridgeList;
+
+        /// <summary>The page's ONE "…": its own items, then a separator and the list options (each said once: a list row whose words the page already says
+        /// is dropped). Null where neither has anything.</summary>
+        internal static ContextMenuModel? MergePageMenu(ContextMenuModel? page, List<MenuFlyoutItem>? list)
+        {
+            var rows = new List<MenuFlyoutItem>(24);
+            if (page is { } p) rows.AddRange(p.Rows);
+            if (list is { Count: > 0 })
+            {
+                DropSaidBy(list, rows);
+                if (rows.Count > 0 && list.Count > 0) rows.Add(MenuFlyoutItem.Separator);
+                rows.AddRange(list);
+            }
+            return rows.Count == 0 && page is null ? null : new ContextMenuModel(page?.Primary ?? [], rows, page?.Header);
+        }
+
+        /// <summary>The commands the bar's fit evicted at its last render (what the hero's ONE "…" lists as list options).</summary>
+        InlineCommand _moreOverflow;
+        Action? _openFilterFromHero;
+        readonly Ref<NodeHandle> _filterAnchor = new(default);
+        readonly Ref<OverlayHandle?> _heroFilterHandle = new(null);
+
+        void OpenFilterFromHero()
+        {
+            if (_overlay is not { } overlay) return;
+            // Next tick (the menu closes first), anchored to the bar's search slot: the bar's own "…" is not drawn at this tier.
+            _post?.Invoke(() => ToggleFilterCard(overlay, _filterAnchor, _heroFilterHandle));
         }
 
         // ══ 6. THE FILTER ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -1177,11 +1282,31 @@ public readonly partial struct Track
     /// its width tracks all read (library rework §5.5); the host hands the pane the set its table will lay out.
     /// <para>A video is the film glyph after the title, never a lane (<c>TableRules.TrailingColumns</c>), so the shim
     /// needs nothing the rows will carry and the real header lands on exactly the shim's geometry.</para></summary>
-    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist) => new(
-        Album: false, By: false, Date: false, Plays: false, Heart: true, Thumb: false,
-        Actions: true, Tier: EmbeddedTier,
-        Artist: TableRules.IdentityColumns(classic, showArtThumb: false, artworkHidden: false, showTrackArtist, EmbeddedTier).Artist,
-        Classic: classic);
+    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist) => EmbeddedColumns(classic, showTrackArtist, EmbeddedForm());
+
+    /// <summary><see cref="EmbeddedColumns(bool, bool)"/> for the embedded table's <paramref name="form"/> (<see cref="EmbeddedForm"/>): the lanes
+    /// <c>TableHost.SetFor</c> lays out for an album at <see cref="EmbeddedTier"/>, so the shim and the rows agree. A Modern row under a
+    /// structure whose rows stand the heart and the "…" in the time lane (<see cref="Theming.DetailTableTier.HoverActions"/>) has neither lane.</summary>
+    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist, global::Wavee.Theming.DetailTableTier form)
+    {
+        bool hover = form.HoverActions && !classic;
+        return new(
+            Album: false, By: false, Date: false, Plays: false, Heart: !hover, Thumb: false,
+            Actions: !hover, Tier: EmbeddedTier,
+            Artist: TableRules.IdentityColumns(classic, showArtThumb: false, artworkHidden: false, showTrackArtist, EmbeddedTier).Artist,
+            Classic: classic, HoverActions: hover, DurationWidth: form.DurationWidth);
+    }
+
+    /// <summary>The embedded table's form (a library pane): every lane and the density's rows (the core's Standard record), with the structure's own
+    /// time lane where its Standard rows stand the heart and the "…" in it on hover (Zune, Z-Library-Albums: # · title · time, the time at the pane's
+    /// right edge; the pane laid a heart lane and an empty "…" lane out after the time, which ended 64 short, audit B8). A tracked read of the policy.</summary>
+    public static global::Wavee.Theming.DetailTableTier EmbeddedForm()
+    {
+        var own = ShellPolicy.Tracked.DetailTiers.Standard.Table;
+        return own.HoverActions
+            ? global::Wavee.Theming.DetailTableTier.Standard with { HoverActions = true, DurationWidth = own.DurationWidth }
+            : global::Wavee.Theming.DetailTableTier.Standard;
+    }
 
     /// <summary>The width tracks for an <see cref="EmbeddedColumns"/> set — the SAME cached instance the real rows would get
     /// (<see cref="TracksFor"/>), so the shimmer rows and the header shim share the array the table itself hands out. Art is irrelevant

@@ -128,7 +128,7 @@ internal static partial class ClassicShow
             kids.Add(new BoxEl
             {
                 Direction = 1, MaxWidth = AboutMeasure, MinWidth = 0f,
-                Children = [Controls.RichTextFlex(about, AboutSize, Tok.TextSecondary, a.Tone(), 0, DetailVerbs.NavigateKey)],
+                Children = [Controls.RichTextFlex(about, AboutSize, Tok.TextSecondary, Design.Palette.ReadableInk(a.Tone()), 0, DetailVerbs.NavigateKey)],
             });
         kids.Add(R.Type.DenseMeta(a.Meta) with
         {
@@ -238,7 +238,8 @@ internal static partial class ClassicShow
                 },
                 new SpanTextEl(spans)
                 {
-                    FontFamily = DisplayFace, Size = HeroLeftDisplay, LineHeight = HeroLeftDisplayLine, Weight = VoiceWeight, CharSpacing = -20f, Color = t,
+                    FontFamily = DisplayFace, Size = HeroLeftDisplay, LineHeight = HeroLeftDisplayLine, Weight = VoiceWeight, CharSpacing = -20f,
+                    Color = Design.Palette.ReadableInk(t),   // the tone as text: a light page's orange read 2 : 1 over the card (audit B8)
                     MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 new BoxEl { Direction = 1, MaxWidth = HeroTrackMax, MinWidth = 0f, Children = [HeroRule(e, tone)] },
@@ -389,7 +390,7 @@ internal static partial class ClassicShow
         var link = new BoxEl
         {
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = a.MarkFreshPlayed,
-            Children = [R.Type.DenseTitle(Loc.Get(Strings.Podcast.MarkAllPlayed)) with { Color = a.Tone(), MaxLines = 1 }],
+            Children = [R.Type.DenseTitle(Loc.Get(Strings.Podcast.MarkAllPlayed)) with { Color = Design.Palette.ReadableInk(a.Tone()), MaxLines = 1 }],
         };
         var kids = new List<Element>(a.Fresh.Length + 1)
         {

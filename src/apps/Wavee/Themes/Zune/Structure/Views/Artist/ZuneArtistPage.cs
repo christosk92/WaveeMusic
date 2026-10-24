@@ -47,6 +47,17 @@ internal static class ZuneArtistPage
     sealed class Latch
     {
         public ArtistChartStyle? Chart;
+        /// <summary>The page's chrome (the frame's), and the eyebrow's live ink over it: one step brighter over a photo bleed, as the band strip's words
+        /// (the eyebrow stands in the bleed's scrim fade, which variant D lightened: the secondary read 4.0 : 1 over ar9's photo).</summary>
+        public IReadSignal<PageChrome?>? Chrome;
+        public Func<ColorF>? EyebrowInk;
+        /// <summary>The live tiers and window size the caption's rank ink reads over a photo bleed (<see cref="ZuneMaterial.OnBleed"/>).</summary>
+        public Func<TierFacts>? Tiers;
+        public IReadSignal<Size2>? Viewport;
+
+        /// <summary>The caption rank's live ink for <paramref name="accent"/>: the accent, lifted just enough where a photo bleed lies under it.</summary>
+        public Func<ColorF> RankInk(ColorF accent)
+            => () => ZuneMaterial.OnBleed(accent, Chrome?.Value, Tiers?.Invoke() ?? TierFacts.Unknown, Viewport?.Value.Width ?? 0f);
         Artist _menuArtist;
         Func<ContextMenuModel?>? _menu;
 
@@ -72,6 +83,10 @@ internal static class ZuneArtistPage
         var latch = latchCell.Value ??= new Latch();
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         var chart = latch.Chart ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
+        latch.Chrome = ctx.Hooks.UseContext(ZuneFrameContext.PageChrome);
+        latch.EyebrowInk ??= () => ZuneMaterial.PhotoBleed(latch.Chrome?.Value) ? Tok.TextPrimary : Tok.TextSecondary;
+        latch.Tiers = ctx.TierReader();
+        latch.Viewport = ctx.Hooks.UseContextSignal(Viewport.Size);
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly (the hero must not fade from 0 over a held photograph).
         Element? body = p.BodyReady ? Compose(p, latch, lay) : null;
@@ -139,7 +154,8 @@ internal static class ZuneArtistPage
             });
         }
 
-        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, p.Accent, in acts);
+        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, p.Accent, in acts, eyebrowInk: latch.EyebrowInk,
+            rankInk: latch.RankInk(p.Accent));
         float washH = lay.HeroH + Rules.WashTail;
         // The blend wash, from the cover's grading (a cover-keyed leaf: a grading re-renders only the wash). Under artwork wash only; the leaf reads
         // the option itself.

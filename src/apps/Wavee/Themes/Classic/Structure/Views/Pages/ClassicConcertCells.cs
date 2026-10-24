@@ -100,7 +100,8 @@ internal static class ClassicConcertCells
             AlignSelf = FlexAlign.Stretch, AspectRatio = 1f, Corners = Radii.CardAll,
             Fill = accent != 0 ? ColorF.Lerp(baseFill, ColorScience.ToColor(accent), Rules.TileAccentMix) : baseFill,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children = [Icon(Icons.Calendar, Rules.TileGlyph, Tok.TextSecondary with { A = Rules.GlyphAlpha })],
+            // The calendar stands in for the cover: art, not information (keyed `deco:`, the lint's decorative intent).
+            Children = [new BoxEl { Key = "deco:event-art", Children = [Icon(Icons.Calendar, Rules.TileGlyph, Tok.TextSecondary with { A = Rules.GlyphAlpha })] }],
         };
     }
 
@@ -174,9 +175,10 @@ internal static class ClassicConcertCells
                     Corners = Radii.CardAll, Fill = R.Layer.EventPlate,
                     Children =
                     [
-                        new BoxEl { Padding = Edges4.All(Spacing.M), AlignItems = FlexAlign.Start, Justify = FlexJustify.Start, Children = [Icon(Icons.Calendar, Rules.BrowseAllSmallGlyph, glyph)] },
-                        new BoxEl { AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.MapPin, Rules.BrowseAllPinGlyph, glyph)] },
-                        new BoxEl { Padding = Edges4.All(Spacing.M), AlignItems = FlexAlign.End, Justify = FlexJustify.End, Children = [Icon(Icons.Calendar, Rules.BrowseAllTinyGlyph, glyph)] },
+                        // The browse-all tile's illustration (keyed `deco:`, the lint's decorative intent: art at its 30 % ink, never information).
+                        new BoxEl { Key = "deco:browse-all:calendar", Padding = Edges4.All(Spacing.M), AlignItems = FlexAlign.Start, Justify = FlexJustify.Start, Children = [Icon(Icons.Calendar, Rules.BrowseAllSmallGlyph, glyph)] },
+                        new BoxEl { Key = "deco:browse-all:pin", AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.MapPin, Rules.BrowseAllPinGlyph, glyph)] },
+                        new BoxEl { Key = "deco:browse-all:calendar-corner", Padding = Edges4.All(Spacing.M), AlignItems = FlexAlign.End, Justify = FlexJustify.End, Children = [Icon(Icons.Calendar, Rules.BrowseAllTinyGlyph, glyph)] },
                     ],
                 },
                 new BoxEl
@@ -238,7 +240,8 @@ internal static class ClassicConcertCells
             : new BoxEl
             {
                 Fill = mediaFill, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [Icon(Icons.Calendar, Rules.HeroGlyph, Tok.TextSecondary with { A = Rules.GlyphAlpha })],
+                // The calendar stands in for the photograph: art (keyed `deco:`, the lint's decorative intent).
+                Children = [new BoxEl { Key = "deco:event-art", Children = [Icon(Icons.Calendar, Rules.HeroGlyph, Tok.TextSecondary with { A = Rules.GlyphAlpha })] }],
             };
         Element seam = new BoxEl
         {

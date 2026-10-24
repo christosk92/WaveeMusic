@@ -511,6 +511,23 @@ public static partial class Diagnostics
             return new Edges4(left, -1f, right, bottom);
         }
 
+        /// <summary>The shell's own intents, under every theme (a theme guide's follow them). The Winamp deck face (`Deck.Faces.cs`, key
+        /// <c>deck:winamp@&lt;side&gt;</c>) is a scale model of the 275 x 116 Winamp 2 window: its title bars, LCD title and status letters are the
+        /// skin's pixel type at a fixed fraction of the deck's side (6-7 DIP at the rail's 324), part of the device's look and never reading copy
+        /// (the same title and time read at full size in the rail beside it). Enlarging them would break the skin's proportions, so the type floor
+        /// allows them there (B11, audit B8). A key starting <c>deco:</c> is an illustration, allowed by the contrast rule; a title-bar tab's title may ellipsise (audit B8).</summary>
+        static readonly IReadOnlyList<LintPolicy> CorePolicies =
+        [
+            new(LintIntent.Allow, "deck:winamp@", "the Winamp deck's pixel type is the skin's (a scale model of the 275 x 116 window), never reading copy",
+                Rule: InspectLint.Rules.TypeFloor),
+            // A `deco:` key marks an illustration: a glyph that stands in for art (an event's calendar where it has no photograph, the concerts
+            // browse-all tile's pictogram). It carries no information the page does not say in words beside it, so it is not held to text contrast.
+            new(LintIntent.Allow, "deco:", "a decorative illustration (a glyph standing in for art), never information",
+                Rule: InspectLint.Rules.ContrastText),
+            // The shell's title-bar tabs (`Shell.UI.cs`, `tab#<id>`) cap their width and ellipsise the page title, as both title-bar boards draw them.
+            new(LintIntent.TrimOk, "tab#", "a title-bar tab caps its width and ellipsises its title (Shell-Top and C-TitleBar: nowrap + text-overflow: ellipsis)"),
+        ];
+
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's guide and scale. UI thread, between
         /// frames. <paramref name="pixels"/> is the rendered frame the grounds under the text are read from (null: none read).</summary>
         public static InspectLint.Snapshot Capture(Shell.HeadlessShell shell, ReadOnlySpan<NodeHandle> roots, InspectLint.Pixels? pixels = null, string devices = "")
@@ -587,6 +604,7 @@ public static partial class Diagnostics
                     int axis = 0;
                     float offset = 0f, max = 0f;
                     byte fade = 0;
+                    float fadeBand = 0f;
                     bool moving = false;
                     if (scrolls)
                     {
@@ -594,9 +612,17 @@ public static partial class Diagnostics
                         offset = (float)scroll.Offset;
                         max = scroll.MaxOffset;
                         moving = scroll.Motion.IsMoving || Math.Abs(scroll.Velocity) > 1.0;
-                        if (scroll.AutoEdgeFade && scroll.AutoEdgeFadeBand > 0f) fade |= (byte)(axis == 1 ? EdgeMask.Horizontal : EdgeMask.Vertical);
+                        if (scroll.AutoEdgeFade && scroll.AutoEdgeFadeBand > 0f)
+                        {
+                            fade |= (byte)(axis == 1 ? EdgeMask.Horizontal : EdgeMask.Vertical);
+                            fadeBand = scroll.AutoEdgeFadeBand;
+                        }
                     }
-                    if (scene.TryGetEdgeFade(node, out EdgeFadeSpec edgeFade) && !edgeFade.IsNone) fade |= (byte)edgeFade.Edges;
+                    if (scene.TryGetEdgeFade(node, out EdgeFadeSpec edgeFade) && !edgeFade.IsNone)
+                    {
+                        fade |= (byte)edgeFade.Edges;
+                        fadeBand = MathF.Max(fadeBand, MathF.Max(MathF.Max(edgeFade.BandLeft, edgeFade.BandRight), MathF.Max(edgeFade.BandTop, edgeFade.BandBottom)));
+                    }
                     RectF authored = paint.ClipRect;
                     string? labelFamily = null;
                     string label = interactive ? LabelOf(scene, strings, node, out labelFamily) : "";
@@ -616,6 +642,7 @@ public static partial class Diagnostics
                         SeedContent = parent < 0 ? seeds[root].Content : RectF.Infinite,
                         SeedShown = parent >= 0 || seeds[root].Shown,
                         FadeEdges = fade,
+                        FadeBand = fadeBand,
                         ClipRect = authored.IsInfinite ? RectF.Infinite : new RectF(rect.X + authored.X, rect.Y + authored.Y, authored.W, authored.H),
                         ZStack = (flags & NodeFlags.ZStack) != 0,
                         Column = layout.Direction == 1,
@@ -696,7 +723,7 @@ public static partial class Diagnostics
             }
             IReadOnlyList<LintEdge> edges = [];
             IReadOnlyList<LintEdge> mirror = [];
-            IReadOnlyList<LintPolicy> policies = [];
+            IReadOnlyList<LintPolicy> policies = CorePolicies;
             string guideId = "";
             IReadOnlyList<string> bleeds = ThemeInspection.ActiveLintGuide?.DesignedTopBleeds ?? [];
             if (ThemeInspection.ActiveLintGuide is { } guide)
@@ -709,7 +736,7 @@ public static partial class Diagnostics
                 var context = new LintContext(tiers.Window, tiers.Height, width, height, RectOfKey) { Route = InspectLint.RouteNameOf(route) };
                 edges = guide.Edges(context);
                 mirror = MirrorEdges(guide, context, edges);
-                policies = guide.Policies(context);
+                policies = [.. CorePolicies, .. guide.Policies(context)];
                 guideId = InspectKit.ActiveThemeId;
             }
             return new InspectLint.Snapshot(width, height, tiers.Window, nodes)

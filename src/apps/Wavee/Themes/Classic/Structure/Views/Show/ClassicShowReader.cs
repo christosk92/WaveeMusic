@@ -171,23 +171,23 @@ internal static partial class ClassicShow
         if (takeover)
         {
             right.Add(FindField(a, fill: true));
-            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind, a.Tone, edge));
+            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind, Ink(a.Tone), edge));
         }
         else
         {
             right.Add(stage == ToolbarStage.Full
                 ? FindField(a, fill: false)
-                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind, a.Tone, edge));
+                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind, Ink(a.Tone), edge));
             if (stage is ToolbarStage.Full or ToolbarStage.FindIcon)
             {
                 right.Add(RailDivider());
-                right.Add(Controls.Words.Rail(a.SortWords, a.Order, a.Tone, onMeasured: a.OnSortMeasured));
+                right.Add(Controls.Words.Rail(a.SortWords, a.Order, Ink(a.Tone), onMeasured: a.OnSortMeasured));
             }
             else
             {
                 right.Add(SortMenu(a, edge));
             }
-            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting, a.Tone, edge));
+            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting, Ink(a.Tone), edge));
         }
         var group = new BoxEl
         {
@@ -210,14 +210,14 @@ internal static partial class ClassicShow
     /// stage only when they fit; the last stage folds them into <see cref="FilterMenu"/>). It reports its measure to the
     /// toolbar's stage rule.</summary>
     static Element FilterWords(ShowToolbarArgs a)
-        => Controls.Words.Rail(a.FilterWords, a.Status, a.Tone, onMeasured: a.OnFiltersMeasured);
+        => Controls.Words.Rail(a.FilterWords, a.Status, Ink(a.Tone), onMeasured: a.OnFiltersMeasured);
 
     /// <summary>The last stage's chips: ONE button saying the selected filter ("Unplayed 320 ▾") whose menu holds the four
     /// as radio rows. The label and its count are binds over the model — the toolbar re-renders on stages, never on a
     /// selection or a count — and the accessible name is the control's, since the label alone cannot say what it is.</summary>
     static Element FilterMenu(ShowToolbarArgs a, float edge)
     {
-        var tone = a.Tone;
+        var tone = Ink(a.Tone);
         var overlay = a.Overlay;
         var box = new BoxEl
         {
@@ -281,7 +281,7 @@ internal static partial class ClassicShow
     static Element SortMenu(ShowToolbarArgs a, float edge)
     {
         var order = a.Order;
-        var tone = a.Tone;
+        var tone = Ink(a.Tone);
         var overlay = a.Overlay;
         int current = order.Value;                                  // subscribe: the button is named after the sort in force
         var box = new BoxEl
@@ -302,6 +302,10 @@ internal static partial class ClassicShow
     });
 
     static string SortWordOf(int order) => Loc.Get(order == 1 ? Strings.Podcast.Sort.Oldest : Strings.Podcast.Sort.Newest);
+
+    /// <summary>The show's tone as the toolbar's text and glyph ink: readable on the page (<see cref="Design.Palette.ReadableInk"/>; a light page's
+    /// orange read 2.6 : 1, audit B8). Fills keep the tone itself.</summary>
+    static Func<ColorF> Ink(Func<ColorF> tone) => () => Design.Palette.ReadableInk(tone());
 
     /// <summary>A toolbar glyph toggle (the search collapse, the select arm): <paramref name="edge"/> square (30, or the Compact 40 under the narrow
     /// arm), the tone while ON.</summary>

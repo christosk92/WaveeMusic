@@ -78,29 +78,33 @@ internal static partial class ZuneLibraryPage
         kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
         if (find is not null) kids.Add(find);
         if (count is not null) kids.Add(count);
+        // The head's height is the tier's (Small 32, Standard 28): it eases on a crossing, so the columns under it ride it.
         return new BoxEl
         {
             Key = LR.HeadKey, Direction = 0, Height = l.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = LR.GroupGap, MinWidth = 0f,
-            Children = kids.ToArray(),
+            Animate = ZuneMotion.HeightResize, Children = kids.ToArray(),
         };
     }
 
-    /// <summary>The head's first group: Podcasts' mode words, the sort button (Small, Compact), or the kind's sort words. The button and the words are different trees in ONE
+    /// <summary>The head's first group: Podcasts' mode words, the sort button (Small, Compact, the grouped albums under the pane's rung), or the kind's sort words. The button and the words are different trees in ONE
     /// slot: a crossing swaps them under the shared cross-fade in a slot that RESERVES the row's height, so nothing under it jumps. Only the kinds that can show either form swap
     /// (Podcasts keeps its mode words at every tier).</summary>
     static Element Lead(LibraryPageProps p, ZuneLibraryLayout l)
     {
         if (p.IsPodcasts && p.Episodes is null)
             return Embed.Comp(l, () => new ModeWords(p.PodcastsMode())) with { Key = "lib:lead:mode" };
-        bool menu = l.SortMenu;
+        // Small's sort button, and the grouped albums' wherever that page stands in Small's arrangement (its pane stepped aside under the rung): their five words
+        // with the view, the find field and the count run past a 1008 page. The other kinds' words fit there and stay words.
+        bool menu = l.SortMenu || (HasGroups(p) && !p.PaneBeside);
         Element form = menu
             ? Embed.Comp(l, () => new SortButton(p.Entity, p.Sort(), p.Desc())) with { Key = "lib:lead:button" }
             : Embed.Comp(l, () => new SortWords(p.Entity, p.Sort(), p.Desc())) with { Key = "lib:lead:words" };
         // The slot's ONE child is an unkeyed column that holds the keyed form: the engine reconciles a slot's lone child in place (key ignored), which would patch the
         // button into the words instead of swapping them; a children LIST matches by key, so the leaving form exits and the entering one enters.
+        // The slot's own width eases between the two forms (the words' and the button's), so the view words after it slide instead of jumping.
         return new BoxEl
         {
-            Key = "lib:lead", Direction = 1, MinWidth = 0f, MinHeight = l.HeadH, Shrink = 0f,
+            Key = "lib:lead", Direction = 1, MinWidth = 0f, MinHeight = l.HeadH, Shrink = 0f, Animate = LR.ColumnResize,
             Children =
             [
                 new BoxEl

@@ -153,14 +153,21 @@ public static partial class ZuneStageGeometry
         if (tier.Plate == ZunePlateKind.Stack)
             return (layout.TransportH >= tier.SeekRowH + tier.PlateRowH + tier.PlateFootH ? ZunePlateForm.Stack : ZunePlateForm.Stacked, false);
         float disc = DiscFor(tier, MathF.Min(tier.PlateRowH, layout.TransportH - tier.SeekRowH));
-        float centre = 4f * tier.GlyphBox + disc + 4f * tier.ClusterGap;
-        float side = MathF.Max(0f, (layout.TransportW - 2f * tier.Gutter - centre - 2f * tier.ClusterGap) * 0.5f);
+        float side = PlateSideW(layout.TransportW - 2f * tier.Gutter, tier, disc);
         if (tier.Plate == ZunePlateKind.HeartLead)
             return (side >= DeviceMinW + tier.GlyphBox + tier.RightGap ? ZunePlateForm.HeartLead : ZunePlateForm.Stacked, false);
         float floor = RightMinW(tier);
         bool stacked = side < floor;
         return (stacked ? ZunePlateForm.Stacked : ZunePlateForm.Full, !stacked && tier.VolumeW > 0f && layout.ShowVolume && side >= floor + tier.RightGap + tier.VolumeW);
     }
+
+    /// <summary>The plate's centred cluster (shuffle · previous · the disc · next · repeat, the tier's gap apart).</summary>
+    public static float PlateCentreW(ZuneStageLayout tier, float disc) => 4f * tier.GlyphBox + disc + 4f * tier.ClusterGap;
+
+    /// <summary>What the centred cluster leaves each side of a plate <paramref name="innerW"/> wide (inside its gutters), the tier's gap
+    /// clear of it: the room of "playing from …" on the left and of the right cluster.</summary>
+    public static float PlateSideW(float innerW, ZuneStageLayout tier, float disc)
+        => MathF.Max(0f, (innerW - PlateCentreW(tier, disc) - 2f * tier.ClusterGap) * 0.5f);
 
     /// <summary>The top bar has room for the look's words: beside the centred pivots, each side column holds them; where the pivots lead
     /// (Small), what the pivots and the two glyphs leave holds them.</summary>

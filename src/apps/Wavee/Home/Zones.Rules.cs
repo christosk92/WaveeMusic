@@ -102,4 +102,9 @@ public static class EmptyFacetCopy
             return (Strings.Home.Empty.PodcastsTitle, Strings.Home.Empty.PodcastsBody, Strings.Home.Empty.PodcastsAction);
         return (Strings.Home.Empty.GenericTitle, Strings.Home.Empty.GenericBody, Strings.Home.Empty.GenericAction);
     }
+
+    /// <summary>The same three words for a Library show tab with nothing saved (Podcasts or Audiobooks, no filter typed): the library page's empty state
+    /// says what the kind is and offers the way to find some, as Home's empty facet does (audit B7 r2, V22).</summary>
+    public static (string Title, string Body, string Action) LibraryShows(bool podcasts)
+        => podcasts ? Keys("podcasts:empty") : Keys("home:audiobooks:empty");
 }

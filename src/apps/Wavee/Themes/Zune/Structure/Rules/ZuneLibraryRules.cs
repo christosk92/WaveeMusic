@@ -16,11 +16,14 @@
 // the artist reader's block extents (`Artist.ReaderShape`) are the host's: the pictures keep those pitches, so the artists' rows stand 44 apart, not the board's 34.
 //
 // THE COLLAPSE. The columns fold into the breadcrumb drill-in below `SplitFrom` of the page's OWN width, held 24 either way (the core resolves the ladder by id,
-// `LibraryLadders.Layout`, and never sees a number).
+// `LibraryLadders.Layout`, and never sees a number). The same ladder's second rung, `PaneFrom`, is where the THIRD column (the grouped albums' songs, the artist
+// board's picked album) stands beside the middle one: under it the pane steps aside as Small's boards draw it (the middle column takes its width and a picked album
+// opens its page), so the middle column never goes under `BoardMidMin` and no column runs past the window.
 //
 // Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo). Literal numbers are allowed in `Rules\**` (WVTH003).
 
 using System.Collections.Immutable;
+using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -97,8 +100,35 @@ public static class ZuneLibraryRules
     /// <summary>The reader column's gap between the hero, the albums heading and the grid; the grid's columns and gaps; the heading's size (26 light) and line.</summary>
     public const float BoardGap = 14f, BoardGridGap = 16f, BoardHeadSize = 26f, BoardHeadLine = 32f;
 
-    /// <summary>The albums grid's column count.</summary>
-    public const int BoardCols = 3;
+    /// <summary>The albums grid's column count (every board draws three), and the fewer it falls back to where three covers would go under <see cref="BoardCellMin"/>.</summary>
+    public const int BoardCols = 3, BoardColsNarrow = 2;
+
+    /// <summary>A cover's floor in the albums grid (Z-Sizes-Breakpoints: "min 150"): under it a name under the cover trims at almost every title.</summary>
+    public const float BoardCellMin = 150f;
+
+    /// <summary>The albums grid's columns for a <paramref name="width"/>-wide middle column: the boards' three while each cover keeps <see cref="BoardCellMin"/>, else two.</summary>
+    public static int BoardColumns(float width) => width >= BoardCols * BoardCellMin + (BoardCols - 1) * BoardGridGap ? BoardCols : BoardColsNarrow;
+
+    /// <summary>The middle column's floor beside the pane (the artist board's hero and grid, the grouped albums): the hero's verbs as words (<see cref="HeroVerbsWordsW"/>)
+    /// inside its 24 insets, and three covers of about 157. Under it the pane steps aside (<see cref="ZuneLibraryLadders.PaneFrom"/>).</summary>
+    public const float BoardMidMin = 504f;
+
+    /// <summary>The hero's verb row as words (play all · shuffle · go to artist, then the Follow slot, 8 apart: about 433 in en-US). A narrower lane keeps play all's word and
+    /// turns shuffle and go-to-artist into rings named by their tooltips; nothing is dropped.</summary>
+    public const float HeroVerbsWordsW = 440f;
+
+    /// <summary>Does the hero's verb row lane hold the words (<see cref="HeroVerbsWordsW"/>)?</summary>
+    public static bool HeroVerbWords(float laneWidth) => laneWidth >= HeroVerbsWordsW;
+
+    /// <summary>The hero name's fit floor as a share of its step (owner exception 2026-10-21, the detail-hero title): the step when it fits one line, else smaller on one line down
+    /// to half the step, else two lines at that floor (two half-size lines keep the one full-size line's block), then an ellipsis.</summary>
+    public const float HeroNameFloorShare = 0.5f;
+
+    /// <summary>A column whose DECLARED width changes (the artists' list 220 ↔ 280, the gaps 40 ↔ 48, the third column's slot stepping in or aside): it eases through
+    /// real layout, so the flexible column beside it widens or narrows on every tick (a size channel: the reflow-shove rule snaps a position slide that commits beside a
+    /// live reflow). A flexible (grow) column cannot carry it: its width is the free space, so the declared neighbour does.</summary>
+    public static readonly LayoutTransition ColumnResize = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow);
 
     /// <summary>The hero: its insets, the blob (a 300 disc bleeding off the corner at 55 %), the plate's tint alpha at its top, the name's weight, line factor and gap.</summary>
     public const float HeroPadX = 24f, HeroPadTop = 20f, HeroPadBottom = 14f, HeroBlob = 300f, HeroBlobBleed = 40f, HeroBlobOpacity = 0.55f, HeroNameLine = 1.11f, HeroNameGap = 4f;
@@ -154,6 +184,13 @@ public static class ZuneLibraryRules
     /// <summary>The playlists reader's head (Z-Library-Playlists): the 152 cover, its gap to the words, the gap under the title, the verbs' top and the
     /// air under the head.</summary>
     public const float PlaylistHeadCover = 152f, PlaylistHeadGap = 24f, PlaylistTitleGap = 4f, PlaylistVerbsTop = 16f, PlaylistHeadBottom = 16f;
+
+    /// <summary>The playlists reader's verbs as words (play · shuffle · open playlist, 20 apart: about 334 in en-US). A narrower lane keeps play's word and names the other
+    /// two by their tooltips (Z-Library-Playlists-Small draws the rings alone).</summary>
+    public const float PlaylistVerbsWordsW = 340f;
+
+    /// <summary>Does the playlists reader's verb lane hold the words (<see cref="PlaylistVerbsWordsW"/>)?</summary>
+    public static bool PlaylistVerbWords(float laneWidth) => laneWidth >= PlaylistVerbsWordsW;
 
     /// <summary>The pane's command targets: the stock edge, and the Compact tier's (a 40 target).</summary>
     public const float CommandBox = 36f, CompactCommandBox = 40f;
@@ -307,6 +344,11 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The count says the artists too ("312 albums · 184 artists"): Huge's head.</summary>
     public bool CountArtists { get; init; }
 
+    /// <summary>The artists board holds its full form at every width of the tier: the hero's verbs as words and three covers a row (Standard and Huge, where the pane rung
+    /// keeps the middle column at <see cref="ZuneLibraryRules.BoardMidMin"/> or wider once a crossing settles, so the form never flips mid-glide). False (Small): the board
+    /// measures its lane and folds the verbs' words and the covers' count where they would not fit.</summary>
+    public bool BoardFull { get; init; } = true;
+
     /// <summary>The artists board's hero: its height and its name's size (Z-Library-Artists 196 / 72; Small 160 / 72; Huge 380 / 144).</summary>
     public float HeroH { get; init; } = 196f;
 
@@ -324,9 +366,6 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
 
     /// <inheritdoc cref="GroupW"/>
     public float GroupCountLane { get; init; } = 24f;
-
-    /// <summary>The album pane draws beside the groups (Small's board is the artists and the albums alone).</summary>
-    public bool GroupPane { get; init; } = true;
 
     /// <summary>The navigator's and the pane's flex shares of the width the page has left (the navigator rests at 0, the pane at <see cref="PaneW"/>). 1 / 0 is the
     /// fixed-pane form (Compact, Small, Standard); Huge shares 2 / 1 so both columns fill the 2400 column.</summary>
@@ -380,11 +419,39 @@ public static class ZuneLibraryLadders
     /// <summary>The ladder's hold, both ways: entered below 616, left at 664.</summary>
     public const float SplitHold = 24f;
 
-    /// <summary>The layout ladder: index 0 the one-column drill-in, 1 the split.</summary>
-    public static TierLadder Layout { get; } = TierLadder.Of(new TierEdge(SplitFrom, NarrowHold: SplitHold, WidenHold: SplitHold));
+    /// <summary>The third column stands beside the middle one from here, of the page's own width: the Standard record's columns, 2 × 48 gutters + the 220 list + 40 +
+    /// <see cref="ZuneLibraryRules.BoardMidMin"/> + 40 + the 380 pane. Small's pages are all under it (Small's boards draw no pane); Huge's all over it.</summary>
+    public const float PaneFrom = 1280f;
+
+    /// <summary>The pane rung's hold: it commits at the line on widening and holds 16 on narrowing, so the middle column under the held pane never goes under the hero's
+    /// verbs as words (<see cref="ZuneLibraryRules.BoardMidMin"/> 504 less 16 = 488 = <see cref="ZuneLibraryRules.HeroVerbsWordsW"/> + its two 24 insets).</summary>
+    public const float PaneHold = 16f;
+
+    /// <summary>The layout index from which the pane stands beside the middle column (<see cref="LibraryTierPolicy.PaneFromLayout"/>).</summary>
+    public const int PaneLayout = 2;
+
+    /// <summary>The layout ladder: index 0 the one-column drill-in, 1 the split with the pane aside, 2 the split with the pane beside.</summary>
+    public static TierLadder Layout { get; } = TierLadder.Of(
+        new TierEdge(SplitFrom, NarrowHold: SplitHold, WidenHold: SplitHold),
+        new TierEdge(PaneFrom, NarrowHold: PaneHold, WidenHold: 0f));
+
+    /// <summary>The library artist reader's arms (<see cref="ArtistLadders.Reader"/>, measured on the reader's own width): narrow under 640 (the 88 cover, the stacked album
+    /// heads), medium under the wide band's lane (<see cref="Artist.ReaderShape.WideBandLaneW"/>, 748: no cover spine, the stacked band), wide over it. Zune draws that
+    /// reader in the one-column drill-in only (the split draws the board), so a Compact reader stands in its narrow arm; with no ladder declared the core answered its
+    /// top arm, and the drill-in squeezed the wide band's name to nothing and laid the sub-rail's words over each other.</summary>
+    public const float ReaderNarrowBelow = 640f, ReaderMediumBelow = Artist.ReaderShape.WideBandLaneW;
+
+    /// <summary>The reader ladder's hold, Zune's: each edge commits at the line on widening and holds 24 on narrowing.</summary>
+    public const float ReaderHold = 24f;
+
+    /// <summary>The reader's arms: 0 narrow, 1 medium, 2 wide.</summary>
+    public static TierLadder Reader { get; } = TierLadder.Of(
+        new TierEdge(ReaderNarrowBelow, NarrowHold: ReaderHold, WidenHold: 0f),
+        new TierEdge(ReaderMediumBelow, NarrowHold: ReaderHold, WidenHold: 0f));
 
     /// <summary>The ladders this family adds to <see cref="ZuneTiers.Policy"/>: the core host resolves them by id.</summary>
-    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(new NamedLadder(LibraryLadders.Layout, Layout));
+    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(
+        new NamedLadder(LibraryLadders.Layout, Layout), new NamedLadder(ArtistLadders.Reader, Reader));
 }
 
 public static class ZuneLibraryTiers
@@ -416,7 +483,7 @@ public static class ZuneLibraryTiers
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96. The find field is 144 wide: the
         // longest kind's placeholder ("find in audiobooks") stands whole in it (the field draws its placeholder uncut, never ellipsised).
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = ZuneLibraryRules.FindWSmall, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f, EpisodesNavW = 220f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = ZuneLibraryRules.FindWSmall, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, BoardFull = false, HeroH = 180f, EpisodesNavW = 220f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
@@ -444,7 +511,7 @@ public static class ZuneLibraryTiers
     /// navigator's width is the flexible column's (no grip), so no resting width is stated.</summary>
     public static LibraryTierPolicy Policy { get; } = new()
     {
-        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PlaylistsMasterDetail = true, PodcastsEpisodesFirst = true, GroupPaneFrom = WidthTier.Standard,
+        SmallCardCellMin = 96f, GroupAlbumsByArtist = true, PlaylistsMasterDetail = true, PodcastsEpisodesFirst = true, PaneFromLayout = ZuneLibraryLadders.PaneLayout,
         CompactGridGaps = s_records[0].GridGaps, SmallGridGaps = s_records[1].GridGaps, StandardGridGaps = s_records[2].GridGaps, HugeGridGaps = s_records[3].GridGaps,
     };
 

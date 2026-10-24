@@ -1371,7 +1371,8 @@ public static partial class Shell
         string DeviceId = "",
         string? Accelerator = null,
         byte LocalKind = 0,
-        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer);
+        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer,
+        bool Chosen = false);
 
     /// <summary>Hard cap on device labels — endpoint names are short (DeviceDesc-first) but Connect names and
     /// duplicate-name fallbacks can be arbitrarily long, and the flyout sizes to its widest row.</summary>
@@ -1406,14 +1407,14 @@ public static partial class Shell
         rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.ThisComputer), Enabled: false));
         rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDefault, Loc.Get(Strings.Player.SystemDefault),
             IsChecked: localSupported && weAreActiveOutput && string.IsNullOrEmpty(selectedLocalId),
-            Enabled: localSupported, DeviceId: "", Accelerator: acc));
+            Enabled: localSupported, DeviceId: "", Accelerator: acc, Chosen: localSupported && string.IsNullOrEmpty(selectedLocalId)));
         for (int i = 0; i < local.Length; i++)
         {
             ref readonly var d = ref local[i];
+            bool chosen = localSupported && !string.IsNullOrEmpty(selectedLocalId) && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase);
             rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDevice, CapLabel(d.Name),
-                IsChecked: localSupported && weAreActiveOutput && !string.IsNullOrEmpty(selectedLocalId)
-                           && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase),
-                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind));
+                IsChecked: chosen && weAreActiveOutput,
+                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind, Chosen: chosen));
         }
 
         rows.Add(QualityRow(observed, askedQuality));
@@ -1453,10 +1454,32 @@ public static partial class Shell
 
         int observedRung = Spotify.Audio.Rung(observed.Format);
         int askedRung = Spotify.Audio.TargetRung(askedQuality);
+        string quality = ObservedQualityWords(observed);
         string text = observedRung >= 0 && observedRung < askedRung
-            ? Strings.Player.QualityBelowSetting(observed.Label, Loc.Get(AskedQualityLabel(askedQuality)))
-            : Strings.Player.QualityPlaying(observed.Label);
+            ? Strings.Player.QualityBelowSetting(quality, Loc.Get(AskedQualityLabel(askedQuality)))
+            : Strings.Player.QualityPlaying(quality);
         return new DevicePickerRow(DevicePickerRowKind.Quality, text, Enabled: false);
+    }
+
+    /// <summary>The observed format in the setting's own words (the boards' "very high · 320 kbps", audit B8), not the codec
+    /// label the stage badge prints ("ogg 320"): a Spotify Ogg rung names its rung and its nominal rate, a FLAC rung names
+    /// "lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. The rung words are
+    /// mid-sentence forms; each theme still applies its own case role to the line.</summary>
+    static string ObservedQualityWords(Playback.Audio.Opened observed)
+    {
+        var f = observed.Format;
+        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
+            return Strings.Player.QualityFormat(Loc.Get(Strings.Player.QualityRungLossless), observed.Label);
+        string? rung = f switch
+        {
+            Spotify.Audio.Format.OggVorbis96 => Strings.Player.QualityRungNormal,
+            Spotify.Audio.Format.OggVorbis160 => Strings.Player.QualityRungHigh,
+            Spotify.Audio.Format.OggVorbis320 => Strings.Player.QualityRungVeryHigh,
+            _ => null,
+        };
+        return rung is { } k
+            ? Strings.Player.QualityRate(Loc.Get(k), FormatCache.Int(Playback.Audio.BitrateHintKbps(f)))
+            : observed.Label;
     }
 
     /// <summary>The setting's own name for <paramref name="quality"/> — the same four labels the Settings page's

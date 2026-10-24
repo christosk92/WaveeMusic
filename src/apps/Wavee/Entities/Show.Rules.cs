@@ -509,8 +509,9 @@ public static class ShowToolbarLayout
     /// <summary>Headroom a RICHER stage needs beyond its bare fit (same number as <c>CommandBarLayout.PromotionHysteresis</c>).</summary>
     public const float Hysteresis = 16f;
 
-    /// <summary>The toolbar's content width: its arranged width less both gutters.</summary>
-    public static float InnerWidth(float width, bool narrowPad) => width - 2f * (narrowPad ? PadNarrow : Pad);
+    /// <summary>The toolbar's content width: its arranged width less both gutters (the leading one alone where <paramref name="trailing"/> is
+    /// false: a reader whose year strip stands in the frame's margin pads no trailing gutter).</summary>
+    public static float InnerWidth(float width, bool narrowPad, bool trailing = true) => width - (trailing ? 2f : 1f) * (narrowPad ? PadNarrow : Pad);
 
     /// <summary>The width the left group asks for at <paramref name="stage"/>: the chips' natural width, or the menu
     /// button around the selected one.</summary>
@@ -539,11 +540,13 @@ public static class ShowToolbarLayout
 
     /// <summary>The stage for a toolbar <paramref name="width"/> DIP wide (its own arranged width, gutters included);
     /// <paramref name="previous"/> is the stage on screen (null = none yet); <paramref name="narrowGlyph"/> is the style's glyph edge under the narrow
-    /// arm (<c>ShowReaderStyle.NarrowToolbarGlyph</c>, 0 = <see cref="Glyph"/>). See the type doc.</summary>
-    public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null, float narrowGlyph = 0f)
+    /// arm (<c>ShowReaderStyle.NarrowToolbarGlyph</c>, 0 = <see cref="Glyph"/>); <paramref name="trailing"/> is whether the toolbar pads a trailing
+    /// gutter (<see cref="InnerWidth"/>). See the type doc.</summary>
+    public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null, float narrowGlyph = 0f,
+                                   bool trailing = true)
     {
         if (!(width > 0f) || !needs.Measured) return ToolbarStage.Full;
-        float inner = InnerWidth(width, narrowPad);
+        float inner = InnerWidth(width, narrowPad, trailing);
         float glyph = GlyphEdge(narrowPad, narrowGlyph);
         var fit = Richest(inner, in needs, glyph);
         if (previous is not { } old || fit >= old) return fit;      // narrowing (or no change): immediate

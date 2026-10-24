@@ -234,18 +234,22 @@ internal static class ZuneTrackChrome
         Children = [Word(label, Tok.TextTertiary)],
     };
 
-    /// <summary>The # header: Zune's number lane carries no word (Z-State-Rows), only the descending caret when the context's order is reversed;
-    /// a click cycles the default order.</summary>
+    /// <summary>The # header: a "#" in the header's type and ink (primary while the track number is the sort, tertiary otherwise, as every Zune header word),
+    /// with the caret beside it while that order is reversed; a tap sorts by track number (the owner, audit B8 r2: the target drew nothing before). Its hit
+    /// rect reaches <see cref="ZuneListRules.HeaderNumTarget"/> across the 28 lane (no clip on the cell, so the slop is not cut).</summary>
     static Element IndexSortCell(TrackHeaderArgs a, SortSpec sort)
     {
         bool caret = sort.Column == SortColumn.Index && sort.Descending;
         var signal = a.SortSignal;
+        float slop = MathF.Max(0f, (ZuneListRules.HeaderNumTarget - Lane.Num) / 2f);
+        Element hash = HLabel(ZuneListRules.NumberHeader, SortColumn.Index, sort);
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.XXS, MinWidth = 0f,
+            HitSlop = new Edges4(slop, 0f, slop, 0f),
             HoverFill = Prop.Of(static () => R.Layer.RowHover), Role = AutomationRole.Button,
             OnClick = () => a.OnSort(SortColumn.Index, false),
-            Children = caret ? [Embed.Comp(() => new CaretComponent(signal))] : [new BoxEl { Width = Lane.NumCaretSlot }],
+            Children = caret ? [hash, Embed.Comp(() => new CaretComponent(signal))] : [hash],
         };
     }
 

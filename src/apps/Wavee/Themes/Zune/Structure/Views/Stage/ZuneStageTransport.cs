@@ -8,6 +8,7 @@
 //               HeartLead  (Small) heart left, the centred cluster, device · "…" right
 //               Stack      (Compact) the cluster spread across, then heart · device · "…" under it
 //               Stacked    where the kind does not fit: heart · previous · disc · next · "…" spread across
+//             The kinds share ONE row of keyed parts in two layers (the cluster, the sides), so a change of kind slides them (audit B2z r3).
 //   CARD      (Z-NowPlaying-Card, -Huge) inside the card, in its tier's voice; mute · volume · device at the bottom-right gutter.
 //   COLUMN    (Z-NowPlaying-LargeArt, -Small) in the column: "playing from …" at its top; at its foot the seek row, the row (… heart) and
 //             the volume row (Small: the aside under the block).
@@ -80,64 +81,100 @@ internal static class ZuneStageTransport
 
     // ── the plate ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>A plate part's move when the plate changes kind (a tier crossing, a narrower stage): the pivot slide.</summary>
+    static LayoutTransition? Slide => Design.Reduced ? null : ZuneMotion.PivotSlide;
+
+    /// <summary>The plate: the seek row over ONE row of parts in two layers, the same nodes in every kind (audit B2z r3: a crossing that
+    /// changes the kind slides the disc and the heart, never rebuilds them). The cluster layer holds shuffle · previous · the disc · next ·
+    /// repeat: centred (Full, HeartLead), spread across the stage (Stack) or between the heart and the "…" (Stacked, without shuffle and
+    /// repeat). The sides layer holds the rest, the heart re-ordered to the kind's end: "playing from …" · heart · mute · volume · device ·
+    /// "…" (Full), heart · device · "…" (HeartLead), heart · "…" (Stacked), and Stack's own row under the cluster, heart · device · "…".
+    /// Each side keeps to what the centred cluster leaves it, so the cluster never sits over a part.</summary>
     static BoxEl Plate(Kit kit, in Stage.Layout L, ZuneStageLayout t, Stage.Mode mode, bool gallery)
     {
         var (form, volume) = G.PlateFit(in L, t);
         float rowH = G.PlateRowFor(in L, t, form);
         float disc = G.DiscFor(t, rowH);
-        var rows = new List<Element>(3) { kit.SeekRow() };
-        switch (form)
-        {
-            case ZunePlateForm.Stack:
-                rows.Add(Spread(rowH, kit.Shuffle(), kit.Previous(), kit.Play(disc), kit.Next(), kit.Repeat()));
-                rows.Add(new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Height = t.PlateFootH, Gap = t.RightGap,
-                    Children = [kit.Heart(), new BoxEl { Grow = 1f, MinWidth = 0f }, kit.Device(), kit.More()],
-                });
-                break;
-            case ZunePlateForm.Stacked:
-                rows.Add(Spread(rowH, kit.Heart(), kit.Previous(), kit.Play(disc), kit.Next(), kit.More()));
-                break;
-            case ZunePlateForm.HeartLead:
-                rows.Add(Three(rowH, t.ClusterGap, [kit.Heart()], kit.Centre(disc), [kit.Device(), kit.More()], t.RightGap));
-                break;
-            default:
+        var s = kit.Size;
+        var slide = Slide;
+        bool full = form == ZunePlateForm.Full, stack = form == ZunePlateForm.Stack, stacked = form == ZunePlateForm.Stacked;
+        float inner = MathF.Max(0f, L.W - L.TransportLeft - L.TransportRight(gallery) - 2f * t.Gutter);
+        float side = G.PlateSideW(inner, t, disc);
+
+        var cluster = new List<Element>(5);
+        if (!stacked) cluster.Add(kit.Shuffle() with { Key = "stage:plate:shuffle", Layout = slide });
+        cluster.Add(kit.Previous() with { Key = "stage:plate:previous", Layout = slide });
+        cluster.Add(kit.Play(disc) with { Layout = slide });
+        cluster.Add(kit.Next() with { Key = "stage:plate:next", Layout = slide });
+        if (!stacked) cluster.Add(kit.Repeat() with { Key = "stage:plate:repeat", Layout = slide });
+
+        var heart = kit.Heart() with { Key = "stage:plate:heart", Layout = slide };
+        var sides = new List<Element>(7);
+        if (full)
+            sides.Add(new BoxEl
             {
-                var right = new List<Element>(5) { kit.Heart(), kit.Mute() };
-                if (volume) right.Add(kit.Volume());
-                right.Add(kit.Device());
-                right.Add(kit.More());
-                rows.Add(Three(rowH, t.ClusterGap, [kit.Source()], kit.Centre(disc), right.ToArray(), t.RightGap));
-                break;
-            }
+                Key = "stage:plate:source", MaxWidth = side, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Layout = slide,
+                Children = [kit.Source()],
+            });
+        else sides.Add(heart);
+        sides.Add(new BoxEl { Key = "stage:plate:air", Grow = 1f, MinWidth = 0f, HitTestVisible = false });
+        int right = 2;   // the device and the "…"
+        if (full)
+        {
+            sides.Add(heart);
+            sides.Add(kit.Mute() with { Key = "stage:plate:mute", Layout = slide });
+            right += 2;
+            if (volume) { sides.Add(kit.Volume() with { Key = "stage:plate:volume", Layout = slide }); right++; }
         }
+        if (!stacked)
+        {
+            // the device word gives way first: the right cluster ends inside its side (Stack's own row: the stage's width)
+            float fixedW = (right - 2) * s.Box + s.Box + (full && volume ? s.VolumeW - s.Box : 0f) + (right - 1) * s.RightGap;
+            float room = stack ? inner - s.Box - 2f * s.RightGap : side;   // Stack: its row less the heart and the air's two gaps
+            float deviceMax = MathF.Max(0f, room - fixedW);
+            sides.Add(new BoxEl
+            {
+                Key = "stage:plate:device", MaxWidth = deviceMax, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, Layout = slide,
+                Children = [kit.Device()],
+            });
+        }
+        sides.Add(kit.More() with { Key = "stage:plate:more", Layout = slide });
+
+        var row = new BoxEl
+        {
+            Key = "stage:plate:row", ZStack = true, Height = rowH + (stack ? t.PlateFootH : 0f), Shrink = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "stage:plate:sides", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Height = stack ? t.PlateFootH : rowH,
+                    Margin = new Edges4(0f, stack ? rowH : 0f, 0f, 0f), Direction = 0, AlignItems = FlexAlign.Center, Gap = s.RightGap, Layout = slide,
+                    Children = sides.ToArray(),
+                },
+                new BoxEl
+                {
+                    Key = "stage:plate:cluster", AlignSelf = FlexAlign.Start, Height = rowH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = slide,
+                    JustifySelf = stack || stacked ? FlexAlign.Stretch : FlexAlign.Center,
+                    Justify = stack ? FlexJustify.SpaceBetween : stacked ? FlexJustify.SpaceEvenly : FlexJustify.Start,
+                    Gap = stack || stacked ? 0f : s.Gap, Margin = stacked ? new Edges4(s.Box, 0f, s.Box, 0f) : default,
+                    Children = cluster.ToArray(),
+                },
+            ],
+        };
         return new BoxEl
         {
             AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Height = L.TransportH, Direction = 1,
             Margin = new Edges4(L.TransportLeft, 0f, L.TransportRight(gallery), L.TransportInset), Layout = s_yield,
             Padding = new Edges4(t.Gutter, 0f, t.Gutter, 0f), Fill = Ink.Veil with { A = G.PlateAlpha(mode) },
             OnHoverMove = _ => kit.Over(true), OnPointerExit = () => kit.Over(false),
-            Children = rows.ToArray(),
+            Children = [kit.SeekRow(), row],
         };
     }
 
-    /// <summary>A row of parts spread across (the Compact cluster, the stacked row).</summary>
+    /// <summary>A row of parts spread across (the Compact stack's cluster).</summary>
     static BoxEl Spread(float h, params Element[] parts) => new()
     {
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Height = h, Children = parts,
-    };
-
-    /// <summary>Three clusters: the side columns split what the centre leaves (Grow 1, Basis 0), so the centre stays centred.</summary>
-    static BoxEl Three(float h, float gap, Element[] left, Element centre, Element[] right, float rightGap) => new()
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Height = h, Gap = gap,
-        Children =
-        [
-            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Gap = rightGap, Children = left },
-            centre,
-            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = rightGap, Children = right },
-        ],
     };
 
     // ── the arrangements ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -380,13 +417,6 @@ internal static class ZuneStageTransport
         public Element Next(ZuneStageNext.Form form, Action? open = null) => props.Next is { } next
             ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine) { Open = open }, static () => new ZuneStageNext())
             : new BoxEl { HitTestVisible = false };
-
-        /// <summary>shuffle · previous · the disc · next · repeat, the gap apart.</summary>
-        public Element Centre(float disc) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = size.Gap, Shrink = 0f,
-            Children = [Shuffle(), Previous(), Play(disc), Next(), Repeat()],
-        };
 
         public Element Shuffle() => ToolTip.Wrap(Latch(Icons.Shuffle, props.Verbs.ToggleShuffle, facts.CanTransport, facts.Shuffle), Loc.Get(Strings.Player.Shuffle));
 

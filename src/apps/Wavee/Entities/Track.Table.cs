@@ -344,6 +344,9 @@ public readonly partial struct Track
         public override int GetHashCode() => HashCode.Combine(Config, DefaultSort, ContentFilterExtent, LensExtent, Seams);
     }
 
+    /// <summary>The page's ONE "…" (a tier's <see cref="Theming.DetailPageMenu"/>): the page's items, then the list options (see <c>TableHost.MergePageMenu</c>).</summary>
+    internal static ContextMenuModel? MergePageMenu(ContextMenuModel? page, List<MenuFlyoutItem>? list) => TableHost.MergePageMenu(page, list);
+
     public sealed record TableArgs
     {
         public required TableSource Source { get; init; }
@@ -377,6 +380,9 @@ public readonly partial struct Track
         public global::Wavee.Theming.Contracts.DetailForm Form { get; init; }
         /// <summary>The columns form's parts (the rail, the head, the aside, the sheet), handed to the hero; null where the page is not one tree.</summary>
         public global::Wavee.Theming.Contracts.DetailColumnsProps? Columns { get; init; }
+        /// <summary>Where the page's ONE "…" meets the list options when a tier gives the page one (audit B8 r2): the table publishes its list options here
+        /// for the columns form's rail. Stable per frame host.</summary>
+        public Detail.PageMenuBridge? MenuBridge { get; init; }
 
         public bool Equals(TableArgs? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -386,7 +392,7 @@ public readonly partial struct Track
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
-                   && Form == other.Form && ReferenceEquals(Columns, other.Columns)));
+                   && Form == other.Form && ReferenceEquals(Columns, other.Columns) && ReferenceEquals(MenuBridge, other.MenuBridge)));
 
         public override int GetHashCode()
             => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey, Form);
@@ -464,11 +470,17 @@ public readonly partial struct Track
         }
 
         /// <summary>A lead / trail spacer of the list column: its width BOUND to <see cref="InsetsNow"/> (a crossing re-binds it, nothing re-renders) and
-        /// eased with the structure's column motion, so the rows move in step with the hero's identity column.</summary>
-        BoxEl InsetSpacer(bool lead) => new()
+        /// eased with the structure's column motion, so the rows move in step with the hero's identity column. It is its own shimmer (a self-override): the
+        /// deriver never reads a bound Prop and made it a 0-wide box, so the loading band's chrome and rows ran under the rail at the columns form and
+        /// jumped 240 (Classic) / 288 (Zune) to its side when the page landed (audit B7 r2).</summary>
+        BoxEl InsetSpacer(bool lead)
         {
-            Width = Prop.Of(lead ? _leadInset : _trailInset), Shrink = 0f, HitTestVisible = false, Animate = _heroStyle?.InsetMotion,
-        };
+            var spacer = new BoxEl
+            {
+                Width = Prop.Of(lead ? _leadInset : _trailInset), Shrink = 0f, HitTestVisible = false, Animate = _heroStyle?.InsetMotion,
+            };
+            return spacer with { SkeletonOverride = spacer };
+        }
 
         /// <summary><paramref name="e"/> in the list column: between the lead and trail spacers (always the same three children, whatever the insets, so an
         /// inset that comes or goes moves the item instead of re-parenting it). The box yields the pointer where its own children take none
@@ -774,9 +786,9 @@ public readonly partial struct Track
             // Two ladders, in order: the tier admits the lanes this WIDTH allows, then relief takes back the ones the
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
             // The window tier's table form (the structure's record: the Compact row, the lanes a band never admits, the row floors). Tracked, so
-            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane.
+            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm).
             var form = args.Embedded
-                ? global::Wavee.Theming.DetailTableTier.Standard
+                ? Track.EmbeddedForm()
                 : ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table;
             var admitted = SetFor(in snap, args, TierNow(), form);
             var set = TableRules.ApplyRelief(in admitted, ReliefStepFor(in admitted));
@@ -1368,10 +1380,12 @@ public readonly partial struct Track
             return src.State == EdgeState.Failed;
         }
 
-        // The vertical arm's hero and chrome are PREFIX ITEMS inside the boundary (D49). They shimmer as a band only while
-        // the page's header has not answered (Identity.HeaderPending — the same flag the two-column rail pends on); once
-        // it has, the list mounts and its empty slot shimmers the rows instead.
-        bool VerticalPending() => RowsPending() && (_latest.Vertical?.Identity.HeaderPending ?? true);
+        // The vertical arm's hero and chrome are PREFIX ITEMS inside the boundary (D49). A hero that shimmers its own identity in place (a hero style
+        // with no loading band, audit B7 r2) mounts with the list at once: the rows shimmer in the list's empty slot, and when the header lands the
+        // hero's own region swaps and eases its height, the chrome and the rows riding it (a band swap landed the head's data-sized rows at once: Classic's
+        // playlist at 400 jumped 126). A hero style that still hands a band shimmers it while the page's header has not answered
+        // (Identity.HeaderPending, the flag the two-column rail pends on); once it has, the list mounts and its empty slot shimmers the rows.
+        bool VerticalPending() => _heroStyle?.Skeleton is not null && RowsPending() && (_latest.Vertical?.Identity.HeaderPending ?? true);
         bool VerticalFailed() => RowsFailed() && (_latest.Vertical?.Identity.HeaderPending ?? true);
 
         void ArmRamp()
@@ -1696,15 +1710,25 @@ public readonly partial struct Track
         /// the satellite all run the one shuffle. Cached per spec instance, so a steady page allocates nothing.</summary>
         Detail.VerticalSpec HeroSpec(Detail.VerticalSpec spec)
         {
-            if (spec.Actions.Shuffle is null) return spec;
-            if (!ReferenceEquals(_heroSpecFrom, spec) || _heroSpec is not { } cached)
+            // Where the tier gives the page ONE "…" (DetailTableTier.PageMenu): the list bar's (the hero draws none) or the hero's, carrying the list options.
+            var home = spec.Actions.More is null ? global::Wavee.Theming.DetailPageMenu.Both : PageMenuNow();
+            if (spec.Actions.Shuffle is null && home == global::Wavee.Theming.DetailPageMenu.Both) return spec;
+            if (!ReferenceEquals(_heroSpecFrom, spec) || _heroSpecHome != home || _heroSpec is not { } cached)
             {
-                cached = spec with { Actions = spec.Actions with { Shuffle = _shuffle } };
+                var acts = spec.Actions;
+                if (acts.Shuffle is not null) acts = acts with { Shuffle = _shuffle };
+                if (home == global::Wavee.Theming.DetailPageMenu.ListBar) acts = acts with { More = null };
+                else if (home == global::Wavee.Theming.DetailPageMenu.Hero) acts = acts with { More = _heroPageMenu ??= HeroPageMenu };
+                cached = spec with { Actions = acts };
                 _heroSpecFrom = spec;
+                _heroSpecHome = home;
                 _heroSpec = cached;
             }
             return cached;
         }
+
+        global::Wavee.Theming.DetailPageMenu _heroSpecHome;
+        Func<ContextMenuModel?>? _heroPageMenu;
 
         float HeroHeightFor(Detail.VerticalSpec spec, float colW)
         {
@@ -1915,7 +1939,7 @@ public readonly partial struct Track
                 Direction = 1,
                 Children =
                 [
-                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form, _latest.Columns) ?? new BoxEl(),
+                    _heroStyle?.Skeleton?.Invoke(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form, _latest.Columns) ?? new BoxEl(),
                     InsetList(Chrome(in shape, chips, lens)),
                     InsetList(RowsShimmer(in shape)),
                 ],

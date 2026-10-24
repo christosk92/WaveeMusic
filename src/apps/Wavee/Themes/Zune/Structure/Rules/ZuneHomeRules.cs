@@ -235,6 +235,12 @@ public static class ZuneHomeRules
     public static readonly LayoutTransition ChapterResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary><see cref="ChapterResize"/> that also GLIDES to a new place: the two chapters the height rung reorders (the quickplay strip and the
+    /// daylist, `ZuneHomePlan.Rows`' daylistLeads) keep their nodes and slide past each other on the column's clock (a FLIP measured after the
+    /// commit's reflows are seeded at their start, so the daylist's own height easing is not counted twice).</summary>
+    public static readonly LayoutTransition ChapterMove = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>The daylist strip's own height across a crossing (176 / 168 / 112 / 56): a reflow on the height axis. A FlowReveal would snap here, since the
     /// engine snaps flow reveals on the frame an interactive resize ends, and a height-rung crossing is exactly that frame.</summary>
     public static readonly LayoutTransition DaylistResize = new(TransitionChannels.Size,
@@ -620,8 +626,10 @@ public static class ZuneHomePlan
     /// <summary>The rows of a facet's zones. On All (<paramref name="quickplay"/>) the strip leads (the daylist, the planner's first zone, follows
     /// it) and takes the Recents zone as its history, so the Recents zone stands nowhere else; the release list stays in the column too (the board
     /// draws it twice: three covers in the strip, the list below). Two neighbours that pair (a release list and the clusters, new episodes and
-    /// continue listening) share one row; every other zone is a row of its own, in the planner's order.</summary>
-    public static ImmutableArray<ZuneHomeRow> Rows(IReadOnlyList<ZoneKind> kinds, bool quickplay)
+    /// continue listening) share one row; every other zone is a row of its own, in the planner's order. <paramref name="daylistLeads"/> (the
+    /// one-row daylist, under the height rung <see cref="ZuneHomeRules.DaylistRung"/>; Z-Shell-Short): the daylist's row comes first, over the
+    /// strip, so a short window opens on the one row and the strip's captions never sit under the fade at the foot (V28c).</summary>
+    public static ImmutableArray<ZuneHomeRow> Rows(IReadOnlyList<ZoneKind> kinds, bool quickplay, bool daylistLeads = false)
     {
         var rows = ImmutableArray.CreateBuilder<ZuneHomeRow>(kinds.Count + 1);
         int recents = -1, releases = -1;
@@ -645,6 +653,15 @@ public static class ZuneHomePlan
             }
             rows.Add(new ZuneHomeRow(ZuneHomeRowKind.Single, i));
         }
+        if (quickplay && daylistLeads)
+            for (int r = 1; r < rows.Count; r++)
+            {
+                if (rows[r].Kind != ZuneHomeRowKind.Single || kinds[rows[r].First] != ZoneKind.Daylist) continue;
+                var daylist = rows[r];
+                rows.RemoveAt(r);
+                rows.Insert(0, daylist);
+                break;
+            }
         return rows.ToImmutable();
     }
 

@@ -159,6 +159,9 @@ public static class ZuneBandRules
         return order;
     }
 
+    /// <summary>The radix row 1's order is folded into one layout-effect dep with (more than the destinations a band holds).</summary>
+    public const int OrderRadix = 16;
+
     /// <summary>The roving tab stop of row 1: the lit pivot, else the first.</summary>
     public static int TabStop(int count, int current) => current >= 0 && current < count ? current : 0;
 
@@ -311,14 +314,25 @@ public static class ZuneBandRules
     // ── the bleed's adaptive scrim (V14) ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The scrim's fade under the band strip: full over the title bar and the band, clear this far below their foot (the head's photo
-    /// comes in under it).</summary>
-    public const float BleedScrimFade = 96f;
+    /// comes in under it), along an EASED curve (<see cref="BleedScrimLevel"/>), not a straight ramp: no edge where the shade starts or ends (the
+    /// owner's variant D, 2026-10-24).</summary>
+    public const float BleedScrimFade = 160f;
+
+    /// <summary>The steps the eased fade is drawn in (a gradient carries four stops, so the scrim stacks three boxes of them).</summary>
+    public const int BleedScrimSteps = 8;
+
+    /// <summary>The scrim's level (of its full opacity) at step <paramref name="i"/> of <see cref="BleedScrimSteps"/> down the fade: 1 - smoothstep(t).</summary>
+    public static float BleedScrimLevel(int i)
+    {
+        float t = Math.Clamp(i / (float)BleedScrimSteps, 0f, 1f);
+        return 1f - t * t * (3f - 2f * t);
+    }
 
     /// <summary>The dark kind's scrim: black, as the on-media scrims are (the light kind's is its ground).</summary>
     public static readonly ColorF BleedScrimDark = ColorF.FromRgba(0, 0, 0);
 
-    /// <summary>The ratio the band strip's dimmest words (the crumbs and the pins' word: 13 and 11 DIP in the tertiary ink) need over the photo: 4.5
-    /// and a little headroom, since the map is a downsampled estimate of the photo (the dark kind's tertiary ink tops out near 4.9 on black).</summary>
+    /// <summary>The ratio the band strip's dimmest words (the crumbs and the pins' word: 13 and 11 DIP, in the SECONDARY ink over a photo bleed,
+    /// <see cref="ZuneMaterial.StripInk"/>) need over the photo: 4.5 and a little headroom, since the map is a downsampled estimate of the photo.</summary>
     public const float BleedScrimNeed = 4.7f;
 
     /// <summary>The scrim's opacity over the band strip for a bleed photograph measured as <paramref name="map"/>: the least that brings
@@ -345,6 +359,36 @@ public static class ZuneBandRules
             if (MediaScrim.Contrast(ink, under + (scrim - under) * mid) >= BleedScrimNeed) hi = mid; else lo = mid;
         }
         return hi;
+    }
+
+    /// <summary>The ink for a run that stands on the bleed's photo BELOW the band strip's foot (<paramref name="top"/>), where no scrim reaches: <paramref name="ink"/>
+    /// itself where it reads <see cref="BleedScrimNeed"/> over the photo's worst grey there (the same tail as <see cref="BleedScrimAlpha"/>, the photo at
+    /// <paramref name="bleedOpacity"/> over <paramref name="ground"/>, judged from the strip's foot to the bleed's own; its fade only lightens that, so the
+    /// judgement holds wherever a scroll carries the run over it), else the least lift toward <paramref name="toward"/> that does: the hue kept, only
+    /// darker on light or lighter on dark (Z-OWNER follow-up: the artist caption's rank read 4.33 : 1 in the light accent over ar3's photo).</summary>
+    public static ColorF BleedInk(MediaScrim.LumaMap map, float boxW, float boxH, float top, PhotoSubject subject, float frameY, float bleedOpacity,
+        float ground, ColorF ink, ColorF toward)
+    {
+        if (!(boxH > top) || !(boxW > 0f)) return ink;
+        var uv = MediaScrim.CoverUv(map.Aspect, boxW, boxH, 0f, top, boxW, boxH - top, subject.X, subject.Y, MediaScrim.Crop.Centred.FrameX, frameY);
+        bool lightInk = MediaScrim.Contrast(ink, 0f) > MediaScrim.Contrast(ink, 1f);
+        float photo = MediaScrim.GreyAt(map, uv, lightInk ? MediaScrim.Percentile : 1f - MediaScrim.Percentile);
+        float under = bleedOpacity * photo + (1f - bleedOpacity) * ground;
+        if (MediaScrim.Contrast(ink, under) >= BleedScrimNeed) return ink;
+        float lo = 0f, hi = 1f;
+        for (int i = 0; i < 20; i++)
+        {
+            float mid = (lo + hi) / 2f;
+            if (MediaScrim.Contrast(ColorF.Lerp(ink, toward, mid), under) >= BleedScrimNeed) hi = mid; else lo = mid;
+        }
+        return ColorF.Lerp(ink, toward, hi);
+    }
+
+    /// <summary>The sRGB grey with <paramref name="c"/>'s relative luminance (what the scrim's grey math reads a tinted ground as).</summary>
+    public static float GreyOf(ColorF c)
+    {
+        float l = ColorContrast.RelativeLuminance(c);
+        return l <= 0.0031308f ? 12.92f * l : 1.055f * MathF.Pow(l, 1f / 2.4f) - 0.055f;
     }
 
     /// <summary>The mix's opacity on the ground of the kind.</summary>

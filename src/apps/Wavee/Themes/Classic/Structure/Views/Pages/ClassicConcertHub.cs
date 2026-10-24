@@ -31,7 +31,8 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's Concerts hub.</summary>
 internal static class ClassicConcertHub
 {
-    static readonly Func<ConcertShelfItem, int, string> s_itemKey = static (item, _) => item.Slot.ToString(CultureInfo.InvariantCulture);
+    // A family word before the slot: a bare number names no family, so the inspector could not tell the cards' repeated captions apart (audit B8).
+    static readonly Func<ConcertShelfItem, int, string> s_itemKey = static (item, _) => "concert-shelf:" + item.Slot.ToString(CultureInfo.InvariantCulture);
 
     static readonly Func<ConcertShelfItem, int, float, Element> s_concertCard = static (item, _, _) =>
     {

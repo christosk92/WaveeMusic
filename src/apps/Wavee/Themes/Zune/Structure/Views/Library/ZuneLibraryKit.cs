@@ -23,6 +23,10 @@ namespace Wavee.Themes.Zune;
 /// <summary>The words and parts Zune's library shares.</summary>
 internal static class ZuneLibraryKit
 {
+    /// <summary>The page's pane rung (<see cref="LibraryPageProps.PaneBeside"/>), provided around the artists' reader so its board draws the picked album's pane beside its middle
+    /// column, or lets it step aside, on the same ladder as the grouped albums. Outside a provider (the drill-in) it reads true.</summary>
+    public static readonly Context<bool> PaneBeside = new(true);
+
     /// <summary>The selection swap: the leaving pane fades out as an exit orphan (drawn UNDER the live tree) while the entering one rises 6 DIP into place. Opacity only
     /// (a page-sized subtree is the blur-group perf cliff); faster out than in, so the new album never waits for the old one.</summary>
     public static readonly LayoutTransition PaneSwap = new(
@@ -53,6 +57,38 @@ internal static class ZuneLibraryKit
             Key = key, Direction = 0, Gap = LR.WordChevronGap, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = go,
             Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The gap between two columns of the page or the board, as a box: its width eases when a tier changes it (40 ↔ 48), which a <c>Gap</c> cannot.</summary>
+    public static Element ColGap(string key, float width) => new BoxEl { Key = key, Width = width, Shrink = 0f, Animate = LR.ColumnResize };
+
+    /// <summary>The THIRD column's slot (the album's songs beside the grouped albums, the artist board's picked album): one node at every width, its declared width the
+    /// pane's and the gap before it while the pane stands <paramref name="beside"/>, 0 while it steps aside, eased through layout (<see cref="LR.ColumnResize"/>) so the
+    /// flexible middle column rides every tick both ways. The content stands at the pane's own width inside it (clipped, never squeezed) and cross-fades in and out
+    /// (<see cref="ZuneMotion.SwapFade"/>, its entrance only once the view has <paramref name="rendered"/>). <paramref name="grow"/> (Huge's albums): the slot rests at the
+    /// pane's width and takes its share of the page up to <paramref name="maxWidth"/>.</summary>
+    public static Element PaneSlot(string key, float width, float gap, bool beside, bool rendered, string? contentKey, Element? content,
+        float grow = 0f, float maxWidth = float.NaN)
+    {
+        Element[] kids = content is null || contentKey is null
+            ? []
+            :
+            [
+                new BoxEl
+                {
+                    Key = contentKey, Direction = 1, Grow = 1f, MinHeight = 0f, Shrink = 0f, ClipToBounds = true,
+                    Width = grow > 0f ? float.NaN : width, Margin = new Edges4(gap, 0f, 0f, 0f),
+                    Enter = ZuneMotion.SwapEnter(rendered), Exit = ZuneMotion.SwapFade, Children = [content],
+                },
+            ];
+        bool grows = beside && grow > 0f;
+        return new BoxEl
+        {
+            Key = key, Direction = 1, Shrink = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Animate = LR.ColumnResize,
+            Width = grows ? float.NaN : beside ? width + gap : 0f,
+            Basis = grows ? width + gap : float.NaN, Grow = grows ? grow : 0f, MaxWidth = grows ? maxWidth + gap : float.NaN,
+            Children = kids,
         };
     }
 

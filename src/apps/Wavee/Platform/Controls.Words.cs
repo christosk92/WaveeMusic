@@ -78,8 +78,12 @@ public static partial class Controls
         public const float BigSize = 20f, BigLine = 26f, BigGap = 22f, BigHeight = 40f;
         /// <summary>The two stacked runs' weights: 400 → 600 standard, 300 → 400 Big (plan §5.5).</summary>
         public const ushort LightWeight = 400, HeavyWeight = 600, BigLightWeight = 300, BigHeavyWeight = 400;
-        /// <summary>An inactive word's ink, and any word's ink under the pointer (W8: 50 % / 85 % / 100 %).</summary>
-        public const float RestInk = 0.5f, HoverInk = 0.85f;
+        /// <summary>An inactive word's ink, and any word's ink under the pointer (W8: 50 % / 85 % / 100 %). On the light ground half the ink read
+        /// 3.3 : 1, so the light rest is <see cref="RestInkLight"/> (Zune measured it first: about 5 : 1 on the light page; audit B8).</summary>
+        public const float RestInk = 0.5f, HoverInk = 0.85f, RestInkLight = 0.68f;
+
+        /// <summary>An inactive word's ink on the active kind's ground.</summary>
+        public static float RestInkNow => R.IsLight ? RestInkLight : RestInk;
         /// <summary>The underline: 2 DIP, 3 DIP under the run.</summary>
         public const float UnderlineThickness = 2f, UnderlineGap = 3f;
         /// <summary>A word's count badge ("unplayed 41"): 11 on a 14 line, 4 DIP after the word.</summary>
@@ -223,16 +227,22 @@ public static partial class Controls
         /// every other callback here.</para>
         /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
         /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para>
-        /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInk"/>): a theme whose ground needs a heavier rest
-        /// for the words' contrast states its own.</para></summary>
+        /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInkNow"/>, the kind's): a theme whose ground needs a
+        /// heavier rest for the words' contrast states its own.</para>
+        /// <para><paramref name="countRest"/> is a count badge's ink while its word rests, read live (null: the primary text ink: the badge rests with its
+        /// word at the rest opacity, where the secondary ink read 2.8-3.5 : 1 at 11 DIP, audit B8; its size tells it apart). A selected word's badge is the
+        /// secondary ink at full opacity.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
-                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
+                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null,
+                                   Func<ColorF>? countRest = null)
             => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
-                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk));
+                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk, countRest ?? s_countInk));
 
-        static readonly Func<float> s_restInk = static () => RestInk;
+        static readonly Func<ColorF> s_countInk = static () => Tok.TextPrimary;
+
+        static readonly Func<float> s_restInk = static () => RestInkNow;
 
         sealed class RailHost : Component
         {
@@ -274,12 +284,14 @@ public static partial class Controls
             OverlayHandle? _menu;
             IOverlayService? _overlay;
             readonly Func<float> _rest;
+            readonly Func<ColorF> _countRest;
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
                             AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured,
-                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
+                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null, Func<ColorF>? countRest = null)
             {
                 _rest = restInk ?? s_restInk;
+                _countRest = countRest ?? s_countInk;
                 _fit = fit;
                 _more = more ?? (Prop<string>)"";
                 if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
@@ -379,7 +391,7 @@ public static partial class Controls
                         Ink(w.Label, big ? BigHeavyWeight : HeavyWeight, Prop.Of(() => isOn() ? Tok.TextPrimary : ColorF.Transparent), big),
                     ],
                 };
-                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron);
+                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron, isOn, _countRest);
                 return new BoxEl
                 {
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
@@ -409,14 +421,15 @@ public static partial class Controls
                 };
             }
 
-            /// <summary>The word plus its count badge and/or its chevron, on one centred row.</summary>
-            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron)
+            /// <summary>The word plus its count badge and/or its chevron, on one centred row. The badge is the secondary ink while its word is
+            /// selected and <paramref name="countRest"/> while it rests (it rests with the word at the rest opacity).</summary>
+            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron, Func<bool> isOn, Func<ColorF> countRest)
             {
                 var kids = new List<Element>(3) { ink };
                 if (count is { } c)
                     kids.Add(new TextEl(c)
                     {
-                        Size = CountSize, LineHeight = CountLine, Color = Tok.TextSecondary, MaxLines = 1,
+                        Size = CountSize, LineHeight = CountLine, Color = Prop.Of(() => isOn() ? Tok.TextSecondary : countRest()), MaxLines = 1,
                         Visible = Prop.Of(() => c.Current() is { Length: > 0 }),
                     });
                 if (chevron is not null)

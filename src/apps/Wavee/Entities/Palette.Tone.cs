@@ -72,23 +72,56 @@ public static partial class Palette
         foreach (string key in done) s_tones.Remove(key);
     }
 
+    /// <summary>The frame's images are the engine's fake decoder's (the headless inspector without `images=real`): a photograph paints as its
+    /// per-source gradient (`FakeImageDecoder`), so its luminance map is measured from that gradient, not the file the gradient stands for, and a
+    /// scrim solved from it agrees with the frame (audit B8: ar9's light band words read 3.5 : 1 over a dark fake gradient under a scrim solved for
+    /// the bright file). The subject still comes from the file. Setting it forgets the measured rows. UI thread.</summary>
+    public static bool FakePixels
+    {
+        get => s_fakePixels;
+        set
+        {
+            if (s_fakePixels == value) return;
+            s_fakePixels = value;
+            s_tones.Clear();
+        }
+    }
+
+    static bool s_fakePixels;
+
+    /// <summary>The fake decoder's picture of <paramref name="url"/> as a map of <paramref name="width"/> x <paramref name="height"/>.</summary>
+    static MediaScrim.LumaMap FakeMap(string url, int width, int height)
+    {
+        var bgra = new byte[width * height * 4];
+        FluentGpu.Scene.FakeImageDecoder.Paint(url, bgra, width, height);
+        return MediaScrim.Measure(bgra, width, height);
+    }
+
     static async Task MeasureTone(string url, ToneRow row)
     {
+        bool fake = s_fakePixels;
         try
         {
             DefaultImageFetcher fetcher = s_toneFetcher.Value;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             FetchResult fetched = await fetcher.FetchAsync(url, cts.Token).ConfigureAwait(false);
-            if (!fetched.Ok || fetched.Buffer is not { } buffer) { SettleSafe(row); return; }
+            if (!fetched.Ok || fetched.Buffer is not { } buffer)
+            {
+                if (fake) { var painted = FakeMap(url, MediaScrim.MapEdge, MediaScrim.MapEdge); Post(() => row.Map.Value = painted); }
+                SettleSafe(row);
+                return;
+            }
             ToneImage.Reading reading;
             try { reading = ToneImage.Read(buffer, fetched.Length); }
             finally { fetcher.ReturnBuffer(buffer); }
             var subject = reading.Subject;
             Log.Info("palette", string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"photo subject {(subject.Faces ? "faces" : "safe zone")} at {subject.X:0.000}, {subject.Y:0.000}: {Path.GetFileName(url)}"));
+            MediaScrim.LumaMap? measured = reading.Map;
+            if (fake) measured = FakeMap(url, measured?.Width ?? MediaScrim.MapEdge, measured?.Height ?? MediaScrim.MapEdge);
             Post(() =>
             {
-                if (reading.Map is { } map) row.Map.Value = map;
+                if (measured is { } map) row.Map.Value = map;
                 row.Subject.Value = reading.Subject;
             });
         }

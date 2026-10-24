@@ -58,7 +58,8 @@ internal static class ZuneMaterial
             },
         };
 
-        if (ZunePageWash.Of(state, backdrop, ctx.Tier().Window) is { } wash)
+        var pageWash = ZunePageWash.Of(state, backdrop, ctx.Tier().Window);
+        if (pageWash is { } wash)
         {
             kids.Add(new BoxEl
             {
@@ -87,7 +88,10 @@ internal static class ZuneMaterial
                 });
             }
             // Over the photo, under the chrome: the adaptive scrim that keeps the band's words legible over a bright photograph (V14).
-            kids.Add(Embed.Comp(new BleedScrimProps(bleed, bandFoot, frameY), static () => new ZuneBleedScrim())
+            // The scrim is solved over what the photo lies on: the ground under the wash's deepest stop (the strip's top), not the bare ground (audit B8:
+            // ar9's light crumbs read 3.5 : 1 where the wash darkened the strip under a scrim solved for the bare ground).
+            ColorF under = pageWash is { } w ? ColorContrast.Flatten(w.At(0f), R.Layer.ShellGround) : R.Layer.ShellGround;
+            kids.Add(Embed.Comp(new BleedScrimProps(bleed, bandFoot, frameY, under), static () => new ZuneBleedScrim())
                 with { Key = ZuneBandRules.BleedKey + "-scrim:" + bleed });
         }
 
@@ -114,6 +118,30 @@ internal static class ZuneMaterial
         }
 
         return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = kids.ToArray() };
+    }
+
+    /// <summary>Whether the page stands on a PHOTO BLEED: the option draws one and the page's chrome publishes its photograph (the condition the
+    /// layer mounts the bleed and its scrim on). The band strip's small grey words read one step brighter over it (<see cref="StripInk"/>).</summary>
+    public static bool PhotoBleed(PageChrome? chrome)
+        => ZuneOptions.Background() != ZuneBackground.None && chrome?.Backdrop.Bleed is { Length: > 0 };
+
+    /// <summary>The band strip's small grey words (the crumbs and their separators, the unlit pivots, "more", "pinned"): the secondary ink over a photo
+    /// bleed, whose scrim is solved for it (a shade about half as dark as the tertiary needed: the owner's variant D), Zune's tertiary everywhere else.</summary>
+    public static ColorF StripInk(PageChrome? chrome) => PhotoBleed(chrome) ? Tok.TextSecondary : Tok.TextTertiary;
+
+    /// <summary>An accent run on the page that a photo bleed lies under below the band strip (the artist caption's rank): <paramref name="accent"/>
+    /// where it reads over the photo there, else the accent darkened (light) or lightened (dark) just enough (<see cref="ZuneBandRules.BleedInk"/>, the
+    /// hue kept). The accent itself on a page without a photo bleed, and until the photo is measured. Read in a bind: it follows the bleed's measure,
+    /// the tiers and the window's width.</summary>
+    public static ColorF OnBleed(ColorF accent, PageChrome? chrome, in TierFacts tiers, float width)
+    {
+        if (!PhotoBleed(chrome) || chrome!.Backdrop.Bleed is not { Length: > 0 } bleed) return accent;
+        _ = Palette.Watch(bleed).Value;   // the measure may land late: the bind re-runs when it does
+        if (Palette.Tone(bleed) is not { } map || Palette.Subject(bleed) is not { } subject) return accent;
+        bool light = R.IsLight;
+        float bandFoot = BandFoot(tiers);
+        return ZuneBandRules.BleedInk(map, width, ZuneBandRules.BleedH, bandFoot, subject, ZuneBandRules.BleedSubjectAt(bandFoot),
+            ZuneBandRules.BleedOpacityOf(light), ZuneBandRules.GreyOf(R.Layer.ShellGround), accent, ZuneFrameRules.PanelInkLiftToward(light));
     }
 
     /// <summary>The foot of the band strip (the title bar and the band, row 2 included unless a Short window folds it), from the window's top.</summary>
@@ -146,12 +174,14 @@ internal static class ZuneMaterial
 }
 
 /// <summary>What the bleed's scrim reads: the photograph, the band strip's foot and where the bleed places the photograph's subject.</summary>
-internal sealed record BleedScrimProps(string Url, float BandFoot, float SubjectAt);
+internal sealed record BleedScrimProps(string Url, float BandFoot, float SubjectAt, ColorF Under);
 
 /// <summary>The bleed's ADAPTIVE scrim (V14): over the photo, under the chrome, in the ground's direction (black on the dark kind, the ground on
-/// the light one), full over the title bar and the band and clear <see cref="ZuneBandRules.BleedScrimFade"/> below their foot. Its opacity is solved
-/// per photograph (<see cref="ZuneBandRules.BleedScrimAlpha"/>, from the photo's measured luminance, <see cref="Palette.Tone"/>) so the band's
-/// dimmest words read over it; 0 until the photo is measured, and every change fades (<see cref="MediaScrim.FadeMs"/>), never snaps.</summary>
+/// the light one), full over the title bar and the band and clear <see cref="ZuneBandRules.BleedScrimFade"/> below their foot along an eased curve
+/// (<see cref="ZuneBandRules.BleedScrimLevel"/>; three stacked boxes of four stops each, the most a gradient carries). Its opacity is solved per
+/// photograph (<see cref="ZuneBandRules.BleedScrimAlpha"/>, from the photo's measured luminance, <see cref="Palette.Tone"/>) so the band's dimmest
+/// words, in the secondary ink over a bleed (<see cref="ZuneMaterial.StripInk"/>), read over it; 0 until the photo is measured, and every change fades
+/// (<see cref="MediaScrim.FadeMs"/>), never snaps.</summary>
 internal sealed class ZuneBleedScrim : Component
 {
     public override Element Render()
@@ -161,22 +191,41 @@ internal sealed class ZuneBleedScrim : Component
         bool light = R.IsLight;
         ColorF ground = R.Layer.ShellGround;
         ColorF scrim = light ? ground : ZuneBandRules.BleedScrimDark;
+        float under = ZuneBandRules.GreyOf(p.Under);   // the ground the photo lies on (the wash over the shell ground), as the grey of its luminance
         MediaScrim.LumaMap? map = Palette.Tone(p.Url);
         PhotoSubject? subject = Palette.Subject(p.Url);
         float target = map is null || subject is not { } s ? 0f : ZuneBandRules.BleedScrimAlpha(map, width, ZuneBandRules.BleedH, p.BandFoot, s, p.SubjectAt,
-            ZuneBandRules.BleedOpacityOf(light), ground.R, scrim.R, Tok.TextTertiary);
+            ZuneBandRules.BleedOpacityOf(light), under, scrim.R, Tok.TextSecondary);
         var shown = UseRef(target);
         float from = shown.Value;
         shown.Value = target;
         UseTransition(AnimChannel.Opacity, from, target, Motion.ReducedMotion ? 0f : MediaScrim.FadeMs, Easing.SmoothOut, DepKey.From(target));
         float h = ZuneBandRules.BleedH;
-        float full = Math.Clamp(p.BandFoot / h, 0f, 1f), clear = Math.Clamp((p.BandFoot + ZuneBandRules.BleedScrimFade) / h, full, 1f);
+        float full = MathF.Round(Math.Clamp(p.BandFoot, 0f, h)), clear = MathF.Round(Math.Clamp(p.BandFoot + ZuneBandRules.BleedScrimFade, full, h));
+        // The eased fade's steps 0..8 lie on three boxes, whole DIPs tall where they meet (no seam): [top .. step 2] (with the full stretch above the
+        // fade), [2 .. 5], [5 .. 8]; below the last the photo is clear.
+        float At(int i) => full + (clear - full) * i / ZuneBandRules.BleedScrimSteps;
+        ColorF Level(int i) => scrim with { A = scrim.A * ZuneBandRules.BleedScrimLevel(i) };
+        float y2 = MathF.Round(At(2)), y5 = MathF.Round(At(5));
         return new BoxEl
         {
-            Height = h, AlignSelf = FlexAlign.Stretch, HitTestVisible = false, Opacity = target,
-            Gradient = GradientDown(new GradientStop(0f, scrim), new GradientStop(full, scrim), new GradientStop(clear, scrim with { A = 0f })),
+            Height = h, AlignSelf = FlexAlign.Stretch, Direction = 1, HitTestVisible = false, Opacity = target,
+            Children =
+            [
+                Shade(y2, GradientDown(new GradientStop(0f, scrim), new GradientStop(full / y2, scrim), new GradientStop(At(1) / y2, Level(1)),
+                    new GradientStop(1f, Level(2)))),
+                Shade(y5 - y2, GradientDown(new GradientStop(0f, Level(2)), new GradientStop((At(3) - y2) / (y5 - y2), Level(3)),
+                    new GradientStop((At(4) - y2) / (y5 - y2), Level(4)), new GradientStop(1f, Level(5)))),
+                Shade(clear - y5, GradientDown(new GradientStop(0f, Level(5)), new GradientStop((At(6) - y5) / (clear - y5), Level(6)),
+                    new GradientStop((At(7) - y5) / (clear - y5), Level(7)), new GradientStop(1f, Level(8)))),
+            ],
         };
     }
+
+    static BoxEl Shade(float height, GradientSpec gradient) => new()
+    {
+        Height = height, Shrink = 0f, AlignSelf = FlexAlign.Stretch, HitTestVisible = false, Gradient = gradient,
+    };
 }
 
 /// <summary>The detail page's tone (a page-root sibling): NOTHING under Zune, for the artist blend wash's reason. A band of the page's tone that starts at the page's

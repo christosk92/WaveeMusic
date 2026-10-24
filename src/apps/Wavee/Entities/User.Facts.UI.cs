@@ -98,7 +98,11 @@ public readonly partial struct User
     /// <summary>The value for <c>TableProfile.LensHeader</c>: a component under <c>Track.TableLiveSlot</c> that bridges the
     /// live table into <paramref name="lens"/> and renders one pill per active facet with its own ×.</summary>
     public static Element LensHeader(LensCell lens, DetailKind kind)
-        => Embed.Comp(new LensHeaderProps(lens, kind), static () => new LensHeaderHost()) with { Key = "lens-header-host" };
+        => Embed.Comp(new LensHeaderProps(lens, kind), static () => new LensHeaderHost()) with { Key = "lens-header-host", SkeletonProxy = s_lensOff };
+
+    /// <summary>The lens header's loading shape: its resting one, off (a page opens with no lens: the filters reset per context), never a default bar in the
+    /// loading band's chrome (audit B7 r2).</summary>
+    static readonly Func<Element> s_lensOff = static () => new BoxEl { Height = 0f, HitTestVisible = false };
 
     static Track.FilterState LensFilters(LensCell lens) => lens.Live.Peek()?.View.Peek().Filters ?? default;
 

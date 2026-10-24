@@ -152,6 +152,12 @@ public static class ZuneListRules
     /// <summary>The column header's word: 12 on 16 (Z-State-Rows' header row).</summary>
     public const float HeaderType = 12f, HeaderLine = 16f;
 
+    /// <summary>The number lane's header word ("#": the owner's call, audit B8 r2) and the least width its hit rect reaches across the 28 lane.</summary>
+    public const string NumberHeader = "#";
+
+    /// <inheritdoc cref="NumberHeader"/>
+    public const float HeaderNumTarget = 40f;
+
     /// <summary>The header's sort caret and the duration lane's clock glyph.</summary>
     public const float CaretGlyph = 8f, ClockGlyph = 12f;
 
@@ -289,15 +295,31 @@ public static class ZuneListRules
 
     // ── the artist chart (Z-Artist) ──────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A chart row: 60 tall on a 0 gap (the rows touch, Z-Artist), the header 16 over them; the 264 card minimum is the two-column
-    /// breakpoint (as Classic's) and the edge fade the shelf's.</summary>
-    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartMinCardWidth = 264f, ChartEdgeFade = 24f;
+    /// <summary>A chart row: 60 tall on a 0 gap (the rows touch, Z-Artist), the header 16 over them. The card minimum is the core's stack break
+    /// (<see cref="ArtistPopularLayout.StackBreakW"/>): a cell never fits narrower than the width that still holds its sub line on one line. It is a FLOOR,
+    /// never what changes the column count: the pair is decided by <see cref="ZuneArtistRules.ChartPairRung"/> (cells of <see cref="ChartPairCell"/>), which
+    /// commits with the tier machinery's motion; wherever the rung admits two columns, two cells of this floor always fit, so the shelf's live width fit
+    /// never drops a column mid-resize (that re-fit landed the rows in one frame). The old 264 floor left a ~70 DIP title and a stacked third line at
+    /// 1016-1170. The edge fade is the row's own trailing inset (the row's `Spacing.S` right padding): a chart's clip is its own edge (no halo gutter), so at
+    /// rest the fade lies over the row's empty inset and the duration stays crisp; it only softens a page while it slides.</summary>
+    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartEdgeFade = 8f,
+        ChartMinCardWidth = ArtistPopularLayout.StackBreakW;
+
+    /// <summary>The cell the chart's second column is admitted at: the stack break plus the core's re-admit hysteresis, so a pair's cells are always on the
+    /// wide reading (<see cref="ArtistPopularLayout.Decide"/>).</summary>
+    public const float ChartPairCell = ArtistPopularLayout.StackBreakW + ArtistPopularLayout.HysteresisDip;
 
     /// <summary>The chart heading's gap to its "see all" word, and the word's drop onto the heading's baseline.</summary>
     public const float ChartHeadGap = 20f, ChartBaseline = 4f;
 
     /// <summary>The rank box (the board's 52 lane), the art edge (48) and the skeleton's art, and the gaps.</summary>
     public const float ChartRankBox = 52f, ChartArt = 48f, ChartSubGap = 6f, ChartTrailGap = 12f, ChartFeatGap = 4f, ChartPagerChevron = 28f;
+
+    /// <summary>A chart cell whose width a re-fit changes (one column ↔ two at <see cref="ZuneArtistRules.ChartPairRung"/>, a docking panel narrowing the
+    /// content across it): its width eases through real layout on the gutter spacers' clock (<see cref="ZuneFrameRules.GutterMotion"/>, which its column
+    /// air uses too, so the air and the cell move as one), so the duration and the heart ride the cell's edge while the other rows glide to their new
+    /// places; a row that keeps its place never snaps 383 DIP.</summary>
+    public static LayoutTransition ChartCellResize => ZuneFrameRules.GutterMotion;
 
     /// <summary>The chart's height when its rows per column change: the layout lands once, the presented height tweens and everything below
     /// rides it (the engine's flow reveal), never a jump.</summary>
@@ -376,14 +398,16 @@ public static class ZuneListRules
     /// <summary>Compact (Z-State-Rows-Compact, Z-Album-Compact): the Compact row form (no column header, the heart trailing, a 40 "...", the time in the
     /// subline), no Album, Plays or Date lane, no list "#"; the density's rows (no floor).</summary>
     public static DetailTierLayout Compact { get; } = new(
-        new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, ListIndex: false),
+        new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, ListIndex: false,
+            PageMenu: DetailPageMenu.Hero),   // Z-Album-Compact: ONE page "…", the hero ring's (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Small (Z-Album-Small: # · title · time · "...", Z-Sizes-Breakpoints "album from 900"): the Album lane may show once the list column's
     /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
     /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane),
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane,
+            PageMenu: DetailPageMenu.Hero),   // Z-Album-Small: ONE "more", the ring's (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
@@ -392,7 +416,8 @@ public static class ZuneListRules
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
         AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW,
-        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim, DurationWidth = HoverTimeLane },
+        // Z-Album: ONE page "more", the ring's (audit B8 r2).
+        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim, DurationWidth = HoverTimeLane, PageMenu = DetailPageMenu.Hero },
     };
 
     /// <summary>Huge (Z-Album-Huge, Z-Liked-Huge, Z-Playlist-*-Huge): Standard's, the identity column resting at 320 (Z6a1), and the insights REST OPEN

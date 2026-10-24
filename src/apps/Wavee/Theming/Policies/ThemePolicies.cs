@@ -131,8 +131,11 @@ public readonly record struct StyleMetrics(
     float PivotRow, float SubPivotRow, float SeekRow, float TransportRow, float SearchWidth,
     float Gutter, float Section, float MinPageColumn, float PanoramaCompactBelow,
     float DockedPane, float DockedPane4K, float PaneItem, float CardGap,
-    TrackRowMetrics TrackRows = default)
+    TrackRowMetrics TrackRows = default, float RowPadXFloor = 0f)
 {
+    // RowPadXFloor (contract 1.73, audit B8): the least gutter a track row's grid pads to at any relief tier (`Track.RowMetrics.PadXFor`); 0
+    // keeps the core's ladder (16, then 12 from tier 4 and 8 from tier 6). Zune publishes 16: its Compact rows keep the board's 16 gutter.
+
     /// <summary>No metric published (every member 0): what a style that publishes none answers. Wavee Classic publishes its own
     /// (<c>ClassicStyle.Metrics</c>).</summary>
     public static StyleMetrics Unset => default;
