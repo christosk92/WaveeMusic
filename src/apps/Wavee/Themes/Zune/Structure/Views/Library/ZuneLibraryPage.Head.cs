@@ -101,9 +101,10 @@ internal static partial class ZuneLibraryPage
             : Embed.Comp(l, () => new SortWords(p.Entity, p.Sort(), p.Desc())) with { Key = "lib:lead:words" };
         // The slot's ONE child is an unkeyed column that holds the keyed form: the engine reconciles a slot's lone child in place (key ignored), which would patch the
         // button into the words instead of swapping them; a children LIST matches by key, so the leaving form exits and the entering one enters.
+        // The slot's own width eases between the two forms (the words' and the button's), so the view words after it slide instead of jumping.
         return new BoxEl
         {
-            Key = "lib:lead", Direction = 1, MinWidth = 0f, MinHeight = l.HeadH, Shrink = 0f,
+            Key = "lib:lead", Direction = 1, MinWidth = 0f, MinHeight = l.HeadH, Shrink = 0f, Animate = LR.ColumnResize,
             Children =
             [
                 new BoxEl
