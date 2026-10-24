@@ -271,6 +271,10 @@ public static partial class Diagnostics
             bool spans = value.Length == 0 && scene.TryGetSpanText(node, out ReadOnlySpan<TextSpan> runs) && runs.Length > 0;
             TextOverflow overflow = shell.Host.QueryTextOverflow(node);
             bool glyph = IsGlyph(value);
+            // The glyphs' own ink (their black boxes), relative to the box: what text.clip judges a cut by (the line box carries leading
+            // above the caps and descent under the baseline that no glyph fills).
+            RectF ink = default;
+            bool inked = !glyph && shell.Host.TryQueryTextInk(node, out ink);
             return new InspectLint.TextRun(value, style.SizeDip)
             {
                 LineHeight = float.IsFinite(style.LineHeight) ? style.LineHeight : 0f,
@@ -281,6 +285,8 @@ public static partial class Diagnostics
                 Trimmed = overflow.Trimmed,
                 NaturalW = overflow.IsText ? overflow.NaturalSize.Width : 0f,
                 NaturalH = overflow.IsText ? overflow.NaturalSize.Height : 0f,
+                InkTop = inked ? ink.Y : float.NaN,
+                InkBottom = inked ? ink.Bottom : float.NaN,
                 OverflowX = overflow.HorizontalOverflow,
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,

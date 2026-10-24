@@ -221,6 +221,14 @@ public static partial class Diagnostics
             public bool OverflowX { get; init; }
             public bool OverflowY { get; init; }
 
+            /// <summary>The top and bottom of the glyphs' ink (their black boxes, the engine's <c>TryQueryTextInk</c>), in DIP from the top of
+            /// the node's box; NaN when not known (the headless text model, a snapshot saved before ink was read).</summary>
+            public float InkTop { get; init; } = float.NaN;
+            public float InkBottom { get; init; } = float.NaN;
+
+            /// <summary>The glyph ink is known (<see cref="InkTop"/>, <see cref="InkBottom"/>).</summary>
+            public bool HasInk => float.IsFinite(InkTop) && float.IsFinite(InkBottom) && InkBottom > InkTop;
+
             /// <summary>An icon glyph (a private-use character), not words: out of the type scale and the clip rule.</summary>
             public bool Glyph { get; init; }
 
@@ -1161,6 +1169,8 @@ public static partial class Diagnostics
                 => "designed: the theme sets this line flush with the edge above it (DesignedTopBleeds); nothing to do",
             Rules.TextClip when cause.EndsWith("ink-guess", StringComparison.Ordinal)
                 => "look at the render: only the 1.2 em ink guess runs past the clip, the laid-out box fits; never shrink the type",
+            Rules.TextClip when cause.EndsWith("line-box", StringComparison.Ordinal)
+                => "look at the render: the cut lies inside the line box's leading or descent and this snapshot has no glyph ink; lint a live mount to judge it; never shrink the type",
             Rules.TextClip when cause.StartsWith("scroll-edge", StringComparison.Ordinal)
                 => "give the scroller an edge fade on that side (or declare a guide Bleed with a reason); never shrink the type",
             Rules.TextClip => "grow the clipping box or move the text inside it; Zune display type is never shrunk to fit (wrap, grow, bleed)",
@@ -1748,24 +1758,43 @@ public static partial class Diagnostics
 
         // ── text.clip and overlap.sibling (clip): text cut by an ancestor, and siblings that overlap ─────────────
 
-        /// <summary>The box the ink of a text node needs: its laid-out box and the natural height of an unwrapped run that wants more (both
-        /// measured), widened by <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a
-        /// guess (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
+        /// <summary>The share of an em a line box holds outside its glyphs' ink, at most, on either side (the internal leading over the caps,
+        /// the descent under a baseline with no descenders): without glyph ink, a cut no deeper than this is a review, never a verdict.</summary>
+        public const float LeadingEm = 0.25f;
+
+        /// <summary>The box the ink of a text node needs. With the glyphs' ink known (<see cref="TextRun.HasInk"/>): the box's x extent and the
+        /// ink's y extent (<paramref name="guess"/> 0), so a cut through the line box's leading or descent, which no glyph fills, is no cut.
+        /// Without it: the laid-out box and the natural height of an unwrapped run that wants more (both measured), widened by
+        /// <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a guess
+        /// (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
         static RectF InkBox(Node n, TextRun t, out float guess)
         {
             RectF r = n.Rect;
+            if (t.HasInk)
+            {
+                guess = 0f;
+                return new RectF(r.X, r.Y + t.InkTop, r.W, t.InkBottom - t.InkTop);
+            }
             float h = r.H;
             if (!t.Wraps && t.NaturalH > h) h = t.NaturalH;
             guess = t.LineHeight > 0f ? MathF.Max(0f, (InkEm * t.Size - t.LineHeight) / 2f) : 0f;
             return new RectF(r.X, r.Y - guess, r.W, h + 2f * guess);
         }
 
-        /// <summary>Why a vertical cut is under review, "" when it is a verdict: the headless text model, or a cut only the ink guess makes (the
-        /// laid-out box fits; display type with a tight line height, whose real ascenders may well sit inside).</summary>
-        static string ClipDoubt(Snapshot s, float over, float guess)
+        /// <summary>Why a vertical cut is under review, "" when it is a verdict: the headless text model; or, without the glyphs' ink, a cut only
+        /// the ink guess makes (the laid-out box fits; display type with a tight line height, whose real ascenders may well sit inside) or one
+        /// inside the line box's leading or descent (<see cref="LeadingEm"/>), which glyphs need not fill. With the ink known it is a verdict.</summary>
+        static string ClipDoubt(Snapshot s, TextRun t, float over, float guess)
             => !s.RealText ? "headless text model: the ink box is not real glyph metrics"
+             : t.HasInk ? ""
              : over - guess <= Slack ? "ink guess, not glyph metrics: the laid-out box fits the clip; only the 1.2 em ink guess runs past it"
+             : over - guess <= LeadingEm * t.Size ? "no glyph ink in this snapshot: the cut lies inside the line box's leading or descent (under 0.25 em), which the glyphs need not fill"
              : "";
+
+        /// <summary>The cause suffix of a vertical cut under review on real text: <c>:ink-guess</c> (only the 1.2 em guess runs past) or
+        /// <c>:line-box</c> (inside the line box's leading or descent, no glyph ink read); "" for a verdict or the headless model.</summary>
+        static string DoubtCause(Snapshot s, string doubt, float over, float guess)
+            => !s.RealText || doubt.Length == 0 ? "" : over - guess <= Slack ? ":ink-guess" : ":line-box";
 
         static bool Fades(Node n, EdgeMask edge) => (n.FadeEdges & (byte)edge) != 0;
 
@@ -1777,14 +1806,14 @@ public static partial class Diagnostics
             bool reveals = start ? scroller.ScrollOffset > Slack : scroller.ScrollOffset < scroller.ScrollMax - Slack;
             if (Fades(scroller, edge) || (vertical && reveals)) return null;
             string side = edge switch { EdgeMask.Top => "top", EdgeMask.Bottom => "bottom", EdgeMask.Left => "left", _ => "right" };
-            string doubt = vertical ? ClipDoubt(s, over, guess) : s.RealText ? "" : ClipDoubt(s, over, 0f);
+            string doubt = vertical ? ClipDoubt(s, t, over, guess) : s.RealText ? "" : ClipDoubt(s, t, over, 0f);
             var f = new Finding(Rules.TextClip, vertical ? Severity.Error : Severity.Warn,
                 $"text {TextName(t)} is cut by {scroller.Ref}'s {side} scroll edge, which has no edge fade: {F(over)} past it", [n.Ref, scroller.Ref])
             {
-                Measured = [M("over", over), M("inkGuess", vertical ? guess : 0f), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
+                Measured = [M("over", over), M("inkGuess", vertical ? guess : 0f), M("glyphInk", t.HasInk ? 1 : 0), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
                 Expected = [M("over", 0)],
                 Pattern = PatternOfKey(scroller.Key ?? scroller.Pattern),
-                Cause = "scroll-edge:" + side + (vertical && s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                Cause = "scroll-edge:" + side + (vertical ? DoubtCause(s, doubt, over, guess) : ""),
                 Rects = [Where(n), Where(scroller)],
                 Nodes = [n.Index],
                 Outcome = doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
@@ -1833,18 +1862,18 @@ public static partial class Diagnostics
                     }
                     if (vOver > Slack)
                     {
-                        string doubt = ClipDoubt(s, vOver, guess);
+                        string doubt = ClipDoubt(s, t, vOver, guess);
                         // A theme's designed top bleed (IThemeLintGuide.DesignedTopBleeds: Zune's panorama voice on its exact line, flush with the edge
                         // above it) is an intended cut at the top; a cut at the bottom (descenders) still fails.
                         bool designed = above && s.TopBleeds.Count > 0 && UnderAny(nodes, n, s.TopBleeds);
                         into.Add(new Finding(Rules.TextClip, Severity.Error,
-                            $"text {Q(t.String)} is clipped by {anc.Ref}: its ink runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)}){(designed ? " (a designed bleed: the theme sets this line flush with the edge)" : "")}",
+                            $"text {Q(t.String)} is clipped by {anc.Ref}: its {(t.HasInk ? "glyph ink" : "ink")} runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)}){(designed ? " (a designed bleed: the theme sets this line flush with the edge)" : "")}",
                             [n.Ref, anc.Ref])
                         {
-                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("inkGuess", guess), M("size", t.Size), M("lineHeight", t.LineHeight)],
+                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("inkGuess", guess), M("glyphInk", t.HasInk ? 1 : 0), M("size", t.Size), M("lineHeight", t.LineHeight)],
                             Expected = [M("clipTop", c.Y), M("clipBottom", c.Bottom)],
                             Pattern = PatternOfKey(anc.Key ?? anc.Pattern),
-                            Cause = designed ? "top:designed-bleed" : (above ? "top" : "bottom") + (s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                            Cause = designed ? "top:designed-bleed" : (above ? "top" : "bottom") + DoubtCause(s, doubt, vOver, guess),
                             Rects = [Where(n), Where(anc)],
                             Nodes = [n.Index],
                             Outcome = designed ? Outcome.Suppressed : doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
