@@ -995,6 +995,27 @@ public readonly partial struct Show
             return n == years.Length ? years : years[..n];
         }
 
+        /// <summary>The month jump list a structure may open from a month header (<see cref="ShowGroupArgs.Jump"/>): made once per host.</summary>
+        internal ShowJumpList JumpList => _jumpList ??= new ShowJumpList { Months = MonthsOf, Go = JumpToMonth };
+        ShowJumpList? _jumpList;
+
+        /// <summary>The month keys of the current view's groups, in its order (projected afresh: the list opens at a tap, never per frame).</summary>
+        int[] MonthsOf()
+        {
+            var s = _m?.Peek() ?? ReaderSnap.Empty;
+            _groupCount = JumpIndex.Project<ReaderItem>(s.Items.AsSpan(0, s.ItemCount), s_isGroup, s_groupJumpKey, _groups);
+            var months = new int[_groupCount];
+            int n = 0;
+            for (int i = 0; i < _groupCount; i++) if (DateKeys.IsMonthKey(_groups[i].Key)) months[n++] = _groups[i].Key;
+            return n == months.Length ? months : months[..n];
+        }
+
+        void JumpToMonth(int monthKey)
+        {
+            for (int i = 0; i < _groupCount; i++)
+                if (_groups[i].Key == monthKey) { _ctl.StartBringItemIntoView(_groups[i].Index, alignmentRatio: 0f, animate: true); return; }
+        }
+
         void JumpToYear(int year)
         {
             int flat = ShowDateIndex.ResolveYear(_groups.AsSpan(0, _groupCount), year);
@@ -1193,7 +1214,7 @@ public readonly partial struct Show
             {
                 ShowReaderShape.ItemKind.Head => Embed.Comp(() => new VisitHead(host)) with { Key = "rd:head" },
                 ShowReaderShape.ItemKind.Header => Embed.Comp(() => new EpisodesHeader(host)) with { Key = "rd:header" },
-                ShowReaderShape.ItemKind.Group => GroupLabel(host.Style!, new BoundItemScope<ReaderItem>(_row, _item)) with { Key = "rd:group" },
+                ShowReaderShape.ItemKind.Group => GroupLabel(host, new BoundItemScope<ReaderItem>(_row, _item)) with { Key = "rd:group" },
                 ShowReaderShape.ItemKind.Row => Episode.ReaderRow(host.EpisodeStyle, new BoundItemScope<Episode.RowItem>(_row, row), host.RowCtx!, narrow) with { Key = "rd:row" },
                 ShowReaderShape.ItemKind.Foot => Embed.Comp(() => new ReaderFoot(host)) with { Key = "rd:foot" },
                 _ => new BoxEl(),

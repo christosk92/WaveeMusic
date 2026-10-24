@@ -48,9 +48,40 @@ public static class ZuneShowRules
     /// <summary>The pinned month's plate and one year's row in the strip.</summary>
     public const float StickyMonthPlateH = 20f, YearRowHeight = 15f;
 
-    /// <summary>Whether the year strip reads the short year ("’24"): it stands in the frame's outer margin (V19), and under Standard that margin (Compact's
-    /// 16, Small's 24) is narrower than four digits of the micro voice; Standard's 48 and up hold the full year.</summary>
-    public static bool ShortYears(WidthTier window) => window < WidthTier.Standard;
+    /// <summary>Whether the year strip stands with its years (V19): in the frame's outer margin past the column edge (<paramref name="ownsEdge"/> false),
+    /// at Standard and up, whose 48 holds four digits of the micro voice on a 30 row. Under Standard the margin (Compact's 16, Small's 24) would clip
+    /// them and leave rows no finger can take, so there, and inside a reader's own gutter, the month headers open the jump list instead (the owner's
+    /// call, 2026-10-24: Windows Phone's semantic zoom).</summary>
+    public static bool YearsInStrip(WidthTier window, bool ownsEdge) => !ownsEdge && window >= WidthTier.Standard;
+
+    // ── the month jump list (`ZuneShowJumpList.cs`) ──
+
+    /// <summary>A month tile's height, the gap between tiles and rows, its inner padding, the air above a year after the first, and the tiles a row holds
+    /// (four at Compact, six above it: a tile is never narrower than 40).</summary>
+    public const float JumpTileH = 72f, JumpGap = 8f, JumpTilePad = 8f, JumpYearGap = 24f;
+
+    /// <summary>The tiles a row of the jump grid holds.</summary>
+    public static int JumpColumns(WidthTier window) => window == WidthTier.Compact ? 4 : 6;
+
+    /// <summary>The tiles' entrance: each grows from this scale while it fades in, after (row + column) x the stagger, the wave capped at that many steps.</summary>
+    public const float JumpTileScale = 0.86f, JumpStaggerMs = 18f;
+    public const int JumpStaggerCap = 12;
+
+    /// <summary>The grid's zoom back on close: its length and the scale it grows to while it fades.</summary>
+    public const float JumpCloseMs = 220f, JumpCloseScale = 1.06f;
+
+    /// <summary>The tiles' entrance clock (the pivot slide's, on the smooth-out curve; reduced motion keeps the fade).</summary>
+    public static MotionTokenDef JumpTileMotion => MotionTokenDef.Eased(ZuneMotion.PivotSlideMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
+
+    /// <summary>The month header's target reaches this far into the air above its line and the foot below it (24 + 16 = the 40 floor; the row's extent is
+    /// unchanged).</summary>
+    public const float HeaderTargetPad = 8f;
+
+    /// <summary>The browser Back key (VK_BROWSER_BACK), which closes the jump list as Escape does.</summary>
+    public const int BrowserBackKey = 166;
+
+    /// <summary>The month header's target, the grid, and a tile's key prefix.</summary>
+    public const string MonthHeaderKey = "rd:group:head", JumpGridKey = "zune-jump-grid", JumpTilePrefix = "zune-jump:";
 
     /// <summary>The cold skeleton's seed rows.</summary>
     public const int SeedRows = 8;
