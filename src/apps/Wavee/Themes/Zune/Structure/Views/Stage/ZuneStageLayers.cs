@@ -212,7 +212,7 @@ internal static class ZuneStageSpectrum
 
 /// <summary>The now-playing card: the Card arrangement's well plate (Z-NowPlaying-Card: #111, square, flat), or the allocator's 460 card (and a
 /// Compact window's identity card) as a flat veil plate (Z-NowPlaying). ONE keyed node: a change of arrangement moves and resizes it on the
-/// cover's spring, so the small card grows into the big one.</summary>
+/// cover's spring, so the small card grows into the big one; the chrome idle closes the well plate up to its content on the same spring.</summary>
 internal static class ZuneStageNowPlayingCard
 {
     static readonly LayoutTransition s_move = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.Relayout);
@@ -230,6 +230,9 @@ internal static class ZuneStageNowPlayingCard
         var look = sc.Look.Value;
         var t = ZuneStageTiers.StageOf(in tiers);
         var (x, y, w, h) = card ? (a.Card.X, a.Card.Y, a.Card.W, a.Card.H) : L.NowPlayingCardRect(sc.Mode.Value);
+        // the chrome idle hides the card's seek and transport rows: the plate closes up to its content (the cover and the titles, its padding
+        // under the cover) on the same spring, and opens again with the chrome, so no empty band is left under the titles (audit B3, V2)
+        if (card && !sc.Chrome.Value) h = 2f * (a.Cover.Y - a.Card.Y) + a.Cover.H;
         if (!card)
         {
             y += t.Drop;

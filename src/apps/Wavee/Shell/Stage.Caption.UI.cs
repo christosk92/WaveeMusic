@@ -23,6 +23,28 @@ public static partial class Stage
 {
     // ══ 4. THE LYRIC CAPTION (over the face · Compact Lyrics mode's lyric line) ═════════════════════════════════════
 
+    /// <summary>How a caption slot hands off, one recipe for every theme's caption (audit B3, V2). Every slot is keyed by role + line index,
+    /// so a new line is a new node: the outgoing slot leaves the flow and is painted at its old rect while the incoming one takes the same
+    /// slot. Played at once, the two drew one line through the other at full size, and the context lines doubled. The hand-off is
+    /// SEQUENCED instead: the outgoing slot rises out on StandardExit, and the incoming one waits that exit out before it rises in on
+    /// StandardEnter, so two lines never share a slot. The rise (<see cref="Tone.CaptionRiseDip"/>, out above, in from below) is
+    /// production's; reduced motion keeps only the fades.</summary>
+    public static class CaptionSlot
+    {
+        /// <summary>The incoming slot: up from below, after the outgoing slot's exit.</summary>
+        public static EnterExit Enter => new(Dy: Design.Reduced ? 0f : Tone.CaptionRiseDip, Opacity: 0f, Active: true, DelayMs: HandOffMs);
+
+        /// <summary>The outgoing slot: up and out.</summary>
+        public static EnterExit Exit => new(Dy: Design.Reduced ? 0f : -Tone.CaptionRiseDip, Opacity: 0f, Active: true);
+
+        /// <summary>The enter's wait: the exit's length (StandardExit).</summary>
+        public static float HandOffMs => MotionTok.StandardExit.DurationMs;
+
+        /// <summary>The slot's dynamics: StandardEnter in, StandardExit out (no geometry channel: a slot never glides).</summary>
+        public static LayoutTransition Motion => new(TransitionChannels.Opacity, MotionTok.StandardEnter.ToDynamics(), SizeMode.Auto,
+            ExitDynamics: MotionTok.StandardExit.ToDynamics());
+    }
+
     /// <summary>The lyric over the visualizer, presented as three lines: the PREVIOUS line above (small, ≈35 %), the ACTIVE line
     /// at the hero-title scale (40–56 DIP by height) and the NEXT line below (small, ≈45 %), centred in the face's region at the
     /// allocator's caption geometry (<c>Layout.CaptionX/W/Bottom</c> — the lower third, above the transport and hairline) over a

@@ -400,7 +400,9 @@ public static partial class Video
     readonly record struct StageHost(TransportOwner Identity, Action FullscreenRequested, Action? SurfacePresented = null);
 
     /// <summary>One presenter of the bound player. Props freeze at mount: the host bundle is constant per surface.
-    /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off.</summary>
+    /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off. The on-media strip is
+    /// NOT the stage's: each host stacks it over its join poster (<see cref="OwnedStrip"/>), so a poster waiting for the first frame covers the
+    /// picture and never the transport.</summary>
     [CoreHost]
     sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
     {
@@ -492,8 +494,27 @@ public static partial class Video
                     {
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     },
-                    OnMedia.Transport(chromeVisible, feed),
                 ]);
+        }
+    }
+
+    /// <summary>The on-media strip of the host <paramref name="identity"/> (audit B3, item 11): revealed by the window's idle machine, and only
+    /// while that host OWNS the transport (<c>State.Transport</c>, the placement's owner). In fullscreen the main window's presenter is Docked
+    /// by identity and the fullscreen surface owns the transport (its chrome draws the strip, `VideoFullscreenProps.Transport`), so this
+    /// one stands down and the window never draws two strips.</summary>
+    static Element OwnedStrip(TransportOwner identity, IReadSignal<bool> chromeVisible, PlayerChromeFeed feed)
+        => Embed.Comp(new StripHost.Props(identity, chromeVisible, feed), static () => new StripHost()) with { Key = "strip" };
+
+    [CoreHost]
+    sealed class StripHost : Component
+    {
+        public sealed record Props(TransportOwner Identity, IReadSignal<bool> ChromeVisible, PlayerChromeFeed Feed);
+
+        public override Element Render()
+        {
+            var p = UseProps<Props>();
+            var owned = UseComputed(() => p.ChromeVisible.Value && State.Transport.Value == p.Identity);
+            return OnMedia.Transport(owned, p.Feed);
         }
     }
 
@@ -806,7 +827,7 @@ public static partial class Video
     /// <summary>What the main-window presenter shows: the bound player's stage over the poster. Its OWN component so the
     /// switch's edges (Source, Player, JoinNow — three to five per switch) re-render this small subtree and not the whole
     /// <see cref="PipSurface"/> (its chrome, its eight resize bands, its tooltips and its geometry binds).
-    /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster], the poster KEYED and merely collapsed
+    /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster, strip?], the poster KEYED and merely collapsed
     /// (<c>Visible</c> false, which also takes it out of hit-test and paint) once the first frame is up. Swapping
     /// between a ZStack and a bare box at first frame re-laid the stage out on the very frame the hole went live.</para></summary>
     [CoreHost]
@@ -819,6 +840,7 @@ public static partial class Video
             var join = JoinNow.Value;
             bool stage = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
             var poster = Poster(join, SurfaceMount.PosterShown(stage, join), "poster");
+            // the strip over the poster: a poster waiting for the first frame covers the picture, never the transport
             Element[] kids = stage
                 ? new Element[]
                 {
@@ -826,6 +848,7 @@ public static partial class Video
                         new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
                         with { Key = "mainstage:" + GenKey(binding.Generation) },
                     poster,
+                    OwnedStrip(TransportOwner.Docked, s_mainChrome, s_mainFeed),
                 }
                 : new Element[] { poster };
             return HoleBoxes.Area(kids);
@@ -1152,6 +1175,7 @@ public static partial class Video
                 BandShown = band,
                 Generation = generation,
                 Stage = s_popOutStage,
+                Strip = s_popOutStrip,
                 Poster = static visual => Poster(visual),
                 Title = s_currentTitle,
                 BandRealized = h => bandRef.Value = h,
@@ -1164,6 +1188,9 @@ public static partial class Video
         static readonly Func<Element> s_popOutStage = static () =>
             Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
                 with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) };
+
+        /// <summary>The pop-out's strip, which the template stacks over its poster.</summary>
+        static readonly Func<Element> s_popOutStrip = static () => OwnedStrip(TransportOwner.PopOut, s_popOutChrome, s_popOutFeed);
 
     }
 

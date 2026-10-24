@@ -99,6 +99,10 @@ public static class ZuneStageUpNextRules
         _ => s_standard,
     };
 
+    /// <summary>The row in the Up next column docked beside the lyrics (Z-Lyrics-Huge: the cover, the title over the artists, the duration; no
+    /// position and no album column, which the Queue page's full width carries and a 440 column cannot).</summary>
+    public static ZuneStageQueueRow Docked(ZuneStageQueueRow row) => row with { NumberW = 0f, NumberPadL = 0f, Album = false };
+
     static readonly ZuneStageQueueRow s_standard = new(RowH: 60f, ArtEdge: 44f, NumberW: 48f, NumberPadL: 4f, ColGap: 12f, TimeW: 56f, RemoveW: 40f, NumberSize: 22f, NumberLine: 28f,
         TitleSize: 17f, TitleLine: 22f, ArtistSize: 13f, ArtistLine: 18f, TimeSize: 13f, TimeLine: 18f, HeaderH: 48f, HeadingSize: 26f, HeadingLine: 32f, Album: false, SidePanelW: 0f, ModeChips: false);
 

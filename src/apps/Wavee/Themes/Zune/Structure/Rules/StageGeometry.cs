@@ -102,6 +102,13 @@ public static partial class ZuneStageGeometry
     /// <summary>"Playing from …" at Standard: 13/18.</summary>
     public const float SourceSize = 13f, SourceLine = 18f;
 
+    /// <summary>The "next" card (Z-NowPlaying-Card: the 48 thumb flush in a flat plate, "next" over "Get Lucky · Daft Punk", 12 from the thumb
+    /// and 16 from the plate's right edge, 12 over the aside) at the Standard source type; it scales with the voice's source type.</summary>
+    public const float NextThumb = 48f, NextTextGap = 12f, NextPadR = 16f, NextAboveAside = 12f, NextEyebrowSize = 11f, NextEyebrowLine = 14f;
+
+    /// <summary>The "next" card's scale in a voice: its source type over the Standard one.</summary>
+    public static float NextScale(float sourceSize) => sourceSize / SourceSize;
+
     /// <summary>The device word: 36 tall (the tier's <c>DeviceH</c>), 8 each side, its chevron 10, and the floor it shrinks to.</summary>
     public const float DeviceH = 36f, DevicePadX = 8f, DeviceNameSize = 13f, DeviceNameLine = 18f, ChevronGlyph = 10f, DeviceMinW = 48f, DeviceMaxW = 220f;
 
