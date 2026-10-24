@@ -289,15 +289,31 @@ public static class ZuneListRules
 
     // ── the artist chart (Z-Artist) ──────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A chart row: 60 tall on a 0 gap (the rows touch, Z-Artist), the header 16 over them; the 264 card minimum is the two-column
-    /// breakpoint (as Classic's) and the edge fade the shelf's.</summary>
-    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartMinCardWidth = 264f, ChartEdgeFade = 24f;
+    /// <summary>A chart row: 60 tall on a 0 gap (the rows touch, Z-Artist), the header 16 over them. The card minimum is the core's stack break
+    /// (<see cref="ArtistPopularLayout.StackBreakW"/>): a cell never fits narrower than the width that still holds its sub line on one line. It is a FLOOR,
+    /// never what changes the column count: the pair is decided by <see cref="ZuneArtistRules.ChartPairRung"/> (cells of <see cref="ChartPairCell"/>), which
+    /// commits with the tier machinery's motion; wherever the rung admits two columns, two cells of this floor always fit, so the shelf's live width fit
+    /// never drops a column mid-resize (that re-fit landed the rows in one frame). The old 264 floor left a ~70 DIP title and a stacked third line at
+    /// 1016-1170. The edge fade is the row's own trailing inset (the row's `Spacing.S` right padding): a chart's clip is its own edge (no halo gutter), so at
+    /// rest the fade lies over the row's empty inset and the duration stays crisp; it only softens a page while it slides.</summary>
+    public const float ChartRowHeight = 60f, ChartCellGap = 0f, ChartHeaderGap = 8f, ChartEdgeFade = 8f,
+        ChartMinCardWidth = ArtistPopularLayout.StackBreakW;
+
+    /// <summary>The cell the chart's second column is admitted at: the stack break plus the core's re-admit hysteresis, so a pair's cells are always on the
+    /// wide reading (<see cref="ArtistPopularLayout.Decide"/>).</summary>
+    public const float ChartPairCell = ArtistPopularLayout.StackBreakW + ArtistPopularLayout.HysteresisDip;
 
     /// <summary>The chart heading's gap to its "see all" word, and the word's drop onto the heading's baseline.</summary>
     public const float ChartHeadGap = 20f, ChartBaseline = 4f;
 
     /// <summary>The rank box (the board's 52 lane), the art edge (48) and the skeleton's art, and the gaps.</summary>
     public const float ChartRankBox = 52f, ChartArt = 48f, ChartSubGap = 6f, ChartTrailGap = 12f, ChartFeatGap = 4f, ChartPagerChevron = 28f;
+
+    /// <summary>A chart cell whose width a re-fit changes (one column ↔ two at <see cref="ZuneArtistRules.ChartPairRung"/>, a docking panel narrowing the
+    /// content across it): its width eases through real layout on the gutter spacers' clock (<see cref="ZuneFrameRules.GutterMotion"/>, which its column
+    /// air uses too, so the air and the cell move as one), so the duration and the heart ride the cell's edge while the other rows glide to their new
+    /// places; a row that keeps its place never snaps 383 DIP.</summary>
+    public static LayoutTransition ChartCellResize => ZuneFrameRules.GutterMotion;
 
     /// <summary>The chart's height when its rows per column change: the layout lands once, the presented height tweens and everything below
     /// rides it (the engine's flow reveal), never a jump.</summary>
