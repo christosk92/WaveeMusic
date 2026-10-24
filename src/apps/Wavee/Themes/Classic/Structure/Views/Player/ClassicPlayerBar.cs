@@ -100,6 +100,7 @@ internal static partial class ClassicPlayerBar
         // What the form adds on a crossing fades in; the bar's first frame (a mount) does not replay it.
         var shown = rc.UseRef(false);
         LayoutTransition formMotion = shown.Value ? ClassicPlayerBarLayout.FormMotion : ClassicPlayerBarLayout.MoveMotion;
+        LayoutTransition seekFormMotion = shown.Value ? ClassicPlayerBarLayout.SeekFormMotion : ClassicPlayerBarLayout.MoveMotion;
         shown.Value = true;
 
         // ── LEFT — the now-playing identity ──────────────────────────────────────────────────────────────────────
@@ -137,9 +138,10 @@ internal static partial class ClassicPlayerBar
                 OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
                 OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
             };
-        // A scrolling title shows itself in full; a plain one is cut at the slot, so its full text rides a tooltip that exists only while it
-        // is cut (the same host in both forms, so the title keeps its node across the 528 crossing).
-        Element titleSlot = v.Marquee ? titleEl : Controls.TrimTip(titleEl, props.TitleText(), titleRun) with { Key = titleKey };
+        // A scrolling title shows itself in full (no tip: an empty text never measures cut); a plain one, the mini bar's always (it never
+        // scrolls), is cut at the slot, so its full text rides a tooltip that exists only while it is cut. The same host in both forms and with
+        // the marquee on or off, so the title keeps its node across the 528 crossing (the mini bar's title had no tip with the marquee on; B11).
+        Element titleSlot = Controls.TrimTip(titleEl, v.Marquee && !mini ? "" : props.TitleText(), titleRun) with { Key = titleKey };
 
         var metaKids = new List<Element>(3);
         if (mini)
@@ -362,7 +364,7 @@ internal static partial class ClassicPlayerBar
             {
                 Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(m.ClusterGap, 0f, 0f, 0f),
-                Gap = m.SeekGap, Animate = formMotion, Children = seekKids.ToArray(),
+                Gap = m.SeekGap, Animate = seekFormMotion, Children = seekKids.ToArray(),
             };
             var kids = new List<Element>(5);
             if (huge)

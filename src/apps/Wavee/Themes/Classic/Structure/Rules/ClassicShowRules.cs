@@ -13,12 +13,17 @@ internal static class ClassicShowRules
     /// <summary>The Display face of the reader's headings, numerals and the hero's minutes.</summary>
     public const string DisplayFace = "Segoe UI Variable Display";
 
+    /// <summary>The reader's voice: Classic's semibold, the weight of every other Classic page's heads (owner, 2026-10-24: semibold sentence case;
+    /// the light 300 lowercase heads were Zune's voice). It sets the section heads, "Nothing matches", the month headers and the continue hero's
+    /// minutes; the words are the loc values as written (sentence case).</summary>
+    public const ushort VoiceWeight = 600;
+
     // ── the section rhythm ──
 
     /// <summary>The head's air above, and the gap between its sections.</summary>
     public const float HeadTop = 12f, SectionGap = 26f;
 
-    /// <summary>A section head's pivot (Display 24 over the core's 30-DIP line).</summary>
+    /// <summary>A section head's pivot (Display 24 over the core's 30-DIP line, <see cref="VoiceWeight"/>).</summary>
     public const float PivotSize = 24f;
 
     /// <summary>A section head's sub line: its lift off the baseline, and the gap stacked under the pivot at a narrow reader.</summary>
@@ -30,7 +35,7 @@ internal static class ClassicShowRules
     /// <summary>A quiet line (the unavailable head, the empty show, the empty arm's hint) and the failed card's wrapped line.</summary>
     public const float QuietSize = 14f, QuietLineHeight = 20f, FailedLineHeight = 19f;
 
-    /// <summary>"nothing matches" (Display 20/26) and a month header's word (Display 18).</summary>
+    /// <summary>"Nothing matches" (Display 20/26) and a month header's word (Display 18), both in <see cref="VoiceWeight"/>.</summary>
     public const float NothingSize = 20f, NothingLineHeight = 26f, GroupSize = 18f;
 
     /// <summary>The pinned month's plate and one year's row in the strip.</summary>
@@ -57,7 +62,7 @@ internal static class ClassicShowRules
     public const float HeadSeedTitleWidth = 160f, HeroSeedHeight = 124f;
 
     /// <summary>The continue hero: art (wide, narrow), the progress track's longest run and height, the card's padding, its title (17/22),
-    /// the minutes (Display 30/34) and the "left of" words.</summary>
+    /// the minutes (Display 30/34 in <see cref="VoiceWeight"/>) and the "left of" words.</summary>
     public const float HeroArt = 96f, HeroArtNarrow = 64f, HeroTrackMax = 420f, HeroRuleHeight = 4f, CardPad = 14f,
                        HeroTitleSize = 17f, HeroTitleLine = 22f, HeroLeftDisplay = 30f, HeroLeftDisplayLine = 34f, HeroLeftSize = 12.5f;
 

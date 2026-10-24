@@ -9,6 +9,7 @@
 // Its one option is the row density (M3, `ClassicDensity`), a metrics preset. It publishes Classic's metrics (T3): the row heights, control
 // height, gutter and section gap Classic lays out with, and the track rows at the chosen density.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -23,7 +24,12 @@ public sealed class ClassicStyle : IStyleLayer
 
     // Built once: Tok.Use compares definitions by value, but the composition's identity rule (an unchanged pairing installs exactly
     // the style's own instance) and ThemeHost.ApplyDefinition's reference check both want a stable instance.
-    private static readonly ThemeDefinition s_definition = Design.Definition with { AppRoles = ClassicRoles.Table };
+    // Classic's one control style over the house table: the avatar's initials floor (ClassicControlRoles.Avatar).
+    private static readonly ThemeDefinition s_definition = Design.Definition with
+    {
+        AppRoles = ClassicRoles.Table,
+        Controls = Design.Definition.Controls.With(ControlStyles.PersonPictureStyle, ClassicControlRoles.Avatar),
+    };
 
     /// <inheritdoc />
     public string Id => LayerId;

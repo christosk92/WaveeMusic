@@ -303,7 +303,10 @@ internal static class ClassicSearch
                     AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchPlaceholder),
                         grow: 1f, maxFillWidth: maxWidth, text: text, onQuerySubmitted: Submit,
                         minHeight: ClassicChromeLayout.FieldMinHeight, cornerRadius: 0f, presenter: presenter, parts: parts,
-                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion),
+                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion,
+                        // A field that MOUNTS holding the query (a tier crossing on a results page swaps the field form) opens its list only when
+                        // the omnibar was live as it swapped (focused, or its list open): the page's query is no fresh edit (Zune's B4 fix, audit B6b).
+                        openOnSeed: presentation == AutoSuggestBoxSuggestionPresentation.Inline || model.SearchFocused.Peek() || model.SuggestionsOpen.Peek()),
                 ],
             };
         }

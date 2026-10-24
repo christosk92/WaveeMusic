@@ -47,7 +47,7 @@ internal static class ClassicProfileHero
         ];
 
         Element avatar = Avatar(in t, m.Avatar);
-        Element copy = Identity(in t, uri, in m, form, acts);
+        Element copy = CopyBlock(in t, uri, in m, form, acts);
         Element content = form.Arm switch
         {
             ClassicProfileHeroArm.Centred => new BoxEl
@@ -63,12 +63,13 @@ internal static class ClassicProfileHero
             _ => new BoxEl
             {
                 Direction = 0, Gap = form.AvatarGap, AlignItems = FlexAlign.End, MinWidth = 0f,
-                Children = form.Actions && form.ActionsBeside ? [avatar, copy, ActionRow(in t, uri, acts, form)] : [avatar, copy],
+                Children = [avatar, copy],
             },
         };
+        // The expanded presentation eases its height with the hero's (its content stands on its foot, so the copy rides the eased edge).
         Element expanded = new BoxEl
         {
-            Width = w, Height = m.Height, Direction = 0, Justify = FlexJustify.Center,
+            Width = w, Height = m.Height, Direction = 0, Justify = FlexJustify.Center, Animate = ClassicTierMotion.HeightReflow,
             HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
             Children =
             [
@@ -83,9 +84,12 @@ internal static class ClassicProfileHero
         };
         // Pinned at the viewport top and COLLAPSING into the compact band (`ClassicArtistHero`'s contract): the Leading
         // collapse cuts the expanded presentation at that edge by itself — paint and input — so no ClipToBounds here.
+        // A tier crossing eases the hero's height THROUGH REAL LAYOUT (the artist hero's B2c recipe, 280 ms SmoothOut), so the collapse edge, which
+        // cuts the presentation at the laid-out height, and the magazine under it move with it. A revealed height (the presented extent easing over a
+        // layout already at its new height) cut the presentation at the new height at once and opened a void over the magazine still gliding to it.
         return new BoxEl
         {
-            Direction = 1, Height = m.Height, ZStack = true, Animate = ClassicArtistTiers.HeroMotion,
+            Direction = 1, Height = m.Height, ZStack = true, Animate = ClassicTierMotion.HeightReflow,
             Children = band is null ? [expanded] : [expanded, band],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
@@ -112,7 +116,6 @@ internal static class ClassicProfileHero
     static BoxEl Identity(in ProfileHeroText t, string uri, in ProfileHeroMetrics m, ClassicProfileHeroForm form, ProfileHeroActs? acts)
     {
         bool centred = form.Arm == ClassicProfileHeroArm.Centred;
-        bool stacked = form.Arm != ClassicProfileHeroArm.Row;
         TextEl name = (form.Name switch
         {
             ClassicArtistName.Display => R.Type.ArtistDisplay(t.Name),
@@ -140,21 +143,41 @@ internal static class ClassicProfileHero
                 AlignItems = centred ? FlexAlign.Center : FlexAlign.Stretch,
                 Children = [Stats(in t, form, acts)],
             });
-        if (form.Actions && !form.ActionsBeside)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, form.StatsToActions, 0f, 0f),
-                Justify = centred ? FlexJustify.Center : FlexJustify.Start,
-                Children = [ActionRow(in t, uri, acts, form)],
-            });
+        // Beside the actions (a row block) the copy takes the row's free width; over them (a column block) its own height.
+        bool beside = form.Actions && form.ActionsBeside;
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Shrink = 1f,
-            Grow = stacked ? 0f : 1f, Basis = stacked ? float.NaN : 0f,
-            AlignSelf = stacked ? FlexAlign.Stretch : FlexAlign.Auto,
+            Grow = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN,
+            AlignSelf = beside ? FlexAlign.Auto : FlexAlign.Stretch,
             AlignItems = centred ? FlexAlign.Center : FlexAlign.Stretch,
             MaxWidth = m.CopyMaxWidth,
             Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The copy and the action row in ONE block at every form, so the row keeps its node when a crossing moves it (1008, 1920): beside the
+    /// copy at its right end (a row block, the Small and Huge forms) or under the stats (a column block). A form without actions (the Short strip)
+    /// keeps the holder, hidden.</summary>
+    static Element CopyBlock(in ProfileHeroText t, string uri, in ProfileHeroMetrics m, ClassicProfileHeroForm form, ProfileHeroActs? acts)
+    {
+        bool centred = form.Arm == ClassicProfileHeroArm.Centred;
+        bool row = form.Arm == ClassicProfileHeroArm.Row;
+        bool beside = form.Actions && form.ActionsBeside;
+        var actions = new BoxEl
+        {
+            Key = "profile-hero-actions-slot", Direction = 0, MinWidth = 0f, Shrink = 0f, Visible = form.Actions,
+            Margin = beside ? default : new Edges4(0f, form.StatsToActions, 0f, 0f),
+            Justify = centred ? FlexJustify.Center : FlexJustify.Start,
+            Children = [ActionRow(in t, uri, acts, form)],
+        };
+        return new BoxEl
+        {
+            Direction = (byte)(beside ? 0 : 1), Gap = beside ? form.AvatarGap : 0f, MinWidth = 0f, Shrink = 1f,
+            AlignItems = beside ? FlexAlign.End : FlexAlign.Stretch,
+            // In the row arm the block is the elastic lane beside the avatar; stacked or centred it spans the column.
+            Grow = row ? 1f : 0f, Basis = row ? 0f : float.NaN, AlignSelf = row ? FlexAlign.Auto : FlexAlign.Stretch,
+            Children = [Identity(in t, uri, in m, form, acts), actions],
         };
     }
 
