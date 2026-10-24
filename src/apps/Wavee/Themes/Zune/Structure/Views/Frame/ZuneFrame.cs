@@ -20,8 +20,8 @@
 //
 //   THE PANEL (Z-Frame-Panel inline, Z-Frame-Narrow floating). The panel layer lies over the page row and places the primary panel's host by
 //   bound spacers from its placement: DOCKED it is flush right, the body's full height, as wide as the committed width, and the row reserves
-//   that width (`RailReservedWidth`, 0 while closed or floating), so the page column narrows with no vertical jump (both FLIP on one 300 ms
-//   transition); FLOATING it is 340 wide, flush right, from under the band as it stands now (the band slot's measured foot, ZT1) down to the play bar, the page
+//   that width (`RailReservedWidth`, 0 while closed or floating), easing it through real layout on the panel's slide, so the page column gives up
+//   its width frame by frame beside the sliding panel; FLOATING it is 340 wide, flush right, from under the band as it stands now (the band slot's measured foot, ZT1) down to the play bar, the page
 //   keeping its width; a SHEET is the body's whole box. There is no seam: Zune's panel has no drag handle (Z-Frame-Panel), and no gap: it
 //   meets the page.
 //
@@ -165,9 +165,9 @@ internal static class ZuneFrame
             // Zune has no sidebar: the core's sidebar-column probe still gets a node, zero wide.
             new BoxEl { Width = 0f, Shrink = 0f, HitTestVisible = false, OnRealized = props.OnSidebarColumnRealized },
             PageColumn(props, in ctx, bandH),
-            Reservation(props.RailReservedWidth),
+            Reservation(props.RailReservedWidth, ctx.Reduced),
         };
-        foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth));
+        foreach (var pane in panes) row.Add(Reservation(pane.ReservedWidth, ctx.Reduced));
         return new BoxEl
         {
             ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
@@ -241,11 +241,14 @@ internal static class ZuneFrame
     }
 
     /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating). Unpainted: the panels' full-height surface
-    /// under the column (<see cref="ZunePanelSurface"/>, as wide as every reservation) shows through it, so the slide-in never shows a hole.</summary>
-    private static Element Reservation(Func<float> width) => new BoxEl
+    /// under the column (<see cref="ZunePanelSurface"/>, as wide as every reservation) shows through it. Its width eases through real layout on the
+    /// panel's slide (the dock's 300 ms on the smooth-out curve, the surface's own motion), so the page column beside it gives up its width frame by
+    /// frame with the sliding panel instead of taking its final width at once and leaving the surface's ground bare beside it.</summary>
+    private static Element Reservation(Func<float> width, bool reduced) => new BoxEl
     {
         Shrink = 0f, HitTestPassThrough = true,
         Width = Prop.Of(width),
+        Animate = reduced ? null : ZunePanelTiers.ShiftMotion,
     };
 
     /// <summary>The docked reservations' width now: the primary's and every docked pane's (the panels' full-height surface spans them).</summary>
