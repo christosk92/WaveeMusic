@@ -5,11 +5,14 @@
 //   TYPE      the pivots and row 2 are the style's roles (`Pivot` 28/36, `SubPivot` 14/20) at every tier but Huge 4K, where the board sets the
 //             pivots at 40/48 and row 2 at 15/20 (`ZuneBandType`; NaN keeps the role's own size).
 //   COLLAPSE  the band folds row 2 away on the page's first scroll down where its record collapses (Compact, Small, Standard) AND wherever
-//             the window is Short (below 700 tall, Z-Shell-Short: "330 tall: band collapses to 52 at the first scroll"), whatever the width:
-//             a short Huge window has no vertical room either. Huge and Huge 4K at a Regular height never collapse.
+//             the window is very short, whatever the width: a short Huge window has no vertical room either. "Very short" is a window-height RUNG,
+//             `ZuneBandRules.Row2Rung`, not the Short tier (below 700): Z-Frame-Small (800 x 600) and Z-PlayBar (1440 x 680) keep row 2 (the facets) at
+//             rest, while Z-Shell-Short (330) rests with it folded. Crossed from 480 on widening, held 24 on shrinking: the lane assumption between the
+//             boards the daylist's height rung already makes (`ZuneHomeRules.DaylistFullFrom`, audit B5a V28).
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`). Public, so `Wavee.Tests` pins them.
 
+using System.Collections.Immutable;
 using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using Wavee.Theming;
@@ -58,9 +61,10 @@ public static class ZuneBandTiers
     /// <summary>The band's type for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ZuneBandType TypeOf(in TierFacts facts) => Type(facts.Policy is null ? WidthTier.Standard : facts.Window);
 
-    /// <summary>The window rests with row 2 folded away: it is Short, below the Regular height rung (Z-Shell-Short: the band stands at row 1, static; a scroll
-    /// neither returns nor folds it). A view mounted alone (no policy) does not.</summary>
-    public static bool RestsCollapsed(in TierFacts facts) => facts.Policy is not null && facts.Height == HeightTier.Short;
+    /// <summary>The window rests with row 2 folded away: it is below the band's height rung (Z-Shell-Short: the band stands at row 1, static; a scroll
+    /// neither returns nor folds it), or Short under a policy that declares no such rung. A view mounted alone (no policy) does not.</summary>
+    public static bool RestsCollapsed(in TierFacts facts)
+        => facts.Policy is { } policy && (policy.IndexOfRung(ZuneBandRules.Row2Rung) >= 0 ? !facts.Rung(ZuneBandRules.Row2Rung) : facts.Height == HeightTier.Short);
 
     /// <summary>Row 2 is folded away AT REST in <paramref name="facts"/>: a Short window under the `collapseBand` parameter (Z-Shell-Short). Its verbs
     /// (play, shuffle, saved, follow) then have no home in the band, so the page's hero or identity column carries them instead: one home per verb,
@@ -70,10 +74,18 @@ public static class ZuneBandTiers
     /// <summary>Row 2 can be folded away in <paramref name="facts"/>: its record ties it to the scroll in this width tier (Compact), or the window is Short and
     /// rests with it folded (Z-Shell-Short). Pinned elsewhere. A view mounted alone (no policy) answers the record's own.</summary>
     public static bool Collapses(ZuneBandLayout band, in TierFacts facts)
-        => band.Collapses || (facts.Policy is not null && facts.Height == HeightTier.Short);
+        => band.Collapses || RestsCollapsed(facts);
 
     /// <summary>Row 2 is scroll-TIED in <paramref name="facts"/>: the record collapses (Compact), the `collapseBand` parameter is on and the window does not rest
     /// collapsed (a Short window folds row 2 statically instead).</summary>
     public static bool ScrollTied(ZuneBandLayout band, in TierFacts facts, bool parameter)
         => band.Collapses && parameter && !RestsCollapsed(facts);
+}
+
+public static partial class ZuneTiers
+{
+    // The band's height rung (see the file header): row 2 stays at rest from 480 tall. Reads only `ZuneBandRules` constants (this runs inside
+    // `ZuneTiers.Policy`'s initializer).
+    static partial void RungsBand(ImmutableArray<NamedRung>.Builder rungs)
+        => rungs.Add(new NamedRung(ZuneBandRules.Row2Rung, new TierEdge(ZuneBandRules.Row2RestsFrom, NarrowHold: Hold, WidenHold: 0f), RungAxis.Height));
 }

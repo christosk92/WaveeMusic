@@ -168,7 +168,8 @@
 // marquee preference).
 // 1.62 (audit B5a): `BandProps.Section` (the destination a detail page lives under, from its trail: the band lights "library" over an album);
 // `PageCrumb.Word` (a crumb that is the core's word, not a name: a theme may re-case it); `StyleKeys.LibraryPlaylistHead` with `LibraryPlaylistHeadStyle` /
-// `LibraryPlaylistHeadArgs` (the library playlists reader's head as a theme draws it); `AlbumTrailStackProps.Name` (the name a stack's title carries).
+// `LibraryPlaylistHeadArgs` (the library playlists reader's head as a theme draws it); `AlbumTrailStackProps.Name` (the name a stack's title carries);
+// `BrowseCategoryProps.Color` / `.Parent` (a category page's own colour and the page it was opened from).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

@@ -69,6 +69,14 @@ public sealed record BrowseCategoryProps
     /// <summary>The page's own title (the masthead's; a shelf drill and a flattened heading compare against it).</summary>
     public required string Title { get; init; }
 
+    /// <summary>The category's own colour (opaque ARGB: the page header's accent, else its directory tile's), contract 1.62; null when it has none (a
+    /// theme that paints a banner falls back to its own colour).</summary>
+    public uint? Color { get; init; }
+
+    /// <summary>The page the category was opened from, in its own words ("Music" over "Pop"), contract 1.62; null when it was opened from the directory
+    /// or from nowhere.</summary>
+    public string? Parent { get; init; }
+
     /// <summary>The page uri (a flattened grid with no lone-shelf key is keyed by it).</summary>
     public required string PageUri { get; init; }
 

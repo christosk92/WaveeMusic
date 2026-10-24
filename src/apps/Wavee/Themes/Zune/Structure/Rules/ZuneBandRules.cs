@@ -96,6 +96,13 @@ public static class ZuneBandRules
 {
     // ── the node keys the views carry (the tests find them) ──────────────────────────────────────────────────────────────
 
+    /// <summary>The band's height rung (`Tiers.Band.cs`): from this window height row 2 rests open (Z-Frame-Small 600, Z-PlayBar 680); under it, folded
+    /// (Z-Shell-Short 330). The daylist's height rung makes the same assumption between the boards (`ZuneHomeRules.DaylistFullFrom`).</summary>
+    public const string Row2Rung = "band.row2";
+
+    /// <inheritdoc cref="Row2Rung"/>
+    public const float Row2RestsFrom = 480f;
+
     /// <summary>The band's root, its two rows, the pivot run, a pivot (`zune-band-pivot:<id>`), the "more" word, the pins cluster, a pin
     /// (`zune-band-pin:<id>`), a pin's play affordance, a row-2 view (`zune-band-view:<id>`), a row-2 action (`zune-band-action:<id>`),
     /// the row-2 title.</summary>

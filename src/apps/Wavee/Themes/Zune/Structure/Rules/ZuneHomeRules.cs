@@ -164,6 +164,19 @@ public static class ZuneHomeRules
     /// <summary>The lowest contrast the on-media white word may have on a plate's own colour before the plate takes the dark ink (a pale category colour).</summary>
     public const float PlateInkFloor = 3f;
 
+    /// <summary>A category's plate colour as the boards mute it (Z-Browse: "flat colour tiles, the category's own colour as the plate", drawn at
+    /// saturation 0.3-0.5 and lightness 0.30-0.37): Spotify's tile colour keeps its hue, its saturation capped at <see cref="PlateMaxS"/> and its
+    /// lightness held between <see cref="PlateMinL"/> and <see cref="PlateMaxL"/>, so a hot pink or a #0D72EA blue sits in the board's quiet range
+    /// and the white word reads on every plate.</summary>
+    public static ColorF MutedPlate(ColorF colour)
+    {
+        var (h, s, l) = ColorScience.ToHsl(colour);
+        return ColorScience.FromHsl(h, MathF.Min(s, PlateMaxS), Math.Clamp(l, PlateMinL, PlateMaxL));
+    }
+
+    /// <inheritdoc cref="MutedPlate"/>
+    public const float PlateMaxS = 0.5f, PlateMinL = 0.30f, PlateMaxL = 0.37f;
+
     /// <summary>A colour plate on hover: lifted toward white a step.</summary>
     public static ColorF PlateHover(ColorF plate) => ColorF.Lerp(plate, ColorF.FromRgba(255, 255, 255), PlateStep);
 

@@ -178,7 +178,7 @@ internal static class ZuneDiscoveryKit
         bool hasArt = !hasColour && art is { Length: > 0 };
         // A pale category colour takes the dark ink (white on a light plate was the white-on-white tile label): the on-media white holds
         // wherever it reads at 3:1 or better, so the board's saturated plates keep their white word.
-        ColorF plate = hasColour ? ColorScience.ToColor(colour!.Value) : default;
+        ColorF plate = hasColour ? H.MutedPlate(ColorScience.ToColor(colour!.Value)) : default;
         Prop<ColorF> labelInk = hasColour && H.PlateWantsDarkInk(plate)
             ? ColorContrast.NearBlackInk
             : Prop.Of(static () => R.OnMedia.Ink);
