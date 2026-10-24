@@ -521,7 +521,7 @@ public readonly partial struct User
             _navOptions = new ListOptions<LibraryNavItem>
             {
                 SelectionMode = ItemsSelectionMode.Single, Selection = _navSel, Controller = _navCtl, Grow = 1f,
-                Scroll = _navScroll, OnChange = _onNavSel,
+                Scroll = _navScroll, OnChange = _onNavSel, IsItemInvokedEnabled = true, InvokeOnTap = true, OnInvoked = OnNavInvoked,
                 // typeahead (item 68) — a header item carries a NEGATIVE slot and has no title to type at.
                 ItemTextTyped = static (_, it) => it.Slot > Table.None ? LibraryRows.TitleOf(it.Kind, it.Slot) : "",
             };
@@ -978,12 +978,18 @@ public readonly partial struct User
             Select(_sorted[row]);
             if (EpisodesFirst && PodcastsMode.Peek() == 1) PodcastsMode.Value = 0;   // a show picked in the list is the body again
             if (Collapsed) _depth.Value = 1;
-            else if (GroupPaneHidden)
-            {
-                // The grouped albums page without a songs pane (Small, or a split page under the pane's rung): a picked album opens its own page.
-                var album = new Album(_sorted[row]);
-                if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
-            }
+        }
+
+        /// <summary>A click or Enter on a navigator item (<c>InvokeOnTap</c>: a click on the album already selected acts too; arrows and Space only move and
+        /// select). The grouped albums page without a songs pane (Small, or a split page under the pane's rung) opens the album's own page: a selection that
+        /// arrows move must never navigate.</summary>
+        void OnNavInvoked(int flat)
+        {
+            if (Collapsed || !GroupPaneHidden) return;
+            int row = RowOfFlat(flat);
+            if (row < 0 || row >= _sortedCount) return;
+            var album = new Album(_sorted[row]);
+            if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
         }
 
         /// <summary>The navigator's first visible item (the flat index under the top of its visible band, below a pinned letter), or -1 when it rests
