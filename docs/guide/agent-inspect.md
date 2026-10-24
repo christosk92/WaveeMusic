@@ -475,8 +475,8 @@ id, kind, value, writer, readOnly?, enabled?, reason?}`; `tab=appearance` lists 
 `setting id=<row> value=<v>` sets it through the row's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a
 slider's number, a choice's, a segmented row's or a picker's index; an action runs with no value), and bumps the page epoch when the
 writer asks the page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a
-click. With nothing mounted the store keeps it for the next mount. A mount does NOT put app settings back: use a fresh server per
-configuration. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
+click. A value set on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the row's writer (toggles,
+sliders, choices). One set with nothing mounted is for the next mount, which keeps it. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
 
 ```text
 setting id=lyricsBlur value=0        # the lyrics blur off (0..100)

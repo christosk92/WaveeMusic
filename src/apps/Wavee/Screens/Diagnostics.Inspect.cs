@@ -833,6 +833,7 @@ public static partial class Diagnostics
         {
             bool optionsForNext = _optionsForNext && keepOptions;
             _optionsForNext = false;
+            RestoreSettings();   // the app settings `setting` wrote on the last mount (kept when written for this one)
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();

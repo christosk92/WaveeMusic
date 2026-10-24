@@ -56,6 +56,10 @@ public static partial class Diagnostics
                 return Inspect.Reply.Fail(id, name, "'" + target.Id + "' has no writer of its own (" + (writer.IsOwned ? "its card's verbs are " + writer.Verb + "'s" : "read-only") + ")");
             bool reread;
             Inspect.Value raw = a.TryGet("value", out Inspect.Value v) ? v : default;
+            // What the next mount puts back (a write on a live mount is that mount's; one with nothing mounted is for the next mount).
+            if (_shell is not null && target.Kind != SettingsRowKind.Action && !_settingsWritten.Exists(e => ReferenceEquals(e.Row, target)))
+                _settingsWritten.Add((target, target.Current));
+            if (_shell is null) _settingsForNext = true;
             switch (target.Kind)
             {
                 case SettingsRowKind.Action:
@@ -91,6 +95,33 @@ public static partial class Diagnostics
             if (_shell is null) return Inspect.Reply.Ok(id, name, body);   // nothing mounted: the store holds it for the next mount
             RunFrames(1);
             return Settled(id, name, a, body);
+        }
+
+        /// <summary>The rows `setting` wrote on a live mount, with the value each had before: the next mount puts them back.</summary>
+        readonly List<(SettingsRow Row, object? Was)> _settingsWritten = [];
+        bool _settingsForNext;   // `setting` wrote with nothing mounted: for the next mount, which keeps it
+
+        /// <summary>Put back the rows `setting` wrote on the last mount, through their own writers (a toggle, a slider, a choice by index), unless
+        /// a `setting` with nothing mounted asked the next mount to keep its values.</summary>
+        void RestoreSettings()
+        {
+            bool keep = _settingsForNext;
+            _settingsForNext = false;
+            if (keep) { _settingsWritten.Clear(); return; }
+            bool reread = false;
+            foreach (var (row, was) in _settingsWritten)
+            {
+                SettingsWriter w = row.Writer;
+                switch (was)
+                {
+                    case bool b when w.Toggle is { } toggle: reread |= toggle(b); break;
+                    case float f when w.Slide is { } slide: reread |= slide(f); break;
+                    case int i when w.Slide is { } slide: reread |= slide(i); break;
+                    case int i when w.Choose is { } choose: reread |= choose(i); break;
+                }
+            }
+            _settingsWritten.Clear();
+            if (reread) Settings.Bump();
         }
 
         /// <summary>`{tab, section, id, kind, value, writer, readOnly?, enabled?, reason?}` (or as the member <paramref name="named"/>).</summary>
