@@ -72,7 +72,12 @@ internal static partial class ZuneLibraryArtistReader
                         Content = new BoxEl
                         {
                             Direction = 1, Gap = LR.BoardGap, MinWidth = 0f,
-                            Children = [Hero(host, in band, l), AlbumsHeading(), Grid(releases, picked, _picked, beside)],
+                            Children =
+                            [
+                                Hero(host, in band, l), AlbumsHeading(),
+                                // The boards' three covers a row, two where three would go under the cover's floor (a narrow Small window).
+                                Responsive.Of("board:grid", LR.BoardColumns, cols => Grid(releases, picked, _picked, beside, cols), fallback: LR.BoardCols * LR.BoardCellMin),
+                            ],
                         },
                     },
                 ],
@@ -186,13 +191,13 @@ internal static partial class ZuneLibraryArtistReader
         ],
     };
 
-    /// <summary>The releases, three covers a row. A cover picks its album for the pane while the pane stands <paramref name="beside"/>; with the pane aside it opens the album's
-    /// page.</summary>
-    static Element Grid(IReadOnlyList<ArtistReaderRelease> releases, int picked, Signal<int> pick, bool beside)
+    /// <summary>The releases, <paramref name="columns"/> covers a row (the cards keep their keys when the count changes). A cover picks its album for the pane while the pane stands
+    /// <paramref name="beside"/>; with the pane aside it opens the album's page.</summary>
+    static Element Grid(IReadOnlyList<ArtistReaderRelease> releases, int picked, Signal<int> pick, bool beside, int columns)
     {
         var cards = new Element[releases.Count];
         for (int i = 0; i < cards.Length; i++) cards[i] = Card(releases[i].AlbumSlot, releases[i].AlbumSlot == picked, pick, beside);
-        var cols = new TrackSize[LR.BoardCols];
+        var cols = new TrackSize[columns];
         for (int i = 0; i < cols.Length; i++) cols[i] = TrackSize.Star(1f);
         return new GridEl { Columns = cols, ColGap = LR.BoardGridGap, RowGap = LR.BoardGridGap, Shrink = 0f, Children = cards };
     }

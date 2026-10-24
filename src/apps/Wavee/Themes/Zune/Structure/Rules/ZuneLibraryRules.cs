@@ -100,8 +100,14 @@ public static class ZuneLibraryRules
     /// <summary>The reader column's gap between the hero, the albums heading and the grid; the grid's columns and gaps; the heading's size (26 light) and line.</summary>
     public const float BoardGap = 14f, BoardGridGap = 16f, BoardHeadSize = 26f, BoardHeadLine = 32f;
 
-    /// <summary>The albums grid's column count.</summary>
-    public const int BoardCols = 3;
+    /// <summary>The albums grid's column count (every board draws three), and the fewer it falls back to where three covers would go under <see cref="BoardCellMin"/>.</summary>
+    public const int BoardCols = 3, BoardColsNarrow = 2;
+
+    /// <summary>A cover's floor in the albums grid (Z-Sizes-Breakpoints: "min 150"): under it a name under the cover trims at almost every title.</summary>
+    public const float BoardCellMin = 150f;
+
+    /// <summary>The albums grid's columns for a <paramref name="width"/>-wide middle column: the boards' three while each cover keeps <see cref="BoardCellMin"/>, else two.</summary>
+    public static int BoardColumns(float width) => width >= BoardCols * BoardCellMin + (BoardCols - 1) * BoardGridGap ? BoardCols : BoardColsNarrow;
 
     /// <summary>The middle column's floor beside the pane (the artist board's hero and grid, the grouped albums): the hero's verbs as words (<see cref="HeroVerbsWordsW"/>)
     /// inside its 24 insets, and three covers of about 157. Under it the pane steps aside (<see cref="ZuneLibraryLadders.PaneFrom"/>).</summary>
