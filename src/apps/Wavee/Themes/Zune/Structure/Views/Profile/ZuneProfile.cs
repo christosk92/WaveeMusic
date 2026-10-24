@@ -280,15 +280,19 @@ internal static class ZuneProfile
         Span<ProfileStatCell> cells = stackalloc ProfileStatCell[ProfileStats.Max];
         int n = ProfileStats.Plan(t.Own, t.ShowFollows, t.Followers, t.Following, t.Playlists, cells);
         var kids = new List<Element>(n * 2);
+        Element? own = null;   // the stacked arm's line of its own: the playlists count
         for (int i = 0; i < n; i++)
         {
-            if (i > 0) kids.Add(R.Type.DenseTitle("·") with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f });
+            if (lay.StatsStack && cells[i].Kind == ProfileStat.Playlists) { own = Stat(cells[i], acts, lay); continue; }
+            if (kids.Count > 0) kids.Add(R.Type.DenseTitle("·") with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f });
             kids.Add(Stat(cells[i], acts, lay));
         }
-        return new BoxEl
+        var line = new BoxEl
         {
             Direction = 0, Wrap = true, Gap = Z.StatGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray(),
         };
+        if (own is null) return line;
+        return kids.Count == 0 ? own : new BoxEl { Direction = 1, MinWidth = 0f, Children = [line, own] };
     }
 
     /// <summary>"12 followers": a word (the style's label case). A cell that links (never Public playlists, never a zero) is a hyperlink into its list.</summary>

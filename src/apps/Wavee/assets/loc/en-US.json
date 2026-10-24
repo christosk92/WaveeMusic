@@ -3409,6 +3409,8 @@
     "promptHangTitle": "Wavee stopped responding",
     "promptListTitle": "Send this report?",
     "promptWhen": "Last run ended {time}",
+    "promptHangWhen": "Stopped responding at {time}",
+    "promptHangFor": "Stopped responding at {time} for {seconds} s",
     "promptLead": "Last time, Wavee crashed. Send a report so it can be fixed?",
     "promptHangLead": "Wavee stopped responding for a while, then recovered. Send a report so it can be fixed?",
     "promptWhatIsSent": "What's in the report",

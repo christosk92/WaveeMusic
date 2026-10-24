@@ -177,7 +177,10 @@
 // `BrowseCategoryProps.Color` / `.Parent` (a category page's own colour and the page it was opened from).
 // 1.66 (audit B11): `PlayerCredits.Line(separator)` (the credits line as plain words: what the bar's credits marquee restarts on and shows as its
 // tooltip). `StageIdentityProps.Marquee` stays as it is: the marquee control behind it now rests at the start and passes a bounded number of times.
-// 1.67 (audit B9): the one-tree detail page. `DetailForm` (Hero | Columns) and `DetailColumnsProps` (the columns form's rail, head, aside and sheet), carried
+// 1.68 (audit B5b): `DevicePickerEntry.Word` (the picker's "System default" is the core's word, not a device's name: a theme may re-case it);
+// `DevicePickerEntry.IsChecked` is set on a this-computer output too (the one playing), where it was always false; `StageDeviceFacts.Word` (the same
+// word on the stage's device button).
+// 1.69 (audit B9): the one-tree detail page. `DetailForm` (Hero | Columns) and `DetailColumnsProps` (the columns form's rail, head, aside and sheet), carried
 // by `DetailFrameProps.Form` / `.Columns` and `DetailHeroProps.Parts.Form` / `.Columns` (the hero draws both forms; the form is a live prop, never a key);
 // `DetailHeroStyle.ListInsets` (`DetailInsetQuery` -> `DetailListInsets`: the width the hero's side columns take beside the rows) and `.InsetMotion`; the
 // hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
@@ -198,7 +201,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 67;
+    public const int Minor = 69;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

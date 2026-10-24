@@ -174,9 +174,10 @@ internal static class ZuneRecentsDays
         string label = (uint)dayIndex < (uint)sections.HeaderLabels.Length ? sections.HeaderLabels[dayIndex] : "";
         int n = RecentsView.CountForDay(sections, dayIndex);
         TextEl title = layout.DayHead == ZuneRecentsHead.Standard ? R.Type.Heading(label) : R.Type.QuickplayHead(label);
+        // It fills its host: the list's row, and the pinned band's row (a header that hugged there drew the rule at its 16 minimum, the count at x165).
         return new BoxEl
         {
-            Direction = 0, Height = RecentsLayout.DateHeaderHeight, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Z.DayGap,
+            Direction = 0, Grow = 1f, Height = RecentsLayout.DateHeaderHeight, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Z.DayGap,
             // The count's right edge is the rows' chevron glyph's, not the list's edge (the audit's 1044 vs 985).
             Padding = new Edges4(0f, 0f, Z.CountInset(layout.Stacked, layout.ChevronLane, Controls.IconButtonSize, Spacing.S), 0f),
             Role = overlay ? AutomationRole.None : AutomationRole.Button, Focusable = !overlay, Cursor = CursorId.Hand, OnClick = onClick,

@@ -171,7 +171,7 @@ internal static class ZuneBrowseCategory
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_cardHeight,
             header: header is BoxEl head ? head with { Grow = H.HeadFillGrow } : header,
-            pager: ShelfPager.Chevrons,
+            pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             // Standard: the fixed 154 card; elsewhere the shelf FITS up to the tier's columns (live props of ONE shelf).
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,

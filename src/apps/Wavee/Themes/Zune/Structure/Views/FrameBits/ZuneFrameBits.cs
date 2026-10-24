@@ -16,7 +16,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
-using Wavee.Theming.Contracts;
+using Wavee.Theming.Contracts;
+
 using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
@@ -62,6 +63,6 @@ internal static class ZuneFrameBits
         float target = dim ? 1f : 0f;
         hooks.UseTransition(AnimChannel.Opacity, mounted.Value ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(dim));
         mounted.Value = true;
-        return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
+        return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke with { A = ZuneFrameRules.CoverScrimA }, Opacity = target, HitTestVisible = dim };
     }
 }

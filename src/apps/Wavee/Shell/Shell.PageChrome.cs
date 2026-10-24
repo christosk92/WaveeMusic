@@ -149,6 +149,16 @@ public static partial class Shell
         public static readonly Signal<int> Version = new(0);
 
         static readonly Dictionary<string, PageChromeRow> s_rows = new(StringComparer.Ordinal);
+
+        /// <summary>The routes whose page has published at all (a row, or an empty one that withdrew it); bounded, cleared when full.</summary>
+        static readonly HashSet<string> s_spoken = new(StringComparer.Ordinal);
+        const int SpokenCapacity = 256;
+
+        /// <summary>The page kinds that publish their row 2 (views, actions, the entity's name) from their first frame on: a route of one whose page has
+        /// not spoken yet has its row coming. The page commits a frame before its effect publishes, so without this a band folded row 2 away for
+        /// that frame and brought it back (album to album, artist to artist: audit B7, B5b).</summary>
+        static bool PublishesRow(RouteKind kind) => kind is RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show
+            or RouteKind.Episode or RouteKind.User or RouteKind.ProfileList;
         static readonly List<string> s_lru = [];
 
         static string KeyOf(in Route r) => NameOf(r) + "\u001F" + (ArgOf(r) ?? "") + "\u001F" + r.Tab.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -157,6 +167,8 @@ public static partial class Shell
         public static bool Publish(in Route route, PageChromeRow? row)
         {
             string k = KeyOf(route);
+            if (s_spoken.Count >= SpokenCapacity) s_spoken.Clear();
+            s_spoken.Add(k);
             if (row is null || row.IsEmpty)
             {
                 if (!s_rows.Remove(k)) return false;
@@ -232,7 +244,9 @@ public static partial class Shell
                 Title = row?.Title is { Length: > 0 } name ? name : head.Title,
                 Views = views,
                 // Contract 1.59 (audit B7): the page's views are coming; a band keeps row 2's place until they land.
-                ViewsPending = views.Count == 0 && row is { ViewsPending: true },
+                // A page of a kind that publishes its row and has not spoken yet (its first frame) has its row coming too.
+                ViewsPending = views.Count == 0
+                    && (row is { ViewsPending: true } || (row is null && PublishesRow(route.Kind) && !s_spoken.Contains(KeyOf(route)))),
                 Actions = row?.Actions ?? [],
                 Backdrop = row?.Backdrop ?? PageBackdrop.None,
             };

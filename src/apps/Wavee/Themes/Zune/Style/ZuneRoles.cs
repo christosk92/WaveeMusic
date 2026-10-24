@@ -82,6 +82,13 @@ public static class ZuneTokens
 
     /// <summary>The selected wash of <paramref name="kind"/>.</summary>
     public static float SelectedAOf(ThemeKind kind) => kind == ThemeKind.Light ? SelectedALight : SelectedA;
+
+    /// <summary>An unselected word's opacity in a word rail (the show's filters and sorts, History's): the shared 50 % on dark; on the light ground 50 %
+    /// of the ink read 3.5 : 1, so the light rest is 68 % (about 5 : 1 on the light page).</summary>
+    public static readonly ModePair<float> WordRest = new(Light: 0.68f, Dark: Controls.Words.RestInk);
+
+    /// <summary><see cref="WordRest"/> for the active kind, as a rail reads it (a live read: a kind switch re-reads it).</summary>
+    public static readonly Func<float> WordRestNow = static () => WordRest.Now;
     /// <summary>The hairline, one per surface at most: 8 % white on dark, 10 % black on light (Z-Tokens).</summary>
     public const float HairlineDarkA = 0.08f, HairlineLightA = 0.10f;
     /// <summary>A rest chip and a quiet plate: 6 % of the ink (Z-Tokens' "pop" chip).</summary>

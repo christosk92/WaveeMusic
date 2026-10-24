@@ -242,7 +242,7 @@ public sealed record DetailRailProps
     public IReadSignal<Detail.ListCount>? Shown { get; init; }
 
     /// <summary>The identity drawn STACKED, full width over the content (audit B9: a show's or an episode's page below the mode edge, where a structure
-    /// that keeps one tree draws its rail as the fixed header instead of the column). False: the column. Appended (contract 1.67).</summary>
+    /// that keeps one tree draws its rail as the fixed header instead of the column). False: the column. Appended (contract 1.69).</summary>
     public bool Stacked { get; init; }
 
     /// <inheritdoc />
