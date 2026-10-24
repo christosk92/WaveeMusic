@@ -92,8 +92,11 @@ public static class WinUiFrameRules
     /// <summary>A toolbar button at Compact: 40 x 40 (the touch floor).</summary>
     public const float CompactToolH = 40f;
 
-    /// <summary>The Compact strip's tab and "+" height: the whole 40 row (the touch floor).</summary>
+    /// <summary>The Compact strip's tab and "+" height: the whole 40 row (the touch floor). The selected tab's close button is the same 40 square.</summary>
     public const float CompactTabH = 40f;
+
+    /// <summary>The ladder strip's "+" above Compact: a 32 square (the hit floor; the engine's Chrome plate is 32 x 24).</summary>
+    public const float AddTarget = 32f;
 
     /// <summary>The search field's width across a tier crossing (520 -> 640), a maximize or a restore: a reflow of the field's sizer inside
     /// hugging ancestors, so the window-centred field re-centres every tick (its x is layout's, never a FLIP of its own). A live resize snaps
@@ -129,6 +132,10 @@ public static class WinUiFrameRules
 
     /// <summary>The flyout the Compact search button opens: the window less 12 either side, at most 520.</summary>
     public const float SearchFlyoutMaxW = 520f, SearchFlyoutMargin = 12f;
+
+    /// <summary>The field's magnifier (the query button): its plate stays the stock 30 x 22 inside its 32 x 28 slot, and a press reaches the
+    /// field's whole 32 x 32 at that end (the hit floor above Compact). Hit only: no layout, no paint.</summary>
+    public static readonly Edges4 QueryHitSlop = new(1f, 5f, 1f, 5f);
 
     /// <summary>The avatar (32, a circle) and the name beside it at Huge (14, 4 before, 8 after).</summary>
     public const float AvatarSize = 32f;

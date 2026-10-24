@@ -197,6 +197,11 @@ public static class WinUiPlayerTiers
     public const float PaneGap = 0f;
 
     /// <summary>The panel's policy: 340, resizable 280-480, the content row's height (the pane sits between the toolbar and the bar), the
-    /// core's mini-player bounds, the rules above, the panes flush (<see cref="PaneGap"/>; the shell's 8 before the primary).</summary>
-    public static PanelPolicy Panel { get; } = new(PanelMinW, PanelMaxW, FullHeight: false, PanelPolicy.Default.Pip) { Tiers = PanelRules, PaneGap = PaneGap };
+    /// core's mini-player bounds with the card floating OVER the page (W-Video: "floating mini player over the shell", the page painted to the
+    /// player bar under it; Classic's 0.2.9 reservation cut the page off at the card's top edge across the whole width), the rules above, the
+    /// panes flush (<see cref="PaneGap"/>; the shell's 8 before the primary).</summary>
+    public static PanelPolicy Panel { get; } = new(PanelMinW, PanelMaxW, FullHeight: false, PanelPolicy.Default.Pip with { OverlaysContent = true })
+    {
+        Tiers = PanelRules, PaneGap = PaneGap,
+    };
 }

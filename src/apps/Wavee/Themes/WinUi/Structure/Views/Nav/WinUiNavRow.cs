@@ -147,10 +147,17 @@ internal sealed class WinUiNavRow : Component
         // Every delegate reads LIVE pane state: a header slot recycles across sections.
         Element? create = null;
         if (section.Kind == SidebarSectionKind.Playlists)
-            create = Embed.Comp(() => new WinUiNavCreateButton(
-                owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
-                dropActive: () => owner.HeaderCreateDropActive.Value,
-                box: _m.HeaderButton, glyph: WinUiNavGeometry.HeaderPlusGlyph)) with { Key = "tree-create" };
+            create = new BoxEl
+            {
+                Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, -_m.HeaderSink),
+                Children =
+                [
+                    Embed.Comp(() => new WinUiNavCreateButton(
+                        owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
+                        dropActive: () => owner.HeaderCreateDropActive.Value,
+                        box: _m.HeaderButton, glyph: WinUiNavGeometry.HeaderPlusGlyph)) with { Key = "tree-create" },
+                ],
+            };
 
         BoxEl head = WinUiNavHead.Header(WinUiNavText.TitleOf(section), create);
         if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu) head = head.WithContextMenu(svc, menu);

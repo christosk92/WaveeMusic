@@ -788,6 +788,19 @@ public static partial class Video
     /// <summary>The mini player's close button.</summary>
     static readonly Action s_closePip = static () => State.ReportClosed(SurfacePlacement.Floating);
 
+    /// <summary>The mini player's own placement buttons (W-Video): each announces its destination, as the docked strip's do.</summary>
+    static readonly Action s_toDocked = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.DockInRail));
+        State.OpenAt(SurfacePlacement.Docked);
+    };
+
+    static readonly Action s_toSeparateWindow = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.VideoInSeparateWindow));
+        State.OpenAt(SurfacePlacement.Detached);
+    };
+
     // ══ 3. THE IN-WINDOW MINI PLAYER ═════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>What the main-window presenter shows: the bound player's stage over the poster. Its OWN component so the
@@ -903,6 +916,10 @@ public static partial class Video
 
             if (!mounted) return HoleBoxes.Unmounted();
 
+            // What the window can do with the video besides float it: the mini player offers "Dock in rail" where the rail fits, else the
+            // separate window (W-Video, -Small). Subscribed: the rail's fit flips it, rarely.
+            var capable = State.HostCapability.Value;
+
             if (!_widthBind.IsBound)
             {
                 _widthBind = Prop.Of(() => OverlayWidth(PlacementCore.Resolve(State.Surface.Value), vp.Value, _w.Value, DockedSlot.Value));
@@ -926,6 +943,8 @@ public static partial class Video
                         ToFullscreen = s_toFullscreen,
                         TurnOffDocked = s_turnOffDocked,
                         ClosePip = s_closePip,
+                        ToDocked = (capable & PlacementSet.Docked) != 0 ? s_toDocked : null,
+                        ToSeparateWindow = (capable & PlacementSet.Detached) != 0 ? s_toSeparateWindow : null,
                     }));
         }
 
