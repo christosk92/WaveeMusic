@@ -94,9 +94,11 @@ public static partial class Visualizer
         // behind a layout (Ambient) the layout owns the cover: the clouds alone, atmosphere only
         if (spec.Ambient) return FaceFrame(spec, kids);
 
-        // the cover: 0.42·min, corners 8, lifted 6 % above centre; its shadow is a TWIN box behind it (transparent fill,
-        // shadow only) so the shadow's alpha and swell bind without touching the cover. Light arm: depth, not light.
-        float s = 0.42f * m, x = 0.5f * (w - s), y = 0.5f * (h - s) - 0.06f * h, r = 8f;
+        // the cover: 0.42·min, corners 8, lifted 6 % above centre, fitted to the stage's safe rect (clear of the now-playing card and the
+        // caption); its shadow is a TWIN box behind it (transparent fill, shadow only) so the shadow's alpha and swell bind without touching
+        // the cover. Light arm: depth, not light.
+        var (x, y, s) = spec.Subject(0.42f * m, 0.06f);
+        float r = 8f;
         var shadow = dark ? new ShadowSpec(60f, 18f, 0f, pal.A with { A = 0.75f })
                           : new ShadowSpec(40f, 14f, 0f, Ink.Ink with { A = 0.25f });
         var kick = slab.Kick; var low = slab.Low;
@@ -210,7 +212,15 @@ public static partial class Visualizer
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
         bool pv = spec.Preview, dark = Ink.IsDark;
         float motion = FluentMotion;
-        float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h), r = (pv ? 0.26f : 0.19f) * m;
+        float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h);
+        if (!pv)
+        {
+            // the ring and its widest ripple, lifted 4 % above centre, fitted to the stage's safe rect (clear of the card and the caption)
+            var (sx, sy, ss) = spec.Subject(Geo.RingExtent * m, 0.04f);
+            m = ss / Geo.RingExtent;
+            (cx, cy) = (sx + 0.5f * ss, sy + 0.5f * ss);
+        }
+        float r = (pv ? 0.26f : 0.19f) * m;
         int n = pv ? 36 : 96;
         float bw = pv ? MathF.Max(1.5f, 0.022f * m) : MathF.Max(3f, 0.0076f * m);
         float inset = (pv ? 0.05f : 0.015f) * m, len0 = (pv ? 0.05f : 0.013f) * m, gain = (pv ? 0.16f : 0.13f) * m;
@@ -599,6 +609,8 @@ public static partial class Visualizer
     public static class FluentGeometry
     {
         public const float RestBar = 0.03f, RippleGrowth = 2.1f;
+        /// <summary>The stage Ring's subject across, over min(W, H): its widest ripple (0.19 · <see cref="RippleGrowth"/> each side).</summary>
+        public const float RingExtent = 2f * 0.19f * RippleGrowth;
         public const float OrbitSweepMin = 0.08f, OrbitSweepGain = 0.8f, OrbitSweepRest = 0.3f;
         public const float AuroraAmpMin = 0.05f, AuroraAmpGain = 0.22f;
         /// <summary>Arc chains place capsule centres at most this many half-straights apart (2 would only touch).</summary>

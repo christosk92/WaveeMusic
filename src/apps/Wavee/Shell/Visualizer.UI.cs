@@ -236,7 +236,22 @@ public static partial class Visualizer
     /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box. <see cref="Ambient"/>: the
     /// face runs BEHIND a layout that owns the cover and titles, so it drops its own now-playing parts (<see cref="Catalog.HasAmbient"/>).</summary>
     public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl,
-        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false);
+        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false)
+    {
+        /// <summary>Where a face's square subject of side <paramref name="size"/> sits (audit B3, V2): no larger than the SAFE rect, centred
+        /// on it and lifted <paramref name="lift"/> of its height above that centre, then held inside it. Without a safe rect (a preview) the
+        /// rect is the face's whole box, so the subject sits where the face has always put it.</summary>
+        public (float X, float Y, float Size) Subject(float size, float lift)
+        {
+            bool safe = SafeRight > SafeLeft && SafeBottom > SafeTop;
+            float l = safe ? MathF.Max(0f, SafeLeft) : 0f, t = safe ? MathF.Max(0f, SafeTop) : 0f;
+            float r = safe ? MathF.Min(SafeRight, W) : W, b = safe ? MathF.Min(SafeBottom, H) : H;
+            float sw = MathF.Max(1f, r - l), sh = MathF.Max(1f, b - t);
+            float s = MathF.Min(size, MathF.Min(sw, sh));
+            float y = Math.Clamp(t + 0.5f * (sh - s) - lift * sh, t, MathF.Max(t, b - s));
+            return (l + 0.5f * (sw - s), y, s);
+        }
+    }
 
     /// <summary>Build a face ONCE for a slab; everything that moves is a bound prop over it. The stage remounts per (kind,
     /// width) on a keyed CHILD box; the gallery mounts the shown faces at preview scale. A legacy kind draws its successor
