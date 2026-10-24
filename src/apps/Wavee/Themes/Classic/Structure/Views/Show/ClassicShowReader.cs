@@ -192,7 +192,8 @@ internal static partial class ClassicShow
         var group = new BoxEl
         {
             Key = "tb:right", Direction = 0, Gap = ShowToolbarLayout.Gap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Shrink = 0f, Children = right.ToArray(),
+            // A crossing that folds the sort words into a glyph (the reader's narrow arm) re-lays the group: it slides and reveals to its new box (audit B9).
+            Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Reflow, Children = right.ToArray(),
         };
         // The open field fills the whole area (the chips stay at their natural width on its left).
         if (takeover) group = group with { Grow = 1f, Shrink = 1f, Basis = 0f };
