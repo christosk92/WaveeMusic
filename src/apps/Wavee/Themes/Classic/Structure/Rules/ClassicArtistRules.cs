@@ -11,6 +11,11 @@ namespace Wavee.Themes.Classic;
 /// <summary>Classic's artist page numbers.</summary>
 public static class ClassicArtistRules
 {
+    /// <summary>The hero photograph's crop. At rest Classic's own focal point (<see cref="PhotoFocusX"/>, <see cref="PhotoFocusY"/>, centred in the band);
+    /// a photograph with faces (`Palette.Subject`, lane B10) places them at <see cref="PhotoFacesAtX"/>, <see cref="PhotoFacesAtY"/> of the band: right of
+    /// its middle, where the copy on the left leaves them in view.</summary>
+    public const float PhotoFocusX = 0.62f, PhotoFocusY = 0.34f, PhotoFacesAtX = 0.62f, PhotoFacesAtY = 0.5f;
+
     // ── the hero copy over the photograph (tuned Classic D18) ──
     /// <summary>The share of the hero's width the copy column ends at on the photo tiers: the photograph keeps the rest.</summary>
     public const float HeroCopyShare = 0.56f;

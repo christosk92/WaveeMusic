@@ -58,6 +58,10 @@ public static class WinUiArtistRules
     /// <inheritdoc cref="VeilClear"/>
     public const int PhotoDecode = 1280;
 
+    /// <summary>A hero photograph with faces (`Palette.Subject`, lane B10) places them centred across and this share of the way down the band above the
+    /// copy (the Verified line, or the name): its middle. Without faces the card keeps its centred crop.</summary>
+    public const float PhotoFacesAtX = 0.5f, PhotoFacesAboveCopy = 0.5f;
+
     /// <inheritdoc cref="VeilClear"/>
     public const float ShimmerLineW = 240f;
 
