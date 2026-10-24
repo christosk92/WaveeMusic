@@ -7,7 +7,10 @@
 //   surface   design B (`ZunePanelWash.cs`): no plate. Docked and open the frame's full-height surface (the page wash under a scrim, the cover
 //             glow, the edge) lies under the transparent panel; a card (floating, the sheet, sliding out) paints the same picture itself, opaque.
 //             Floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
-//   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show.
+//   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show. Now
+//             playing pins the card under the head instead (in the hero's place): the column reorders the two and both glide, so the card keeps
+//             ONE parent, its node and its video surface across a mode switch (audit Z-OWNER, B10; the surface re-places its DComp child from the
+//             card's transformed rect every frame it moves, so a FLIP of the card is no tear).
 //   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case), 44-tall hit boxes, on ONE line
 //             (the owner, 2026-10-24: never wrapped, never shrunk): queue · lyrics · now playing · friends (where the capabilities offer the friends
 //             panel) and video while the video body is up, as a CAROUSEL: the current word leads on the gutter in the primary ink, the rest follow
@@ -186,9 +189,8 @@ internal static class ZunePanel
         ],
     }, Loc.Get(Strings.Theme.Zune.Frame.ClosePanel));
 
-    /// <summary>The body of <paramref name="body"/>; <paramref name="leaving"/>: the pane a pivot change replaced, sliding out (it never mounts a
-    /// second docked video card: the column holds the one card again).</summary>
-    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool leaving = false) => body switch
+    /// <summary>The body of <paramref name="body"/> (never the docked video card: the column holds the one card in every mode).</summary>
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body) => body switch
     {
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Lyrics => new BoxEl
@@ -198,24 +200,20 @@ internal static class ZunePanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ZunePanelVideoArm()),
-        _ => NowPlaying(props, view, leaving),
+        _ => NowPlaying(props, view),
     };
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
-    /// <summary>The now-playing arm: the pinned slot (the hero, or the docked video in its place: its height alone while the pane slides out) over
-    /// "up next".</summary>
-    private static Element NowPlaying(PanelProps props, PanelView view, bool leaving)
+    /// <summary>The now-playing arm: the pinned hero over "up next"; where the docked video takes the hero's place, the column pins the card over
+    /// this arm (under the head), so the arm is "up next" alone.</summary>
+    private static Element NowPlaying(PanelProps props, PanelView view)
     {
-        Element pinned = view.Pinned != PanelPinned.DockedVideo
-            ? Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying)
-            : leaving
-                ? new BoxEl { Shrink = 0f, Height = props.DockedVideoHeight, HitTestVisible = false }
-                : DockedCap(props, docked: true, view.Width);
+        var arm = Embed.Comp(props.NowPlaying, static () => new ZuneNowPlayingArm());
         return ScrollView(new BoxEl
         {
             Direction = 1,
-            Children = [pinned, Embed.Comp(props.NowPlaying, static () => new ZuneNowPlayingArm())],
+            Children = view.Pinned != PanelPinned.DockedVideo ? [Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying), arm] : [arm],
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
@@ -314,7 +312,7 @@ internal sealed class ZunePanelFrame : Component
     {
         Key = ZuneFrameRules.PanelPaneKeyPrefix + mode, Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, HitTestVisible = !leaving,
         OnRealized = PaneRealized(mode),
-        Children = [ZunePanel.Body(props, view, mode, leaving)],
+        Children = [ZunePanel.Body(props, view, mode)],
     };
 
     public override Element Render()
@@ -414,16 +412,21 @@ internal sealed class ZunePanelFrame : Component
         // The panes overlay each other while a pivot change slides them (a z-stack), and the slot clips them to the panel.
         Element bodySlot = new BoxEl
         {
+            Key = ZuneFrameRules.PanelBodyKey,
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Padding = ZuneFrameRules.PanelBodyPadding,
             Children = !bodyLive ? [new BoxEl { Grow = 1f, HitTestVisible = false }]
                 : _leaving is { } leaving ? [Pane(props, view, leaving, leaving: true), Pane(props, view, body, leaving: false)]
                 : [Pane(props, view, body, leaving: false)],
         };
+        // ONE parent for the docked card (B10): it mounts unconditionally in the column (its own gate hides it), over the head, or under it where now
+        // playing pins it in the hero's place. A mode switch only reorders the card and the head (the body's top is their sum either way): both keep
+        // their nodes and glide to their new places on the pivot slide.
+        LayoutTransition? slide = Design.Reduced ? null : ZuneMotion.PivotSlide;
+        Element card = ZunePanel.DockedCap(props, view.DockedHere, width) with { Key = ZuneFrameRules.PanelCardKey, Layout = slide };
+        Element head = ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet) with { Layout = slide };
         var column = new List<Element>(3);
-        // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
-        // of the hero instead.
-        if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet));
+        if (body == PanelMode.NowPlaying) { column.Add(head); column.Add(card); }
+        else { column.Add(card); column.Add(head); }
         column.Add(bodySlot);
 
         return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl
