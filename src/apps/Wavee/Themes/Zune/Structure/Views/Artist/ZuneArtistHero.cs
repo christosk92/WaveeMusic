@@ -65,15 +65,18 @@ internal static class ZuneArtistHero
         // The name stands NameNudge left of the column's gutter, so the light face's glyph edge lines up with the copy under it. A tier step (a docked
         // panel narrowing the content, a crossing) changes its size: the SLOT's height eases with the name riding its foot, and the name itself hugs
         // its words and scales from its bottom-left, so it never leaves the caption and nothing around it jumps.
+        // The slot is a ZStack over the tier's reserve (NameReserveLines of the name's own type, unseen): a name of up to that many lines lands in
+        // the box the skeleton held, and the name rides the slot's foot (audit B7, V11).
         Element nameBox = new BoxEl
         {
             Key = Rules.NameKey, Direction = 1, MinWidth = 0f, Margin = new Edges4(-Rules.NameNudge, 0f, 0f, Rules.NameCaptionGap),
-            Layout = ZuneMotion.TitleSlot,
+            Layout = ZuneMotion.TitleSlot, ZStack = true,
             Children =
             [
+                Controls.LineReserve(name, lay.NameReserveLines),
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Start, Animate = ZuneMotion.TitleScale,
+                    Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Animate = ZuneMotion.TitleScale,
                     TransformOriginX = ZuneMotion.TitleOriginX, TransformOriginY = ZuneMotion.TitleOriginY,
                     Children = [Lines(name, shimmer)],
                 },
@@ -183,15 +186,15 @@ internal static class ZuneArtistHero
         Color = color, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
     };
 
-    /// <summary>A text run as the loaded hero lays it out, for the skeleton arm: one line box of the run's own line height, so the deriver's
-    /// bar stands where the words will. The live arm is the run itself.</summary>
+    /// <summary>A text run for the skeleton arm: one line (the deriver gives it the run's own line box, the bar centred in it) that gives way to its
+    /// line's room, so the name's estimated bar stays in the column. The live arm is the run itself.</summary>
     static Element Lines(TextEl run, bool shimmer)
     {
-        if (!shimmer || !(run.LineHeight > 0f)) return run;
+        if (!shimmer) return run;
         return new BoxEl
         {
-            Height = run.LineHeight, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap }],
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 1f, MinWidth = 0f }],
         };
     }
 
@@ -311,14 +314,26 @@ internal static class ZuneArtistHero
                 HoverFill = R.Layer.ChromeHover, PressedFill = R.Layer.ChromePressed,
                 Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
                 OnClick = () => lib.ToggleSaved(uri, name),
+                // Both words stand in one ZStack, the other one unseen: the pill is as wide as "following" in either state, so a toggle (or the
+                // saved state landing with the page) never moves the rings beside it (audit B7).
                 Children =
                 [
-                    R.Type.TrackTitle(Loc.Get(on ? Strings.Artist.Following : Strings.Artist.Follow)) with
+                    new BoxEl
                     {
-                        Color = ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        ZStack = true, Direction = 0,
+                        Children =
+                        [
+                            new BoxEl { JustifySelf = FlexAlign.Center, AlignSelf = FlexAlign.Center, Children = [Word(on ? Strings.Artist.Following : Strings.Artist.Follow, ink)] },
+                            new BoxEl { Opacity = 0f, HitTestVisible = false, JustifySelf = FlexAlign.Center, Children = [Word(on ? Strings.Artist.Follow : Strings.Artist.Following, ink)] },
+                        ],
                     },
                 ],
             };
         }
+
+        static TextEl Word(string id, Prop<ColorF> ink) => R.Type.TrackTitle(Loc.Get(id)) with
+        {
+            Color = ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
     }
 }

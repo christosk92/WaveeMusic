@@ -549,7 +549,8 @@ public readonly partial struct Playlist
             {
                 string target = c.Subject.Text, title = c.Title ?? "";
                 bool saved = lib.IsSaved(target);
-                actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
+                actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title),
+                    Reserve: Loc.Get(saved ? Strings.Menu.Save : Strings.Menu.Saved)));
             }
             _sink.Publish(new Contracts.PageChromeRow(views, actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true), c.Title));
         }

@@ -329,8 +329,9 @@ internal static class ClassicArtistPage
             [
                 hero,
                 new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
-                // The section row's height at Huge (a blank: never skeleton content), so nothing moves when the page lands.
-                new BoxEl { Height = layout.SectionRow ? ClassicArtistTiers.SectionRowHeight - Detail.BandLayout.HairlineHeight : 0f },
+                // The section row's height at Huge (a blank: never skeleton content), so nothing moves when the page lands. Kept blank on the derived
+                // arm too: derived, a childless box is a page-wide bar (audit B7, V42).
+                new BoxEl { Height = layout.SectionRow ? ClassicArtistTiers.SectionRowHeight - Detail.BandLayout.HairlineHeight : 0f }.Skeletonized(false),
                 MagazineShimmer(p, chart, layout, inset),
             ],
         };

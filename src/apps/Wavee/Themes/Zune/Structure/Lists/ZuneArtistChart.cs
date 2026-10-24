@@ -125,12 +125,15 @@ internal static class ZuneArtistChart
         var cells = new ChartCells("Top track title", null, "3:30", "1.2M", "1,234,567", false, false);
         var state = default(Track.RowState);
         var columns = new Element[cols];
+        // Zune's two-column chart is balanced (ZuneArtistTierPolicy.ChartBalanced): the loaded page stands in reading order, 1 3 5 | 2 4 6, so the
+        // skeleton numbers its rows the same way, never down the columns (audit B7, V11: 1-5 | 6-10 turned into 1 3 5 | 2 4 6 on load).
+        bool across = cols == 2 && s.Total >= 3;
         for (int c = 0; c < cols; c++)
         {
             int rows = Math.Min(s.PerColumn, Math.Max(0, s.Total - c * s.PerColumn));
             var kids = new Element[rows];
             for (int r = 0; r < rows; r++)
-                kids[r] = ChartRow(cells, c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead, skeleton: true);
+                kids[r] = ChartRow(cells, across ? r * cols + c : c * s.PerColumn + r, in state, tier, null, null, null, false, null, null, null, s.ShowArtwork, s.RowShape.RowHeight, s.RowShape.Lead, skeleton: true);
             columns[c] = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.ChartCellGap, Children = kids };
         }
         return new BoxEl
