@@ -316,32 +316,21 @@ internal sealed class ZuneKit
             UseEffect(() => _selected.SetIfChanged(current), DepKey.From(current));
             bool enabled = choice.Enabled?.Invoke() ?? true;
 
-            if (choice.AsChips && lay.Touch)
+            if (choice.AsChips)
             {
-                // Compact (Z-Settings-Appearance-Compact): the board's chips WRAP, each a 40-tall button, the picked one on the accent. The segmented control is one row and clips
-                // four words in a 368 column, so a hit-target tier draws the same choice as buttons in a wrapping row.
+                // The board's chips (Z-Theme-Options, Z-Settings-Appearance): flat rectangles in a WRAPPING row, every one on its wash and the picked one on the
+                // accent, the words lowercase; 32 tall, a 40 target at Compact (Z-Settings-Appearance-Compact), where four words would not fit one row.
+                float h = lay.Touch ? lay.Target : Z.ChipH, pad = lay.Touch ? Z.ChipPadX : Z.ChipPadXRow;
                 var chips = new Element[choice.Labels.Count];
                 for (int i = 0; i < chips.Length; i++)
                 {
                     int at = i;
-                    chips[i] = Plate("zs:chip:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), choice.Labels[i], at == current, enabled, () => choice.Pick(at), lay.Target);
+                    chips[i] = Plate("zs:chip:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), choice.Labels[i], at == current, enabled, () => choice.Pick(at), h, pad);
                 }
                 return new BoxEl
                 {
-                    Direction = 0, Wrap = true, Gap = Z.ChipGap, MinWidth = 0f, MinHeight = lay.Target, AlignItems = FlexAlign.Center, Opacity = enabled ? 1f : Z.DisabledOpacity,
+                    Direction = 0, Wrap = true, Gap = Z.ChipGap, MinWidth = 0f, MinHeight = h, AlignItems = FlexAlign.Center, Opacity = enabled ? 1f : Z.DisabledOpacity,
                     Children = chips,
-                };
-            }
-
-            if (choice.AsChips)
-            {
-                var items = new SegmentedItem[choice.Labels.Count];
-                for (int i = 0; i < items.Length; i++) items[i] = new SegmentedItem(choice.Labels[i]);
-                return new BoxEl
-                {
-                    Direction = 0, MinWidth = 0f, MinHeight = lay.Target, AlignItems = FlexAlign.Center, Opacity = enabled ? 1f : Z.DisabledOpacity,
-                    HitTestVisible = enabled,
-                    Children = [Segmented.Create(items, _selected, choice.Pick, new Segmented.SegmentedOptions { IsEnabled = enabled })],
                 };
             }
 
@@ -349,11 +338,12 @@ internal sealed class ZuneKit
         }
     }
 
-    /// <summary>One chip as the board's flat rectangle (Z-Settings-Playback-Compact): a wash at rest, the accent fill with the on-accent ink when picked, the tier's target tall and wide at least.</summary>
-    static Element Plate(string key, string label, bool on, bool enabled, Action click, float target) => new BoxEl
+    /// <summary>One chip as the board's flat rectangle (Z-Settings-Playback-Compact, Z-Theme-Options): a wash at rest, the accent fill with the on-accent ink when picked,
+    /// <paramref name="height"/> tall and wide at least, its word lowercase (the theme's word).</summary>
+    static Element Plate(string key, string label, bool on, bool enabled, Action click, float height, float pad) => new BoxEl
     {
-        Key = key, Direction = 0, MinHeight = target, MinWidth = target, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(Z.ChipPadX, 0f, Z.ChipPadX, 0f),
+        Key = key, Direction = 0, MinHeight = height, MinWidth = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Padding = new Edges4(pad, 0f, pad, 0f),
         Fill = on ? Tok.AccentDefault : R.Layer.RowHover,
         HoverFill = on ? Tok.AccentSecondary : R.Layer.ChromeHover, PressedFill = on ? Tok.AccentTertiary : R.Layer.RowPressed,
         Role = AutomationRole.ToggleButton, Focusable = enabled, AllowFocusOnInteraction = false, IsEnabled = enabled,
@@ -362,7 +352,7 @@ internal sealed class ZuneKit
         [
             R.Type.DenseTitle(label) with
             {
-                Color = on ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                Color = on ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f, Case = R.Case.For(LabelKind.Command),
             },
         ],
     };
