@@ -170,7 +170,8 @@ public static class ClassicDetailTiers
     public static ClassicDetailTier Compact { get; } = new()
     {
         Core = new DetailTierLayout(
-            new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, RowModern, RowClassic, RowArt, ListIndex: false),
+            new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, RowModern, RowClassic, RowArt, ListIndex: false,
+                PageMenu: DetailPageMenu.ListBar),   // C-Album-Compact: ONE page "…", the list bar's "More list options" (audit B8 r2)
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: CompactActionExtra),
         Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true, FilterGlyph = true, Lead = ClassicEmptyLead.Compact,
     };

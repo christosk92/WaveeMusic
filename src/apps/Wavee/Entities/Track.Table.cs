@@ -344,6 +344,9 @@ public readonly partial struct Track
         public override int GetHashCode() => HashCode.Combine(Config, DefaultSort, ContentFilterExtent, LensExtent, Seams);
     }
 
+    /// <summary>The page's ONE "…" (a tier's <see cref="Theming.DetailPageMenu"/>): the page's items, then the list options (see <c>TableHost.MergePageMenu</c>).</summary>
+    internal static ContextMenuModel? MergePageMenu(ContextMenuModel? page, List<MenuFlyoutItem>? list) => TableHost.MergePageMenu(page, list);
+
     public sealed record TableArgs
     {
         public required TableSource Source { get; init; }
@@ -377,6 +380,9 @@ public readonly partial struct Track
         public global::Wavee.Theming.Contracts.DetailForm Form { get; init; }
         /// <summary>The columns form's parts (the rail, the head, the aside, the sheet), handed to the hero; null where the page is not one tree.</summary>
         public global::Wavee.Theming.Contracts.DetailColumnsProps? Columns { get; init; }
+        /// <summary>Where the page's ONE "…" meets the list options when a tier gives the page one (audit B8 r2): the table publishes its list options here
+        /// for the columns form's rail. Stable per frame host.</summary>
+        public Detail.PageMenuBridge? MenuBridge { get; init; }
 
         public bool Equals(TableArgs? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -386,7 +392,7 @@ public readonly partial struct Track
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
-                   && Form == other.Form && ReferenceEquals(Columns, other.Columns)));
+                   && Form == other.Form && ReferenceEquals(Columns, other.Columns) && ReferenceEquals(MenuBridge, other.MenuBridge)));
 
         public override int GetHashCode()
             => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey, Form);
@@ -1704,15 +1710,25 @@ public readonly partial struct Track
         /// the satellite all run the one shuffle. Cached per spec instance, so a steady page allocates nothing.</summary>
         Detail.VerticalSpec HeroSpec(Detail.VerticalSpec spec)
         {
-            if (spec.Actions.Shuffle is null) return spec;
-            if (!ReferenceEquals(_heroSpecFrom, spec) || _heroSpec is not { } cached)
+            // Where the tier gives the page ONE "…" (DetailTableTier.PageMenu): the list bar's (the hero draws none) or the hero's, carrying the list options.
+            var home = spec.Actions.More is null ? global::Wavee.Theming.DetailPageMenu.Both : PageMenuNow();
+            if (spec.Actions.Shuffle is null && home == global::Wavee.Theming.DetailPageMenu.Both) return spec;
+            if (!ReferenceEquals(_heroSpecFrom, spec) || _heroSpecHome != home || _heroSpec is not { } cached)
             {
-                cached = spec with { Actions = spec.Actions with { Shuffle = _shuffle } };
+                var acts = spec.Actions;
+                if (acts.Shuffle is not null) acts = acts with { Shuffle = _shuffle };
+                if (home == global::Wavee.Theming.DetailPageMenu.ListBar) acts = acts with { More = null };
+                else if (home == global::Wavee.Theming.DetailPageMenu.Hero) acts = acts with { More = _heroPageMenu ??= HeroPageMenu };
+                cached = spec with { Actions = acts };
                 _heroSpecFrom = spec;
+                _heroSpecHome = home;
                 _heroSpec = cached;
             }
             return cached;
         }
+
+        global::Wavee.Theming.DetailPageMenu _heroSpecHome;
+        Func<ContextMenuModel?>? _heroPageMenu;
 
         float HeroHeightFor(Detail.VerticalSpec spec, float colW)
         {

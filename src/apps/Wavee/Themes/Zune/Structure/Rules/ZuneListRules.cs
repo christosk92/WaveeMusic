@@ -152,6 +152,12 @@ public static class ZuneListRules
     /// <summary>The column header's word: 12 on 16 (Z-State-Rows' header row).</summary>
     public const float HeaderType = 12f, HeaderLine = 16f;
 
+    /// <summary>The number lane's header word ("#": the owner's call, audit B8 r2) and the least width its hit rect reaches across the 28 lane.</summary>
+    public const string NumberHeader = "#";
+
+    /// <inheritdoc cref="NumberHeader"/>
+    public const float HeaderNumTarget = 40f;
+
     /// <summary>The header's sort caret and the duration lane's clock glyph.</summary>
     public const float CaretGlyph = 8f, ClockGlyph = 12f;
 
@@ -392,14 +398,16 @@ public static class ZuneListRules
     /// <summary>Compact (Z-State-Rows-Compact, Z-Album-Compact): the Compact row form (no column header, the heart trailing, a 40 "...", the time in the
     /// subline), no Album, Plays or Date lane, no list "#"; the density's rows (no floor).</summary>
     public static DetailTierLayout Compact { get; } = new(
-        new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, ListIndex: false),
+        new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, ListIndex: false,
+            PageMenu: DetailPageMenu.Hero),   // Z-Album-Compact: ONE page "…", the hero ring's (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Small (Z-Album-Small: # · title · time · "...", Z-Sizes-Breakpoints "album from 900"): the Album lane may show once the list column's
     /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
     /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane),
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane,
+            PageMenu: DetailPageMenu.Hero),   // Z-Album-Small: ONE "more", the ring's (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
     /// <summary>Standard and Huge (Z-Album, Z-Album-Huge, Z-Liked, Z-State-Rows): every lane the width admits, the density's rows. Z6a1: a two-column
@@ -408,7 +416,8 @@ public static class ZuneListRules
     public static DetailTierLayout Standard { get; } = DetailTierLayout.Standard with
     {
         AsideDocked = true, RailRest = ZuneDetailRules.Standard.RailW,
-        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim, DurationWidth = HoverTimeLane },
+        // Z-Album: ONE page "more", the ring's (audit B8 r2).
+        Table = DetailTableTier.Standard with { HoverActions = true, OneLineTrim = AlbumRowTrim, DurationWidth = HoverTimeLane, PageMenu = DetailPageMenu.Hero },
     };
 
     /// <summary>Huge (Z-Album-Huge, Z-Liked-Huge, Z-Playlist-*-Huge): Standard's, the identity column resting at 320 (Z6a1), and the insights REST OPEN

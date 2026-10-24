@@ -198,6 +198,8 @@
 // column and, where it ends on the column edge, pads no trailing gutter, so its rows run to that edge; `ShowReaderRules.HeadColumns` and `ShowToolbarLayout.For`
 // take the flag); `ShowToolbarArgs.Trailing` (whether the toolbar pads that gutter); `Show.ReaderOwnsEdge` (the reader's trailing edge is the window's or its
 // pane's, the vertical arm's and a Compact drill-in's: a margin strip then stands inside the reader's own gutter).
+// 1.76 (audit B8 r2): `DetailTableTier.PageMenu` (`DetailPageMenu`: where the page's "…" lives at a tier; one "…" per page at Compact, carrying
+// the other's items: Classic the list bar's, Zune and WinUI the hero's).
 // 1.77 (audit Z-OWNER jump list): `ShowJumpList` (the months the reader's view holds and the verb that brings one's header to the list's top) and
 // `ShowGroupArgs.Jump` / `.MonthKey`, so a structure can open a jump list (Windows Phone's semantic zoom) from a month header.
 // 1.79 (audit Z-LIB): the library's third column steps aside on the page's own width. `LibraryTierPolicy.PaneFromLayout` (the layout ladder's index from which the

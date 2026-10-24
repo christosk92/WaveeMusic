@@ -229,7 +229,8 @@ public static class WinUiListRules
     public static DetailTierLayout Compact { get; } = new(
         new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false,
                             ModernRow: CompactModernRow, ClassicRow: CompactClassicRow, Art: CompactArt, ListIndex: false,
-                            HeartTrailing: true, KeepDuration: true, VersionsLane: false, HeartWidth: CompactTarget),
+                            HeartTrailing: true, KeepDuration: true, VersionsLane: false, HeartWidth: CompactTarget,
+                            PageMenu: DetailPageMenu.Hero),   // W-Album-Compact: ONE combined "More: share, go to artist, find in album, sort" (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 16f, BandHeight: WinUiDetailRules.BandHeight);
 
     /// <summary>The Compact row (W-RowStates-Compact: "track row, 56 px, two-line, ... always shown"; W-MultiSelect-Compact: a 40 cover).</summary>
@@ -239,7 +240,8 @@ public static class WinUiListRules
     /// Album, Date and Plays below 860.</summary>
     public static DetailTierLayout Small { get; } = new(
         new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true,
-                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane, TuneInHero: true, ListRowAir: ListRowAir),
+                            HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane, TuneInHero: true, ListRowAir: ListRowAir,
+                            PageMenu: DetailPageMenu.Hero),   // W-Album-Small: ONE "More: share, go to artist" (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f, PageInsetX: 24f, BandHeight: WinUiDetailRules.BandHeight);
 
     /// <summary>The air a list's two-line rows add at Small and Standard (W-Playlist, W-PlaylistFollowed, W-LikedSongs: 48 tall, 2 under the last: a 50 pitch at the
@@ -253,6 +255,7 @@ public static class WinUiListRules
         Table = DetailTableTier.Standard with
         {
             HeartTrailing = true, OneLineTrim = AlbumRowTrim, DurationWidth = TimeLane, ListVersionsLane = false, TuneInHero = true, ListRowAir = ListRowAir,
+            PageMenu = DetailPageMenu.Hero,   // W-Album, W-Playlist, W-LikedSongs: ONE page "More" beside "More play options" (audit B8 r2)
         },
         PageInsetX = 36f, BandHeight = WinUiDetailRules.BandHeight,
     };
