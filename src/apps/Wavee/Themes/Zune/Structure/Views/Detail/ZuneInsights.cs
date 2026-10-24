@@ -32,9 +32,16 @@ namespace Wavee.Themes.Zune;
 /// <summary>Zune's insights sheet (<see cref="ViewKeys.DetailInsights"/>) and its entry points (<see cref="ViewKeys.DetailInsightsToggle"/>).</summary>
 internal static class ZuneInsights
 {
-    /// <summary>The registered template of <see cref="ViewKeys.DetailInsights"/>: what it covers wrapped in the sheet, or the docked column.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailInsights"/>: what it covers wrapped in the sheet, or the docked column.
+    /// At Compact the sheet covers the whole page, the window's width (the vertical arm measures no page width of its own).</summary>
     public static Element SheetTemplate(DetailInsightsProps p, in ViewContext ctx)
-        => p.Docked ? Docked(p.Toggle, p.Facts, p.RouteKey) : Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
+    {
+        if (p.Docked) return Docked(p.Toggle, p.Facts, p.RouteKey);
+        float paneW = ctx.Tier().Window == WidthTier.Compact
+            ? Z.SheetCoverWidth(ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width)
+            : Z.SheetWidthFor(p.PageWidth);
+        return Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, paneW, p.RouteKey, p.OnClosed);
+    }
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the bar's glyph (the tier's target edge, a re-pushed prop: a
     /// crossing resizes the one button and keeps its node, its focus and its hover) or the band's word.</summary>
@@ -57,9 +64,8 @@ internal static class ZuneInsights
     }
 
     /// <summary>The sheet over <paramref name="page"/>: ALWAYS composed for a track page (open or not), so the tree under it never changes.</summary>
-    static Element Sheet(Element page, InsightsToggle toggle, Func<float, Element>? facts, float pageWidth, string routeKey, Action? onClosed)
+    static Element Sheet(Element page, InsightsToggle toggle, Func<float, Element>? facts, float paneW, string routeKey, Action? onClosed)
     {
-        float paneW = Z.SheetWidthFor(pageWidth);
         return SplitView.Create(
             pane: Pane(toggle, facts, routeKey),
             content: new BoxEl { Key = "insights:content", ZStack = true, Grow = 1f, Children = [page] },
