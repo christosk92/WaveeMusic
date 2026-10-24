@@ -524,13 +524,18 @@ public static partial class Detail
         FrameSpec? _latest;
         readonly Signal<FrameSpec?> _spec = new(null);
 
-        // ── the page mode: the structure's mode ladder over the page's measured width (UseTier: a first mount resolves in its own frame from
-        //    the seed, a crossing after it commits on the first non-resized frame and animates, themes plan 3.3), and the height rung ──
-        readonly Signal<float> _pageW = new(0f);
+        // ── the page mode: the structure's mode ladder over the page's width (UseTier: a first mount resolves in its own frame, a crossing after
+        //    it commits on the first non-resized frame and animates, themes plan 3.3), and the height rung. The source is the page ESTIMATE (the
+        //    live viewport less the chrome share of the tier facts), not the measured width (audit B9): a measured crossing found on a resized
+        //    frame is held Unsettled and lands one frame AFTER the window tier, so the page laid out one frame in the old arrangement at the new
+        //    window tier (the squeeze). The estimate is synchronous and commits on the window tier's own frame. ──
         IReadSignal<int>? _modeTier;
         IReadSignal<int>? _heightRung;
-        readonly Func<float> _pageSeed;
+        readonly Func<float> _pageEstimate;
         float _measuredW, _measuredH;
+        /// <summary>A one-tree page in its COLUMNS form this render (audit B9): what the rail holds (the countdown, the release facts) leaves the
+        /// trailing body under the rows.</summary>
+        bool _columnsForm;
 
         // ── rails, fade, hero height, accent, play cell, tint owner ──
         readonly RailCell[] _rails;
@@ -626,7 +631,7 @@ public static partial class Detail
             _restRails = RestRails;
             _publishAccentTracked = PublishAccentTracked;
             _republishAccent = RepublishAccent;
-            _pageSeed = PageSeed;
+            _pageEstimate = PageEstimate;
             _railPending = () => _spec.Value?.Identity.HeaderPending ?? true;
 
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
@@ -666,8 +671,8 @@ public static partial class Detail
 
         /// <summary>The insights pane's resting state: open only where the tier's record rests it open (<c>DetailTierLayout.InsightsRestOpen</c>), on a
         /// page that hosts facts, outside the vertical arm (where it is a sheet over the page, which never opens by itself: tuned Classic I1).</summary>
-        static bool RestsOpen(DetailTierLayout layout, DetailPageLayout pageLayout, bool hostsFacts, bool vertical)
-            => layout.InsightsRestOpen && hostsFacts && !vertical && pageLayout != DetailPageLayout.Hero;
+        static bool RestsOpen(DetailTierLayout layout, DetailPageLayout pageLayout, bool hostsFacts, bool heroForm)
+            => layout.InsightsRestOpen && hostsFacts && !heroForm && pageLayout != DetailPageLayout.Hero;
 
         /// <summary>── INSIGHTS SHEET (additive) ── Focus returns to the toolbar toggle when the sheet closes. The
         /// control has already popped its focus scope and restored whatever held focus when the sheet opened; this is
@@ -698,7 +703,7 @@ public static partial class Detail
                 // The tier's RESTING state from the route's first frame (a Huge dock or aside is open before it is laid out, so it never
                 // eases in under the reader); later crossings and the facts latch re-rest it in `_restInsights`.
                 _insights.Rest(RestsOpen(ShellPolicy.Now.DetailTiers.For((_facts ?? ThemeHost.Facts).Peek().Tiers), ShellPolicy.Now.Detail.PageLayout,
-                    spec.Slots.LikedFacts is not null && spec.Config.Content == DetailContent.Tracks, vertical: false));
+                    spec.Slots.LikedFacts is not null && spec.Config.Content == DetailContent.Tracks, heroForm: false));
             }
             if (!_accentSeeded)
             {
@@ -736,8 +741,11 @@ public static partial class Detail
             // The structure's sub-ladders (themes plan 3.6; Classic: Tiers.Detail.cs). They freeze at mount like every hook's inputs: a theme
             // switch mounts a new root, and with it a new frame.
             var tierPolicy = ShellPolicy.Now.Tiers;
-            _modeTier = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Mode), TierSource.Measured(_pageW, _pageSeed));
+            _modeTier = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Mode), TierSource.Estimate(_pageEstimate));
             _heightRung = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Height), TierSource.ViewportHeight);
+            // The structure's hero style: whether its hero draws the COLUMNS form too (the one-tree page, audit B9). Ambient, fixed per root.
+            var registry = UseContext(FluentGpu.Theming.ViewRegistry.Context);
+            var heroStyle = registry is not null && registry.TryGetStyle(Contracts.StyleKeys.DetailHero, out var hs) ? hs : null;
             // The window tier's layout (tracked: a crossing re-renders the frame on the frame it commits).
             var tierLayouts = ShellPolicy.Tracked.DetailTiers;
             var tierFacts = _facts.Value.Tiers;
@@ -753,11 +761,19 @@ public static partial class Detail
             //    frame (the resized frame lays the old arm out at the new size, clipped) and the arms cross-fade (the structure's frame view).
             float pageWidthEstimate = Breakpoints.EstimatePageWidth(in tierFacts, viewportSig.Peek().Width);
             int mode = DetailLadders.ModeOf(_modeTier.Value);
+            bool tracks = cfg.Content == DetailContent.Tracks;
             // The Hero page layout forces the vertical SYSTEM for track pages only; the mode tier keeps tracking the real width.
-            if (cfg.Content == DetailContent.Tracks && pageLayout == DetailPageLayout.Hero)
+            if (tracks && pageLayout == DetailPageLayout.Hero)
                 mode = Breakpoints.VerticalMode;
-            bool vertical = mode == Breakpoints.VerticalMode;
-            bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
+            // ── ONE TREE (audit B9): a track page whose structure's hero draws the columns form too (its style answers the list's insets), or any
+            //    track page of the Hero layout, mounts the hero list at EVERY width. The mode then only decides the ARRANGEMENT (the form, a live
+            //    prop): the same table, hero, identity block, verbs, toolbar and rows re-arrange on a crossing instead of being rebuilt. ──
+            bool oneTree = tracks && (pageLayout == DetailPageLayout.Hero || heroStyle?.ListInsets is not null);
+            bool heroForm = mode == Breakpoints.VerticalMode;
+            var form = heroForm ? Contracts.DetailForm.Hero : Contracts.DetailForm.Columns;
+            _columnsForm = oneTree && !heroForm;
+            bool vertical = oneTree || heroForm;
+            bool verticalTracks = vertical && tracks;
             // The table's arm flips with `verticalTracks` (its key): ask the live table where the user is before this render swaps it (a plain
             // field write, Track.Table.Place.cs).
             int placeArm = verticalTracks ? 1 : 0;
@@ -783,7 +799,7 @@ public static partial class Detail
             // moves it, closed again when a crossing leaves that tier. Re-run on a crossing (the tracked reads above re-render this host) and when
             // the facts latch settles.
             var tierLayout = tierLayouts.For(tierFacts);
-            _restOpenNow = RestsOpen(tierLayout, pageLayout, _sheetHosts && cfg.Content == DetailContent.Tracks, vertical);
+            _restOpenNow = RestsOpen(tierLayout, pageLayout, _sheetHosts && cfg.Content == DetailContent.Tracks, heroForm);
             UseEffect(_restInsights, DepKey.From(_restOpenNow ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
@@ -792,7 +808,7 @@ public static partial class Detail
             float pageH = _measuredH > 1f ? _measuredH : viewportSig.Peek().Height;
             // heroOnly is dead (the setting is gone): the band/height props feed only that arm, so they are PEEKED — a
             // hero measurement must not re-render the page for a value nothing paints.
-            float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
+            float heroBand = verticalTracks && heroForm ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
             Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
                 key: Palette.ToneKey(routeKey),
@@ -802,29 +818,61 @@ public static partial class Detail
             Element notice = NoticeBar(id.Notice, showMinifiedAlbum: false,
                 goLibrary: spec.Actions.GoLibrary is null ? null : _tGoLibrary);
 
-            // ── the content column: the table (or the episodes slot); the structure's frame view places it under its key ──
-            float rightMin = Breakpoints.ContentMinWidthForMode(mode);
             bool episodes = cfg.Content == DetailContent.Episodes;
-            Element content = episodes
-                ? (spec.Slots.Episodes is null ? new BoxEl { Grow = 1f } : _sEpisodes(vertical)) with { Key = "episodes:" + routeKey }
-                : TableFor(spec, vertical, verticalTracks, ListSeed(cfg, vertical, mode, uniform, pageWidthEstimate, tierLayouts.For(tierFacts).RailRest), routeKey);
-            string contentKey = episodes ? "right:eps" : "right:tracks";
-
             var acts = TrampolineActions(spec.Actions);
             DropTargetSpec? drop = PageDropTarget(cfg);
+
+            // ── the rail the columns hold (the two-column arm's, and the one-tree page's columns form) and the ASIDE (contract 1.21): docked where the
+            //    window tier's record docks one (Classic Huge, C-Album-Huge / C-Playlist-Huge) and the page has an aside body or facts to show in it.
+            //    Everything it holds leaves the rail, the band and the list's tail under `AsideDocked`. The hero form docks it only where the record
+            //    docks it beside the hero too (contract 1.53, `DetailTierLayout.AsideInHero`: WinUI Huge). ──
+            Contracts.DetailTwoColumnProps? twoColumn = cfg.Rail && (oneTree || !heroForm)
+                ? TwoColumnFor(spec, cfg, acts, mode, uniform, pageWidthEstimate, tierLayouts, in tierFacts, heroForm)
+                : null;
+            bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts)
+                && (!heroForm || (verticalTracks && tierLayout.AsideInHero));
+            _heroAside = asideOn && heroForm;
+            Contracts.DetailAsideProps? aside = asideOn
+                ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
+                : null;
+            Contracts.DetailHeadProps? head = cfg.Rail ? null : new Contracts.DetailHeadProps { Spec = spec, Shown = _listCount };
+            Contracts.DetailInsightsProps? sheet = episodes ? null : SheetProps(routeKey);
+            Contracts.DetailColumnsProps? columns = oneTree
+                ? new Contracts.DetailColumnsProps { TwoColumn = twoColumn, Head = head, Aside = aside, Sheet = sheet }
+                : null;
+
+            // ── the content column: the table (or the episodes slot); the structure's frame view places it under its key ──
+            float rightMin = oneTree ? 0f : Breakpoints.ContentMinWidthForMode(mode);
+            Element content = episodes
+                ? (spec.Slots.Episodes is null ? new BoxEl { Grow = 1f } : _sEpisodes(vertical)) with { Key = "episodes:" + routeKey }
+                : TableFor(spec, vertical, verticalTracks,
+                    oneTree ? pageWidthEstimate : ListSeed(cfg, vertical, mode, uniform, pageWidthEstimate, tierLayout.RailRest), routeKey,
+                    oneTree, form, columns);
+            string contentKey = episodes ? "right:eps" : "right:tracks";
+
+            // ── the ONE-TREE track page (audit B9): one frame shape at every width. The hero view (the table's item 0) arranges the identity, the verbs
+            //    and the toolbar for the form; the frame places the table, the insights layer and, for a structure that lays it beside the table, the
+            //    aside. ──
+            if (oneTree)
+            {
+                return Ctx.Provide(AsideDocked, asideOn, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                {
+                    Vertical = true, VerticalTracks = true, Form = form, PageAccent = _pageAccent, OnMeasured = _measure,
+                    Tint = tint, Tone = tone, Notice = notice,
+                    ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
+                    TwoColumn = twoColumn, Head = head, Aside = aside,
+                    // ── INSIGHTS SHEET (additive) ── ALWAYS composed, open or not and facts or not, so the page's tree shape never changes underneath the
+                    //    list. The LATCHED builder, not the live slot: the toggle and the pane must never disagree.
+                    Sheet = sheet,
+                }));
+            }
 
             // ── mode 3: the vertical / hero system ──
             if (vertical)
             {
-                // The ASIDE of the hero arm (contract 1.53, `DetailTierLayout.AsideInHero`: WinUI Huge, a column beside the hero and the list): the same slots the two-column
-                // arm docks, so what the aside holds leaves the band under the rows (`AsideDocked`). A structure that sets nothing gets none, as before.
-                bool heroAside = _heroAside = verticalTracks && tierLayout.AsideInHero && tierLayout.AsideDocked && (spec.Slots.Aside is not null || _sheetHosts);
-                Contracts.DetailAsideProps? asideProps = heroAside
-                    ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
-                    : null;
-                return Ctx.Provide(AsideDocked, heroAside, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                return Ctx.Provide(AsideDocked, asideOn, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
                 {
-                    Aside = asideProps,
+                    Aside = aside,
                     Vertical = true, VerticalTracks = verticalTracks, PageAccent = _pageAccent, OnMeasured = _measure,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
@@ -839,7 +887,7 @@ public static partial class Detail
                     //    vertical arm is left exactly as it was. The LATCHED builder, not the live slot: the toggle and the
                     //    pane must never disagree, and the builder closes over the page's own live source, so a latched
                     //    one is never stale data.
-                    Sheet = verticalTracks ? SheetProps(routeKey) : null,
+                    Sheet = verticalTracks ? sheet : null,
                 }));
             }
 
@@ -851,14 +899,34 @@ public static partial class Detail
                     Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
-                    Head = new Contracts.DetailHeadProps { Spec = spec, Shown = _listCount },
-                    Sheet = episodes ? null : SheetProps(routeKey),
+                    Head = head,
+                    Sheet = sheet,
                 }));
             }
 
             // ── modes 0/1/2: the centred two-column row [rail | grip | right] ──
-            var rail =_rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
-            bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
+            return Ctx.Provide(AsideDocked, asideOn, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+            {
+                Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
+                Tint = tint, Tone = tone, Notice = notice,
+                ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
+                TwoColumn = twoColumn,
+                // ── INSIGHTS SHEET ── a TRACK page's two-column arm lays the sheet over its list column (I1), composed open or not; with an aside the
+                //    aside shows the insights instead.
+                Sheet = sheet,
+                Aside = aside,
+            }));
+        }
+
+        /// <summary>The rail the columns hold: the scope's cell (its live, page-aware width; collapsed only where the grip that can undo it exists), the
+        /// grip, and the expanded rail's props or the collapsed strip's. In the hero form of a one-tree page (<paramref name="heroForm"/>) the narrowest
+        /// two-column arm's, never collapsed and with no grip: the hero draws the hero there, and the props only keep the columns' parts at hand.</summary>
+        Contracts.DetailTwoColumnProps TwoColumnFor(FrameSpec spec, in Config cfg, FrameActions acts, int mode, bool uniform, float pageWidthEstimate,
+            DetailTierPolicy tierLayouts, in TierFacts tierFacts, bool heroForm)
+        {
+            int railMode = Math.Min(mode, Breakpoints.VerticalMode - 1);
+            var rail = _rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
+            bool resizable = !heroForm && RailPolicy.ResizableFor(cfg.RailResizable, railMode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
             bool collapsed = rail.Collapsed.Value && resizable;
             // The page-aware cap: the rail may never squeeze the content column below its 300-DIP floor. Before the first
@@ -868,14 +936,13 @@ public static partial class Detail
             // arm's width and snapped the rail narrower a frame or two later — the title re-wrapping under it (the
             // "full title for 1-2 frames" flicker, 2026-09-30).
             float railMaxLive = _railMax.Value;
-            float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
+            float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, railMode);
             float wideRest = tierLayouts.For(tierFacts).RailRest;
-            float railW = resizable ? rail.ComposedWidth(mode, railMax, wideRest) : RailWidthForMode(mode, cfg);
+            float railW = resizable ? rail.ComposedWidth(railMode, railMax, wideRest) : RailWidthForMode(railMode, cfg);
 
-            Contracts.DetailTwoColumnProps twoColumn;
             if (collapsed)
             {
-                twoColumn = new Contracts.DetailTwoColumnProps
+                return new Contracts.DetailTwoColumnProps
                 {
                     Collapsed = true, Resizable = resizable, RailWidth = railW,
                     CompactWidth = RailCompactW, CollapsedGripWidth = GripStripCollapsedW,
@@ -886,42 +953,22 @@ public static partial class Detail
                     },
                 };
             }
-            else
+            int rung = _heightRung!.Value;                                    // re-renders only on a rung cross
+            // The window rung is the title's size CAP (the structure's, per rung); the size drawn and its natural line box are the title
+            // rule's (VerticalLayout.RailTitleTypeFor), never an authored pair.
+            float titleSize = tierLayouts.RailTitleFor(rung);
+            int descLines = tierLayouts.DescriptionFor(rung);
+            return new Contracts.DetailTwoColumnProps
             {
-                int rung = _heightRung.Value;                                     // re-renders only on a rung cross
-                // The window rung is the title's size CAP (the structure's, per rung); the size drawn and its natural line box are the title
-                // rule's (VerticalLayout.RailTitleTypeFor), never an authored pair.
-                float titleSize = tierLayouts.RailTitleFor(rung);
-                int descLines = tierLayouts.DescriptionFor(rung);
-                twoColumn = new Contracts.DetailTwoColumnProps
+                Collapsed = false, Resizable = resizable, RailWidth = railW,
+                CompactWidth = RailCompactW, CollapsedGripWidth = GripStripCollapsedW,
+                Grip = resizable ? GripControl(rail, railMax) : null, RailOpacity = _railFade,
+                Rail = new Contracts.DetailRailProps
                 {
-                    Collapsed = false, Resizable = resizable, RailWidth = railW,
-                    CompactWidth = RailCompactW, CollapsedGripWidth = GripStripCollapsedW,
-                    Grip = resizable ? GripControl(rail, railMax) : null, RailOpacity = _railFade,
-                    Rail = new Contracts.DetailRailProps
-                    {
-                        Spec = spec, Actions = acts, RailWidth = railW, TitleSize = titleSize, DescriptionLines = descLines,
-                        Accent = _accentFn, Play = _playAll, Pending = _railPending, Shown = _listCount,
-                    },
-                };
-            }
-            // ── the ASIDE (contract 1.21): docked where the window tier's record docks one (Classic Huge, C-Album-Huge / C-Playlist-Huge) and the page has
-            //    an aside body or facts to show in it. Everything it holds leaves the rail, the band and the list's tail under `AsideDocked`. ──
-            bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts);
-            Contracts.DetailAsideProps? aside = asideOn
-                ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
-                : null;
-            return Ctx.Provide(AsideDocked, asideOn, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
-            {
-                Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
-                Tint = tint, Tone = tone, Notice = notice,
-                ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
-                TwoColumn = twoColumn,
-                // ── INSIGHTS SHEET ── a TRACK page's two-column arm lays the sheet over its list column (I1), composed open or not; with an aside the
-                //    aside shows the insights instead.
-                Sheet = episodes ? null : SheetProps(routeKey),
-                Aside = aside,
-            }));
+                    Spec = spec, Actions = acts, RailWidth = railW, TitleSize = titleSize, DescriptionLines = descLines,
+                    Accent = _accentFn, Play = _playAll, Pending = _railPending, Shown = _listCount,
+                },
+            };
         }
 
         /// <summary>The sheet's props for this render: the LATCHED facts builder (null while this page hosts no facts, so the pane renders
@@ -952,7 +999,8 @@ public static partial class Detail
             return MathF.Max(0f, MathF.Min(pageWidthEstimate, R.Space.PageMaxW) - railW);
         }
 
-        Element TableFor(FrameSpec spec, bool vertical, bool verticalTracks, float widthSeed, string routeKey)
+        Element TableFor(FrameSpec spec, bool vertical, bool verticalTracks, float widthSeed, string routeKey, bool oneTree,
+            Contracts.DetailForm form, Contracts.DetailColumnsProps? columns)
         {
             var cfg = spec.Config;
             if (spec.Source is not { } source)
@@ -980,11 +1028,15 @@ public static partial class Detail
                 HeroHeight = _heroHeight,
                 WidthSeed = widthSeed,
                 ScrollKey = routeKey,
-                Place = _listPlace,
+                Place = oneTree ? null : _listPlace,
+                Form = form,
+                Columns = columns,
             };
-            // A route is a new scroll/hero identity; the arm is in the key (a hero-system list must never reconcile
-            // against a standard one). The tier is NOT (ch 03 §9 traps).
-            return Track.Table(args) with { Key = (verticalTracks ? "tracks:vertical:" : "tracks:standard:") + routeKey };
+            // A route is a new scroll/hero identity. A ONE-TREE page's table is the same at every width (audit B9): its key is the route alone, and
+            // the form is a prop. Elsewhere the arm is in the key (a hero-system list must never reconcile against a standard one). The tier is NOT
+            // (ch 03 §9 traps).
+            string key = oneTree ? "tracks:" : verticalTracks ? "tracks:vertical:" : "tracks:standard:";
+            return Track.Table(args) with { Key = key + routeKey };
         }
 
         Track.TableProfile ProfileFor(in Config cfg)
@@ -999,15 +1051,16 @@ public static partial class Detail
 
         /// <summary>The hero arm's body under the rows (W12): the prerelease card and About-this-release move BELOW the
         /// rows because the hero system has no rail — they are not dropped — then the album trailing. The slots are built
-        /// here (the page's); the `Detail.VerticalTrailing` view places them in the rail's keyed rows.</summary>
+        /// here (the page's); the `Detail.VerticalTrailing` view places them in the rail's keyed rows. A one-tree page in its COLUMNS form keeps
+        /// them in its identity column (audit B9), so the body under the rows holds the album trailing alone there.</summary>
         Element VerticalTrailing()
         {
             var spec = _latest;
             Element? preRelease = null, releasePanel = null, trailingBand = null;
             if (spec is not null)
             {
-                if (spec.Identity.UpcomingAtUnixSeconds > 0 && spec.Slots.PreRelease is { } pre) preRelease = pre();
-                if (!_heroAside && spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release) releasePanel = release(true);
+                if (!_columnsForm && spec.Identity.UpcomingAtUnixSeconds > 0 && spec.Slots.PreRelease is { } pre) preRelease = pre();
+                if (!_heroAside && !_columnsForm && spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release) releasePanel = release(true);
                 if (spec.Config.HasTrailing && spec.Slots.Trailing is { } trailing) trailingBand = trailing();
             }
             return ViewSlots.View(Contracts.ViewKeys.DetailVerticalTrailing, new Contracts.DetailVerticalTrailingProps(preRelease, releasePanel, trailingBand));
@@ -1076,10 +1129,7 @@ public static partial class Detail
             if (r.W <= 0f) return;
             _measuredW = r.W;
             if (r.H > 0f) _measuredH = r.H;
-            // The mode ladder's source (value-gated). Its tier crosses only through the host: a crossing found here is PENDING until the first
-            // frame that is not resized, then commits before FLIP capture and animates (themes plan 3.3); a plain write of the mode here snapped.
-            if (r.W != _pageW.Peek()) _pageW.Value = r.W;
-            // …and the rail's page-aware ceiling, quantized to 8 DIP and value-gated. Every two-column arm shares one formula (the vertical arm
+            // The rail's page-aware ceiling, quantized to 8 DIP and value-gated. Every two-column arm shares one formula (the vertical arm
             // composes no rail, so its cap is never read), so it does not wait for the mode's commit.
             float mx = RailPolicy.MaxWidthForPage(r.W, RailPolicy.WideMode);
             if (mx != _railMax.Peek()) _railMax.Value = mx;
@@ -1101,13 +1151,15 @@ public static partial class Detail
             for (int i = 0; i < _rails.Length; i++) _rails[i].Rest(mode, max, wideRest);
         }
 
-        /// <summary>The mode ladder's seed before the first measure: the content region the frame resolved the window tiers on, else the viewport
-        /// less a sidebar; unknown (no viewport yet) seeds the widest arm, as the shell always did.</summary>
-        float PageSeed()
+        /// <summary>The mode ladder's source (audit B9): the page's width from the LIVE viewport less what the frame's chrome took from it when the tiers
+        /// were last resolved (the content region the frame resolved the window tiers on), read TRACKED (the viewport and the facts), so the tier cell
+        /// re-resolves on a resize and its crossing commits on the window tier's own frame. Unknown (no viewport yet) is the widest arm, as the shell
+        /// always opened.</summary>
+        float PageEstimate()
         {
-            float vw = _viewport?.Peek().Width ?? 0f;
-            float seed = Breakpoints.EstimatePageWidth((_facts ?? ThemeHost.Facts).Peek().Tiers, vw);
-            return seed > 0f ? seed : float.PositiveInfinity;
+            float vw = _viewport?.Value.Width ?? 0f;
+            float page = Breakpoints.EstimatePageWidth((_facts ?? ThemeHost.Facts).Value.Tiers, vw);
+            return page > 0f ? page : float.PositiveInfinity;
         }
 
         void PlayAll()
