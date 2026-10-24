@@ -113,6 +113,7 @@ public static partial class Diagnostics
             {
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
+                InspectKit.InstallVideoJoinHold();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
                 InspectKit.RememberBootVideo();
                 InspectKit.RememberColdPlaylist();
@@ -275,7 +276,11 @@ public static partial class Diagnostics
             _realText = realText;
         }
 
-        public void Dispose() => Unmount();
+        public void Dispose()
+        {
+            Unmount();
+            InspectKit.EndVideoJoins();   // no resolve stays parked past the session (the api threads it holds would outlive it)
+        }
 
         void Unmount()
         {
@@ -744,7 +749,8 @@ public static partial class Diagnostics
             Wavee.Theming.InspectSwitches.HoverChromeAtRest = string.Equals(a.Str("chrome"), "shown", StringComparison.OrdinalIgnoreCase);
             if (a.Has("video"))
             {
-                InspectKit.Play("spotify:track:tr0", a.Int("fromMs", 74_000));
+                // The rich album's first row (tr26) has a music video (`TrackFlags.HasVideo`), so the play bar offers its video split and placement menu.
+                InspectKit.Play(InspectKit.VideoTrackUri, a.Int("fromMs", 74_000));
                 RunFrames(30);
                 Wavee.Video.State.FoldAvailability(true);
                 Wavee.Video.State.OpenAt(a.Str("video").ToLowerInvariant() switch
@@ -754,11 +760,21 @@ public static partial class Diagnostics
                     _ => Wavee.Video.SurfacePlacement.Fullscreen,
                 });
                 // `player=fake` binds an idle engine player (no source, no frames) so the presenter and its transport mount as they do while a video plays.
-                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase))
+                string join = a.Str("join").ToLowerInvariant();
+                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase) || join == "poster")
                 {
                     _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
                     Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
                 }
+                // `join=`: the host's switch phase as its events would leave it (`Video.JoinNow` folds it): poster = a player bound and no join in
+                // flight (the artwork alone), working = a join still in flight past the budget (the ring), failed = the join failed (the fault line).
+                if (join.Length > 0)
+                    Playback.Video.Phase.Value = join switch
+                    {
+                        "failed" => Playback.Video.SwitchPhase.Failed,
+                        "working" => Playback.Video.SwitchPhase.Resolving,
+                        _ => Playback.Video.SwitchPhase.Idle,
+                    };
             }
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
@@ -785,6 +801,7 @@ public static partial class Diagnostics
             InspectKit.ResetVideo(_fakePlayer);
             _fakePlayer = null;
             InspectKit.ResetPlayback();
+            InspectKit.EndVideoJoins();   // after the reset: the parked resolves answer a reducer that plays no video any more
             if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
