@@ -53,8 +53,8 @@ public static class ZuneLibraryRules
     /// verbs into one row so the rows keep room.</summary>
     public const float ShortPageTop = 4f, ShortBodyGap = 8f, ShortHeadGap = 4f, ShortPaneBottom = 4f;
 
-    /// <summary>The head: its height, the gap between its words and the gap between its groups, the find field's width.</summary>
-    public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindGap = 8f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
+    /// <summary>The head: its height, the gap between its words and the gap between its groups, the find field's width (Standard and Huge 160, Small 144).</summary>
+    public const float HeadH = 28f, WordGap = 24f, GroupGap = 24f, FindW = 160f, FindWSmall = 144f, FindGap = 8f, FindGlyph = 14f, DividerH = 14f, DividerW = 1f;
 
     /// <summary>The words' type is the dense meta voice (13); the count follows it.</summary>
     public const float ChevronGlyph = 10f, WordChevronGap = 4f, SaveGlyph = 16f;
@@ -413,9 +413,10 @@ public static class ZuneLibraryTiers
         // Compact (Z-Library-*-Compact): the drill-in, every control 40, the kind chips over the head, the grid gaps 16 / 12.
         Make(WidthTier.Compact, headH: 40f, headGap: 12f, colGap: 0f, paneW: 0f, readerNavW: 0f, navMin: 0f, sortMenu: true, rightMin: 0f,
             new LibraryGridGaps(Column: 12f, Row: 16f), cardCellMin: float.NaN),
-        // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96.
+        // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96. The find field is 144 wide: the
+        // longest kind's placeholder ("find in audiobooks") stands whole in it (the field draws its placeholder uncut, never ellipsised).
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = 120f, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f, EpisodesNavW = 220f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = ZuneLibraryRules.FindWSmall, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, GroupPane = false, HeroH = 180f, EpisodesNavW = 220f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
