@@ -36,7 +36,7 @@ internal static class ClassicVideoFullscreen
                 Height = ClassicVideoRules.FullscreenBandH,
                 Padding = new Edges4(ClassicVideoRules.BandInset + Spacing.S, ClassicVideoRules.FullscreenBandTop, ClassicVideoRules.BandInset, 0f), Gap = Spacing.M,
                 Gradient = Tok.ScrimTop,
-                Opacity = 0f, HoverOpacity = 1f,
+                Opacity = ClassicVideoRules.FullscreenBandRest, HoverOpacity = 1f,
                 HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
                 Children =
                 [
