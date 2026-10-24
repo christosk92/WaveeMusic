@@ -96,7 +96,7 @@ public static class ZuneBandRules
 {
     // ── the node keys the views carry (the tests find them) ──────────────────────────────────────────────────────────────
 
-    /// <summary>The band's height rung (`Tiers.Band.cs`): from this window height row 2 rests open (Z-PlayBar 1440 x 680 draws the facet row at rest);
+    /// <summary>The band's height rung (`Tiers.Band.cs`): from this window height a destination's row 2 rests open (Z-PlayBar 1440 x 680 draws the facets at rest);
     /// under it, folded (Z-Shell-Short 330, Z-Home-Small 800 x 600). Z-Frame-Small draws 600 open, but beside the 112 daylist row the owner set aside
     /// for the bled one (`ZuneHomeTiers`, Small), which needs row 2's 32 DIP: from 660 the bled daylist's rings stand above the page's foot fade at
     /// Small and Standard widths, so the page keeps both.</summary>

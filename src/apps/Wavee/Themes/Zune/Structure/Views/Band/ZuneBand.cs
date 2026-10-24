@@ -99,7 +99,8 @@ internal sealed class ZuneBand : Component
         var overflow = ZuneOptions.Overflow();
         // A Short window (below the Regular height rung) rests with row 2 folded away, static (Z-Shell-Short, ZT1). No direction is read: row 2
         // never folds or returns on a scroll's direction (the owner's video: a fold that moved the page fed the direction detector back).
-        bool collapsed = ZuneBandTiers.FoldsRow2AtRest(tiers);
+        bool destination = current >= 0;
+        bool collapsed = ZuneBandTiers.FoldsRow2AtRest(tiers, destination);
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
@@ -107,7 +108,7 @@ internal sealed class ZuneBand : Component
         bool row2 = ZuneBandRules.Row2Shown(hasRow2, collapsed);
         // SCROLL-TIED (Compact): row 2 scrolls away with the page: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same
         // share, continuously, in step with the scroll position (bound channels: no re-render, no timed fade, nothing to toggle or snap).
-        bool tied = row2 && ZuneBandTiers.ScrollTied(rec, tiers, ZuneOptions.CollapseBand());
+        bool tied = row2 && ZuneBandTiers.ScrollTied(rec, tiers, ZuneOptions.CollapseBand(), destination);
         var scrollSig = _scroll;
         float row2H = rec.Row2H, restH = rec.HeightWith(row2);
         float Tie() => tied && scrollSig is { } sg ? ZuneBandRules.TiedFold(sg.Value.Offset, row2H) : 0f;
