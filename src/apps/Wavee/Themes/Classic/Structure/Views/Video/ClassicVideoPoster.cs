@@ -46,7 +46,8 @@ internal static class ClassicVideoPoster
     /// byte-identical layer under its stage so the idle -> live hand-over is ONE cross-fade. A track with no art is the bare letterbox.</summary>
     internal static Element Ground(string? url) => new BoxEl
     {
-        Grow = 1f, Opacity = ClassicVideoRules.PosterOpacity, ClipToBounds = true,
+        // a ZStack, so the NaN-aspect artwork fills the box both ways (in a row it measured 0 wide and the poster drew only the letterbox)
+        Grow = 1f, ZStack = true, Opacity = ClassicVideoRules.PosterOpacity, ClipToBounds = true,
         Children = url is { Length: > 0 }
             ? [Ui.Image(url, ImageFit.Cover, aspect: float.NaN, decodePx: ClassicVideoRules.PosterDecodePx, corners: 0f, placeholder: (ColorF?)null)
                    with { Placeholder = Design.WatchedPlaceholder(url) }]

@@ -163,6 +163,7 @@
 // 1.54 (audit C0): `VideoPipProps.ToDocked` / `ToSeparateWindow` (the mini player's own placement buttons, W-Video: "Dock in rail" where the rail fits, else "Play in a separate window"); `ShowPrimaryArgs.Empty` (a show with no episodes draws its play verbs disabled).
 // 1.55 (audit B6): `ShowReaderStyle.NarrowToolbarGlyph` (the toolbar's glyph edge under the reader's narrow arm, summed by `ShowToolbarLayout.For`'s new `narrowGlyph`: Classic's 40 Compact targets).
 // 1.56 (audit B4): `VideoFullscreenProps.Transport` (the fullscreen surface owns the transport: the theme draws the on-media strip in its chrome).
+// 1.57 (audit B3): `VideoPopOutProps.Strip` (the pop-out's on-media strip, stacked over its poster).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -178,7 +179,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 56;
+    public const int Minor = 57;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
