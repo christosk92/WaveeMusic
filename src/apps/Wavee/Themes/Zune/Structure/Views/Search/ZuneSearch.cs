@@ -46,6 +46,10 @@ internal static class ZuneSearch
     public static Element SuggestionsTemplate(SearchSuggestionsProps props, in ViewContext ctx)
         => Embed.Comp(() => new SuggestionsPopup(props));
 
+    /// <summary>Provided around the suggestions body by the omnibar that hosts it: how far down the window its rows begin (the title bar's height for the
+    /// pill's popup; that plus the field for the magnifier's flyout, whose field stands over the rows), so the body's cap ends the plate above the play bar.</summary>
+    private static readonly Context<float> RowsTop = new(0f);
+
     /// <summary>The window tier's title-bar record, as the component is drawn in (a crossing re-renders it).</summary>
     private static ZuneTitleBarLayout RecordOf(IReadSignal<ThemeFacts>? provided) => ZuneFrameRules.TitleBarOf(TierContext.DrawnIn(provided).Value.Tiers);
 
@@ -172,6 +176,7 @@ internal static class ZuneSearch
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
                     {
                         ConstrainToRootBounds = true,
+                        Plate = ZuneControls.SuggestionsPlate(),   // the suggestions' own solid square plate, as the pill's popup draws it
                     });
                 handle.Value = h;
                 OverlayService.Track(h);
@@ -258,10 +263,12 @@ internal static class ZuneSearch
             }
 
             var source = props.Suggestions;
+            float rowsTop = ZuneTiers.FrameOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers).TitleBarH
+                + (presentation == AutoSuggestBoxSuggestionPresentation.Inline ? rec.PillH : 0f);
             var presenter = new AutoSuggestBoxPresenter(
                 Build: context =>
                 {
-                    var body = ViewSlots.View(ViewKeys.ShellSearchSuggestions, new SearchSuggestionsProps
+                    Element rows = ViewSlots.View(ViewKeys.ShellSearchSuggestions, new SearchSuggestionsProps
                     {
                         Source = source,
                         Width = context.Width,
@@ -269,9 +276,13 @@ internal static class ZuneSearch
                         Close = context.Close,
                     });
                     // The pill's list holds it at its focused width while it is open (a row press may take focus).
-                    return presentation == AutoSuggestBoxSuggestionPresentation.Popup
-                        ? Embed.Comp(() => new SuggestionsOpenMark(model, body))
-                        : body;
+                    Element body = presentation == AutoSuggestBoxSuggestionPresentation.Popup ? Embed.Comp(() => new SuggestionsOpenMark(model, rows)) : rows;
+                    // Z-Overlays: the plate closes on "see all results for <query>", the typed query's results page (what Enter submits).
+                    return Ctx.Provide(RowsTop, rowsTop, new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Children = [body, Embed.Comp(() => new SeeAllRow(text, q => { Submit(q); context.Close(); }))],
+                    });
                 },
                 MoveSelection: delta => model.MoveHighlight(delta),
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
@@ -285,7 +296,35 @@ internal static class ZuneSearch
                     AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Theme.Zune.Frame.SearchPlaceholder),
                         grow: 1f, maxFillWidth: maxWidth, text: text, onQuerySubmitted: Submit,
                         minHeight: rec.PillH, cornerRadius: rec.PillRadius, presenter: presenter, parts: parts,
-                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion),
+                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion,
+                        // A field that MOUNTS holding the query (the Compact lead field arriving on a results page, a crossing on one) opens its list
+                        // only when the omnibar was live as it swapped (focused, or its list open): the page's query is no fresh edit (V1).
+                        openOnSeed: presentation == AutoSuggestBoxSuggestionPresentation.Inline || model.SearchFocused.Peek() || model.SuggestionsOpen.Peek()),
+                ],
+            };
+        }
+    }
+
+    /// <summary>The plate's foot (Z-Overlays): "see all results for" the typed query, its results page. A command row in the query rows' voice,
+    /// outside the keyboard cursor (Enter in the field submits the same query); its words follow the typing (a bound run, no re-render).</summary>
+    private sealed class SeeAllRow(IReadSignal<string> text, Action<string> submit) : Component
+    {
+        public override Element Render()
+        {
+            float rowH = ZuneFrameRules.QueryRowHFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers.Window);
+            return new BoxEl
+            {
+                Key = ZuneFrameRules.SeeAllKey, MinHeight = rowH, Shrink = 0f, AlignItems = FlexAlign.Center, Padding = ZuneFrameRules.QueryRowPadding,
+                Corners = R.Shape.All(ShapeRole.OmniRow), Role = AutomationRole.MenuItem, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
+                HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+                OnClick = () => submit(text.Peek().Trim()),
+                Children =
+                [
+                    R.Type.DenseTitle("") with
+                    {
+                        Text = Prop.Of(() => Strings.Theme.Zune.Frame.SearchSeeAll(text.Value.Trim())),
+                        Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
                 ],
             };
         }
@@ -316,7 +355,11 @@ internal static class ZuneSearch
             var answer = source.Answer();
             var state = answer.State;
             int highlighted = source.Highlight.Value;
-            _queryRowH = ZuneFrameRules.QueryRowHFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers.Window);
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            _queryRowH = ZuneFrameRules.QueryRowHFor(tiers.Window);
+            // The list ends above the play bar (V16: at Small it ran off the window): the core's cap, or the room between the title bar and the dock.
+            float windowH = UseContextSignal(Viewport.Size).Value.Height;
+            float cap = ZuneFrameRules.PopupBodyCap(source.PopupBodyMaxHeight, windowH, UseContext(RowsTop), R.Space.DockReserve, _queryRowH);
             // Exactly the box's width (no floor under a 220 pill); the field's popup hangs from the box's left edge.
             float w = props.Width.Value > 0f ? props.Width.Value : ZuneFrameRules.FallbackPopupWidth;
 
@@ -343,7 +386,7 @@ internal static class ZuneSearch
                     SearchAnswerState.Empty => Notice(w, Loc.Get(Strings.Search.NoResults), null),
                     SearchAnswerState.Failed => Notice(w, Loc.Get(Strings.Search.SuggestFailed),
                         Button.Subtle(Loc.Get(Strings.Common.Retry), source.Retry)),
-                    SearchAnswerState.Pending => PendingBody(w),
+                    SearchAnswerState.Pending => PendingBody(w, cap),
                     _ => new BoxEl { Width = w, MinWidth = w, MinHeight = ZuneFrameRules.QueryRowH },
                 };
             }
@@ -351,7 +394,7 @@ internal static class ZuneSearch
             {
                 body = new ScrollEl
                 {
-                    Width = w, MinWidth = w, MaxHeight = source.PopupBodyMaxHeight, ContentSized = true,
+                    Width = w, MinWidth = w, MaxHeight = cap, ContentSized = true,
                     Content = new BoxEl { Direction = 1, Width = w, MinWidth = w, Children = rows.ToArray() },
                 };
             }
@@ -383,10 +426,10 @@ internal static class ZuneSearch
 
         static Element Divider() => new BoxEl { Height = 1f, Shrink = 0f, Margin = ZuneFrameRules.DividerMargin, Fill = Tok.StrokeDividerDefault };
 
-        private Element PendingBody(float w)
+        private Element PendingBody(float w, float cap)
         {
             var source = props.Source;
-            float height = source.PendingBodyHeight(s_lastQueryRows, s_lastRichRows, s_lastWasNotice);
+            float height = MathF.Min(cap, source.PendingBodyHeight(s_lastQueryRows, s_lastRichRows, s_lastWasNotice));
             if (s_lastWasNotice)
                 return new BoxEl
                 {

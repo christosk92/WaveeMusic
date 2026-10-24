@@ -2858,11 +2858,12 @@
         "bigNumeralsSub": "albums, artists, the queue"
       },
       "frame": {
-        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the panel's close tool tip.",
+        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the suggestions' see-all row ({query} is the typed text, never re-cased), the panel's close tool tip.",
         "wordmark": "wavee",
         "back": "Back",
         "searchPlaceholder": "search",
         "searchHint": "ctrl f",
+        "searchSeeAll": "see all results for “{query}”",
         "closePanel": "Close"
       },
       "band": {

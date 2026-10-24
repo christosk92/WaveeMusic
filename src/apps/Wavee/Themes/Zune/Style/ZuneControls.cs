@@ -69,7 +69,12 @@ public static class ZuneControls
         .With(ControlStyles.ProgressBarStyle, LineProgress)
         .With(ControlStyles.SelectorBarStyle, SubPivots)
         .With(ControlStyles.ToastLaneStyle, Toasts)
-        .With(ControlStyles.PersonPictureStyle, Avatar);
+        .With(ControlStyles.PersonPictureStyle, Avatar)
+        .With(ControlStyles.AutoSuggestBoxSuggestionsPlate, SuggestionsPlate);
+
+    /// <summary>The search suggestions' plate (Z-Overlays): the menu's solid square plate, no frost (cards never bleed through), the rows bringing
+    /// their own 4 above and below.</summary>
+    public static PopupPlate SuggestionsPlate() => MenuPlate() with { Padding = default };
 
     /// <summary>The least initials size of an imageless avatar: the type floor (a 24 owner disc's 42 % is 10.08, under it).</summary>
     public const float InitialsFloor = 11f;

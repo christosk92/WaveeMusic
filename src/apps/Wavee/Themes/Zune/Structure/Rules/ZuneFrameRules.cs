@@ -222,6 +222,19 @@ public static class ZuneFrameRules
 
     // ── the search popup (the suggestions body) ──────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The suggestions' foot row ("see all results for" the query, Z-Overlays).</summary>
+    public const string SeeAllKey = "zune-omni-see-all";
+
+    /// <summary>The air the suggestions plate leaves above the play bar.</summary>
+    public const float PopupFootAir = 8f;
+
+    /// <summary>The suggestions body's cap in a window <paramref name="windowH"/> tall: the core's <paramref name="coreCap"/>, or the room between the rows' top
+    /// (<paramref name="rowsTop"/>) and the dock (less the progress slot, the plate's padding, the see-all row of <paramref name="rowH"/> and the foot air), whichever is less, and
+    /// never under one row: the plate ends above the play bar at every height (V16: at Small it ran off the window).</summary>
+    public static float PopupBodyCap(float coreCap, float windowH, float rowsTop, float dockReserve, float rowH)
+        => MathF.Max(rowH, MathF.Min(coreCap,
+            windowH - rowsTop - dockReserve - ProgressSlotHeight - PopupPadding.Top - PopupPadding.Bottom - rowH - PopupFootAir));
+
     /// <summary>The popup's width before the anchor reports one (the Standard pill).</summary>
     public const float FallbackPopupWidth = 220f;
 
