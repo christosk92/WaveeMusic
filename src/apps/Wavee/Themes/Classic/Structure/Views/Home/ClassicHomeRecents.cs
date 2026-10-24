@@ -54,20 +54,26 @@ internal static class ClassicHomeRecents
         }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1));
     }
 
-    /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid at its measured width. The ONE builder both the
-    /// template and the skeleton call.</summary>
+    /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid when its measured width changes its COLUMN count,
+    /// the only thing the grid reads from the width (the grid fits its own tracks): a width that keeps the count re-lays the tiles out and
+    /// re-renders nothing (audit B3bc: every tick of a docking pane rebuilt the grid). The ONE builder both the template and the skeleton call.</summary>
     static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth)
-        => Responsive.Of("home:recents", w => Grid(w, p, layout), fallback: firstWidth);
+        => Responsive.Of("home:recents", w => ColumnsAt(w, layout), cols => Grid(cols, p, layout), fallback: firstWidth);
 
-    /// <summary>The grid at one measured width: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
-    static Element Grid(float w, HomeRecentsProps p, ClassicHomeLayout layout)
+    /// <summary>The grid's column count at width <paramref name="w"/>. An auto-fill band counts its columns with the engine's own formula; a
+    /// fixed band (Huge, C-Home-Huge: two columns beside the hero) lays out exactly its count as equal star tracks.</summary>
+    static int ColumnsAt(float w, ClassicHomeLayout layout)
+    {
+        var band = layout.Recents;
+        return band.MinCol <= 0f ? band.Columns(w) : GridEl.AutoFillColumnCount(w, band.MinCol, Spacing.M, band.MaxCols);
+    }
+
+    /// <summary>The grid at <paramref name="cols"/> columns: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
+    static Element Grid(int cols, HomeRecentsProps p, ClassicHomeLayout layout)
     {
         var cells = p.Cells;
         var band = layout.Recents;
-        // An auto-fill band counts its columns with the engine's own formula; a fixed band (Huge, C-Home-Huge: two columns beside the hero) lays out
-        // exactly its count as equal star tracks.
         bool fixedCount = band.MinCol <= 0f;
-        int cols = fixedCount ? band.Columns(w) : GridEl.AutoFillColumnCount(w, band.MinCol, Spacing.M, band.MaxCols);
         int n = layout.RecentsCells(cols, cells.Count);
         var rows = new Element[n + 1];
         for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
