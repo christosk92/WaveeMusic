@@ -49,8 +49,10 @@ internal static partial class ZuneShow
 
     // ══ THE RINGS ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>One ring: the 36 (40) disc and, where the tier writes one, its word (and a quiet second line under it).</summary>
-    internal static Element RingEl(string id, string glyph, string name, string? word, string? sub, bool filled, Action click, ZuneDetailLayout lay)
+    /// <summary>One ring: the 36 (40) disc and, where the tier writes one, its word (and a quiet second line under it). A ring that has nothing to
+    /// start (<paramref name="enabled"/> false: a show with no episodes) stays in place, dimmed and inert, as the kit's disabled ring.</summary>
+    internal static Element RingEl(string id, string glyph, string name, string? word, string? sub, bool filled, Action click, ZuneDetailLayout lay,
+        bool enabled = true)
     {
         bool written = word is { Length: > 0 } && lay.PlayWord;
         var kids = new List<Element>(2) { K.Disc(glyph, lay.RingSize, lay.RingGlyph, filled ? s_accent : null) };
@@ -58,8 +60,9 @@ internal static partial class ZuneShow
         BoxEl box = new()
         {
             Key = ZuneDetailRules.RingPrefix + id, Direction = 0, AlignItems = FlexAlign.Center, Gap = lay.RingLabelGap, Shrink = 0f,
-            MinHeight = lay.RingSize, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-            BlocksDragArm = true, OnClick = click, Children = kids.ToArray(),
+            MinHeight = lay.RingSize, Cursor = enabled ? CursorId.Hand : null, Role = AutomationRole.Button, Focusable = enabled, AllowFocusOnInteraction = false,
+            BlocksDragArm = true, IsEnabled = enabled, Opacity = enabled ? 1f : ZuneBandRules.DisabledOpacity,
+            OnClick = click, Children = kids.ToArray(),
         };
         return written ? box : Controls.Named(box, name);
     }
@@ -101,19 +104,21 @@ internal static partial class ZuneShow
             var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = RingLayoutOf(tiers);
             bool followInBand = !ZuneDetailTiers.PrimaryInHero(in tiers);
+            // A show with no episodes keeps its play ring in place, disabled (sh8: "latest" offered nothing to play); follow stays live.
+            bool playable = !a.Empty;
             Element PlayRing(ShowReaderRules.Primary which)
             {
                 switch (which)
                 {
                     case ShowReaderRules.Primary.Resume:
                         return RingEl("show-play", Icons.Play, Loc.Get(Strings.Podcast.Resume), Loc.Get(Strings.Podcast.Resume),
-                            Strings.Podcast.Left(Episode.DurationWords(a.ResumeLeft)), filled: true, a.Resume, lay);
+                            Strings.Podcast.Left(Episode.DurationWords(a.ResumeLeft)), filled: true, a.Resume, lay, playable);
                     case ShowReaderRules.Primary.PlayFirst:
                         return RingEl("show-play", Icons.Play, Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)),
-                            Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), null, filled: true, a.First, lay);
+                            Strings.Podcast.Badge.Episode(FormatCache.Int(a.FirstNumber)), null, filled: true, a.First, lay, playable);
                     default:
                         return RingEl("show-play", Icons.Play, Loc.Get(Strings.Podcast.Latest), Loc.Get(Strings.Podcast.Latest), null,
-                            filled: true, a.Latest, lay);
+                            filled: true, a.Latest, lay, playable);
                 }
             }
             if (a.Primary != ShowReaderRules.Primary.Follow) return PlayRing(a.Primary);
