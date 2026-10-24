@@ -258,7 +258,7 @@ public static class WinUiDetailRules
 
     // ── the skeleton (W-SkeletonAlbum) ───────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The bones: the corner radius, the eyebrow, the attribution row's avatar and the action row's four plates.</summary>
+    /// <summary>The bones: the corner radius, the eyebrow, the attribution row's avatar and the action row's plates.</summary>
     public const float BoneRadius = 4f, SkelEyebrowW = 150f, SkelEyebrowH = 16f, SkelNameW = 272f, SkelNameH = 20f, SkelAvatar = 24f,
-        SkelPlayW = 104f, SkelShuffleW = 88f, SkelSaveW = 88f, SkelMoreW = 32f, SkelToolbarPlate = 72f;
+        SkelPlayW = 104f, SkelShuffleW = 88f, SkelSaveW = 88f, SkelMoreW = 32f;
 }

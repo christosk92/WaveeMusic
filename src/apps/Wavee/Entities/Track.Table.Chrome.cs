@@ -73,6 +73,7 @@ public readonly partial struct Track
         const float FindWordNominal = 72f, SelectNominal = 64f;
 
         Func<float, Element> _buildToolbar = null!;
+        Func<Element> _headerShape = null!;
         Func<int, Element> _selectionCommands = null!;
         Action _openSearch = null!, _toggleFind = null!, _exitSelection = null!, _selectAllTracks = null!;
         Action<NodeHandle> _captureSearchButton = null!;
@@ -90,6 +91,7 @@ public readonly partial struct Track
         void InitChrome()
         {
             _buildToolbar = BuildToolbar;
+            _headerShape = HeaderOf;
             _hideUnavailable = () => { var f = _filters.Peek(); SetFilters(f with { Flags = f.Flags | FilterFlags.PlayableOnly }); };
             _selectionCommands = SelectionCommands;
             _openSearch = () => _searchExpanded.Value = true;
@@ -132,7 +134,11 @@ public readonly partial struct Track
             // edge, tuned Classic D9 / V10); the toolbar sits at the plates' edge less the bar's own 6-DIP inset and keeps the
             // rows' right inset (the list bar's 6 / 14, board C-Album); the chips and the lens keep the rows' gutter.
             Element Gutter(Element e) => new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(padX, 0f, padX, 0f), Children = [e] };
-            Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header" };
+            // The loading band derives its shimmer from this chrome: each opaque part names its resting shape (audit B7 r2: the header, the
+            // unavailable bar and the lens each shimmered as a default 10-DIP bar, so the band's chrome was 30 where the loaded hero form's is a
+            // 1-DIP rule, and 34 where the columns form's header is 37 + 4: the rows moved by the difference on load). The header shimmers its own
+            // template (the hero form's rule, the columns form's labels as bars).
+            Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header", SkeletonProxy = _headerShape };
             var stack = new List<Element>(4);
             // The page bar (a page with no rail, tuned Classic D16) sits under the page head: its commands start on the head's words (the
             // rows' 8-DIP plate inset less the bar's own 6) on both sides, it carries the chips inline (D8), and 4 DIP of air part it from
@@ -151,7 +157,7 @@ public readonly partial struct Track
             // list bar in the two-column arm, first in the hero arm's pinned chrome (the hero above it). Its slot stays mounted on a track list
             // and eases its own height, so it never moves the rows by a snap.
             if (HasUnavailableBar)
-                stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable" });
+                stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable", SkeletonProxy = s_shut });
             // The chips stand in the page bar where the columns form draws one, else here: ONE slot in both forms whose height eases through real layout
             // (audit B9: Liked's crossing moved the rows by the chips' 40 at once), the chips themselves cross-fading between their two places.
             if (chips is not null && (vertical || _latest.ShowToolbar))
@@ -652,21 +658,25 @@ public readonly partial struct Track
         /// is in (333 ms), with a 1-DIP divider as the band's single hairline.</summary>
         sealed class TableHeader(TableHost host) : Component
         {
-            public override Element Render()
-            {
-                var h = host;
-                var shape = h.ShapeValue;
-                var sort = h._sort.Value;
-                var template = h._listStyle?.Chrome.Header;
-                if (template is null) return new BoxEl();
-                return template(new TrackHeaderArgs
-                {
-                    Set = shape.Set, Tracks = shape.Tracks, Sort = sort, SortSignal = h._sort,
-                    Checks = h._checksVisible?.Value ?? false, Vertical = h.HeroFormLive,
-                    OnSort = h.SortBy,
-                });
-            }
+            public override Element Render() => host.HeaderOf();
         }
+
+        /// <summary>The structure's column header over the current shape, sort and form (the header component's render, and its shape in a loading band).</summary>
+        Element HeaderOf()
+        {
+            var shape = ShapeValue;
+            var template = _listStyle?.Chrome.Header;
+            if (template is null) return new BoxEl();
+            return template(new TrackHeaderArgs
+            {
+                Set = shape.Set, Tracks = shape.Tracks, Sort = _sort.Value, SortSignal = _sort,
+                Checks = _checksVisible?.Value ?? false, Vertical = HeroFormLive,
+                OnSort = SortBy,
+            });
+        }
+
+        /// <summary>A part that rests shut until the rows say otherwise (the unavailable bar while no row is known): its loading shape is nothing.</summary>
+        static readonly Func<Element> s_shut = static () => new BoxEl { Height = 0f, HitTestVisible = false };
 
         /// <summary>A header was clicked: the sort cycle (<see cref="TableRules.NextSort"/>) is the core's.</summary>
         void SortBy(SortColumn col, bool artistColumn) => SetSort(TableRules.NextSort(_sort.Peek(), col, artistColumn));

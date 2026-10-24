@@ -19,9 +19,11 @@
 //     countdown and the release at the hero form: `Detail.VerticalTrailing`), a playlist's leading description, the "songs" heading's words, the stuck band.
 //
 // THE NUMBERS AGREE (the hero form). Its height is ONE rule (`ZuneDetailRules.HeroHeight`: the panorama band, the cover row, the action row and its air, the
-// description's reserved lines, the bottom air, the list bar's block), every block laid out at exactly that height; the loading band (`Style.Skeleton`, the
-// style the table reads: the skeleton deriver cannot run a view slot) reserves the same blocks, and the stuck band's collapse distance is derived from the
-// same number until the table measured the hero (`OnHeroMeasured`). So the skeleton dissolves into the hero and nothing under it moves.
+// description's reserved lines, the bottom air, the list bar's block), every block laid out at exactly that height, and the stuck band's collapse distance is
+// derived from the same number until the table measured the hero (`OnHeroMeasured`).
+// LOADING (audit B7 r2): the hero list has no loading band. While the page's header is unread the identity column shimmers in place in both forms (the same
+// rows at the same heights, unfilled: `HeroFormSkeleton`, `ColumnSkeleton`) under the real panorama and list bar, and the header's landing eases the column's
+// height: the rows the data brings (the description's lines) open with the list riding them.
 //
 // SCROLL. The hero never scrolls anything: the hero form's expanded presentation binds its offset and opacity to the nearest scroller, the band reveals over
 // the tail of the collapse, and the table's `CompactInteractive` edge moves hit-testing between the two (one live entry point per control). The columns form
@@ -49,11 +51,12 @@ using Z = Wavee.Themes.Zune.ZuneDetailRules;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>Zune's detail hero (<see cref="ViewKeys.DetailHero"/>) and its loading band (<see cref="StyleKeys.DetailHero"/>).</summary>
+/// <summary>Zune's detail hero (<see cref="ViewKeys.DetailHero"/>) and its style (<see cref="StyleKeys.DetailHero"/>).</summary>
 internal static class ZuneDetailHero
 {
-    /// <summary>The hero's loading band, the list's insets beside the columns form's side columns, and their ease, as the style the table reads.</summary>
-    public static readonly DetailHeroStyle Style = new() { Skeleton = Skeleton, ListInsets = ListInsets, InsetMotion = ZuneFrameRules.GutterMotion };
+    /// <summary>The list's insets beside the columns form's side columns and their ease, as the style the table reads (no loading band: the identity
+    /// shimmers in place, audit B7 r2).</summary>
+    public static readonly DetailHeroStyle Style = new() { ListInsets = ListInsets, InsetMotion = ZuneFrameRules.GutterMotion };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>.</summary>
     public static Element Template(DetailHeroProps p, in ViewContext ctx) => Embed.Comp(p, static () => new HeroHost());
@@ -132,11 +135,15 @@ internal static class ZuneDetailHero
         readonly Signal<float> _bandH = new(0f);
         float _lastMeasuredH;
 
+        /// <summary>The panorama's loading gate: the page's header is unread and no title is known (reading the props signal subscribes the region).</summary>
+        readonly Func<bool> _titlePending;
+
         public HeroHost()
         {
             _measure = Measure;
             _measureBand = r => { if (r.H >= 0f && MathF.Abs(_bandH.Peek() - r.H) > 0.5f) _bandH.Value = r.H; };
             _measureHead = MeasureHead;
+            _titlePending = () => _props.Value?.Spec.Identity is { HeaderPending: true, Title.Length: 0 };
         }
 
         public void ApplyProps(object props)
@@ -249,7 +256,7 @@ internal static class ZuneDetailHero
                     Padded(new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, OnBoundsChanged = _measureBand,
-                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter, ZuneMotion.HeightResize)],
+                        Children = [K.PanoramaBand(id, slots, lay, 0f, enter, ZuneMotion.HeightResize, _titlePending, inner * Z.SkelMetaFraction)],
                     }, columns ? 0f : pad),
                     body,
                 ],
@@ -528,14 +535,15 @@ internal static class ZuneDetailHero
             Padding = new Edges4(0f, 0f, 0f, !columns ? 0f : head ? lay.RailGap : Z.SectionBottom),
             Children = kids.ToArray(),
         };
-        // The column's loading state at the columns form: the header shimmers the column whole until it has answered (the hero form's table shimmers the
-        // whole hero band instead). One boundary in both forms, so the column never re-parents.
-        Func<bool> pending = columns && rail is not null ? rail.Pending : K.Never;
+        // The column's loading state, in both forms: the header shimmers the column whole until it has answered (the hero list has no loading band, audit
+        // B7 r2), and the swap EASES its height (SmoothResize): the description's lines the data brings open with the list riding them. One boundary in
+        // both forms, so the column never re-parents.
+        Func<bool> pending = rail?.Pending ?? K.Never;
         Element region = new SkelRegionEl(
             Pending: pending, Failed: K.Never,
             Content: () => new BoxEl { Direction = 1, MinWidth = 0f, Children = [column] },
-            ShimmerSource: () => ColumnSkeleton(spec, lay, lay.RailW),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            ShimmerSource: columns ? () => ColumnSkeleton(spec, lay, lay.RailW) : () => HeroFormSkeleton(spec, lay, g),
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
         // The slot: the record's width laid out 0 tall at the columns form (the column hangs beside the rows), the full width on the gutter at the hero form.
         return new BoxEl
         {
@@ -587,6 +595,49 @@ internal static class ZuneDetailHero
         kids.Add(new BoxEl { Height = lay.MetaLine, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(w * Z.SkelMetaFraction, lay.MetaSize)] });
         kids.Add(K.RingsSkeleton("skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay));
         return new BoxEl { Direction = 1, Gap = lay.RailGap, Width = w, Shrink = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>The hero form's loading column: the rows the loaded column lays out there at their heights, unfilled (the cover row with the artist and the
+    /// meta's two reserved lines, the ring row and its air, the description's three lines where the page has one, the foot air); a known cover is painted for
+    /// real.</summary>
+    static Element HeroFormSkeleton(VerticalSpec spec, ZuneDetailLayout lay, Geometry g)
+    {
+        var id = spec.Identity;
+        float inner = MathF.Max(0f, g.Width - 2f * g.Gutter);
+        float side = MathF.Max(0f, inner - g.Cover - Z.HeroCoverGap);
+        var kids = new List<Element>(7)
+        {
+            new BoxEl
+            {
+                Direction = 0, Gap = Z.HeroCoverGap, Height = g.Cover, MinWidth = 0f,
+                Children =
+                [
+                    K.CoverSkeleton(id.CoverUrl, g.Cover),
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap, Justify = FlexJustify.End,
+                        Children =
+                        [
+                            new BoxEl { Height = HitArtist(lay), Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(side * Z.SkelArtistFraction, lay.ArtistSize)] },
+                            new BoxEl { Height = 2f * lay.MetaLine, Direction = 0, AlignItems = FlexAlign.Start, Children = [K.Bar(side * Z.SkelMetaFraction, lay.MetaSize)] },
+                        ],
+                    },
+                ],
+            },
+            new BoxEl { Height = Z.HeroActionsTop },
+            new BoxEl { Height = lay.RingSize, Children = [K.RingsSkeleton("hero-skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay)] },
+        };
+        if (g.Description)
+        {
+            kids.Add(new BoxEl { Height = Z.HeroDescriptionTop });
+            kids.Add(new BoxEl
+            {
+                Direction = 1, Height = Z.DescriptionLines * Z.DescriptionLine,
+                Children = [K.Bar(inner, Z.DescriptionSize), K.Bar(inner * Z.SkelMetaFraction, Z.DescriptionSize)],
+            });
+        }
+        kids.Add(new BoxEl { Height = Z.HeroBottom });
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     sealed record MetaProps(Detail.Identity Id, float Width, ZuneDetailLayout Layout, int Lines);
@@ -668,85 +719,5 @@ internal static class ZuneDetailHero
                 },
             ],
         };
-    }
-
-    // ══ THE LOADING BAND ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The loading band: the same blocks at the same heights, unfilled (the deriver paints the bars); a known cover is painted for real. The hero
-    /// form's floor is the hero's own height, the number the collapse assumes until the hero is measured; the columns form reserves the panorama and the list
-    /// head, its identity column hanging beside the rows' shimmer as the loaded one does.</summary>
-    static Element Skeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm form, DetailColumnsProps? columns)
-    {
-        var g = GeometryOf(spec, columnWidth, tiers);
-        var id = spec.Identity;
-        if (form == DetailForm.Columns)
-        {
-            var col = ZuneDetailTiers.ColumnOf(in tiers);
-            return new BoxEl
-            {
-                Key = "zune.detail.hero-skeleton", Direction = 1,
-                Children =
-                [
-                    new BoxEl { Height = col.PanoramaH, Direction = 0, Children = [K.Bar(MathF.Max(0f, g.Width * Z.SkelMetaFraction * 0.5f), col.ArtistLine)] },
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Start,
-                        Children =
-                        [
-                            new BoxEl { Width = col.RailW, Height = 0f, Shrink = 0f, Children = [ColumnSkeleton(spec, col, col.RailW)] },
-                            new BoxEl { Width = col.ColumnGap, Shrink = 0f },
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                                Children = [new BoxEl { Height = Z.HeadingRowH }, new BoxEl { Height = VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight }],
-                            },
-                        ],
-                    },
-                ],
-            };
-        }
-        var lay = g.Layout;
-        float inner = MathF.Max(0f, g.Width - 2f * g.Gutter);
-        float side = MathF.Max(0f, inner - g.Cover - Z.HeroCoverGap);
-        var blocks = new List<Element>(6)
-        {
-            new BoxEl
-            {
-                Height = lay.PanoramaH, Direction = 0, Padding = new Edges4(g.Gutter, 0f, g.Gutter, 0f),
-                Children = [K.Bar(inner * Z.SkelMetaFraction, lay.ArtistLine)],
-            },
-            new BoxEl
-            {
-                Direction = 0, Gap = Z.HeroCoverGap, Height = g.Cover, Padding = new Edges4(g.Gutter, 0f, g.Gutter, 0f),
-                Children =
-                [
-                    K.CoverSkeleton(id.CoverUrl, g.Cover),
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap, Justify = FlexJustify.End,
-                        Children = [K.Bar(side * Z.SkelArtistFraction, lay.ArtistLine), K.Bar(side * Z.SkelMetaFraction, lay.MetaLine)],
-                    },
-                ],
-            },
-            new BoxEl
-            {
-                Height = lay.RingSize, Margin = new Edges4(0f, Z.HeroActionsTop, 0f, 0f), Padding = new Edges4(g.Gutter, 0f, g.Gutter, 0f),
-                Children = [K.RingsSkeleton("hero-skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay)],
-            },
-        };
-        if (g.Description)
-            blocks.Add(new BoxEl
-            {
-                Direction = 1, Height = Z.DescriptionLines * Z.DescriptionLine, Margin = new Edges4(0f, Z.HeroDescriptionTop, 0f, 0f),
-                Padding = new Edges4(g.Gutter, 0f, g.Gutter, 0f),
-                Children = [K.Bar(inner, Z.DescriptionSize), K.Bar(inner * Z.SkelMetaFraction, Z.DescriptionSize)],
-            });
-        blocks.Add(new BoxEl { Height = Z.HeroBottom });
-        blocks.Add(new BoxEl
-        {
-            Direction = 1, Padding = new Edges4(compactLeft, VerticalLayout.ExpandedToolbarTopPad, compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-            Children = [new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
-        });
-        return new BoxEl { Key = "zune.detail.hero-skeleton", Direction = 1, MinHeight = g.Height, Children = blocks.ToArray() };
     }
 }

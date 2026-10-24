@@ -11,7 +11,8 @@
 //     last 44 of the collapse and takes hits only once the table's chrome has stuck (the engaged edge, `CompactInteractive`).
 //
 // The numbers are `WinUiDetailRules` and the tier's `WinUiDetailTier`; the form (tall, short, stacked) is the tier's and the window's height (`TierFacts.Height`).
-// THE LOADING BAND (`StyleKeys.DetailHero`): the same parts at the same sizes, unfilled, so the swap to the loaded hero never moves a row.
+// LOADING: the hero list has no loading band (audit B7 r2); while the page's header is unread the hero shimmers its words in place (`SkeletonWords`: the same
+// rows at the same sizes, unfilled) beside the real cover and list bar, and the header's landing eases the words' height, the rows riding it.
 
 using System.Globalization;
 using FluentGpu.Animation;
@@ -47,9 +48,9 @@ internal static partial class WinUiDetailFrame
     static readonly LayoutTransition HeroHeightMotion = new(
         TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
-    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>); the list's page inset eases through real layout when
-    /// a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
-    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton, InsetMotion = WinUiDiscoveryMotion.WidthReflow };
+    /// <summary>The hero's style, as the table reads it (<see cref="StyleKeys.DetailHero"/>): no loading band (the words shimmer in place, audit B7 r2); the
+    /// list's page inset eases through real layout when a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
+    public static readonly DetailHeroStyle HeroStyle = new() { InsetMotion = WinUiDiscoveryMotion.WidthReflow };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>.</summary>
     public static Element HeroTemplate(DetailHeroProps p, in ViewContext ctx) => Embed.Comp(p, static () => new HeroHost());
@@ -350,8 +351,9 @@ internal static partial class WinUiDetailFrame
             Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
 
-    /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (the loading band's rows, <see cref="SkeletonWords"/>),
-    /// one cross-dissolve when it lands. Each side is the words' own column (the info box's gap and alignment), so the swap moves no row.</summary>
+    /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve
+    /// when it lands. Each side is the words' own column (the info box's gap and alignment); the rows the data brings (a description) open with the swap
+    /// (SmoothResize: the region's height eases through real layout, so the list bar and the rows under the hero ride it).</summary>
     static Element Words(WinUiHeroForm form, bool center, Element[] words, Func<bool> pending, Func<Element[]> shimmer)
     {
         Element Column(Element[] kids) => new BoxEl
@@ -363,7 +365,7 @@ internal static partial class WinUiDetailFrame
             Pending: pending, Failed: s_never,
             Content: () => Column(words),
             ShimmerSource: () => Column(shimmer()),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
     }
 
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned), or over them, both centred (stacked); then the toolbar.</summary>
@@ -456,35 +458,10 @@ internal static partial class WinUiDetailFrame
         return sb.ToString();
     }
 
-    // ══ 4. THE LOADING BAND ═════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes as the loaded hero, unfilled boxes the deriver paints as bones; a usable
-    /// preview cover is painted for real.</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm pageForm = DetailForm.Hero,
-        DetailColumnsProps? columns = null)
-    {
-        var tier = WinUiDetailTiers.Of(in tiers);
-        var form = WinUiDetailTiers.HeroOf(in tiers);
-        var id = spec.Identity;
-        float inset = tier.InsetX;
-        bool center = Centered(form, id.Kind);
-        Element[] rows = SkeletonWords(spec, tier, form, center, form.AvatarFor(id.Kind));
-        Element cover = new BoxEl
-        {
-            Width = form.Cover, Height = form.Cover, Shrink = 0f, Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), ClipToBounds = true,
-            Children = id.CoverUrl is { Length: > 0 } url ? [Controls.Artwork(url, form.Cover, form.Cover, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(form.Cover))] : [],
-        };
-        Element toolbar = new BoxEl
-        {
-            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f),
-            Padding = new Edges4(inset, 0f, inset, 0f), Height = VerticalLayout.ToolbarRowHeight,
-            Children = [SkeletonToolbar(columnWidth - 2f * inset)],
-        };
-        return new BoxEl { Key = "detail-skeleton:hero", Direction = 1, Children = [Compose(form, inset, cover, rows, toolbar, center)] };
-    }
+    // ══ 4. THE WORDS, LOADING ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The words' rows while the header is unread: the eyebrow, the title, the attribution (and the stacked meta), the daylist strip and the action row,
-    /// unfilled boxes at the loaded rows' sizes. The loading band draws them beside its cover; the loaded hero shimmers them in place of its words.</summary>
+    /// unfilled boxes at the loaded rows' sizes, shimmered in place of the words.</summary>
     static Element[] SkeletonWords(VerticalSpec spec, WinUiDetailTier tier, WinUiHeroForm form, bool center, float avatar)
     {
         var id = spec.Identity;
@@ -538,17 +515,4 @@ internal static partial class WinUiDetailFrame
             kids.Add(new BoxEl { Width = i < 2 && !form.Stacked ? WinUiDetailRules.SkelShuffleW : h, Height = h, Shrink = 0f, Corners = Radii.ControlAll });
         return WinUiDetailKit.ActionRow("vhero-skel-actions", kids[0], kids.GetRange(1, kids.Count - 1), form.ActionTop, center: center);
     }
-
-    /// <summary>The list bar's reserved row while loading: Find on the left, the order, Filter and Select on the right.</summary>
-    static Element SkeletonToolbar(float rowWidth) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.ActionGap, Grow = 1f, MinWidth = 0f,
-        Children =
-        [
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-            new BoxEl { Grow = 1f, Height = 1f },
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-        ],
-    };
 }

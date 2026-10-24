@@ -594,7 +594,8 @@ public static partial class Diagnostics
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
-                        RunFrames(30);
+                        // A traced (or unsettled) state shows its own frames from the first: 30 frames run first hid a staged landing from its trace (audit B7 r2).
+                        if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
                         // A loading or cold state's skeleton IS the picture: its settle stops on the shimmer unless `loops` says otherwise.
                         bool skeleton = kind == "loading" || kind.StartsWith("cold-", StringComparison.Ordinal);
                         return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); },
