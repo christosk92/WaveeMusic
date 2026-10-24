@@ -113,9 +113,10 @@ internal static class ZuneRecentsRows
                                morphKey: host.MorphOf(shape, r, target, uri), decodePx: Z.ContextDecodePx);
 
         // The kind word has a lane of its own where the tier gives it one (Standard, Huge); elsewhere it opens the caption, and at Compact the
-        // played-at stamp follows it on a line of its own.
+        // played-at stamp closes it (Z-Recents-Compact: "playlist · 6 tracks · 14:32"), so every row is the same two lines on the same rhythm.
         bool laned = layout.KindLane > 0f;
         string captionText = !laned && kind is not null ? (sub.Length > 0 ? kind + " · " + sub : kind) : sub;
+        if (layout.Stacked && when.Length > 0) captionText = captionText.Length > 0 ? captionText + " · " + when : when;
 
         var trail = new List<Element>(3);
         if (layout.Stacked)
@@ -137,15 +138,6 @@ internal static class ZuneRecentsRows
         if (!facts.Known) subtitle = Controls.PendingBar(Z.NameBar, Z.NameBarHeight);
         else if (saved) subtitle = SavedMeta(captionText);
         else subtitle = captionText.Length > 0 ? Caption(captionText) : null;
-        if (layout.Stacked)
-        {
-            // Line 1 already says the kind (captionText leads with it where the lane is folded): line 2 is the date alone.
-            string stamp = when;
-            var lines = new List<Element>(2);
-            if (subtitle is not null) lines.Add(subtitle);
-            if (stamp.Length > 0) lines.Add(Meta(stamp));
-            subtitle = lines.Count == 0 ? null : new BoxEl { Direction = 1, MinWidth = 0f, Children = lines.ToArray() };
-        }
 
         var data = new Controls.CardData(
             uri, facts.Known ? facts.Title : "",
