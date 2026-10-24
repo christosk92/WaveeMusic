@@ -185,4 +185,15 @@ public sealed record PlayerCredits
 
     /// <summary>The "+N" chip's menu: every credited artist, built at OPEN time from live reads.</summary>
     public Func<IReadOnlyList<MenuFlyoutItem>> OverflowRows { get; init; } = static () => [];
+
+    /// <summary>The line as plain words: the show's name, or the credited names (unnamed ones left out) joined by <paramref name="separator"/>.
+    /// What a marquee over the line restarts on and shows as its tooltip. Appended (contract 1.66, audit B11).</summary>
+    public string Line(string separator)
+    {
+        if (Show is { } show) return show.Text;
+        string line = "";
+        foreach (var link in Artists)
+            if (link.Text.Length > 0) line = line.Length == 0 ? link.Text : line + separator + link.Text;
+        return line;
+    }
 }
