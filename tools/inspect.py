@@ -313,8 +313,8 @@ class Gate:
       todo-level rules count too). A review, a suppressed finding and a report never count;
     - a crossing moved more than --max-moved nodes (default 0) past its control step (`counts.excessSnapped + excessJumped`), or
       remounted a key outside a swap family (`counts.remountedOutside`);
-    - a trace (`trace` or `trace=N` on an acting verb) snapped more than --max-moved watched keys, or remounted a watched key outside a
-      swap family.
+    - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
+      with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
     Warnings (printed, not counted): a lint whose listing or judgement was narrowed (rules, min, outcomes, limit, root), a crossing that
     crossed no edge or ran without its control, a trace that watched no nodes. Else 0."""
 
@@ -479,15 +479,16 @@ def main():
     ap.add_argument("--gate", choices=["info", "warn", "error"],
                     help="a verdict: exit 1 when a lint has a fail of a gate-level rule at or above this severity (counted from the reply's "
                          "`fails`: every fail, listed or not; review, suppressed and report findings never count), when a crossing moves more "
-                         "than --max-moved nodes past its control or remounts a key outside a swap family, or when a trace snaps more than "
-                         "--max-moved watched keys or remounts one outside a swap family; 2 on any ok:false reply or when no lint ran; else 0. "
-                         "Warns when a lint was narrowed (rules, min, outcomes, limit, root), a crossing crossed nothing, a trace watched nothing")
+                         "than --max-moved nodes past its control or remounts a key outside a swap family, or when a trace moves more than "
+                         "--max-moved watched keys at once or remounts one outside a swap family; 2 on any ok:false reply or when no lint ran; else 0. "
+                         "Warns when a lint was narrowed (rules, root, outcomes, limit) or counted fails it did not list, a crossing crossed "
+                         "nothing, a trace watched nothing")
     ap.add_argument("--gate-todo", action="store_true",
                     help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets, "
                          "target.size above Compact) count too")
     ap.add_argument("--max-moved", type=int, default=0, metavar="N",
                     help="with --gate: the most nodes a crossing may move at once past its control step (counts.excessSnapped + "
-                         "excessJumped), and the most watched keys a trace may snap; default 0")
+                         "excessJumped), and the most watched keys a trace may move at once (counts.movedAtOnce); default 0")
     args = ap.parse_args()
 
     if (args.gate_todo or args.max_moved) and not args.gate:
