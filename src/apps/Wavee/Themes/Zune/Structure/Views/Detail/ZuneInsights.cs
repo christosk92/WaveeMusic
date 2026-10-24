@@ -36,14 +36,14 @@ internal static class ZuneInsights
     public static Element SheetTemplate(DetailInsightsProps p, in ViewContext ctx)
         => p.Docked ? Docked(p.Toggle, p.Facts, p.RouteKey) : Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the bar's glyph (the tier's target edge, in the key so a
-    /// crossing re-mounts the one button at its size) or the band's word.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the bar's glyph (the tier's target edge, a re-pushed prop: a
+    /// crossing resizes the one button and keeps its node, its focus and its hover) or the band's word.</summary>
     public static Element ToggleTemplate(DetailInsightsToggleProps p, in ViewContext ctx)
     {
         var toggle = p.Toggle;
         if (p.Form == DetailInsightsToggleForm.BandWord) return Embed.Comp(() => new BandWord(toggle));
         float edge = MathF.Max(Z.ToggleEdge, ZuneDetailTiers.For(ctx.Tier().Window).Target);
-        return Controls.Named(Embed.Comp(() => new BarButton(toggle, edge)) with { Key = "insights:toggle:" + edge },
+        return Controls.Named(Embed.Comp(new BarProps(toggle, edge), static () => new BarButton()) with { Key = "insights:toggle:bar" },
             Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 
@@ -150,10 +150,13 @@ internal static class ZuneInsights
     static readonly PathData s_mark = PathDataParser.Parse("M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4", PathContentEpoch.Mint(), FillRule.NonZero);
 
     /// <summary>The list bar's toggle: the bar-chart mark, the accent ink while open (a toggle button: pressed IS its meaning).</summary>
-    sealed class BarButton(InsightsToggle toggle, float edge) : Component
+    sealed record BarProps(InsightsToggle Toggle, float Edge);
+
+    sealed class BarButton : Component
     {
         public override Element Render()
         {
+            var (toggle, edge) = UseProps<BarProps>();
             bool open = toggle.Open.Value;
             return new BoxEl
             {

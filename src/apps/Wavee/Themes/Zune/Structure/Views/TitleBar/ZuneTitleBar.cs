@@ -116,6 +116,11 @@ internal static class ZuneTitleBar
             // spacer beside a docked panel widens the trailing island: its settle re-pushes the regions.
             ContentVersion = () => HashCode.Combine(props.ContentVersion(), (int)tiers().Window, FieldInLead(props, tiers()), room.Settled.Value),
             RowSpacing = () => ZuneFrameRules.SpacingOf(tiers()),
+            // The lead pad is the gutter (16 / 24 / 48 / 64): a crossing eases it with the page column's gutter spacers, so the wordmark and Back
+            // ride it instead of jumping by the difference.
+            LeadPadMotion = Design.Reduced ? null : ZuneFrameRules.GutterMotion,
+            // The drag strip before the caption buttons (8 / 16 / 24) eases the same way, so the trailing island rides it.
+            DragStripMotion = Design.Reduced ? null : ZuneFrameRules.GutterMotion,
             BarHeight = Prop.Of(() => ZuneTiers.FrameOf(tiers()).TitleBarH),
             Parts = parts,
         };
@@ -156,11 +161,13 @@ internal static class ZuneTitleBar
         bool field = PeekFieldInLead(props, rec);
         var kids = new List<Element>(3);
         // The wordmark never truncates (A9): it is drawn whole where the tier has room for it, and not at all at Compact. Across the 640
-        // crossing its host's width eases with a fade, so Back and the trail ride the re-solve.
+        // crossing its host's width eases with a fade, so Back and the trail ride the re-solve. The gap after it is its host's own padding (inside the
+        // eased width), never the island's Gap, which would open at once when the wordmark mounts (a gap cannot ease).
         if (rec.Wordmark)
             kids.Add(new BoxEl
             {
                 Key = ZuneFrameRules.WordmarkKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true,
+                Padding = new Edges4(0f, 0f, rec.Gap, 0f),
                 Animate = Design.Reduced ? null : ZuneFrameTiers.WordmarkMotion,
                 // The lead's fixed part the pill leaves room for beside a docked panel.
                 OnBoundsChanged = b => room.WordmarkW.SetIfChanged(b.W),
@@ -178,16 +185,18 @@ internal static class ZuneTitleBar
             {
                 // The field fills the lead (the omnibar's other mount: the magnifier leaves the trailing island on the same frame).
                 Key = "zune-search-field-host", Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                Margin = new Edges4(rec.Gap, 0f, 0f, 0f),
                 Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                 Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field })],
             });
         // The tabs version subscribed the bar to the chrome: a peek here.
         else if (rec.Crumbs && chrome?.Peek() is { } page && page.Crumbs.Count >= ZuneFrameRules.CrumbMinDepth)
-            kids.Add(Trail(page.Crumbs, rec));
+            kids.Add(Trail(page.Crumbs, rec) with { Margin = new Edges4(rec.Gap, 0f, 0f, 0f) });
         return new BoxEl
         {
-            // The island hugs its parts (the rest of the elastic lane stays the window's drag band), and fills the lane while it holds the field.
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Gap, Grow = field ? 1f : 0f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            // The island hugs its parts (the rest of the elastic lane stays the window's drag band), and fills the lane while it holds the field. Its
+            // parts carry their own gaps (the wordmark's padding, the field's and the trail's lead margin), so a part that comes or goes moves nothing at once.
+            Direction = 0, AlignItems = FlexAlign.Center, Grow = field ? 1f : 0f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
             Height = ZuneTiers.FrameOf(t).TitleBarH,
             Children = kids.ToArray(),
         };
@@ -195,12 +204,14 @@ internal static class ZuneTitleBar
 
     /// <summary>The trail: every crumb, a tertiary <c>›</c> between two; the ancestors are links in the tertiary ink, the current page (the
     /// last crumb) in the secondary one. Names keep their own casing. The trail gives way (ellipsised, last crumb first) before Back.</summary>
-    private static Element Trail(IReadOnlyList<PageCrumb> crumbs, ZuneTitleBarLayout rec)
+    private static BoxEl Trail(IReadOnlyList<PageCrumb> crumbs, ZuneTitleBarLayout rec)
     {
         var kids = new Element[crumbs.Count * 2 - 1];
+        int signature = 0;
         for (int i = 0; i < crumbs.Count; i++)
         {
             var crumb = crumbs[i];
+            signature = HashCode.Combine(signature, StringComparer.Ordinal.GetHashCode(crumb.Label));
             bool current = i == crumbs.Count - 1;
             if (i > 0) kids[i * 2 - 1] = Words(rec, "›") with { Color = Tok.TextTertiary, Shrink = 0f };
             var words = Words(rec, crumb.Label) with
@@ -218,9 +229,12 @@ internal static class ZuneTitleBar
         }
         return new BoxEl
         {
-            Key = ZuneFrameRules.CrumbsKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.CrumbGap,
+            // ONE trail per page, keyed by its words: a navigation (back, forward, a link) cross-fades the old page's trail out and the new one in, in
+            // place, instead of re-laying one trail's words at a new width at once. The trail also comes and goes at the 640 crossing (never at
+            // Compact): it fades, never pops (ZT1).
+            Key = ZuneFrameRules.CrumbsKey + ":" + signature.ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneFrameRules.CrumbGap,
             Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = kids,
-            // The trail comes and goes at the 640 crossing (never at Compact): it fades, never pops (ZT1).
             Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
         };
     }
@@ -237,7 +251,8 @@ internal static class ZuneTitleBar
         var kids = new List<Element>(3);
         // The pill and the magnifier are two mounts of one omnibar over one model: a crossing swaps them with the shared cross-fade. At
         // Compact the field may stand in the lead island instead (`FieldInLead`): the magnifier then leaves this island.
-        if (!PeekFieldInLead(props, rec))
+        bool searchHere = !PeekFieldInLead(props, rec);
+        if (searchHere)
             kids.Add(rec.Pill
                 ? new BoxEl
                 {
@@ -263,18 +278,26 @@ internal static class ZuneTitleBar
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                     Children = [ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Icon })],
                 });
+        // The gap before the identity (the row's gap, and the board's extra 8 after the pill) is a spacer whose width eases (a gap cannot): the 640 and
+        // 1008 crossings change it, and the parts after it ride the re-solve.
+        kids.Add(new BoxEl
+        {
+            Key = "zune-account-gap", Width = searchHere ? rec.Gap + (rec.Pill ? ZuneFrameRules.AccountMargin.Left : 0f) : 0f, Shrink = 0f,
+            HitTestVisible = false,
+            Animate = Design.Reduced ? null : ZuneFrameRules.GutterMotion,
+        });
         kids.Add(Account(props, l.Chip, rec, room));
-        // The bell comes and goes at the 1008 crossing (the pill tiers): its keyed host fades, never pops (ZT1).
+        // The bell comes and goes at the 1008 crossing (the pill tiers): its keyed host fades, never pops (ZT1); the gap before it is its own padding.
         if (rec.BellInRow)
             kids.Add(new BoxEl
             {
-                Key = ZuneFrameRules.BellKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Key = ZuneFrameRules.BellKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Padding = new Edges4(rec.Gap, 0f, 0f, 0f),
                 Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                 Children = [Embed.Comp(() => new Bell(props))],
             });
         return new BoxEl
         {
-            Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = rec.Gap, Height = ZuneTiers.FrameOf(t).TitleBarH,
+            Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Height = ZuneTiers.FrameOf(t).TitleBarH,
             // A crossing changes what the island holds (the magnifier <-> the pill, the bell, the gap): its WIDTH eases (a reflow, a size
             // channel, its right edge riding), so the identity and the bell ride the re-solve. A position slide of theirs would be snapped by
             // the engine's reflow-shove rule whenever the page reflows on the same crossing (ZT1).
@@ -301,12 +324,11 @@ internal static class ZuneTitleBar
                 Key = ZuneFrameRules.SignInKey, MinWidth = ZuneFrameRules.Button, MinHeight = ZuneFrameRules.Button,
             },
         };
-        // The board's extra 8 after the pill; the magnifier tiers sit the account at the row's own gap. ONE keyed host at every tier (ZT1), so
-        // the 1008 crossing keeps the identity chip's node (a bare chip at Small and a wrapped one at Standard would remount it).
+        // ONE keyed host at every tier (ZT1), so the 1008 crossing keeps the identity chip's node (a bare chip at Small and a wrapped one at Standard
+        // would remount it). The gap before it (the board's extra 8 after the pill) is the island's eased spacer.
         return new BoxEl
         {
             Key = AccountHostKey, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Margin = rec.Pill ? ZuneFrameRules.AccountMargin : default,
             // The identity's own box changes height with the chip's form per tier (32 <-> 40 at 640): a size reflow, never a snap. Its place
             // rides the island's width reflow above.
             Animate = Design.Reduced ? null : ZuneFrameTiers.AccountSizeMotion,

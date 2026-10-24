@@ -57,6 +57,7 @@ internal static class ZuneDetailFrame
     /// <summary>The registered template of <see cref="ViewKeys.DetailFrame"/>.</summary>
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
     {
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var facts = ctx.Tier();
         var lay = ZuneDetailTiers.Of(facts);
         float gutter = ZuneTiers.FrameOf(facts).Gutter;
@@ -88,12 +89,17 @@ internal static class ZuneDetailFrame
         bool dock = p.Aside is not null && lay.AsideW > 0f && (!recsOnly || lay.Tier >= WidthTier.Huge);
         // The panorama is the content tier's record for every kind (the album's step); a long title fits smaller and the band hugs it.
         Element band = (p.TwoColumn?.Rail?.Spec ?? p.TwoColumn?.CompactRail?.Spec ?? p.Head?.Spec) is { } spec
-            ? K.PanoramaBand(spec.Identity, spec.Slots, lay, gutter: 0f)
+            ? K.PanoramaBand(spec.Identity, spec.Slots, lay, gutter: 0f, enter)
             : new BoxEl { Key = Z.PanoramaKey, Height = lay.PanoramaH, Shrink = 0f, Animate = Z.PanoramaFold };
 
         // ── the list column: the "songs" heading on a track page, the list, and the insights sheet's layer over it (composed open or not) ──
         Element listHost = ListHost(p, ctx, dock);
-        BoxEl right = Right(p, listHost) with { Margin = new Edges4(p.Head is null ? lay.ColumnGap : 0f, 0f, 0f, 0f) };
+        BoxEl right = Right(p, listHost);
+        // The gap between the identity column and the list is a spacer whose width eases (a margin cannot): the column gap changes on a crossing (3200).
+        Element columnGap = new BoxEl
+        {
+            Key = Z.ColumnGapKey, Width = p.Head is null ? lay.ColumnGap : 0f, Shrink = 0f, HitTestVisible = false, Animate = Z.ColumnReflow,
+        };
 
         Element arm;
         string armKey;
@@ -114,7 +120,7 @@ internal static class ZuneDetailFrame
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Children = [right, AsideSlot(p, lay, dock)],
+                    Children = [columnGap, right, AsideSlot(p, lay, dock, enter)],
                 },
             ]);
         }
@@ -142,7 +148,7 @@ internal static class ZuneDetailFrame
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Children = [identity, right, AsideSlot(p, lay, dock)],
+                    Children = [identity, columnGap, right, AsideSlot(p, lay, dock, enter)],
                 },
             ]);
         }
@@ -250,7 +256,7 @@ internal static class ZuneDetailFrame
     /// <summary>The aside's slot, the row's last child at every tier: width 0 where none docks, else the column gap and the record's column with its
     /// own scroller (the page's aside body under <see cref="InAside"/>, then the insights on a facts page). An aside that holds only the insights
     /// follows their toggle (0 closed). The slot may yield a few DIP inside a crossing's hold band rather than squeeze the list under its floor.</summary>
-    static Element AsideSlot(DetailFrameProps p, ZuneDetailLayout lay, bool dock)
+    static Element AsideSlot(DetailFrameProps p, ZuneDetailLayout lay, bool dock, EnterExit? enter)
     {
         if (!dock || p.Aside is not { } aside)
             return new BoxEl { Key = Z.AsideKey, Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = Z.ColumnReflow };
@@ -273,10 +279,13 @@ internal static class ZuneDetailFrame
             Padding = new Edges4(lay.ColumnGap, 0f, 0f, 0f), Animate = Z.ColumnReflow,
             Children =
             [
+                // The column docks on a crossing (1008; 1920 for a playlist's recommendations): what it holds arrives from the band under the rows, a
+                // cross-fade (the swap's family), while the slot eases its width.
                 Ui.ScrollView(new BoxEl
                 {
                     Key = Z.AsideColumnKey, Direction = 1, Gap = Z.AsideSectionGap, MinWidth = 0f,
                     Padding = new Edges4(0f, 0f, 0f, Z.SectionBottom),
+                    Enter = enter, Exit = ZuneMotion.SwapFade,
                     Children = kids.ToArray(),
                 }) with { Key = "aside:scroll:" + aside.RouteKey, Grow = 1f, Shrink = 1f, MinHeight = 0f },
             ],
