@@ -21,9 +21,9 @@ internal static partial class ClassicDetailKit
     /// its reason as the name). Key it at the call site.
     /// <para>Workstream B: was a round 36/40 FAB; the satellite ladder is now the standard 32/r4 icon button, so it reads as an
     /// ordinary rail action rather than media chrome.</para></summary>
-    public static Element RailSatellite(string glyph, string name, Action? onClick)
+    public static Element RailSatellite(string glyph, string name, Action? onClick, float size = Detail.RailLayout.SatelliteSize)
     {
-        BoxEl fab = Controls.IconAction(glyph, onClick, size: Detail.RailLayout.SatelliteSize);
+        BoxEl fab = Controls.IconAction(glyph, onClick, size: size);
         return Controls.Named(onClick is null ? fab with { IsEnabled = false, Cursor = null } : fab, name);
     }
 
