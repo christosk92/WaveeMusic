@@ -70,7 +70,7 @@ internal static class ZuneStageIdentity
                 gap = G.CardTextGap;
                 bottom = true;
                 kids.Add(new TextEl(Loc.Get(Strings.Stage.NowPlayingEyebrow)) { Size = v.EyebrowSize, LineHeight = v.EyebrowLine, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 });
-                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
+                kids.Add(Scrolling(props, title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
                 if (!a.Display.IsEmpty) display = Display(props, in a, title, set.Text, heroArtist);
                 break;
@@ -82,7 +82,9 @@ internal static class ZuneStageIdentity
                 gap = 0f;
                 bottom = true;
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
-                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking, bleed: true));   // the big column title bleeds off the stage's edge, never "…"
+                // the big column title bleeds off the stage's edge, never "…" and never a hard cut: it runs to the window's edge and fades out
+                // over the gutter (Z-NowPlaying-LargeArt; owner rule: Zune type bleeds with a fade)
+                kids.Add(Bleed(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking, bleed: true), MathF.Max(0f, L.W - titlesX), t.Gutter));
                 break;
             }
             case ZuneStageForm.Centered or ZuneStageForm.Stack when v is not null:
@@ -92,8 +94,8 @@ internal static class ZuneStageIdentity
                 (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
                 center = a.Form == ZuneStageForm.Centered;
                 gap = 0f;
-                var head = Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking);
-                kids.Add(center ? head with { MaxWidth = titlesW } : head);
+                kids.Add(center ? Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking) with { MaxWidth = titlesW }
+                    : Scrolling(props, title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
                 break;
             }
@@ -169,6 +171,34 @@ internal static class ZuneStageIdentity
         };
     }
 
+    /// <summary>A title that bleeds: a box from its column's edge to the window's (<paramref name="width"/>), clipped there, its ink fading out over
+    /// the last <paramref name="band"/> (the tier's gutter, where only a title running past its column ever reaches). A row, so the title keeps
+    /// its natural width (the whole title is laid out and the window's edge cuts it under the fade, never the text's own box).</summary>
+    static Element Bleed(TextEl title, float width, float band) => new BoxEl
+    {
+        Width = width, AlignSelf = FlexAlign.Start, Direction = 0, ClipToBounds = true, HitTestPassThrough = true,
+        EdgeFade = new EdgeFadeSpec(EdgeMask.Right, band),
+        Children = [title with { Shrink = 0f }],
+    };
+
+    /// <summary>A one-line, left-aligned title in an arrangement's voice that scrolls under the marquee preference (the play bar's cadence, its
+    /// tracking kept) instead of ellipsising (audit B3, Vr: "Nostalgia 2000s ..." sat still with the marquee on).</summary>
+    static Element Scrolling(StageIdentityProps props, string title, float size, float line, ushort weight, float tracking)
+        => props.Marquee?.Invoke() != true ? Title(title, size, line, weight, tracking) : new BoxEl
+        {
+            Direction = 0, MinWidth = 0f,   // the row is the text's own height: its line box holds the descenders
+            Children =
+            [
+                Marquee.Of(title, new Marquee.Style
+                {
+                    FontSize = size, LineHeight = line, CharSpacing = tracking, Weight = weight, FontFamily = R.Type.DisplayFace, Foreground = Ink.Ink,
+                    Speed = ZunePlayerLayout.MarqueeSpeed, CycleMs = ZunePlayerLayout.MarqueeCycleMs,
+                    EndPauseMs = ZunePlayerLayout.MarqueeEndPauseMs, StartDelayMs = ZunePlayerLayout.MarqueeStartDelayMs,
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                }),
+            ],
+        };
+
     /// <summary>A title in an arrangement's voice: the display face, one line.</summary>
     static TextEl Title(string title, float size, float line, ushort weight, float tracking, bool bleed = false) => new(title)
     {
@@ -190,7 +220,10 @@ internal static class ZuneStageIdentity
             [
                 new TextEl(title)
                 {
-                    Size = a.DisplaySize, LineHeight = a.DisplayLine, Weight = G.ColumnTitleWeight, FontFamily = R.Type.DisplayFace, CharSpacing = G.DisplayTracking,
+                    // the board's tight line (150/160, 200/212): a block line height, so the light face's natural line box (1.33 em) does not
+                    // push the artist line out of the block, and the descenders hang over the artist line as Z-NowPlaying-Huge draws them
+                    Size = a.DisplaySize, LineHeight = a.DisplayLine, LineStacking = LineStacking.BlockLineHeight, Weight = G.ColumnTitleWeight,
+                    FontFamily = R.Type.DisplayFace, CharSpacing = G.DisplayTracking,
                     Color = Ink.Ink with { A = G.DisplayInkA }, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 Meta(props, a.DisplayMetaSize, a.DisplayMetaLine, G.ColumnMetaWeight, R.Type.DisplayFace, accent, Ink.Ink, false, heroArtist),

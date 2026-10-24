@@ -72,6 +72,8 @@ internal static class ClassicHomePage
         Element content = new BoxEl
         {
             Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
+            // The column's gutter, top and head gap are the content tier's and step when it changes (a docked panel, a resize): the content glides there.
+            Layout = ClassicTierMotion.Shove,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
             Children = [region, ClassicHomeFacetRow.FailureLayer(props.FacetRow)],
         }.StickyClip(ClassicHomeRules.StuckBottom);
@@ -88,7 +90,7 @@ internal static class ClassicHomePage
             Padding = new Edges4(gutter, layout.PageTop, gutter, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
-                ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row" },
+                ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row", Layout = ClassicTierMotion.Shove },
                 content,
             ],
         };

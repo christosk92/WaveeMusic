@@ -92,13 +92,13 @@ internal static class ZuneDetailKit
 
     // ── the page column ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The system page column (<see cref="ZuneFrameRules.PageColumn"/>: the gutter each side, capped at 2400 plus the gutters) centred in a
+    /// <summary>The system page column (<see cref="ZuneFrameRules.PageColumn"/>: capped at 2400, an easing gutter spacer each side) centred in a
     /// row and grown to its cap, so the page x equals the band's (audit A1). The row is the centring host: inside it the column stretches to the row's
     /// height (a list fills it) instead of hugging its content, which a centred child of a column would do.</summary>
     public static BoxEl CentredPage(BoxEl page, float gutter) => new()
     {
-        Direction = 0, MinWidth = 0f, Justify = FlexJustify.Center,
-        Children = [ZuneFrameRules.PageColumn(page, gutter) with { AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f }],
+        Direction = 0, MinWidth = 0f, Justify = FlexJustify.Center, DropTarget = page.DropTarget,
+        Children = [ZuneFrameRules.Gutter(gutter), ZuneFrameRules.PageColumn(page), ZuneFrameRules.Gutter(gutter)],
     };
 
     /// <summary>A page-scale vacancy (a page that failed or came back empty) on the page column: the frame's gutter, centred, never flush at x = 0.</summary>
@@ -152,8 +152,10 @@ internal static class ZuneDetailKit
     /// the title (owner 2026-10-21); two lines at the floor take about one full-size line. The reserved height holds only while the title is empty
     /// (loading). An editable playlist hands its inline editor as the <c>Title</c> slot (Z6b1 must-fix: the owner renames the playlist in its panorama, as
     /// under Classic); the editor's read arm fits the same way and the band hugs it likewise (the edit arm's field and words push the body down). A folded
-    /// band (a short window) draws the plain title, hidden: the identity column leads with the editor there.</summary>
-    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter)
+    /// band (a short window) draws the plain title, hidden: the identity column leads with the editor there. The editor and the plain title are two
+    /// trees, each under its own keyed host: a short window moves the editor to the identity column (`rail:title`), so the 700 crossing cross-fades
+    /// them (the swap's family; <paramref name="enter"/> is the view's <see cref="ZuneMotion.SwapEnter"/>).</summary>
+    public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, EnterExit? enter = null)
     {
         float lead = gutter + lay.PanoramaNudgeX;
         bool editor = slots.Title is not null && lay.PanoramaH > 0f;
@@ -163,10 +165,10 @@ internal static class ZuneDetailKit
         if (slots.Title is { } edit && editor)
         {
             var voice = Panorama("", lay);
-            title = edit(voice.Size, voice.LineHeight);
+            title = TitleHost("panorama:editor", edit(voice.Size, voice.LineHeight), enter);
         }
         else
-            title = Panorama(id.Title, lay);
+            title = TitleHost("panorama:title", Panorama(id.Title, lay), enter);
         return new BoxEl
         {
             Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
@@ -188,6 +190,12 @@ internal static class ZuneDetailKit
             ],
         };
     }
+
+    /// <summary>One of the panorama's two title trees under its keyed host, cross-faded when the other replaces it.</summary>
+    static BoxEl TitleHost(string key, Element title, EnterExit? enter) => new()
+    {
+        Key = key, Direction = 1, MinWidth = 0f, Enter = enter, Exit = ZuneMotion.SwapFade, Children = [title],
+    };
 
     // ── the rings ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -229,8 +237,14 @@ internal static class ZuneDetailKit
             OnClick = onClick, Children = kids.ToArray(),
         };
         // The tooltip wrapper carries the ring's key too, so a ring that gains siblings before it (a Short window's play and saved) keeps its node.
-        return word ? box : Controls.Named(box, label) with { Key = box.Key };
+        return StableNamed(box, label, word);
     }
+
+    /// <summary>A control whose word the tier writes or drops: ONE tooltip wrapper at every tier, its text empty (no tooltip wired) where the word is on
+    /// the control, keyed as the control, so a crossing that writes or drops the word keeps the control's node (a bare box at one tier and a wrapped
+    /// one at the other remounted it).</summary>
+    public static Element StableNamed(Element control, string label, bool word)
+        => ToolTip.Wrap(control, (Prop<string?>)(word ? null : label)) with { Key = control.Key };
 
     /// <summary>A ring that holds a state (a concert's "interested"): the outline heart at rest; while <paramref name="on"/> the heart is filled and the ring and the heart are
     /// in the accent (the save ring's look). Its word is the same either way.</summary>
@@ -336,7 +350,7 @@ internal static class ZuneDetailKit
                 Cursor = CursorId.Hand, Role = AutomationRole.ToggleButton, Focusable = true, AllowFocusOnInteraction = false, BlocksDragArm = true,
                 OnClick = () => lib.ToggleSaved(uri, name), Children = kids.ToArray(),
             };
-            return p.Word ? box : Controls.Named(box, label);
+            return StableNamed(box, label, p.Word);
         }
     }
 

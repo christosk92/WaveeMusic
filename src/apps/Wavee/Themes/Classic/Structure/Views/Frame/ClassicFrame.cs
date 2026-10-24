@@ -134,7 +134,10 @@ internal static class ClassicFrame
             ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f });
     }
 
-    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers) => ZStack(
+    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers)
+    {
+        LayoutTransition? reserve = ctx.Reduced ? null : ClassicFrameRules.PanelReserveAnim;
+        return ZStack(
         new BoxEl
         {
             // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
@@ -180,21 +183,22 @@ internal static class ClassicFrame
                         ContentRegionStroke(tiers),
                     ],
                 },
-                // The rail's 8-DIP breathing room exists only while the rail is inline.
+                // The rail's 8-DIP breathing room exists only while the rail is inline. It and the reservation ease on the panel's slide,
+                // through real layout, so the card's right edge rides the sliding panel's left edge every frame (open and close).
                 new BoxEl
                 {
                     Shrink = 0f, HitTestVisible = false,
-                    Width = Prop.Of(props.RailGapWidth),
+                    Width = Prop.Of(props.RailGapWidth), Animate = reserve,
                 },
-                // The rail RESERVATION: snaps 0 ↔ width at commit; its underlay is the docked band's ONE coat.
-                Reservation(props.RailReservedWidth),
+                // The rail RESERVATION (0 while closed or floating): its underlay is the docked band's ONE coat.
+                Reservation(props.RailReservedWidth, reserve),
                 // The second docked pane's gap and reservation (Huge, D3): 0 unless the queue is open beside the panel.
                 new BoxEl
                 {
                     Shrink = 0f, HitTestVisible = false,
-                    Width = Prop.Of(props.SecondGapWidth ?? s_zero),
+                    Width = Prop.Of(props.SecondGapWidth ?? s_zero), Animate = reserve,
                 },
-                Reservation(props.SecondReservedWidth ?? s_zero),
+                Reservation(props.SecondReservedWidth ?? s_zero, reserve),
             ],
         },
         // The sidebar seam: a strip translated to the pane edge, entirely on the content side of it.
@@ -228,14 +232,16 @@ internal static class ClassicFrame
         OnRealized = props.OnContentRegionRealized,
         OnBoundsChanged = props.OnContentRegionBounds,
     };
+    }
 
     private static readonly Func<float> s_zero = static () => 0f;
 
-    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide, its underlay the docked band's ONE coat.</summary>
-    private static Element Reservation(Func<float> width) => new BoxEl
+    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide, its underlay the docked band's ONE coat. Its width eases through
+    /// real layout on the panel's slide (<paramref name="motion"/>), so the content card beside it reflows with the panel.</summary>
+    private static Element Reservation(Func<float> width, LayoutTransition? motion) => new BoxEl
     {
         Shrink = 0f,
-        Width = Prop.Of(width),
+        Width = Prop.Of(width), Animate = motion,
         Children =
         [
             new BoxEl

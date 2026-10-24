@@ -51,6 +51,10 @@ public static partial class Diagnostics
             /// <summary>A tracked move is INSTANT when one frame carries at least this many DIP and most of its run (<see cref="InstantShare"/>):
             /// the change landed in a frame while something above it animated (a page reflowing at once beside a sliding pane).</summary>
             public float InstantDip = 4f;
+            /// <summary>The window in DIP, set by the runner: a move whose DRAWN part does not change (wholly off the window, below the fold, which the
+            /// engine lands at once on purpose: a flow reveal off the view does not animate; or under a clipping ancestor that has not opened yet) is no snap
+            /// and no jump. Empty: every move counts.</summary>
+            public RectF Window;
             public bool Rows = true;
             /// <summary>Turn the host's render census on: a slow frame's row then names the components that made it slow (`census`). Off by default (it costs frame time).</summary>
             public bool Census;
@@ -176,7 +180,11 @@ public static partial class Diagnostics
         // ── the samples ─────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>One watched node on one frame. <see cref="W"/> indexes the trace's watch list.</summary>
-        public readonly record struct NodeSample(int W, bool Shown, RectF Laid, RectF Pres, bool Track, float Opacity);
+        public readonly record struct NodeSample(int W, bool Shown, RectF Laid, RectF Pres, bool Track, float Opacity)
+        {
+            /// <summary>The part of <see cref="Pres"/> that is drawn: inside the window and every clipping ancestor's presented rect (empty: none).</summary>
+            public RectF Vis { get; init; } = Pres;
+        }
 
         /// <summary>The traced scroller on one frame. <see cref="Label"/> names the scroller (a different label = a different scroller).</summary>
         public readonly record struct ScrollSample(string Label, double Offset, double Velocity, double Max, double Content, double Viewport,
@@ -233,6 +241,9 @@ public static partial class Diagnostics
             public List<Move> Snaps = [], Jumps = [];
             /// <summary>The jumps that are no glide: one frame carries the run's move (<see cref="DetectInstants"/>).</summary>
             public List<Move> Instants = [];
+            /// <summary>Tracked moves nobody saw (the part drawn did not change: a zone that glided on below the fold). Never a verdict or a listed
+            /// jump; they only carry a run on, so a glide that leaves the window after two frames is not judged by those two alone.</summary>
+            internal List<Move> HiddenJumps = [];
             public List<OvershootRun> Overshoots = [];
             public List<ScrollEvent> Reversals = [], Stalls = [], Uneven = [], LayoutDuringScroll = [];
             public DeltaStats Deltas;
@@ -280,7 +291,7 @@ public static partial class Diagnostics
                 if (r.Cpu > 16.67) s.CpuOver16++;
             }
             if (rows.Count > 0) s.SettledAt = s.LastAnimatingFrame < 0 ? rows[0].Frame : (s.LastAnimatingFrame == rows[^1].Frame ? -1 : s.LastAnimatingFrame + 1);
-            DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s);
+            DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s, o.Window);
             DetectInstants(s, o.InstantDip);
             DetectScroll(rows, s);
             return s;
@@ -289,8 +300,9 @@ public static partial class Diagnostics
         /// <summary>Snaps (laid-out AND presented rect changed with no track on the node or an ancestor, in either frame) and jumps
         /// (presented rect moved more than <paramref name="jumpDip"/> in one frame while a track was active). A node that is not
         /// shown or not present resets its history. A move of the presented rect alone (scroll content translate) is neither.</summary>
-        public static void DetectMoves(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, float jumpDip, float snapDip, Summary into)
+        public static void DetectMoves(IReadOnlyList<Row> rows, IReadOnlyList<string> watch, float jumpDip, float snapDip, Summary into, RectF window = default)
         {
+            bool clip = window.W > 0f && window.H > 0f;
             var prev = new NodeSample?[watch.Count];
             var prevMag = new float[watch.Count];
             var first = new int[watch.Count];
@@ -311,14 +323,21 @@ public static partial class Diagnostics
                     if (!cur.Shown) { prev[w] = null; prevMag[w] = 0; continue; }
                     if (prev[w] is { } p)
                     {
-                        float dx = cur.Pres.X - p.Pres.X, dy = cur.Pres.Y - p.Pres.Y, dw = cur.Pres.W - p.Pres.W, dh = cur.Pres.H - p.Pres.H;
+                        // What moved is what is drawn: the part inside the window and every clip above (a card laid out at its new width inside
+                        // a zone that reveals it moves as far as the zone shows it). The whole rect where a part enters or leaves.
+                        bool parts = clip && !Empty(p.Vis) && !Empty(cur.Vis);
+                        RectF a = parts ? p.Vis : p.Pres, b = parts ? cur.Vis : cur.Pres;
+                        float dx = b.X - a.X, dy = b.Y - a.Y, dw = b.W - a.W, dh = b.H - a.H;
                         float mag = MathF.Max(MathF.Max(MathF.Abs(dx), MathF.Abs(dy)), MathF.Max(MathF.Abs(dw), MathF.Abs(dh)));
                         float lay = MathF.Max(MathF.Max(MathF.Abs(cur.Laid.X - p.Laid.X), MathF.Abs(cur.Laid.Y - p.Laid.Y)),
                                               MathF.Max(MathF.Abs(cur.Laid.W - p.Laid.W), MathF.Abs(cur.Laid.H - p.Laid.H)));
                         bool track = cur.Track || p.Track;
                         var move = new Move(watch[w], r.Frame, dx, dy, dw, dh, mag, prevMag[w], p.Pres, cur.Pres, track);
-                        if (track && mag > jumpDip) into.Jumps.Add(move);
-                        else if (!track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
+                        // A move nobody can see counts as neither: the part of the rect inside the window is what is drawn (a part below the fold, a tall
+                        // column whose foot moved off the window).
+                        bool visible = !clip || VisibleChange(p.Vis, cur.Vis);
+                        if (track && mag > jumpDip) (visible ? into.Jumps : into.HiddenJumps).Add(move);
+                        else if (visible && !track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
                         prevMag[w] = mag;
                     }
                     prev[w] = cur;
@@ -330,16 +349,31 @@ public static partial class Diagnostics
                 if (first[w] >= 0) into.NodeLife.Add((watch[w], first[w], last[w]));
         }
 
+        /// <summary>Nothing of the rect is drawn.</summary>
+        static bool Empty(RectF r) => r.W <= 0f || r.H <= 0f;
+
+        /// <summary>Did the drawn part of a rect change (by half a DIP or more on any edge)? Two empty parts (nothing of it drawn either frame) did not.</summary>
+        static bool VisibleChange(RectF a, RectF b)
+        {
+            bool ea = Empty(a), eb = Empty(b);
+            if (ea && eb) return false;
+            if (ea != eb) return true;
+            return MathF.Abs(a.X - b.X) >= 0.5f || MathF.Abs(a.Y - b.Y) >= 0.5f || MathF.Abs(a.Right - b.Right) >= 0.5f || MathF.Abs(a.Bottom - b.Bottom) >= 0.5f;
+        }
+
         /// <summary>The share of a run's whole move one frame must carry for the run to be instant: an eased glide spreads its move over
         /// many frames (an ease-out's first frame carries about a fifth of a 280 ms tween); a reflow that lands at once carries all of it.</summary>
         public const float InstantShare = 0.6f;
 
         /// <summary>Instant moves: per watched key, the jumps (tracked moves) on consecutive frames make a run; a run whose largest frame
         /// moves at least <paramref name="instantDip"/> and carries <see cref="InstantShare"/> of the run's whole move landed at once, though
-        /// a track ran on the node or above it (the trace's `jumps` list every eased frame too: they are not a verdict, these are).</summary>
+        /// a track ran on the node or above it (the trace's `jumps` list every eased frame too: they are not a verdict, these are). The moves
+        /// nobody saw (<see cref="Summary.HiddenJumps"/>) carry a run on and count in its whole move; only a seen frame is a verdict.</summary>
         public static void DetectInstants(Summary into, float instantDip)
         {
-            foreach (var group in into.Jumps.GroupBy(static m => m.Key))
+            var hidden = new HashSet<(string, int)>();
+            foreach (Move m in into.HiddenJumps) hidden.Add((m.Key, m.Frame));
+            foreach (var group in into.Jumps.Concat(into.HiddenJumps).GroupBy(static m => m.Key))
             {
                 List<Move> moves = group.OrderBy(static m => m.Frame).ToList();
                 for (int i = 0; i < moves.Count;)
@@ -347,13 +381,13 @@ public static partial class Diagnostics
                     int j = i;
                     while (j + 1 < moves.Count && moves[j + 1].Frame == moves[j].Frame + 1) j++;
                     float total = 0f;
-                    Move top = moves[i];
+                    Move? top = null;
                     for (int k = i; k <= j; k++)
                     {
                         total += moves[k].Mag;
-                        if (moves[k].Mag > top.Mag) top = moves[k];
+                        if (!hidden.Contains((moves[k].Key, moves[k].Frame)) && (top is not { } t || moves[k].Mag > t.Mag)) top = moves[k];
                     }
-                    if (top.Mag >= instantDip && top.Mag >= InstantShare * total) into.Instants.Add(top);
+                    if (top is { } seen && seen.Mag >= instantDip && seen.Mag >= InstantShare * total) into.Instants.Add(seen);
                     i = j + 1;
                 }
             }
@@ -699,9 +733,13 @@ public static partial class Diagnostics
         {
             SceneStore scene = shell.Host.Scene;
             var anim = shell.Host.Animation;
+            float winScale = Math.Max(0.01f, shell.Window.Scale);
+            var window = new RectF(0f, 0f, shell.Window.ClientSizePx.Width / winScale, shell.Window.ClientSizePx.Height / winScale);
             var result = new InspectTrace.Result { Options = o };
             var watchIndex = new Dictionary<string, int>(StringComparer.Ordinal);
             var seen = new HashSet<uint>();
+            var reflowScratch = new List<NodeHandle>(8);   // the live reflow rows after each frame (a sibling reflow is a watched node's track)
+            var reflowParents = new HashSet<uint>();
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
             var lastNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);   // the node of each lone watched key on the frame before
             var nowNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);
@@ -757,6 +795,16 @@ public static partial class Diagnostics
                 {
                     keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
                     seen.Clear();
+                    // A node a live REFLOW moves or resizes though no row sits on it or an ancestor (the page beside a docking panel's easing
+                    // reservation, the zones after a hero whose height eases, the columns that hold it) rides the reflow's re-solve: that is its track.
+                    // The ancestors of the live reflow rows hold such flows: they resize with it, and the children of the ones that lay their children out
+                    // in a flow ride it (a z-stack's children overlay: a sibling's size moves none of them). A one-frame move under it still reads as an
+                    // INSTANT (InspectTrace.DetectMoves): this only says what has a track.
+                    anim.CollectLiveReflowNodes(reflowScratch);
+                    reflowParents.Clear();
+                    foreach (var rn in reflowScratch)
+                        for (var rp = scene.Parent(rn); !rp.IsNull; rp = scene.Parent(rp))
+                            if (!reflowParents.Add(rp.Raw.Index)) break;   // the chain above is already in
                     dup.Clear();
                     nowNode.Clear();
                     foreach (var (node, key) in keyed)
@@ -778,8 +826,14 @@ public static partial class Diagnostics
                         {
                             opacity *= scene.Paint(up).Opacity;
                             if (!track && anim.HasTracks(up)) track = true;
+                            if (!track && reflowParents.Count > 0
+                                && (reflowParents.Contains(up.Raw.Index)
+                                    || scene.Parent(up) is var pu && !pu.IsNull && (scene.Flags(pu) & NodeFlags.ZStack) == 0 && reflowParents.Contains(pu.Raw.Index)))
+                                track = true;
                         }
-                        row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), scene.PresentedAbsoluteRect(node), track, opacity));
+                        RectF pres = DrawnRect(scene, node, scene.PresentedAbsoluteRect(node));
+                        row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), pres, track, opacity)
+                            { Vis = VisiblePart(scene, node, pres, window) });
                         if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
                     }
                     foreach (var (key, node) in nowNode)
@@ -800,6 +854,7 @@ public static partial class Diagnostics
                 }
                 result.Rows.Add(row);
             }
+            o.Window = window;
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
             return result;
         }
@@ -812,6 +867,46 @@ public static partial class Diagnostics
             for (NodeHandle n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
                 if (SwapsOut(shell, n) && shell.Host.Animation.HasTracks(n)) return InspectKit.KeyOf(scene, n);
             return null;
+        }
+
+        /// <summary>The rect <paramref name="node"/> is drawn in: the engine's presented rect (<paramref name="pres"/>: translations, presented extents,
+        /// the presented flow) with the scales on its chain composed in (a ScaleCorrect resize on it or on the box round it, a title's scale step),
+        /// which the presented rect leaves out. A chain without a scale returns <paramref name="pres"/> as it is.</summary>
+        static RectF DrawnRect(SceneStore scene, NodeHandle node, RectF pres)
+        {
+            bool scaled = false;
+            for (var n = node; !n.IsNull && !scaled; n = scene.Parent(n))
+            {
+                var t = scene.Paint(n).LocalTransform;
+                scaled = t.M11 != 1f || t.M22 != 1f || t.M12 != 0f || t.M21 != 0f;
+            }
+            if (!scaled) return pres;
+            float x0 = 0f, y0 = 0f, x1 = pres.W, y1 = pres.H;
+            for (var n = node; !n.IsNull; n = scene.Parent(n))
+            {
+                var t = scene.Paint(n).LocalTransform;
+                RectF b = scene.Bounds(n);
+                float ox = b.X + t.Dx, oy = b.Y + t.Dy;
+                var parent = scene.Parent(n);
+                if (!parent.IsNull) { ox += scene.Paint(parent).ChildShiftX; oy += scene.Paint(parent).ChildShiftY; }
+                (x0, y0, x1, y1) = (t.M11 * x0 + t.M21 * y0 + ox, t.M12 * x0 + t.M22 * y0 + oy, t.M11 * x1 + t.M21 * y1 + ox, t.M12 * x1 + t.M22 * y1 + oy);
+            }
+            float flowDy = pres.Y - scene.AbsoluteRect(node).Y;   // the presented flow's shift, which the chain does not hold
+            return new RectF(MathF.Min(x0, x1), MathF.Min(y0, y1) + flowDy, MathF.Abs(x1 - x0), MathF.Abs(y1 - y0));
+        }
+
+        /// <summary>The part of <paramref name="pres"/> drawn: inside the window and inside every ancestor that clips (at its PRESENTED rect: a revealing
+        /// zone shows only what its clip has opened). Empty where none of it shows.</summary>
+        static RectF VisiblePart(SceneStore scene, NodeHandle node, RectF pres, RectF window)
+        {
+            float x0 = MathF.Max(pres.X, window.X), y0 = MathF.Max(pres.Y, window.Y), x1 = MathF.Min(pres.Right, window.Right), y1 = MathF.Min(pres.Bottom, window.Bottom);
+            for (var up = scene.Parent(node); !up.IsNull && x1 > x0 && y1 > y0; up = scene.Parent(up))
+            {
+                if ((scene.Flags(up) & NodeFlags.ClipsToBounds) == 0) continue;
+                RectF c = scene.PresentedAbsoluteRect(up);
+                x0 = MathF.Max(x0, c.X); y0 = MathF.Max(y0, c.Y); x1 = MathF.Min(x1, c.Right); y1 = MathF.Min(y1, c.Bottom);
+            }
+            return x1 > x0 && y1 > y0 ? new RectF(x0, y0, x1 - x0, y1 - y0) : default;
         }
 
         static bool Matches(InspectTrace.Options o, string key)

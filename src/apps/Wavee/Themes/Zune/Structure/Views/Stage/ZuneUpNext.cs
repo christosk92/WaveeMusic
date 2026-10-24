@@ -70,7 +70,7 @@ internal sealed class ZuneStageUpNextColumn : Component
         _queue = props.Queue;
         _target = ZuneStageTiers.StageOf(in tiers).TargetH;
         var window = tiers.Policy is null ? WidthTier.Standard : tiers.Window;
-        _q = ZuneStageUpNextRules.Of(window);
+        _q = props.Aside ? UR.Docked(UR.Of(window)) : UR.Of(window);   // the docked column (audit B3, Vr): the board's three columns, not the page's five
         _hs = UR.HistoryScale(window);
         var set = ctx.Accent.Value;
         var layout = ctx.Layout.Value;

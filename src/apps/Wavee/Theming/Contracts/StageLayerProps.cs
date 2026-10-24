@@ -85,6 +85,10 @@ public sealed record StageIdentityProps
 
     /// <summary>Open the playing track's artist: closes the stage first, then navigates. The argument is the shared-element <c>Begin</c> from the template's context.</summary>
     public required Action<Action<string>?> OpenArtist { get; init; }
+
+    /// <summary>The marquee preference (Settings > Appearance): a one-line title that does not fit scrolls instead of ellipsising. Read in the
+    /// render. Null: never. Appended (contract 1.57, audit B3).</summary>
+    public Func<bool>? Marquee { get; init; }
 }
 
 /// <summary>The "Artist · Album" line and whether it links to an artist page.</summary>

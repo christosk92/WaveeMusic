@@ -396,18 +396,33 @@ internal static partial class WinUiPlayerBar
 
         // A scrolling title shows itself in full; a plain one carries its full text in a tooltip while it is cut.
         var kids = new List<Element>(3) { v.Marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey } };
+        // The Mini bar's second line is the artists or, while the output plays on another device, "Playing on" in their place: the two cross-fade
+        // in the one slot (PL.LineSwap), never a cut.
         if (mini && props.DeviceIsRemote())
-            kids.Add(new BoxEl { Key = "remote-device-line", Direction = 1, MinWidth = 0f, Children = [Embed.Comp(new RemoteProps(props, Accent: true), static () => new WinUiRemoteLine())] });
+            kids.Add(new BoxEl
+            {
+                Key = "remote-device-line", Direction = 1, MinWidth = 0f, Enter = PL.LineSwap, Exit = PL.LineSwap, Transition = PL.LineSwapMotion,
+                Children = [Embed.Comp(new RemoteProps(props, Accent: true), static () => new WinUiRemoteLine())],
+            });
         else if (v.ShowArtistLine)
         {
             var credits = new CreditsProps(props, Linked: !mini);
-            kids.Add(v.Marquee
+            BoxEl line = v.Marquee
                 ? new BoxEl
                 {
                     Key = artistsKey, Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
                     Children = [Marquee.Content(() => new WinUiCreditsRun(credits), MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)))],
                 }
-                : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] });
+                : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] };
+            // The swap rides an outer box of no set height: the marquee's line has one, and the layout reads an exit with a set height as one that
+            // still holds its space (a reflow's), so the meta column would grow for the fade and its lines drift.
+            kids.Add(mini
+                ? new BoxEl
+                {
+                    Key = artistsKey, Direction = 1, MinWidth = 0f, Enter = PL.LineSwap, Exit = PL.LineSwap, Transition = PL.LineSwapMotion,
+                    Children = [line with { Key = null }],
+                }
+                : line);
         }
         if (!mini && v.RemoteLine)
             kids.Add(new BoxEl

@@ -37,6 +37,15 @@ internal static class ClassicFrameRules
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
+    /// <summary>A docked panel's reservation and its 8-DIP gap in the content row (the primary's and Huge's second pane's): the width eases
+    /// THROUGH REAL LAYOUT on the panel's own slide (<see cref="ClassicPanelLayout.SlideMs"/> / <see cref="ClassicPanelLayout.SlideEasing"/>), so the
+    /// content card beside it reflows every frame and the page's right edge rides the sliding panel's left edge: no empty band on an open (the page
+    /// laid out at its final width on the first frame while the panel was still off-canvas), no page widening under a panel that has not left yet on
+    /// a close. Anchored at the leading edge (the reservation's coat grows leftward with the panel).</summary>
+    public static readonly LayoutTransition PanelReserveAnim = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading,
+        Axes: SizeAxes.Width);
+
     /// <summary>The panel host's transition (TC2): a crossing that docks, floats or sheets the panel, or opens the second pane beside it,
     /// moves and resizes the host on the content card's dynamics, laid out at the final size (a clip and a translate ease).</summary>
     public static readonly LayoutTransition PanelHostAnim = new(TransitionChannels.Position | TransitionChannels.Size,

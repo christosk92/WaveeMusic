@@ -503,7 +503,7 @@ internal sealed class ZuneBand : Component
             [
                 new BoxEl
                 {
-                    Key = ZuneBandRules.Row2Key + ":" + RowSignature(views, actions), Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center,
+                    Key = ZuneBandRules.Row2Key + ":" + RowSignature(views), Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center,
                     Height = rec.Row2H, MinWidth = 0f, Gap = rec.Row2Gap,
                     Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
                     Children = kids.ToArray(),
@@ -512,13 +512,12 @@ internal sealed class ZuneBand : Component
         };
     }
 
-    /// <summary>What makes one row 2 a different row from another: the ids of its views and of its actions, in order.</summary>
-    static string RowSignature(IReadOnlyList<PageView> views, IReadOnlyList<PageAction> actions)
+    /// <summary>What makes one row 2 a different row from another: the ids of its views, in order. Never its actions: the 640 crossing takes them
+    /// out of the band (Compact draws none) and they fade on their own (<see cref="Actions"/>), so the views, which survive, keep their nodes.</summary>
+    static string RowSignature(IReadOnlyList<PageView> views)
     {
         var sb = new System.Text.StringBuilder(48);
         for (int i = 0; i < views.Count; i++) sb.Append(views[i].Id).Append(',');
-        sb.Append('|');
-        for (int i = 0; i < actions.Count; i++) sb.Append(actions[i].Id).Append(',');
         return sb.ToString();
     }
 

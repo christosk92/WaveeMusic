@@ -104,6 +104,9 @@ public static class ClassicPlayerTiers
     /// <summary>The title (14/18 bold) over the artist line (12/16), 1 apart.</summary>
     public const float MiniTitleSize = 14f, MiniTitleLine = 18f, MiniSubSize = 12f, MiniSubLine = 16f, MiniLinesGap = 1f;
 
+    /// <summary>The device glyph before "Playing on" in the artist line's place (the line's 12) and its gap to the words.</summary>
+    public const float MiniRemoteGlyph = 12f, MiniRemoteGap = 4f;
+
     /// <summary>The heart and the play disc: 40 x 40 (the Compact target floor), glyph 16.</summary>
     public const float MiniButton = 40f, MiniGlyph = 16f;
 

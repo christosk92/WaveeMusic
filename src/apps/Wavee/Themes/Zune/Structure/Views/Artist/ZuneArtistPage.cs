@@ -145,8 +145,19 @@ internal static class ZuneArtistPage
         // the option itself.
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, washH, lay.HeroH / washH, key: Rules.WashKey + uri, payloadAccent: a.HeaderAccent);
 
-        var column = new List<Element>(4) { hero };
-        if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(ZuneArtistHero.BelowRow(a.Name, uri, lay, in acts));
+        // The Compact row under the hero (play · shuffle · follow) stands in a slot that is ALWAYS mounted: crossing 640 its room opens and closes as an
+        // easing height while the row fades in it, so the magazine under it glides instead of stepping 48 on the commit frame.
+        bool below = lay.Actions == ZuneArtistActions.BelowHero;
+        var column = new List<Element>(4)
+        {
+            hero,
+            new BoxEl
+            {
+                Key = Rules.ActionsKey + ":below-slot", Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
+                Height = below ? lay.Target + Rules.BelowRowTop : 0f, Layout = ZuneMotion.HeightResize,
+                Children = below ? [ZuneArtistHero.BelowRow(a.Name, uri, lay, in acts)] : [],
+            },
+        };
         column.Add(BodyAir(lay));
         column.Add(Magazine(sections.ToArray(), lay));
 

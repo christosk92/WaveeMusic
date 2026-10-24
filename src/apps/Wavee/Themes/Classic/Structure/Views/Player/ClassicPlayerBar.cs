@@ -468,13 +468,28 @@ internal static partial class ClassicPlayerBar
             Key = titleKey, ClipToBounds = true, MinWidth = 0f,
             Children = [titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine }],
         };
+        // The second line: the artists or, while the output plays on another device, "Playing on" in their place (the bar's remote state at every
+        // tier). The two lines share one slot of one height and cross-fade in it, never a cut.
+        Element? second = props.DeviceIsRemote()
+            ? new BoxEl
+            {
+                Key = "remote-device-line", ClipToBounds = true, MinWidth = 0f,
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                Children = [Embed.Comp(() => new MiniRemote(props))],
+            }
+            : v.ShowArtistLine
+                ? new BoxEl
+                {
+                    Key = "np-artists", ClipToBounds = true, MinWidth = 0f,
+                    Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    Children = [Embed.Comp(() => new MiniCredits(props))],
+                }
+                : null;
         var meta = new BoxEl
         {
             Key = "meta", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f, Gap = ClassicPlayerTiers.MiniLinesGap,
             Justify = FlexJustify.Center, ClipToBounds = true, OnRealized = h => metaNode.Value = h,
-            Children = v.ShowArtistLine
-                ? [title, new BoxEl { Key = "np-artists", ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(() => new MiniCredits(props))] }]
-                : [title],
+            Children = second is null ? [title] : [title, second],
         };
         var door = new BoxEl
         {
@@ -522,6 +537,32 @@ internal static partial class ClassicPlayerBar
                 },
             ],
         };
+    }
+
+    /// <summary>The mini bar's "Playing on" line in the artist line's place: the device glyph and the words in the remote line's accent (88 %), plain
+    /// (the whole identity is ONE door; the picker is the sheet's and the full bar's).</summary>
+    private sealed class MiniRemote(PlayerBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            string? name = props.RemoteDeviceName();
+            if (name is null) return new BoxEl { Height = 0f, HitTestVisible = false };
+            ColorF ink = Tok.AccentDefault with { A = ClassicPlayerBarLayout.RemoteLineRestAlpha };
+            return new BoxEl
+            {
+                Height = ClassicPlayerTiers.MiniSubLine, Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicPlayerTiers.MiniRemoteGap,
+                MinWidth = 0f, ClipToBounds = true,
+                Children =
+                [
+                    new TextEl(Icons.Devices) { Size = ClassicPlayerTiers.MiniRemoteGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink, Shrink = 0f },
+                    new TextEl(Strings.Player.PlayingOn(name))
+                    {
+                        Size = ClassicPlayerTiers.MiniSubSize, LineHeight = ClassicPlayerTiers.MiniSubLine, Color = ink,
+                        MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                    },
+                ],
+            };
+        }
     }
 
     /// <summary>The mini bar's artist line: the names as plain text (the whole identity is ONE door, so nothing in it is a link of its own).</summary>

@@ -13,8 +13,8 @@
 //   - Every slot is KEYED by its role + line index (+ the document's generation), so a hand-off plays the Exit (up and out) on the
 //     outgoing line and the Enter (up from below) on the incoming one; reduced motion keeps only the fade. The hand-off is SEQUENCED,
 //     never a cross-fade: the outgoing slot is painted at its old rect (it leaves the flow) and the incoming one takes the same slot, so
-//     overlapping the two drew one line through the other (the ghost behind the active line). The exit runs StandardExit (200 ms) and
-//     the enter waits it out (`WinUiStageCaptionGeometry.HandOffMs`) before its StandardEnter.
+//     overlapping the two drew one line through the other (the ghost behind the active line). The exit runs StandardExit and the
+//     enter waits it out before its StandardEnter: the core's `Stage.CaptionSlot`, every theme's recipe.
 //   - Nothing is ellipsised: every line wraps (the block is bottom-anchored, so a longer line grows the block upward).
 // The root layer is the stage's own `Stage.Layer`; the root places it under a `Flow.Show(CaptionOn)` with a RepaintBoundary.
 
@@ -81,15 +81,11 @@ internal static class WinUiStageCaption
 
     static ColorF Shade(float a) => Ink.Veil with { A = a };
 
-    static EnterExit SlotEnter => new(Dy: Design.Reduced ? 0f : Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true, DelayMs: WinUiStageCaptionGeometry.HandOffMs);
-
-    static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Stage.Tone.CaptionRiseDip, Opacity: 0f, Active: true);
-
     /// <summary>A context line (previous / next): small, one line, the stage arm's secondary ink (at the old 0.35 / 0.45 ink alphas it read 2 : 1 over a bright visualizer), never blurred.</summary>
     static Element ContextLine(string text, string key, StageCaptionProps p) => new BoxEl
     {
         Key = key, Direction = 1, AlignItems = FlexAlign.Center, MaxWidth = p.Width, HitTestVisible = false,
-        Enter = SlotEnter, Exit = SlotExit,
+        Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
         Children =
         [
             new TextEl(text)
@@ -125,7 +121,7 @@ internal static class WinUiStageCaption
         return new BoxEl
         {
             Key = key, Direction = 1, AlignItems = FlexAlign.Center, Gap = WinUiStageCaptionGeometry.SecondaryGap, MaxWidth = p.Width, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit,
+            Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
             Children = p.Secondary is { Length: > 0 } secondary
                 ? [stack, new TextEl(secondary) { Size = p.ContextSize, LineHeight = p.ContextLineHeight, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, MinWidth = 0f }]
                 : [stack],
@@ -147,7 +143,7 @@ internal static class WinUiStageCaption
         return new BoxEl
         {
             Key = key, Height = p.ActiveLineHeight, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit,
+            Enter = Stage.CaptionSlot.Enter, Exit = Stage.CaptionSlot.Exit, Layout = Stage.CaptionSlot.Motion,
             Children =
             [
                 new BoxEl

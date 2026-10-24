@@ -31,6 +31,16 @@ public static class ZuneMotion
     /// <summary>A pivot word or pane that survives a reorder (the rotating pivot at Compact, a pane change): the position-only slide.</summary>
     public static readonly LayoutTransition PivotSlide = new(TransitionChannels.Position, TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut));
 
+    /// <summary>A quickplay group whose tiles a crossing resizes or re-breaks (the page narrowing beside a docking panel): it slides to its new place
+    /// on the pivot slide's clock and its box follows its tiles (<see cref="TileResize"/>).</summary>
+    public static readonly LayoutTransition GroupResize = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut), SizeMode.Reveal);
+
+    /// <summary>A quickplay tile whose edge a crossing changes (the pins' 180 ↔ 132 when a docking panel narrows the content tier): it scales from its
+    /// old box to its new one from its top-left corner and slides to its new place on the pivot slide's clock, so the tiles after it never jump.</summary>
+    public static readonly LayoutTransition TileResize = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut), SizeMode.ScaleCorrect);
+
     /// <summary>The panorama title's scale duration.</summary>
     public const float TitleScaleMs = 200f;
 
@@ -79,4 +89,26 @@ public static class ZuneMotion
     /// <summary>A part the new tier draws as a different tree (the mini bar ↔ the desktop bar, a panel's sheet ↔ overlay): the same
     /// opacity cross-fade as the grid's.</summary>
     public static readonly EnterExit SwapFade = SwapFamilies.Declare("Zune.SwapFade", new(Opacity: 0f, Active: true));
+
+    /// <summary>A part whose two forms lay their words out in different places (the daylist strip ↔ its bled form): a FADE-THROUGH, the old form out
+    /// where it stands, then the new one in (its enter waits out the exit), so the two layouts never show at once. A cross-fade superimposed their
+    /// titles over the cover for its whole length. A declared swap family: each form is its own keyed tree.</summary>
+    public static readonly EnterExit SwapThrough = SwapFamilies.Declare("Zune.SwapThrough", new(Opacity: 0f, Active: true, DelayMs: GridCrossFadeMs));
+
+    /// <summary>Each leg of <see cref="SwapThrough"/>: the grid cross-fade's 160 ms, its fade kept under reduced motion.</summary>
+    public static MotionTokenDef SwapThroughMotion => MotionTokenDef.Eased(GridCrossFadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
+
+    /// <summary>A swap host's Enter: <see cref="SwapFade"/> once its view has rendered before (a crossing mounts the other tree, which fades in over
+    /// the leaving one), none on the view's first render (a part that arrives with its page arrives with the page's own entrance, as before). Its
+    /// Exit is always <see cref="SwapFade"/>. <paramref name="rendered"/> is <see cref="Rendered"/>'s answer.</summary>
+    public static EnterExit? SwapEnter(bool rendered) => rendered ? SwapFade : null;
+
+    /// <summary>Has this view rendered before (false on its first render, true after)? Call it once per template, unconditionally, before any branch.</summary>
+    public static bool Rendered(FluentGpu.Hooks.RenderContext hooks)
+    {
+        var seen = hooks.UseRef(false);
+        bool was = seen.Value;
+        seen.Value = true;
+        return was;
+    }
 }
