@@ -413,6 +413,9 @@ public readonly partial struct Track
         /// <summary>The ceiling for "Play next" / "Add to queue" on the whole context (0.2.9 DetailQueueActions.MaxBatch).</summary>
         const int MaxQueueBatch = 50;
         const int ReDealReversalMs = 200;
+        /// <summary>How long after the hero list's form changes (audit B9) a table-tier change is the re-arrangement's own (its list column narrowed or widened
+        /// with the form): no re-deal then, the rows ride the re-arrangement (they glide with the list's insets) instead of fading out and back in.</summary>
+        const int ReDealFormGraceMs = 400;
         const int ReDealRows = 24;
 
         // ── props: data gates the render, behaviour is read through _latest ─────────────────────────────────────────
@@ -523,6 +526,16 @@ public readonly partial struct Track
 
         // ── the vertical arm ───────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<float> _heroH = new(0f);
+        /// <summary>The COLUMNS form's pinned head, as the hero reports it (audit B9): the line its chrome pins at and its rows clip under. Its own value,
+        /// never the hero form's: a crossing lands each form on the head it last measured (the head's own report lands at once, its body eases).</summary>
+        readonly Signal<float> _headH = new(0f);
+        /// <summary>The hero's measured height while it is SHORTER than the band it collapses to (else 0), equality-gated: the hero form's chrome pins at
+        /// the hero's foot rather than below it while a crossing from the columns form (a 52 list head) eases the hero up through the band's height
+        /// (audit B9), so the chrome never steps down to the band's line on the commit frame.</summary>
+        readonly Signal<float> _heroShort = new(0f);
+        float _heroShortNext;
+        bool _heroShortPosted;
+        Action? _raiseStickLine;
         // The chrome sticky's ENGAGED edge (`Sticky(… engaged:)` — the engine writes it on its flip, before the frame
         // publishes): the compact band's input hand-off. (The body clip's feather is the clip's own composite-time
         // parameter, EdgeFadeSpec.WhileStuck — no engaged signal, no re-render; RCA 2026-09-25 F(ii).)
@@ -580,6 +593,8 @@ public readonly partial struct Track
         bool _contextSeeded, _settled, _dealtThisFrame, _orderSeeded;
         int _resetEpoch, _dealEpoch, _lastDealtTier = -1;
         long _lastDealtAtMs;
+        global::Wavee.Theming.Contracts.DetailForm _formSeen;
+        long _formChangedAtMs;
         Snapshot _orderSeen;
         Track[] _curTracks = [], _prevTracks = [];
         StringId[] _curIds = [], _prevIds = [];
@@ -619,7 +634,33 @@ public readonly partial struct Track
             _onBounds = OnColumnBounds;
             // Unknown (no seed) is the widest tier, as the table always opened.
             _listSeed = () => _latest is { WidthSeed: > 0f } a ? a.WidthSeed : float.PositiveInfinity;
-            _onHeroMeasured = h => { if (h > 1f && MathF.Abs(_heroH.Peek() - h) > 1f) _heroH.Value = h; };
+            _onHeroMeasured = h =>
+            {
+                // The columns form reports its pinned head (the hero's list head's foot), the hero form its whole height.
+                if (ColumnsForm)
+                {
+                    if (h > 1f && MathF.Abs(_headH.Peek() - h) > 1f) _headH.Value = h;
+                    return;
+                }
+                if (h > 1f && MathF.Abs(_heroH.Peek() - h) > 1f) _heroH.Value = h;
+                // Lowered at once, raised a frame later: a reflow's first layout probes the hero at its FINAL height before it lays it out again at the
+                // presented one, and a line raised on that probe would step the chrome down to the band on the commit frame.
+                float shortH = h > 1f && h < BandNow() ? h : 0f;
+                _heroShortNext = shortH;
+                if (shortH > 1f)
+                {
+                    if (MathF.Abs(_heroShort.Peek() - shortH) > 0.5f) _heroShort.Value = shortH;
+                }
+                else if (_heroShort.Peek() > 0f && !_heroShortPosted && _post is { } post)
+                {
+                    _heroShortPosted = true;
+                    post(_raiseStickLine ??= () =>
+                    {
+                        _heroShortPosted = false;
+                        if (_heroShortNext <= 1f && _heroShort.Peek() > 0f) _heroShort.Value = 0f;
+                    });
+                }
+            };
             _playAll = () => StartVisible(0);
             _shuffle = Shuffle;
             _checksRead = () => _checksVisible?.Value ?? false;
@@ -1199,6 +1240,7 @@ public readonly partial struct Track
             // ── membership choreography (§4.6) + the breakpoint re-deal, seeded in the render that commits the order ──
             int resetBefore = _resetEpoch;
             TrackOrder(in snap, shape.RowH);
+            if (_latest.Form != _formSeen) { _formSeen = _latest.Form; _formChangedAtMs = Environment.TickCount64; }
             ReDeal(shape.Set.Tier, shape.RowH);
             _dealtThisFrame = false;
             UseLayoutEffect(BumpDisplacement, DepKey.From(_dealEpoch));
@@ -1654,6 +1696,7 @@ public readonly partial struct Track
 
         float HeroHeightFor(Detail.VerticalSpec spec, float colW)
         {
+            if (ColumnsForm) return _headH.Value;
             float measured = _heroH.Value;
             // Pre-measure: the SAME title plan the skeleton reserves — the known title's, else the pessimistic null-title
             // one (ch 03 §9.3).
@@ -1714,12 +1757,17 @@ public readonly partial struct Track
                 : hero.Collapse(Detail.VerticalLayout.CollapseDistance(heroH, BandNow()), BandNow(), CollapseAnchor.Leading);
         }
 
-        /// <summary>The line the hero list's chrome pins at and its rows clip under: the band the collapsing hero leaves (the hero form), or the pinned
-        /// hero's own laid-out height (the columns form, audit B9: the head stands whole above the chrome). Tracked.</summary>
+        /// <summary>The line the hero list's chrome pins at and its rows clip under: the band the collapsing hero leaves (the hero form; the hero's own foot
+        /// while it is shorter), or the pinned head the hero reports (the columns form, audit B9: the head stands whole above the chrome; its side columns
+        /// hang beside the rows). Tracked.</summary>
         float StickLine()
         {
-            if (!ColumnsForm) return BandNow();
-            float h = _heroH.Value;
+            if (!ColumnsForm)
+            {
+                float band = BandNow(), shortH = _heroShort.Value;
+                return shortH > 1f ? MathF.Min(band, shortH) : band;
+            }
+            float h = _headH.Value;
             return h > 1f ? h : 0f;
         }
 
@@ -1855,7 +1903,7 @@ public readonly partial struct Track
                 Direction = 1,
                 Children =
                 [
-                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form) ?? new BoxEl(),
+                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier), TiersNow(), _latest.Form, _latest.Columns) ?? new BoxEl(),
                     InsetList(Chrome(in shape, chips, lens)),
                     InsetList(RowsShimmer(in shape)),
                 ],
@@ -2630,9 +2678,10 @@ public readonly partial struct Track
             _lastDealtTier = tier;
             long now = Environment.TickCount64;
             bool reversal = now - _lastDealtAtMs < ReDealReversalMs;
+            bool rearranged = VerticalArm && now - _formChangedAtMs < ReDealFormGraceMs;
             _lastDealtAtMs = now;
             if (_dealtThisFrame) return;
-            if (previous < 0 || reversal || Design.Reduced || rowH <= 0f)
+            if (previous < 0 || reversal || rearranged || Design.Reduced || rowH <= 0f)
             {
                 _flip.Clear(); _fade.Clear();   // never let a stale deal replay on an unrelated displacement bump
                 return;

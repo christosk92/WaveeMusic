@@ -56,8 +56,8 @@ internal static class ClassicTrackChrome
         var g = ClassicDetailTiers.Of(a.Tiers).Unavailable;
         Element bar = new BoxEl
         {
-            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f,
-            Height = g.Height, Shrink = 0f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
+            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f, Grow = 1f, Basis = 0f,
+            Height = g.Height, Shrink = 1f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
             Corners = Radii.ControlAll, BorderWidth = 1f,
             Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Children =
@@ -71,15 +71,27 @@ internal static class ClassicTrackChrome
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
             ],
         };
+        // The bar stands between two easing gutters (not a padding: a padding cannot ease), so a crossing that moves the rows' inset (the detail page's
+        // hero form ↔ its columns form, audit B9) glides the bar with them.
         return new BoxEl
         {
             Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
             Height = a.Shown ? g.Extent : 0f,
-            Padding = new Edges4(a.InsetX, 0f, a.InsetX, 0f),
             Animate = Design.Reduced ? null : ClassicUnavailableBar.Motion,
-            Children = [bar],
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                    Children = [InsetGutter("unavailable:lead", a.InsetX), bar, InsetGutter("unavailable:trail", a.InsetX)],
+                },
+            ],
         };
     }
+
+    /// <summary>The unavailable bar's side gutter: the rows' inset, easing its width when a crossing moves it.</summary>
+    static Element InsetGutter(string key, float width)
+        => new BoxEl { Key = key, Width = width, Shrink = 0f, HitTestVisible = false, Layout = ClassicTierMotion.SizeReflow };
 
     // ══ THE PLACEHOLDER ══════════════════════════════════════════════════════════════════════════════════════════════
 

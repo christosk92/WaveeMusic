@@ -161,6 +161,10 @@ public static class ZuneDetailRules
     /// <summary>The columns' WIDTH ease (the identity column, the aside and the docked insights when a crossing moves them): REAL layout on the width axis,
     /// so the list beside them yields smoothly instead of jumping to its final width while the column's clip window eases (ZT5: `SizeMode.Reveal` lays the
     /// neighbours out at the final size at once). The content stays anchored to the leading edge (a wipe); the width alone animates.</summary>
+    /// <summary>The hero body's height ease at the columns form (audit B9): its identity column and aside hang below it beside the rows on purpose, so it
+    /// eases without clipping them away (<see cref="ZuneMotion.HeightResize"/> clips while it reflows: the hero form's identity is revealed as it grows).</summary>
+    public static readonly LayoutTransition HangingResize = ZuneMotion.HeightResize with { ReflowUnclipped = true };
+
     public static readonly LayoutTransition ColumnReflow = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 

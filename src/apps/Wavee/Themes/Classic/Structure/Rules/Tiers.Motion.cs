@@ -42,6 +42,10 @@ public static class ClassicTierMotion
     public static readonly LayoutTransition SizeReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width | SizeAxes.Height);
 
+    /// <summary><see cref="SizeReflow"/> for a box whose children hang outside it on purpose (the detail page's columns form, audit B9: the rail hangs below
+    /// the 52 list head beside the rows): the box eases its size without clipping them away while it does.</summary>
+    public static readonly LayoutTransition HangingReflow = SizeReflow with { ReflowUnclipped = true };
+
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 
@@ -50,4 +54,18 @@ public static class ClassicTierMotion
 
     /// <summary>The cross-fade's timing (the plan's ~160 ms).</summary>
     public static MotionTokenDef SwapFadeMotion => MotionTok.ControlFast;
+
+    /// <summary>A swap host's Enter (audit B9): <see cref="SwapFade"/> once its view has rendered before (a crossing mounts the other form's piece, which
+    /// fades in over the leaving one), none on the view's first render (a part that arrives with its page arrives with the page's own entrance). Its Exit
+    /// is always <see cref="SwapFade"/>. <paramref name="rendered"/> is <see cref="Rendered"/>'s answer.</summary>
+    public static EnterExit? SwapEnter(bool rendered) => rendered ? SwapFade : null;
+
+    /// <summary>Has this view rendered before (false on its first render, true after)? Call it once per template, unconditionally, before any branch.</summary>
+    public static bool Rendered(FluentGpu.Hooks.RenderContext hooks)
+    {
+        var seen = hooks.UseRef(false);
+        bool was = seen.Value;
+        seen.Value = true;
+        return was;
+    }
 }

@@ -327,9 +327,10 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
 public sealed class DetailHeroStyle
 {
     /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled. The last arguments are the
-    /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too, and the
-    /// page's arrangement (audit B9: the columns form reserves the columns the hero lays out there).</summary>
-    public required Func<Detail.VerticalSpec, float, float, TierFacts, DetailForm, Element> Skeleton { get; init; }
+    /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too, the
+    /// page's arrangement and the columns form's parts (audit B9: the columns form reserves the columns the hero lays out there, at the rail's live
+    /// width).</summary>
+    public required Func<Detail.VerticalSpec, float, float, TierFacts, DetailForm, DetailColumnsProps?, Element> Skeleton { get; init; }
 
     /// <summary>The ONE-TREE capability (audit B9): the hero draws the COLUMNS form too (the identity column beside the rows), and this answers the
     /// width its side columns take beside the list in each form, so the table insets its rows, chrome and tail by exactly that. Null: the hero draws

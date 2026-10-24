@@ -126,6 +126,7 @@ internal static class ZuneDetailHero
         readonly Signal<DetailHeroProps?> _props = new(null);
         readonly Action<RectF> _measure;
         readonly Action<RectF> _measureBand;
+        readonly Action<RectF> _measureHead;
         /// <summary>The panorama band's laid-out height: where the columns form's side columns start below the hero's top (they fill the list's viewport from
         /// there down).</summary>
         readonly Signal<float> _bandH = new(0f);
@@ -135,6 +136,7 @@ internal static class ZuneDetailHero
         {
             _measure = Measure;
             _measureBand = r => { if (r.H >= 0f && MathF.Abs(_bandH.Peek() - r.H) > 0.5f) _bandH.Value = r.H; };
+            _measureHead = MeasureHead;
         }
 
         public void ApplyProps(object props)
@@ -143,12 +145,28 @@ internal static class ZuneDetailHero
             _props.Value = _latest;
         }
 
+        /// <summary>The hero form's measure: its whole height (the table's collapse height).</summary>
         void Measure(RectF r)
         {
-            // Reported again whenever the table's own value disagrees (it drops its measure where the hero form restructures), not only on a change here.
-            if (r.H <= 1f || (MathF.Abs(r.H - _lastMeasuredH) <= 1f && MathF.Abs(r.H - (_latest?.Parts.HeroHeight ?? 0f)) <= 1f)) return;
-            _lastMeasuredH = r.H;
-            _latest?.Parts.OnHeroMeasured?.Invoke(r.H);       // the table republishes its collapse height (the hero form) or its pinned line (the columns form)
+            if (_latest?.Parts.Form == DetailForm.Columns) return;
+            Report(r.H);
+        }
+
+        /// <summary>The columns form's measure: the panorama band and the list head's foot under it, the PINNED head the chrome stands under (the identity
+        /// column and the aside hang below it). The list head lands at its place at once while the body around it eases, so the chrome and the rows never
+        /// wait on the ease.</summary>
+        void MeasureHead(RectF r)
+        {
+            if (_latest?.Parts.Form != DetailForm.Columns) return;
+            Report(_bandH.Peek() + r.Y + r.H);
+        }
+
+        void Report(float h)
+        {
+            // Reported again whenever the table's own value disagrees (it keeps one per form), not only on a change here.
+            if (h <= 1f || (MathF.Abs(h - _lastMeasuredH) <= 1f && MathF.Abs(h - (_latest?.Parts.HeroHeight ?? 0f)) <= 1f)) return;
+            _lastMeasuredH = h;
+            _latest?.Parts.OnHeroMeasured?.Invoke(h);       // the table republishes its collapse height (the hero form) or its pinned line (the columns form)
         }
 
         public override Element Render()
@@ -192,7 +210,7 @@ internal static class ZuneDetailHero
                 // Laid out at its final place and size from the commit (its siblings' widths land at once and only their pictures ease), so the list bar inside
                 // fits once instead of re-fitting through every frame of an ease (a command it evicted and promoted again would be rebuilt); its picture
                 // slides and reveals there.
-                Key = "hero:list-head", Direction = 1, Grow = columns ? 1f : 0f, Shrink = 1f, Basis = columns ? 0f : float.NaN,
+                Key = "hero:list-head", Direction = 1, Grow = columns ? 1f : 0f, Shrink = 0f, Basis = columns ? 0f : float.NaN, OnBoundsChanged = _measureHead,
                 MinWidth = columns ? Detail.Breakpoints.TwoColumnContentMinW : 0f,
                 Layout = ZuneMotion.GroupResize,
                 Children =
@@ -212,7 +230,7 @@ internal static class ZuneDetailHero
                 // Its height eases (the list head moves beside the identity column or under it: the body's height steps on the commit otherwise).
                 // A page with no rail (Liked Songs) stacks its head over the list head in both forms.
                 Key = "hero:body", Direction = (byte)(columns && hasRail ? 0 : 1), AlignItems = columns && hasRail ? FlexAlign.Start : FlexAlign.Stretch, MinWidth = 0f,
-                Animate = ZuneMotion.HeightResize,
+                Animate = columns && hasRail ? Z.HangingResize : ZuneMotion.HeightResize,
                 Children =
                 [
                     identity,
@@ -657,7 +675,7 @@ internal static class ZuneDetailHero
     /// <summary>The loading band: the same blocks at the same heights, unfilled (the deriver paints the bars); a known cover is painted for real. The hero
     /// form's floor is the hero's own height, the number the collapse assumes until the hero is measured; the columns form reserves the panorama and the list
     /// head, its identity column hanging beside the rows' shimmer as the loaded one does.</summary>
-    static Element Skeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm form)
+    static Element Skeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm form, DetailColumnsProps? columns)
     {
         var g = GeometryOf(spec, columnWidth, tiers);
         var id = spec.Identity;
