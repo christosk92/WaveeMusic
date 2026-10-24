@@ -1024,11 +1024,12 @@ public static partial class Deck
                     Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(3f, 0f, 3f, 0f),
                     Children =
                     [
-                        // The LCD's ticker: the engine marquee (two passes after a track change, a pass on hover), with no fade and a short gap, and
-                        // only while the deck plays (a paused deck owns no moving row, the 2026-09-12 idle rule).
+                        // The LCD's ticker, as production: an endless loop with no fade, no start delay and a short gap, only while the deck plays
+                        // (a paused deck owns no moving row, the 2026-09-12 idle rule; the line glides home when it pauses).
                         Marquee.Of(Prop.Of(static () => ScrollTitle()), new Marquee.Style
                         {
                             FontSize = stSize, Weight = 400, Foreground = lcd, FontFamily = "Arial", Speed = 22f, Gap = 24f, FadeBand = 0f,
+                            StartDelayMs = 0f, PauseMs = 0f, Ticker = true,
                         }, allowed: sig.LoopsRun),
                     ],
                 }),
