@@ -546,8 +546,9 @@ public static partial class Shell
                 // once per crossing, on the frame the crossing animates.
                 // THE CAPABILITIES (P5 ZK): no forward button drops Forward from the budget; no tabs drops the whole tab island.
                 var caps = ShellCaps.Tracked;
+                // THE NAME is priced at what it measures (PriceName also subscribes this effect to the identity: a name landing re-allocates).
                 var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value),
-                    ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps), caps.ShowsTabStrip);
+                    PriceName(ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps)), caps.ShowsTabStrip);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);

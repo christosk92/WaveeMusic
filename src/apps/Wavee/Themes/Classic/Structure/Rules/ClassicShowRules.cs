@@ -46,6 +46,11 @@ internal static class ClassicShowRules
     public const float ToolbarHeight = 40f, ControlEdge = ShowToolbarLayout.Glyph, ToggleGlyph = 14f, DividerHeight = 16f, FilterChevron = 10f,
                        FindMinHeight = 32f, FindFillMax = 9999f;
 
+    /// <summary>A glyph control's edge under the reader's narrow arm: the Compact 40 target (C-Show-Compact draws its find and sort 40 x 40). A 30 glyph's
+    /// slop met the list's scroll bar lane at the row's end (MultiSelect 39 x 40). The style states it (<c>ShowReaderStyle.NarrowToolbarGlyph</c>), so the
+    /// stage rule sums 40 there too.</summary>
+    public const float NarrowControlEdge = ClassicDetailTiers.CompactTarget;
+
     // ── the visit head ──
 
     /// <summary>The head's shimmer: its title bar's width and the hero card's height.</summary>

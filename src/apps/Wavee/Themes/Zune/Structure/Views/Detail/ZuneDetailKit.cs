@@ -228,7 +228,8 @@ internal static class ZuneDetailKit
             Opacity = onClick is null ? ZuneBandRules.DisabledOpacity : 1f,
             OnClick = onClick, Children = kids.ToArray(),
         };
-        return word ? box : Controls.Named(box, label);
+        // The tooltip wrapper carries the ring's key too, so a ring that gains siblings before it (a Short window's play and saved) keeps its node.
+        return word ? box : Controls.Named(box, label) with { Key = box.Key };
     }
 
     /// <summary>A ring that holds a state (a concert's "interested"): the outline heart at rest; while <paramref name="on"/> the heart is filled and the ring and the heart are

@@ -188,7 +188,9 @@ internal static partial class ZunePlayerBar
                     videoMenu.Value = overlay.Open(
                         () => videoAnchor.Value,
                         () => Slots.View(ViewKeys.VideoPlacementMenu, new VideoPlacementMenuProps { Items = items, Close = () => videoMenu.Value?.Close() }),
-                        FlyoutPlacement.TopEdgeAlignedLeft,
+                        // The word sits at the bar's right end: the menu grows leftward from its right edge (left-aligned it ran off the window's right
+                        // edge at Huge), as the on-media "..." does.
+                        FlyoutPlacement.TopEdgeAlignedRight,
                         new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                     videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
                 }

@@ -30,7 +30,10 @@ internal static partial class ClassicShow
 {
     /// <summary>The style Classic registers under <c>StyleKeys.ShowReader</c>. Stateless: every host and a test share it.</summary>
     public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
-        HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed);
+        HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
+    {
+        NarrowToolbarGlyph = NarrowControlEdge,
+    };
 
     /// <summary>Registers the show page's style.</summary>
     internal static void Register(FluentGpu.Theming.ViewRegistryBuilder views)
@@ -154,9 +157,11 @@ internal static partial class ClassicShow
         var stage = a.Stage;
         bool finding = a.Finding;
         float pad = a.Compact ? ShowReaderRules.PadNarrow : ShowReaderRules.Pad;
+        // The glyph controls' edge: the Compact 40 target under the narrow arm, the tuned 30 elsewhere (the stage rule sums the same number).
+        float edge = ShowToolbarLayout.GlyphEdge(a.Compact, NarrowControlEdge);
         // LEFT: the chips at their natural width — or, at the last stage only, the menu that folds them.
         Element left = stage == ToolbarStage.FilterMenu
-            ? FilterMenu(a) with { Key = "tb:left" }
+            ? FilterMenu(a, edge) with { Key = "tb:left" }
             : FilterWords(a) with { Key = "tb:left" };
         // RIGHT: find · divider · sort · select, as far as the stage keeps them. An open find at a collapsed stage
         // takes this very area over (the chips stay).
@@ -165,13 +170,13 @@ internal static partial class ClassicShow
         if (takeover)
         {
             right.Add(FindField(a, fill: true));
-            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind, a.Tone));
+            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind, a.Tone, edge));
         }
         else
         {
             right.Add(stage == ToolbarStage.Full
                 ? FindField(a, fill: false)
-                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind, a.Tone));
+                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind, a.Tone, edge));
             if (stage is ToolbarStage.Full or ToolbarStage.FindIcon)
             {
                 right.Add(RailDivider());
@@ -179,9 +184,9 @@ internal static partial class ClassicShow
             }
             else
             {
-                right.Add(SortMenu(a));
+                right.Add(SortMenu(a, edge));
             }
-            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting, a.Tone));
+            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting, a.Tone, edge));
         }
         var group = new BoxEl
         {
@@ -208,13 +213,13 @@ internal static partial class ClassicShow
     /// <summary>The last stage's chips: ONE button saying the selected filter ("Unplayed 320 ▾") whose menu holds the four
     /// as radio rows. The label and its count are binds over the model — the toolbar re-renders on stages, never on a
     /// selection or a count — and the accessible name is the control's, since the label alone cannot say what it is.</summary>
-    static Element FilterMenu(ShowToolbarArgs a)
+    static Element FilterMenu(ShowToolbarArgs a, float edge)
     {
         var tone = a.Tone;
         var overlay = a.Overlay;
         var box = new BoxEl
         {
-            Direction = 0, Gap = Spacing.XS, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Direction = 0, Gap = Spacing.XS, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             ClickRequestsContext = true,
@@ -271,7 +276,7 @@ internal static partial class ClassicShow
     /// rows. A menu is the narrow FALLBACK here, never the default — at <see cref="ToolbarStage.Full"/> and
     /// <see cref="ToolbarStage.FindIcon"/> the words are still words. Its accessible name is the sort in force, since
     /// the glyph alone cannot say it.</summary>
-    static Element SortMenu(ShowToolbarArgs a)
+    static Element SortMenu(ShowToolbarArgs a, float edge)
     {
         var order = a.Order;
         var tone = a.Tone;
@@ -279,7 +284,7 @@ internal static partial class ClassicShow
         int current = order.Value;                                  // subscribe: the button is named after the sort in force
         var box = new BoxEl
         {
-            Width = ControlEdge, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             ClickRequestsContext = true,
             Children = [Icon(Icons.Sort, ToggleGlyph) with { Color = Prop.Of(() => tone()) }],
@@ -296,11 +301,12 @@ internal static partial class ClassicShow
 
     static string SortWordOf(int order) => Loc.Get(order == 1 ? Strings.Podcast.Sort.Oldest : Strings.Podcast.Sort.Newest);
 
-    /// <summary>A toolbar glyph toggle (the search collapse, the select arm): 30 square, the tone while ON.</summary>
-    static Element RailToggle(string glyph, string name, Func<bool> on, Action click, Func<ColorF> tone)
+    /// <summary>A toolbar glyph toggle (the search collapse, the select arm): <paramref name="edge"/> square (30, or the Compact 40 under the narrow
+    /// arm), the tone while ON.</summary>
+    static Element RailToggle(string glyph, string name, Func<bool> on, Action click, Func<ColorF> tone, float edge)
         => Controls.Named(new BoxEl
         {
-            Width = ControlEdge, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = click,
             Children = [Icon(glyph, ToggleGlyph) with { Color = Prop.Of(() => on() ? tone() : Tok.TextSecondary) }],
         }.Interactive(Interaction.Subtle), name);

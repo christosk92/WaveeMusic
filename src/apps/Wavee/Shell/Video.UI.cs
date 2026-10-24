@@ -1262,6 +1262,9 @@ public static partial class Video
         {
             Title = s_currentTitle, Exit = static () => State.ExitFullscreen(),
             Artists = static () => CurrentArtists(), SwitchToAudio = static () => State.TurnOff(),
+            // The fullscreen owner's transport (TransportOwnerFor(Fullscreen) = Fullscreen): the main window's presenter keeps running the idle
+            // machine and the feed; the theme's chrome draws the strip over them.
+            Transport = RailWiring.OnMediaProps(s_mainChrome, s_mainFeed),
         };
     }
 }

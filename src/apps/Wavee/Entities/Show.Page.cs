@@ -872,7 +872,8 @@ public readonly partial struct Show
         /// stage actually moves — never per resize frame.</summary>
         ToolbarStage ToolbarStageOf()
         {
-            var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown);
+            var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown,
+                                              Style?.NarrowToolbarGlyph ?? 0f);
             _stageShown = stage;
             return stage;
         }

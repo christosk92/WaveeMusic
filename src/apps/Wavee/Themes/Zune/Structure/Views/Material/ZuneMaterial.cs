@@ -77,6 +77,9 @@ internal static class ZuneMaterial
                 Enter = Fade, Exit = Fade,
                 Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade, ZuneArtistRules.PhotoFocusY)],
             });
+            // Over the photo, under the chrome: the adaptive scrim that keeps the band's words legible over a bright photograph (V14).
+            kids.Add(Embed.Comp(new BleedScrimProps(bleed, BandFoot(ctx.Tier())), static () => new ZuneBleedScrim())
+                with { Key = ZuneBandRules.BleedKey + "-scrim:" + bleed });
         }
 
         if (background == ZuneBackground.Mix && backdrop.Mix is { Count: > 0 } mix)
@@ -104,6 +107,10 @@ internal static class ZuneMaterial
         return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = kids.ToArray() };
     }
 
+    /// <summary>The foot of the band strip (the title bar and the band, row 2 included unless a Short window folds it), from the window's top.</summary>
+    static float BandFoot(in TierFacts facts)
+        => ZuneTiers.FrameOf(facts).TitleBarH + ZuneBandRules.BandOf(facts).HeightWith(!ZuneBandTiers.FoldsRow2AtRest(in facts));
+
     /// <summary>A backdrop image: cover-fitted, <paramref name="height"/> tall, fading out over its lower <paramref name="fade"/>.</summary>
     static Element Backdrop(string url, float height, float fade, float focusY = 0.5f) => new ImageEl
     {
@@ -126,6 +133,39 @@ internal static class ZuneMaterial
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellCoverTint"/>.</summary>
     public static Element CoverTint(CoverTintProps props, in ViewContext ctx) => Embed.Comp(props, static () => new ZuneCoverTint());
+}
+
+/// <summary>What the bleed's scrim reads: the photograph and the band strip's foot.</summary>
+internal sealed record BleedScrimProps(string Url, float BandFoot);
+
+/// <summary>The bleed's ADAPTIVE scrim (V14): over the photo, under the chrome, in the ground's direction (black on the dark kind, the ground on
+/// the light one), full over the title bar and the band and clear <see cref="ZuneBandRules.BleedScrimFade"/> below their foot. Its opacity is solved
+/// per photograph (<see cref="ZuneBandRules.BleedScrimAlpha"/>, from the photo's measured luminance, <see cref="Palette.Tone"/>) so the band's
+/// dimmest words read over it; 0 until the photo is measured, and every change fades (<see cref="MediaScrim.FadeMs"/>), never snaps.</summary>
+internal sealed class ZuneBleedScrim : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<BleedScrimProps>();
+        float width = UseContextSignal(Viewport.Size).Value.Width;
+        bool light = R.IsLight;
+        ColorF ground = R.Layer.ShellGround;
+        ColorF scrim = light ? ground : ZuneBandRules.BleedScrimDark;
+        MediaScrim.LumaMap? map = Palette.Tone(p.Url);
+        float target = map is null ? 0f : ZuneBandRules.BleedScrimAlpha(map, width, ZuneBandRules.BleedH, p.BandFoot, ZuneArtistRules.PhotoFocusY,
+            ZuneBandRules.BleedOpacityOf(light), ground.R, scrim.R, Tok.TextTertiary);
+        var shown = UseRef(target);
+        float from = shown.Value;
+        shown.Value = target;
+        UseTransition(AnimChannel.Opacity, from, target, Motion.ReducedMotion ? 0f : MediaScrim.FadeMs, Easing.SmoothOut, DepKey.From(target));
+        float h = ZuneBandRules.BleedH;
+        float full = Math.Clamp(p.BandFoot / h, 0f, 1f), clear = Math.Clamp((p.BandFoot + ZuneBandRules.BleedScrimFade) / h, full, 1f);
+        return new BoxEl
+        {
+            Height = h, AlignSelf = FlexAlign.Stretch, HitTestVisible = false, Opacity = target,
+            Gradient = GradientDown(new GradientStop(0f, scrim), new GradientStop(full, scrim), new GradientStop(clear, scrim with { A = 0f })),
+        };
+    }
 }
 
 /// <summary>The detail page's tone (a page-root sibling): NOTHING under Zune, for the artist blend wash's reason. A band of the page's tone that starts at the page's

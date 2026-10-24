@@ -12,6 +12,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -54,19 +55,26 @@ internal static class ClassicEpisode
     static Element Attribution(EpisodeAttributionProps p, in ViewContext ctx)
         => Controls.RichTextRow(p.Html, 14, Tok.TextSecondary, Tok.AccentTextPrimary, p.Open);
 
-    static Element Actions(EpisodeActionsProps p, in ViewContext ctx) => new BoxEl
+    static Element Actions(EpisodeActionsProps p, in ViewContext ctx)
     {
-        Direction = 0, Gap = Spacing.XS, Wrap = true, Children =
-        [
-            p.Save,
-            ClassicDetailKit.RailSatellite(p.Completed ? Icons.Undo : Icons.Check,
-                Loc.Get(p.Completed ? Strings.Podcast.Menu.MarkUnplayed : Strings.Podcast.Menu.MarkPlayed), p.ToggleCompleted),
-            ClassicDetailKit.RailSatellite(Icons.Share, Loc.Get(Strings.Menu.CopyLink), p.CopyLink),
-            ClassicDetailKit.RailSatelliteMore(p.Menu),
-        ],
-    };
+        float box = SatelliteBox(in ctx);
+        return new BoxEl
+        {
+            Direction = 0, Gap = Spacing.XS, Wrap = true, Children =
+            [
+                p.Save,
+                ClassicDetailKit.RailSatellite(p.Completed ? Icons.Undo : Icons.Check,
+                    Loc.Get(p.Completed ? Strings.Podcast.Menu.MarkUnplayed : Strings.Podcast.Menu.MarkPlayed), p.ToggleCompleted, box),
+                ClassicDetailKit.RailSatellite(Icons.Share, Loc.Get(Strings.Menu.CopyLink), p.CopyLink, box),
+                ClassicDetailKit.RailSatelliteMore(p.Menu, box),
+            ],
+        };
+    }
 
-    static Element Save(EpisodeSaveProps p, in ViewContext ctx) => ClassicDetailKit.RailSatellite(p.Glyph, p.Name, p.Click);
+    static Element Save(EpisodeSaveProps p, in ViewContext ctx) => ClassicDetailKit.RailSatellite(p.Glyph, p.Name, p.Click, SatelliteBox(in ctx));
+
+    /// <summary>A satellite's box: the rail's 32, or the tier's target where it is larger (Compact's 40: 32 boxes 4 apart left each one a 36-wide hit).</summary>
+    static float SatelliteBox(in ViewContext ctx) => MathF.Max(Detail.RailLayout.SatelliteSize, ClassicDetailTiers.Of(ctx.Tier()).Target);
 
     /// <summary>The rail's SHORT about block (podcast-episode-peek §1): a small label, the description clamped to four
     /// lines, and the inline overflow affordance the clamp itself decides on — `ExpandableRichTextFlex` reserves "… More" on the last line

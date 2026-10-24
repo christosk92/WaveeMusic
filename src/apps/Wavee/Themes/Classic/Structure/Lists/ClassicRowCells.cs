@@ -55,6 +55,9 @@ internal static class ClassicRowCells
         // verdict): the dim here, the play gate and the facts strip must never disagree (ch 01 W6). The duration lane
         // states which (`Track.DurationLabel`); the heart stays: it IS liked.
         bool withheld = t.NotYetOut(now) || t.Unplayable();
+        // A row the offline session cannot reach (the audio is not on this PC) steps back the same way and says so in the lane. An
+        // indicator only (`Track.OfflineGone`): the play gate stays the withheld one.
+        bool gone = !withheld && Track.OfflineGone(t, st.OnThisPc);
         // THE DISPLAY ROW (Track.ForDisplay): a relinked id paints its canonical track's title, credits, album, art,
         // duration and explicit mark. Everything that IS this row — the heart, the play target, the verdicts above, the
         // plays and tempo lanes, the video chrome — keeps reading `t`.
@@ -97,7 +100,7 @@ internal static class ClassicRowCells
             // MinWidth 0: the STAR track collapses first under pressure; without the floor override the stack keeps its
             // natural width and the runs paint across the row.
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-            Opacity = withheld ? Track.RowNotYetOutOpacity : 1f,
+            Opacity = withheld || gone ? Track.RowNotYetOutOpacity : 1f,
             Children = showMeta
                 ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, classicNow ? Tok.AccentTextPrimary : null)]
                 : [titleLine],
@@ -132,13 +135,13 @@ internal static class ClassicRowCells
 
         // The clock, or a withheld row's SHORT reason ("Unavailable", the release date) at the reason rung with the LONG
         // reason as its tooltip (tuned Classic L4) — the bound table's lane, word for word (`Track.DurationLabel`).
-        string durationText = Track.DurationLabel(t, now);
-        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(withheld
+        string durationText = gone ? Loc.Get(Strings.Track.NotOnThisPc) : Track.DurationLabel(t, now);
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(withheld || gone
             ? ToolTip.Wrap(new TextEl(durationText)
               {
                   Size = ClassicTrackRowLayout.ReasonSize, LineHeight = classic ? ClassicTrackRowLayout.BodyLine : ClassicTrackRowLayout.CaptionLine,
                   Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-              }, Track.WithheldReason(t, now) ?? "")
+              }, Track.WithheldReason(t, now) ?? Loc.Get(Strings.Track.NotOnThisPcReason))
             : RowFactualText(durationText, classic, classicNow ? Tok.AccentTextPrimary : Tok.TextSecondary), CellKey.Duration);
 
         // Trailing chrome AFTER Duration so the "…" never wedges between Album and Tempo.

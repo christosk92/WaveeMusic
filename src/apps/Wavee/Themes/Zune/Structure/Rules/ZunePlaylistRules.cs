@@ -65,6 +65,13 @@ public static class ZunePlaylistRules
     /// <summary>The read arm's hairline (1) and its resting opacity; the hover raises it to full. The pencil's glyph and box.</summary>
     public const float UnderlineH = 1f, UnderlineRest = 0.35f, PencilGlyph = 14f, PencilBox = 24f, UnderlineGap = 4f;
 
+    /// <summary>The hairline's offset under a run of <paramref name="size"/> type: the boards' underline offset (10 at 64), a share of the size, so it
+    /// clears the descenders of a display title (a 120 title's p and y end where a fixed 4 put the rule), and never under <see cref="UnderlineGap"/>.</summary>
+    public static float UnderlineGapFor(float size) => MathF.Max(UnderlineGap, size * UnderlineGapShare);
+
+    /// <summary>The hairline's offset as a share of its run's size (<see cref="UnderlineGapFor"/>).</summary>
+    public const float UnderlineGapShare = 0.08f;
+
     /// <summary>The title field's extra height over its font size, the description field's height, and the description's size and clamp (13/20).</summary>
     public const float TitleFieldExtra = 16f, DescriptionFieldH = 72f, DescriptionSize = 13f;
 

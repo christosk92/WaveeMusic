@@ -62,6 +62,11 @@ public static class ZuneBandTiers
     /// neither returns nor folds it). A view mounted alone (no policy) does not.</summary>
     public static bool RestsCollapsed(in TierFacts facts) => facts.Policy is not null && facts.Height == HeightTier.Short;
 
+    /// <summary>Row 2 is folded away AT REST in <paramref name="facts"/>: a Short window under the `collapseBand` parameter (Z-Shell-Short). Its verbs
+    /// (play, shuffle, saved, follow) then have no home in the band, so the page's hero or identity column carries them instead: one home per verb,
+    /// and the state stays visible at rest (V4).</summary>
+    public static bool FoldsRow2AtRest(in TierFacts facts) => RestsCollapsed(facts) && ZuneOptions.CollapseBand();
+
     /// <summary>Row 2 can be folded away in <paramref name="facts"/>: its record ties it to the scroll in this width tier (Compact), or the window is Short and
     /// rests with it folded (Z-Shell-Short). Pinned elsewhere. A view mounted alone (no policy) answers the record's own.</summary>
     public static bool Collapses(ZuneBandLayout band, in TierFacts facts)

@@ -2645,6 +2645,7 @@
     "errorTitle": "Something went wrong.",
     "errorSubtitle": "Check your connection and try again.",
     "offlineBanner": "You're offline. Cached content still works; playback and edits resume when you're back.",
+    "offlineSubtitle": "Cached content still works; playback and edits resume when you're back.",
     "controlledByDevice": "Controlled by {device}",
     "restartNow": "Restart now",
     "restartToApply": "Applies after restart",
@@ -2858,11 +2859,12 @@
         "bigNumeralsSub": "albums, artists, the queue"
       },
       "frame": {
-        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the panel's close tool tip.",
+        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the suggestions' see-all row ({query} is the typed text, never re-cased), the panel's close tool tip.",
         "wordmark": "wavee",
         "back": "Back",
         "searchPlaceholder": "search",
         "searchHint": "ctrl f",
+        "searchSeeAll": "see all results for “{query}”",
         "closePanel": "Close"
       },
       "band": {
@@ -2899,7 +2901,8 @@
         "videoFullScreen": "Video · full screen",
         "videoKind": "Official video",
         "videoSwitchToAudio": "Switch to audio",
-        "videoMiniPlayerWord": "Mini player"
+        "videoMiniPlayerWord": "Mini player",
+        "videoPlayHeading": "Play video"
       },
       "discovery": {
         "$comment": "Z5: Home's quickplay heads (pins, history, new), the pins' edit word, the Browse category banner's kind word. Written as people say them; the style's case roles lower them.",

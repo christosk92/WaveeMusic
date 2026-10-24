@@ -95,7 +95,7 @@ internal sealed class ZuneBand : Component
         var overflow = ZuneOptions.Overflow();
         // A Short window (below the Regular height rung) rests with row 2 folded away, static (Z-Shell-Short, ZT1). No direction is read: row 2
         // never folds or returns on a scroll's direction (the owner's video: a fold that moved the page fed the direction detector back).
-        bool collapsed = ZuneBandTiers.RestsCollapsed(tiers) && ZuneOptions.CollapseBand();
+        bool collapsed = ZuneBandTiers.FoldsRow2AtRest(tiers);
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;

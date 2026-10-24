@@ -22,11 +22,16 @@ public static partial class Detail
         /// name="anchorOffsets"/> is ordered top-to-bottom; a <c>NaN</c> entry (a section not yet realized/measured)
         /// stops the scan there, same as <see cref="BandLayout.ActiveSection"/>. An empty span, or a NaN first entry,
         /// answers −1 — NO ANSWER, so the caller holds whatever section it already had (D40) rather than snapping to 0
-        /// while the page is still laying out.</summary>
-        public static int ActiveSectionOf(ReadOnlySpan<float> anchorOffsets, float viewportOffset, float viewportHeight)
+        /// while the page is still laying out.
+        /// <para><paramref name="scrolled"/> is how far the page has scrolled from its top (+∞: unknown, the fixed line). The line DESCENDS with
+        /// it: at the top of the page it sits on the viewport's top edge, so the first section in view is current however short it is (a
+        /// two-line About used to hand the quarter line to Chapters at scroll 0), and it reaches the quarter rung once the page has scrolled
+        /// that far.</para></summary>
+        public static int ActiveSectionOf(ReadOnlySpan<float> anchorOffsets, float viewportOffset, float viewportHeight,
+                                          float scrolled = float.PositiveInfinity)
         {
             if (anchorOffsets.Length == 0 || float.IsNaN(anchorOffsets[0])) return -1;
-            float line = viewportOffset + MathF.Max(0f, viewportHeight) * ViewportFraction;
+            float line = viewportOffset + MathF.Min(MathF.Max(0f, viewportHeight) * ViewportFraction, MathF.Max(0f, scrolled));
             int active = 0;
             for (int i = 0; i < anchorOffsets.Length; i++)
             {

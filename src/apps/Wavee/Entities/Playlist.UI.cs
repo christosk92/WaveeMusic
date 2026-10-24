@@ -339,7 +339,9 @@ public readonly partial struct Playlist
     /// <summary>The frame's Attribution slot: the collaborator pile (the frame's own predicate) or the owner row, each with
     /// the self-gating invite affordance. ONE composition for both arms (a decision: the report, W29).</summary>
     public static Element AttributionSlot(Playlist p, float width)
-        => Embed.Comp(new OwnerProps(p.Slot, width), static () => new OwnerBlock()) with { Key = "pl-owner:" + Bucket(width) };
+        // One key at every width: the width is a re-pushed prop (the block re-renders at the new one), not an identity: a key from the width bucket
+        // rebuilt the owner row on every tier crossing that resized the column (1008, 1920, 3200).
+        => Embed.Comp(new OwnerProps(p.Slot, width), static () => new OwnerBlock()) with { Key = "pl-owner" };
 
     sealed record OwnerProps(int Slot, float Width);
 
@@ -425,10 +427,13 @@ public readonly partial struct Playlist
             else
             {
                 var owner = p.Owner;
-                ownerName = NameOf(owner);
-                ownerImage = Controls.ArtUrl(owner.ImageId);
+                // The local-files playlist is owned by this computer, not by a person: it states "On this device" (the page's own owner words)
+                // with no portrait and no profile to open, whatever user row the store holds for it.
+                bool local = p.Slot == LocalFiles.Slot;
+                ownerName = local ? Loc.Get("localFile.onThisDevice") : NameOf(owner);
+                ownerImage = local ? null : Controls.ArtUrl(owner.ImageId);
                 // The owner opens their profile (#161): an owner row that cannot route (an invalid handle) stays the plain, inert run it was.
-                var profile = ProfileRoute.For(owner);
+                var profile = local ? Shell.Route.None : ProfileRoute.For(owner);
                 openOwner = profile.IsNone ? null : () => Shell.GoTo(profile);
             }
             return ViewSlots.View(ViewKeys.PlaylistOwner, new PlaylistOwnerProps(props.Width, pile, faces, overflow, label, ownerName, ownerImage, openOwner,

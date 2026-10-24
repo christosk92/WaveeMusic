@@ -76,8 +76,10 @@ internal static class ZuneRowCells
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, R.Shape.Cover,
                                                         decodePx: Track.RowArtDecodePx), CellKey.Art);
 
-        bool showMeta = artistInTitle || o.ShowAlbumInMeta || badge || st.OnThisPc;
-        Element titleLine = t.HasVideo ? TitleWithVideo(title, isNow) : title;
+        // The "on this PC" ring leads a subline that has words; alone it rides the title line, so the row keeps one line (V15: ragged 42 / 50 rows).
+        bool showMeta = artistInTitle || o.ShowAlbumInMeta || badge;
+        bool loneRing = st.OnThisPc && !(showMeta && MetadataSpeaks(d, artistInTitle, o.ShowAlbumInMeta, badge));
+        Element titleLine = t.HasVideo || loneRing ? TitleWithMarks(title, isNow, t.HasVideo, loneRing, secondary) : title;
         cells[i++] = new BoxEl
         {
             Key = CellKey.Title, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
@@ -86,7 +88,7 @@ internal static class ZuneRowCells
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = showMeta ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, secondary, st.OnThisPc)] : [titleLine],
+                    Children = showMeta && !loneRing ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, secondary, st.OnThisPc)] : [titleLine],
                 },
             ],
         };
@@ -275,16 +277,24 @@ internal static class ZuneRowCells
         return () => Track.LikedNow(track);
     }
 
-    /// <summary>A title with a video: the title, then the film glyph right after it (the title yields first).</summary>
-    static Element TitleWithVideo(Element title, bool isNow) => new BoxEl
+    /// <summary>A title with its marks: the title, then the film glyph (a video) and the "on this PC" ring (when no subline carries it) right after
+    /// it (the title yields first).</summary>
+    static Element TitleWithMarks(Element title, bool isNow, bool video, bool onThisPc, ColorF ink)
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-        Children =
-        [
-            new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title] },
-            Icon(Icons.Movie, ZuneListRules.FilmGlyph, ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextTertiary)) with { Shrink = 0f },
-        ],
-    };
+        var kids = new List<Element>(3) { new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title] } };
+        if (video) kids.Add(Icon(Icons.Movie, ZuneListRules.FilmGlyph, ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextTertiary)) with { Shrink = 0f });
+        if (onThisPc) kids.Add(OnThisPcMark(ink));
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>Does <see cref="MetadataLine"/> have something besides the ring to show (the episode eyebrow, the explicit mark, a linked artist or
+    /// album)?</summary>
+    static bool MetadataSpeaks(Track t, bool showArtists, bool showAlbum, bool explicitBadge)
+        => t.IsPodcast || explicitBadge || (showArtists && t.ArtistSlots.Length > 0) || (showAlbum && Track.ContainerOf(t).Name.Length > 0);
 
     /// <summary>The subline: [EPISODE] · [E] · the linked artists · the album, one ellipsized run whose artist and album parts are links.</summary>
     public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF ink, bool onThisPc = false)

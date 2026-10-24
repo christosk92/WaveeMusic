@@ -204,12 +204,7 @@ internal static partial class ClassicSettings
         return float.IsNaN(cardWidth) ? shell with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f } : shell;
     }
 
-    static Element DeveloperTag() => new BoxEl
-    {
-        Height = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = Tok.FillSubtleSecondary,
-        Children = [new TextEl(Loc.Get(Strings.Settings.ThemePicker.Developer)) { Size = ClassicSettingsRules.TagSize, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
-    };
+    static Element DeveloperTag() => Tag(Loc.Get(Strings.Settings.ThemePicker.Developer), Tok.FillSubtleSecondary, Tok.TextSecondary);
 
     /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme
     /// until it ships one, leaves a thumbnail of the same size, and the image fades in over it instead of replacing a blank).</summary>

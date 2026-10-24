@@ -279,13 +279,63 @@ public static class ZuneBandRules
     /// <summary>The mix: the covers behind the top 480 at 18 %, fading out over the lower 240, at most three side by side.</summary>
     public const float MixH = 480f, MixOpacity = 0.18f, MixFade = 240f;
 
-    /// <summary>On the LIGHT ground a photo dims the page instead of lighting it: at the dark ground's strengths a dark artist photo took the band
-    /// and the head to about #bfb7c4, which put the tertiary pivots under 3 : 1 and the small grey lines under 4 : 1. The light kind's strengths
-    /// (14 % and 10 %) keep the band above about #dadada under the darkest photo.</summary>
-    public const float BleedOpacityLight = 0.14f, MixOpacityLight = 0.10f;
+    /// <summary>On the LIGHT ground a photo dims the page instead of lighting it. The bleed was held at 14 % so the band's tertiary words stayed
+    /// legible under a dark photo, which washed a photo out to near-white in the head (V14); the band strip is now kept legible by the adaptive
+    /// scrim (<see cref="BleedScrimAlpha"/>), so the bleed shows at 30 % (the head's copy reads over every fixture photo at it). The mix keeps 10 %.</summary>
+    public const float BleedOpacityLight = 0.30f, MixOpacityLight = 0.10f;
 
     /// <summary>The bleed's opacity on the ground of the kind.</summary>
     public static float BleedOpacityOf(bool light) => light ? BleedOpacityLight : BleedOpacity;
+
+    // ── the bleed's adaptive scrim (V14) ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The scrim's fade under the band strip: full over the title bar and the band, clear this far below their foot (the head's photo
+    /// comes in under it).</summary>
+    public const float BleedScrimFade = 96f;
+
+    /// <summary>The dark kind's scrim: black, as the on-media scrims are (the light kind's is its ground).</summary>
+    public static readonly ColorF BleedScrimDark = ColorF.FromRgba(0, 0, 0);
+
+    /// <summary>The ratio the band strip's dimmest words (the crumbs and the pins' word: 13 and 11 DIP in the tertiary ink) need over the photo: 4.5
+    /// and a little headroom, since the map is a downsampled estimate of the photo (the dark kind's tertiary ink tops out near 4.9 on black).</summary>
+    public const float BleedScrimNeed = 4.7f;
+
+    /// <summary>The scrim's opacity over the band strip for a bleed photograph measured as <paramref name="map"/>: the least that brings
+    /// <paramref name="ink"/> to <see cref="BleedScrimNeed"/> over the composite (the photo at <paramref name="bleedOpacity"/> over the
+    /// <paramref name="ground"/>), judged at the photo's worst grey for the ink under the strip (its <see cref="MediaScrim.Percentile"/> bright tail for light ink, the
+    /// matching dark tail for dark ink), the box
+    /// <paramref name="boxW"/> x <paramref name="boxH"/> cover-fitted at <paramref name="focusY"/>. The scrim is the <paramref name="scrim"/> grey
+    /// (black on the dark kind, the ground on the light one), so a dark photo takes little and a bright one up to all of it: the photo stays a
+    /// photo below the band and never washes the band's words out (ar9: crumbs at 1.15 : 1, pivots at 1.2 : 1).</summary>
+    public static float BleedScrimAlpha(MediaScrim.LumaMap map, float boxW, float boxH, float bandFoot, float focusY, float bleedOpacity,
+        float ground, float scrim, ColorF ink)
+    {
+        var uv = CoverUvAt(map.Aspect, boxW, boxH, bandFoot, focusY);
+        // The worst ground for the ink: the photo's bright tail under light ink (the dark kind), its dark tail under dark ink (the light kind).
+        bool lightInk = MediaScrim.Contrast(ink, 0f) > MediaScrim.Contrast(ink, 1f);
+        float photo = MediaScrim.GreyAt(map, uv, lightInk ? MediaScrim.Percentile : 1f - MediaScrim.Percentile);
+        float under = bleedOpacity * photo + (1f - bleedOpacity) * ground;   // the compositor's blend of sRGB-encoded channels
+        if (MediaScrim.Contrast(ink, under) >= BleedScrimNeed) return 0f;
+        float lo = 0f, hi = 1f;
+        for (int i = 0; i < 20; i++)
+        {
+            float mid = (lo + hi) / 2f;
+            if (MediaScrim.Contrast(ink, under + (scrim - under) * mid) >= BleedScrimNeed) hi = mid; else lo = mid;
+        }
+        return hi;
+    }
+
+    /// <summary>The image-space rectangle the band strip (the box's top <paramref name="bandFoot"/>) shows of a cover-fitted photograph whose crop
+    /// sits at <paramref name="focusY"/> (0 top, 1 foot) on a tall photograph, as the bleed's image draws it.</summary>
+    static (float U0, float V0, float U1, float V1) CoverUvAt(float imageAspect, float boxW, float boxH, float bandFoot, float focusY)
+    {
+        float boxAspect = boxW / MathF.Max(1f, boxH);
+        float su = 1f, sv = 1f;
+        if (imageAspect > boxAspect) su = boxAspect / imageAspect;
+        else sv = imageAspect / boxAspect;
+        float u0 = (1f - su) / 2f, v0 = (1f - sv) * Math.Clamp(focusY, 0f, 1f);
+        return (u0, v0, u0 + su, v0 + sv * Math.Clamp(bandFoot / MathF.Max(1f, boxH), 0f, 1f));
+    }
 
     /// <summary>The mix's opacity on the ground of the kind.</summary>
     public static float MixOpacityOf(bool light) => light ? MixOpacityLight : MixOpacity;

@@ -187,7 +187,8 @@ public static class ZuneStageLyricsRules
 /// <param name="TitleSize">The track's title in the bar.</param>
 /// <param name="TitleLine">Its line height.</param>
 public sealed record ZuneStageVideoLayout(WidthTier Tier, float WordH, float StripH, float GlyphBox, bool ChromeAtRest, float BarPadL, float BarPadR,
-    float BarH, float BarGap, float LabelSize, float LabelLine, float TitleSize, float TitleLine, bool LabelShown = true, bool TitleCentered = true);
+    float BarH, float BarGap, float LabelSize, float LabelLine, float TitleSize, float TitleLine, bool LabelShown = true, bool TitleCentered = true,
+    bool PageForm = false);
 
 /// <summary>The video surfaces' numbers and their per-window-tier record.</summary>
 public static class ZuneStageVideoRules
@@ -195,11 +196,29 @@ public static class ZuneStageVideoRules
     /// <summary>The fullscreen bar: the gap between the title and its "official video · artist" run, and between the words at the right.</summary>
     public const float TitleGap = 8f, WordGap = 24f;
 
+    // ── the Compact page form (Z-Video-Compact) ──
+
+    /// <summary>The picture's aspect under the bar (the boards' 16:9 at the window's width).</summary>
+    public const float PageAspect = 9f / 16f;
+
+    /// <summary>The page's inset, the air above the title, under the subtitle and above the list's heading, and the gap between the list's rows.</summary>
+    public const float PagePad = 16f, PageTitleTop = 16f, PageSubGap = 2f, PageBlockGap = 16f;
+
+    /// <summary>The page's transport block: the strip's seek row, its button row and its padding (ZuneOnMediaLayout).</summary>
+    public static float PageTransportH => ZuneOnMediaLayout.SeekRowH + ZuneOnMediaLayout.GlyphBox + 2f * ZuneOnMediaLayout.Pad;
+
+    /// <summary>The page's list rows: their height (the Compact 40 target plus air) and the radio dot's ring.</summary>
+    public const float PageRowH = 48f, PageDot = 8f, PageDotGap = 16f;
+
+    /// <summary>The bar's collapse chevron (the page form's way out, "⌄ video").</summary>
+    public const float PageChevron = 16f;
+
     private static readonly ZuneStageVideoLayout[] s_tiers =
     [
         // Z-Video-Compact: 40 targets, the chrome at rest (touch), the 16 gutter
+        // the PAGE form: the 16:9 picture under the bar, then the title, the transport and the placement list (no overlay over the picture)
         new(WidthTier.Compact, WordH: 40f, StripH: 40f, GlyphBox: 40f, ChromeAtRest: true, BarPadL: 16f, BarPadR: 4f,
-            BarH: 48f, BarGap: 4f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f),
+            BarH: 48f, BarGap: 4f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f, PageForm: true),
         // Z-Video-Small
         new(WidthTier.Small, WordH: 36f, StripH: 32f, GlyphBox: 28f, ChromeAtRest: false, BarPadL: 24f, BarPadR: 12f,
             BarH: 48f, BarGap: 20f, LabelSize: 13f, LabelLine: 18f, TitleSize: 15f, TitleLine: 20f, LabelShown: false, TitleCentered: false),   // the title leads the bar, no "video · full screen"

@@ -406,6 +406,11 @@ public sealed class ShowReaderStyle
     /// <summary>The sticky toolbar's body.</summary>
     internal ShowToolbarTemplate Toolbar { get; }
 
+    /// <summary>The edge of a glyph control in the toolbar under the reader's NARROW arm (<see cref="ShowToolbarArgs.Compact"/>): a Compact target the
+    /// style draws above <see cref="ShowToolbarLayout.Glyph"/> (Classic: 40, the Compact floor its board draws), which the stage rule then sums in
+    /// place of the 30. 0: the stage rule's own <see cref="ShowToolbarLayout.Glyph"/>. Appended (contract 1.55, audit B6).</summary>
+    internal float NarrowToolbarGlyph { get; init; }
+
     /// <summary>The visit head's padded shell around its reveal region, and the head's shimmer source.</summary>
     internal ShowHeadShellTemplate HeadShell { get; }
 

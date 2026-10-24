@@ -34,9 +34,10 @@ public readonly partial struct User
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f, Children = [figure, chart],
         },
         Spark = static () => SparkBars.DefaultStyle,
+        // The axis captions at the type ramp's smallest rung (MicroMeta, 11): 10 sat under the type floor.
         Density = static () => DensityPlot.DefaultStyle with
         {
-            LineWidth = 1.25f, AxisFontSize = 10f, Marker = Tok.AccentTextPrimary with { A = 0.45f },
+            LineWidth = 1.25f, AxisFontSize = R.Type.MicroMeta("").Size, Marker = Tok.AccentTextPrimary with { A = 0.45f },
         },
         ArtistRow = FluentNameRow,
         ArtistGap = static () => Spacing.S,
@@ -80,7 +81,9 @@ public readonly partial struct User
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Children = kids };
     }
 
-    /// <summary>The big numeral over its caption: Title 28/36/600 in a ZStack keyed on the value (M-9 TextSwap).</summary>
+    /// <summary>The big numeral over its caption: Title 28/36/600 in a ZStack keyed on the value (M-9 TextSwap). <paramref name="width"/> is the
+    /// column's FLOOR (the chart beside it holds still while the numeral swaps), never a cap: a caption wider than it ("BPM · median" is 73 at
+    /// 12) widens the column instead of running past it.</summary>
     static Element FluentNumeral(string value, string caption, float width)
     {
         var box = new BoxEl
@@ -92,7 +95,7 @@ public readonly partial struct User
                 Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1 },
             ],
         };
-        return float.IsNaN(width) ? box : box with { Width = width };
+        return float.IsNaN(width) ? box : box with { MinWidth = width };
     }
 
     static Element FluentNameRow(string name, string count, bool lit, Action? onClick)

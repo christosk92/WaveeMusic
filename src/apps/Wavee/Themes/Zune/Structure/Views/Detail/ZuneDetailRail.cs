@@ -41,12 +41,16 @@ internal static class ZuneDetailRail
     /// last resort once a long description has given), grown to the row's height.</summary>
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
     {
-        var lay = ZuneDetailTiers.Of(ctx.Tier());
+        var facts = ctx.Tier();
+        var lay = ZuneDetailTiers.ColumnOf(facts);
         float w = p.RailWidth > 0f ? p.RailWidth : lay.RailW;
         var spec = p.Spec;
+        // A Short window gives the column little height: a playlist's description closes it there, as every other kind's does, so the rings (play, saved)
+        // stand above the play bar at rest (V4: Z-Playlist-Owned-Followed-Small) and the description scrolls under them.
+        bool shortWindow = facts.Policy is not null && facts.Height == HeightTier.Short;
         Element region = new SkelRegionEl(
             Pending: p.Pending, Failed: K.Never,
-            Content: () => Column(spec, p, lay, w),
+            Content: () => Column(spec, p, lay, w, shortWindow),
             ShimmerSource: () => Skeleton(spec, lay, w),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         return new BoxEl
@@ -56,8 +60,10 @@ internal static class ZuneDetailRail
         };
     }
 
-    /// <summary>The loaded column (see the file header), every row keyed: a row that arrives late fades up, the rows under it glide.</summary>
-    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w)
+    /// <summary>The loaded column (see the file header), every row keyed: a row that arrives late fades up, the rows under it glide. On a Short window
+    /// (<paramref name="shortWindow"/>) a playlist's description closes the column instead of leading it and the status rows follow the rings (the same
+    /// keyed rows, moved), so the rings stand above the play bar at rest.</summary>
+    static Element Column(Detail.FrameSpec spec, DetailRailProps p, ZuneDetailLayout lay, float w, bool shortWindow)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -70,7 +76,7 @@ internal static class ZuneDetailRail
         kids.Add(K.Row("rail:cover", K.Cover("rail:cover-art", id, acts, slots, w)));
         // A playlist's description leads its column under the cover (Z-Playlist-Owned-Followed-Huge: description, owner, meta, rings); every other kind's
         // closes it.
-        bool descriptionLeads = id.Kind == DetailKind.Playlist;
+        bool descriptionLeads = id.Kind == DetailKind.Playlist && !shortWindow;
         if (descriptionLeads && p.DescriptionLines > 0 && K.Description(id, slots, w, p.Accent) is { } lead) kids.Add(K.LateRow("rail:desc", lead));
         if (id.OwnerName is { Length: > 0 } && id.Kind != DetailKind.Album && slots.Attribution is null)
             kids.Add(K.LateRow("rail:owner", K.ArtistText(id.OwnerName, w, lay)));
@@ -84,10 +90,16 @@ internal static class ZuneDetailRail
         kids.Add(K.LateRow("rail:meta", p.Shown is { } shown
             ? Embed.Comp(new MetaProps(id, w, lay), () => new MetaLine(shown))
             : K.Meta(id, w, lay, lay.MetaLines)));
-        if (slots.Ledger is { } ledger) kids.Add(K.LateRow("rail:ledger", ledger(w)));
-        if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(K.LateRow("rail:daylist", pulse()));
-        if (id.ChartNewEntries > 0 && slots.Chart is { } chart) kids.Add(K.LateRow("rail:chart", chart()));
-        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: false)));
+        // The status rows (a show's played ledger, the daylist's pulse, the chart's news) stand between the meta and the rings; on a Short window they
+        // follow the rings, so the verbs and their state stay above the play bar at rest (V4).
+        var status = new List<Element>(3);
+        if (slots.Ledger is { } ledger) status.Add(K.LateRow("rail:ledger", ledger(w)));
+        if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
+        if (id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
+        if (!shortWindow) kids.AddRange(status);
+        // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide.
+        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: false)) with { Layout = K.GrowShove });
+        if (shortWindow) kids.AddRange(status);
         if (slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(w)));
         if (slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)));
         if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
