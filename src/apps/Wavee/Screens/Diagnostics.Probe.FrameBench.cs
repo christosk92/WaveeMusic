@@ -297,10 +297,12 @@ public static partial class Diagnostics
                 case FrameBenchScenarios.PlaylistPlaying:
                 case FrameBenchScenarios.PlaylistLyrics:
                 {
-                    // The playlist playing as the context, its page on screen: the playing row's equalizer and the seek bar move.
+                    // A track playing, the first bench playlist's page on screen: the playing row's equalizer (where the list holds
+                    // the track) and the seek bar move.
                     if (t.Playlists.Length == 0) return Skip("no playlist");
+                    if (play is null) return Skip("no track to play");
                     string pl = t.Playlists[0];
-                    Base(playing: true, pl);
+                    Base(playing: true);
                     long nav0 = NavigationFrameWatch.NavigationId;
                     Nav(Shell.For(EntityUri.Parse(pl), "Bench playlist"));
                     PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
