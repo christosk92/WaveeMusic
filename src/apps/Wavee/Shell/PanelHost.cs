@@ -367,9 +367,10 @@ public static partial class Shell
         /// <summary>The mode's door. Where ONE panel shows at a time: the mode on show closes it (and forgets the queue beside it),
         /// any other switches to it. Where TWO dock (D3), the queue lives in the second pane: its door opens or closes that pane (or
         /// the primary, while the primary itself shows the queue), and switching the primary away from the queue moves the queue into
-        /// the second pane instead of closing it. Where the panes are LINKED (contract 1.29, Zune), they open and close with the panel:
-        /// a door whose body is on screen (in the primary, after its step aside, or in a docked pane) closes the panel, any other shows its
-        /// body in the primary.</summary>
+        /// the second pane instead of closing it. Where the panes are LINKED (contract 1.29, Zune, WinUI Huge), they open and close with the
+        /// panel: a door whose body is shown by choice (the primary's mode, or a docked pane's body) closes the panel; a door whose body the
+        /// primary shows only as the fallback of its step aside makes it the primary's mode (the Huge queue then lyrics path ends with both
+        /// panes docked, as Classic's does); any other shows its body in the primary.</summary>
         public void Toggle(RailMode mode)
         {
             bool open = Cells.Open.Peek();
@@ -392,8 +393,11 @@ public static partial class Shell
                     Cells.Open.Value = true;
                     return;
                 }
-                bool onScreen = panes.Holds(asked) || (byte)panes.Presented((Theming.Contracts.PanelMode)(byte)current) == (byte)mode;
-                if (open && onScreen) { Cells.Open.Value = false; return; }
+                // Shown by choice: a docked pane's body, or the primary's own mode. A body the primary shows only as the arrangement's FALLBACK
+                // (the queue asked for, its pane holding it, the primary stepped aside to lyrics) was never picked: its door adopts it as the
+                // primary's mode (both panes stay docked, the door lights) instead of closing the panel the user just opened.
+                bool chosen = panes.Holds(asked) || current == mode;
+                if (open && chosen) { Cells.Open.Value = false; return; }
                 SetMode(mode);
                 return;
             }
