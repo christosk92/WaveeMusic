@@ -276,6 +276,12 @@ public static class ZuneBandRules
     /// <summary>The bleed: 420 tall at 35 %, fading out over its lower 240.</summary>
     public const float BleedH = 420f, BleedOpacity = 0.35f, BleedFade = 240f;
 
+    /// <summary>Where the bleed places its photograph's subject (`PhotoSubject`: the faces, or the safe zone), as a share of the bleed's height: midway
+    /// between the band strip's foot (<paramref name="bandFoot"/>, from the window's top; the scrim covers what is above it) and the middle of the bleed's
+    /// fade (where the photograph is half gone), so the faces stand in the clear band above the hero's title. The crop clamps so the photograph always
+    /// covers the bleed.</summary>
+    public static float BleedSubjectAt(float bandFoot) => Math.Clamp((bandFoot + BleedH - BleedFade / 2f) / 2f / BleedH, 0f, 1f);
+
     /// <summary>The mix: the covers behind the top 480 at 18 %, fading out over the lower 240, at most three side by side.</summary>
     public const float MixH = 480f, MixOpacity = 0.18f, MixFade = 240f;
 
@@ -304,13 +310,14 @@ public static class ZuneBandRules
     /// <paramref name="ink"/> to <see cref="BleedScrimNeed"/> over the composite (the photo at <paramref name="bleedOpacity"/> over the
     /// <paramref name="ground"/>), judged at the photo's worst grey for the ink under the strip (its <see cref="MediaScrim.Percentile"/> bright tail for light ink, the
     /// matching dark tail for dark ink), the box
-    /// <paramref name="boxW"/> x <paramref name="boxH"/> cover-fitted at <paramref name="focusY"/>. The scrim is the <paramref name="scrim"/> grey
+    /// <paramref name="boxW"/> x <paramref name="boxH"/> cover-fitted with the photograph's <paramref name="subject"/> at the frame point <paramref name="frameY"/>
+    /// (as the bleed's image draws it). The scrim is the <paramref name="scrim"/> grey
     /// (black on the dark kind, the ground on the light one), so a dark photo takes little and a bright one up to all of it: the photo stays a
     /// photo below the band and never washes the band's words out (ar9: crumbs at 1.15 : 1, pivots at 1.2 : 1).</summary>
-    public static float BleedScrimAlpha(MediaScrim.LumaMap map, float boxW, float boxH, float bandFoot, float focusY, float bleedOpacity,
+    public static float BleedScrimAlpha(MediaScrim.LumaMap map, float boxW, float boxH, float bandFoot, PhotoSubject subject, float frameY, float bleedOpacity,
         float ground, float scrim, ColorF ink)
     {
-        var uv = CoverUvAt(map.Aspect, boxW, boxH, bandFoot, focusY);
+        var uv = MediaScrim.CoverUv(map.Aspect, boxW, boxH, 0f, 0f, boxW, bandFoot, subject.X, subject.Y, MediaScrim.Crop.Centred.FrameX, frameY);
         // The worst ground for the ink: the photo's bright tail under light ink (the dark kind), its dark tail under dark ink (the light kind).
         bool lightInk = MediaScrim.Contrast(ink, 0f) > MediaScrim.Contrast(ink, 1f);
         float photo = MediaScrim.GreyAt(map, uv, lightInk ? MediaScrim.Percentile : 1f - MediaScrim.Percentile);
@@ -323,18 +330,6 @@ public static class ZuneBandRules
             if (MediaScrim.Contrast(ink, under + (scrim - under) * mid) >= BleedScrimNeed) hi = mid; else lo = mid;
         }
         return hi;
-    }
-
-    /// <summary>The image-space rectangle the band strip (the box's top <paramref name="bandFoot"/>) shows of a cover-fitted photograph whose crop
-    /// sits at <paramref name="focusY"/> (0 top, 1 foot) on a tall photograph, as the bleed's image draws it.</summary>
-    static (float U0, float V0, float U1, float V1) CoverUvAt(float imageAspect, float boxW, float boxH, float bandFoot, float focusY)
-    {
-        float boxAspect = boxW / MathF.Max(1f, boxH);
-        float su = 1f, sv = 1f;
-        if (imageAspect > boxAspect) su = boxAspect / imageAspect;
-        else sv = imageAspect / boxAspect;
-        float u0 = (1f - su) / 2f, v0 = (1f - sv) * Math.Clamp(focusY, 0f, 1f);
-        return (u0, v0, u0 + su, v0 + sv * Math.Clamp(bandFoot / MathF.Max(1f, boxH), 0f, 1f));
     }
 
     /// <summary>The mix's opacity on the ground of the kind.</summary>
