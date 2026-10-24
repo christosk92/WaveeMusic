@@ -13,6 +13,8 @@
 //   floating   a hover strip: the drag surface and the close button, inset by the corner width and the edge band so neither sits under a
 //              resize zone; and the eight resize zones, a 3-row skeleton whose every non-zone cell is pass-through, topmost so a zone always
 //              wins over the chrome. Corner rows are 12 tall, edge bands 6 thin; the south-east zone carries the one painted pixel of the layer.
+//              ONE skeleton at every tier: on a Compact window the 14 x 12 corners (under the 40 touch floor) go inert, same size, and a press on
+//              a band within the tier's target of either end grips that corner's other edge too, so no gesture is lost (as WinUI's, audit C0).
 //
 // Hover chrome costs no signal and no re-render: `Opacity 0 / HoverOpacity 1` under a container that earns hover with a no-op
 // `OnPointerExit`. The strips are siblings of the picture, never ancestors (the hole rule).
@@ -40,7 +42,7 @@ internal static class ClassicVideoPip
         var tier = ClassicStageTiers.PanelOf(ctx.Tier());
         var kids = new List<Element>(4) { props.Area() };
         if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
-        if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures)); }
+        if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures, tier)); }
 
         return new BoxEl
         {
@@ -139,9 +141,14 @@ internal static class ClassicVideoPip
     }
 
     /// <summary>The eight resize zones: a 3-row skeleton whose every non-zone cell is pass-through, topmost so a zone always wins over the
-    /// chrome. Corner rows are 12 tall, edge bands 6 thin.</summary>
-    static Element ResizeBands(IVideoPipGestures gestures)
+    /// chrome. Corner rows are 12 tall, edge bands 6 thin. Where the tier has a least target (Compact's 40) a corner cell is under it: the
+    /// corners go inert (the same cell, pass-through) and each band grips the corner's other edge too when a press lands within that target of
+    /// either of its ends.</summary>
+    static Element ResizeBands(IVideoPipGestures gestures, ClassicPanelContentLayout tier)
     {
+        bool corners = tier.Target <= 0f;
+        float reach = tier.Target;
+
         BoxEl Band(int slot, Video.PipEdge edge, CursorId cursor) => new BoxEl
         {
             Cursor = cursor,
@@ -151,6 +158,27 @@ internal static class ClassicVideoPip
             OnClick = gestures.Commit,
             OnDragCanceled = gestures.Commit,
         };
+
+        // An edge band: its own edge, plus the corner's other edge for a press within `reach` of either end (none above Compact).
+        BoxEl EdgeBand(int slot, Video.PipEdge edge, CursorId cursor, bool horizontal)
+        {
+            var grip = new EdgeReach(edge, horizontal, reach);
+            return new BoxEl
+            {
+                Cursor = cursor,
+                OnBoundsChanged = grip.Measure,
+                OnRealized = h => gestures.ZoneRealized(slot, h),
+                OnPointerDown = p => { grip.Press(p); gestures.ZoneDown(slot, p); },
+                OnDrag = p => gestures.ZoneMove(slot, grip.Edge, p),
+                OnClick = gestures.Commit,
+                OnDragCanceled = gestures.Commit,
+            };
+        }
+
+        // A corner cell: it grips its two edges, or (Compact) it is an inert pass-through cell of the same size, so the tree never changes shape.
+        BoxEl Corner(int slot, Video.PipEdge edge, CursorId cursor) => (corners
+            ? Band(slot, edge, cursor)
+            : new BoxEl { HitTestPassThrough = true }) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH };
 
         return new BoxEl
         {
@@ -162,9 +190,9 @@ internal static class ClassicVideoPip
                     Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
                     Children =
                     [
-                        Band(0, Video.PipEdge.Left | Video.PipEdge.Top, CursorId.SizeNWSE) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
-                        Band(1, Video.PipEdge.Top, CursorId.SizeNS) with { Grow = 1f, Height = Video.Pip.EdgeBand },
-                        Band(2, Video.PipEdge.Right | Video.PipEdge.Top, CursorId.SizeNESW) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
+                        Corner(0, Video.PipEdge.Left | Video.PipEdge.Top, CursorId.SizeNWSE),
+                        EdgeBand(1, Video.PipEdge.Top, CursorId.SizeNS, horizontal: true) with { Grow = 1f, Height = Video.Pip.EdgeBand },
+                        Corner(2, Video.PipEdge.Right | Video.PipEdge.Top, CursorId.SizeNESW),
                     ],
                 },
                 new BoxEl
@@ -172,9 +200,9 @@ internal static class ClassicVideoPip
                     Grow = 1f, MinHeight = 0f, Direction = 0, HitTestPassThrough = true,
                     Children =
                     [
-                        Band(3, Video.PipEdge.Left, CursorId.SizeWE) with { Width = Video.Pip.EdgeBand },
+                        EdgeBand(3, Video.PipEdge.Left, CursorId.SizeWE, horizontal: false) with { Width = Video.Pip.EdgeBand },
                         new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                        Band(4, Video.PipEdge.Right, CursorId.SizeWE) with { Width = Video.Pip.EdgeBand },
+                        EdgeBand(4, Video.PipEdge.Right, CursorId.SizeWE, horizontal: false) with { Width = Video.Pip.EdgeBand },
                     ],
                 },
                 new BoxEl
@@ -182,12 +210,11 @@ internal static class ClassicVideoPip
                     Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, HitTestPassThrough = true,
                     Children =
                     [
-                        Band(5, Video.PipEdge.Left | Video.PipEdge.Bottom, CursorId.SizeNESW) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
-                        Band(6, Video.PipEdge.Bottom, CursorId.SizeNS) with { Grow = 1f, Height = Video.Pip.EdgeBand },
+                        Corner(5, Video.PipEdge.Left | Video.PipEdge.Bottom, CursorId.SizeNESW),
+                        EdgeBand(6, Video.PipEdge.Bottom, CursorId.SizeNS, horizontal: true) with { Grow = 1f, Height = Video.Pip.EdgeBand },
                         // The SE zone carries the one painted pixel of this layer, revealed with the chrome.
-                        Band(7, Video.PipEdge.Right | Video.PipEdge.Bottom, CursorId.SizeNWSE) with
+                        Corner(7, Video.PipEdge.Right | Video.PipEdge.Bottom, CursorId.SizeNWSE) with
                         {
-                            Width = Video.Pip.CornerW, Height = Video.Pip.CornerH,
                             Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.End,
                             Opacity = 0f, HoverOpacity = 1f,
                             HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
@@ -206,5 +233,26 @@ internal static class ClassicVideoPip
                 },
             ],
         };
+    }
+
+    /// <summary>An edge band's grip: its own edge, plus the corner's other edge when the press lands within <c>reach</c> of either end.</summary>
+    sealed class EdgeReach(Video.PipEdge own, bool horizontal, float reach)
+    {
+        float _length;
+        Video.PipEdge _near;
+
+        /// <summary>The edges the current press grips.</summary>
+        public Video.PipEdge Edge => own | _near;
+
+        public void Measure(RectF r) => _length = horizontal ? r.W : r.H;
+
+        public void Press(Point2 local)
+        {
+            float at = horizontal ? local.X : local.Y;
+            _near = reach <= 0f ? Video.PipEdge.None
+                : at <= reach ? (horizontal ? Video.PipEdge.Left : Video.PipEdge.Top)
+                : at >= _length - reach ? (horizontal ? Video.PipEdge.Right : Video.PipEdge.Bottom)
+                : Video.PipEdge.None;
+        }
     }
 }
