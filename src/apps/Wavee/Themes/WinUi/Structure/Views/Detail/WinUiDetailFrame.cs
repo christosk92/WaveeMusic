@@ -36,6 +36,7 @@ internal static partial class WinUiDetailFrame
     {
         var facts = ctx.Tier();
         var tier = WinUiDetailTiers.Of(in facts);
+        var swapIn = WinUiDetailRules.SwapEnter(WinUiDetailRules.Rendered(ctx.Hooks));
         // The content column. Its key is the host's (`right:tracks` / `right:eps`).
         BoxEl right = new()
         {
@@ -62,7 +63,7 @@ internal static partial class WinUiDetailFrame
             Children =
             [
                 new BoxEl { Key = "detail:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [arm] },
-                AsideSlot(p, tier, in facts),
+                AsideSlot(p, tier, in facts, swapIn),
             ],
         };
         return Ctx.Provide(Design.AccentCtx.Slot, p.PageAccent, new BoxEl
@@ -88,7 +89,7 @@ internal static partial class WinUiDetailFrame
     /// <summary>The aside's slot, the row's last child at every tier: width 0 where none docks; else the column (440, 480 from 3200) on the page's inset with its own
     /// scroller. An aside that holds only the insights follows their toggle (0 closed), the slot easing its width. The Width is BOUND in every form: the
     /// slot is one reused node and the engine wires a bind at mount only, so a static-to-bound flip would keep the mounted form (Classic's AsideSlot).</summary>
-    static Element AsideSlot(DetailFrameProps p, WinUiDetailTier tier, in TierFacts facts)
+    static Element AsideSlot(DetailFrameProps p, WinUiDetailTier tier, in TierFacts facts, EnterExit? swapIn)
     {
         if (p.Aside is not { } aside)
             return new BoxEl { Key = "detail:aside", Width = NoSlot, Shrink = 0f, MinHeight = 0f, Animate = WinUiDetailRules.DockReveal };
@@ -110,12 +111,21 @@ internal static partial class WinUiDetailFrame
             Width = width, Animate = WinUiDetailRules.DockReveal,
             Children =
             [
-                Ui.ScrollView(new BoxEl
+                // What docks here (About this release, the artists, "More by") stands under the list below Huge: two places, so a crossing cross-fades
+                // the column on the form swap while the slot eases its width (audit B9).
+                new BoxEl
                 {
-                    Direction = 1, Gap = WinUiDetailRules.AsideSectionGap,
-                    Padding = new Edges4(0f, tier.InsetTop + WinUiDetailRules.AsideTop, tier.InsetX, R.Space.DockReserve),
-                    Children = kids.ToArray(),
-                }) with { Key = "aside:scroll:" + aside.RouteKey, Width = slotW, Shrink = 0f, MinHeight = 0f },
+                    Key = "aside:swap", Direction = 1, Shrink = 0f, MinHeight = 0f, Enter = swapIn, Exit = WinUiDetailRules.FormSwap,
+                    Children =
+                    [
+                        Ui.ScrollView(new BoxEl
+                        {
+                            Direction = 1, Gap = WinUiDetailRules.AsideSectionGap,
+                            Padding = new Edges4(0f, tier.InsetTop + WinUiDetailRules.AsideTop, tier.InsetX, R.Space.DockReserve),
+                            Children = kids.ToArray(),
+                        }) with { Key = "aside:scroll:" + aside.RouteKey, Width = slotW, Shrink = 0f, MinHeight = 0f, Grow = 1f },
+                    ],
+                },
             ],
         };
     }

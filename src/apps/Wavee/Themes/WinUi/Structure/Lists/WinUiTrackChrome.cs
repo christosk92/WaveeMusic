@@ -169,7 +169,8 @@ internal static class WinUiTrackChrome
         var set = a.Set;
         var sort = a.Sort;
         var cells = new List<Element>(a.Tracks.Length);
-        void Add(string key, Element cell) => cells.Add(cell with { Key = key });
+        // The header's cells glide with the rows' (audit B9): a lane that comes or goes moves the others to their new places on the rows' clock.
+        void Add(string key, Element cell) => cells.Add(cell with { Key = key, Layout = Design.Reduced ? null : WinUiListRules.CellArrange });
 
         if (!set.IndexHidden) Add(CellKey.Num, IndexSortCell(a, sort));
         if (set.Heart) Add(CellKey.Heart, new BoxEl());
