@@ -257,9 +257,12 @@ internal static class ClassicRecents
             // ONE tree at every tier, so a crossing keeps the tabs (and the selected one's underline): the strip always rides a horizontal scroller. At
             // Compact (C-Recents-Compact) the four tabs overrun a 300-wide card and the line scrolls, its end fading; elsewhere they fit and it never
             // scrolls (an auto edge fade shows only while content runs past an edge), its height the strip's own.
+            // The line is pulled out by a tab's side padding (C-Recents-Compact: the tablist's -8 margin), so the first word sits on the gutter and its
+            // target is never cut by the scroller's own clip; 0 elsewhere.
             return ScrollView(strip, horizontal: true) with
             {
                 Grow = 1f, Basis = 0f, Height = _layout.PivotH > 0f ? _layout.PivotH : float.NaN, MinWidth = 0f, AutoEdgeFade = true, SuppressScrollBar = true,
+                Margin = new Edges4(-_layout.PivotPadX, 0f, 0f, 0f),
                 ScrollKey = "recents:pivots",
             };
         }
@@ -280,15 +283,18 @@ internal static class ClassicRecents
                 : new BoxEl { Key = "baseline", Height = ClassicRecentsRules.UnderlineHeight, Fill = ColorF.Transparent };
             return new BoxEl
             {
-                Direction = 1, Gap = Spacing.XS, Shrink = 0f,
-                // Compact: a 40 target (the label sits under 8 of air, the underline on the bottom edge) with the board's 8 of side padding.
-                MinHeight = _layout.PivotH, Padding = new Edges4(_layout.PivotPadX, _layout.PivotH > 0f ? Spacing.S : 0f, _layout.PivotPadX, 0f),
+                Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Start,
+                // Compact: a 40 x 40 target (the label sits under 8 of air, the underline on the bottom edge) with the board's 8 of side padding; a short
+                // word ("All") keeps the target's width, its label and underline at the start.
+                MinWidth = _layout.PivotH, MinHeight = _layout.PivotH,
+                Padding = new Edges4(_layout.PivotPadX, _layout.PivotH > 0f ? Spacing.S : 0f, _layout.PivotPadX, 0f),
                 Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
                 IsEnabled = available,
                 FocusVisualMargin = new Edges4(ClassicRecentsRules.PivotFocusMargin, ClassicRecentsRules.PivotFocusMargin,
                     ClassicRecentsRules.PivotFocusMargin, ClassicRecentsRules.PivotFocusMargin),
                 OnClick = available ? () => host.SelectPivot(token) : null,
-                Children = [text, underline],
+                // The underline spans the label (the pair's own width), never the target's.
+                Children = [new BoxEl { Direction = 1, Gap = Spacing.XS, Shrink = 0f, Children = [text, underline] }],
             };
         }
     }

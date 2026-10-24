@@ -58,7 +58,8 @@ public sealed record ClassicRecentsLayout
     /// <summary>The Overview button's height: 40 at Compact, the Small control's 24, Huge's 32.</summary>
     public required float OverviewH { get; init; }
 
-    /// <summary>The kind pivots' height (a 40 target at Compact; 0 is the tuned tab, which sizes to its label and underline), the gap between tabs and a tab's side padding.</summary>
+    /// <summary>The kind pivots' target edge (a 40 x 40 target at Compact, its height and its least width; 0 is the tuned tab, which sizes to its label and
+    /// underline), the gap between tabs and a tab's side padding (Compact pulls the line out by it, so the first word sits on the gutter).</summary>
     public required float PivotH { get; init; }
 
     /// <summary>See <see cref="PivotH"/>.</summary>
