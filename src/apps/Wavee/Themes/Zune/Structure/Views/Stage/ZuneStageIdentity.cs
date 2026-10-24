@@ -171,12 +171,12 @@ internal static class ZuneStageIdentity
         };
     }
 
-    /// <summary>A title that bleeds: a box from its column's edge to the window's (<paramref name="width"/>, where the window cuts it), its ink fading out over
+    /// <summary>A title that bleeds: a box from its column's edge to the window's (<paramref name="width"/>), clipped there, its ink fading out over
     /// the last <paramref name="band"/> (the tier's gutter, where only a title running past its column ever reaches). A row, so the title keeps
     /// its natural width (the whole title is laid out and the window's edge cuts it under the fade, never the text's own box).</summary>
     static Element Bleed(TextEl title, float width, float band) => new BoxEl
     {
-        Width = width, AlignSelf = FlexAlign.Start, Direction = 0, HitTestPassThrough = true,
+        Width = width, AlignSelf = FlexAlign.Start, Direction = 0, ClipToBounds = true, HitTestPassThrough = true,
         EdgeFade = new EdgeFadeSpec(EdgeMask.Right, band),
         Children = [title with { Shrink = 0f }],
     };
