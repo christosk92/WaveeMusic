@@ -257,6 +257,18 @@ public static class ZuneArtistRules
     /// <summary>The chart column's cap at Huge and Huge 4K.</summary>
     public const float HugeChartMaxW = 1200f;
 
+    /// <summary>Standard's rail beside the chart (Z-Artist: 300 wide, 48 off the chart) and the Standard frame's gutter on each side of the page
+    /// (<see cref="ZuneTiers"/>' Standard record): what the chart's second column is measured against (<see cref="ChartPairFrom"/>).</summary>
+    public const float StandardRailW = 300f, StandardRailGap = 48f, StandardGutter = 48f;
+
+    /// <summary>The CONTENT-width rung from which the popular chart is two columns: two cells of <see cref="ZuneListRules.ChartPairCell"/> beside
+    /// Standard's rail, plus the rung's narrowing hold, so the pair still fits its minimum at the held edge. Under it the chart is one wide column (as
+    /// Small's), so the column count and the reading order (1 3 5 | 2 4 6 only for a pair) never disagree with what the shelf fits.</summary>
+    public const string ChartPairRung = "artist.chart.pair";
+
+    /// <inheritdoc cref="ChartPairRung"/>
+    public const float ChartPairFrom = 2f * ZuneListRules.ChartPairCell + 2f * StandardGutter + StandardRailW + StandardRailGap + ZuneTiers.Hold;
+
     /// <summary>The standalone and inline grid's reveal inset (the drawer opens with its card this far under the page's top; the band is outside
     /// the page's viewport).</summary>
     public const float GridRevealInset = 24f;
@@ -452,7 +464,7 @@ public static class ZuneArtistTiers
         // Standard (Z-Artist): the tuned page. The actions are the band's row 2.
         Make(WidthTier.Standard, zoneGap: 28f, bodyTop: 24f, heroH: 340f, eyebrowTop: 36f, captionBottom: 16f, compactName: false, nameSize: 0f,
             nameLine: 0f, nameTracking: 0f, ZuneArtistActions.Band, ZuneArtistSecondary.None, target: 36f, chartCols: 2, chartMaxW: 0f,
-            railBeside: true, railW: 300f, railGap: 48f, latestArt: 96f, pickArt: 64f, drawerCols: 0, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
+            railBeside: true, railW: ZuneArtistRules.StandardRailW, railGap: ZuneArtistRules.StandardRailGap, latestArt: 96f, pickArt: 64f, drawerCols: 0, drawerPitch: 40f, drawerHead: 48f, aboutBeside: true),
         // Huge (Z-Artist-Huge): a 400 hero with the 150 name, play · shuffle · follow in the band, radio and "..." in a row under the caption, the
         // chart capped at 1200 beside a 360 rail, the 2400 page column, the grid's cells 200 wide (the board's eight across at 2560).
         Make(WidthTier.Huge, zoneGap: 28f, bodyTop: 28f, heroH: 400f, eyebrowTop: 40f, captionBottom: 12f, compactName: false, nameSize: 150f,
@@ -525,17 +537,26 @@ public sealed class ZuneArtistTierPolicy : ArtistTierPolicy
     public override float BandClearance(in TierFacts facts) => ZuneArtistRules.SectionAir;
 
     /// <inheritdoc />
-    public override int ChartMaxColumns(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartColumns;
+    public override int ChartMaxColumns(in TierFacts facts) => ChartColumns(in facts);
 
     /// <inheritdoc />
     public override ArtistChartRowShape ChartRowShape(in TierFacts facts)
     {
         var lay = ZuneArtistTiers.Of(in facts);
-        return new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f);
+        return new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, ChartColumns(in facts) > 1 ? lay.ChartColumnGap : 0f);
     }
 
     /// <inheritdoc />
-    public override bool ChartBalanced(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartColumns > 1;
+    public override bool ChartBalanced(in TierFacts facts) => ChartColumns(in facts) > 1;
+
+    /// <summary>The chart's columns: the record's pair only once the content has crossed <see cref="ZuneArtistRules.ChartPairRung"/> (two readable
+    /// cells beside the rail); one wide column under it. Where no frame resolved the tiers (no policy, or a policy without the rung) the record stands.</summary>
+    static int ChartColumns(in TierFacts facts)
+    {
+        int cols = ZuneArtistTiers.Of(in facts).ChartColumns;
+        if (cols < 2 || facts.Policy is not { } policy || policy.IndexOfRung(ZuneArtistRules.ChartPairRung) < 0) return cols;
+        return facts.Rung(ZuneArtistRules.ChartPairRung) ? cols : 1;
+    }
 
     /// <inheritdoc />
     public override int ChartRows(in TierFacts facts) => ZuneArtistTiers.Of(in facts).ChartRows;
