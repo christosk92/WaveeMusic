@@ -11,11 +11,14 @@
 //            48 row: 28/36, the lit word ROTATED to the front (the band's pivot idiom, sliding on the pivot slide), the run scrolling under
 //            an edge fade, so a pivot never clips at 300 wide.
 //
-// Every target is the tier's `TargetH` tall (40 at Compact). The options word / glyph is the TeachingTip's anchor (`GalleryButton`). The
-// pivots keep their keys (`stage:pivot:<mode>`) at every tier, so a crossing moves them, never remounts them.
+// Every target is the tier's `TargetH` tall (40 at Compact). The options word / glyph is the TeachingTip's anchor (`GalleryButton`). ONE
+// bar at every tier (audit B2z r3): the label, the pivots' scroller and the actions are keyed children the tier re-orders, never re-parents
+// (Compact wraps the scroller onto the second line), so a crossing slides the pivots and the options, never remounts them. The forms a tier
+// swaps (the exit's chevron, glyph and word; the options' glyph and word) cross-fade on the declared swap family.
 //
 // The face chip under a Compact window's identity card (Visualizer mode) is chrome too: `ZuneStageFaceChip`, placed by the root.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -38,111 +41,121 @@ internal static class ZuneStageTopBar
 {
     static readonly string[] s_modes = [Strings.Stage.Mode.Lyrics, Strings.Stage.Mode.Visualizer, Strings.Stage.Mode.Queue, Strings.Stage.Mode.Artist];
 
-    /// <summary>The key of the Compact pivots' row.</summary>
+    /// <summary>The key of the pivots' scroller (at every tier: their own row at Compact, a run in the bar above it).</summary>
     public const string PivotRowKey = "stage:pivots:row";
 
     /// <summary>The registered template of <see cref="ViewKeys.StageTopBar"/>.</summary>
     public static Element Template(StageTopBarProps props, in ViewContext ctx)
     {
+        var enter = ZuneMotion.SwapEnter(ZuneMotion.Rendered(ctx.Hooks));
         var st = props.Stage;
         var L = st.Layout.Value;
         var mode = st.Mode.Value;
         var t = ZuneStageTiers.StageOf(ctx.Tier());
+        bool own = t.PivotRowH > 0f;   // Compact: the pivots wrap onto their own row under the bar
         bool glyphs = t.GlyphActions || L.IconOnlySelector;
-        bool lookWords = t.LookWords && t.PivotRowH <= 0f && mode == Stage.Mode.Visualizer && G.LookWordsFit(in L, t);
+        bool lookWords = t.LookWords && !own && mode == Stage.Mode.Visualizer && G.LookWordsFit(in L, t);
         bool optionsOn = st.OptionsOpen.Value;
         var overControls = st.OverControls;
         var galleryButton = st.GalleryButton;
         float target = t.TargetH;
 
-        var right = new List<Element>(4);
+        var actions = new List<Element>(5);
         if (lookWords)
         {
             string layout = Loc.Get(LayoutName(st.LayoutPref.Value));
             string face = Loc.Get(Visualizer.NameKey(st.Kind.Value));
-            right.Add(Word(Strings.Theme.Zune.Stage.LayoutWord(layout), st.OpenOptions, Ink.InkSecondary, t, null, "stage:word:layout"));
-            right.Add(Word(Strings.Theme.Zune.Stage.FaceWord(face), st.ToggleGallery, Ink.InkSecondary, t, null, "stage:word:face"));
+            actions.Add(Word(Strings.Theme.Zune.Stage.LayoutWord(layout), st.OpenOptions, Ink.InkSecondary, t, null, "stage:word:layout"));
+            actions.Add(Word(Strings.Theme.Zune.Stage.FaceWord(face), st.ToggleGallery, Ink.InkSecondary, t, null, "stage:word:face"));
         }
         if (mode == Stage.Mode.Lyrics)
         {
             // Z-Lyrics: "translate" (the second-line cycle; quiet and inert when the document has no second layer, lit while one shows) and "resync"
             bool hasSecond = st.HasSecondLine(), secondOn = hasSecond && st.SecondLineOn();
-            right.Add(Word(Loc.Get(Strings.Theme.Zune.Player.Translate), hasSecond ? st.ToggleSecondLine : static () => { },
+            actions.Add(Word(Loc.Get(Strings.Theme.Zune.Player.Translate), hasSecond ? st.ToggleSecondLine : static () => { },
                 secondOn ? Ink.Ink : Ink.InkSecondary, t, null, "stage:word:translate"));
-            right.Add(Word(Loc.Get(Strings.Player.ResyncLyrics), st.ResyncLyrics, Ink.InkSecondary, t, null, "stage:word:resync"));
+            actions.Add(Word(Loc.Get(Strings.Player.ResyncLyrics), st.ResyncLyrics, Ink.InkSecondary, t, null, "stage:word:resync"));
         }
+        // the options and the exit change form with the tier (a glyph, a word; Compact's exit is the chevron leading the bar): each form is
+        // its own keyed tree that cross-fades into the next on the declared swap family; a form both tiers draw keeps its node and slides
         if (glyphs)
-        {
-            right.Add(ToolTip.Wrap(Glyph(Icons.More, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), target, "stage:glyph:options"), Loc.Get(Strings.Theme.Zune.Stage.Options)));
-            if (t.PivotRowH <= 0f)
-                right.Add(ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)));
-        }
+            actions.Add(Form("stage:options:glyph", ToolTip.Wrap(Glyph(Icons.More, st.OpenOptions, optionsOn, n => galleryButton.SetIfChanged(n), target, "stage:glyph:options"),
+                Loc.Get(Strings.Theme.Zune.Stage.Options)), enter));
         else
-        {
-            right.Add(Word(Loc.Get(Strings.Theme.Zune.Stage.Options), st.OpenOptions, optionsOn ? Ink.Ink : Ink.InkSecondary, t, n => galleryButton.SetIfChanged(n), "stage:word:options"));
-            right.Add(Word(Loc.Get(Strings.Stage.Exit), st.Exit, Ink.Ink, t, null, "stage:word:exit"));
-        }
+            actions.Add(Form("stage:options:word", Word(Loc.Get(Strings.Theme.Zune.Stage.Options), st.OpenOptions, optionsOn ? Ink.Ink : Ink.InkSecondary, t,
+                n => galleryButton.SetIfChanged(n), "stage:word:options"), enter));
+        if (!own)
+            actions.Add(glyphs
+                ? Form("stage:exit:glyph", ToolTip.Wrap(Glyph(Icons.BackToWindow, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)), enter)
+                : Form("stage:exit:word", Word(Loc.Get(Strings.Stage.Exit), st.Exit, Ink.Ink, t, null, "stage:word:exit"), enter));
 
-        var barKids = new List<Element>(4);
-        if (t.PivotRowH > 0f)
+        // ONE bar at every tier: its parts are keyed children the tier only re-orders (they slide on the pivot slide), never re-parents, so a
+        // crossing keeps the pivots' focus and hover. Compact wraps the pivots onto their own row (the bar is then the head's two rows).
+        bool centred = !own && !t.PivotsLead;
+        LayoutTransition? slide = Design.Reduced ? null : ZuneMotion.PivotSlide;
+        var label = new BoxEl
         {
-            // Compact: the exit chevron, the label, the options glyph; the pivots on their own row below
-            barKids.Add(ToolTip.Wrap(Glyph(Icons.ChevronDown, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)));
-            barKids.Add(new BoxEl
-            {
-                Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true,
-                Children = t.BarLabel ? [Label(Loc.Get(Strings.Stage.NowPlayingEyebrow), t)] : [],
-            });
-            barKids.AddRange(right);
-        }
-        else if (t.PivotsLead)
+            // Compact: "now playing" between the exit and the options; Standard and up: the brand, the side that gives way (clipped, so it never
+            // paints over the pivots); Small: the air between the pivots and the actions
+            Key = "stage:bar:label", Height = t.BarH, Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true,
+            Margin = own ? new Edges4(G.BarGlyphGap, 0f, G.BarGlyphGap, 0f) : default, Layout = slide,
+            Children = t.BarLabel && (own || !L.IconOnlySelector) ? [Label(Loc.Get(own ? Strings.Stage.NowPlayingEyebrow : Strings.Stage.Brand), t)] : [],
+        };
+        var right = new BoxEl
         {
-            barKids.Add(Pivots(st, mode, t, rotate: false));
-            barKids.Add(new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f });
-            barKids.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Shrink = 0f, Gap = glyphs ? G.BarGlyphGap : t.BarGap, Children = right.ToArray() });
-        }
-        else
-        {
-            barKids.Add(new BoxEl
-            {
-                // the label never paints over the pivots: clipped, and it is the part that gives way
-                Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true,
-                Children = t.BarLabel && !L.IconOnlySelector ? [Label(Loc.Get(Strings.Stage.Brand), t)] : [],
-            });
-            barKids.Add(Pivots(st, mode, t, rotate: false));
-            barKids.Add(new BoxEl
-            {
-                Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, ClipToBounds = true,
-                Gap = glyphs ? G.BarGlyphGap : t.BarGap,
-                Children = right.ToArray(),
-            });
-        }
+            // centred pivots: the side columns split what the pivots leave (Grow 1, Basis 0), so the pivots stay centred
+            Key = "stage:bar:actions", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Layout = slide,
+            Grow = centred ? 1f : 0f, Basis = centred ? 0f : float.NaN, Shrink = 0f, MinWidth = 0f, ClipToBounds = centred,
+            Gap = glyphs ? G.BarGlyphGap : t.BarGap,
+            Children = actions.ToArray(),
+        };
+        var pivots = PivotRow(st, mode, t, L.W, own, slide);
+        Element[] parts = own
+            ? [Form("stage:exit:lead", ToolTip.Wrap(Glyph(Icons.ChevronDown, st.Exit, false, null, target, "stage:glyph:exit"), Loc.Get(Strings.Stage.Exit)), enter), label, right, pivots]
+            : t.PivotsLead ? [pivots, label, right] : [label, pivots, right];
 
         var bar = new BoxEl
         {
-            Key = "stage:bar", Height = t.BarH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = ZuneMotion.HeightResize,
-            Padding = new Edges4(t.BarPadL, 0f, t.BarPadR, 0f), Gap = t.PivotRowH > 0f ? G.BarGlyphGap : t.BarGap,
-            Children = barKids.ToArray(),
+            // Compact's row break is the wrap: the pivots' row is the stage's width, so it starts the second line (no gap between the lines: the
+            // label's margin spaces the first)
+            Key = "stage:bar", Height = t.HeadH, Direction = 0, Wrap = own, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = ZuneMotion.HeightResize,
+            Padding = new Edges4(t.BarPadL, 0f, t.BarPadR, 0f), Gap = own ? 0f : t.BarGap,
+            Children = parts,
         };
-        var head = new List<Element>(2) { bar };
-        if (t.PivotRowH > 0f)
-        {
-            head.Add(new ScrollEl
-            {
-                Key = PivotRowKey, Horizontal = true, Height = t.PivotRowH, Shrink = 0f, MinWidth = 0f,
-                AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
-                Content = new BoxEl { Padding = new Edges4(t.Gutter, 0f, t.Gutter, 0f), Direction = 0, Shrink = 0f, Children = [Pivots(st, mode, t, rotate: true)] },
-            });
-        }
         return new BoxEl
         {
             // fills the head slot, whose height eases across a crossing (ZuneStageHead): the veil follows it
             Grow = 1f, Direction = 1,
             Gradient = mode == Stage.Mode.Visualizer ? GradientDown(new GradientStop(0f, Shade(G.TopBarVeilA)), new GradientStop(1f, Shade(0f))) : null,
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
-            Children = head.ToArray(),
+            Children = [bar],
         };
     }
+
+    /// <summary>One form of a part that changes form with the tier (the exit, the options): a keyed host that enters (after the view's first
+    /// render) and exits on the declared swap cross-fade.</summary>
+    static BoxEl Form(string key, Element body, EnterExit? enter) => new()
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Enter = enter, Exit = ZuneMotion.SwapFade, Transition = MotionTok.ControlNormal,
+        Children = [body],
+    };
+
+    /// <summary>The pivots' scroller, the same node at every tier: their own row at Compact (the stage's width, bled over the bar's padding, the
+    /// run inset by the gutter and scrolling under an edge fade, so a pivot never clips at 300 wide); a run sized to its words in the bar above it
+    /// (where the bar runs short it scrolls under the fade, never clips).</summary>
+    static ScrollEl PivotRow(Stage.StageCtx st, Stage.Mode mode, ZuneStageLayout t, float stageW, bool own, LayoutTransition? slide) => new()
+    {
+        Key = PivotRowKey, Horizontal = true, ContentSized = true, Shrink = own ? 0f : 1f, MinWidth = 0f,
+        Width = own ? stageW : float.NaN, Height = own ? t.PivotRowH : float.NaN,
+        Margin = own ? new Edges4(-t.BarPadL, 0f, -t.BarPadR, 0f) : default, Layout = slide,
+        AutoEdgeFade = true, AutoEdgeFadeBand = ZuneBandRules.EdgeFadeBand, SuppressScrollBar = true,
+        Content = new BoxEl
+        {
+            Padding = own ? new Edges4(t.Gutter, 0f, t.Gutter, 0f) : default, Direction = 0, Shrink = 0f,
+            Children = [Pivots(st, mode, t, rotate: own)],
+        },
+    };
 
     static Element Label(string text, ZuneStageLayout t) => new TextEl(text)
     {
@@ -196,7 +209,7 @@ internal static class ZuneStageTopBar
         return new BoxEl
         {
             // a crossing that moves the run (W1008: centred <-> leading) slides it on the pivot slide instead of snapping (audit B3bc)
-            Key = "stage:pivots", Direction = 0, AlignItems = FlexAlign.Center, Gap = t.PivotGap, Shrink = rotate ? 0f : 1f, MinWidth = 0f, ClipToBounds = !rotate,
+            Key = "stage:pivots", Direction = 0, AlignItems = FlexAlign.Center, Gap = t.PivotGap, Shrink = 0f,
             Layout = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = words,
         };
