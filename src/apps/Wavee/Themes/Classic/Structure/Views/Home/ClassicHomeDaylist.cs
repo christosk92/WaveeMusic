@@ -213,7 +213,7 @@ internal static class ClassicHomeDaylist
             // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card. The card's 320 floor is this
             // column's (the card's own height eases between forms).
             Justify = FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.XL,
-            Children = [Top(p, text, dl, withActions: true), p.Clock],
+            Children = [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
@@ -233,7 +233,7 @@ internal static class ClassicHomeDaylist
         bool strip = dl.Form == ClassicDaylistForm.Strip;
         Element[] copyKids = strip ? [Top(p, text, dl, withActions: false)]
             : hero ? [Top(p, text, dl, withActions: false), p.Actions]
-            : [Top(p, text, dl, withActions: true), p.Clock];
+            : [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)];
         var copy = new BoxEl
         {
             Key = "daylist-copy",
@@ -246,7 +246,7 @@ internal static class ClassicHomeDaylist
             {
                 AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End,
                 Margin = new Edges4(0f, 0f, ClassicHomeRules.ClockPlateInset, ClassicHomeRules.ClockPlateInset),
-                Children = [p.Clock],
+                Children = [ClockSlot(p.Clock, plate: true)],
             }
             : NoLayer();
         return new BoxEl
@@ -267,7 +267,7 @@ internal static class ClassicHomeDaylist
             Key = "daylist-copy",
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = dl.CopyPad, Gap = Spacing.S,
             Margin = hasArt ? new Edges4(0f, -ClassicHomeRules.StackedOverlap, 0f, 0f) : default,
-            Children = [Top(p, float.NaN, dl, withActions: true), p.Clock],
+            Children = [Top(p, float.NaN, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
@@ -285,6 +285,16 @@ internal static class ClassicHomeDaylist
             ],
         };
     }
+
+    /// <summary>The clock in its place: in the copy (every form but the hero) or on the hero's corner plate. The two places are two trees (a crossing
+    /// between the hero and another form re-parents the clock), so each is keyed and swaps under the tier cross-fade instead of the clock rebuilding
+    /// with a cut.</summary>
+    static Element ClockSlot(Element clock, bool plate) => new BoxEl
+    {
+        Key = plate ? "daylist-clock:plate" : "daylist-clock:copy", Direction = 1, MinWidth = 0f,
+        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+        Children = [clock],
+    };
 
     /// <summary>An absent layer's slot: empty and hit-test free.</summary>
     static BoxEl NoLayer() => new() { HitTestVisible = false };

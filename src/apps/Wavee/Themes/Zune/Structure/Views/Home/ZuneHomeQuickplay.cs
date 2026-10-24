@@ -74,7 +74,8 @@ internal static class ZuneHomeQuickplay
     {
         var kids = new List<Element>(3);
         if (pins is not null) kids.Add(pins);
-        if (history is not null) kids.Add(history);
+        // The history group stands in its view's anchor, so the anchor is what moves in the strip: it slides when the strip re-breaks, as the groups do.
+        if (history is not null) kids.Add(history with { Layout = Design.Reduced ? null : ZuneMotion.PivotSlide });
         if (fresh is not null) kids.Add(fresh);
         bool stacked = lay.QuickStacked;
         return new BoxEl

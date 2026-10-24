@@ -51,8 +51,9 @@ public static partial class Diagnostics
             /// <summary>A tracked move is INSTANT when one frame carries at least this many DIP and most of its run (<see cref="InstantShare"/>):
             /// the change landed in a frame while something above it animated (a page reflowing at once beside a sliding pane).</summary>
             public float InstantDip = 4f;
-            /// <summary>The window in DIP, set by the runner: a move wholly outside it in both frames (a part below the fold, which the engine lands at once
-            /// on purpose: a flow reveal off the view does not animate) is no snap and no jump. Empty: every move counts.</summary>
+            /// <summary>The window in DIP, set by the runner: a move whose DRAWN part does not change (wholly off the window, below the fold, which the
+            /// engine lands at once on purpose: a flow reveal off the view does not animate; or under a clipping ancestor that has not opened yet) is no snap
+            /// and no jump. Empty: every move counts.</summary>
             public RectF Window;
             public bool Rows = true;
             /// <summary>Turn the host's render census on: a slow frame's row then names the components that made it slow (`census`). Off by default (it costs frame time).</summary>
@@ -175,7 +176,11 @@ public static partial class Diagnostics
         // ── the samples ─────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>One watched node on one frame. <see cref="W"/> indexes the trace's watch list.</summary>
-        public readonly record struct NodeSample(int W, bool Shown, RectF Laid, RectF Pres, bool Track, float Opacity);
+        public readonly record struct NodeSample(int W, bool Shown, RectF Laid, RectF Pres, bool Track, float Opacity)
+        {
+            /// <summary>The part of <see cref="Pres"/> that is drawn: inside the window and every clipping ancestor's presented rect (empty: none).</summary>
+            public RectF Vis { get; init; } = Pres;
+        }
 
         /// <summary>The traced scroller on one frame. <see cref="Label"/> names the scroller (a different label = a different scroller).</summary>
         public readonly record struct ScrollSample(string Label, double Offset, double Velocity, double Max, double Content, double Viewport,
@@ -316,7 +321,7 @@ public static partial class Diagnostics
                         var move = new Move(watch[w], r.Frame, dx, dy, dw, dh, mag, prevMag[w], p.Pres, cur.Pres, track);
                         // A move nobody can see counts as neither: the part of the rect inside the window is what is drawn (a part below the fold, a tall
                         // column whose foot moved off the window).
-                        bool visible = !clip || VisibleChange(window, p.Pres, cur.Pres);
+                        bool visible = !clip || VisibleChange(p.Vis, cur.Vis);
                         if (visible && track && mag > jumpDip) into.Jumps.Add(move);
                         else if (visible && !track && mag > snapDip && lay > snapDip) into.Snaps.Add(move);
                         prevMag[w] = mag;
@@ -330,15 +335,13 @@ public static partial class Diagnostics
                 if (first[w] >= 0) into.NodeLife.Add((watch[w], first[w], last[w]));
         }
 
-        /// <summary>Does the part of a rect the window shows change between <paramref name="a"/> and <paramref name="b"/> (by half a DIP or more)?</summary>
-        static bool VisibleChange(RectF window, RectF a, RectF b)
+        /// <summary>Did the drawn part of a rect change (by half a DIP or more on any edge)? Two empty parts (nothing of it drawn either frame) did not.</summary>
+        static bool VisibleChange(RectF a, RectF b)
         {
-            bool ia = window.Overlaps(a), ib = window.Overlaps(b);
-            if (!ia && !ib) return false;
-            if (ia != ib) return true;
-            float ax0 = MathF.Max(window.X, a.X), ay0 = MathF.Max(window.Y, a.Y), ax1 = MathF.Min(window.Right, a.Right), ay1 = MathF.Min(window.Bottom, a.Bottom);
-            float bx0 = MathF.Max(window.X, b.X), by0 = MathF.Max(window.Y, b.Y), bx1 = MathF.Min(window.Right, b.Right), by1 = MathF.Min(window.Bottom, b.Bottom);
-            return MathF.Abs(ax0 - bx0) >= 0.5f || MathF.Abs(ay0 - by0) >= 0.5f || MathF.Abs(ax1 - bx1) >= 0.5f || MathF.Abs(ay1 - by1) >= 0.5f;
+            bool ea = a.W <= 0f || a.H <= 0f, eb = b.W <= 0f || b.H <= 0f;
+            if (ea && eb) return false;
+            if (ea != eb) return true;
+            return MathF.Abs(a.X - b.X) >= 0.5f || MathF.Abs(a.Y - b.Y) >= 0.5f || MathF.Abs(a.Right - b.Right) >= 0.5f || MathF.Abs(a.Bottom - b.Bottom) >= 0.5f;
         }
 
         /// <summary>The share of a run's whole move one frame must carry for the run to be instant: an eased glide spreads its move over
@@ -684,6 +687,8 @@ public static partial class Diagnostics
         {
             SceneStore scene = shell.Host.Scene;
             var anim = shell.Host.Animation;
+            float winScale = Math.Max(0.01f, shell.Window.Scale);
+            var window = new RectF(0f, 0f, shell.Window.ClientSizePx.Width / winScale, shell.Window.ClientSizePx.Height / winScale);
             var result = new InspectTrace.Result { Options = o };
             var watchIndex = new Dictionary<string, int>(StringComparer.Ordinal);
             var seen = new HashSet<uint>();
@@ -778,7 +783,9 @@ public static partial class Diagnostics
                                     || scene.Parent(up) is var pu && !pu.IsNull && (scene.Flags(pu) & NodeFlags.ZStack) == 0 && reflowParents.Contains(pu.Raw.Index)))
                                 track = true;
                         }
-                        row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), scene.PresentedAbsoluteRect(node), track, opacity));
+                        RectF pres = scene.PresentedAbsoluteRect(node);
+                        row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), pres, track, opacity)
+                            { Vis = VisiblePart(scene, node, pres, window) });
                         if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
                     }
                     foreach (var (key, node) in nowNode)
@@ -799,8 +806,7 @@ public static partial class Diagnostics
                 }
                 result.Rows.Add(row);
             }
-            float winScale = Math.Max(0.01f, shell.Window.Scale);
-            o.Window = new RectF(0f, 0f, shell.Window.ClientSizePx.Width / winScale, shell.Window.ClientSizePx.Height / winScale);
+            o.Window = window;
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
             return result;
         }
@@ -813,6 +819,20 @@ public static partial class Diagnostics
             for (NodeHandle n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
                 if (SwapsOut(shell, n) && shell.Host.Animation.HasTracks(n)) return InspectKit.KeyOf(scene, n);
             return null;
+        }
+
+        /// <summary>The part of <paramref name="pres"/> drawn: inside the window and inside every ancestor that clips (at its PRESENTED rect: a revealing
+        /// zone shows only what its clip has opened). Empty where none of it shows.</summary>
+        static RectF VisiblePart(SceneStore scene, NodeHandle node, RectF pres, RectF window)
+        {
+            float x0 = MathF.Max(pres.X, window.X), y0 = MathF.Max(pres.Y, window.Y), x1 = MathF.Min(pres.Right, window.Right), y1 = MathF.Min(pres.Bottom, window.Bottom);
+            for (var up = scene.Parent(node); !up.IsNull && x1 > x0 && y1 > y0; up = scene.Parent(up))
+            {
+                if ((scene.Flags(up) & NodeFlags.ClipsToBounds) == 0) continue;
+                RectF c = scene.PresentedAbsoluteRect(up);
+                x0 = MathF.Max(x0, c.X); y0 = MathF.Max(y0, c.Y); x1 = MathF.Min(x1, c.Right); y1 = MathF.Min(y1, c.Bottom);
+            }
+            return x1 > x0 && y1 > y0 ? new RectF(x0, y0, x1 - x0, y1 - y0) : default;
         }
 
         static bool Matches(InspectTrace.Options o, string key)

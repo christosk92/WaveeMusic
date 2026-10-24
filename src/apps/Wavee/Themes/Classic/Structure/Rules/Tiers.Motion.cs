@@ -41,6 +41,12 @@ public static class ClassicTierMotion
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>A surviving part whose WIDTH changes by a large step and that draws its own fill (the daylist hero between its share of the Huge band and
+    /// the page's width): it moves and its width eases through real layout, the content re-laid at every step, so a shrink never draws the part at its
+    /// new width at once.</summary>
+    public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 

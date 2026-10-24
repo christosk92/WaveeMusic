@@ -126,7 +126,13 @@ internal static class ClassicHomeZones
             Layout = ClassicTierMotion.Reflow,
             Children =
             [
-                Chapter(hero, index, overlay, layout) with { Grow = beside ? ClassicHomeTiers.HeroShare : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                // The hero's width runs through layout when the band turns from a row into a column (or back): the card re-lays at the eased width
+                // instead of stepping 400-500 wide in one frame (a revealed size lays the card out at its new width at once).
+                Chapter(hero, index, overlay, layout) with
+                {
+                    Grow = beside ? ClassicHomeTiers.HeroShare : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN,
+                    Layout = ClassicTierMotion.WidthReflow,
+                },
                 Chapter(recents, index + 1, overlay, layout) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
             ],
         };
