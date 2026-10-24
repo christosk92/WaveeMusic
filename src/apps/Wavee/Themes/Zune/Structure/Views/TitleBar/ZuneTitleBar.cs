@@ -203,7 +203,9 @@ internal static class ZuneTitleBar
     }
 
     /// <summary>The trail: every crumb, a tertiary <c>›</c> between two; the ancestors are links in the tertiary ink, the current page (the
-    /// last crumb) in the secondary one. Names keep their own casing. The trail gives way (ellipsised, last crumb first) before Back.</summary>
+    /// last crumb) in the secondary one. The core's words are lowercase, as every Zune label (Z-Part-TitleBar: "library › playlists › late night
+    /// drive"; the library's says "library", as its pivot does); names keep their own casing. The trail gives way (ellipsised, last crumb first)
+    /// before Back.</summary>
     private static BoxEl Trail(IReadOnlyList<PageCrumb> crumbs, ZuneTitleBarLayout rec)
     {
         var kids = new Element[crumbs.Count * 2 - 1];
@@ -214,8 +216,9 @@ internal static class ZuneTitleBar
             signature = HashCode.Combine(signature, StringComparer.Ordinal.GetHashCode(crumb.Label));
             bool current = i == crumbs.Count - 1;
             if (i > 0) kids[i * 2 - 1] = Words(rec, "›") with { Color = Tok.TextTertiary, Shrink = 0f };
-            var words = Words(rec, crumb.Label) with
+            var words = Words(rec, CrumbText(crumb)) with
             {
+                Case = crumb.Word ? R.Case.For(LabelKind.Navigation) : TextCase.AsWritten,
                 Color = current ? Tok.TextSecondary : Tok.TextTertiary, HoverColor = current ? Tok.TextSecondary : Tok.TextPrimary,
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
             };
@@ -238,6 +241,10 @@ internal static class ZuneTitleBar
             Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
         };
     }
+
+    // The library's word is the band's "library", not the core's "Your Library"; every other crumb is the core's label.
+    private static string CrumbText(PageCrumb crumb)
+        => crumb.Word && string.Equals(crumb.Label, Loc.Get(Strings.Nav.YourLibrary), StringComparison.Ordinal) ? Loc.Get(Strings.Theme.Zune.Band.Library) : crumb.Label;
 
     private static TextEl Words(ZuneTitleBarLayout rec, string text) => rec.LargeCrumbs ? R.Type.TrackTitle(text) : R.Type.DenseMeta(text);
 

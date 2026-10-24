@@ -4,7 +4,7 @@
 // (all · music · podcasts · artists) and the "overview" word, published by the core host. What the page draws:
 //
 //   the list    day headings (22 light, a hairline, the count at the end; the core's 48 band, the sticky copy pinned over the rows), then the core's
-//               64 rows: the kind word (56), the 48 art, the title over its caption, the time (64) and the chevron (32), the drawer under an open
+//               64 rows: the kind word (64), the 48 art, the title over its caption, the time (64) and the chevron (32), the drawer under an open
 //               row (40 track rows, 72 in). Small drops the kind word into the caption and sizes to the 52-ish board row; Compact stacks it and
 //               makes the chevron a 40 target. The row height itself is the core's (`RecentsLayout.RowHeight`, 64): the measured layout, the
 //               sticky band and the drawer's cached extent all read it, so no tier changes it.
@@ -52,7 +52,11 @@ public static class ZuneRecentsRules
     /// <summary>The distance from a row's trailing edge to its chevron glyph's right edge, which a day heading's count aligns to: the row's pad, then
     /// (where the played-at stamp is not stacked) the "..." lane and the gap before it, then the chevron lane's air around its glyph.</summary>
     public static float CountInset(bool stacked, float chevronLane, float moreLane, float gap)
-        => SurfaceGeometry.RowPad + (stacked ? 0f : moreLane + gap) + (chevronLane - ChevronGlyph) / 2f;
+        => RowPadX + (stacked ? 0f : moreLane + gap) + (chevronLane - ChevronGlyph) / 2f;
+
+    /// <summary>The row's plate pads nothing at its sides: the art (from Standard, the kind word) leads on the gutter with the plate flush with it, as
+    /// Z-Recents' plate starts at its kind word and Z-Recents-Compact's art sits on the gutter; the trailing cluster ends on the right edge.</summary>
+    public const float RowPadX = 0f;
 
     // ── the row ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -118,7 +122,8 @@ public sealed record ZuneRecentsLayout : ITierLayoutRecord
     /// <summary>The page's gutter (the frame's).</summary>
     public required float Gutter { get; init; }
 
-    /// <summary>The kind word stands in its own lane before the art (56, Huge 72); 0 folds it into the caption (Small, Compact).</summary>
+    /// <summary>The kind word stands in its own lane before the art (64, Huge 80: the art 64 / 80 in, the plate padding nothing); 0 folds it into the
+    /// caption (Small, Compact).</summary>
     public required float KindLane { get; init; }
 
     /// <summary>The row folds the played-at stamp under the caption and the trailing cluster is the chevron's lane alone (Compact).</summary>
@@ -184,10 +189,10 @@ public static class ZuneRecentsTiers
         Make(WidthTier.Small, kindLane: 0f, stacked: false, chevron: 32f, child: 36f, drawer: 60f, asideW: 220f, asideGap: 28f, months: 1, cellH: 24f,
             ZuneRecentsHead.Small, ZuneRecentsHead.Small, gridGap: 3f, calCellH: 32f, calGap: 24f),
         // Standard (Z-Recents): the tuned page, a 300 overview 48 from the list.
-        Make(WidthTier.Standard, kindLane: 56f, stacked: false, chevron: 32f, child: 40f, drawer: 72f, asideW: 300f, asideGap: 48f, months: 2, cellH: 28f,
+        Make(WidthTier.Standard, kindLane: 64f, stacked: false, chevron: 32f, child: 40f, drawer: 72f, asideW: 300f, asideGap: 48f, months: 2, cellH: 28f,
             ZuneRecentsHead.Standard, ZuneRecentsHead.Small, gridGap: 4f, calCellH: 32f, calGap: 40f),
-        // Huge (Z-Recents-Huge): a 72 kind lane, 44 drawer rows, a 420 overview 56 from the list, 48 cells.
-        Make(WidthTier.Huge, kindLane: 72f, stacked: false, chevron: 32f, child: 44f, drawer: 136f, asideW: 420f, asideGap: 56f, months: 2, cellH: 48f,
+        // Huge (Z-Recents-Huge): an 80 kind lane, 44 drawer rows, a 420 overview 56 from the list, 48 cells.
+        Make(WidthTier.Huge, kindLane: 80f, stacked: false, chevron: 32f, child: 44f, drawer: 136f, asideW: 420f, asideGap: 56f, months: 2, cellH: 48f,
             ZuneRecentsHead.Large, ZuneRecentsHead.Standard, gridGap: 5f, calCellH: 32f, calGap: 40f),
     ];
 

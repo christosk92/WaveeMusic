@@ -24,7 +24,8 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using B = Wavee.Themes.Zune.ZuneBrowseRules;
 using H = Wavee.Themes.Zune.ZuneHomeRules;
-using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+using K = Wavee.Themes.Zune.ZuneDiscoveryKit;
+
 using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
@@ -54,9 +55,14 @@ internal static class ZuneBrowseCategory
 
     // ── the banner ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The banner: the accent plate, the panorama name (its line reserved, never pushing the page), the kind at the bottom right.</summary>
-    static Element Banner(string title, ZuneBrowseLayout lay)
+    /// <summary>The banner: the category's own colour as the plate (muted as the boards draw it, Z-Browse-Category; the accent where it has none), the
+    /// panorama name (its line reserved, never pushing the page), the kind at the bottom right, after the page it was opened from ("music · category").</summary>
+    static Element Banner(BrowseCategoryProps p, ZuneBrowseLayout lay)
     {
+        string title = p.Title;
+        string kind = Loc.Get(Strings.Theme.Zune.Discovery.Category);
+        string meta = p.Parent is { Length: > 0 } parent ? ZuneText.Word(parent) + " · " + kind : kind;
+        Prop<ColorF> plate = p.Color is { } argb && argb != 0u ? H.MutedPlate(ColorScience.ToColor(argb)) : Prop.Of(static () => R.Ink.AccentAction);
         var name = (lay.CompactTitle ? R.Type.PanoramaCompact(title) : R.Type.Panorama(title)) with
         {
             Color = Prop.Of(static () => R.OnMedia.Ink), Case = R.Case.For(LabelKind.Heading),
@@ -66,7 +72,7 @@ internal static class ZuneBrowseCategory
         return new BoxEl
         {
             Key = B.BannerKey, Height = lay.BannerH, Shrink = 0f, MinWidth = 0f, ZStack = true, ClipToBounds = true,
-            Fill = Prop.Of(static () => R.Ink.AccentAction), Animate = ZuneMotion.TitleScale,
+            Fill = plate, Animate = ZuneMotion.TitleScale,
             Children =
             [
                 new BoxEl
@@ -80,7 +86,7 @@ internal static class ZuneBrowseCategory
                     HitTestVisible = false, Padding = new Edges4(lay.BannerMetaX, 0f, lay.BannerMetaX, lay.BannerMetaY),
                     Children =
                     [
-                        R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Discovery.Category)) with
+                        R.Type.DenseMeta(meta) with
                         {
                             Color = Prop.Of(static () => R.OnMedia.InkSecondary), Case = R.Case.For(LabelKind.Label), MaxLines = 1,
                         },
@@ -103,7 +109,7 @@ internal static class ZuneBrowseCategory
         => Ui.ScrollView(new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [Banner(p.Title, lay), Sections(lay, [content, ExploreAll(p, lay)])],
+            Children = [Banner(p, lay), Sections(lay, [content, ExploreAll(p, lay)])],
         }) with { Grow = 1f, MinHeight = 0f, ScrollKey = p.ScrollKey };
 
     static Element ExploreAll(BrowseCategoryProps p, ZuneBrowseLayout lay)
@@ -134,7 +140,7 @@ internal static class ZuneBrowseCategory
         return Ui.ScrollView(new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [Banner(p.Title, lay), Sections(lay, kids.ToArray())],
+            Children = [Banner(p, lay), Sections(lay, kids.ToArray())],
         }) with { Grow = 1f, MinHeight = 0f, ScrollKey = p.ScrollKey };
     }
 
@@ -232,7 +238,7 @@ internal static class ZuneBrowseCategory
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                Banner(p.Title, lay),
+                Banner(p, lay),
                 // The page column (A1), as the shelves' sections.
                 ZuneFrameRules.PageRow(new BoxEl
                 {

@@ -369,9 +369,9 @@ internal static class ZuneAlbumTrailing
             {
                 Key = Z.StackKey + ":head", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.AsideHeadingH, Shrink = 0f, MinWidth = 0f,
                 Gap = Z.SectionGap,
-                Children = link is null ? [AsideNamedHeading(p.Title)] : [AsideNamedHeading(p.Title), link],
+                Children = link is null ? [AsideNamedHeading(StackTitle(p))] : [AsideNamedHeading(StackTitle(p)), link],
             }
-            : K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(p.Title), link, Z.AsideHeadingH);
+            : K.HeadingRow(Z.StackKey + ":head", K.NamedHeading(StackTitle(p)), link, Z.AsideHeadingH);
         return new BoxEl
         {
             Key = Z.StackKey, Direction = 1, Gap = Z.AsideRowGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
@@ -380,6 +380,16 @@ internal static class ZuneAlbumTrailing
     }
 
     /// <summary>The aside's named heading ("More by Mia Solace"): the heading voice as written at 22/28, wrapping by words to two lines.</summary>
+    /// <summary>A stack's title in Zune's voice: its words lowercase ("featured on", "more by"), the name it carries as written ("more by Mia Solace").</summary>
+    static string StackTitle(AlbumTrailStackProps p)
+    {
+        string title = p.Title;
+        int at = p.Name is { Length: > 0 } name ? title.IndexOf(name, StringComparison.Ordinal) : -1;
+        if (at < 0) return ZuneText.Word(title, LabelKind.Heading);
+        int end = at + p.Name!.Length;
+        return ZuneText.Word(title[..at], LabelKind.Heading) + p.Name + ZuneText.Word(title[end..], LabelKind.Heading);
+    }
+
     static TextEl AsideNamedHeading(string title) => K.NamedHeading(title) with
     {
         Size = Z.AsideNamedSize, LineHeight = Z.AsideNamedLine, MaxLines = Z.AsideNamedLines, Wrap = TextWrap.WrapWholeWords, Grow = 1f, Basis = 0f,

@@ -305,7 +305,12 @@ public readonly partial struct User
             string? count = Sidebar.PaneText.SubtitleOf(in e);
             if (count is { Length: > 0 }) meta = meta.Length > 0 ? meta + " · " + count : count;
 
-            Element header = new BoxEl
+            // A theme may draw the head in its own voice (StyleKeys.LibraryPlaylistHead, contract 1.62); the neutral head otherwise.
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            var entry = e;
+            Element header = registry is not null && registry.TryGetStyle(StyleKeys.LibraryPlaylistHead, out var headStyle)
+                ? headStyle.Head(new LibraryPlaylistHeadArgs(edge => Sidebar.Cover.ForEntry(in entry, edge), name, meta, play, shuffle, open))
+                : new BoxEl
             {
                 Direction = 0, Gap = LibraryPlaylistsMasterRules.CoverGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(0f, 0f, 0f, LibraryPlaylistsMasterRules.HeaderBottom),
