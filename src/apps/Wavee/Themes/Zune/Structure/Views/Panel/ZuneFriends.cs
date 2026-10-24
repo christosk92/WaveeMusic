@@ -6,7 +6,7 @@
 //
 // The feed's rows and state, the clock and every navigation come through the props (as Classic's); the faces are the same: the rows (stale rows
 // stay through a refresh or a transient error), the skeleton (bars), the offline and error vacancies (Retry only when the host can retry),
-// the empty vacancy. Mount drives the feed's watchdog (`SetActive`), and a frame-clock interval moves the relative times on without a push.
+// the empty vacancy. Every face stands on the panel's gutter (the rows' inset), the vacancies in the panel's body voice (`ZuneVacancy`). Mount drives the feed's watchdog (`SetActive`), and a frame-clock interval moves the relative times on without a push.
 // A row's menu is the track's own menu when the activity names a track, else the container menu of what the row opens.
 
 using FluentGpu.Controls;
@@ -182,13 +182,13 @@ internal sealed class ZuneFriendsBody : Component
                 for (int i = 0; i < bars.Length; i++) bars[i] = ZuneFriends.SkeletonRow();
                 return new BoxEl { Direction = 1, MinHeight = 0f, Padding = P.Inset, Children = bars };
             case Rail.Friends.Surface.Offline:
-                return Controls.Vacancy(Controls.VacancyVoice.Offline, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Friends.Offline), subtitle: "");
+                return P.OnGutter(Controls.Vacancy(Controls.VacancyVoice.Offline, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Friends.Offline), subtitle: ""));
             case Rail.Friends.Surface.Error:
-                return Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Friends.Error), subtitle: "",
-                                        actionLabel: Loc.Get(Strings.Friends.Retry), onAction: props.Refresh());
+                return P.OnGutter(Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Friends.Error), subtitle: "",
+                                                   actionLabel: Loc.Get(Strings.Friends.Retry), onAction: props.Refresh()));
             default:
-                return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
-                                        title: Loc.Get(Strings.Friends.Empty), subtitle: Loc.Get(Strings.Friends.EmptyHint));
+                return P.OnGutter(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
+                                                   title: Loc.Get(Strings.Friends.Empty), subtitle: Loc.Get(Strings.Friends.EmptyHint)));
         }
     }
 }

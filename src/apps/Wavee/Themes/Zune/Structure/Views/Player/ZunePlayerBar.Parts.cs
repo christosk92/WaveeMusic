@@ -439,17 +439,10 @@ internal sealed class ZuneRemoteLine : Component
 /// is the identity). It re-renders only when its stamp moves; a held face keeps its credits, so the line never empties on a skip.</summary>
 internal sealed class ZuneCredits : Component
 {
-    readonly ZunePlayerBar.CreditsProps? _fixed;
-
-    /// <summary>Mounted through <c>Embed.Comp(props, …)</c>: the props arrive per render.</summary>
-    public ZuneCredits() { }
-
-    /// <summary>Mounted as a marquee's content: the props are fixed at mount.</summary>
-    public ZuneCredits(ZunePlayerBar.CreditsProps props) => _fixed = props;
-
+    /// <summary>Mounted through <c>Embed.Comp(props, …)</c> (in its slot and as the marquee's content): the props arrive per render.</summary>
     public override Element Render()
     {
-        var p = _fixed ?? UseProps<ZunePlayerBar.CreditsProps>();
+        var p = UseProps<ZunePlayerBar.CreditsProps>();
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
         var credits = props.Credits();
@@ -462,7 +455,7 @@ internal sealed class ZuneCredits : Component
         {
             var link = artists[i];
             if (link.Text.Length == 0) continue;
-            if (kids.Count > 0) kids.Add(new TextEl(", ") { Size = p.Size, LineHeight = p.Line, Color = Tok.TextSecondary, Shrink = 0f });
+            if (kids.Count > 0) kids.Add(new TextEl(ZunePlayerLayout.CreditSeparator) { Size = p.Size, LineHeight = p.Line, Color = Tok.TextSecondary, Shrink = 0f });
             kids.Add(Name(link, p));
         }
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };

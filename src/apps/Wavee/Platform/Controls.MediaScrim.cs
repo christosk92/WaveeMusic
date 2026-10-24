@@ -18,14 +18,15 @@ namespace Wavee;
 
 public static partial class Controls
 {
-    /// <summary>What the boost reads: the photograph, the box it fills, the copy's lines, the surface's floor veil, the ceiling and where the
-    /// copy starts (box DIP; the gradient is full from there down).</summary>
-    public sealed record ScrimBoostProps(string? Url, float Width, float Height, MediaScrim.Band[] Bands, MediaScrim.Floor Floor, float Ceiling, float CopyTop)
+    /// <summary>What the boost reads: the photograph, the box it fills, the copy's lines, the surface's floor veil, the ceiling, where the
+    /// copy starts (box DIP; the gradient is full from there down) and how the surface crops the photograph (<c>default</c>: centred).</summary>
+    public sealed record ScrimBoostProps(string? Url, float Width, float Height, MediaScrim.Band[] Bands, MediaScrim.Floor Floor, float Ceiling, float CopyTop,
+        MediaScrim.Crop Crop = default)
     {
         public bool Equals(ScrimBoostProps? o) => o is not null && Url == o.Url && Width == o.Width && Height == o.Height && Floor == o.Floor
-            && Ceiling == o.Ceiling && CopyTop == o.CopyTop && Bands.AsSpan().SequenceEqual(o.Bands);
+            && Ceiling == o.Ceiling && CopyTop == o.CopyTop && Crop == o.Crop && Bands.AsSpan().SequenceEqual(o.Bands);
 
-        public override int GetHashCode() => HashCode.Combine(Url, Width, Height, Floor, Ceiling, CopyTop, Bands.Length);
+        public override int GetHashCode() => HashCode.Combine(Url, Width, Height, Floor, Ceiling, CopyTop, Crop, Bands.Length);
     }
 
     /// <summary>The adaptive boost over a photograph's floor veil (see the file header). Place it as a ZStack layer the size of the box, after the
@@ -41,7 +42,7 @@ public static partial class Controls
         {
             ScrimBoostProps p = UseProps<ScrimBoostProps>();
             MediaScrim.LumaMap? map = Palette.Tone(p.Url);
-            float target = map is null ? 0f : MediaScrim.SolveBoost(map, p.Width, p.Height, p.Bands, p.Floor, R.OnMedia.Ink, p.Ceiling);
+            float target = map is null ? 0f : MediaScrim.SolveBoost(map, p.Width, p.Height, p.Bands, p.Floor, R.OnMedia.Ink, p.Ceiling, p.Crop);
             Ref<float> shown = UseRef(target);
             float from = shown.Value;
             shown.Value = target;

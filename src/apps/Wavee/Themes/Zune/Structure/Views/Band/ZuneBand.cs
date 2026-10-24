@@ -11,8 +11,9 @@
 //          OVERFLOW (`pivotOverflow`): EdgeFadeScroll scrolls the run under an edge fade (Compact and Small fade; Compact rotates the lit
 //          word to the front, the words sliding); MoreMenu, at Compact and Small, keeps the lit word and folds the others (and the hub's
 //          profile and settings) into a "more" menu.
+//          On a detail page row 1 lights the destination the page lives under (`BandProps.Section`: "library" over an album).
 //   ROW 2  the page's views (Library's kinds, Browse's bands, a page's in-page tabs), the current one lit (the weight; on a detail page,
-//          which lights no pivot, the page's title and a hairline lead and the current view takes the accent underline), then the page's
+//          the page's title and a hairline lead and the current view takes the accent underline), then the page's
 //          actions (the play disc, the shuffle ring, word pills). Hidden when the page has none.
 //   COLUMN the rows sit in the pages' column (the T1 audit's A1, A2): a leading inset (the gutter), the rows capped at 2400 and a trailing
 //          inset (the record's `Row2End`), centred together, so the first pivot stands on the page content's x at every width and the pins and
@@ -90,12 +91,16 @@ internal sealed class ZuneBand : Component
         float edgeFade = fade.Value;
         var destinations = band.Destinations();
         int current = band.Current();
+        // The lit word: the destination the page lives under. A detail page lights its section too (Z-Part-Band `section`: "library" over an
+        // album, "browse" over a search), while `current` still says it is a detail page (its title leads row 2).
+        int lit = band.Section?.Invoke() ?? current;
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
         var pins = pinsShown ? band.Pins() : s_noPins;
         var overflow = ZuneOptions.Overflow();
         // A Short window (below the Regular height rung) rests with row 2 folded away, static (Z-Shell-Short, ZT1). No direction is read: row 2
         // never folds or returns on a scroll's direction (the owner's video: a fold that moved the page fed the direction detector back).
-        bool collapsed = ZuneBandTiers.FoldsRow2AtRest(tiers);
+        bool destination = current >= 0;
+        bool collapsed = ZuneBandTiers.FoldsRow2AtRest(tiers, destination);
 
         var views = chrome?.Views ?? s_noViews;
         var actions = rec.TitleAndActions ? chrome?.Actions ?? s_noActions : s_noActions;
@@ -104,11 +109,11 @@ internal sealed class ZuneBand : Component
         bool row2 = ZuneBandRules.Row2Shown(hasRow2, collapsed);
         // SCROLL-TIED (Compact): row 2 scrolls away with the page: the band gives back clamp(offset, 0, row 2) of its height and row 2 fades by the same
         // share, continuously, in step with the scroll position (bound channels: no re-render, no timed fade, nothing to toggle or snap).
-        bool tied = row2 && ZuneBandTiers.ScrollTied(rec, tiers, ZuneOptions.CollapseBand());
+        bool tied = row2 && ZuneBandTiers.ScrollTied(rec, tiers, ZuneOptions.CollapseBand(), destination);
         var scrollSig = _scroll;
         float row2H = rec.Row2H, restH = rec.HeightWith(row2);
         float Tie() => tied && scrollSig is { } sg ? ZuneBandRules.TiedFold(sg.Value.Offset, row2H) : 0f;
-        // A detail page (no lit pivot) leads row 2 with its title; its current view takes the underline (the tab style).
+        // A detail page (no destination of its own) leads row 2 with its title; its current view takes the underline (the tab style).
         bool detail = current < 0;
         string? title = rec.TitleAndActions && detail && views.Count > 0 && chrome is { Title.Length: > 0 } c ? c.Title : null;
 
@@ -141,26 +146,26 @@ internal sealed class ZuneBand : Component
         }
 
         // ── row 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────
-        var order = ZuneBandRules.PivotOrder(destinations.Count, current, rec.Rotate);
+        var order = ZuneBandRules.PivotOrder(destinations.Count, lit, rec.Rotate);
         bool more = overflow == PivotOverflow.MoreMenu && rec.Narrow && destinations.Count > 1;
         var words = new List<Element>(order.Length + 1);
         _pivots.Begin();
         if (more)
         {
             // The lit word (the first when none is lit), then "more" holding the others and the hub's extras.
-            int shown = ZuneBandRules.TabStop(destinations.Count, current);
+            int shown = ZuneBandRules.TabStop(destinations.Count, lit);
             var rest = new List<BandDestination>(6);
             foreach (var d in band.Hub()) if (!string.Equals(d.Id, destinations[shown].Id, StringComparison.Ordinal)) rest.Add(d);
-            words.Add(Pivot(destinations[shown], lit: shown == current, tabStop: true, slot: 0, rec, type, OnTabKey));
+            words.Add(Pivot(destinations[shown], lit: shown == lit, tabStop: true, slot: 0, rec, type, OnTabKey));
             words.Add(MoreWord(() => OpenMore(rest), slot: 1, rec, type, OnTabKey));
         }
         else
         {
-            int stop = ZuneBandRules.TabStop(destinations.Count, current);
+            int stop = ZuneBandRules.TabStop(destinations.Count, lit);
             for (int i = 0; i < order.Length; i++)
             {
                 int index = order[i];
-                words.Add(Pivot(destinations[index], lit: index == current, tabStop: index == stop, slot: i, rec, type, OnTabKey));
+                words.Add(Pivot(destinations[index], lit: index == lit, tabStop: index == stop, slot: i, rec, type, OnTabKey));
             }
         }
 
@@ -194,15 +199,18 @@ internal sealed class ZuneBand : Component
         _views.Begin();
         // Row 2 sits in a holder that carries the scroll-tied motion (bound channels; at rest away from Compact): the row slides up by the fold under the
         // holder's clip at row 1's foot and fades by the same share, so it scrolls away with the page; the row's own entrance and exit keep their channels.
+        // The holder's clip reaches Row2SlopRoom into the gutter (its inner box pads it back), so row 2's scroller, which reaches as far, keeps its
+        // first word's hit slop.
         kids.Add(new BoxEl
         {
             Key = ZuneBandRules.Row2HolderKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            Margin = new Edges4(-ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             Opacity = Prop.Of(() => 1f - Tie() / row2H),
             Children =
             [
                 new BoxEl
                 {
-                    Direction = 1, Shrink = 0f, MinWidth = 0f,
+                    Direction = 1, Shrink = 0f, MinWidth = 0f, Padding = new Edges4(ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
                     Transform = Prop.Of(() => Affine2D.Translation(0f, -Tie())),
                     Children = row2 ? [Row2(views, actions, title, rec, type, edgeFade, OnTabKey)] : [],
                 },
@@ -478,12 +486,15 @@ internal sealed class ZuneBand : Component
         Element viewsRun = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = rec.Row2Gap, Height = rec.Row2H, Shrink = 0f,
+            Padding = new Edges4(ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             Children = run.ToArray(),
         };
-        // One element type at every tier (ZT1), as row 1's run: a crossing keeps the views' nodes.
+        // One element type at every tier (ZT1), as row 1's run: a crossing keeps the views' nodes. The scroller reaches Row2SlopRoom into the gutter
+        // and the run pads it back: the first word's hit slop stays inside the clip.
         viewsRun = new ScrollEl
         {
             Horizontal = true, Content = viewsRun, Height = rec.Row2H, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+            Margin = new Edges4(-ZuneBandRules.Row2SlopRoom, 0f, 0f, 0f),
             AutoEdgeFade = rec.Fade, AutoEdgeFadeBand = edgeFade, SuppressScrollBar = true,
         };
 
@@ -545,14 +556,15 @@ internal sealed class ZuneBand : Component
         }
         return new BoxEl
         {
-            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, MinWidth = rec.ViewMinW, Shrink = 0f,
+            Key = ZuneBandRules.ViewKeyPrefix + v.Id, Direction = 1, Height = rec.Row2H, Shrink = 0f,
+            HitSlop = new Edges4(rec.ViewSlopX, 0f, rec.ViewSlopX, 0f),
             Role = AutomationRole.Tab, Focusable = true, TabStop = tabStop, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = v.Go,
             OnKeyDown = e => key(nodes, slot, e),
             OnRealized = h => nodes.Realized(v.Id, h),
             Children =
             [
-                // Centred: at Compact the hit box is 40 wide even for a one-word "all" (ViewMinW).
+                // The box hugs the word, so the first one leads on the gutter; at Compact the hit rect reaches past it (ViewSlopX), so "all" is a 40 target.
                 new BoxEl { Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [word] },
                 // The underline's place is always kept, so the word sits at one height lit or not.
                 new BoxEl

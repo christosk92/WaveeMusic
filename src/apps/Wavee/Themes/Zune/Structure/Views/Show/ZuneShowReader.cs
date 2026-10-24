@@ -10,8 +10,8 @@
 // pure builders over their args. The arithmetic the list agrees on row for row (the 48 rail, the 30 + 12 "episodes" header, the 14 + 24 + 4
 // month header, the gutters and the year strip's 30) is the core's `ShowReaderRules`: every picture states those heights on its elements.
 //
-// CASING. The words this file writes are lowered by the style's case roles (`R.Case`); a month word is culture text lowered by the core; a name
-// (a show, an episode) is never re-cased.
+// CASING. The words this file writes are lowered by the style's case roles (`R.Case`), the month word too (the core hands the culture's text as
+// written); a name (a show, an episode) is never re-cased.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -271,7 +271,7 @@ internal static partial class ZuneShow
     /// <summary>The find box. At rest it sits at its own <see cref="Controls.FindBoxWidth"/> measure past the row's flexible spacer; the collapsed
     /// row's OPENED arm lets the same control fill the middle, so the query survives either transition and the row's height never changes.</summary>
     static Element FindField(ShowToolbarArgs a, bool fill)
-        => AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Find), width: Controls.FindBoxWidth, text: a.Find,
+        => AutoSuggestBox.Create(s_noSuggest, ZuneText.Word(Loc.Get(Strings.Podcast.Find)), width: Controls.FindBoxWidth, text: a.Find,
                                  queryIcon: Icons.Search, minHeight: FindMinHeight, cornerRadius: R.Shape.For(ShapeRole.Control),
                                  grow: fill ? 1f : 0f, maxFillWidth: fill ? FindFillMax : 0f);
 
@@ -355,7 +355,7 @@ internal static partial class ZuneShow
         };
     }
 
-    /// <summary>A month header (Z-Show: "october" 22 light): the culture's month word (lowered by the core) on the core's stated 24 line, 14 of air
+    /// <summary>A month header (Z-Show: "october" 22 light): the culture's month word (lowered by the heading case role) on the core's stated 24 line, 14 of air
     /// above it — none right under the "episodes" head.</summary>
     static Element Group(ShowGroupArgs a) => new BoxEl
     {
@@ -367,7 +367,7 @@ internal static partial class ZuneShow
             {
                 // On its exact 24 line (block stacking): the 22 light face's natural line box is 29, which the core's stated line clipped (text.trim).
                 Text = a.Month, LineHeight = ShowReaderRules.GroupLine, LineStacking = LineStacking.BlockLineHeight, Height = ShowReaderRules.GroupLine,
-                Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
             },
             new BoxEl { Height = ShowReaderRules.GroupFoot },
         ],
@@ -403,7 +403,7 @@ internal static partial class ZuneShow
                         new TextEl(Prop.Of(() => global::Wavee.Show.MonthWordOf(monthKey.Value)))
                         {
                             Size = R.Type.MicroMeta("").Size, LineHeight = R.Type.MicroMeta("").LineHeight,
-                            Weight = 600, Color = Tok.TextTertiary, MaxLines = 1,
+                            Weight = 600, Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1,
                         },
                     ],
                 },

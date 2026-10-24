@@ -406,6 +406,20 @@ public static class WinUiDiscoveryMotion
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>A part whose WIDTH steps with the tier (a page inset): it eases through real layout, so what follows it rides it.</summary>
+    public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>A run of vertical air a tier step changes (the page's top inset, the gap between zones, the band's foot): a spacer that eases its height
+    /// through real layout, since padding, margins and a Gap cannot ease. Empty space on a skeleton, never a bar.</summary>
+    public static Element AirV(string key, float height)
+        => new BoxEl { Key = key, Height = height, MinHeight = 0f, Shrink = 0f, HitTestVisible = false, Layout = HeightReflow }.Skeletonized(false);
+
+    /// <summary>A run of horizontal air a tier step changes (a page's side inset): a spacer that eases its width through real layout. Empty space on a
+    /// skeleton, never a bar.</summary>
+    public static Element AirH(string key, float width)
+        => new BoxEl { Key = key, Width = width, MinWidth = 0f, Shrink = 0f, HitTestVisible = false, Layout = WidthReflow }.Skeletonized(false);
+
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone (the shared tier cross-fade).</summary>
     public static readonly EnterExit SwapFade = SwapFamilies.Declare("WinUi.Discovery.SwapFade", new(Opacity: 0f, Active: true));
 

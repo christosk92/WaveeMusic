@@ -48,6 +48,32 @@ public static partial class Shell
             RouteKind.Recents => Recents,
             _ => -1,
         };
+
+        /// <summary>The destination index the page on <paramref name="route"/> lives under (<see cref="BandProps.Section"/>): its own where it lights
+        /// one (<see cref="IndexOf"/>); a search's, browse; a detail page's, the destination its trail starts from: the journey's origin (through the
+        /// origin's own origin while that is another detail page, a few hops at most), else the information architecture's root (library for an
+        /// album, playlist, artist, show or episode, as <see cref="DetailTrail"/> roots them). -1 when none (settings, profile). Pure but for
+        /// <paramref name="originOf"/>.</summary>
+        public static int SectionOf(in Route route, Func<Route, NavOrigin?> originOf)
+        {
+            var at = route;
+            for (int hop = 0; hop < 4; hop++)
+            {
+                if (IndexOf(at.Kind) is >= 0 and var own) return own;
+                if (at.Kind == RouteKind.Search) return Browse;
+                if (originOf(at) is not { } origin || origin.Route.IsNone) break;
+                at = origin.Route;
+            }
+            return RootOf(at.Kind);
+        }
+
+        // The information architecture's root of a detail kind (DetailTrail's first crumb).
+        static int RootOf(RouteKind kind) => kind switch
+        {
+            RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.Episode => Library,
+            RouteKind.Search => Browse,
+            _ => -1,
+        };
     }
 
     /// <summary>How the page-scroll signal derives a direction from a stream of offsets (P5 ZK). The direction flips only after the
@@ -195,16 +221,7 @@ public static partial class Shell
                 // information architecture's parents, ending at the entity's own name once the page has published it.
                 string entity = row?.Title is { Length: > 0 } published2 ? published2 : ArgOf(route) is { Length: > 0 } arg && !string.IsNullOrWhiteSpace(arg) ? arg.Trim() : "";
                 var detail = entity.Length > 0 ? DetailTrail(route, entity, Origins.For(route)) : [];
-                if (detail.Count >= 2)
-                {
-                    var crumbs = new PageCrumb[detail.Count];
-                    for (int i = 0; i < crumbs.Length; i++)
-                    {
-                        var crumb = detail[i];
-                        crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null);
-                    }
-                    head = new PageChrome(own, crumbs);
-                }
+                if (detail.Count >= 2) head = new PageChrome(own, CrumbsOf(detail));
                 else head = new PageChrome(own, [new PageCrumb(own, null)]);
             }
             var views = row is { Views.Count: > 0 } ? row.Views : RouteViews(route);
@@ -378,6 +395,8 @@ public static partial class Shell
             return s_destinations;
         }
 
+        static readonly Func<Route, NavOrigin?> s_originOf = static r => Origins.For(r);
+
         /// <summary>The one band record (<c>NavPaneProps.Band</c>): equal across re-pushes, every live value a signal or a Func.</summary>
         public static readonly BandProps Band = new()
         {
@@ -385,6 +404,8 @@ public static partial class Shell
             // A destination lights the moment it is clicked (the click's feedback); a detail page, which lights none, takes the pivot off only when its
             // page lands, so the leaving page's row 2 does not flash up under a title.
             Current = static () => BandRules.IndexOf(Shell.Current.Value.Kind) is >= 0 and var lit ? lit : BandRules.IndexOf(OnScreenRoute().Kind),
+            // A detail page lights the destination it lives under, from its trail, when its page lands (the leaving page's word holds until then).
+            Section = static () => BandRules.IndexOf(Shell.Current.Value.Kind) is >= 0 and var lit ? lit : BandRules.SectionOf(OnScreenRoute(), s_originOf),
             Pins = static () => Sidebar.Model.BandPins(ShellCaps.PinCap(ShellCaps.Tracked)),
             Chrome = s_current,
             Scroll = s_scroll,

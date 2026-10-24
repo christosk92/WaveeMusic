@@ -58,7 +58,7 @@ internal static partial class ClassicPlayerBar
             {
                 var link = artists[i];
                 if (link.Text.Length == 0) continue;
-                if (kids.Count > 0) kids.Add(new TextEl(", ") { Size = ClassicTransportLayout.CreditSize, Color = Tok.TextSecondary });
+                if (kids.Count > 0) kids.Add(new TextEl(ClassicTransportLayout.CreditSeparator) { Size = ClassicTransportLayout.CreditSize, Color = Tok.TextSecondary });
                 // A name with no route is INERT, not styled-and-dead.
                 kids.Add(MetaLink(link, false));
             }

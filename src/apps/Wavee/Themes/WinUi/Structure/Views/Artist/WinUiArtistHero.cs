@@ -31,7 +31,7 @@ internal static class WinUiArtistHero
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
     /// <summary>The card for a <paramref name="cardW"/>-wide band in window tier <paramref name="tier"/>: the photograph (flat neutral without one), the veil, the copy
-    /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActions"/>, the page's row under the card.</summary>
+    /// and, at every tier but Compact, the actions inside it. At Compact the actions are <see cref="CompactActionsSlot"/>, the page's row under the card.</summary>
     public static Element Card(in Artist.HeroText text, string uri, string? photoUrl, float cardW, WidthTier tier, in Acts acts)
     {
         var form = WinUiArtistRules.HeroOf(tier);
@@ -40,37 +40,51 @@ internal static class WinUiArtistHero
         bool shimmer = acts.Play is null;
         float w = MathF.Max(1f, cardW);
 
-        Element photo = photoUrl is { Length: > 0 } src
-            ? Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode) with { Key = "heroart:" + uri }
-            : new BoxEl { Width = w, Height = height, Fill = Design.WatchedPlaceholder(photoUrl) };
+        // A photograph with faces places them in the band above the copy (lane B10); the photograph waits for its subject (it always settles), so its
+        // crop never changes once it shows. Without faces the centred crop stands.
+        PhotoSubject? subject = shimmer || photoUrl is not { Length: > 0 } measured ? null : Palette.Subject(measured);
+        var crop = subject is { Faces: true } faces
+            ? new MediaScrim.Crop(faces.X, faces.Y, WinUiArtistRules.PhotoFacesAtX, CopyTop(in text, form) * WinUiArtistRules.PhotoFacesAboveCopy / height)
+            : default;
+        // The layers stretch with the card (no width or height of their own: the card's height eases across a crossing, its width follows the page's
+        // easing inset), so the photograph fills it and the copy rides its foot frame by frame.
+        Element photo = photoUrl is { Length: > 0 } src && (shimmer || subject is not null)
+            ? ((BoxEl)Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode, crop: crop)) with
+            {
+                Key = "heroart:" + uri, Width = float.NaN, Height = float.NaN,
+            }
+            : new BoxEl { Fill = Design.WatchedPlaceholder(photoUrl) };
         Element veil = new BoxEl
         {
-            Width = w, Height = form.Veil, AlignSelf = FlexAlign.End, HitTestVisible = false,
+            Height = form.Veil, AlignSelf = FlexAlign.End, HitTestVisible = false, Layout = WinUiArtistMotion.HeroHeight,
             Gradient = GradientDown(new GradientStop(0f, WinUiArtistRules.VeilClear), new GradientStop(1f, WinUiArtistRules.VeilEdge)),
         };
 
         // Over the photograph the copy is on-media ink in light AND dark; on a bright photograph the veil is not enough, so the adaptive boost darkens it
         // until every line reads (MediaScrim: the meta and the Verified line at 4.5 : 1, the name at 3 : 1, against the photograph's p90 under each line).
         Element boost = shimmer || photoUrl is not { Length: > 0 } boostSrc
-            ? new BoxEl { Width = w, Height = height, HitTestVisible = false }
-            : Controls.ScrimBoost(BoostOf(in text, boostSrc, form, w));
+            ? new BoxEl { HitTestVisible = false }
+            : Controls.ScrimBoost(BoostOf(in text, boostSrc, form, w, crop));
         Element copy = Copy(in text, uri, form, shimmer);
         var bottom = new List<Element>(2) { new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [copy] } };
         if (!compact)
             bottom.Add(new BoxEl
             {
-                Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, WinUiArtistRules.ActionsBottom),
+                Key = "artist-hero-actions:card", Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, WinUiArtistRules.ActionsBottom),
+                // Leaving (into Compact) it closes its width as it fades (a wipe from its end), so less of it lies over the copy, which the engine
+                // widens at once (a leaving flex sibling gives its room back on the commit).
+                Layout = WinUiArtistMotion.CardActions,
                 Children = [Actions(text.Name, uri, acts, WinUiDetailRules.Target, words: tier >= WidthTier.Huge, plated: true)],
             });
         Element overlay = new BoxEl
         {
-            Width = w, Height = height, Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Start, Gap = WinUiArtistRules.ActionsGap,
+            Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Start, Gap = WinUiArtistRules.ActionsGap,
             Padding = new Edges4(form.InsetX, 0f, form.InsetX, form.Bottom),
             Children = bottom.ToArray(),
         };
         return new BoxEl
         {
-            Key = "artist-hero", Width = w, Height = height, ZStack = true, ClipToBounds = true,
+            Key = "artist-hero", Height = height, ZStack = true, ClipToBounds = true, Animate = WinUiArtistMotion.HeroHeight,
             Corners = CornerRadius4.All(WinUiArtistRules.HeroRadius), Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children = [photo, veil, boost, overlay],
         };
@@ -78,7 +92,7 @@ internal static class WinUiArtistHero
 
     /// <summary>The boost's reading of this card: the copy's line bands from the card's foot up (the meta, the name in its natural line box, the Verified
     /// line), the 62 % veil as the floor, the ceiling.</summary>
-    static Controls.ScrimBoostProps BoostOf(in Artist.HeroText text, string photoUrl, WinUiArtistHeroForm form, float w)
+    static Controls.ScrimBoostProps BoostOf(in Artist.HeroText text, string photoUrl, WinUiArtistHeroForm form, float w, MediaScrim.Crop crop)
     {
         float height = form.Height;
         float left = form.InsetX, right = form.InsetX + MathF.Min(WinUiArtistTiers.CopyMax, MathF.Max(1f, w - 2f * form.InsetX));
@@ -93,15 +107,32 @@ internal static class WinUiArtistHero
         };
         if (text.Verified) bands.Add(MediaScrim.Band.Line(left, right, verifiedTop, WinUiArtistRules.VerifiedLine, WinUiArtistRules.VerifiedSize));
         var floor = new MediaScrim.Floor(height - form.Veil, form.Veil, WinUiArtistRules.VeilEdge.A);
-        return new Controls.ScrimBoostProps(photoUrl, w, height, bands.ToArray(), floor, WinUiArtistRules.BoostCeiling, text.Verified ? verifiedTop : nameTop);
+        return new Controls.ScrimBoostProps(photoUrl, w, height, bands.ToArray(), floor, WinUiArtistRules.BoostCeiling, text.Verified ? verifiedTop : nameTop, crop);
     }
 
-    /// <summary>The Compact page's actions row under the card: Play, Follow, Shuffle, radio, then "..." at the row's end, every target 40.</summary>
-    public static Element CompactActions(string name, string uri, in Acts acts) => new BoxEl
+    /// <summary>Where the card's copy starts (its Verified line, else the name), from the card's top: the band above it is the photograph's.</summary>
+    static float CopyTop(in Artist.HeroText text, WinUiArtistHeroForm form)
     {
-        Key = "artist-actions", Direction = 0, MinWidth = 0f,
-        Margin = new Edges4(0f, WinUiArtistRules.ActionsRowTop, 0f, 0f),
-        Children = [Actions(name, uri, acts, WinUiDetailRules.CompactTarget, words: false, plated: false)],
+        float metaTop = form.Height - form.Bottom - form.MetaLine;
+        float nameTop = metaTop - WinUiArtistRules.CopyGap - MathF.Max(form.NameLine, form.NameSize * WinUiArtistRules.NameNaturalLine);
+        return text.Verified ? nameTop - WinUiArtistRules.CopyGap - WinUiArtistRules.VerifiedLine : nameTop;
+    }
+
+    /// <summary>The Compact page's actions row under the card: Play, Follow, Shuffle, radio, then "..." at the row's end, every target 40. It stands in a slot
+    /// that is in the head at every tier and eases its height (empty above Compact), and it cross-fades with the card's plated actions
+    /// (<see cref="WinUiArtistMotion.ActionsSwap"/>).</summary>
+    public static Element CompactActionsSlot(string name, string uri, in Acts acts, bool compact) => new BoxEl
+    {
+        Key = "artist-actions:slot", Direction = 1, MinWidth = 0f, Layout = WinUiArtistMotion.HeroHeight,
+        Children = compact
+            ? [new BoxEl
+            {
+                Key = "artist-actions", Direction = 0, MinWidth = 0f,
+                Margin = new Edges4(0f, WinUiArtistRules.ActionsRowTop, 0f, 0f),
+                Enter = WinUiArtistMotion.ActionsSwap, Exit = WinUiArtistMotion.ActionsSwap, Transition = WinUiArtistMotion.ActionsSwapMotion,
+                Children = [Actions(name, uri, acts, WinUiDetailRules.CompactTarget, words: false, plated: false)],
+            }.Skeletonized(false)]
+            : [],
     }.Skeletonized(false);
 
     // ── the copy ──

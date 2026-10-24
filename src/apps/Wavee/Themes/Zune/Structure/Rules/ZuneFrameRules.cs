@@ -21,7 +21,8 @@
 //   max(gutter, (W - 2400) / 2) and end on its mirror. The title bar and the play bar are window chrome: they keep the plain gutter.
 //
 //   THE PANEL (Z-Part-Panel, Z-Frame-Panel, Z-Frame-Narrow): the head is the pivot row (26/32/300 words, 18 apart, in a 44 row, 6 under it),
-//   inset 24 left and 20 right, 12 from the top; the close is a 40 x 40 glyph; a floating panel is 340 wide, flush right, under the band.
+//   ONE line (owner, 2026-10-24: never wrapped), the selected word on the 24 gutter and the rest round the cycle after it, running off under a
+//   24 fade; 12 from the top; the close is a 40 x 40 glyph; a floating panel is 340 wide, flush right, under the band.
 //
 // Public, so `Wavee.Tests` can pin them.
 
@@ -78,7 +79,8 @@ public static class ZuneFrameRules
         SecondPanelHostKey = "zune-panel-host-2";
 
     /// <summary>The panel's parts: its pivot head, one pivot word (`zune-panel-pivot:<mode>`), the close glyph.</summary>
-    public const string PanelHeadKey = "zune-panel-head", PanelPivotKeyPrefix = "zune-panel-pivot:", PanelCloseKey = "zune-panel-close";
+    public const string PanelHeadKey = "zune-panel-head", PanelPivotKeyPrefix = "zune-panel-pivot:", PanelCloseKey = "zune-panel-close",
+        PanelPaneKeyPrefix = "zune-panel-pane:";
 
     /// <summary>The page head's title (stable across a swap, so Browse home -> a category does not remount it).</summary>
     public const string PageTitleKey = "zune-page-title";
@@ -387,14 +389,29 @@ public static class ZuneFrameRules
     /// <summary>A floating panel's width (Z-Frame-Narrow, Z-Part-Panel "overlay").</summary>
     public const float PanelFloatW = 340f;
 
-    /// <summary>The pivot head: 44 tall, 12 from the panel's top, 6 above the body, inset 24 left and 8 right (the close glyph's own 40 box
-    /// carries the board's 20).</summary>
+    /// <summary>The pivot head: 44 tall, 12 from the panel's top, 6 above the body, 8 in on the right (the close glyph's own 40 box carries the
+    /// board's 20); the lead word stands on <see cref="PanelGutter"/>.</summary>
     public const float PanelHeadH = 44f, PanelPivotGap = 18f;
 
-    /// <summary>The pivot words' scroller (the words run under an edge fade when they outgrow the panel instead of clipping mid-word; round G) and
-    /// the fade's width. The words' boxes are the head's whole height (44, over the touch floor of 40).</summary>
+    /// <summary>The panel's gutter: the lead pivot word stands on it, and the bodies' content (`ZunePanelBodies.Inset`) starts on it.</summary>
+    public const float PanelGutter = 24f;
+
+    /// <summary>The pivot words' strip: it clips the line at the close glyph, reaches the panel's left edge and carries the gutter as its inset. Its
+    /// soft edges: the left one lies over the empty gutter (a word sliding out fades there; the lead never stands under it), the right one, drawn
+    /// only while the words run past the strip, over the strip's last <see cref="PanelEdgeFade"/>, so a trailing word reads until it leaves.</summary>
     public const string PanelPivotsKey = "zune-panel-pivots";
-    public const float PanelEdgeFade = 32f;
+    public const float PanelEdgeFade = 24f;
+
+    /// <summary>A pivot word that moved less than this did not move (half a DIP); the radix that folds the words' order into one key.</summary>
+    public const float PanelPivotStill = 0.5f;
+    public const int PanelModeRadix = 7;
+
+    /// <summary>A pivot word that wraps round the cycle where both its legs show: the share of the slide it spends leaving before it arrives.</summary>
+    public const float PanelPivotWrapSplit = 0.5f;
+
+    /// <summary>A pivot change's panes: the new one comes in from this far on the side of travel, the old one goes as far the other way and fades
+    /// out over <see cref="PanelPaneFadeMs"/> (the slide itself is the pivot slide, `ZuneMotion.PivotSlideMs`).</summary>
+    public const float PanelPaneShift = 48f, PanelPaneFadeMs = 150f;
 
     /// <summary>The panel's accent ink while its cover wash is drawn is lifted until it reads this against the wash's head colour over the plate (the text floor is
     /// 4.5; the margin covers the window wash that shows through a docked panel's head and the text's antialiasing), in <see cref="PanelInkLiftSteps"/> bisection steps,
@@ -405,8 +422,8 @@ public static class ZuneFrameRules
     /// <summary>The colour the accent ink lifts toward on the ground of the kind.</summary>
     public static ColorF PanelInkLiftToward(bool light) => light ? ColorF.FromRgba(0, 0, 0) : ColorF.FromRgba(255, 255, 255);
 
-    /// <summary>The pivot head's padding.</summary>
-    public static readonly Edges4 PanelHeadPadding = new(24f, 12f, 8f, 6f);
+    /// <summary>The pivot head's padding (no left inset: the words' strip carries the gutter).</summary>
+    public static readonly Edges4 PanelHeadPadding = new(0f, 12f, 8f, 6f);
 
     /// <summary>A body arm's padding under the head (the bodies are the player lane's views: they carry their own insets).</summary>
     public static readonly Edges4 PanelBodyPadding = new(0f, 0f, 0f, 16f);

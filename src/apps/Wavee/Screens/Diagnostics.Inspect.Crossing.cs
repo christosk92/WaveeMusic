@@ -15,11 +15,14 @@
 // ControlTolerance) is the plain resize's own; every other is EXCESS (`counts.excessSnapped`, `excessJumped`): what the edge adds.
 //
 // WHAT IT REPORTS.
-//   remounted  a keyed node (unique before) that is a different node after the settle: its subtree and state were thrown away. `family` names
+//   remounted  a keyed node (unique before) that is a different node after the settle, drawn by the same surface (the same view slot instance,
+//              or a new instance where the old one went: `SameSurface`): its subtree and state were thrown away. `family` names
 //              the swap it sits under (owner rule "a tier crossing keeps its parts": a genuinely different tree swaps keyed per family under
 //              a cross-fade the theme DECLARED as a swap, `SwapFamilies.Declare`): the key of the nearest node this step mounted whose registered
 //              enter and exit are a declared swap fade; null when none is, a rebuilt part (`counts.remountedOutside`, what the gate fails on).
 //              An undeclared opacity fade (an arm cross-fade, a control's appear) is no family.
+//   recycled   a keyed row of a recycling virtual list that another slot of the same live list draws after the settle (the list re-planned
+//              and the row changed index; bound slots follow indices): no part was rebuilt, the list kept its node, scroll and selection.
 //   vanished   a keyed node that is gone (or no longer shown) after the settle; tiers that drop a part on purpose show up here.
 //   appeared   keys shown after the settle that were not before.
 //   snapped    nodes whose laid-out rect changed ON THE COMMIT FRAME (against the resized frame, so plain window resizing is not counted) with
@@ -60,6 +63,14 @@ public static partial class Diagnostics
             public bool ResizedLive;
             public RectF Resized;
             public RectF Commit;
+
+            /// <summary>The anchor of the view slot that drew it before the crossing (the nearest slot at or above it; null outside every view):
+            /// the instance of the surface it belongs to.</summary>
+            public NodeHandle Surface;
+
+            /// <summary>The content panel of the recycling virtual list it was drawn in before the crossing, and the slot (the panel's child on
+            /// its path) that drew it; null outside every virtual list.</summary>
+            public NodeHandle ListPanel, ListSlot;
 
             /// <summary>0 unchanged on the commit frame, 1 glided, 2 snapped, 3 jumped, 4 changed at once but draws nothing of its own (a
             /// container: what a person sees of it is its children, each judged on its own).</summary>
@@ -431,6 +442,12 @@ public static partial class Diagnostics
             SceneStore scene = shell.Host.Scene;
             List<Tracked> tracked = TrackKeyed(shell);
             var before = new HashSet<NodeHandle>(InspectKit.Subtree(scene, scene.Root));
+            Dictionary<NodeHandle, FluentGpu.Theming.ViewSlotInfo> slotsBefore = InspectViews.Slots(shell);
+            foreach (Tracked t in tracked)
+            {
+                t.Surface = SurfaceOf(scene, slotsBefore, t.Node);
+                (t.ListPanel, t.ListSlot) = ListSlotOf(scene, t.Node);
+            }
             TierFacts tiersBefore = ThemeHost.Facts.Peek().Tiers;
 
             // 3. the crossing: the resized frames, the commit frame, the settle
@@ -453,16 +470,23 @@ public static partial class Diagnostics
             var beforeCount = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (Tracked t in tracked) beforeCount[t.Key] = beforeCount.GetValueOrDefault(t.Key) + 1;
             var remounted = new List<(Tracked T, string? Family)>();
+            var recycled = new List<Tracked>();
             var vanished = new List<Tracked>();
             var recounted = new List<(string Key, int Before, int After)>();
+            Dictionary<NodeHandle, FluentGpu.Theming.ViewSlotInfo> slotsAfter = InspectViews.Slots(shell);
             foreach (Tracked t in tracked)
             {
                 if (beforeCount[t.Key] > 1) continue;   // repeated keys (rows): compared by count below
                 bool live = scene.IsLive(t.Node);
                 bool same = live && string.Equals(scene.DebugKeyOf(t.Node), t.Key, StringComparison.Ordinal);
                 if (same && shown.TryGetValue(t.Key, out List<NodeHandle>? mine) && mine.Contains(t.Node)) continue;
-                if (shown.TryGetValue(t.Key, out List<NodeHandle>? now)) remounted.Add((t, SwapFamily(shell, now[0], before)));
-                else vanished.Add(t);
+                NodeHandle again = NodeHandle.Null;
+                if (shown.TryGetValue(t.Key, out List<NodeHandle>? now))
+                    foreach (NodeHandle n in now)
+                        if (SameSurface(scene, t.Surface, SurfaceOf(scene, slotsAfter, n), before)) { again = n; break; }
+                if (again.IsNull) vanished.Add(t);
+                else if (Recycled(scene, t, again)) recycled.Add(t);
+                else remounted.Add((t, SwapFamily(shell, again, before)));
             }
             foreach (var (key, count) in beforeCount)
             {
@@ -590,6 +614,7 @@ public static partial class Diagnostics
                 w.WriteNumber("vanished", vanished.Count);
                 w.WriteNumber("appeared", appeared.Count);
                 w.WriteNumber("recounted", recounted.Count);
+                w.WriteNumber("recycled", recycled.Count);
                 w.WriteEndObject();
 
                 // late reflows (a weight, not gated by --gate; --gate-todo counts them): the topmost of a subtree, largest first
@@ -629,6 +654,16 @@ public static partial class Diagnostics
 
                 w.WriteStartArray("appeared");
                 foreach (string key in appeared.Take(items)) w.WriteStringValue(key);
+                w.WriteEndArray();
+
+                w.WriteStartArray("recycled");
+                foreach (Tracked t in recycled.Take(items))
+                {
+                    w.WriteStartObject();
+                    w.WriteString("key", t.Key);
+                    Inspect.Reply.Rect(w, "before", t.Before);
+                    w.WriteEndObject();
+                }
                 w.WriteEndArray();
 
                 w.WriteStartArray("recounted");
@@ -674,6 +709,48 @@ public static partial class Diagnostics
         /// <summary>A node the reconciler registered with a declared swap cross-fade on both its entry and its exit (`Enter = SwapFade, Exit = SwapFade`).</summary>
         static bool SwapsOut(Shell.HeadlessShell shell, NodeHandle n)
             => shell.Host.Animation.TryGetTransition(n, out LayoutTransition t) && IsSwapFade(t.Enter) && IsSwapFade(t.Exit);
+
+        /// <summary>The anchor of the view slot that draws <paramref name="node"/> (the nearest slot at or above it), or null outside every view.</summary>
+        static NodeHandle SurfaceOf(SceneStore scene, Dictionary<NodeHandle, FluentGpu.Theming.ViewSlotInfo> slots, NodeHandle node)
+            => InspectViews.TryDrawnBy(scene, slots, node, out FluentGpu.Theming.ViewSlotInfo slot) ? slot.Anchor : NodeHandle.Null;
+
+        /// <summary>Is a node drawn by the surface <paramref name="after"/> the same part as one drawn by <paramref name="was"/> before the crossing?
+        /// Yes under the same slot instance, and yes where the old instance is gone and this step mounted the new one (the surface itself was
+        /// rebuilt: every part of it remounted). No where the key lives on only under ANOTHER instance while its own instance stays mounted, or
+        /// under an instance that was already mounted while its own one went away: two live instances of one view share their keys by
+        /// construction (the docked nav pane and the narrow drawer's own pane, mounted closed for the whole Small band, both plan `liked`,
+        /// `tree-create`...), and a row that leaves the docked pane while the drawer's copy mounts is that pane's part VANISHING, not a
+        /// rebuild. Outside every view (no slot on either side) a key is one part, as before.</summary>
+        static bool SameSurface(SceneStore scene, NodeHandle was, NodeHandle after, HashSet<NodeHandle> before)
+        {
+            if (was == after || was.IsNull || after.IsNull) return true;
+            return !scene.IsLive(was) && !before.Contains(after);
+        }
+
+        /// <summary>The recycling virtual list <paramref name="node"/> is an item of: the list's content panel (the child of a viewport whose
+        /// scroll state virtualizes, `ItemCount` above 0) and the slot under it that draws the node; nulls outside every virtual list.</summary>
+        static (NodeHandle Panel, NodeHandle Slot) ListSlotOf(SceneStore scene, NodeHandle node)
+        {
+            NodeHandle child = node;
+            for (NodeHandle p = scene.Parent(node); !p.IsNull && scene.IsLive(p); child = p, p = scene.Parent(p))
+            {
+                NodeHandle viewport = scene.Parent(p);
+                if (!viewport.IsNull && scene.IsLive(viewport) && scene.TryGetScroll(viewport, out ScrollState sc) && sc.ItemCount > 0 && sc.ContentNode == p)
+                    return (p, child);
+            }
+            return (NodeHandle.Null, NodeHandle.Null);
+        }
+
+        /// <summary>A row of a recycling virtual list that a DIFFERENT slot of the same live list draws after the crossing: the list re-planned
+        /// and the row moved to another index, so the slot bound to that index draws it (a bound list's slots follow indices, never keys, as on
+        /// every scroll). The list keeps its node, scroll and selection; the row has no node of its own to keep. Reported as `recycled`, never
+        /// as a rebuilt part. A row that the SAME slot draws as a new node was rebuilt by the slot's own render and stays a remount.</summary>
+        static bool Recycled(SceneStore scene, Tracked t, NodeHandle after)
+        {
+            if (t.ListPanel.IsNull || !scene.IsLive(t.ListPanel)) return false;
+            var (panel, slot) = ListSlotOf(scene, after);
+            return panel == t.ListPanel && slot != t.ListSlot;
+        }
 
         /// <summary>The swap family a remounted node belongs to: the key of the nearest node at or above it that this step mounted (not in
         /// <paramref name="before"/>) and that swaps under the theme's cross-fade; null when none does (the remount rebuilt a part that should

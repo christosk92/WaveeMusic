@@ -973,7 +973,7 @@ public static partial class Deck
     // ══ 6. WINAMP ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Two 275:116 windows. The analyser is the only fast channel (19 bars + 19 caps, the EQ window binding the
-    /// SAME signals); the time is 1 Hz bound text; the title a marquee that scrolls while the deck plays.</summary>
+    /// SAME signals); the time is 1 Hz bound text; the title a marquee that passes while the deck plays.</summary>
     static class WinampFace
     {
         const int SpectrumBands = 19;
@@ -1024,12 +1024,13 @@ public static partial class Deck
                     Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(3f, 0f, 3f, 0f),
                     Children =
                     [
-                        // Scrolls while the deck plays; a paused deck owns no looping row (the 2026-09-12 idle rule).
+                        // The LCD's ticker, as production: an endless loop with no fade, no start delay and a short gap, only while the deck plays
+                        // (a paused deck owns no moving row, the 2026-09-12 idle rule; the line glides home when it pauses).
                         Marquee.Of(Prop.Of(static () => ScrollTitle()), new Marquee.Style
                         {
-                            FontSize = stSize, Weight = 400, Foreground = lcd, FontFamily = "Arial", Speed = 22f, Gap = 24f,
-                            FadeBand = 0f, StartDelayMs = 0f, EndPauseMs = 0f, Mode = Marquee.ScrollMode.Loop, Trigger = Marquee.TriggerMode.Hover,
-                        }, scrollWhen: sig.LoopsRun),
+                            FontSize = stSize, Weight = 400, Foreground = lcd, FontFamily = "Arial", Speed = 22f, Gap = 24f, FadeBand = 0f,
+                            StartDelayMs = 0f, PauseMs = 0f, Ticker = true,
+                        }, allowed: sig.LoopsRun),
                     ],
                 }),
                 // 0.3 publishes the stream's badge and no bitrate: the kbps cell states the fact it lacks.

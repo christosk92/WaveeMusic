@@ -9,8 +9,9 @@
 // measure plumbing, the snapshot, the extents and `CheckExtent`, the sticky month and the date index, the reveal gates. The pictures here are
 // pure builders over their args, so the bound list, the skeleton deriver and the rail's slot callbacks can call them anywhere.
 //
-// NO CAPS TRANSFORM, NO LOWER-CASING OF A LOC STRING. The prototype's lowercase words are the loc values themselves; a month name is culture
-// text and is lowered by the core (`Show.MonthWordOf`).
+// CLASSIC'S VOICE: semibold sentence case, like every other Classic page (owner, 2026-10-24; the prototype's light lowercase heads were Zune's
+// voice). No case transform: the loc values are written in sentence case and Classic draws them as written (Zune lowers the same strings through
+// its case roles); a month name is the culture's own text (`Show.MonthWordOf`), drawn as written.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -48,8 +49,8 @@ internal static partial class ClassicShow
     internal const char TemplateMark = (char)1;
     internal static readonly string TemplateMarkText = TemplateMark.ToString();
 
-    /// <summary>A section head (the prototype's <c>.sechead h3</c>): Display 24/30/300, with an optional small count
-    /// 13/400 tertiary on the same baseline.</summary>
+    /// <summary>A section head (the prototype's <c>.sechead h3</c>): Display 24/30 in Classic's <see cref="VoiceWeight"/>, with an optional
+    /// small count 13/400 tertiary on the same baseline.</summary>
     static SpanTextEl Pivot(string title, string? small = null)
         => PivotOf(small is { Length: > 0 } ? [new TextSpan(title), SmallSpan("  " + small)] : [new TextSpan(title)]);
 
@@ -74,7 +75,7 @@ internal static partial class ClassicShow
 
     static SpanTextEl PivotOf(TextSpan[] spans) => new(spans)
     {
-        FontFamily = DisplayFace, Size = PivotSize, LineHeight = ShowReaderRules.HeaderLine, Weight = 300, CharSpacing = -20f,
+        FontFamily = DisplayFace, Size = PivotSize, LineHeight = ShowReaderRules.HeaderLine, Weight = VoiceWeight, CharSpacing = -20f,
         Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
     };
 
@@ -313,8 +314,8 @@ internal static partial class ClassicShow
 
     // ══ 3. THE HEADER, THE MONTHS, THE FOOT ══════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>"episodes 128" (or "episodes 3 of 128" under a filter or a find) and the empty arm under it: the show's
-    /// own words for a show with no episodes, "nothing matches" (a tap resets the view) for an empty filter.</summary>
+    /// <summary>"Episodes 128" (or "Episodes 3 of 128" under a filter or a find) and the empty arm under it: the show's
+    /// own words for a show with no episodes, "Nothing matches" (a tap resets the view) for an empty filter.</summary>
     static Element EpisodesHeader(ShowEpisodesHeaderArgs a)
     {
         string count = a.Filtered ? Strings.Podcast.CountOf(FormatCache.Int(a.View), FormatCache.Int(a.Total)) : FormatCache.Int(a.Total);
@@ -338,7 +339,7 @@ internal static partial class ClassicShow
             [
                 new TextEl(Loc.Get(Strings.Podcast.NothingMatches))
                 {
-                    FontFamily = DisplayFace, Size = NothingSize, LineHeight = NothingLineHeight, Weight = 300, Color = Tok.TextPrimary, MaxLines = 1,
+                    FontFamily = DisplayFace, Size = NothingSize, LineHeight = NothingLineHeight, Weight = VoiceWeight, Color = Tok.TextPrimary, MaxLines = 1,
                 },
                 new BoxEl
                 {
@@ -356,8 +357,8 @@ internal static partial class ClassicShow
         };
     }
 
-    /// <summary>A month header (the prototype's <c>.group</c>): Display 18/300, the culture's month name lowered,
-    /// 14 above it — none right under the "episodes" head.</summary>
+    /// <summary>A month header (the prototype's <c>.group</c>): Display 18 in <see cref="VoiceWeight"/>, the culture's month name as written
+    /// ("August 2026"), 14 above it — none right under the "Episodes" head.</summary>
     static Element Group(ShowGroupArgs a) => new BoxEl
     {
         Direction = 1, MinWidth = 0f,
@@ -367,7 +368,7 @@ internal static partial class ClassicShow
             new TextEl(a.Month)
             {
                 FontFamily = DisplayFace, Size = GroupSize, LineHeight = ShowReaderRules.GroupLine, Height = ShowReaderRules.GroupLine,
-                Weight = 300, CharSpacing = -10f, Color = Tok.TextTertiary, MaxLines = 1,
+                Weight = VoiceWeight, CharSpacing = -10f, Color = Tok.TextTertiary, MaxLines = 1,
             },
             new BoxEl { Height = ShowReaderRules.GroupFoot },
         ],

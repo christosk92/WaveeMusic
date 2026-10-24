@@ -5,7 +5,7 @@
 // the look of the parts:
 //
 //   ZunePlayerLayout     the bar's motion (a level crossing FLIPs every structural node, a line enters or leaves with a fade, a tool word
-//                        lights by opacity only, the face cross-fades), the marquee's cadence, the solid transport glyphs and the parts
+//                        lights by opacity only, the face cross-fades), the marquee's look, the solid transport glyphs and the parts
 //                        a level does not size (the words' inset, the volume line and its popup, the podcast speed panel)
 //   ZuneTransportLayout  the seek rail (the 2-px line in a 12 hit box, the 12 round thumb on hover), the chapter ticks and tip, the scrub
 //                        readout and the time labels (Z-PlayBar, Z-Part-PlayBar)
@@ -16,6 +16,7 @@
 //   ZuneOnMediaLayout    the strip over a video (built from Zune's parts: no board)
 
 using FluentGpu.Animation;
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -58,8 +59,16 @@ public static class ZunePlayerLayout
     public static readonly MotionTokenDef FaceSwap =
         MotionTokenDef.Eased(Design.Motion.Standard, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade);
 
-    /// <summary>The marquee's cadence (the production one: a slow pass every 14 s, 3 s rests, 2 s before the first).</summary>
-    public const float MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f, MarqueeSpeed = 18f;
+    /// <summary>The marquee's look (the behaviour, its pauses and passes are the engine control's, the same in every theme): Zune's large type
+    /// travels a little faster than the other themes' (DIP per second) and fades deeper at a cut edge.</summary>
+    public const float MarqueeSpeed = 34f, MarqueeFade = 16f;
+
+    /// <summary>The stage's display titles pass at the bar lines' reading rate in ems (34 DIP/s over 13-15 DIP type is about 2.4 em/s), a
+    /// little calmer for the large face: 1.8 em per second of the title's own size, so a 44 DIP title travels about 80 DIP/s.</summary>
+    public const float StageMarqueeEmRate = 1.8f;
+
+    /// <summary>Between two credited names on the artists line (and in its plain words: the marquee's restart key and tooltip).</summary>
+    public const string CreditSeparator = ", ";
 
     // ── the identity ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -178,8 +187,25 @@ public static class ZuneTransportLayout
 /// <summary>The constants of the panel's bodies (Z-Part-Panel).</summary>
 public static class ZunePanelBodies
 {
-    /// <summary>The bodies' inset: 24 left (under the pivot head's first word), 20 right.</summary>
-    public static readonly Edges4 Inset = new(24f, 0f, 20f, 0f);
+    /// <summary>The bodies' inset: the panel's gutter on the left (under the pivot head's lead word), 20 right.</summary>
+    public static readonly Edges4 Inset = new(ZuneFrameRules.PanelGutter, 0f, 20f, 0f);
+
+    /// <summary>A row of the panel's lists (the queue, "up next"): its art stands on the gutter, so the row's plate is flush with it (no plate inset; the
+    /// board's hovered row, Z-Frame-Panel), as the playing row's art and every heading above it do.</summary>
+    public const float RowPadX = 0f;
+
+    /// <summary>A row of words under the pivots (the queue's shuffle · repeat · autoplay, the lyrics' meta row): each word's own side padding stands
+    /// in the gutter, so its text starts on the gutter.</summary>
+    public static readonly Edges4 WordRowPadding = new(ZuneFrameRules.PanelGutter - ZunePlayerLayout.WordPadX, 0f, 20f - ZunePlayerLayout.WordPadX, 0f);
+
+    /// <summary>A body's vacancy (no friends, offline, nothing playing): on the gutter, 8 under the head.</summary>
+    public static readonly Edges4 VacancyInset = new(ZuneFrameRules.PanelGutter, 8f, 20f, 0f);
+
+    /// <summary><paramref name="vacancy"/> placed as a body's content: on the panel's gutter (<see cref="VacancyInset"/>), the body's whole height.</summary>
+    public static Element OnGutter(Element vacancy) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Padding = VacancyInset, Children = [vacancy],
+    };
 
     // ── the lyrics header: the meta row under the pivots ───────────────────────────────────────────────────────────
 
@@ -261,7 +287,7 @@ public static class ZuneQueueRules
 
     /// <summary>The mode row's inset: the bodies' 24 / 20 less each word's own 8, so the first word's ink starts under the pivots and the words
     /// sit the board's 16 apart.</summary>
-    public static readonly Edges4 ModeRowPadding = new(24f - ZunePlayerLayout.WordPadX, 0f, 20f - ZunePlayerLayout.WordPadX, 0f);
+    public static readonly Edges4 ModeRowPadding = ZunePanelBodies.WordRowPadding;
 
     /// <summary>"playing from …": 28 tall, its text at the foot.</summary>
     public const float PlayingFromH = 28f;

@@ -204,8 +204,9 @@ public static partial class Controls
     /// dormant today; if 0.3 ever re-arms the fly, this branch owes itself a watched placeholder.</para></summary>
     public static Element Artwork(string? url, float width, float height, float corners, string? morphKey = null,
                                   int decodePx = 0, float saturation = 1f, float scale = 1f, string? blurHash = null,
-                                  bool keepWhileHidden = false)
+                                  bool keepWhileHidden = false, MediaScrim.Crop crop = default)
     {
+        crop = crop.OrCentred;   // a cover crop's focal point (the artist hero's faces, lane B10); centred by default
         if (url is { Length: 0 }) url = null;
 
         bool scaleRequested = scale > 0f && MathF.Abs(scale - 1f) > 0.01f;
@@ -243,7 +244,11 @@ public static partial class Controls
         Element img = url is null
             ? new BoxEl()
             : Ui.Image(url, ImageFit.Cover, aspect, dw, corners, placeholder, blurHash)
-                with { MorphId = morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden };
+                with
+                {
+                    MorphId = morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden,
+                    FocusX = crop.FocusX, FocusY = crop.FocusY, FocusFrameX = crop.FrameX, FocusFrameY = crop.FrameY,
+                };
 
         return new BoxEl
         {

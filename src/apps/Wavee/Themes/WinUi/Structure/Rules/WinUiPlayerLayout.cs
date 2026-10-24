@@ -55,9 +55,10 @@ public static class WinUiPlayerLayout
     /// <summary>The "playing on" line's device glyph and its gap.</summary>
     public const float RemoteGlyph = 12f, RemoteGap = 4f;
 
-    /// <summary>The app's marquee setting on: an overflowing title and credits line scroll unattended, ping-pong, at Classic's slow cadence
-    /// (18 DIP/s at least, a 14 s cycle, 2 s before the first move, 3 s at each end), the two lines on one cycle.</summary>
-    public const float MarqueeSpeed = 18f, MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f;
+    /// <summary>The app's marquee setting on: an overflowing title and credits line pass now and then (the engine control's behaviour: the
+    /// start at rest, two passes after a track change, a pass on hover, one line moving at a time). WinUI picks the pace (DIP per second) and
+    /// the cut edge's fade.</summary>
+    public const float MarqueeSpeed = 30f, MarqueeFade = 12f;
 
     /// <summary>The separator between two credited names.</summary>
     public const string CreditSeparator = ", ";
@@ -179,6 +180,20 @@ public static class WinUiPlayerLayout
     /// 167 ms").</summary>
     public static readonly LayoutTransition MoveMotion = new(
         TransitionChannels.Bounds, TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentPopOpen), SizeMode.Reveal);
+
+    /// <summary>The seek row coming or going with the Mini bar (the 641 crossing): it moves like a structural node and fades in or out in place, and
+    /// the transport above it glides to the bar's middle.</summary>
+    public static readonly LayoutTransition SeekRowMotion = MoveMotion with
+    {
+        Channels = TransitionChannels.Bounds | TransitionChannels.Opacity,
+        Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+    };
+
+    /// <summary>The Mini bar's progress edge coming or going with the form: a fade in place.</summary>
+    public static readonly EnterExit EdgeFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The edge's fade timing (the shared ~160 ms fade).</summary>
+    public static MotionTokenDef EdgeFadeMotion => MotionTok.ControlFast;
 
     /// <summary>A control entering or leaving on a crossing ("player controls fade out and in during a tier change"): fade + size, the
     /// neighbours slide over.</summary>

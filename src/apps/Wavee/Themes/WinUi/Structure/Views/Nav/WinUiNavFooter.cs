@@ -50,8 +50,8 @@ internal sealed class WinUiNavFooterRow : Component
             Shape = SidebarRowShape.EntityOneLine, Height = props.Metrics.RowHeight, MarginY = props.Metrics.MarginY, Focusable = true,
             OnActivate = _ => host.Navigate(WinUiNavFooter.SettingsRoute, null),
         };
-        Element row = WinUiEntityRow.Create(in spec);
-        if (props.Compact) row = ToolTip.Wrap(row, dest.Title);
+        // One tooltip host in both pane forms (the rail tips its name), so the row keeps its node across the 1008 crossing.
+        Element row = Sidebar.RowTip.Wrap(WinUiEntityRow.Create(in spec), props.Compact, tooltip: false, dest.Title);
 
         // The pill's opacity is BOUND to the live route (its own subscription), with the 83 ms cross-fade of the row ramp.
         var pill = new BoxEl

@@ -35,7 +35,9 @@ internal static class WinUiArtistBanners
 
         // Sentence case: the type word is localized upstream and never caps-transformed.
         string eyebrowText = type.Length > 0 ? Loc.Get(Strings.Artist.Upcoming) + " · " + type : Loc.Get(Strings.Artist.Upcoming);
-        TextEl eyebrow = R.Type.Eyebrow(eyebrowText) with { Color = tint, MaxLines = 1 };
+        // The eyebrow wraps (two lines at most) rather than run out of its box: in the Huge overview's third column the copy beside the cover, the
+        // big date and the actions is under 100 wide ("Upcoming · Album" overflowed it after the 1920 crossing).
+        TextEl eyebrow = R.Type.Eyebrow(eyebrowText) with { Color = tint, Wrap = TextWrap.WrapWholeWords, MaxLines = 2, MinWidth = 0f };
         TextEl title = R.Type.PickQuote(name) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
