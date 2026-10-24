@@ -9,7 +9,7 @@
 //
 // Sixth pass (docs/plans/wavee/home-rebuild-implementation.md, "Sixth pass — prototype visuals on the shared
 // controls"): `RecentsWeek`/`WeekSummary` are RESTORED verbatim from commit a4842b9f — the history tile in
-// `Zones.UI.cs`'s recents grid needs the 7-day sparkline again.
+// recents grid (`Zones.Hosts.cs`, drawn by `ClassicHomeRecents.cs`) needs the 7-day sparkline again.
 //
 // Role: CORE
 // Owner: A4
@@ -262,7 +262,7 @@ public static class WhenCaption
 }
 
 /// <summary>The daylist card's "friday evening arrives at 16:35" caption (row 3, the second line of
-/// `Home/Daylist.UI.cs`'s `DaylistClock`). The daypart named is the timeline segment AFTER the card's
+/// `ClassicHomeDaylistClock.cs`). The daypart named is the timeline segment AFTER the card's
 /// <c>current</c> one (<see cref="DaypartRules.Next"/>) — the card already shows the current daypart in its title and
 /// timeline, and the expiry's own <see cref="DaypartRules.OfHour"/> bucket repeats it whenever a window ends inside
 /// that bucket (expiry 16:35 on a "wednesday afternoon" daylist would read "wednesday afternoon" again). The weekday

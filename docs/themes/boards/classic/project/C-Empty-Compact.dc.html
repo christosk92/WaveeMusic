@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact empty playlist</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="playlist:New Playlist #4" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 16px 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <header style="display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+      <button aria-label="Add a cover" style="width: 160px; height: 160px; flex-shrink: 0; padding: 0; border: 0; border-radius: 8px; background: #2a2a2a; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.4)"><svg width="56" height="56" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 12V3.5l7-1.5V10.5M6 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM13 10.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" fill="none" stroke="currentColor" stroke-width="0.7" stroke-linejoin="round"></path></svg></button>
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 2px">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.529)">Playlist</span>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">New Playlist #4</h1>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">0 songs</span>
+      </div>
+    </header>
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 16px 0 4px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Nothing here yet</h2><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Find songs to add, or start from the suggestions below.</span></div>
+    <label style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(30,30,30,0.7); border: 1px solid rgba(255,255,255,0.071); border-bottom: 2px solid #60cdff; color: rgba(255,255,255,0.6)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><input aria-label="Search for songs or episodes" placeholder="Search for songs or episodes" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; outline: none"></label>
+    <section aria-label="Recommended songs" style="display: flex; flex-direction: column; flex-shrink: 0; margin: 0 -8px 0 0">
+      <div style="display: flex; align-items: center; height: 48px"><h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; flex-grow: 1">Recommended songs</h2><button aria-label="Refresh recommendations" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+      <sc-for list="{{recs}}" as="r" hint-placeholder-count="6"><div style="height: 56px; display: flex; align-items: center; gap: 12px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.a}}</span></span><button aria-label="Add {{r.t}} to playlist" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 20px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 1px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span></button></div></sc-for>
+    </section>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const recs = [['Espresso', 'Sabrina Carpenter', '#4a7ab0'], ['Good Luck, Babe!', 'Chappell Roan', '#c06a8a'], ['APT.', 'ROSÉ, Bruno Mars', '#d06070'], ['Die With A Smile', 'Lady Gaga, Bruno Mars', '#3a3a3a'], ['Too Sweet', 'Hozier', '#3a5a4a'], ['Pink Pony Club', 'Chappell Roan', '#c06a8a']].map(r => ({ t: r[0], a: r[1], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + r[2] }));
+  return { recs };
+}
+}
+</script>
+</body>
+</html>

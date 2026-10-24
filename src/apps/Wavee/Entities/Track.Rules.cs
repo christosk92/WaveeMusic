@@ -1,5 +1,5 @@
 // ── Entities/Track.Rules.cs ────────────────────────────────────────────────────────────────────────────────────────
-// every pure rule of the track surface: the lane table, the tier + relief ladders, the density and art ladders, the
+// every pure rule of the track surface: the lane table, the tier + relief ladders (the density ladders are the style's, M3), the
 // sort cycle, the command-bar fit, the filter model, the expanded-row facts, the shared number formats (incl. the exact
 // key / camelot tables), the membership diff, the reorder rules, the right-click target resolver, not-yet-out
 //
@@ -30,6 +30,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -70,16 +71,12 @@ public readonly partial struct Track
         public const float Tempo = 80f;
         /// <summary>"1:59:59" (an episode in a playlist), not just "59:59".</summary>
         public const float Duration = 52f;
-        /// <summary>The trailing "…" lane when Video is off (a 28-DIP button + air).</summary>
+        /// <summary>The duration lane of a set whose heart and "..." stand in it on row hover (<see cref="ColumnSet.HoverActions"/>): the time's 52 and room for the two 28 targets.</summary>
+        public const float DurationHover = 64f;
+        /// <summary>The trailing "…" lane (a 28-DIP button + air), revealed on row hover. There is no film lane any more
+        /// (tuned Classic L3): a video is the small film glyph after the title, so the trailing lane is the same on a
+        /// release with a video and one without.</summary>
         public const float Actions = 40f;
-        /// <summary>The trailing film / hover-"…" lane — the SAME number as <see cref="Actions"/>, and that is the point.
-        /// A set carries exactly ONE of the two (<see cref="TableRules.TrailingColumns"/> trades them), so two widths made
-        /// the trailing lane a function of whether any row on THIS release happens to carry a video: the duration clock
-        /// (and every header left of it) sat 12 DIP further right on an album with a video than on the one selected before
-        /// it, which in the library pane is a visible jump on every selection. It was 28 because 28 is the film glyph's
-        /// hit target; the lane also has to hold the hover "…", which is the 40 the other arm reserves. One width, so the
-        /// swap is a glyph change and never a reflow.</summary>
-        public const float Video = Actions;
         /// <summary>The expand chevron's hit target.</summary>
         public const float Expand = 26f;
 
@@ -96,11 +93,10 @@ public readonly partial struct Track
     }
 
     /// <summary>Which optional lanes a track row shows; #, Title and Duration are always present. Cell (and track) order:
-    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · ♥(trailing) · Duration · Video ·
-    /// Actions · Expand.
+    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · ♥(trailing) · Duration · Actions ·
+    /// Expand.
     /// SHARED by the header and every row builder, and it is the width-track CACHE KEY (ch 01 §9): a value record with no
-    /// mutable field, or the cache forks. <paramref name="Actions"/> is the "…" lane when Video is off (Video carries the
-    /// "…" on hover when on — the lane is reserved once); <paramref name="Tier"/> is the width tier the set was built for,
+    /// mutable field, or the cache forks. <paramref name="Actions"/> is the hover "…" lane; <paramref name="Tier"/> is the width tier the set was built for,
     /// so header, rows and tracks derive the SAME padding/gap; <paramref name="Tempo"/> means "this surface wants BPM·Key"
     /// (the tier gate is <see cref="RowMetrics.ShowTempo"/>); <paramref name="Artist"/> is Classic's dedicated lane;
     /// <paramref name="Classic"/> rides with the shape so persistent rows re-skin live.
@@ -108,11 +104,21 @@ public readonly partial struct Track
     /// the RIGHT, immediately before the duration, at <see cref="Lane.HeartTrailing"/>. MUTUALLY EXCLUSIVE with
     /// <paramref name="Heart"/> — a row states its like once — and the gate both the width track and the cell read is
     /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
-    /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
-    /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
-    public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Video, bool Plays, bool Heart, bool Thumb,
+    /// heart (the lane every existing surface already reserves). On the relief ladder it is the heart lane (it yields as
+    /// one with the leading heart): the reader row sets it at one fixed width, a quiet table (Liked, D16) at every tier.</para>
+    /// <para><paramref name="Quiet"/> is a collection's register (<see cref="Detail.Config.QuietRows"/>, Liked Songs, tuned Classic D16):
+    /// the plates run the list's full width with no zebra, the header rule with them, the titles are regular weight and the heart
+    /// shows only on the hovered (or focused) row — every row of the collection is liked, so a column of hearts says nothing.</para>
+    /// <para><paramref name="Compact"/> is the structure's Compact row form (<c>DetailTableTier.CompactRows</c>, board C-TrackList compact): no column
+    /// header (its hairline stays), and a Modern row states its duration in its subline instead of a lane of its own
+    /// (<see cref="RowMetrics.ShowDuration"/>).</para>
+    /// <para><paramref name="IndexHidden"/> drops the "#" lane (<c>DetailTableTier.ListIndex</c> false: a Modern list row at Compact, board C-TrackList
+    /// compact, whose now-playing row is told by its accent title). The width track, the cell count, every row builder and the header read it.</para></summary>
+    public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
-                                            bool Artist = false, bool Classic = false, bool HeartTrailing = false);
+                                            bool Artist = false, bool Classic = false, bool HeartTrailing = false,
+                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false, bool HoverActions = false, bool DurationKept = false, float DurationWidth = 0f,
+                                            float HeartWidth = 0f);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -127,13 +133,14 @@ public readonly partial struct Track
     /// <summary>The identity lanes a row style selects.</summary>
     public readonly record struct IdentityColumns(bool Thumb, bool Artist, bool ArtistInTitle);
 
-    /// <summary>The trailing lanes a row style selects: Classic folds media facts into Title and exposes one command lane.</summary>
-    public readonly record struct TrailingColumns(bool Video, bool Actions, bool Expand);
+    /// <summary>The trailing lanes: the one command lane ("…") and the versions chevron's lane.</summary>
+    public readonly record struct TrailingColumns(bool Actions, bool Expand);
 
-    /// <summary>The lanes a table draws, as pure geometry — the relief ladder's whole input beside the gap and inset.</summary>
+    /// <summary>The lanes a table draws, as pure geometry — the relief ladder's whole input beside the gap and inset. <paramref name="IndexHidden"/>:
+    /// the set has no "#" lane (<see cref="ColumnSet.IndexHidden"/>).</summary>
     public readonly record struct Lanes(
         bool Heart, bool Thumb, bool Artist, bool Album, bool By, bool Date, bool Plays, bool Tempo,
-        bool Video, bool Actions, bool Expand);
+        bool Actions, bool Expand, bool IndexHidden = false);
 
     // ══ 2. THE TABLE RULES: skins, ladders, the sort cycle, the relief ladder ════════════════════════════════════════
 
@@ -143,9 +150,6 @@ public readonly partial struct Track
         /// <summary>Classic's Artist lane survives one tier longer than Album and folds below 440 DIP (tier 4).</summary>
         public const int ClassicArtistFoldTier = 4;
         public const float ClassicHeaderHeight = 32f;
-        /// <summary>The scale the Settings row-density MINIATURE draws the real row geometry at — here, not in the
-        /// picker, so "the preview mirrors the real row" is a tested number.</summary>
-        public const float PreviewScale = 0.25f;
         /// <summary>Relief steps; step 0 is "none", each later step drops exactly one more lane (<see cref="Relieve"/>).</summary>
         public const int MaxRelief = 8;
         /// <summary>How much width a yielded lane must re-earn — the tier ladder's band and asymmetry: yield at once,
@@ -162,12 +166,10 @@ public readonly partial struct Track
                 ArtistInTitle: showTrackArtist && !artist);
         }
 
-        /// <summary>Classic maps density onto the tighter legacy ladder (36/40/44/48); Modern keeps 40/48/56/64.</summary>
-        public static float RowHeightFor(int density, bool classic) => classic
-            ? density switch { 0 => 36f, 2 => 44f, 3 => 48f, _ => 40f }
-            : density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => 48f };
-
         public static float HeaderHeightFor(bool classic) => classic ? ClassicHeaderHeight : 36f;
+
+        /// <summary>The column header's height for a set: none in the Compact row form (only its hairline stays, board C-TrackList compact).</summary>
+        public static float HeaderHeightFor(in ColumnSet set) => set.Compact ? 0f : HeaderHeightFor(set.Classic);
 
         /// <summary>The rows the shimmer holds for before the list is allowed to show: the first page. A Partial edge
         /// whose first page (two rows) swapped the shimmer for a near-empty list that then filled row by row is the
@@ -210,42 +212,41 @@ public readonly partial struct Track
         /// before its page arrived). The one rule the row component reads.</summary>
         public static bool RowHasData(bool isValid, bool knowsFace) => isValid && knowsFace;
 
-        /// <summary>Art edge per density on the thumbnail ladder, keeping row − art ≥ 16 (Compact 40 → 32 · Default 48 → 32
-        /// · Cozy 56 → 40 · Comfortable 64 → 48); Classic stays on 32 except Comfortable → 40.</summary>
-        public static float ArtSizeFor(int density, bool classic) => classic
-            ? (density == 3 ? Design.Size.Thumb40 : Design.Size.Thumb32)
-            : density switch { 2 => Design.Size.Thumb40, 3 => Design.Size.Thumb48, _ => Design.Size.Thumb32 };
+        /// <summary>Does a row know what it PAINTS? Its face; and, where the structure reveals rows together
+        /// (<paramref name="withCredits"/>: <c>ListPolicy.RowsRevealTogether</c>), its credit line too while an answer for it is
+        /// still out. A disk-restored row knows its face but withholds <see cref="TrackFields.Artists"/> until its re-ask
+        /// lands (<c>TrackShape.PersistedIdentity</c>): revealed on the face alone it painted its title, then its artists a
+        /// moment later (the owner's recording). Nothing in flight (offline, a batch that did not name it) reveals at once.</summary>
+        public static bool RowPaints(bool knowsFace, bool knowsCredits, bool inFlight, bool withCredits) =>
+            knowsFace && (!withCredits || knowsCredits || !inFlight);
 
-        /// <summary>Classic folds VIDEO into the Title line and keeps ONE trailing command lane; both skins keep the
-        /// disclosure chevron (the drawer restates what relief took away — a row affordance, not a skin flourish), under
-        /// the same width gate as the "…" lane.
-        /// <para>Modern trades the "…" lane for the film lane when any row has a video — a trade of CELL, never of
-        /// width: both lanes are <see cref="Lane.Actions"/> wide (see <see cref="Lane.Video"/>), so a release with a
-        /// video and one without lay their duration column out on the same DIP.</para></summary>
-        public static TrailingColumns TrailingColumns(bool classic, bool hasVideo, bool showVersions, int tier)
+        /// <summary>Both row styles keep ONE trailing command lane (the hover "…") and the versions chevron's lane (the
+        /// drawer restates what relief took away — a row affordance, not a skin flourish), under the same width gate.
+        /// A video is never a lane (tuned Classic L3): it is the film glyph after the title, so the trailing lanes do not
+        /// depend on what the rows carry and a release with a video lays its duration column out on the same DIP as one
+        /// without.</summary>
+        public static TrailingColumns TrailingColumns(bool showVersions, int tier)
         {
             bool hasTrailingRoom = tier < 6;
-            bool expand = showVersions && hasTrailingRoom;
-            if (classic) return new TrailingColumns(false, hasTrailingRoom, expand);
-            bool video = hasVideo && hasTrailingRoom;
-            return new TrailingColumns(video, hasTrailingRoom && !video, expand);
+            return new TrailingColumns(hasTrailingRoom, showVersions && hasTrailingRoom);
         }
 
-        /// <summary>Classic's ONLY video indicator, and it is no longer width-gated. `TrailingColumns` refuses the
-        /// film lane to Classic outright, so this inline glyph is all Classic has - and dropping it from tier 4 up
-        /// (a sidebar and a now-playing rail are enough to reach tier 4) left a Classic playlist with NO video
-        /// indicator anywhere, while the artist chart beside it still showed one. The glyph is 12 DIP in a line that
-        /// already ellipsizes; it costs nothing the narrow tiers cannot afford.</summary>
-        public static bool ShowClassicInlineVideo(bool classic, bool hasVideo, int tier)
-        {
-            _ = tier;
-            return classic && hasVideo;
-        }
+        /// <summary>Does a row SHOW the versions chevron (tuned Classic L1)? Only a track that has another rendition to
+        /// open: its music video (the catalogue's kind-99 flag or a user override, or the counterpart it already resolved)
+        /// or a known alternate in <c>Edges.TrackVersions</c>. Every other row keeps the lane empty — a chevron on every
+        /// row read as navigation — and reaches its drawer through the menu's "Track details"
+        /// (<see cref="ShowVersionsMenuItem"/>).</summary>
+        public static bool HasVersionsOf(bool isTrack, bool hasVideo, bool hasCounterpart, int alternates) =>
+            isTrack && (hasVideo || hasCounterpart || alternates > 0);
 
-        /// <summary>"Track details" in the menu is a FALLBACK for a missing chevron lane, in either skin — never a second
-        /// control beside a visible one.</summary>
-        public static bool ShowVersionsMenuItem(bool showVersions, bool expandLane, bool singleTrack) =>
-            showVersions && singleTrack && !expandLane;
+        /// <summary>"Track details" in the menu is a FALLBACK for a row with no visible chevron (no chevron lane, or a
+        /// row with no versions to show in it), in either skin — never a second control beside a visible one.</summary>
+        public static bool ShowVersionsMenuItem(bool showVersions, bool chevronShown, bool singleTrack) =>
+            showVersions && singleTrack && !chevronShown;
+
+        /// <summary>Does the list bar's Sort button wear the accent (tuned Classic D6)? Only while the sort differs from the PAGE'S
+        /// default (an album's or playlist's own order, Liked's Date added newest first), the direction included.</summary>
+        public static bool SortDiffersFromDefault(SortSpec current, SortSpec pageDefault) => !current.Equals(pageDefault);
 
         /// <summary>A Title header owns Artist only while Artist is folded into its subline.</summary>
         public static bool HeaderActive(SortColumn header, SortColumn active, bool artistColumn) =>
@@ -290,15 +291,16 @@ public readonly partial struct Track
             Date: l.Date && step < 4,
             Plays: l.Plays && step < 1,
             Tempo: l.Tempo && step < 2,
-            Video: l.Video, Actions: l.Actions, Expand: l.Expand);
+            Actions: l.Actions, Expand: l.Expand, IndexHidden: l.IndexHidden);
 
         /// <summary>The narrowest width at which <paramref name="l"/> still clears the identity floors: fixed lanes at
         /// their <see cref="Lane"/> widths, identity lanes at their FLOORS, one gap between each pair and the grid's own
-        /// padding on both sides. Title and duration are unconditional, so the seed carries both.</summary>
+        /// padding on both sides. Title and duration are unconditional, so the seed carries both; the "#" lane unless the set drops it.</summary>
         public static float MinWidthFor(in Lanes l, float colGap, float padX)
         {
-            float w = Lane.Num + Lane.TitleFloor + Lane.Duration;
-            int cols = 3;
+            float w = Lane.TitleFloor + Lane.Duration;
+            int cols = 2;
+            if (!l.IndexHidden) { w += Lane.Num; cols++; }
             if (l.Heart) { w += Lane.Heart; cols++; }
             if (l.Thumb) { w += Lane.Thumb; cols++; }
             if (l.Artist) { w += Lane.ArtistFloor; cols++; }
@@ -307,7 +309,6 @@ public readonly partial struct Track
             if (l.Date) { w += Lane.Date; cols++; }
             if (l.Plays) { w += Lane.Plays; cols++; }
             if (l.Tempo) { w += Lane.Tempo; cols++; }
-            if (l.Video) { w += Lane.Video; cols++; }
             if (l.Actions) { w += Lane.Actions; cols++; }
             if (l.Expand) { w += Lane.Expand; cols++; }
             return w + (cols - 1) * colGap + padX * 2f;
@@ -338,8 +339,8 @@ public readonly partial struct Track
         /// <summary>The set's lanes as the ladder sees them; Tempo goes through <see cref="RowMetrics.ShowTempo"/> so the
         /// metric measures the lane the grid will actually build (DetailTracks.cs:626).</summary>
         public static Lanes LanesOf(in ColumnSet s) => new(
-            Heart: s.Heart, Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
-            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Video: s.Video, Actions: s.Actions, Expand: s.Expand);
+            Heart: s.Heart || RowMetrics.ShowHeartTrailing(in s), Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
+            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Actions: s.Actions, Expand: s.Expand, IndexHidden: s.IndexHidden);
 
         /// <summary>The set with <paramref name="step"/> lanes yielded, applied in ONE place so header, rows, shimmer and
         /// tracks agree. Tempo is cleared only where the lane was actually up: the flag also means "this surface wants
@@ -351,7 +352,8 @@ public readonly partial struct Track
             var r = Relieve(LanesOf(in s), step);
             return s with
             {
-                Heart = r.Heart, Thumb = r.Thumb, Artist = r.Artist, Album = r.Album, By = r.By, Date = r.Date,
+                // The heart lane yields as one, leading or trailing (a quiet list's, D16).
+                Heart = s.Heart && r.Heart, HeartTrailing = s.HeartTrailing && r.Heart, Thumb = r.Thumb, Artist = r.Artist, Album = r.Album, By = r.By, Date = r.Date,
                 Plays = r.Plays, Tempo = s.Tempo && (r.Tempo || !RowMetrics.ShowTempo(in s)),
             };
         }
@@ -367,10 +369,10 @@ public readonly partial struct Track
         /// <summary>Density Default.</summary>
         public const float RowHeight = 48f;
         public const float HeaderHeight = 36f;
-        public const float ColGap = Spacing.M;
-        public const float PadX = Spacing.L;
+        public static float ColGap => Spacing.M;
+        public static float PadX => Spacing.L;
         /// <summary>The rounded row-highlight inset (rows pad PadX − RowInset so columns stay header-aligned).</summary>
-        public const float RowInset = Spacing.S;
+        public static float RowInset => Spacing.S;
         /// <summary>36 sat between two ladder rungs and broke DOWNWARD: the Compact row is 40 tall.</summary>
         public const float ThumbSize = Design.Size.Thumb32;
         public const float HeartCol = Lane.Heart;
@@ -378,16 +380,15 @@ public readonly partial struct Track
         /// caller subtracts it so the RAIL, not the gutter's edge, lands on the art centre.</summary>
         public const float RailOffset = 7f;
 
-        /// <summary>0 Compact · 1 Default · 2 Cozy · 3 Comfortable (the Modern ladder).</summary>
-        public static float RowHeightFor(int density) => density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => RowHeight };
-
-        /// <summary>Forwards to the one decision so every Modern row agrees on 32/40/48.</summary>
-        public static float ArtSizeFor(int density) => TableRules.ArtSizeFor(density, classic: false);
-
-        /// <summary>The episode row template's height, density-aware (B2, plan §3.2): two title lines + a clamped two-line
-        /// description + the meta line need more than a track row's single line, so the ladder sits a band above
-        /// <see cref="RowHeightFor(int)"/> at every density rather than sharing its numbers.</summary>
-        public static float EpisodeRowHeightFor(int density) => density switch { 0 => 88f, 2 => 104f, 3 => 112f, _ => 96f };
+        /// <summary>The track rows' geometry at the active style's density (M3): the row heights of both skins, their art edges and the episode row's height (two title
+        /// lines + a clamped two-line description + the meta line need more than a track row's single line, so its ladder sits a band above the track rows'). A
+        /// TRACKED read of the style's metrics (`ThemeHost.Metrics`, which a window-tier change does not move): a density change re-runs whoever read it. The style publishes the ladders (`StyleMetrics.TrackRows`); before a
+        /// composition publishes any it is <see cref="TrackRowMetrics.Standard"/>, the shell as it shipped.</summary>
+        public static TrackRowMetrics Rows()
+        {
+            var rows = ThemeHost.Metrics.Value.TrackRows;
+            return rows.IsUnset ? TrackRowMetrics.Standard : rows;
+        }
 
         /// <summary>Full at wide tiers, tighter as the pane narrows; tier 0 is the unchanged constants.</summary>
         public static float PadXFor(int tier) => tier <= 3 ? PadX : tier <= 5 ? Spacing.M : Spacing.S;
@@ -403,6 +404,10 @@ public readonly partial struct Track
         /// buy is a crash on a surface nobody exercised, while the normalization is one lane in one place.</summary>
         public static bool ShowHeartTrailing(in ColumnSet set) => set.HeartTrailing && !set.Heart;
 
+        /// <summary>Does the set lay out a duration LANE? Every set but a Modern one in the Compact row form, whose subline states the duration
+        /// ("artist · 3:20", board C-TrackList compact). The width track, the cell count, the cell and the header all read this one gate.</summary>
+        public static bool ShowDuration(in ColumnSet set) => set.DurationKept || !(set.Compact && !set.Classic);
+
         /// <summary>The x of the row's ARTWORK CENTRE from the skin's left edge — the leading lanes (# · ♥) and their gaps
         /// plus half the art. DERIVED from the lane table, not a constant: the leading cluster is # alone, # + ♥, or
         /// # + ♥ + art depending on the tier, and the old hard-coded 52 landed mid-♥ at every wide tier. The drawer's rail
@@ -411,9 +416,11 @@ public readonly partial struct Track
         {
             float gap = ColGapFor(set.Tier);
             float x = PadXFor(set.Tier) - (set.Classic ? 0f : RowInset);   // the grid's own left pad
-            x += Lane.Num;
-            if (set.Heart) x += gap + HeartCol;
-            return set.Thumb ? x + gap + art / 2f : x + gap;
+            bool lead = false;                                              // a lane laid out before the art (its gap follows it)
+            if (!set.IndexHidden) { x += Lane.Num; lead = true; }
+            if (set.Heart) { x += (lead ? gap : 0f) + HeartCol; lead = true; }
+            float before = lead ? gap : 0f;
+            return set.Thumb ? x + before + art / 2f : x + before;
         }
 
         /// <summary>The drawer's indent: the art centre less the rail's own offset, never negative (DetailTracks.cs:3347).</summary>
@@ -655,6 +662,18 @@ public readonly partial struct Track
     public bool Unplayable()
         => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt);
 
+    /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
+    /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video
+    /// flag and the counterpart are track columns the row's presentation stamp already follows.</summary>
+    public bool HasVersions()
+    {
+        if (!IsValid) return false;
+        var versions = Entities.Current.Edges.TrackVersions;
+        _ = versions.Changed.Value;
+        return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
+                                        versions.Targets(Slot).Length);
+    }
+
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════
 
     /// <summary>The row whose FACTS a surface paints for this one. Spotify RELINKS a market-restricted id to a canonical
@@ -667,14 +686,15 @@ public readonly partial struct Track
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary><see cref="Filter"/> is the Filter button being inline at all (a 32-DIP funnel), <see cref="FilterLabel"/>
-    /// additionally its word (it always comes with <see cref="Filter"/>).</summary>
+    /// additionally its word (it always comes with <see cref="Filter"/>). Row size, Select and the column opt-ins are never on
+    /// the bar: they live in "…" (tuned Classic D3, decisions D-6 / D-10).</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8, Filter = 16, FilterLabel = 32 }
+    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Filter = 16, FilterLabel = 32 }
 
     /// <summary>Measured LABELED widths of the commands whose presence the resolver controls. <paramref name="Filter"/> is the
     /// LABELLED Filter button (its badge slot included); its icon-only form is the fixed
     /// <see cref="CommandBarLayout.FilterIconWidth"/>.</summary>
-    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select,
+    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort,
                                                 float Filter = CommandBarLayout.FilterLabelledNominal);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
@@ -685,17 +705,21 @@ public readonly partial struct Track
             + (Has(InlineCommand.Shuffle) ? 32 : 0)
             + (Has(InlineCommand.Sort) ? 16 : 0)
             + (Has(InlineCommand.Filter) ? 8 : 0)
-            + (Has(InlineCommand.FilterLabel) ? 4 : 0)
-            + (Has(InlineCommand.Density) ? 2 : 0)
-            + (Has(InlineCommand.Select) ? 1 : 0);
+            + (Has(InlineCommand.FilterLabel) ? 4 : 0);
     }
 
-    /// <summary>The command bar PROMOTES, it does not shrink: every inline command is icon + label, and one that does not
-    /// fit is evicted into "…". Filter leads the view commands and is the one command with a middle rung: Filter + Sort
-    /// labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge
-    /// returning to "…"). Never returns a layout wider than its input.</summary>
+    /// <summary>The list bar (tuned Classic D3): a LEFT group [Play next │ ⌄] [Shuffle] [Tune] and a RIGHT group [Filter (n)]
+    /// [Sort ⌄] [Find] [Insights] [⋯] with a flexible gap between them. The bar PROMOTES, it does not shrink: every inline command
+    /// is icon + label, and one that does not fit is evicted into "…". Filter is the one command with a middle rung: Filter + Sort
+    /// labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge returning
+    /// to "…"); Shuffle is offered before the ladder, so it is the last to go. Play next, Tune, Find, Insights and "…" always
+    /// stay. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
+        /// <summary>The conservative first-frame LABELLED widths (Play next · Tune · Shuffle · Sort · Filter) the fit resolves against before the
+        /// commands are measured; the vertical hero's skeleton resolves the same fit over them (tuned Classic X2).</summary>
+        public static readonly CommandWidths Nominal = new(120f, 92f, 96f, 156f, FilterLabelledNominal);
+
         public const float MoreWidth = 32f;
         /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The Filter command is its own
         /// button before Sort; "Filter…" in "…" (badged while a filter is on) is where a narrow bar puts it.</summary>
@@ -704,6 +728,8 @@ public readonly partial struct Track
         public const float SearchWithFilterWidth = 66f;
         /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
         public const float FilterIconWidth = 32f;
+        /// <summary>The Insights toggle (the facts sheet's glyph button), on the bar of a facts page only.</summary>
+        public const float InsightsWidth = 32f;
         /// <summary>The labelled Filter button's reserved badge slot: the 18-DIP round badge sits at its left edge and a two-digit
         /// count ("12": 14 + 4 + 4 margin) grows rightward into the rest, so no count ever changes the button's width.</summary>
         public const float FilterBadgeSlot = 22f;
@@ -713,74 +739,66 @@ public readonly partial struct Track
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
         public const float Gap = 2f;
+        /// <summary>The air before Find: the bar's gap plus Find's own 6-DIP lead.</summary>
         public const float SearchGap = 8f;
-        public const float GroupSeparatorWidth = 17f;
+        /// <summary>The least the flexible gap between the left and the right group may shrink to.</summary>
+        public const float GroupGap = 8f;
+        /// <summary>The page bar's inline chips (tuned Classic D8): the least width they keep before the view commands are evicted, and the
+        /// air between their faded end and the right group (board C-Liked: <c>min-width: 120px; margin-right: 8px</c>).</summary>
+        public const float InlineChipsMin = 120f, InlineChipsTrail = 8f;
         public const float PromotionHysteresis = 16f;
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
         /// commands re-measure mid-animation and the promoted set oscillated. Narrowing stays immediate.</summary>
         public static CommandBarFit Resolve(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                            bool hasSelect, bool explicitSearch, CommandBarFit? previous = null)
+                                            bool hasInsights, bool explicitSearch, CommandBarFit? previous = null)
         {
             available = MathF.Max(0f, available);
-            var candidate = ResolveCore(available, widths, vertical, hasTune, hasSelect, explicitSearch);
+            var candidate = ResolveCore(available, widths, vertical, hasTune, hasInsights, explicitSearch);
             if (previous is not { } old || candidate.Richness <= old.Richness)
                 return candidate;
-            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasSelect,
+            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasInsights,
                                explicitSearch);
         }
 
         static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                         bool hasSelect, bool explicitSearch)
+                                         bool hasInsights, bool explicitSearch)
         {
-            float mandatory = MoreWidth;
-            int mandatoryCount = 1; // More
-            if (!vertical) { mandatory += widths.Play; mandatoryCount++; }
-            if (hasTune) { mandatory += widths.Tune; mandatoryCount++; }
-            mandatory += MathF.Max(0, mandatoryCount - 1) * Gap;
-
             bool expanded = explicitSearch;
             float reservedSearch = expanded ? SearchMinExplicit : SearchIconWidth;
 
+            // The right group's fixed tail: Find, [Insights,] "…".
+            float used = SearchGap + reservedSearch + (hasInsights ? Gap + InsightsWidth : 0f) + Gap + MoreWidth;
+            // The left group's fixed head: Play next (the two-column arm), Tune; then the least gap between the groups.
+            int left = 0;
+            if (!vertical) { used += widths.Play; left++; }
+            if (hasTune) { used += (left > 0 ? Gap : 0f) + widths.Tune; left++; }
+            if (left > 0) used += GroupGap;
+
             InlineCommand inline = InlineCommand.None;
-            float used = mandatory + SearchGap + reservedSearch;
-
-            void Add(InlineCommand command, float width, bool viewCommand)
+            if (!vertical && used + Gap + widths.Shuffle <= available)
             {
-                float extra = Gap + width;
-                bool firstView = viewCommand
-                    && (inline & (InlineCommand.Filter | InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
-                if (firstView && (!vertical || hasTune || mandatoryCount > 1)) extra += GroupSeparatorWidth;
-                if (used + extra > available) return;
-                used += extra;
-                inline |= command;
+                used += Gap + widths.Shuffle;
+                inline |= InlineCommand.Shuffle;
             }
-
-            if (!vertical) Add(InlineCommand.Shuffle, widths.Shuffle, viewCommand: false);
 
             // Filter and Sort share one ladder, richest first: the first rung whose extra width fits wins.
+            float labelled = Gap + widths.Filter, icon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
+            if (used + labelled + sortExtra <= available)
             {
-                float sep = (!vertical || hasTune || mandatoryCount > 1) ? GroupSeparatorWidth : 0f;
-                float labelled = Gap + widths.Filter, icon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
-                if (used + sep + labelled + sortExtra <= available)
-                {
-                    used += sep + labelled + sortExtra;
-                    inline |= InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
-                }
-                else if (used + sep + icon + sortExtra <= available)
-                {
-                    used += sep + icon + sortExtra;
-                    inline |= InlineCommand.Filter | InlineCommand.Sort;
-                }
-                else if (used + sep + icon <= available)
-                {
-                    used += sep + icon;
-                    inline |= InlineCommand.Filter;
-                }
-                else Add(InlineCommand.Sort, widths.Sort, viewCommand: true);   // (Sort never fits where the icon did not, but stay greedy-safe)
+                used += labelled + sortExtra;
+                inline |= InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
             }
-            Add(InlineCommand.Density, widths.Density, viewCommand: true);
-            if (hasSelect) Add(InlineCommand.Select, widths.Select, viewCommand: true);
+            else if (used + icon + sortExtra <= available)
+            {
+                used += icon + sortExtra;
+                inline |= InlineCommand.Filter | InlineCommand.Sort;
+            }
+            else if (used + icon <= available)
+            {
+                used += icon;
+                inline |= InlineCommand.Filter;
+            }
 
             float searchWidth = reservedSearch;
             if (expanded)
@@ -789,6 +807,63 @@ public readonly partial struct Track
                 searchWidth = Math.Clamp(reservedSearch + spare, SearchMinExplicit, SearchMax);
             }
             return new CommandBarFit(inline, expanded, searchWidth);
+        }
+    }
+
+    // ══ 6b. THE DATE GROUPS ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A date group's head as a row shows it: the group's name and its count, already worded. Value equality, so a slot's
+    /// memo over it notifies only when the head it draws really changes.</summary>
+    public sealed record DateGroupHead(string Label, string Count);
+
+    /// <summary>The date groups of a collection sorted by when its songs were added (<see cref="Detail.Config.DateGroups"/>, Liked Songs,
+    /// tuned Classic D16; board C-TrackList: "This week · 12 songs", "September · 41 songs"): the last seven days are one group, every
+    /// older song falls in its calendar month (local time), and a month of another year carries the year. A row with no date
+    /// (0) is its own trailing group, "Earlier". Groups are contiguous runs of the SORTED view, so they hold in either direction.</summary>
+    public static class DateGroupRules
+    {
+        /// <summary>The key of the last seven days.</summary>
+        public const int ThisWeek = int.MaxValue;
+
+        /// <summary>The key of a row with no date.</summary>
+        public const int Undated = int.MinValue;
+
+        const long WeekSeconds = 7L * 24 * 60 * 60;
+
+        /// <summary>The group a row added at <paramref name="addedUnix"/> belongs to, seen at <paramref name="nowUnix"/> (both unix seconds),
+        /// with <paramref name="offset"/> the local time's offset from UTC.</summary>
+        public static int KeyOf(long addedUnix, long nowUnix, TimeSpan offset)
+        {
+            if (addedUnix <= 0) return Undated;
+            if (nowUnix - addedUnix < WeekSeconds) return ThisWeek;
+            var local = DateTimeOffset.FromUnixTimeSeconds(addedUnix).ToOffset(offset);
+            return local.Year * 12 + (local.Month - 1);
+        }
+
+        /// <summary>The group's name: "This week", the month ("September") or, in another year than <paramref name="nowYear"/>, the month and
+        /// year ("September 2024") in <paramref name="culture"/>; <paramref name="thisWeek"/> and <paramref name="undated"/> are the
+        /// caller's localized words.</summary>
+        public static string LabelOf(int key, int nowYear, CultureInfo culture, string thisWeek, string undated)
+        {
+            if (key == ThisWeek) return thisWeek;
+            if (key == Undated) return undated;
+            var month = new DateTime(key / 12, key % 12 + 1, 1);
+            return month.Year == nowYear ? month.ToString("MMMM", culture) : month.ToString("MMMM yyyy", culture);
+        }
+
+        /// <summary>Fills <paramref name="heads"/> with, at each display index that STARTS a group, the length of that group's run (else 0),
+        /// from each display row's <paramref name="keys"/>.</summary>
+        public static void RunsOf(ReadOnlySpan<int> keys, Span<int> heads)
+        {
+            int i = 0;
+            while (i < keys.Length)
+            {
+                int j = i + 1;
+                while (j < keys.Length && keys[j] == keys[i]) j++;
+                heads[i] = j - i;
+                for (int k = i + 1; k < j; k++) heads[k] = 0;
+                i = j;
+            }
         }
     }
 
@@ -842,10 +917,7 @@ public readonly partial struct Track
         public bool IsDefault => Equals(Default);
 
         /// <summary>The number on the Filter affordance: each toggle and each non-default facet counts once; a window is ONE
-        /// facet however many endpoints it names.</summary>
-        public int ActiveCount => ActiveCountFor(searching: true);
-
-        /// <summary><see cref="ActiveCount"/> as the badge states it: the search scope is the QUERY's, so it counts only while a query
+        /// facet however many endpoints it names. The search scope is the QUERY's, so it counts only while a query
         /// is typed (<paramref name="searching"/>); an empty find leaves the scope uncounted, as nothing on the card is then narrowing.</summary>
         public int ActiveCountFor(bool searching)
         {
@@ -941,10 +1013,34 @@ public readonly partial struct Track
         }
     }
 
+    /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, counted by why: the "Hide them" bar's numbers (boards C-Unavailable /
+    /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
+    /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
+    /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0)
+    {
+        /// <summary>Every row the filter would hide.</summary>
+        public int Total => NotAvailable + NotYetOut;
+
+        /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing).</summary>
+        public UnavailableTally With(bool notYetOut, bool unplayable)
+            => unplayable ? this with { NotAvailable = NotAvailable + 1 }
+             : notYetOut ? this with { NotYetOut = NotYetOut + 1 }
+             : this;
+    }
+
     /// <summary>The filter predicate shared by the table and the tests.</summary>
     public static class FilterModel
     {
         const long SecondsPerDay = 86_400L;
+
+        /// <summary>Does <see cref="FilterFlags.PlayableOnly"/> hide a row of this verdict? Only a CONFIRMED unavailable: <see cref="Matches"/> and
+        /// the "Hide them" bar's count read this one rule, so the bar can never promise a row the filter keeps.</summary>
+        public static bool HiddenByPlayable(bool notYetOut, bool unplayable) => notYetOut || unplayable;
+
+        /// <summary>Does the list offer "Hide them" (boards C-Unavailable / C-Unavailable-Compact)? While it has rows the filter would hide and the
+        /// filter is off: hiding them (or the card's own switch) takes the bar away, and turning the switch off brings it back.</summary>
+        public static bool OffersHide(in UnavailableTally tally, in FilterState filter) => tally.Total > 0 && !filter.PlayableOnly;
 
         public static bool Matches(in FilterRow row, string query, in FilterState filter, long nowUnixSeconds)
         {
@@ -954,7 +1050,7 @@ public readonly partial struct Track
             // Only a CONFIRMED unavailable is hidden: an unruled row is never not-yet-out nor unplayable, so a surface
             // that carries no verdict at all is never emptied — and a passed release instant keeps a stale verdict's row.
             // A ruled row with NO instant (`Track.Unplayable`) has nothing to wait for and is hidden outright.
-            if (filter.PlayableOnly && (row.NotYetOut || row.Unplayable)) return false;
+            if (filter.PlayableOnly && HiddenByPlayable(row.NotYetOut, row.Unplayable)) return false;
 
             if (filter.Origin == OriginFilter.Streamed && row.Local) return false;
             if (filter.Origin == OriginFilter.Local && !row.Local) return false;
@@ -1532,11 +1628,6 @@ public readonly partial struct Track
             }
         }
 
-        /// <summary>The same question in DISPLAY coordinates (what a drop hands over).</summary>
-        public static bool AnchorRowIsKeyed(ReadOnlySpan<int> view, ReadOnlySpan<StringId> itemIds,
-                                            ReadOnlySpan<RowRef> moved, int displaySlot)
-            => AnchorRowIsKeyedAt(itemIds, moved, OriginalInsertionIndex(view, itemIds.Length, displaySlot));
-
         /// <summary>Invert the display→original map for ONE row (the payload carries ORIGINAL indices, the engine's
         /// virtual-removal math counts DISPLAY positions). O(1) in natural order, a scan otherwise; −1 = not displayed.</summary>
         public static int DisplayRowOf(int originalIndex, ReadOnlySpan<int> view)
@@ -1605,30 +1696,12 @@ public readonly partial struct Track
 //
 // Role: CORE (pure, engine-free)
 //
-// TWO pure classes, unit-tested without touching Track.Table.cs's live host: `TableRowShape` (what template/height a
-// row's kind gets), `SelectionVerbs` (which `ActionId`s a selection's kind mix shows in the batch bar). No source-text
-// tests read these — `TableRowShapeTests.cs` / `SelectionVerbsTests.cs` exercise them by value.
+// `SelectionVerbs` (which `ActionId`s a selection's kind mix shows in the batch bar), unit-tested without touching
+// Track.Table.cs's live host: no source-text test reads it — `SelectionVerbsTests.cs` exercises it by value.
 
 
 /// <summary>What a display row's ROOT SWITCHES on inside <c>TableSlot</c>.</summary>
 public enum RowTemplate : byte { Track = 0, Episode = 1 }
-
-/// <summary>The row TEMPLATE and HEIGHT a kind gets.</summary>
-public static class TableRowShape
-{
-    /// <summary>A resident member's template. There is no <see cref="EntityKind.Episode"/>-shaped ambiguity: every kind
-    /// other than <see cref="EntityKind.Episode"/> renders as a track row (the table's long-standing default).</summary>
-    public static RowTemplate TemplateOf(EntityKind kind) => kind == EntityKind.Episode ? RowTemplate.Episode : RowTemplate.Track;
-
-    /// <summary>The height a row's template draws at, given the table's live density/skin — the ONE place a caller
-    /// (the row-height estimator, a measured-layout fallback) asks "how tall is THIS row" without re-deriving the
-    /// ladder by hand.</summary>
-    public static float HeightOf(RowTemplate template, int density, bool classic) => template switch
-    {
-        RowTemplate.Episode => Track.RowMetrics.EpisodeRowHeightFor(density),
-        _ => Track.TableRules.RowHeightFor(density, classic),
-    };
-}
 
 /// <summary>One <see cref="ItemsViewController.CorrectMeasuredExtent"/> write a drawer toggle must apply (item 9): a
 /// display INDEX and the extent it should read now.</summary>

@@ -210,17 +210,20 @@ public static partial class Playback
         try
         {
             int n = 0;
+            // The history and the deck the splice keeps: a controller's row may repeat a uid they carry (a repeated
+            // context's next lap), and must not take their item id.
+            ReadOnlySpan<QueueEdge> kept = Queue.Rows[..Math.Min(deck + 1, Queue.Rows.Length)];
             if (body.Kind == RemoteCmd.SetQueue)
             {
                 ReadOnlySpan<ClusterTrack> tracks = buffer.Tracks(body.NextStart, body.NextCount);
-                for (int k = 0; k < tracks.Length; k++) AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n);
+                for (int k = 0; k < tracks.Length; k++) AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n, distinct: true, kept);
             }
             else
             {
                 AddKeptQueue(refs, rows, ref n, room);
                 ReadOnlySpan<ClusterTrack> tracks = buffer.Tracks(body.TrackStart, body.TrackCount);
                 for (int k = CurrentIndexIn(buffer, tracks) + 1; k < tracks.Length; k++)
-                    AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n);
+                    AddRow(buffer, in tracks[k], QueueBucket.NextUp, refs, rows, ref n, distinct: true, kept);
             }
             Queue.Pack(refs.AsSpan(0, n), next);
             int written = SpliceQueue(Queue.PackedRefs, Queue.Rows, deck, next.AsSpan(0, n), rows.AsSpan(0, n),
@@ -411,7 +414,10 @@ public static partial class Playback
 
     /// <summary>One foreign-queue row as the pure layout reads it (<see cref="Queue.LayoutMirror"/>) plus the packed target
     /// it resolves to (0 = no playable identity, or one this scope cannot resolve — the layout drops it rather than
-    /// queueing a hole). Provenance comes off the wire: queued, autoplay, else context.</summary>
+    /// queueing a hole). Provenance comes off the wire: queued, autoplay, else context. The item id is the row's own: a
+    /// uid the owner repeats (every lap of a repeated context, a track both behind and ahead) is booked per occurrence
+    /// (<see cref="UidBook.ItemIdOf(ReadOnlySpan{byte}, int)"/>), so no two rows share one and the panel's keys, a play or a
+    /// remove each name the row they came from.</summary>
     static Queue.MirrorRow ForeignRow(int index, bool next, out int target)
     {
         target = 0;
@@ -422,7 +428,7 @@ public static partial class Playback
             if (id.IsPlayable) target = Queue.Pack(Entities.Ref(id));
         }
         ReadOnlySpan<byte> uid = s_foreign.Utf8Uid(next, index);
-        ulong itemId = target == 0 || uid.IsEmpty ? 0UL : (ulong)s_uids.ItemIdOf(uid);
+        ulong itemId = target == 0 || uid.IsEmpty ? 0UL : s_uids.ItemIdOf(uid, s_foreign.UidOccurrence(next, index));
         if (itemId != 0 && s_foreign.IsQueued(next, index))          // the owner's own account of who queued it travels with the row
             s_uids.NoteQueuedBy(itemId, Encoding.UTF8.GetString(s_foreign.Utf8QueuedBy(next, index)));
         return new Queue.MirrorRow(target != 0, s_foreign.IsQueued(next, index), s_foreign.IsAutoplay(next, index), itemId);

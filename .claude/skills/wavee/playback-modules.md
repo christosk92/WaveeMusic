@@ -13,7 +13,7 @@ appendix): **`docs/guide/playback-modules.md`**. This page is the file map.
 |---|---|---|
 | **SDK** (public contract) | `src/apps/Wavee.Sdk/**` | `ModuleManifest`, the playback DTOs (`MatchResult`, `ResolvedPlayable`, `MediaLocator`, `WireMeta`, `ResolvePreferences`), `ModuleUri`, `ModuleError*`, `WaveeModule`, `IModuleHost`, `IModuleStream`, `ModuleRunner`, `ModuleTestHost`, `Protocol/` (`JsonRpcFramer`, `JsonRpcConnection`, `ModuleMethods`, `ModuleProtocol`, `SdkJsonContext`), `Streams/` (`RangedHttpSource`, `RangeSet`, `ChunkDiskCache`), `Http/AuthenticatedHttp`. **Zero project references** — it is the NuGet a third party consumes. |
 | **Host** (app side) | `src/apps/Wavee/Backend/Modules/**` | `ModuleCatalog` (discovery + `ModuleRejection` diagnostics), `ModuleProcess` (+ `ModuleProcessState`, `ModuleTimeouts`, `ChildProcessChannel` behind the `IModuleChannel`/`ModuleSpawn` test seam), `ModuleHost` (the façade `Services` composes), `ModuleMediaProvider` (one `IPlayableMediaProvider` per module), `ModulePlayableCache` / `ModulePlayables` (sync `HasVideo`/`IsLive`/`Get` answers), `ModuleRouter` + `ModuleCapabilities` (paste-url matching), `ModuleByteStream` (module-served bytes), `ModuleHostServices` + `IModuleSecretStore` (the module→host calls), `ModuleStats`. |
-| **Modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | One `net10.0` `Exe` each, `PublishAot=true`, references **only** `Wavee.Sdk`, ships `wavee-module.json`. Tests + recorded fixtures in `src/apps/Wavee.Tests/Modules/`. |
+| **Modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | One `net10.0` `Exe` each, `PublishAot=true`, references **only** `Wavee.Sdk`, ships `wavee-module.json`. |
 
 ## The manifest
 
@@ -50,16 +50,10 @@ never string surgery.
 8. **The video host cannot set request headers.** Never resolve an HLS url that needs them.
 9. **No env switches.** Diagnostics are always on; nothing about module behaviour is gated on an env var.
 
-## Testing
+## Manual runs
 
-- Module tests: `ModuleTestHost` calls the module class directly (no process, no network — inject an
-  `HttpMessageHandler`, drive recorded fixtures). It records `Metadata` / `Expired` / `Status` / `Progress` /
-  `Logs` and can stand in for host services (`TokenProvider`, `AuthContextProvider`, `SecretReader`/`Writer`,
-  `CallHandler`).
-- Host tests: an in-memory `JsonRpcConnection` pair against a scripted fake module (including one serving a local
-  file over `stream/open|read|close`). Real processes only in `[Trait("Category","Integration")]`.
-- Manual: `Wavee.Module.YouTube.exe match <url>` / `resolve <playableId>` print JSON to stdout (same code paths as
-  `ModuleTestHost`); exit 0 = found, 1 = not found/failed, 2 = bad usage.
+- `Wavee.Module.YouTube.exe match <url>` / `resolve <playableId>` print JSON to stdout (same code paths as
+  `ModuleTestHost`, the SDK's in-process stand-in host); exit 0 = found, 1 = not found/failed, 2 = bad usage.
 
 ## Diagnostics
 

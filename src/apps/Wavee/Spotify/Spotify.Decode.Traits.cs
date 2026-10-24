@@ -8,7 +8,7 @@
 // Spec: gap register G-044 — a named partial of Spotify.Decode.cs, whose 1,600 budget it would pass. (G-045's JSON profile
 // arm is gone: the REST profile is the protobuf view, Spotify.Decode.Profile.cs.)
 //
-// `Api.UserProfiles`, `Api.TrackCredits`, `Api.AlbumRecommendations` and `Api.TrackExpansion` POSTed kinds 15, 186,
+// `Api.UserProfiles`, `Api.TrackCredits`, `Api.AlbumRecommendations` and the track drawer's trait request POSTed kinds 15, 186,
 // 151, 98 and 237 and `Decode.Extension` fell through its `default:` for every one of them, so each answered with
 // nothing staged. These are the projectors 0.2.9 carried for them (`UserProfilePayloadDecoder`, the credits reader,
 // `SpotifyTrackExpansionService.MapWaveform` / `CollectTargets`), rewritten in this file's one shape: pure over a span,

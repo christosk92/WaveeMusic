@@ -1,7 +1,8 @@
 // ── Screens/Setup.cs ───────────────────────────────────────────────────────────────────────────────────────────────
-// SetupGating, SetupCommands, SetupEntryPoint, SetupLayout, both presentations, SetupBootstrap, QrPlate, Qr,
-// WaveeLottieRecolor, SetupSession/SetupSession.MarkerEpoch (the process-static marker epoch the app root subscribes
-// to — §9.6 Q8, 2026-09-12: orchestrator's call, no chapter names a home)
+// SetupGating, SetupCommands, SetupEntryPoint, both presentations, SetupBootstrap, QrPlate, Qr,
+// SetupSession/SetupSession.MarkerEpoch (the process-static marker epoch the app root subscribes
+// to — §9.6 Q8, 2026-09-12: orchestrator's call, no chapter names a home). The wizard's geometry (`SetupGeometry`) and the Lottie
+// recolour (`SetupRecolor`) are Classic's (`Themes\Classic\Structure\Rules`, themes plan T11c).
 //
 // Role: CORE
 // Owner: R
@@ -10,11 +11,11 @@
 // Spec: ch 28 §9.5 + §9.6 Q8 (DERIVED: 950 + 200 for SetupSession, 324 lines of 0.2.9 ported and folded)
 //
 // Still the Wave-6 skeleton for owner R, EXCEPT two regions: the runtime provisioning card's pure phase rules,
-// written by owner I in Wave 4 (A18) because `+Screens/Setup.UI.Runtime.cs` renders the card for the Wave-4 shell
+// written by owner I in Wave 4 (A18) because the Classic runtime card (`ClassicSetup.Runtime.cs`) renders the card for the Wave-4 shell
 // banner (the phase ENUM itself is `Platform.cs`'s `RuntimePhase` — one enum for the whole app, ch 28 §8 — not here);
 // and the sign-in / gating / bootstrap region, pulled forward by decision D2 (gap batch B5: G-030, G-095) so a fresh
-// profile can sign in before Wave 6. The wizard CHROME (the Terms / Sign in / Local playback pages, SetupCommands,
-// SetupLayout, SetupSession) is still owner R's.
+// profile can sign in before Wave 6. The wizard CHROME (the Terms / Sign in / Local playback pages) is the
+// Classic structure's; SetupCommands and SetupSession are still owner R's.
 
 using System.Globalization;
 
@@ -25,9 +26,8 @@ public static partial class Setup
     // ══ REGION — THE SETUP WIZARD'S PURE RULES (WP-6.R) ═══════════════════════════════════════════════════════════
     //
     // Moved verbatim from `Setup.Host.cs` (batch R2), where it was parked because that file was not originally in
-    // WP-6.R's file list. Engine-free except `ColorF`, the value the recolour rule is ABOUT (`Design.Palette`, CORE,
-    // uses it the same way). Ported from 0.2.9 `Features/Setup/SetupLayout.cs`, `App/SetupCommands.cs`,
-    // `App/SetupSignInPresentation.cs` and `Features/Setup/WaveeLottieRecolor.cs`; pinned by
+    // WP-6.R's file list. Engine-free. Ported from 0.2.9 `App/SetupCommands.cs` and
+    // `App/SetupSignInPresentation.cs` (`Features/Setup/SetupLayout.cs` and `WaveeLottieRecolor.cs` became Classic's `SetupGeometry` and `SetupRecolor`); pinned by
     // `Wavee.Tests/SetupWizardTests.cs`. B5's `WizardPage` / `WizardEntry` / `Gating` / `SignInFacet` / `SignInRules`
     // (below, in the sign-in/gating/bootstrap region) are reused, never re-minted.
 
@@ -35,73 +35,6 @@ public static partial class Setup
     /// ordinary modal smoke; <see cref="None"/> = no plate. <see cref="Live"/> is unreachable today (no page is a live
     /// preview of the shell) and kept so the shell's scrim reader can name it.</summary>
     public enum Cover : byte { None, Dim, Live }
-
-    /// <summary>Every wizard number: the Rise reference plate 762×490 (min 320×184), ONE 770-DIP icon breakpoint with no
-    /// hysteresis, an 80-tall footer whose 210-wide progress column collapses with the icon column (ch 28 §2, §3.1).</summary>
-    public static class Layout
-    {
-        public const float PlateWidth = 762f, PlateHeight = 490f, PlatePadding = 24f;
-        public const float MinPlateWidth = 320f, MinPlateHeight = 184f, ViewportMargin = 32f;
-        public const float IconColumnWidth = 192f, IconColumnGap = 24f, IconBreakpoint = 770f;
-        public const float HeaderTopPull = 4f, HeaderBottomGap = 4f, BackSpacerWidth = 42f;
-        public const float BodySpacing = 20f, BodyInnerSpacing = 12f, ScrollGutter = 24f;
-        public const float FooterHeight = 80f, FooterPadding = 24f, FooterColumnGap = 6f;
-        public const float ProgressColumnWidth = 210f, ProgressColumnRightPad = 48f, ProgressStackGap = 6f, ProgressWidth = 162f;
-        public const float BackButtonSize = 30f, BackGlyphSize = 12f;
-        public const float HeaderLineHeight = 36f, SeparatorHeight = 1f;
-        public const float QrSize = 80f, BodyLineHeight = 20f, CardMinHeight = 68f, CardPadding = 16f, LinkRowHeight = 32f;
-
-        /// <summary>The hero's zoom over its authored fit — Wavee's one deliberate deviation from a literal Rise readout.</summary>
-        public const float HeroZoom = 1.2f;
-
-        /// <summary>A v4 (33-module) pairing symbol asked for at <see cref="QrSize"/> PAINTS at 82; the budget charges the
-        /// paint, not the ask.</summary>
-        public static readonly float QrPlateBudget = QrPlate.PlateFor(QrSize, 33);
-
-        public static float Width(float viewportW) => Math.Clamp(PlateWidth, MinPlateWidth, MathF.Max(MinPlateWidth, viewportW - 2f * ViewportMargin));
-        public static float Height(float viewportH) => Math.Clamp(PlateHeight, MinPlateHeight, MathF.Max(MinPlateHeight, viewportH - 2f * ViewportMargin));
-
-        /// <summary>The one breakpoint, on the WINDOW width (not the plate's).</summary>
-        public static bool ShowsIcon(float viewportW) => viewportW >= IconBreakpoint;
-
-        public static float ProgressColumnFor(bool large) => large ? ProgressColumnWidth : 0f;
-
-        /// <summary>The two stretch buttons' width once the padding, the progress column and both gaps come out.</summary>
-        public static float FooterButtonWidth(float plateW, bool large) =>
-            (plateW - 2f * FooterPadding - ProgressColumnFor(large) - 2f * FooterColumnGap) / 2f;
-
-        public static Cover CoverFor(bool shellBehind) => shellBehind ? Cover.Dim : Cover.None;
-
-        /// <summary>The page body's lane: the plate less the footer, the separator, the 24 padding top+bottom and the
-        /// one-line title with its 0,-4,0,4 margin (325 at the reference plate).</summary>
-        public static float BodyLaneHeight(float plateH) =>
-            plateH - FooterHeight - SeparatorHeight - 2f * PlatePadding - (HeaderLineHeight - HeaderTopPull + HeaderBottomGap);
-
-        /// <summary>The sign-in Idle body for a lead of <paramref name="leadLines"/> lines: lead · browser card · scan card
-        /// (the painted QR + 16 padding) · the one-row premium line, 20 apart (314 for two lines). It does NOT model the
-        /// SettingsCard wrap bands (W3b) — the persistent scrollbar covers those.</summary>
-        public static float SignInIdleBodyHeight(int leadLines) =>
-            leadLines * BodyLineHeight + BodySpacing
-            + CardMinHeight + BodySpacing
-            + (QrPlateBudget + 2f * CardPadding) + BodySpacing
-            + LinkRowHeight;
-
-        /// <summary>A body card's width at a viewport (W3b): the plate less its padding, less the icon column and its gap
-        /// when shown — what `SettingsCard`'s two thresholds (content wrap 476, icon drop 286) are measured against.</summary>
-        public static float CardWidth(float viewportW) =>
-            Width(viewportW) - 2f * PlatePadding - (ShowsIcon(viewportW) ? IconColumnWidth + IconColumnGap : 0f);
-
-        /// <summary>The 42-DIP back spacer beside the title: only with no icon column, on a page that shows Back.</summary>
-        public static bool BackSpacerApplies(WizardPage page, bool iconShown) => !iconShown && Gating.ShowsBack(page);
-
-        /// <summary>The Lottie scene each page plays (<c>assets/lottie/&lt;name&gt;.json</c>).</summary>
-        public static string HeroAsset(WizardPage page) => page switch
-        {
-            WizardPage.Terms => "eula",
-            WizardPage.SignIn or WizardPage.Layout => "connect",
-            _ => "patch",
-        };
-    }
 
     /// <summary>The Local playback page's footer facets, folded from the eight runtime phases.</summary>
     public enum RuntimeFacet : byte { Offer, Catalog, Versions, Downloading, Verifying, Untrusted, Ready, Failed }
@@ -126,7 +59,7 @@ public static partial class Setup
             {
                 WizardPage.Terms => new CommandRow(Strings.Setup.Accept, Strings.Setup.Decline, ButtonKind.Accent, true, true, false, false),
                 WizardPage.SignIn => SignInRow(ctx.SignIn),
-                WizardPage.Layout => new CommandRow(Strings.Setup.Next, null, ButtonKind.Accent, true, false, false, false),
+                WizardPage.Theme => new CommandRow(Strings.Setup.Next, null, ButtonKind.Accent, true, false, false, false),
                 _ => LocalPlaybackRow(ctx.Runtime),
             };
             return row with { ShowBack = Gating.ShowsBack(ctx.Page) };
@@ -238,6 +171,13 @@ public static partial class Setup
         /// terms re-arm, so it rises over an already-painted shell.</summary>
         public static int OpenPosts(WizardEntry entry) => entry == WizardEntry.TermsRearm ? 2 : 1;
 
+        /// <summary>Does the wizard hold the window's reveal (Classic tuning F9: the first frame the user sees is final)? While a
+        /// first run or a re-auth is due and its plate has not opened yet, the frame would show the bare shell the plate then
+        /// covers, so the window stays hidden until the plate is up (the reveal gate's watchdog still shows it). A terms re-arm
+        /// rises over the painted shell on purpose (<see cref="OpenPosts"/>), so it never holds.</summary>
+        public static bool HoldsReveal(WizardEntry? due, bool shownThisLaunch)
+            => due is { } entry && OpenPosts(entry) == 1 && !shownThisLaunch;
+
         /// <summary>The wizard owns sign-in while its plate is up, and while it is armed but not yet shown this launch; once
         /// shown and closed the sign-in door takes it back (a later sign-out must still get a surface).</summary>
         public static bool OwnsSignIn(bool pending, bool open, bool shownThisLaunch) => open || (pending && !shownThisLaunch);
@@ -298,35 +238,6 @@ public static partial class Setup
             }
             return sb.ToString();
         }
-    }
-
-    /// <summary>The Lottie hero recolour: exact #0078D4 → the accent, exact #002B67 → the deep accent, the H 195–285° /
-    /// S ≥ .35 blue-violet band hue-rotated by the accent's own delta, everything else as authored. Alpha is always the
-    /// shape's own. The hero applies it once per mount (a theme change does not repaint a mounted hero — 0.2.9's rule).</summary>
-    public static class Recolor
-    {
-        static readonly FluentGpu.Foundation.ColorF SourceAccent = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x78, 0xD4);
-        static readonly FluentGpu.Foundation.ColorF SourceDeep = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x2B, 0x67);
-        static readonly float SourceAccentHue = Design.Palette.ToHsl(SourceAccent).H;
-
-        const float HueBandMin = 195f, HueBandMax = 285f, HueBandMinSaturation = 0.35f;
-
-        /// <summary>Generous enough for a byte/255 round trip, tight enough that the band's nearest neighbour (#2741AB) never
-        /// qualifies as exact.</summary>
-        const float ExactTolerance = 1f / 64f;
-
-        public static FluentGpu.Foundation.ColorF Apply(FluentGpu.Foundation.ColorF c, FluentGpu.Foundation.ColorF accent,
-                                                         FluentGpu.Foundation.ColorF accentDeep)
-        {
-            if (IsClose(c, SourceAccent)) return accent with { A = c.A };
-            if (IsClose(c, SourceDeep)) return accentDeep with { A = c.A };
-            var (h, s, l) = Design.Palette.ToHsl(c);
-            if (s < HueBandMinSaturation || h < HueBandMin || h > HueBandMax) return c;
-            return Design.Palette.FromHsl(h + (Design.Palette.ToHsl(accent).H - SourceAccentHue), s, l, c.A);
-        }
-
-        static bool IsClose(FluentGpu.Foundation.ColorF a, FluentGpu.Foundation.ColorF b) =>
-            MathF.Abs(a.R - b.R) <= ExactTolerance && MathF.Abs(a.G - b.G) <= ExactTolerance && MathF.Abs(a.B - b.B) <= ExactTolerance;
     }
 
     // ══ END REGION (moved from Setup.Host.cs, batch R2) ════════════════════════════════════════════════════════════
@@ -416,15 +327,8 @@ public static partial class Setup
         /// <summary>The fact boxes' label lane.</summary>
         public const float DetailLabelWidth = 92f;
 
-        /// <summary>The banner's inner cap, and its lane's top pad (the 48-DIP chrome row + 8).</summary>
-        public const float BannerMaxWidth = 560f, BannerTopPad = 56f;
-
-        /// <summary>Whether the command row's two groups (the links, the buttons) no longer share one line of the dialog's
-        /// <see cref="ProgressWidth"/> and the footer wraps the buttons onto a second line. It is the engine's own wrap-line
-        /// break rule (a gap between the groups, a 0.01 slack), restated so the Failed footer's "wraps" is a fact, not a
-        /// guess. An empty group (no links, or no buttons) never wraps.</summary>
-        public static bool FooterWraps(float linksW, float buttonsW, float lineW = ProgressWidth)
-            => linksW > 0f && buttonsW > 0f && linksW + FluentGpu.Dsl.Spacing.S + buttonsW > lineW + 0.01f;
+        /// <summary>The banner lane's top pad (the 48-DIP chrome row + 8). The banner's own width cap is Classic's (`ClassicOverlayRules`).</summary>
+        public const float BannerTopPad = 56f;
 
         /// <summary>The download bar's fill: clamped 0..1, 0 when the total is unknown.</summary>
         public static float ProgressFraction(long received, long total)
@@ -450,9 +354,8 @@ public static partial class Setup
         /// <summary>A fact the card does not know prints an em dash, never an empty cell.</summary>
         public static string OrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 
-        /// <summary>Dismissal (Escape, programmatic) is blocked while the card is working.</summary>
-        /// <summary>A provisioning outcome as the banner's issue. Ready and never-attempted say nothing; a wrong-arch
-        /// runtime and a catalog with nothing for this build are named; a pack that failed its hash or signature gate is
+        /// <summary>A provisioning outcome as the banner's issue (read by the private PlayPlay provisioner). Ready and never-attempted say nothing; a
+        /// wrong-arch runtime and a catalog with nothing for this build are named; a pack that failed its hash or signature gate is
         /// unsupported; everything else is a missing runtime.</summary>
         public static RuntimeIssue IssueFor(ProvisioningOutcome outcome) => outcome switch
         {
@@ -579,9 +482,9 @@ public static partial class Setup
     // surface's facet fold and door rules (0.2.9 `SetupCommands.Project` + `SetupSignInPresentation`), and the QR encoder
     // the pairing code renders through (0.2.9 `Features/Auth/Qr.cs` + `QrPlate.cs`, verbatim in behaviour).
 
-    /// <summary>The wizard's pages in display order: Terms is "pre-setup", then Sign in (step 1 of 3), then Layout (step 2
+    /// <summary>The wizard's pages in display order: Terms is "pre-setup", then Sign in (step 1 of 3), then Theme (step 2
     /// of 3, first runs only), then Local playback (step 3 of 3). Not persisted, so renumbering is safe.</summary>
-    public enum WizardPage : byte { Terms = 0, SignIn = 1, Layout = 2, LocalPlayback = 3 }
+    public enum WizardPage : byte { Terms = 0, SignIn = 1, Theme = 2, LocalPlayback = 3 }
 
     /// <summary>Why the wizard is open: a fresh install, a signed-out install that needs its account back, or a completed
     /// install re-armed because the terms changed.</summary>
@@ -595,7 +498,7 @@ public static partial class Setup
         /// <summary>The terms revision this build requires; a completed install that accepted an older one is re-armed.</summary>
         public const int TermsVersion = 1;
 
-        /// <summary>Sign in, Layout and Local playback ("Step N of 3"); Layout is skipped off a first run.</summary>
+        /// <summary>Sign in, Theme and Local playback ("Step N of 3"); Theme is skipped off a first run.</summary>
         public const int StepTotal = 3;
 
         /// <summary>Armed and not yet completed or deferred. No settings store ⇒ never (nothing could remember its exit).</summary>
@@ -638,46 +541,40 @@ public static partial class Setup
         /// <summary>The data folder is gone but the settings still remember a finished wizard: treat it as a fresh install.</summary>
         public static bool NeedsFreshInstallReset(bool fresh, bool completed, int termsAccepted) => fresh && (completed || termsAccepted > 0);
 
-        /// <summary>Layout is offered on a first run only: a re-auth or a terms re-arm never shows it.</summary>
-        public static bool ShowsLayout(WizardEntry entry) => entry == WizardEntry.FirstRun;
+        /// <summary>Theme is offered on a first run only: a re-auth or a terms re-arm never shows it.</summary>
+        public static bool ShowsTheme(WizardEntry entry) => entry == WizardEntry.FirstRun;
 
-        /// <summary>The next page, skipping Sign in and Layout when asked, clamped at Local playback.</summary>
-        public static WizardPage NextPage(WizardPage page, bool skipSignIn, bool skipLayout)
+        /// <summary>The next page, skipping Sign in and Theme when asked, clamped at Local playback.</summary>
+        public static WizardPage NextPage(WizardPage page, bool skipSignIn, bool skipTheme)
         {
             var next = (WizardPage)Math.Min((int)page + 1, (int)WizardPage.LocalPlayback);
-            if (skipSignIn && next == WizardPage.SignIn) next = WizardPage.Layout;
-            if (skipLayout && next == WizardPage.Layout) next = WizardPage.LocalPlayback;
+            if (skipSignIn && next == WizardPage.SignIn) next = WizardPage.Theme;
+            if (skipTheme && next == WizardPage.Theme) next = WizardPage.LocalPlayback;
             return next;
         }
 
-        /// <summary>The previous page, skipping Layout and Sign in when asked, clamped at Terms.</summary>
-        public static WizardPage PrevPage(WizardPage page, bool skipSignIn, bool skipLayout)
+        /// <summary>The previous page, skipping Theme and Sign in when asked, clamped at Terms.</summary>
+        public static WizardPage PrevPage(WizardPage page, bool skipSignIn, bool skipTheme)
         {
             var prev = (WizardPage)Math.Max((int)page - 1, (int)WizardPage.Terms);
-            if (skipLayout && prev == WizardPage.Layout) prev = WizardPage.SignIn;
+            if (skipTheme && prev == WizardPage.Theme) prev = WizardPage.SignIn;
             if (skipSignIn && prev == WizardPage.SignIn) prev = WizardPage.Terms;
             return prev;
         }
 
-        /// <summary>"Step N of 3" (of 2 when Layout is skipped, so Local playback is step 2), or null for Terms ("Pre-setup").</summary>
-        public static (int Step, int Total)? StepNumber(WizardPage page, bool skipLayout)
-            => page == WizardPage.Terms ? null : (skipLayout && page == WizardPage.LocalPlayback ? 2 : (int)page, skipLayout ? 2 : StepTotal);
+        /// <summary>"Step N of 3" (of 2 when Theme is skipped, so Local playback is step 2), or null for Terms ("Pre-setup").</summary>
+        public static (int Step, int Total)? StepNumber(WizardPage page, bool skipTheme)
+            => page == WizardPage.Terms ? null : (skipTheme && page == WizardPage.LocalPlayback ? 2 : (int)page, skipTheme ? 2 : StepTotal);
 
         /// <summary>The footer's progress over the pages this session shows: Terms 0, Local playback 1, the steps between evenly.</summary>
-        public static float Progress(WizardPage page, bool skipLayout)
-            => StepNumber(page, skipLayout) is { } step ? step.Step / (float)step.Total : 0f;
+        public static float Progress(WizardPage page, bool skipTheme)
+            => StepNumber(page, skipTheme) is { } step ? step.Step / (float)step.Total : 0f;
 
-        /// <summary>Back shows on Layout and Local playback; Terms and Sign in have none, and there is no Done page.</summary>
-        public static bool ShowsBack(WizardPage page) => page is WizardPage.Layout or WizardPage.LocalPlayback;
+        /// <summary>Back shows on Theme and Local playback; Terms and Sign in have none, and there is no Done page.</summary>
+        public static bool ShowsBack(WizardPage page) => page is WizardPage.Theme or WizardPage.LocalPlayback;
 
         /// <summary>A re-auth on an install whose runtime is already Ready has nothing left to do after Sign in.</summary>
         public static bool SkipsLocalPlayback(WizardEntry entry, bool runtimeReady) => entry == WizardEntry.Reauth && runtimeReady;
-
-        /// <summary>The runtime banner/toast stay silent while the wizard is armed or open — it asks the same question.</summary>
-        public static bool SuppressesRuntimePrompts(bool pending, bool sessionOpen) => pending || sessionOpen;
-
-        /// <summary>The entry a sign-in-required launch opens: a completed install re-authenticates, anything else is a first run.</summary>
-        public static WizardEntry EntryFor(bool completed) => completed ? WizardEntry.Reauth : WizardEntry.FirstRun;
     }
 
     /// <summary>The "this app has run before" witnesses on disk, probed by <c>Setup.Host.cs</c> BEFORE <c>library.db</c> is

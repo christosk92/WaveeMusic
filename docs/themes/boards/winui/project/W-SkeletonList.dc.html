@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>List loading skeleton</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|artists:Artists" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="artists" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 0 0 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="padding: 0 36px; display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Library</h1>
+        <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 380px minmax(0, 1fr); flex-grow: 1; min-height: 0">
+        <div aria-busy="true" style="display: flex; flex-direction: column; gap: 8px; padding: 0 12px 0 36px; border-right: 1px solid rgba(255,255,255,0.0837); overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <label style="flex-grow: 1; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Filter artists</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">A–Z<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          </div>
+          <div style="height: 16px; display: flex; align-items: center; padding: 0 4px"><span style="display: block; width: 64px; height: 10px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></div>
+          <div style="display: flex; flex-direction: column">
+            <sc-for list="{{list}}" as="r" hint-placeholder-count="12">
+              <div style="display: flex; align-items: center; gap: 12px; height: 48px; margin: 2px 0; padding: 0 12px; opacity: {{r.o}}"><span style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; background: rgba(255,255,255,0.0605)"></span><span style="display: flex; flex-direction: column; gap: 6px"><span style="{{r.a}}"></span><span style="{{r.b}}"></span></span></div>
+            </sc-for>
+          </div>
+        </div>
+        <section aria-busy="true" style="display: flex; flex-direction: column; gap: 16px; padding: 0 36px 0 24px; overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 16px">
+            <span style="width: 72px; height: 72px; border-radius: 36px; background: rgba(255,255,255,0.0605); flex-shrink: 0"></span>
+            <div style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1"><span style="display: block; width: 180px; height: 24px; border-radius: 4px; background: rgba(255,255,255,0.0605)"></span><span style="display: block; width: 320px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></div>
+            <span style="display: block; width: 80px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.0605)"></span><span style="display: block; width: 80px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.0605)"></span>
+          </div>
+          <div style="height: 41px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid rgba(255,255,255,0.0837); padding-left: 12px"><span style="display: block; width: 100px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span><span style="display: block; width: 80px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{cards}}" as="c" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 8px"><span style="display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: rgba(255,255,255,0.0605)"></span><span style="{{c.a}}"></span><span style="{{c.b}}"></span></div></sc-for>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px; height: 48px; font-size: 12px; color: #c5c5c5"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.0837)" stroke-width="1.5"></circle><path d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5" fill="none" stroke="#60cdff" stroke-width="1.5" stroke-linecap="round"></path></svg>Loading your library</div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Playlists', false), vs('Albums', false), vs('Artists', true), vs('Podcasts', false), vs('Audiobooks', false)];
+  const bar = (w, h) => 'display: block; width: ' + w + 'px; height: ' + h + 'px; border-radius: 2px; background: rgba(255,255,255,0.0605)';
+  const ws = [120, 90, 150, 110, 170, 80, 130, 100, 160, 120, 90, 140];
+  const list = ws.map((w, i) => ({ a: bar(w, 12), b: bar(Math.round(w * 0.7), 10), o: (i < 9 ? 1 : 1 - (i - 8) * 0.25).toFixed(2) }));
+  const cards = [130, 100, 150, 120].map(w => ({ a: bar(w, 12), b: bar(Math.round(w * 0.6), 10) }));
+  return { views, list, cards };
+}
+}
+</script>
+</body>
+</html>

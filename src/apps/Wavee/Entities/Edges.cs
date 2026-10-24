@@ -17,7 +17,7 @@
 //
 // ┌─ THE SPAN RULE (plan §7's risk row) ───────────────────────────────────────────────────────────────────────────┐
 // │ A CALLER NEVER HOLDS A `Targets(p)` / `Payload(p)` / `Pending(p)` SPAN ACROSS A UI DRAIN. They are slices into  │
-// │ the shared arena, and `Replace`, `ReplacePage`, `Insert` and `Compact` all rewrite or MOVE a parent's range —   │
+// │ the shared arena, and `Replace`, `ReplacePage` and `Insert` all rewrite or MOVE a parent's range —              │
 // │ a span captured before a drain can point at another parent's edges after it. Read it, use it inside the frame, │
 // │ drop it. What survives a drain is (parent, index) or the parent's `Version(p)`, which is exactly what a bound   │
 // │ list compares.                                                                                                  │
@@ -249,7 +249,6 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
     Column<TEdge> _payload;
     Column<byte> _pending;
     int _tail;                         // arena high-water mark
-    int _dead;                         // arena entries abandoned by a regrow, reclaimable by Compact()
 
     // Lazily built membership index, keyed (parent, target). Built on the first Contains() over a list long enough to
     // be worth it, then kept COHERENT by every mutation (each one knows exactly which pairs it changed), so a like /
@@ -262,12 +261,6 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
 
     /// <summary>Parents with storage allocated. Not "parents with edges" — the store's walk skips empty ones.</summary>
     public int ParentCount => _parents;
-    /// <summary>Arena entries in use, live and abandoned — the diagnostics page's fragmentation read.</summary>
-    public int ArenaUsed => _tail;
-    /// <summary>Arena entries abandoned by regrows, reclaimable by <see cref="Compact"/>.</summary>
-    public int ArenaDead => _dead;
-    /// <summary>True once the membership index exists (diagnostics; it is an allocation worth being able to see).</summary>
-    public bool Indexed => _index is not null;
 
     // ── reads ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -576,7 +569,6 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
             _payload.Span.Slice(start, moved).CopyTo(_payload.Span.Slice(_tail, moved));
             _pending.Span.Slice(start, moved).CopyTo(_pending.Span.Slice(_tail, moved));
         }
-        _dead += capacity;
         _start[parent] = _tail;
         _capacity[parent] = grown;
         _tail += grown;
@@ -588,42 +580,6 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
         _targets.EnsureCapacity(n);
         _payload.EnsureCapacity(n);
         _pending.EnsureCapacity(n);
-    }
-
-    /// <summary>Squeeze the arena back down to its live edges, in parent order — the fragmentation left by regrows.
-    /// Called from the store's GC tick (R2), never from a frame: it rebuilds the three arena arrays, which is the one
-    /// place a column is allowed to shrink (P5's exception, named in plan §4.3). Returns the entries reclaimed.</summary>
-    public int Compact()
-    {
-        if (_dead == 0) return 0;
-
-        int live = 0;
-        for (int p = 0; p < _parents; p++) live += _length[p];
-
-        var targets = new Column<int>(Math.Max(live, 4));
-        var payload = new Column<TEdge>(Math.Max(live, 4));
-        var pending = new Column<byte>(Math.Max(live, 4));
-
-        int tail = 0;
-        for (int p = 0; p < _parents; p++)
-        {
-            int length = _length[p];
-            if (length == 0) { _start[p] = tail; _capacity[p] = 0; continue; }
-            _targets.Span.Slice(_start[p], length).CopyTo(targets.Span.Slice(tail, length));
-            _payload.Span.Slice(_start[p], length).CopyTo(payload.Span.Slice(tail, length));
-            _pending.Span.Slice(_start[p], length).CopyTo(pending.Span.Slice(tail, length));
-            _start[p] = tail;
-            _capacity[p] = length;
-            tail += length;
-        }
-
-        int reclaimed = _tail - tail;
-        _targets = targets;
-        _payload = payload;
-        _pending = pending;
-        _tail = tail;
-        _dead = 0;
-        return reclaimed;
     }
 
     // ── index + bookkeeping ─────────────────────────────────────────────────────────────────────────────────────────
@@ -689,11 +645,6 @@ public readonly record struct KindEdge(EntityKind Kind)
     /// <summary>Pair this payload with its target slot — the cross-kind pointer a mixed row binds to.</summary>
     public EntityRef Ref(int target) => new(Kind, target);
 }
-
-/// <summary>ONE PREVIEW TRACK'S RANK on a home baseline section (<c>Relation.SectionPreviewTracks</c>, D2 — the
-/// <c>feedBaselineLookup</c> answer): 0..4, server order. A byte and not a struct of more, because the rank is the
-/// only fact the edge itself carries — everything else (title, image) lives on the staged Track row.</summary>
-public readonly record struct PreviewEdge(byte Rank);
 
 /// <summary>Where a track sits in an album: disc and track number belong to the PAIR, not to the track (the same
 /// recording is track 3 here and track 11 on the deluxe edition).</summary>

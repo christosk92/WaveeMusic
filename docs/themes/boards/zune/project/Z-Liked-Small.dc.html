@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune liked songs: small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="liked" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 24px; overflow: hidden">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 180px; background: linear-gradient(180deg, #2a1f33 0%, #161616 100%)"></div>
+    <div style="position: relative; display: flex; align-items: flex-end; gap: 24px; padding-top: 4px; flex-shrink: 0">
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">liked songs</span>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: #a8a8a8; white-space: nowrap">387 songs · 23 hr 12 min · 26 added this week · <span style="{{markIdle}}">↓</span>212 on this pc</span>
+      </div>
+      <div style="display: flex; gap: 12px; padding-bottom: 2px; flex-shrink: 0">
+        <button aria-label="play" style="{{playRing}}">▶</button>
+        <button aria-label="shuffle" style="{{ring}}">⇄</button>
+        <button aria-label="more" style="{{ring}}">⋯</button>
+      </div>
+    </div>
+    <div style="position: relative; display: flex; align-items: center; gap: 8px; height: 44px; margin-top: 8px; flex-shrink: 0; font-size: 14px; white-space: nowrap">
+      <span style="display: flex; gap: 8px; overflow: hidden; min-width: 0; flex-grow: 1; -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent)"><sc-for list="{{chips}}" as="c" hint-placeholder-count="7"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+      <span style="display: flex; gap: 18px; font-size: 13px; flex-shrink: 0; padding-left: 12px"><a href="#" style="color: #ffffff">sort: date added</a><a href="#">find</a></span>
+    </div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+      <div style="position: relative; display: flex; flex-direction: column; flex-shrink: 0">
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 40px; padding-top: 8px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">{{g.title}}</span><span style="font-size: 13px; color: #7a7a7a">{{g.count}}</span></div>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><span style="{{r.mark}}">↓</span></sc-if>{{r.artist}}</span></span>
+            <span style="{{r.addedStyle}}">{{r.added}}</span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+            <button aria-label="more" style="{{r.moreStyle}}">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Supernova" artist="aespa" art="#5b2f6b" progress="29" saved="true" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+  <div style="position: absolute; right: 0; top: 48px; bottom: 72px; width: 340px">
+    <dc-import name="Z-Part-Panel" tier="overlay" pivot="friends" h="480" accent="{{accent}}" hint-size="340px,480px"></dc-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const mark = (c) => 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + c + '; color: ' + c + '; font-size: 8px; line-height: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0';
+  const on = 'height: 32px; padding: 0 12px; border: 0; background: ' + accent + '; color: #000; font: inherit; font-size: 14px; flex-shrink: 0';
+  const off = 'height: 32px; padding: 0 12px; border: 0; background: #242424; color: #ffffff; font: inherit; font-size: 14px; flex-shrink: 0';
+  const chips = ['all', 'pop', 'k-pop', 'synthwave', 'electronic', 'nostalgia', 'chill'].map((l, i) => ({ label: l, style: i === 0 ? on : off }));
+  const mk = (rows, playIdx, hoverIdx) => rows.map((d, i) => {
+    const play = i === playIdx, hover = i === hoverIdx;
+    return {
+      title: d[0], artist: d[1], added: d[2], time: d[3], cached: d[5],
+      rowStyle: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 84px 52px 40px; align-items: center; height: 52px; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      art: 'width: 40px; height: 40px; border-radius: 2px; display: block; margin-left: 4px; background: ' + d[4],
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; color: ' + (play ? accent : '#9c9c9c'),
+      mark: mark(play ? accent : '#a8a8a8'),
+      addedStyle: 'font-size: 13px; color: #9c9c9c',
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+      moreStyle: 'width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  const groups = [
+    { title: 'this week', count: '26', rows: mk([['Supernova', 'aespa', 'today', '2:58', '#5b2f6b', true], ['Magnetic', 'ILLIT', 'yesterday', '2:40', '#6b5b2f', false], ['Sticky', 'KISS OF LIFE', 'tuesday', '3:08', '#2f6b5b', true], ['How Sweet', 'NewJeans', 'monday', '3:39', '#6b2f3b', false]], 0, 2) },
+    { title: 'last week', count: '11', rows: mk([['Midnight City', 'M83', 'oct 2', '4:03', '#3b4a6b', true], ['Nightcall', 'Kavinsky', 'oct 1', '4:18', '#6b2f4a', true]], -1, -1) },
+  ];
+  return {
+    accent, chips, groups,
+    markIdle: mark('#a8a8a8'),
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; border: 0; background: ' + accent + '; color: #000; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

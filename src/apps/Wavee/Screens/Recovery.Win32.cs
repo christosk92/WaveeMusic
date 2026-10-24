@@ -36,7 +36,7 @@ public static partial class Recovery
 
         while (true)
         {
-            var actions = Actions.For(reason, hasBundle, hasIngest);
+            var actions = Actions.For(hasBundle, hasIngest);
             ActionKind picked = ShowMain(reason, bootFailures, latest, actions, hasIngest);
 
             switch (picked)
@@ -488,7 +488,7 @@ public static partial class Recovery
 
     const uint MbOk = 0x0, MbYesNo = 0x4, MbYesNoCancel = 0x3;
     const uint MbIconWarning = 0x30, MbIconInformation = 0x40, MbIconError = 0x10;
-    const int IdOk = 1, IdCancel = 2, IdYes = 6, IdNo = 7;
+    const int IdCancel = 2, IdYes = 6, IdNo = 7;
 
     [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int MessageBoxW(nint hWnd, string lpText, string lpCaption, uint uType);

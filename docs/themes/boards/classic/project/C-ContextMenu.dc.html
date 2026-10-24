@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Context menus</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #202020; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="position: absolute; left: 0; top: 0; width: 280px; height: 900px"><dc-import name="C-Sidebar" theme="dark" layout="classic" sel="kpop" hover="kpop" h="900" hint-size="280px,900px"></dc-import></div>
+  <div style="position: absolute; left: 280px; top: 0; right: 0; bottom: 0; background: #282828; border-top-left-radius: 8px; padding: 24px 0 0 8px; box-sizing: border-box">
+    <dc-import name="C-TrackList" theme="dark" rs="modern" set="playlist" n="12" marks="4:selected" hint-size="100%,700px"></dc-import>
+  </div>
+  <div role="menu" aria-label="Playlist options" style="position: absolute; left: 200px; top: 300px; width: 260px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+    <sc-for list="{{pm}}" as="i" hint-placeholder-count="9"><sc-if value="{{i.sep}}" hint-placeholder-val="{{false}}"><span style="display: block; height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span></sc-if><sc-if value="{{i.item}}" hint-placeholder-val="{{true}}"><div role="menuitem" style="{{i.s}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{i.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">{{i.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{i.r}}</span></div></sc-if></sc-for>
+  </div>
+  <div role="menu" aria-label="Song options" style="position: absolute; left: 820px; top: 150px; width: 300px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px"><span style="width: 40px; height: 40px; border-radius: 4px; background: #b0b0b0"></span><span style="display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 600">Loser</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Tame Impala</span></span></div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px 6px 8px"><sc-for list="{{strip}}" as="s" hint-placeholder-count="4"><button style="{{s.s}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.d}}" fill="{{s.f}}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 11px">{{s.l}}</span></button></sc-for></div>
+    <span style="display: block; height: 1px; margin: 0 8px 4px; background: rgba(255,255,255,0.082)"></span>
+    <sc-for list="{{tm}}" as="i" hint-placeholder-count="8"><sc-if value="{{i.sep}}" hint-placeholder-val="{{false}}"><span style="display: block; height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span></sc-if><sc-if value="{{i.item}}" hint-placeholder-val="{{true}}"><div role="menuitem" style="{{i.s}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{i.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">{{i.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{i.r}}</span></div></sc-if></sc-for>
+  </div>
+  <div role="menu" aria-label="Add to playlist" style="position: absolute; left: 1116px; top: 248px; width: 280px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+    <div style="margin: 4px; height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px; border-radius: 4px; background: rgba(30,30,30,0.7); border: 1px solid rgba(255,255,255,0.071); border-bottom: 2px solid #60cdff; font-size: 13px; color: rgba(255,255,255,0.6)">Find a playlist</div>
+    <div role="menuitem" style="height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 4px; font-size: 14px">＋ New playlist</div>
+    <span style="display: block; height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span>
+    <sc-for list="{{pls}}" as="p" hint-placeholder-count="6"><div role="menuitem" style="{{p.s}}"><span style="{{p.a}}"></span><span style="flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.l}}</span><span style="font-size: 11px; color: rgba(255,255,255,0.529)">{{p.r}}</span></div></sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const I = { play: 'M5 3v10l8-5z', next: 'M2.5 4h7M2.5 8h7M2.5 12h4M12 6v7M9.5 10.5l2.5 2.5 2.5-2.5', queue: 'M2.5 4h11M2.5 8h11M2.5 12h6M11.5 10.5l3 1.5-3 1.5z', pin: 'M10 2.5l3.5 3.5-2 1-2.5 2.5.5 3-1 1-6-6 1-1 3 .5L9 4.5zM5 11l-2.5 2.5', folder: 'M2 4.5h4l1.5 1.5H14v6.5H2z', edit: 'M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z', share: 'M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10', del: 'M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 9h5.6l.7-9', add: 'M8 3v10M3 8h10', album: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z', artist: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4', credits: 'M3 2.5h10v11H3zM5.5 6h5M5.5 8.5h5M5.5 11h3', radio: 'M8 7.5v6.5M5.2 4.8a4 4 0 0 0 0 5.4M10.8 4.8a4 4 0 0 1 0 5.4', video: 'M2.5 3.5h11v9h-11zM5 3.5v9M11 3.5v9', info: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 7.5v3.5M8 5v.01', heart: 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', after: 'M2.5 4h11M2.5 8h7M2.5 12h7M12 7v6' };
+  const row = (l, d, r, hl, sub) => ({ item: true, sep: false, l: l + (sub ? '' : ''), d: I[d], r: sub ? '›' : (r || ''), s: 'height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px; font-size: 14px' + (hl ? '; background: rgba(255,255,255,0.059)' : '') });
+  const sep = { sep: true, item: false };
+  const pm = [row('Play', 'play'), row('Play next', 'next'), row('Add to queue', 'queue'), sep, row('Pin to sidebar', 'pin', '', true), row('Organize', 'folder', '', false, true), sep, row('Rename', 'edit', 'F2'), row('Share', 'share', '', false, true), sep, row('Delete', 'del', 'Del')];
+  const tm = [row('Add to playlist', 'add', '', true, true), row('Go to album', 'album'), row('Go to artist', 'artist'), row('Share', 'share', '', false, true), row('View credits', 'credits'), row('Go to song radio', 'radio'), row('Video', 'video', '', false, true), sep, row('Track details', 'info'), sep, row('Remove from this playlist', 'del')];
+  const strip = [['Play', 'play', 'currentColor'], ['Play next', 'next', 'none'], ['Play after', 'after', 'none'], ['Saved', 'heart', 'currentColor', 1]].map(s => ({ l: s[0], d: I[s[1]], f: s[2], s: 'height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.04); font: inherit; color: ' + (s[3] ? '#60cdff' : '#fff') }));
+  const pls = [['Summer Songs 2026', '#b8862f', 'Pinned', 1], ['K-Pop Duets (러블리 듀엣)', '#6b3b4a', ''], ['Running 170 BPM', '#3b6b4a', 'Added'], ['LoL Worlds Songs 2014–2026', '#5b5b5b', ''], ['90’s Nederlandstalig', '#2f5b6b', ''], ['Coffee & Code', '#6b4a2f', '']].map(p => ({ l: p[0], r: p[2], a: 'width: 24px; height: 24px; flex-shrink: 0; border-radius: 4px; background: ' + p[1], s: 'height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 4px; font-size: 14px' + (p[3] ? '; background: rgba(255,255,255,0.059)' : '') }));
+  return { pm, tm, strip, pls };
+}
+}
+</script>
+</body>
+</html>

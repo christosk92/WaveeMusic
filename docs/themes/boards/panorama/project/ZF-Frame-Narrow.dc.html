@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frame: narrow window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 800px; height: 640px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" items="Liked|Playlists|Albums|Artists|Podcasts|Audiobooks" sub-sel="{{two}}" narrow="{{yes}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 420px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 20px; align-items: flex-end">
+      <span style="width: 132px; height: 132px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #4a3a26, #2a2118)"></span>
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2013 · 13 songs, 74 min</span>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Random Access Memories</h1>
+        <a href="#" style="font-size: 14px; line-height: 20px; color: var(--acct)">Daft Punk</a>
+        <span style="display: flex; gap: 8px; padding-top: 8px">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Saved</button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+        <div style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.title}}">{{r.t}}</span><span style="text-align: right; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.d}}</span></div>
+      </sc-for>
+    </div>
+  </main>
+  <div style="position: absolute; right: 0; top: 136px">
+    <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" h="{{panelH}}" overlay="{{yes}}" hint-size="340px,420px"></dc-import>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="queue" narrow="{{yes}}" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":800,"height":640}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const rows = [['Give Life Back to Music', '4:34'], ['The Game of Love', '5:21'], ['Giorgio by Moroder', '9:04'], ['Within', '3:48'], ['Instant Crush', '5:37'], ['Lose Yourself to Dance', '5:53']].map((d, i) => ({ n: String(i + 1), t: d[0], d: d[1],
+    row: 'display: grid; grid-template-columns: 44px minmax(0, 1fr) 56px; align-items: center; height: 40px; margin-top: 2px; border-radius: 4px',
+    num: 'padding-left: 12px; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; color: var(--t3); font-variant-numeric: tabular-nums',
+    title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' }));
+  return { vars, theme, accent, rows, two: 2, yes: true, panelH: 420 };
+}
+}
+</script>
+</body>
+</html>

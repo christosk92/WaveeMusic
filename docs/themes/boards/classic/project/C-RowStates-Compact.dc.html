@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact row states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; box-sizing: border-box; padding: 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden; background: #181818; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <sc-for list="{{panels}}" as="p" hint-placeholder-count="2">
+    <section aria-label="{{p.t}}" style="padding: 12px 0 4px; background: #282828; border-top: 1px solid rgba(0,0,0,0.098); flex-shrink: 0">
+      <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 16px 8px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{p.t}}</span><span style="font-size: 11px; line-height: 15px; color: rgba(255,255,255,0.6)">1 playing · 2 hover · 3 pressed · 4 selected · 5 focus · 6 unavailable · 7 versions</span></div>
+      <dc-import name="C-TrackList" theme="dark" rs="{{p.rs}}" set="playlist" tier="compact" n="7" marks="1:playing,2:hover,3:pressed,4:selected,5:focus,6:unavailable,7:versions" hint-size="{{p.hs}}"></dc-import>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const panels = [['Modern', 'modern', '100%,392px'], ['Classic', 'classic', '100%,308px']].map(p => ({ t: p[0], rs: p[1], hs: p[2] }));
+  return { panels };
+}
+}
+</script>
+</body>
+</html>

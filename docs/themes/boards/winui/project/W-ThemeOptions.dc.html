@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WinUI theme options</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 760px; box-sizing: border-box; padding: 36px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">WinUI theme options</h1>
+    <span style="font-size: 14px; color: #c5c5c5">Six options, all defined by the theme itself and shown under Settings › Appearance › Theme. Everything else (app mode, zoom, playback) is a Wavee setting that every theme reads.</span>
+  </div>
+  <div style="display: grid; grid-template-columns: 200px 140px minmax(0, 1.2fr) 150px minmax(0, 1.4fr); gap: 0 16px; padding: 0 16px 8px 16px; font-size: 12px; color: #c5c5c5; border-bottom: 1px solid rgba(255,255,255,0.0837)"><span>Option</span><span>Control</span><span>Values</span><span>Default</span><span>What it changes</span></div>
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+    <div style="display: grid; grid-template-columns: 200px 140px minmax(0, 1.2fr) 150px minmax(0, 1.4fr); gap: 0 16px; align-items: start; padding: 14px 16px; border-radius: 4px; background: #282828; border: 1px solid rgba(255,255,255,0.0837); font-size: 14px; line-height: 20px">
+      <span style="font-weight: 600">{{r.name}}</span><span style="color: #c5c5c5">{{r.control}}</span><span>{{r.values}}</span><span style="color: #99ebff">{{r.def}}</span><span style="color: #c5c5c5">{{r.affects}}</span>
+    </div>
+  </sc-for>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding-top: 8px">
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="font-size: 14px; font-weight: 600">Not options</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Corner radii, the type ramp, icon size, pane width (280), player height (72) and the accent-sparingly rule are fixed by the theme. A theme that wants different ones is a different theme.</span></div>
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="font-size: 14px; font-weight: 600">Classic options that do not apply</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Row style classic/modern, sidebar Classic/Library, color washes and the track page layout are Classic’s. The WinUI theme hides them; their stored values stay untouched.</span></div>
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="font-size: 14px; font-weight: 600">Light and dark</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Both come from the Wavee app mode (System / Light / Dark). The theme ships both palettes; the first frame after a mode change is already in the new palette.</span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+  const rows = [
+    { name: 'Backdrop', control: 'ComboBox', values: 'Mica · Mica Alt · Acrylic · None (solid)', def: 'Mica', affects: 'The base layer behind title bar, pane and player. “None” paints the solid base colour; the content layer never changes.' },
+    { name: 'Navigation pane', control: 'ComboBox', values: 'Expanded · Compact · Automatic', def: 'Automatic', affects: 'Automatic: expanded ≥ 1008 px, compact rail 48 px from 641 to 1007, minimal (overlay) below 641: NavigationView’s own thresholds (see the tiers spec).' },
+    { name: 'Density', control: 'ComboBox', values: 'Default · Compact', def: 'Default', affects: 'Rows 40/48 → 32/40, pane items 36 → 32, card gaps 16 → 12. Nothing else moves.' },
+    { name: 'Tabs in the title bar', control: 'ToggleSwitch', values: 'On · Off', def: 'On', affects: 'Off hides the 40 px TabView strip in every tier; the window shows one page and the 48 px toolbar row. The other tabs stay open in the background (Ctrl+Tab still cycles) and the strip returns with all of them when the option is turned on again.' },
+    { name: 'Artwork in track rows', control: 'ToggleSwitch', values: 'On · Off', def: 'On', affects: 'Playlist, Liked and search rows show a 40 px cover and two lines (48 px). Off: one 40 px line. Album rows never show covers.' },
+    { name: 'Use the Windows accent colour', control: 'ToggleSwitch', values: 'On · Off', def: 'On', affects: 'On reads the system accent and its light/dark variants. Off uses the theme’s own blue (#0078d4 ramp).' }
+  ];
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

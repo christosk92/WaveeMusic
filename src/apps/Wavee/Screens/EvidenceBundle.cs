@@ -406,7 +406,7 @@ public static partial class Diagnostics
         {
             int l = ScrollDiagRules.ClampLevel(level);
             ScrollProbe.Level = (ProbeLevel)l;
-            ScrollSettings.Level.Value = l;
+            ScrollProbePrefs.Level.Value = l;
             Log.Info("evidence", "[evidence] probe level=" + ((ProbeLevel)l).ToString());
             Reply("probe", "ok", ((ProbeLevel)l).ToString());
         }

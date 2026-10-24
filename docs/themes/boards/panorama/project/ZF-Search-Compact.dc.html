@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="none" query="midnight" search-open="{{yes}}" items="All|Songs:412|Albums:38|Playlists:120|Artists:14|Podcasts &amp; shows:6|Episodes:41|Profiles:3" sub-sel="{{zero}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Top result</h2>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+        <div style="display: flex; gap: 12px; align-items: center">
+          <span style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg, #3b4a6b, #6b2f6b)"></span>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Midnight City</span>
+            <span style="font-size: 14px; line-height: 20px; color: var(--t2)">Song · <a href="#" style="color: var(--acct)">M83</a></span>
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Matched the title and the lyrics</span>
+          </div>
+        </div>
+        <span style="display: flex; gap: 8px; align-items: center">
+          <button style="{{s.acc}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <button aria-label="Add to queue" style="{{s.icon}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="Save to Liked Songs" style="{{s.icon}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        </span>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column">
+      <h2 style="margin: 0 0 6px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Best matches</h2>
+      <sc-for list="{{hits}}" as="h" hint-placeholder-count="6"><div style="{{h.row}}"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 52px; min-width: 0; color: var(--t1)"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.sub}}</span></span></a><button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button></div></sc-for>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Playlists</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all 120</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px"><span style="aspect-ratio: 1 / 1; border-radius: 8px; background: #3b4a6b"></span><span style="aspect-ratio: 1 / 1; border-radius: 8px; background: #5b3b6b"></span></div>
+    </section>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const s = {
+    acc: 'height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px',
+    icon: 'width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)'
+  };
+  const hits = [['The Midnight', 'Artist · 2.1M monthly listeners', '#6b4a2f', true], ['Midnights', 'Album · Taylor Swift · 2022', '#4a3b5b', false], ['Midnight City (Eric Prydz Remix)', 'Song · M83, Eric Prydz', '#2f4a5b', false], ['late night drive', 'Playlist · Christos · 42 songs', '#3b4a6b', false], ['Midnight Mass', 'Podcast · 48 episodes', '#2f4a3b', false], ['Nightcall', 'Song · Kavinsky · OutRun', '#6b2f4a', false]].map((d) => ({ name: d[0], sub: d[1],
+    row: 'display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: center; height: 52px; margin-top: 2px; border-radius: 4px',
+    art: 'width: 40px; height: 40px; border-radius: ' + (d[3] ? '20px' : '4px') + '; background: ' + d[2] }));
+  return { vars, theme, accent, s, hits, zero: 0, yes: true };
+}
+}
+</script>
+</body>
+</html>

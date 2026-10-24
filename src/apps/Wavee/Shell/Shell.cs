@@ -1,9 +1,9 @@
 // ── Shell/Shell.cs ─────────────────────────────────────────────────────────────────────────────────────────────────
 // nav, routes, deep links, responsive layout, page-nav recipes, tint ownership, the first-run composite;
-// WaveeTipsCore (A10); the Shell.History section and the play log (ch 16); the in-app update card's arms (ch 14 → ch
+// the Shell.History section and the play log (ch 16); the in-app update card's arms (ch 14 → ch
 // 19); the player bar's tier + picker rules and the Shell.Ui rail-state section the bar's four toggles write —
 // RailOpen, Mode, RailWidth, DockedVideoHeight(+Pinned), ActiveStagePlayable, RailFits, ImmersiveLyrics, Toggle,
-// CanFitRail (App/ShellUi.cs 91; ch 20 asks for a home and §2 had none) (ch 20, +230)
+// the panel placement facts (App/ShellUi.cs 91; ch 20 asks for a home and §2 had none) (ch 20, +230)
 //
 // Role: CORE
 // Owner: I
@@ -15,7 +15,6 @@
 // `Shell/Shell.Chrome.cs` (named on day one of the wave, §5 / §8 G4) — one file cannot hold ch 18's 1,150 pure lines
 // plus ch 20's +230 plus ch 16's +180 plus the route table inside 2,100.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -25,6 +24,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -51,7 +51,7 @@ public static partial class Shell
     public enum RouteKind : byte
     {
         // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12; SidebarCustomize deleted with the customizer (sidebar rework P3)
-        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, Liked, Local,
+        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, LibraryPlaylists, Liked, Local,
         History, Recents, Settings, PlaybackDiagnostics, WhatsNew, HomeCustomize,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
@@ -146,7 +146,9 @@ public static partial class Shell
     static readonly RouteRow[] s_routes =
     [
         new(RouteKind.Home,                "home",                 false, Strings.Nav.Home,             Icons.Home,        false, true,  false, PlaceByArg: true),
-        new(RouteKind.Browse,              "browse",               false, Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false),
+        // Browse's Arg is its BAND (`foryou` | `genres`, `BrowseBands.Canonical`; none = the whole directory): a place (a band switch is
+        // history and a tab's stored route) but not a keep-alive slot (the mounted directory re-reads its props), as Home's facet.
+        new(RouteKind.Browse,              "browse",               false, Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false, PlaceByArg: true),
         new(RouteKind.Search,              "search",               false, Strings.Nav.Search,           Icons.Search,      false, false, true, PlaceByArg: true),
         new(RouteKind.LibraryAlbums,       "albums",               false, Strings.Nav.Albums,           Icons.Album,       false, false, false),
         new(RouteKind.LibraryArtists,      "artists",              false, Strings.Nav.Artists,          Icons.Contact,     false, false, false),
@@ -155,13 +157,16 @@ public static partial class Shell
         // (User.Page.Library.cs's LibraryAudiobookFilter), so it needs its own row for exactly the ch 18 §7 reason
         // every other kind does (a fall-through here would read "Your Library" in the tab strip and history).
         new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.Microphone,  false, false, false),
+        // The playlists list (Z7): the user's playlists and folders as a page of their own, for a structure without a nav tree (Zune's band
+        // row 2 reaches it). Core-drawn (`User.LibraryPlaylists`); Classic never links to it.
+        new(RouteKind.LibraryPlaylists,    "playlists",            false, Strings.Sidebar.Playlists,    Icons.MusicNote,   false, false, false),
         new(RouteKind.Liked,               "liked",                false, Strings.Nav.LikedSongs,       Icons.Heart,       false, true,  false),
         new(RouteKind.Local,               "local",                false, Strings.Nav.LocalFiles,       Icons.Folder,      false, true,  false),
         new(RouteKind.History,             "history",              false, Strings.Nav.History.Title,    Icons.Clock,       false, false, false),
         // Recently PLAYED — a different destination from `history`, which is the app's NAVIGATION log. Headphones,
         // not Clock, for exactly that reason: two surfaces wearing one glyph read as the same place.
         new(RouteKind.Recents,             "recents",              false, Strings.Nav.Recents,          Icons.Headphones,  false, true,  false),
-        new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false),
+        new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false, PlaceByArg: true),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
         new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
         new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
@@ -213,7 +218,8 @@ public static partial class Shell
     /// three lists that must stay in step.</summary>
     public static ref readonly RouteRow Row(RouteKind k) => ref s_routes[(int)k];
 
-    /// <summary>Total kinds — the nav probe walks this rather than a hand-kept list (ch 29 §9.3 rule (e)).</summary>
+    /// <summary>Total kinds: the route table's length, which the route tests walk (and pin against the enum) rather than a
+    /// hand-kept list.</summary>
     public static int RouteKindCount => s_routes.Length;
 
     /// <summary>Register the page a kind renders. Called once per kind — at boot by the owner of that page, or on the
@@ -247,7 +253,7 @@ public static partial class Shell
     //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): kept eager for its
     //     ConcertHost seam (nothing in the sidebar reads it since P3).
     //   • Modules.InstallUi, Settings.InstallScreens, Diagnostics.Install: each also wires a seam nothing routes past —
-    //     Shell.LinkModules/MatchLink answer ANY pasted link, the setup wizard and the crash-report dialog must be on
+    //     PlayLinkRouter.Modules/Match answer ANY pasted link, the setup wizard and the crash-report dialog must be on
     //     screen at first launch, and the crash-prompt latch / network-cost host are process-lifetime, not per-page.
     //   • Shell.InstallUi's own SetPage call (History): RootFactory must exist before Run.
     //   • Queue.InstallUi / Track.InstallActions: neither owns a route (Queue is a rail/stage arm, Track a menu's
@@ -256,7 +262,7 @@ public static partial class Shell
     //
     // Navigation is UI-thread only (C1): a plain bool is the whole guard, no lock and no Interlocked — PageFor never
     // re-enters itself for the same kind mid-install.
-    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled, s_profileGroupInstalled;
+    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled, s_profileGroupInstalled, s_libraryPlaylistsInstalled;
 
     static void InstallLazyGroupFor(RouteKind kind)
     {
@@ -289,6 +295,12 @@ public static partial class Shell
                 s_profileGroupInstalled = true;
                 Profile.InstallPages();
                 break;
+            // The library's playlists list (Z7) is its own group of one: a core page, nothing else installs with it.
+            case RouteKind.LibraryPlaylists:
+                if (s_libraryPlaylistsInstalled) return;
+                s_libraryPlaylistsInstalled = true;
+                User.InstallLibraryPlaylists();
+                break;
         }
     }
 
@@ -303,7 +315,7 @@ public static partial class Shell
     public static void RestorePagesForTests(PageFactory?[] snapshot)
     {
         Array.Copy(snapshot, s_pages, s_pages.Length);
-        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = s_profileGroupInstalled = false;
+        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = s_profileGroupInstalled = s_libraryPlaylistsInstalled = false;
     }
 
     /// <summary>Is there a page behind this route? Developer-gated kinds answer false unless
@@ -359,7 +371,8 @@ public static partial class Shell
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
         or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
-        or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name
+        or RouteKind.Browse   // Browse's arg is a band id (BrowseBands), never a title
+        or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name; it is also the Compact section page (PlaceByArg)
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
     //
@@ -391,7 +404,9 @@ public static partial class Shell
             if (row.Key.Length == 0) continue;
             if (!row.IsPrefix)
             {
-                if (name.SequenceEqual(row.Key)) return new Route(row.Kind, default, Intern(arg), tab);
+                if (name.SequenceEqual(row.Key))
+                    // Browse's arg is its band: a stray or hostile one folds to the plain directory (it is UNTRUSTED from a deep link).
+                    return new Route(row.Kind, default, Intern(row.Kind == RouteKind.Browse ? BrowseBands.Canonical(arg).AsSpan() : arg), tab);
                 continue;
             }
             if (name.Length <= row.Key.Length || !name.StartsWith(row.Key, StringComparison.Ordinal)) continue;
@@ -874,6 +889,36 @@ public static partial class Shell
         return Compose(IaArms(route, label), origin, label, route);
     }
 
+    /// <summary>A detail page's trail: the journey's origin when the page was opened from somewhere (a search, another entity), else the information
+    /// architecture's parents (<c>library › playlists › name</c>). Empty for a kind with no trail.</summary>
+    public static IReadOnlyList<Crumb> DetailTrail(in Route route, string name, NavOrigin? origin)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return [];
+        var current = new Crumb(name.Trim(), null);
+        IReadOnlyList<Crumb> ia;
+        switch (route.Kind)
+        {
+            case RouteKind.Playlist:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryPlaylists)), new Crumb(Loc.Get(Strings.Sidebar.Playlists), new Route(RouteKind.LibraryPlaylists)), current];
+                break;
+            case RouteKind.Album:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryAlbums)), new Crumb(Loc.Get(Strings.Nav.Albums), new Route(RouteKind.LibraryAlbums)), current];
+                break;
+            case RouteKind.Artist:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryArtists)), new Crumb(Loc.Get(Strings.Nav.Artists), new Route(RouteKind.LibraryArtists)), current];
+                break;
+            case RouteKind.Show:
+            case RouteKind.Episode:
+                ia = [new Crumb(Loc.Get(Strings.Nav.YourLibrary), new Route(RouteKind.LibraryPodcasts)), new Crumb(Loc.Get(Strings.Nav.Podcasts), new Route(RouteKind.LibraryPodcasts)), current];
+                break;
+            case RouteKind.Search:
+                return [new Crumb(Loc.Get(Strings.Nav.Search), null), current];
+            default:
+                return [];
+        }
+        return Compose(ia, origin, current.Label, route);
+    }
+
     static IReadOnlyList<Crumb> IaArms(in Route route, string label)
     {
         if (route.Kind == RouteKind.HomeSection)
@@ -956,6 +1001,17 @@ public static partial class Shell
         return !string.IsNullOrWhiteSpace(title);
     }
 
+    /// <summary>What a masthead route's head holds (<see cref="PageHeadForm"/>), by the route's kind alone, so the head keeps one height
+    /// on its route whatever its trail turns out to be: Browse is a root (its title only); the Concerts family's pages carry their
+    /// title in their own hero (the head holds the trail only); every other masthead route is a drill-in page (the trail over the
+    /// title).</summary>
+    public static PageHeadForm HeadFormOf(in Route route) => route.Kind switch
+    {
+        RouteKind.Browse => PageHeadForm.Title,
+        RouteKind.Concerts or RouteKind.ArtistConcerts or RouteKind.Concert => PageHeadForm.Hero,
+        _ => PageHeadForm.Drill,
+    };
+
     static string? MastheadStaticTitle(in Route route)
     {
         if (route.Kind == RouteKind.Browse) return Loc.Get(Strings.Browse.Title);
@@ -982,6 +1038,12 @@ public static partial class Shell
         => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + NameOf(r) + ""
          + (Row(r.Kind).KeyedByArg ? Entities.Strings.Resolve(r.Arg) : "");
 
+    /// <summary>The page's keyed-measurement SCOPE (<c>MeasureMemory.Scope</c>, E17c): the keep-alive slot's identity (tab,
+    /// destination and the argument a keyed destination carries), so a region keyed by its role inside a page finds its size
+    /// again when the same page instance remounts (a theme switch's new root, a revisit after a keep-alive eviction), and the
+    /// same page open in two tabs keeps two sizes. Provided per keep-alive slot by the content host (<c>PageBody</c>).</summary>
+    public static string MeasureScopeOf(in Route r) => SlotKey(r) + "/";
+
     /// <summary>How many pages the content host keeps alive. Back to a page shows it exactly as it was, including
     /// scroll and selection; the fourth oldest is evicted.</summary>
     public const int KeepAliveSlots = 3;
@@ -998,23 +1060,10 @@ public static partial class Shell
     /// <summary>The scroll scope of a page in tab <paramref name="tab"/> (a prefix composed onto its scroll keys).</summary>
     public static string ScrollScopeOf(int tab) => "tab" + tab.ToString(CultureInfo.InvariantCulture) + "/";
 
-    /// <summary>The masthead band's fade window — the page's REAL exit window (<see cref="Design.Nav.ExitDurationMs"/>),
-    /// so a drill-in's two halves read as one gesture rather than an independent constant that can drift from it.</summary>
-    internal const float FadeThroughExitMs = Design.Nav.FadeThroughExitMs;
-
-    /// <summary>Reactive read of the persisted page-motion STYLE (Settings ▸ Appearance ▸ Page motion), clamped like
-    /// every other appearance rung (ch 27 W2 "three facts") — same contract as <c>Prefs.Appearance.LikedCover</c>.</summary>
-    static Design.PageMotionStyle PageMotionStyle()
-        => (Design.PageMotionStyle)Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount);
-
-    /// <summary>The recipe for a page swap, at the persisted <see cref="PageMotionStyle"/>. The one-argument form is
-    /// Entrance (tests, a first paint). The content host classifies the relation from the two routes.</summary>
+    /// <summary>The recipe for a page swap (<see cref="Design.Nav.RecipeFor"/>): the one fade-through for every pair of
+    /// pages, a plain fade for Neutral.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion)
-        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion),
-            motion == NavTransitionKind.Neutral ? Design.NavRelation.Fade : Design.NavRelation.Entrance);
-
-    public static LayoutTransition RecipeFor(in Route from, in Route to, NavTransitionKind motion)
-        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion), RelationOf(from, to, motion));
+        => Design.Nav.RecipeFor(MapMotion(motion), ShellCaps.Now.ContinuousPageSwap);
 
     public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion)
         => Design.Nav.RecipeForVideoSafe(MapMotion(motion));
@@ -1026,27 +1075,6 @@ public static partial class Shell
     /// outgoing root is still drawing for the whole exit.</summary>
     public static bool NeedsVideoSafe(in Route from, in Route to)
         => from.Kind == RouteKind.Module || to.Kind == RouteKind.Module;
-
-    public static Design.NavSurface SurfaceOf(RouteKind kind) => kind switch
-    {
-        RouteKind.Module => Design.NavSurface.Module,
-        RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.Prerelease
-            or RouteKind.Discography or RouteKind.Concert or RouteKind.ArtistConcerts
-            or RouteKind.HomeSection or RouteKind.BrowseSection
-            or RouteKind.User or RouteKind.ProfileList => Design.NavSurface.Detail,
-        _ => Design.NavSurface.TopLevel,
-    };
-
-    public static Design.NavRelation RelationOf(in Route from, in Route to, NavTransitionKind motion)
-        => Design.Nav.RelationOf(SurfaceOf(from.Kind), SurfaceOf(to.Kind), from.Kind == to.Kind,
-            SameIdentity(from, to), MapMotion(motion));
-
-    static bool SameIdentity(in Route a, in Route b)
-    {
-        if (a.Kind != b.Kind) return false;
-        if (Row(a.Kind).KeyedByArg) return a.Arg.Equals(b.Arg);
-        return a.Subject.Equals(b.Subject);
-    }
 
     static Design.NavTransitionKind MapMotion(NavTransitionKind motion) => motion switch
     {
@@ -1105,10 +1133,29 @@ public static partial class Shell
         /// and the page stage never mounted — on the one module the feature exists for.</para></summary>
         public static readonly Signal<string> ActiveStagePlayable = new("");
 
-        /// <summary>Whether the rail can currently reserve inline layout width alongside the sidebar and the content
-        /// region. When false the shell FLOATS the rail over content instead of allocating row width for it. A DERIVED
-        /// FACT published by one effect — the shell must never probe three widths at a call site.</summary>
+        /// <summary>The window tier DOCKS the panel beside the page (the structure's <c>PanelPolicy.For(tier)</c>, TC2). When false the
+        /// shell FLOATS the panel over the page (or shows it as a bottom sheet) instead of allocating row width for it. A DERIVED FACT
+        /// published by one effect from the COMMITTED window tier, so a crossing docks or undocks it on the crossing frame.</summary>
         public static readonly Signal<bool> RailFits = new(true);
+
+        /// <summary>Where the window tier lays the panel out (dock, float or sheet): the same effect's fact, beside <see cref="RailFits"/>.</summary>
+        public static readonly Signal<Theming.Contracts.PanelPlacement> PanelPlacement = new(Theming.Contracts.PanelPlacement.Dock);
+
+        /// <summary>The window tier docks two panels side by side (Classic Huge: the primary panel and the queue beside it, D3).</summary>
+        public static readonly Signal<bool> SecondPaneAllowed = new(false);
+
+        /// <summary>The panes the window tier docks beside the primary (the rule's <c>Arrangement</c>, contract 1.29): Classic Huge's queue
+        /// right of the primary, Zune Huge's linked queue left of it, Zune Huge 4K's queue and friends either side. Read through
+        /// <see cref="SecondPaneAllowed"/> (<c>PanelHost.Panes</c>): where the tier docks one pane there are none.</summary>
+        public static readonly Signal<Theming.PanelArrangement> PanelPanes = new(Theming.PanelArrangement.QueueBeside);
+
+        /// <summary>The least width a docked panel keeps in the window tier at this window width (Classic Huge: 380, growing to 420 at
+        /// 3840); 0 where the tier has no floor. The committed <see cref="RailWidth"/> never presents below it.</summary>
+        public static readonly FloatSignal PanelFloor = new(0f);
+
+        /// <summary>The queue is open BESIDE the primary panel: shown as the second docked pane where the tier docks two
+        /// (<see cref="SecondPaneAllowed"/>), remembered elsewhere. Session chrome, like <see cref="RailOpen"/>.</summary>
+        public static readonly Signal<bool> QueueBeside = new(false);
 
         /// <summary>The immersive fullscreen lyrics surface is open. Deliberately NOT a <see cref="RailMode"/>: the
         /// surface covers the whole shell rather than replacing the rail's panel, so the rail's own state is
@@ -1124,27 +1171,19 @@ public static partial class Shell
         // content host reads that one cell rather than a second copy here.
 
         /// <summary>Clicking the already-showing mode CLOSES the rail; otherwise switch to that mode and open.</summary>
-        public static void Toggle(RailMode mode)
-        {
-            if (RailOpen.Peek() && Mode.Peek() == mode) { RailOpen.Value = false; return; }
-            Mode.Value = mode;
-            RailOpen.Value = true;
-        }
-
-        /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
-        public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW,
-            float minContentW = MinContentW)
-            => Shell.CanFitRail(viewportW, sidebarW, railW, minContentW);
+        public static void Toggle(RailMode mode) => PanelHost.Shared.Toggle(mode);
     }
 
     // ── 6.1 the rail's clamps (one pair, every writer) ──────────────────────────────────────────────────────────────
-    // One clamp for every writer (the left-seam splitter, the settings seed, CanFitRail). A second literal pair is how
+    // One clamp for every writer (the left-seam splitter, the settings seed, the tier floor). A second literal pair is how
     // the sidebar drag and the probe drifted apart in 0.2.9; do not reintroduce that here.
 
+    /// <summary>The shell's baseline panel bounds: <c>PanelPolicy.Default</c> (what Wavee Classic declares) is built from them; the
+    /// clamp reads the policy.</summary>
     public const float RailMinW = 200f, RailMaxW = 500f, RailDefaultW = 340f;
-    public const float MinContentW = 480f;
 
-    public static float ClampRailWidth(float w) => Math.Clamp(w, RailMinW, RailMaxW);
+    /// <summary>The one panel-width clamp: the active panel policy's bounds (Classic 200-500), or <paramref name="policy"/>'s.</summary>
+    public static float ClampRailWidth(float w, Theming.PanelPolicy? policy = null) => ShellPolicy.PanelOr(policy).ClampWidth(w);
 
     /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The splitter's floor — drag only grows
     /// from here.</summary>
@@ -1183,10 +1222,6 @@ public static partial class Shell
         return Math.Clamp(railW * ratio, DockedVideoFitMinH, DockedCapCeiling(remainingRailH));
     }
 
-    /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
-    public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW,
-        float minContentW = MinContentW)
-        => sidebarW + railW + minContentW <= viewportW;
 
     // ══ 7. THE PLAYER BAR'S TIERS AND ITS DEVICE PICKER (ch 20, +230 CORE) ══════════════════════════════════════════
 
@@ -1194,31 +1229,29 @@ public static partial class Shell
     /// bar.</summary>
     public enum PlayerBarTier : byte { Minimal, Compact, Medium, Comfortable, Wide, Full }
 
+    /// <summary>The player bar's pressure machine: which of the six levels a width belongs to, and the narrowing hold. The
+    /// level starts and the hold are the active <see cref="Theming.PlayerBarPolicy"/>'s (Classic 440 / 760 / 900 / 1100 / 1240 and
+    /// 24); every method takes it as a trailing argument (null = the active one).</summary>
     public static class PlayerBar
     {
-        public const float CompactW = 440f;
-        public const float MediumW = 760f;
-        public const float ComfortableW = 900f;
-        public const float WideW = 1100f;
-        public const float FullW = 1240f;
-        public const float NarrowHysteresis = 24f;
+        /// <summary>The level a width belongs to before any narrowing hold.</summary>
+        public static PlayerBarTier Nominal(float width, Theming.PlayerBarPolicy? policy = null)
+            => (PlayerBarTier)ShellPolicy.PlayerBarOr(policy).LevelOf(width);
 
-        public static PlayerBarTier Nominal(float width) =>
-            width >= FullW ? PlayerBarTier.Full :
-            width >= WideW ? PlayerBarTier.Wide :
-            width >= ComfortableW ? PlayerBarTier.Comfortable :
-            width >= MediumW ? PlayerBarTier.Medium :
-            width >= CompactW ? PlayerBarTier.Compact :
-            PlayerBarTier.Minimal;
+        /// <summary>The level of the sub-ladder (<see cref="Resolve"/>) brought inside the window tier's range (the policy's
+        /// <c>Windows</c>; <paramref name="windowTier"/> negative: no tier known, every level).</summary>
+        public static PlayerBarTier ForWindow(PlayerBarTier ladderLevel, int windowTier, Theming.PlayerBarPolicy? policy = null)
+            => (PlayerBarTier)ShellPolicy.PlayerBarOr(policy).WindowRule(windowTier).Clamp((int)ladderLevel);
 
-        /// <summary>Widening commits immediately; narrowing holds the current presentation through a 24-DIP dip so a
-        /// pointer resize cannot chatter structural controls at a threshold.</summary>
-        public static PlayerBarTier Resolve(float width, PlayerBarTier current, bool initialized)
+        /// <summary>Widening commits immediately; narrowing holds the current presentation through the policy's dip (24 DIP in
+        /// Classic) so a pointer resize cannot chatter structural controls at a threshold.</summary>
+        public static PlayerBarTier Resolve(float width, PlayerBarTier current, bool initialized, Theming.PlayerBarPolicy? policy = null)
         {
             if (width <= 0f) return current;
-            var nominal = Nominal(width);
+            policy = ShellPolicy.PlayerBarOr(policy);
+            var nominal = Nominal(width, policy);
             if (!initialized || nominal >= current) return nominal;
-            var dipped = Nominal(width + NarrowHysteresis);
+            var dipped = Nominal(width + policy.Hysteresis, policy);
             return dipped < current ? dipped : current;
         }
     }
@@ -1240,14 +1273,15 @@ public static partial class Shell
         bool ShowTimesElapsed, bool ShowTimesRemaining, bool ShowPrevNext, bool ShowSubtitle,
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
-        float RightGap, float TopEdgeWidth, float RightWMax)
+        float RightGap, float TopEdgeWidth, float RightWMax,
+        bool ShowTitleBlock = true, bool ShowVideoSplit = false)
     {
+        static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
+
         public const float MinButtonBox = 32f;
         public const float MinButtonGlyph = 16f;
         public const float MinPrimaryBox = 36f;
         public const float MinPrimaryGlyph = 18f;
-        public const float PrimaryBoxRoomy = 40f;
-        public const float PrimaryGlyphRoomy = 20f;
 
         /// <summary>The inline volume rail's length (the stock 22-DIP thumb ring rides it).</summary>
         public const float VolumeSliderW = 96f;
@@ -1261,61 +1295,52 @@ public static partial class Shell
         /// narrower regresses.</summary>
         public const float TopEdgeWidthFloor = 2400f;
 
-        public static PlayerBarLayout Initial(float width) => ForTier(Shell.PlayerBar.Nominal(width), width);
+        public static PlayerBarLayout Initial(float width, Theming.PlayerBarPolicy? policy = null)
+            => ForTier(Shell.PlayerBar.Nominal(width, policy), width, policy);
 
-        public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized)
-            => ForTier(Shell.PlayerBar.Resolve(width, current.Tier, initialized), width);
+        public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized, Theming.PlayerBarPolicy? policy = null)
+            => ForTier(Shell.PlayerBar.Resolve(width, current.Tier, initialized, policy), width, policy);
 
         /// <param name="tier">The resolved pressure tier.</param>
         /// <param name="width">The bar's measured width in DIP; 0 keeps the pre-fix 2400 behaviour via the floor.</param>
-        public static PlayerBarLayout ForTier(PlayerBarTier tier, float width = 0f)
+        /// <param name="policy">The player-bar policy whose level <paramref name="tier"/> picks; null is the active one.</param>
+        public static PlayerBarLayout ForTier(PlayerBarTier tier, float width = 0f, Theming.PlayerBarPolicy? policy = null)
         {
-            bool full = tier == PlayerBarTier.Full;
-            bool wide = tier >= PlayerBarTier.Wide;
-            bool comfortable = tier >= PlayerBarTier.Comfortable;
-            bool medium = tier >= PlayerBarTier.Medium;
-            bool compact = tier >= PlayerBarTier.Compact;
+            policy = ShellPolicy.PlayerBarOr(policy);
+            var level = policy.Tiers[(int)tier];
+            var slots = level.VisibleSlots;
 
             var layout = new PlayerBarLayout(
                 Tier: tier,
-                ShowExpand: full,
-                ShowDevices: true,          // the device picker is the only route when local playback is unavailable
-                ShowQueue: wide,
-                ShowVolumeSlider: wide,
-                ShowShuffleRepeat: comfortable,
-                ShowLikeSlot: true,         // identity-first: the heart survives down to the 300-DIP floor
-                ShowVolumeButton: medium,
-                ShowLyrics: medium,
-                ShowRemoteDeviceLine: comfortable,
-                ShowTimesElapsed: medium,
-                ShowTimesRemaining: compact,
-                ShowPrevNext: medium,
-                ShowSubtitle: true,         // title + artist are one indivisible identity block
-                ButtonBox: MinButtonBox,
-                ButtonGlyph: MinButtonGlyph,
-                PrimaryBox: medium ? PrimaryBoxRoomy : MinPrimaryBox,
-                PrimaryGlyph: medium ? PrimaryGlyphRoomy : MinPrimaryGlyph,
-                // The identity block gives back the DIPs the floors took at the two narrow tiers (the like button grew
-                // 30→32 and the primary 30→36 there): 180→172 and 140→132.
-                LeftW: tier switch
-                {
-                    PlayerBarTier.Full => 260f,
-                    PlayerBarTier.Wide => 240f,
-                    PlayerBarTier.Comfortable => 230f,
-                    PlayerBarTier.Medium => 220f,
-                    PlayerBarTier.Compact => 172f,
-                    _ => 132f,
-                },
-                // 48 from Medium up (ch 20, 0.2.9 `WaveeSize.ArtPlayerBar`), 40 at the two narrow tiers.
-                ArtSize: medium ? Design.Size.ArtPlayerBar : 40f,
-                RowGap: wide ? 8f : medium ? 6f : compact ? 4f : 3f,
-                RowPad: wide ? 12f : medium ? 8f : compact ? 8f : 6f,
-                ClusterGap: medium ? 4f : compact ? 3f : 2f,
-                LeftGap: medium ? 8f : compact ? 6f : 4f,
-                SeekGap: medium ? 6f : compact ? 5f : 4f,
-                RightGap: medium ? 2f : compact ? 1f : 0f,
+                ShowExpand: Has(slots, Theming.PlayerBarSlots.Expand),
+                ShowDevices: Has(slots, Theming.PlayerBarSlots.Devices),   // the device picker is the only route when local playback is unavailable
+                ShowQueue: Has(slots, Theming.PlayerBarSlots.Queue),
+                ShowVolumeSlider: Has(slots, Theming.PlayerBarSlots.VolumeSlider),
+                ShowShuffleRepeat: Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
+                ShowLikeSlot: Has(slots, Theming.PlayerBarSlots.LikeSlot),         // identity-first: the heart survives down to the 300-DIP floor
+                ShowVolumeButton: Has(slots, Theming.PlayerBarSlots.VolumeButton),
+                ShowLyrics: Has(slots, Theming.PlayerBarSlots.Lyrics),
+                ShowRemoteDeviceLine: Has(slots, Theming.PlayerBarSlots.RemoteDeviceLine),
+                ShowTimesElapsed: Has(slots, Theming.PlayerBarSlots.TimesElapsed),
+                ShowTimesRemaining: Has(slots, Theming.PlayerBarSlots.TimesRemaining),
+                ShowPrevNext: Has(slots, Theming.PlayerBarSlots.PrevNext),
+                ShowSubtitle: Has(slots, Theming.PlayerBarSlots.Subtitle),         // title + artist are one indivisible identity block
+                ShowTitleBlock: Has(slots, Theming.PlayerBarSlots.Title),
+                ButtonBox: level.ButtonBox,
+                ButtonGlyph: level.ButtonGlyph,
+                PrimaryBox: level.PrimaryBox,
+                PrimaryGlyph: level.PrimaryGlyph,
+                LeftW: level.LeftW,
+                ArtSize: level.ArtSize,
+                RowGap: level.RowGap,
+                RowPad: level.RowPad,
+                ClusterGap: level.ClusterGap,
+                LeftGap: level.LeftGap,
+                SeekGap: level.SeekGap,
+                RightGap: level.RightGap,
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
-                RightWMax: 0f);
+                RightWMax: 0f,
+                ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
             // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
             // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
             // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.
@@ -1435,7 +1460,7 @@ public static partial class Shell
     }
 
     /// <summary>The setting's own name for <paramref name="quality"/> — the same four labels the Settings page's
-    /// quality combo offers (<c>Settings.UI.Playback.QualityLabels</c>), so "Lossless unavailable" reads exactly
+    /// quality combo offers (<c>ClassicSettings.QualityLabels</c>), so "Lossless unavailable" reads exactly
     /// like the row the user picked it from.</summary>
     static string AskedQualityLabel(Spotify.Audio.Quality quality) => quality switch
     {
@@ -1501,10 +1526,11 @@ public static partial class Shell
 
     // ══ 8. TINT OWNERSHIP — the material hand-over ══════════════════════════════════════════════════════════════════
     //
-    // The window's material carries the PAGE's colour, and the one rule that matters is that it NEVER dips to neutral
-    // between two coloured pages. A page CLAIMS the plane the moment it navigates (with whatever colour it already
-    // has, which may be none); an ungraded claim HOLDS the previous colour rather than painting grey; a DEFINITE
-    // grading replaces it; and a grading that arrives for a page the user has already left is REFUSED.
+    // The window's material carries the PAGE's colour. A page CLAIMS the plane the moment it navigates (with whatever
+    // colour it already has; an ungraded claim is the neutral ground, never the previous page's colour, Classic tuning
+    // D15); a grading replaces it; a grading that arrives for a page the user has already left is REFUSED; and the shell
+    // paints the plane as of the page on screen, so the colour changes with the page swap. The decision table is
+    // `TintOwnership` (`Platform\ShellMaterial.cs`); this is the chrome's settled colour fact it is mirrored into.
 
     /// <summary>Who owns the shell material right now, and whether its colour is settled. <see cref="Argb"/> 0 means
     /// "no colour of its own yet"; neutral is a real value (the ground at A = 0.03), never <c>Transparent</c>.</summary>
@@ -1513,29 +1539,6 @@ public static partial class Shell
         public static TintOwner Neutral => new("", 0u, true);
         public bool IsNeutral => Claimant.Length == 0;
     }
-
-    /// <summary>The material hand-over, as a pure fold. Returns the new owner.
-    /// <list type="bullet">
-    /// <item><b>claim</b> — a route takes the plane. An ungraded claim keeps the CURRENT colour so the chrome never
-    /// flashes neutral on the way in.</item>
-    /// <item><b>refresh</b> — a grading lands for the claimant that already owns the plane. A definite grading always
-    /// wins; an indefinite one never demotes a definite.</item>
-    /// <item><b>neutral</b> — an empty claimant, the value a route that publishes no material of its own writes.</item>
-    /// </list></summary>
-    public static TintOwner Claim(in TintOwner current, string claimant, uint argb, bool definite)
-    {
-        if (claimant.Length == 0) return TintOwner.Neutral;
-        bool sameClaimant = string.Equals(current.Claimant, claimant, StringComparison.Ordinal);
-        if (!sameClaimant)
-            // A new page: it owns the plane from this instant. With no colour yet it HOLDS the outgoing colour.
-            return new TintOwner(claimant, definite || argb != 0u ? argb : current.Argb, definite);
-        if (!definite && current.Definite) return current;
-        return new TintOwner(claimant, argb != 0u ? argb : current.Argb, definite || current.Definite);
-    }
-
-    /// <summary>A grading that arrives for a page the user has already left must be DROPPED, not painted.</summary>
-    public static bool AcceptsRefresh(in TintOwner current, string claimant)
-        => claimant.Length > 0 && string.Equals(current.Claimant, claimant, StringComparison.Ordinal);
 
     /// <summary>The claimant key a route publishes under. Two different pages must never collide, and the same page
     /// re-entered must reclaim its own plane — so it is the slot key WITHOUT the tab.</summary>
@@ -1577,97 +1580,6 @@ public static partial class Shell
         };
     }
 
-    // ══ 10. TEACHING TIPS — the pure half (A10) ═════════════════════════════════════════════════════════════════════
-
-    /// <summary>The stable ids of every teaching tip the app can show. <b>APPEND-ONLY:</b> an id is PERSISTED (it
-    /// lands in <c>tips.seen</c> the moment a user acknowledges that tip), so renaming or reusing one would silently
-    /// re-show a tip an existing install already dismissed. Add a new const; never edit an old one. Ids are dotted,
-    /// feature-first, and deliberately do NOT include the loc-key suffix — a wording change never touches this
-    /// table.</summary>
-    public static class TipIds
-    {
-        /// <summary>The playlist detail command bar's <c>Tune ▾</c> command.</summary>
-        public const string DetailTuning = "detail.tuning";
-    }
-
-    /// <summary>The PURE half of the teaching-tip service: the acknowledged-id SET codec and the gating decision. The
-    /// set is newline-joined (a tip id may never contain a newline — ids are dotted ASCII); empty segments are ignored
-    /// on read and never produced on write, so a hand-edited or older value cannot wedge the codec.</summary>
-    public static class TipsCore
-    {
-        public const char Separator = '\n';
-
-        /// <summary>True when <paramref name="tipId"/> is one of the acknowledged ids. Scans IN PLACE (no split, no
-        /// allocation) — this runs on every eligible render of every tip's host.</summary>
-        public static bool Contains(string? seen, string? tipId)
-        {
-            if (string.IsNullOrEmpty(seen) || string.IsNullOrEmpty(tipId)) return false;
-            int i = 0;
-            while (i <= seen.Length)
-            {
-                int end = seen.IndexOf(Separator, i);
-                if (end < 0) end = seen.Length;
-                if (end - i == tipId.Length && string.CompareOrdinal(seen, i, tipId, 0, tipId.Length) == 0) return true;
-                i = end + 1;
-            }
-            return false;
-        }
-
-        /// <summary>The set with <paramref name="tipId"/> added — IDEMPOTENT (an already-present id returns the input
-        /// unchanged, so re-acknowledging never grows the string) and order-preserving.</summary>
-        public static string Add(string? seen, string? tipId)
-        {
-            if (string.IsNullOrEmpty(tipId)) return seen ?? "";
-            if (Contains(seen, tipId)) return seen!;
-            return string.IsNullOrEmpty(seen) ? tipId : seen + Separator + tipId;
-        }
-
-        /// <summary>The acknowledged ids in stored order, empty segments dropped. For tests and diagnostics — the hot
-        /// path is <see cref="Contains"/>.</summary>
-        public static List<string> Parse(string? seen)
-        {
-            var ids = new List<string>();
-            if (string.IsNullOrEmpty(seen)) return ids;
-            int i = 0;
-            while (i <= seen.Length)
-            {
-                int end = seen.IndexOf(Separator, i);
-                if (end < 0) end = seen.Length;
-                if (end > i) ids.Add(seen.Substring(i, end - i));
-                i = end + 1;
-            }
-            return ids;
-        }
-
-        /// <summary>Serialize an id set back to storage form (dedup + drop empties, order preserved).</summary>
-        public static string Serialize(IEnumerable<string>? ids)
-        {
-            if (ids is null) return "";
-            string acc = "";
-            foreach (var id in ids) acc = Add(acc, id);
-            return acc;
-        }
-
-        /// <summary>The one gating decision, in one place. A tip may be armed only when:
-        /// <list type="bullet">
-        /// <item><paramref name="canPresent"/> — the caller has everything it needs to actually SHOW it. A tip whose
-        /// acknowledgement cannot be persisted is never shown at all: it would return on every page forever, and
-        /// nagging is worse than never teaching.</item>
-        /// <item>the id is not in <paramref name="seen"/> — the durable "don't show again".</item>
-        /// <item><paramref name="armedThisSession"/> is false — at most one appearance per launch per tip, so walking
-        /// away without acknowledging does not re-open it on the next page that hosts the same tip.</item>
-        /// <item><paramref name="anotherTipActive"/> is false — ONE tip at a time, process-wide. Two callouts up
-        /// together read as an error state, and the second would fight the first for attention.</item>
-        /// </list></summary>
-        public static bool ShouldShow(string? seen, string? tipId, bool armedThisSession, bool anotherTipActive,
-            bool canPresent)
-            => canPresent
-            && !string.IsNullOrEmpty(tipId)
-            && !armedThisSession
-            && !anotherTipActive
-            && !Contains(seen, tipId);
-    }
-
     // ══ 11. SHELL.HISTORY — the navigation log's decisions (ch 16 §8, +180) ═════════════════════════════════════════
     //
     // "Recently VISITED" (places you navigated to), as distinct from the play log's "recently PLAYED". The STORE is
@@ -1705,7 +1617,7 @@ public static partial class Shell
             // page — its own kind, so the chips and the row label stay truthful.
             RouteKind.Show => "show",
             RouteKind.LibraryAlbums or RouteKind.LibraryArtists or RouteKind.Liked
-                or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks or RouteKind.Local => "library",
+                or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks or RouteKind.LibraryPlaylists or RouteKind.Local => "library",
             RouteKind.Search => "search",
             RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.BrowseSection => "browse",
             _ => "page",
@@ -1846,7 +1758,7 @@ public static partial class Shell
     //
     // A component body lays out and binds; it does not decide. Each rule below is one the 0.2.9 shell carried inline in
     // a 2,348-line component where nothing could pin it — and two of them (the drag-peek width, the auto-zoom control
-    // loop) are exactly the ones ch 18 §9 records as regressions-in-waiting.
+    // loop, now `ZoomService`) are exactly the ones ch 18 §9 records as regressions-in-waiting.
 
     /// <summary>The frame's geometry, precedence and gating decisions. Pure.</summary>
     public static class FrameRules
@@ -1881,30 +1793,77 @@ public static partial class Shell
         /// page rather than resizing it).</summary>
         public static bool RailFloats(bool open, bool fits) => open && !fits;
 
-        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side.</summary>
-        public static float RailSeamX(float viewportWidth, float railWidth) => viewportWidth - railWidth - SeamStripW;
+        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side. <paramref name="rightOffset"/> is what
+        /// lies right of the primary panel (the second docked pane and its gap, at a two-pane tier).</summary>
+        public static float RailSeamX(float viewportWidth, float railWidth, float rightOffset = 0f) => viewportWidth - rightOffset - railWidth - SeamStripW;
 
-        /// <summary>The rail seam grip only exists while the rail is open.</summary>
-        public static float RailSeamWidth(bool open) => open ? SeamStripW : 0f;
+        /// <summary>The rail seam grip only exists while the rail is open AND docked (a floating panel and a sheet have no width to drag).</summary>
+        public static float RailSeamWidth(bool open, bool docked = true) => open && docked ? SeamStripW : 0f;
+
+        /// <summary>The second docked pane's 8-DIP gap: only while it is open.</summary>
+        public static float SecondGapWidth(bool open) => open ? RailGapW : 0f;
+
+        /// <summary>The second docked pane's row reservation (0 while closed).</summary>
+        public static float SecondReservedWidth(bool open, float width) => open ? width : 0f;
+
+        /// <summary>What lies right of the primary panel: the second pane and its gap while it is open.</summary>
+        public static float SecondOffset(bool open, float width) => SecondGapWidth(open) + SecondReservedWidth(open, width);
+
+        /// <summary>Everything the docked panels take from the content row: the primary's gap and width (open and docked) and the
+        /// second pane's (open).</summary>
+        public static float PanelsReservedWidth(bool open, bool docked, float width, bool secondOpen, float secondWidth)
+            => RailGapWidth(open, docked) + RailReservedWidth(open, docked, width) + SecondOffset(secondOpen, secondWidth);
+
+        /// <summary>The second docked pane is on screen: the queue is open beside the primary, the tier docks two, and the primary is not
+        /// already showing the queue (the queue is never on screen twice).</summary>
+        public static bool SecondOpen(bool queueBeside, bool allowed, bool railOpen, RailMode mode)
+            => queueBeside && allowed && !(railOpen && mode == RailMode.Queue);
+
+        /// <summary>The second pane's width: the tier's floor (both Huge panes are the board's width), never under the panel default.</summary>
+        public static float SecondWidth(float floor) => MathF.Max(floor, RailDefaultW);
+
+        /// <summary>Docked pane <paramref name="index"/> of <paramref name="panes"/> (0 the second pane, 1 the third; none where the tier
+        /// docks one) is on screen (contract 1.29). A LINKED pane is open while the panel is (the primary steps aside to the fallback body
+        /// instead of showing it twice); an INDEPENDENT pane (Classic's queue) while the queue is open beside the primary and the primary is
+        /// not already showing it, exactly <see cref="SecondOpen"/>.</summary>
+        public static bool PaneOpen(in Theming.PanelArrangement panes, int index, bool queueBeside, bool railOpen, RailMode mode)
+        {
+            if (panes.At(index) is not { } pane) return false;
+            if (panes.Linked) return railOpen;
+            return queueBeside && !(railOpen && (byte)mode == (byte)pane.Mode);
+        }
+
+        /// <summary>The least width a docked panel keeps for a tier floor of <paramref name="floor"/>: inside the shell's baseline bounds
+        /// (200-500), NOT the active policy's (Zune's 340-only panel docks at its 360 floor at Huge); 0 where there is no floor.</summary>
+        public static float FloorWidth(float floor) => floor > 0f && float.IsFinite(floor) ? Math.Clamp(floor, RailMinW, RailMaxW) : 0f;
+
+        /// <summary>Everything the docked panes take from the content row in a window <paramref name="viewportWidth"/> wide under
+        /// <paramref name="rule"/>: the primary while it is open and docked (at its width brought up to the floor) and each docked pane of the
+        /// rule's arrangement that is open, each with the gap the structure's frame lays before it (<paramref name="dockGap"/> before the
+        /// primary, <paramref name="paneGap"/> before each pane: <c>PanelPolicy.DockGap</c> / <c>PaneGap</c>; contract 1.29; what
+        /// <c>WindowTiers.PanelsReserved</c> estimates the content width from).</summary>
+        public static float PanelsReserved(Theming.PanelTierRule rule, float viewportWidth, bool railOpen, RailMode mode, float railWidth,
+            bool queueBeside, float dockGap = RailGapW, float paneGap = RailGapW)
+        {
+            float floor = rule.FloorFor(viewportWidth);
+            var panes = rule.Arrangement;
+            bool docked = railOpen && rule.Docks;
+            float total = (docked ? dockGap : 0f) + RailReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, FloorWidth(floor)));
+            for (int i = 0; i < panes.Count; i++)
+                if (PaneOpen(in panes, i, queueBeside, railOpen, mode)) total += paneGap + SecondWidth(floor);
+            return total;
+        }
 
         /// <summary>F243: the width a rail splitter drag COMMITS to <c>Ui.RailWidth</c> (and the settings) on release: the
         /// preview width through the one rail clamp, or null when there is nothing to commit (a non-finite preview, or the
         /// pointer ended where the rail already was). Nothing reaches the layout, the docked video or the settings until
         /// this answers a width.</summary>
-        public static float? RailDragCommit(float dragWidth, float committedWidth)
+        public static float? RailDragCommit(float dragWidth, float committedWidth, float floor = 0f)
         {
             if (!float.IsFinite(dragWidth)) return null;
-            float w = ClampRailWidth(dragWidth);
+            float w = MathF.Max(ClampRailWidth(dragWidth), floor > 0f ? ClampRailWidth(floor) : 0f);
             return MathF.Abs(w - committedWidth) < 0.01f ? null : w;
         }
-
-        /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE COLLAPSES THE CHROME ROW, THE CONTENT REGION AND THE PLAYER
-        /// BAR — one derived predicate drives all three bound <c>Visible</c> channels, so there is exactly one transport on
-        /// screen and the surface mounting and the chrome leaving cannot disagree by a frame (ch 18 §0.12). A collapse, not
-        /// an unmount: the bands stay mounted (out of layout, paint, hit-test and focus, their subtree inactive), so leaving
-        /// fullscreen does not rebuild the tab row and the whole player bar.</summary>
-        public static bool ChromeMounted(Video.SurfacePlacement resolved, bool immersive)
-            => resolved != Video.SurfacePlacement.Fullscreen && !immersive;
 
         /// <summary>What a bare Escape reaching the shell column does, in precedence order.</summary>
         public enum EscapeAction : byte { None, CloseImmersiveLyrics, ExitVideoFullscreen }
@@ -1923,6 +1882,20 @@ public static partial class Shell
         /// <summary>Bare Space toggles playback only after focused routing declined it and never while a text editor has
         /// focus (Space is not an accelerator — the dispatcher only matches Ctrl/Alt or F-keys).</summary>
         public static bool SpaceTogglesPlayback(bool handled, bool textEditorFocused) => !handled && !textEditorFocused;
+
+        /// <summary>Ctrl+Tab's step through the workspace (P6 WK): +1 for Ctrl+Tab, -1 for Ctrl+Shift+Tab, 0 for any other chord or where the
+        /// structure does not ask for the cycle (<c>ShellCapabilities.TabCycleChord</c>; the chord then moves focus, as it always did). Tab is
+        /// not an accelerator (the dispatcher moves focus with it after offering it to the focused chain), so the frame's key handler takes it.</summary>
+        public static int TabCycleDelta(int keyCode, FluentGpu.Foundation.KeyModifiers mods, Theming.ShellCapabilities caps)
+        {
+            if (keyCode != FluentGpu.Foundation.Keys.Tab || !caps.TabCycleChord) return 0;
+            return mods switch
+            {
+                FluentGpu.Foundation.KeyModifiers.Ctrl => 1,
+                FluentGpu.Foundation.KeyModifiers.Ctrl | FluentGpu.Foundation.KeyModifiers.Shift => -1,
+                _ => 0,
+            };
+        }
 
         /// <summary>What F11 does. The fullscreen stage closes first if it is up; otherwise video fullscreen exits / enters
         /// as before; and with no video fullscreen and none to enter, F11 OPENS the stage (an empty stage is allowed — the
@@ -1973,11 +1946,40 @@ public static partial class Shell
         public static BodyKind BodyFor(in Route route, bool hasPage, bool developerMode)
             => !IsKnown(route, developerMode) ? BodyKind.NotFound : hasPage ? BodyKind.Page : BodyKind.Empty;
 
+        /// <summary>The route's body as the contract's kind: what the theme's <c>Shell.ContentState</c> view draws in the content
+        /// region. The same decision as <see cref="BodyFor"/>, named for the contract (T4a).</summary>
+        public static Theming.Contracts.ContentStateKind ContentBodyFor(in Route route, bool hasPage, bool developerMode)
+            => BodyFor(route, hasPage, developerMode) switch
+            {
+                BodyKind.Page => Theming.Contracts.ContentStateKind.Page,
+                BodyKind.Empty => Theming.Contracts.ContentStateKind.EmptyBody,
+                _ => Theming.Contracts.ContentStateKind.NotFound,
+            };
+
+        /// <summary>The node key of a content state's root box, from the route's key (<see cref="NameOf"/>) and arg (<see cref="ArgOf"/>):
+        /// <c>page:&lt;route&gt;</c>, <c>page-empty:&lt;route&gt;</c> and <c>page-notfound:&lt;route&gt;|&lt;arg&gt;</c>; the lane has none.
+        /// These are the keys the frame mounted before the theme drew them, so a probe and a test find the same nodes.</summary>
+        public static string ContentKey(Theming.Contracts.ContentStateKind kind, string routeName, string? routeArg) => kind switch
+        {
+            Theming.Contracts.ContentStateKind.Page => "page:" + routeName,
+            Theming.Contracts.ContentStateKind.EmptyBody => "page-empty:" + routeName,
+            Theming.Contracts.ContentStateKind.NotFound => "page-notfound:" + routeName + "|" + (routeArg ?? ""),
+            _ => "",
+        };
+
         /// <summary>The CLEARING half of <see cref="Ui.ActiveStagePlayable"/>: a navigation to a route no module watch page
         /// will mount for clears a stale claim — value-gated, so an idle navigation writes nothing. Module routes are the
         /// PAGES' to hand over (an unconditional clear could land after the incoming page's claim and erase it).</summary>
         public static bool ClearsStagePlayable(in Route route, string currentPlayable)
             => route.Kind != RouteKind.Module && currentPlayable.Length > 0;
+
+        /// <summary>Has the page swap to <paramref name="current"/> LANDED, i.e. is its page the one on screen (Classic tuning D15)?
+        /// <paramref name="shown"/> is <see cref="Shown"/>, which the content host moves to the committed route once the leaving
+        /// page's exit leg has run; before the first commit it is <c>None</c> and everything lands at once (the first frame is
+        /// final). The shell material is painted as of this edge, so the leaving page keeps its colour for its exit and the new
+        /// page's colour cross-fades in with its enter.</summary>
+        public static bool SwapLanded(in Route shown, in Route current)
+            => shown.IsNone || shown.Equals(current);
 
         /// <summary>The trailing island's identity form, from the auth fold (ch 18 W17). Never raw session status.</summary>
         public enum ChipForm : byte { Profile, Connecting, Reconnect, SignIn }
@@ -1996,47 +1998,10 @@ public static partial class Shell
         /// (ch 29 parity 46).</summary>
         public static bool ShowsOfflineStrip(AuthState auth) => auth == AuthState.Offline;
 
-        // ── the large-display auto-zoom control loop (ch 18 W24, large-display-scaling.md §3.2) ──────────────────────
-
-        /// <summary>The zoom re-resolve waits for this much resize quiet (trailing edge). The DIP re-layout itself is
-        /// never debounced — only the zoom half is.</summary>
-        public const float ZoomAutoDebounceMs = 500f;
-
-        /// <summary>Zooms within this of each other are the same zoom (the no-op guard that actually stops re-entry).</summary>
-        public const float ZoomEpsilon = 0.004f;
-
-        public enum ZoomStepKind : byte
-        {
-            /// <summary>Touch nothing.</summary>
-            None,
-            /// <summary>Apply <see cref="ZoomDecision.Zoom"/>.</summary>
-            Apply,
-            /// <summary>Something ELSE moved the zoom while in Auto (a chord, the wheel, the palette): flip the stored mode
-            /// to Manual instead of clobbering the user's pick next tick.</summary>
-            PinManual,
-        }
-
-        /// <summary>One tick's answer plus the loop's carried state (the zoom THIS policy last applied).</summary>
-        public readonly record struct ZoomDecision(ZoomStepKind Kind, float Zoom, float LastAuto, bool Seeded);
-
-        /// <summary>The auto-zoom control loop, as a pure step. <paramref name="baseWidth"/>/<paramref name="baseHeight"/>
-        /// are the window's DIP extent AT ZOOM 1 (<c>viewportDip × Viewport.Zoom</c> — zoom-invariant by construction), so
-        /// a re-entrant tick from our own apply computes the identical suggestion and the no-op guard returns.
-        /// <para>"Someone else moved the zoom" is detected by comparing the LIVE zoom against this policy's OWN last pick,
-        /// not against the suggestion — the only way a static zoom verb with no settings reference can opt a user out of
-        /// Auto.</para></summary>
-        public static ZoomDecision AutoZoom(ZoomAutoMode mode, float baseWidth, float baseHeight, float liveZoom,
-            float lastAuto, bool seeded)
-        {
-            if (mode == ZoomAutoMode.Manual || baseWidth <= 0f || baseHeight <= 0f)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, lastAuto, seeded);
-            float suggested = ZoomAutoPolicy.Suggest(baseWidth, baseHeight, mode);
-            if (MathF.Abs(suggested - liveZoom) <= ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, liveZoom, true);
-            if (seeded && MathF.Abs(liveZoom - lastAuto) > ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.PinManual, liveZoom, lastAuto, seeded);
-            return new ZoomDecision(ZoomStepKind.Apply, suggested, suggested, true);
-        }
+        /// <summary>The voice a vacancy speaks (tuned Classic X1): Error is a failure while ONLINE; while the session is offline the same
+        /// failure speaks the Offline voice ("you're offline", Retry reconnects). Every other voice is unchanged.</summary>
+        public static Controls.VacancyVoice VoiceFor(Controls.VacancyVoice asked, AuthState auth)
+            => asked == Controls.VacancyVoice.Error && auth == AuthState.Offline ? Controls.VacancyVoice.Offline : asked;
     }
 
     // ══ 13. THE MASTHEAD PUBLICATIONS (ch 18 W13) ═══════════════════════════════════════════════════════════════════
@@ -2096,287 +2061,6 @@ public static partial class Shell
         {
             s_map.Clear();
             s_lru.Clear();
-        }
-    }
-
-    // ══ 14. THE OMNIBAR'S MODEL (ch 18 W15) — the seam owner P's `Search.cs` plugs into ══════════════════════════════
-    //
-    // The omnibar is owner I's; its SUGGESTION SOURCE is owner P's (Wave 5). Until P installs <see cref="Omnibar.Source"/>
-    // the popup answers from the navigation log the CORE already has, so the field is never a dead end. Nested under
-    // `Shell` so P's own `Search.cs` types (Wave 5) cannot collide with these names.
-
-    public static class Omnibar
-    {
-        /// <summary>A rich row's kind — what it looks like and what choosing it does.</summary>
-        public enum ItemKind : byte { Track, Artist, Album, Playlist, Genre, Episode, Podcast, Audiobook, User }
-
-        /// <summary>One rich suggestion row.</summary>
-        public sealed record Item(ItemKind Kind, EntityUri Uri, string Title, string? Subtitle = null, string? ImageUrl = null, AlbumKind? ReleaseKind = null)
-        {
-            /// <summary>The row's entity (kind + table slot), allocating the row if unseen; <see cref="EntityRef.IsNone"/>
-            /// for a kind with no table (a genre, an audiobook). <see cref="Subtitle"/> is the DETAIL only (artists / owner /
-            /// publisher / show) — the row composes its kind word and <see cref="TextJoin.Sep"/> (<c>Search.SubtitleText</c>).</summary>
-            public EntityRef Ref => Entities.Ref(Uri.Id);
-        }
-
-        /// <summary>One answer: the query completions, then the rich rows.</summary>
-        public sealed record Suggestions(IReadOnlyList<string> Queries, IReadOnlyList<Item> Items)
-        {
-            public static readonly Suggestions Empty = new(Array.Empty<string>(), Array.Empty<Item>());
-
-            public bool IsEmpty => Queries.Count == 0 && Items.Count == 0;
-
-            /// <summary>The inline ghost: the FIRST completion that starts with what was typed and is longer — not blindly
-            /// <c>Queries[0]</c> (<c>loff</c> ghosts <c>loffler</c> even when <c>koffie</c> ranks first).</summary>
-            public static string? GhostFor(string? typed, IReadOnlyList<string>? queries)
-            {
-                if (string.IsNullOrEmpty(typed) || queries is null) return null;
-                for (int i = 0; i < queries.Count; i++)
-                {
-                    string q = queries[i];
-                    if (q.Length > typed.Length && q.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) return q;
-                }
-                return null;
-            }
-        }
-
-        /// <summary>The seam: owner P's suggest request. Null ⇒ the popup answers from the navigation log
-        /// (<see cref="FromHistory"/>). Called off the UI thread's await; the omnibar posts the answer back.</summary>
-        public static Func<string, CancellationToken, Task<Suggestions>>? Source { get; set; }
-
-        /// <summary>Row caps, and the same two caps bound the keyboard cursor and the invoke.</summary>
-        public const int MaxQueryRows = 6, MaxRichRows = 10;
-
-        public static int QueryRowCount(Suggestions s) => Math.Min(MaxQueryRows, s.Queries.Count);
-        public static int RichRowCount(Suggestions s) => Math.Min(MaxRichRows, s.Items.Count);
-        public static int SelectableCount(Suggestions s) => QueryRowCount(s) + RichRowCount(s);
-
-        // ── the popup body's reserved height ─────────────────────────────────────────────────────────────────────────
-        // The flyout never sizes itself by async data: while a request is Pending with nothing to show it reserves what the
-        // PREVIOUS answer took (else a typical first answer), and the body is capped where the scroll viewport caps.
-
-        /// <summary>The scroll viewport's cap, and so the most the popup body ever takes.</summary>
-        public const float PopupBodyMaxHeight = 560f;
-
-        /// <summary>One query row (the 40 floor plus its 2 + 2 margin), one rich row (the 58 floor plus its 2 + 2 margin),
-        /// and the divider that separates the two groups (1 high, 4 + 4 margin).</summary>
-        public const float QueryRowHeight = 44f, RichRowHeight = 62f, GroupDividerHeight = 9f;
-
-        /// <summary>The notice slot ("No results found" / the failure + Retry): the stock list item floor.</summary>
-        public const float NoticeHeight = 40f;
-
-        /// <summary>The placeholder rows a Pending body is built from: the previous answer's own row counts when it had any,
-        /// else <see cref="MaxQueryRows"/> query rows + 3 rich ones. The counts are not trimmed to the cap: the reserved
-        /// height is <see cref="PopupBodyHeight"/> and the body's clip cuts the last row, like the real viewport.</summary>
-        public static (int Query, int Rich) PendingSkeletonRows(int lastQueryRows, int lastRichRows)
-        {
-            int q = Math.Clamp(lastQueryRows, 0, MaxQueryRows);
-            int r = Math.Clamp(lastRichRows, 0, MaxRichRows);
-            return q + r == 0 ? (MaxQueryRows, 3) : (q, r);
-        }
-
-        /// <summary>The height a Pending body with nothing to show reserves: one notice slot when the last settled answer
-        /// was a notice (Empty / Failed), else the previous answer's rows (or a typical first answer), capped at
-        /// <see cref="PopupBodyMaxHeight"/>. Typing on past a no-match query therefore never pumps the card.</summary>
-        public static float PendingBodyHeight(int lastQueryRows, int lastRichRows, bool lastWasNotice)
-        {
-            if (lastWasNotice) return NoticeHeight;
-            var (q, r) = PendingSkeletonRows(lastQueryRows, lastRichRows);
-            return PopupBodyHeight(q, r);
-        }
-
-        /// <summary>The body height of <paramref name="queryRows"/> + <paramref name="richRows"/> rows, never above
-        /// <see cref="PopupBodyMaxHeight"/> (past it the viewport scrolls).</summary>
-        public static float PopupBodyHeight(int queryRows, int richRows)
-            => MathF.Min(PopupBodyMaxHeight, RawBodyHeight(Math.Max(0, queryRows), Math.Max(0, richRows)));
-
-        static float RawBodyHeight(int q, int r)
-            => q * QueryRowHeight + r * RichRowHeight + (q > 0 && r > 0 ? GroupDividerHeight : 0f);
-
-        /// <summary>↑/↓ over the visible rows, wrapping through "none" (−1) at both ends.</summary>
-        public static int MoveHighlight(int current, int delta, int count)
-        {
-            if (count <= 0) return -1;
-            return delta > 0
-                ? (current + 1 >= count ? -1 : current + 1)
-                : (current < 0 ? count - 1 : current - 1);
-        }
-
-        /// <summary>▶ is offered for everything that can play (not a profile, not a genre).</summary>
-        public static bool CanPlay(ItemKind kind) => kind is not (ItemKind.User or ItemKind.Genre);
-
-        /// <summary>♡ is offered on a SONG row only.</summary>
-        public static bool ShowsHeart(ItemKind kind) => kind == ItemKind.Track;
-
-        /// <summary>People are circles (radius 22); everything else a 5-DIP rounded square.</summary>
-        public static bool IsCircular(ItemKind kind) => kind is ItemKind.Artist or ItemKind.User;
-
-        /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating. Deliberately UNCHANGED by the
-        /// podcast rework's D-2 (an episode DEEP LINK opens its page): picking a rich row here is the user explicitly
-        /// choosing something they just searched for — the same explicit-play action <c>Search.UI.cs</c>'s hit rows and
-        /// <c>Recents.UI.cs</c>'s rows are, not a passively-received shared link. <see cref="RouteFor"/> below has no
-        /// Episode arm (it falls to <see cref="Route.None"/>) precisely because choosing one never navigates.</summary>
-        public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;
-
-        /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile row
-        /// whose uri is not a <c>spotify:user:</c> one — a profile with a user uri opens its page, #161).</summary>
-        public static Route RouteFor(Item item) => item.Kind switch
-        {
-            ItemKind.User when item.Uri.Kind == EntityKind.User => new Route(RouteKind.User, item.Uri, Intern(item.Title)),
-            ItemKind.Artist => new Route(RouteKind.Artist, item.Uri, Intern(item.Title)),
-            ItemKind.Album => new Route(RouteKind.Album, item.Uri, Intern(item.Title)),
-            ItemKind.Playlist => new Route(RouteKind.Playlist, item.Uri, Intern(item.Title)),
-            ItemKind.Podcast or ItemKind.Audiobook => new Route(RouteKind.Show, item.Uri, Intern(item.Title)),
-            ItemKind.Genre => new Route(RouteKind.BrowseCategory, item.Uri, Intern(item.Title)),
-            _ => Route.None,
-        };
-
-        /// <summary>A GENRE row carries its search-lookup origin, so its masthead reads <c>"&lt;query&gt;" › Genre</c> with
-        /// no Browse rung (ch 18 parity 74). Port the origin write with the row, not just the navigation.</summary>
-        public static NavOrigin? GenreOrigin(string? query)
-        {
-            string q = (query ?? "").Trim();
-            return q.Length == 0 ? null : new NavOrigin(q, new Route(RouteKind.Search, default, Intern(q)));
-        }
-
-        /// <summary>The answer the popup gives with no source installed: the user's own recent searches that start or
-        /// contain the typed text (newest first), then the recent ENTITY destinations whose title contains it. Distinct
-        /// by route key; capped at the row caps. Empty text answers nothing.</summary>
-        public static Suggestions FromHistory(IReadOnlyList<HistoryEntry> entries, ReadOnlySpan<char> typed)
-        {
-            var t = typed.Trim();
-            if (t.IsEmpty || entries.Count == 0) return Suggestions.Empty;
-            string needle = t.ToString();
-            var queries = new List<string>(MaxQueryRows);
-            var items = new List<Item>(MaxRichRows);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = entries.Count - 1; i >= 0; i--)
-            {
-                var r = entries[i].Route;
-                if (r.Kind == RouteKind.Search)
-                {
-                    if (queries.Count >= MaxQueryRows || ArgOf(r) is not { Length: > 0 } q) continue;
-                    if (!q.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (seen.Add("q" + q)) queries.Add(q);
-                    continue;
-                }
-                if (items.Count >= MaxRichRows) continue;
-                ItemKind? kind = r.Kind switch
-                {
-                    RouteKind.Album => ItemKind.Album,
-                    RouteKind.Playlist => ItemKind.Playlist,
-                    RouteKind.Artist => ItemKind.Artist,
-                    RouteKind.Show => ItemKind.Podcast,
-                    RouteKind.User => ItemKind.User,
-                    _ => null,
-                };
-                if (kind is not { } k || !r.Subject.IsValid) continue;
-                string title = Dest(r).Title;
-                if (!title.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                if (seen.Add(NameOf(r))) items.Add(new Item(k, r.Subject, title));
-            }
-            return queries.Count == 0 && items.Count == 0 ? Suggestions.Empty : new Suggestions(queries, items);
-        }
-
-        /// <summary>Where the suggestion request stands. The popup renders BY this, and only <see cref="Empty"/> may say
-        /// "No results found".</summary>
-        public enum State : byte
-        {
-            /// <summary>No query — the field is blank; the popup is closed.</summary>
-            Idle,
-            /// <summary>A query exists and its answer has not landed — including the debounce window BEFORE the request is
-            /// sent. The popup shows a progress row (plus the previous answer's rows) and no sentence.</summary>
-            Pending,
-            Results,
-            Empty,
-            /// <summary>The request did not produce an answer — a retry, never "nothing matched".</summary>
-            Failed,
-        }
-
-        /// <summary>The suggestion request lifecycle — a GENERATION-keyed state machine (0.2.9 <c>OmnibarSuggestQuery</c>,
-        /// ported verbatim). <see cref="Begin"/> runs on the UNDEBOUNCED keystroke and enters Pending at once, so "No
-        /// results found" never flashes between a keystroke and its request; an answer for any other generation is
-        /// dropped. Text equality is deliberately NOT the publish guard: a superseded response for a retyped query must
-        /// lose to the newer request even when the texts match. UI thread only.</summary>
-        public sealed class Query
-        {
-            int _generation;
-
-            public int Generation => _generation;
-            public string Text { get; private set; } = "";
-            public State State { get; private set; } = State.Idle;
-
-            /// <summary>While Pending these are the PREVIOUS answer's rows — the field does not blank on every keystroke.</summary>
-            public Suggestions Suggestions { get; private set; } = Suggestions.Empty;
-
-            public Exception? Failure { get; private set; }
-            public bool IsPending => State == State.Pending;
-
-            /// <summary>Raised synchronously after every state change.</summary>
-            public event Action? Changed;
-
-            /// <summary>The keystroke edge. Blank clears; the same trimmed text keeps the generation (an in-flight request
-            /// stays valid); anything else starts a new generation in Pending. Returns the generation the answer must
-            /// carry.</summary>
-            public int Begin(string? query)
-            {
-                string q = (query ?? "").Trim();
-                if (q.Length == 0) { Clear(); return _generation; }
-                if (q == Text && State != State.Idle) return _generation;
-                _generation++;
-                Text = q;
-                State = State.Pending;
-                Failure = null;
-                Changed?.Invoke();
-                return _generation;
-            }
-
-            /// <summary>Re-arm a FAILED query as a new pending generation; a no-op in every other state.</summary>
-            public int Retry()
-            {
-                if (State != State.Failed) return _generation;
-                _generation++;
-                State = State.Pending;
-                Failure = null;
-                Changed?.Invoke();
-                return _generation;
-            }
-
-            /// <summary>Publish an answer for <paramref name="generation"/>; false (nothing changes) when superseded.</summary>
-            public bool Complete(int generation, Suggestions suggestions)
-            {
-                if (generation != _generation) return false;
-                Suggestions = suggestions;
-                State = suggestions.IsEmpty ? State.Empty : State.Results;
-                Failure = null;
-                Changed?.Invoke();
-                return true;
-            }
-
-            /// <summary>Publish a failure. False for a superseded generation AND for a cancellation of the current one —
-            /// cancellation is not an answer (whoever cancelled moved on or is tearing the field down).</summary>
-            public bool Fail(int generation, Exception failure)
-            {
-                if (generation != _generation || failure is OperationCanceledException) return false;
-                Suggestions = Suggestions.Empty;
-                State = State.Failed;
-                Failure = failure;
-                Changed?.Invoke();
-                return true;
-            }
-
-            /// <summary>Back to Idle (NOT Empty: a blank field has no answer). Advances the generation so a late answer for
-            /// the cleared query is dropped.</summary>
-            public void Clear()
-            {
-                if (State == State.Idle) return;
-                _generation++;
-                Text = "";
-                State = State.Idle;
-                Suggestions = Suggestions.Empty;
-                Failure = null;
-                Changed?.Invoke();
-            }
         }
     }
 }

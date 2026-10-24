@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WinUI window tiers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2760px; box-sizing: border-box; padding: 36px; display: flex; flex-direction: column; gap: 28px; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">WinUI theme: window tiers</h1>
+    <p style="margin: 0; max-width: 1100px; font-size: 14px; line-height: 20px; color: #c5c5c5">The thresholds follow NavigationView’s own defaults (CompactModeThresholdWidth 641, ExpandedModeThresholdWidth 1008), plus 1920 for Huge. Widths are effective pixels. Every change animates or keeps its space reserved. Nothing snaps. When the window gets narrower, each threshold waits 24 px longer before switching, so dragging back and forth over a line doesn’t flicker.</p>
+  </div>
+
+  <section aria-label="Tier scale" style="display: flex; flex-direction: column; gap: 8px">
+    <div style="display: grid; grid-template-columns: 641fr 367fr 912fr 1920fr; height: 56px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)">
+      <sc-for list="{{scale}}" as="t" hint-placeholder-count="4">
+        <div style="{{t.style}}"><span style="font-size: 14px; font-weight: 600">{{t.name}}</span><span style="font-size: 12px; color: #c5c5c5">{{t.range}}</span></div>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: 641fr 367fr 912fr 1920fr; font-size: 12px; color: #9e9e9e; font-variant-numeric: tabular-nums"><span>0</span><span>641</span><span>1008</span><span style="display: flex; justify-content: space-between"><span>1920</span><span>3840 (Huge 4K: Huge rules, more columns)</span></span></div>
+  </section>
+
+  <section aria-label="Shell per tier" style="display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Shell per tier</h2>
+    <div style="display: grid; grid-template-columns: 180px repeat(4, minmax(0, 1fr)); gap: 0 16px; padding: 0 16px 8px 16px; font-size: 12px; color: #c5c5c5; border-bottom: 1px solid rgba(255,255,255,0.0837)"><span>Element</span><span>Compact · &lt; 641</span><span>Small · 641–1007</span><span>Standard · 1008–1919</span><span>Huge · ≥ 1920</span></div>
+    <sc-for list="{{shell}}" as="r" hint-placeholder-count="9">
+      <div style="display: grid; grid-template-columns: 180px repeat(4, minmax(0, 1fr)); gap: 0 16px; align-items: start; padding: 10px 16px; border-radius: 4px; background: #282828; border: 1px solid rgba(255,255,255,0.0837); font-size: 13px; line-height: 18px">
+        <span style="font-size: 14px; font-weight: 600">{{r.k}}</span><span style="color: #ffffff">{{r.c}}</span><span style="color: #ffffff">{{r.s}}</span><span style="color: #c5c5c5">{{r.d}}</span><span style="color: #ffffff">{{r.h}}</span>
+      </div>
+    </sc-for>
+  </section>
+
+  <section aria-label="Title bar and tabs" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Title bar: tabs stay on in every tier</h2>
+    <div style="display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #c5c5c5">Compact, 400: the selected tab keeps its label (140); the others become 36 px icon tabs; Search becomes a button</span>
+        <div style="border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="1" hint-size="400px,88px"></dc-import></div>
+        <span style="font-size: 12px; color: #c5c5c5; padding-top: 8px">Compact, tabs Off: no strip. One 48 px bar holds the caption buttons; the other tabs stay open in the background (Q4)</span>
+        <div style="border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabsOn="{{off}}" tabs="album:The Stereo Love Show:#3b5b7a" sel="0" hint-size="400px,48px"></dc-import></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+        <span style="font-size: 12px; color: #c5c5c5">Small, 800: tabs 160 → down to 110, then the strip scrolls. Pin and Friends move into ⋯. Search fills the middle (max 520)</span>
+        <div style="width: 800px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="1" badge="2" hint-size="800px,88px"></dc-import></div>
+        <span style="font-size: 12px; color: #c5c5c5; padding-top: 8px">Small, tabs Off: the Wavee mark sits after Back/Forward, and the caption buttons end the bar</span>
+        <div style="width: 800px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabsOn="{{off}}" tabs="album:The Stereo Love Show:#3b5b7a" sel="0" badge="2" hint-size="800px,48px"></dc-import></div>
+        <span style="font-size: 12px; line-height: 16px; color: #9e9e9e; padding-top: 8px">Standard keeps 200 px tabs and a 520 search. Huge uses 240 px tabs, a 640 search and shows the profile name. With tabs Off in any tier, the window shows one page: Ctrl+T opens a new page in the background, Ctrl+Tab still cycles, and turning tabs back on restores the strip with every tab in place.</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Player bar tiers" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Player bar tiers: what collapses into ⋯</h2>
+    <div style="display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 24px; align-items: start">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #c5c5c5">Mini · &lt; 641 · 64 px, 2 px progress edge; the whole left side opens the sheet</span>
+        <div style="width: 400px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Player" theme="dark" tier="mini" width="400" hint-size="400px,64px"></dc-import></div>
+        <span style="font-size: 12px; color: #c5c5c5; padding-top: 8px">Compact · 641–859</span>
+        <div style="width: 400px; overflow: hidden; border-radius: 8px; border: 1px solid rgba(255,255,255,0.0837)"><div style="width: 760px; transform: scale(0.5263); transform-origin: 0 0; height: 38px"><dc-import name="Shell-Player" theme="dark" tier="compact" width="760" hint-size="760px,72px"></dc-import></div></div>
+        <span style="font-size: 12px; line-height: 16px; color: #9e9e9e">(shown at 53 % to fit)</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 0; min-width: 0">
+        <div style="display: grid; grid-template-columns: 200px repeat(5, minmax(0, 1fr)); gap: 0 8px; padding: 0 12px 8px 12px; font-size: 12px; color: #c5c5c5; border-bottom: 1px solid rgba(255,255,255,0.0837)"><span>Control</span><span>Mini &lt; 641</span><span>Compact 641–859</span><span>Medium 860–1099</span><span>Full 1100–1919</span><span>Huge ≥ 1920</span></div>
+        <sc-for list="{{player}}" as="p" hint-placeholder-count="12">
+          <div style="display: grid; grid-template-columns: 200px repeat(5, minmax(0, 1fr)); gap: 0 8px; align-items: center; min-height: 32px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.0419); font-size: 13px">
+            <span>{{p.k}}</span>
+            <sc-for list="{{p.cells}}" as="c" hint-placeholder-count="5"><span style="{{c.style}}">{{c.v}}</span></sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 12px; color: #c5c5c5">Medium · 860–1099: shuffle and repeat return; Lyrics and Queue return; volume stays a button with a flyout slider</span>
+      <div style="width: 980px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Player" theme="dark" tier="medium" width="980" hint-size="980px,72px"></dc-import></div>
+      <span style="font-size: 12px; color: #c5c5c5; padding-top: 6px">Full · 1100–1919: the volume slider and Full screen return (the Standard boards’ bar). Huge adds a 720 seek column, a labelled “This PC” device button and a 128 slider</span>
+      <div style="width: 1366px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)"><dc-import name="Shell-Player" theme="dark" tier="full" width="1366" hint-size="1366px,72px"></dc-import></div>
+      <span style="font-size: 12px; line-height: 16px; color: #9e9e9e; padding-top: 4px">Order of collapse as the window narrows: volume slider → Full screen → Lyrics, Queue → Shuffle, Repeat → Previous, seek bar (Mini). The ⋯ menu always lists what the bar no longer shows, in the same order, so a control never disappears. The like heart, Play/Pause and Next never collapse. The bar’s height (72) is reserved in every tier except Mini (64). The change between them animates over 167 ms.</span>
+    </div>
+  </section>
+
+  <section aria-label="Panes" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Side panes: dock or overlay</h2>
+      <sc-for list="{{panes}}" as="p" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 4px; background: #282828; border: 1px solid rgba(255,255,255,0.0837)"><span style="font-size: 14px; font-weight: 600">{{p.k}}</span><span style="font-size: 13px; line-height: 18px; color: #c5c5c5">{{p.v}}</span></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Content inside the pages</h2>
+      <sc-for list="{{content}}" as="p" hint-placeholder-count="6">
+        <div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 4px; background: #282828; border: 1px solid rgba(255,255,255,0.0837)"><span style="font-size: 14px; font-weight: 600">{{p.k}}</span><span style="font-size: 13px; line-height: 18px; color: #c5c5c5">{{p.v}}</span></div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section aria-label="Breakpoints per page" style="display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Breakpoints per page (in-page thresholds go by content width, not window width)</h2>
+    <sc-for list="{{pages}}" as="r" hint-placeholder-count="12">
+      <div style="display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; padding: 8px 16px; border-radius: 4px; background: #282828; border: 1px solid rgba(255,255,255,0.0837); font-size: 13px; line-height: 18px"><span style="font-size: 14px; font-weight: 600">{{r.k}}</span><span style="color: #c5c5c5">{{r.v}}</span></div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2760}}'>
+class Component extends DCLogic {
+renderVals() {
+  const seg = (name, range, bg) => ({ name, range, style: 'display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 12px; border-right: 1px solid rgba(0,0,0,0.3); background: ' + bg });
+  const scale = [seg('Compact', '< 641 · 400 × 860 board', '#2c3a44'), seg('Small', '641–1007 · 800 × 600', '#2a3540'), seg('Standard', '1008–1919 · 1440 × 960 (existing boards)', '#28323b'), seg('Huge', '≥ 1920 · 2560 × 1440, and 3840 × 2160 for 4K', '#263038')];
+  const row = (k, c, s, d, h) => ({ k, c, s, d, h });
+  const shell = [
+    row('NavigationView', 'LeftMinimal: no rail. The hamburger in the toolbar opens the 280 pane as a light-dismiss acrylic overlay', 'LeftCompact: 48 rail with icons and the selection pill. The hamburger opens the 280 pane over the content (overlay, never pushes)', 'Left: the 280 pane is docked. The user can collapse it to the 48 rail, and that choice is kept', 'Left, 280 docked. Playlists keep filling the extra height. The pane never grows wider'),
+    row('Title bar · tabs On', '40 strip: selected tab 140 with its label, others 36 icon-only, New tab, captions. Toolbar: hamburger, Back, Search button, bell, avatar', '40 strip: tabs 160 → 110, then the strip scrolls. Toolbar: hamburger, Back, Forward, Search (fills, max 520), bell, ⋯, avatar', '40 strip: 200 tabs. Toolbar: Search centred at 520, pin, Friends, bell, avatar', '40 strip: 240 tabs. Search 640. Profile name next to the avatar'),
+    row('Title bar · tabs Off', 'One 48 bar: toolbar + captions. Tabs kept in the background', 'One 48 bar with the Wavee mark after Back/Forward', 'One 48 bar with the Wavee mark', 'One 48 bar with the Wavee mark'),
+    row('Player bar', 'Mini (64): art, title, heart, play, next, ⋯ · tap opens the sheet', 'Compact (641–859) and Medium (860–1007) tiers', 'Medium to 1099, Full from 1100', 'Huge: 720 seek column, labelled device button'),
+    row('Side panes', 'Bottom sheets (full width, 85 % height, grabber, light dismiss)', 'Overlay from the right (340) below 868; docked from 868 (48 + 340 + 480)', 'Overlay below 1100; docked from 1100 (280 + 340 + 480). One pane, tabbed', 'Two panes dock side by side (Queue + Lyrics), 340 each'),
+    row('Content inset', '16 left and right, 16 top', '24 left and right, 20 top', '36 left and right, 24 top (unchanged)', '48 left and right, 32 top. Reading text capped at 760'),
+    row('Card grids', '2 columns, 12 gap', '4 columns (min card 148)', '6 columns (min 176)', '10 columns (min 200) at 2560; 14 at 3840 with a pane docked'),
+    row('Track rows', 'Two-line rows: title over artist · album. Time and ⋯ stay. Album, date and plays move to the second line or away', 'Title + artist, album column from 720 content width. Date added drops', 'All columns', 'All columns + 64 art in Liked/Playlist; side column for About / Recommended'),
+    row('Full-screen Now playing', 'The mini player’s sheet (Card layout forced, Bloom face)', 'Card or Large art; no gallery pane', 'Card, Large art, Centered, Artist on Bloom, Mosaic, Type or Spotlight', 'All four layouts at full scale; Up next column beside the lyrics')
+  ];
+  const yes = 'color: #ffffff', more = 'color: #99ebff', no = 'color: #5d5d5d';
+  const cell = (v) => ({ v: v === '·' ? '—' : v, style: v === '⋯' ? more : (v === '·' ? no : yes) });
+  const prow = (k, a) => ({ k, cells: a.map(cell) });
+  const player = [
+    prow('Art, title, artist, like', ['✓', '✓', '✓', '✓', '✓']), prow('Play/Pause, Next', ['✓', '✓', '✓', '✓', '✓']), prow('Previous', ['⋯', '✓', '✓', '✓', '✓']),
+    prow('Seek bar + times', ['edge', '✓', '✓', '✓', '720 wide']), prow('Shuffle, Repeat', ['⋯', '⋯', '✓', '✓', '✓']), prow('Lyrics, Queue', ['⋯', '⋯', '✓', '✓', '✓']),
+    prow('Devices', ['⋯', 'icon', 'icon', 'icon', '“This PC”']), prow('Mute (slider in flyout)', ['⋯', '✓', '✓', '✓', '✓']), prow('Volume slider', ['·', '·', '·', '96', '128']),
+    prow('Full screen', ['⋯', '⋯', '⋯', '✓', '✓']), prow('Video: audio/video split, mini', ['⋯', '⋯', 'split', '✓', '✓']), prow('Podcast: ±10 s, speed', ['+10 only', '±10', '±10, speed', '✓', '✓'])
+  ];
+  const panes = [
+    { k: 'One rule', v: 'A pane docks when nav width + 340 + 480 (the content floor) fits the window. Otherwise it overlays from the right as acrylic with the flyout shadow and never pushes the page. Switching between dock and overlay crossfades over 250 ms; the content never reflows mid-gesture.' },
+    { k: 'Compact', v: 'Queue, Lyrics, Now playing and Friends open as bottom sheets over the mini player. Swiping down or pressing Esc closes them; the sheet remembers its last tab.' },
+    { k: 'Small and Standard', v: 'One pane with tabs (Queue · Lyrics · Now playing · Friends). Opening a second one switches the tab, so content width never changes twice.' },
+    { k: 'Huge', v: 'Up to two panes docked at 340 each (Queue + Lyrics is the default pair). The third request swaps the outer one.' },
+    { k: 'Resizing', v: 'The docked pane can be dragged from 280 to 480. When the window shrinks past the dock line, the pane turns into an overlay at the same width, and turns back into a docked pane once the window is 24 px past the line again.' }
+  ];
+  const content = [
+    { k: 'Heroes', v: 'Compact: stacked, cover 160 centred or 128 left, Title 28. Small (height 600): short hero, cover 128, Title 28, actions in one row; the page header turns sticky at 48. Huge: cover 232, Title Large 40; Artist hero 420 tall with Display 68.' },
+    { k: 'Height', v: 'Below 720 window height the short hero is used in every tier, and the header collapses into a 48 sticky bar after 120 px of scroll. The player keeps its height reserved; nothing below it moves.' },
+    { k: 'Max widths', v: 'Grids and tables never cap. Reading text (About, release notes, episode notes, settings descriptions) caps at 760; SettingsCards cap at 1000 in Standard and 1200 in Huge.' },
+    { k: 'Type', v: 'Same Windows ramp at every tier. Huge only moves a level up where the ramp allows: section heads stay Subtitle 20, page titles stay Title Large 40, artist and stage names use Display 68.' },
+    { k: 'Touch', v: 'Compact hit targets are 40 minimum (rows 56 two-line, buttons 40). Small and up keep the 32 controls and 40/48 rows.' },
+    { k: 'Minimum window', v: 'The window stops at 300 × 330 DIP. Compact holds all the way down: below 360 the mini player’s art drops to 32 and the title truncates first (heart, play, next and ⋯ never collapse); below 480 tall the page hero starts collapsed into its 48 sticky bar. Auto zoom is clamped so a window never drops a tier because of zoom.' },
+    { k: 'Full-screen faces', v: 'Bloom is the face everyone starts on, in every theme and every layout, until the user picks another. Mosaic, Type and Spotlight are available in every layout. Lyrics blur the face behind them using the blur intensity setting (0–100, 0 = no blur); there is no on/off switch.' },
+    { k: 'Motion', v: 'The nav pane animates its width over 167 ms. A grid reflow (column count change) animates items to their new places over 250 ms (FLIP). Player controls fade out and in during a tier change; the bar itself doesn’t resize except Mini ↔ Compact.' }
+  ];
+  const pages = [
+    { k: 'Home', v: 'Daylist card: stacked under 720 content width (cover 96 + text), 3 columns ≥ 1100. Jump back in: 1 column < 641 (2-line rows), 2 at Small, 4 Standard, 6 Huge. Made for you: 2 / 4 / 6 / 10 cards.' },
+    { k: 'Browse, Pop', v: 'Genre tiles 2 / 3 / 6 / 10 columns; Top tiles 2 / 4 / 4 / 4 (taller at Huge). For you chips scroll horizontally on Compact.' },
+    { k: 'Search', v: 'Facets scroll in one row on Compact and Small. Top result stacks above Songs under 900 content width; Artists and Albums 2 / 4 / 6 / 10.' },
+    { k: 'Album, playlists', v: 'Table: < 560 two-line rows (title / artist · plays), 560–859 drops Plays and Date added, ≥ 860 all columns. Huge adds a 420 side column (About the album, More by, credits).' },
+    { k: 'Artist', v: 'Hero 200 / 220 / 260 / 420 tall. Popular and Discography stack under 1100 content width; Huge shows Popular, Discography and About in three columns.' },
+    { k: 'Discography', v: 'Grid 2 / 4 / 6 / 10. The inline album drawer stacks cover over tracks on Compact and Small.' },
+    { k: 'Library', v: 'Albums grid 2 / 4 / 6 / 10. Artists: master list only on Compact and Small (detail opens as a page); master–detail from 1008; Huge widens the list to 440 and the detail shows 6 albums.' },
+    { k: 'Recents, profile', v: 'The Recents calendar moves under the list below 1100 content width and folds into a header chip on Compact. Profile cards 2 / 4 / 6 / 10.' },
+    { k: 'Show, episode, concert', v: 'About and Tickets columns move under the main column below 1100 content width. Episode rows drop the blurb on Compact. Huge: three columns (episodes · about · up next).' },
+    { k: 'Queue, lyrics, video', v: 'Compact: sheets. Small: overlay. Standard: docked. Huge: Queue + Lyrics docked together. Video: the mini player becomes a 16:9 strip above the mini bar on Compact; on Huge it can dock in the rail.' },
+    { k: 'Now playing', v: 'Compact: Card in a sheet. Small: Card / Large art, gallery off. Standard and Huge: Card, Large art, Centered, Artist, with any face (Mosaic, Type, Spotlight and the rest).' },
+    { k: 'Settings, setup, dialogs', v: 'The settings SelectorBar scrolls on Compact. SettingsCards stack their control under the label below 560 content width. ContentDialogs go full-screen under 641 and cap at 588 / 760 elsewhere.' }
+  ];
+  return { scale, shell, player, panes, content, pages, off: false };
+}
+}
+</script>
+</body>
+</html>

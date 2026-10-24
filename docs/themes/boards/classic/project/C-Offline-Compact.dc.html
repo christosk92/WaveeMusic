@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact offline, Browse</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|browse:Browse" sel="1" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <div role="status" style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: #433519; font-size: 14px; line-height: 20px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #fce100"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">You’re offline · showing saved content.</span></div>
+  <main style="height: 716px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 16px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Browse</h1>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px; padding: 0 16px 120px">
+      <svg width="40" height="40" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg>
+      <h2 style="margin: 12px 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">You’re offline</h2>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Browse needs a connection. Your downloads and the pages you opened recently still work.</span>
+      <div style="display: flex; flex-direction: column; gap: 4px; align-items: center; margin-top: 16px"><button style="height: 40px; min-width: 120px; padding: 0 16px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Retry</button><a href="#" style="font-size: 14px; padding: 10px 8px">Go to Your Library</a></div>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

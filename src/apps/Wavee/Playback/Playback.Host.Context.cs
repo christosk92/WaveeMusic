@@ -616,7 +616,14 @@ public static partial class Playback
         }
     }
 
-    static void AddRow(ClusterBuffer buffer, in ClusterTrack track, QueueBucket bucket, EntityRef[] refs, QueueEdge[] rows, ref int n)
+    /// <summary>Append one controller row (its ref, its item id from the uid book, its provenance). With
+    /// <paramref name="distinct"/> (a controller's <c>set_queue</c> / <c>update_context</c>, which may send the same uid on
+    /// several rows: every lap of a repeated context) a uid already carried by a row of this build or by one of the
+    /// <paramref name="kept"/> live rows the write keeps is booked under its next occurrence
+    /// (<see cref="UidBook.ItemIdOf(ReadOnlySpan{byte}, int)"/>), so each row has its own item id; the first row keeps the
+    /// plain booking, and an unchanged re-send answers the same ids.</summary>
+    static void AddRow(ClusterBuffer buffer, in ClusterTrack track, QueueBucket bucket, EntityRef[] refs, QueueEdge[] rows, ref int n,
+        bool distinct = false, ReadOnlySpan<QueueEdge> kept = default)
     {
         if (n >= refs.Length) return;
         ReadOnlySpan<byte> uri = buffer.Utf8(track.Uri);
@@ -630,11 +637,22 @@ public static partial class Playback
         if (row.IsNone) return;
         QueueProvider provider = bucket == QueueBucket.UserQueue ? QueueProvider.Queue : RemotePlan.ProviderOf(buffer.Utf8(track.Provider));
         refs[n] = row;
-        ulong itemId = s_uids.ItemIdOf(buffer.Utf8(track.Uid));
+        ulong itemId = distinct ? DistinctItemId(buffer.Utf8(track.Uid), kept, rows.AsSpan(0, n)) : s_uids.ItemIdOf(buffer.Utf8(track.Uid));
         if (provider == QueueProvider.Queue && itemId != 0)      // an owner's queued row keeps its own queued_by (possibly none)
             s_uids.NoteQueuedBy(itemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.QueuedBy)));
         rows[n] = new QueueEdge(itemId, (byte)provider, (byte)bucket);
         n++;
+    }
+
+    /// <summary>The item id of the first occurrence of <paramref name="uid"/> no row in <paramref name="kept"/> or
+    /// <paramref name="built"/> carries yet; 0 for no uid. Each occurrence books its own id, so the walk ends.</summary>
+    static ulong DistinctItemId(ReadOnlySpan<byte> uid, ReadOnlySpan<QueueEdge> kept, ReadOnlySpan<QueueEdge> built)
+    {
+        for (int occurrence = 0; ; occurrence++)
+        {
+            ulong id = s_uids.ItemIdOf(uid, occurrence);
+            if (id == 0 || (Queue.IndexOfItem(kept, id) < 0 && Queue.IndexOfItem(built, id) < 0)) return id;
+        }
     }
 
     // ── 4. the queue writes a Step asks for (G-074, G-080) ─────────────────────────────────────────────────────────

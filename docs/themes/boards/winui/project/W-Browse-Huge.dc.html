@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|browse:Browse" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="browse" height="1280" hint-size="280px,1280px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 32px 48px 0 48px; display: flex; flex-direction: column; gap: 24px; overflow: hidden">
+      <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Browse</h1>
+        <span style="font-size: 14px; line-height: 20px; color: #c5c5c5">Genres, moods and charts — everything Spotify is featuring right now.</span>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; flex-shrink: 0">
+        <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Top</h2>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px">
+            <sc-for list="{{top}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.style}}"><span style="{{t.disc}}"></span><span>{{t.label}}</span></a></sc-for>
+          </div>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">For you</h2>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+            <sc-for list="{{foryou}}" as="t" hint-placeholder-count="5"><a href="#" style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 12px; box-sizing: border-box; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff; font-size: 14px; font-weight: 600"><span style="{{t.dot}}"></span>{{t.label}}</a></sc-for>
+            <a href="#" style="display: flex; align-items: center; justify-content: center; height: 56px; box-sizing: border-box; border-radius: 8px; border: 1px solid rgba(255,255,255,0.0837); font-size: 14px">Explore all categories</a>
+          </div>
+        </section>
+      </div>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Charts</h2><a href="#" style="font-size: 14px">See all</a></div>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{charts}}" as="t" hint-placeholder-count="5"><a href="#" style="display: flex; align-items: center; gap: 12px; height: 72px; padding: 0 12px 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff; min-width: 0"><span style="{{t.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 600">{{t.label}}</span><span style="font-size: 12px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></span></a></sc-for>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Genres</h2>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{genres}}" as="t" hint-placeholder-count="20"><a href="#" style="{{t.style}}">{{t.label}}</a></sc-for>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Mood &amp; activity</h2>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{moods}}" as="t" hint-placeholder-count="10"><a href="#" style="{{t.style}}">{{t.label}}</a></sc-for>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Podcasts &amp; audiobooks</h2>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{pods}}" as="t" hint-placeholder-count="10"><a href="#" style="{{t.style}}">{{t.label}}</a></sc-for>
+        </div>
+      </section>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" pane="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tile = (h) => (t) => ({ label: t[0], style: 'display: flex; align-items: flex-end; height: ' + h + 'px; padding: 16px; box-sizing: border-box; border-radius: 8px; background: ' + t[1] + '; color: #fff; font-size: 16px; line-height: 20px; font-weight: 600; min-width: 0' });
+  const top = [['Music', '#E8115B'], ['Podcasts', '#1E3264'], ['Audiobooks', '#8D67AB'], ['Live Events', '#BA5D07']].map(t => ({ label: t[0], style: 'display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; height: 200px; padding: 16px; box-sizing: border-box; border-radius: 8px; background: ' + t[1] + '; color: #fff; font-size: 20px; line-height: 28px; font-weight: 600', disc: 'width: 56px; height: 56px; border-radius: 4px; background: rgba(0,0,0,0.25)' }));
+  const foryou = [['Made For You', '#0D73EC'], ['New Releases', '#E91429'], ['Discover', '#477D95'], ['Fresh Finds', '#AF2896'], ['RADAR', '#006450']].map(t => ({ label: t[0], dot: 'width: 16px; height: 16px; flex-shrink: 0; border-radius: 8px; background: ' + t[1] }));
+  const charts = [['Charts', 'The 50 most-played tracks right now', '#27856A'], ['Top 50', 'The 50 most-played tracks worldwide', '#148A08'], ['Viral 50', 'The tracks trending right now', '#BA5D07'], ['Top 50 – Netherlands', 'The most-played tracks in the Netherlands', '#E13300'], ['Top Songs – Global', 'Weekly chart of the most-played songs', '#1E3264']].map(t => ({ label: t[0], sub: t[1], art: 'width: 56px; height: 56px; flex-shrink: 0; border-radius: 4px; background: ' + t[2] }));
+  const g = tile(120);
+  const genres = [['Pop', '#E8115B'], ['K-pop', '#8D67AB'], ['Hip-Hop', '#BA5D07'], ['Rock', '#E91429'], ['Dance/Electronic', '#0D73EC'], ['Indie', '#148A08'], ['R&B', '#503750'], ['Latin', '#E13300'], ['Classical', '#7358FF'], ['Jazz', '#477D95'], ['Metal', '#8C1932'], ['Dutch music', '#27856A'], ['Country', '#A56752'], ['Folk & Acoustic', '#6B4A2F'], ['Soul', '#DC148C'], ['Punk', '#1E3264'], ['Reggae', '#006450'], ['Blues', '#2D46B9'], ['Funk', '#AF2896'], ['Ambient', '#509BF5']].map(g);
+  const moods = [['Chill', '#477D95'], ['Focus', '#503750'], ['Workout Music', '#E13300'], ['Sleep', '#1E3264'], ['Party', '#AF2896'], ['Cooking & Dining', '#BA5D07'], ['Romance', '#DC148C'], ['Travel', '#27856A'], ['Gaming', '#7358FF'], ['Wellness', '#148A08']].map(g);
+  const pods = [['Comedy', '#AF2896'], ['True crime', '#8C1932'], ['News & politics', '#1E3264'], ['Education', '#477D95'], ['Business', '#27856A'], ['Technology', '#0D73EC'], ['Society & culture', '#BA5D07'], ['Sports', '#E13300'], ['Fiction', '#503750'], ['Self-help', '#148A08']].map(g);
+  return { top, foryou, charts, genres, moods, pods };
+}
+}
+</script>
+</body>
+</html>

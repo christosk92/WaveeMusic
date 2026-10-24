@@ -3,19 +3,50 @@
   "$comment": "Nederlandse overrides. Ontbrekende sleutels vallen per sleutel terug op en-US.",
   "detail": {
     "play": "Afspelen",
+    "moreWaysToPlay": "Meer manieren om af te spelen",
+    "startRadio": "Radio starten",
     "likedSongs": "Nummers die je leuk vindt",
     "filter": {
       "find": "Zoeken",
-      "short": "Filteren"
+      "short": "Filteren",
+      "unavailable": {
+        "summary": "{count, plural, one {# nummer hier kan niet worden afgespeeld.} other {# nummers hier kunnen niet worden afgespeeld.}}",
+        "explained": "{count, plural, one {# nummer hier kan niet worden afgespeeld} other {# nummers hier kunnen niet worden afgespeeld}}: {reasons}.",
+        "region": "{count, plural, one {eentje is niet beschikbaar in jouw land} other {# zijn niet beschikbaar in jouw land}}",
+        "upcoming": "{count, plural, one {eentje is nog niet uit} other {# zijn nog niet uit}}",
+        "allRegion": "{count, plural, one {het is niet beschikbaar in jouw land} other {ze zijn niet beschikbaar in jouw land}}",
+        "allUpcoming": "{count, plural, one {het is nog niet uit} other {ze zijn nog niet uit}}",
+        "hide": "{count, plural, one {Verberg het} other {Verberg ze}}"
+      }
+    },
+    "empty": {
+      "findSongs": "Zoek nummers om toe te voegen, of begin met de suggesties hieronder.",
+      "searchSongs": "Zoek naar nummers of afleveringen"
+    },
+    "trackFacts": {
+      "unavailableShort": "Niet beschikbaar",
+      "unavailableReason": "Dit nummer kan niet worden afgespeeld"
     },
     "artist": "ARTIEST",
     "songCount": "{count, plural, one {# nummer} other {# nummers}}",
     "today": "Vandaag",
     "yesterday": "Gisteren",
+    "durationHrMin": "{hours} u {minutes} min",
+    "durationHr": "{hours} u",
+    "durationMin": "{minutes} min",
+    "sort": {
+      "albumOrder": "Albumvolgorde",
+      "named": "Sorteren: {order}"
+    },
     "likedFacts": {
       "sheetTitle": "Inzichten",
       "sheetOpen": "Inzichten",
       "sheetClose": "Sluiten"
+    },
+    "filteredMark": "(gefilterd)",
+    "dateGroup": {
+      "thisWeek": "Deze week",
+      "earlier": "Eerder"
     }
   },
   "home": {
@@ -407,7 +438,8 @@
       "creator": "artist",
       "recentlyAdded": "added",
       "releaseDate": "year",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "meer"
     },
     "scope": {
       "inLibrary": "in your library",
@@ -424,7 +456,9 @@
     "title": "Instellingen",
     "sidebar": {
       "title": "Zijbalk",
-      "subtitle": "De navigatie aan de linkerkant"
+      "subtitle": "De navigatie aan de linkerkant",
+      "showCovers": "Hoezen tonen",
+      "showCoversSub": "Artwork naast playlists en albums. Uit toont compacte tekstrijen."
     },
     "layout": {
       "title": "Indeling en dichtheid",
@@ -437,6 +471,44 @@
     "nowPlaying": {
       "title": "Nu speelt",
       "subtitle": "De spelerstijlen achter de vastgezette hoes"
+    },
+    "themePicker": {
+      "subtitle": "Een thema bepaalt hoe elke pagina, de speler en de navigatie eruitzien",
+      "sub": "Elk thema bewaart zijn eigen opties",
+      "none": "Er zijn geen thema’s geïnstalleerd",
+      "developer": "Ontwikkelaar",
+      "switchFailed": "Dit thema kon niet worden toegepast, dus Wavee heeft het huidige thema behouden"
+    },
+    "themeOptions": {
+      "title": "Opties voor {theme}",
+      "none": "Dit thema heeft geen opties",
+      "displayTitle": "Weergave",
+      "animationEffects": "Animatie-effecten",
+      "animationEffectsSub": "Volgt de animatie-instelling van Windows",
+      "reset": "Opties herstellen",
+      "resetSub": "Zet alle opties van dit thema terug naar de standaardwaarden. Je andere instellingen blijven ongewijzigd.",
+      "resetConfirmTitle": "Opties herstellen?",
+      "resetConfirmBody": "Alle opties van dit thema worden teruggezet naar de standaardwaarden. Dit kan niet ongedaan worden gemaakt.",
+      "resetAction": "Herstellen",
+      "surfaces": "Getinte vlakken",
+      "surfacesSub": "Hoeveel de artwork de shell, de pagina-achtergrond, de hero-kleurvlakken en de fotosluiers kleurt",
+      "surfacesOff": "Uit",
+      "surfacesSubtle": "Subtiel",
+      "surfacesRich": "Uitgesproken",
+      "accentFromArtwork": "Accent uit artwork",
+      "accentFromArtworkSub": "Afspelen, Volgen, hartjes en links nemen hun kleur over van de hoes. Uit gebruikt je Windows-accent",
+      "nowPlayingColors": "Kleuren voor Nu speelt",
+      "nowPlayingColorsSub": "Volledig scherm, songtekst en de wachtrij nemen hun kleur over van de hoes die speelt. Uit houdt ze neutraal",
+      "group": {
+        "sidebar": "Zijbalk",
+        "trackLists": "Nummerlijsten",
+        "trackPages": "Nummerpagina’s",
+        "surfaces": "Vlakken"
+      }
+    },
+    "home": {
+      "title": "Start",
+      "subtitle": "Hoe Start je daylist laat zien"
     },
     "links": {
       "subtitle": "Wat Wavee opent vanuit andere apps"
@@ -468,6 +540,7 @@
       "zoomReset": "Zoom herstellen",
       "theme": "Thema",
       "themeSub": "Systeem volgt de Windows-instelling automatisch",
+      "appMode": "App-modus",
       "rowDensity": "Rijhoogte",
       "rowDensitySub": "Hoogte van rijen in nummerlijsten",
       "npvPresentation": "Hero",
@@ -498,6 +571,10 @@
       "cozy": "Ruim",
       "comfortable": "Comfortabel"
     }
+  },
+  "shell": {
+    "switchTabs": "{count} open tabbladen",
+    "accountAndMore": "Account en meer"
   },
   "nav": {
     "home": "Start",
@@ -587,14 +664,19 @@
       "playlists": "Nog geen playlists — gebruik + om er een te maken"
     },
     "newPlaylist": "Mijn playlist",
+    "library": {
+      "refreshFailed": "Je bibliotheek kon niet worden vernieuwd. Wat al geladen was, blijft zichtbaar."
+    },
     "seam": {
       "announceWidth": "Breedte zijbalk {width}"
     },
     "pin": {
       "pinTo": "Vastmaken aan zijbalk",
       "unpin": "Losmaken van zijbalk",
+      "unpinShort": "Losmaken",
       "undo": "Ongedaan maken",
-      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem."
+      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem.",
+      "offline": "Niet offline beschikbaar"
     },
     "section": {
       "recentlyPlayed": "Onlangs afgespeeld",
@@ -650,7 +732,11 @@
     "more": "Meer",
     "retry": "Opnieuw proberen",
     "dismiss": "Sluiten",
-    "offline": "Je bent offline — opgeslagen inhoud wordt getoond.",
+    "offline": "Je bent offline · opgeslagen inhoud wordt getoond.",
+    "offlineTitle": "Je bent offline",
+    "offlineNeeds": "{page} heeft een verbinding nodig. Je downloads en de pagina’s die je onlangs hebt geopend, werken nog.",
+    "offlineNeedsAny": "Deze pagina heeft een verbinding nodig. Je downloads en de pagina’s die je onlangs hebt geopend, werken nog.",
+    "goToLibrary": "Naar je bibliotheek",
     "emptyTitle": "Hier is nog niets",
     "emptySubtitle": "Zodra er iets beschikbaar is, verschijnt het hier.",
     "errorTitle": "Er is iets misgegaan.",
@@ -850,13 +936,28 @@
     "notReady": "Lokaal afspelen is nog niet gereed — meld je eerst aan.",
     "dropHint": "Zet een bestand neer om het af te spelen"
   },
+  "theme": {
+    "classic": {
+      "name": "Wavee Classic",
+      "description": "Het huidige Wavee: zijbalk, tabbladen, kleurvlakken"
+    }
+  },
+  "setup": {
+    "theme": {
+      "title": "Kies je thema",
+      "body": "Een thema bepaalt hoe elke pagina, de speler en de navigatie eruitzien. Je kunt op elk moment wisselen in Instellingen."
+    }
+  },
   "palette": {
     "homeAll": "Start: Alles",
     "homeMusic": "Start: Muziek",
     "homePodcasts": "Start: Podcasts",
     "homeAudiobooks": "Start: Audioboeken",
     "homeFollowingOn": "Start: Volgen aan",
-    "homeFollowingOff": "Start: Volgen uit"
+    "homeFollowingOff": "Start: Volgen uit",
+    "themeOptionOn": "{option}: aan",
+    "themeOptionOff": "{option}: uit",
+    "themeOptionChoice": "{option}: {choice}"
   },
   "diagnostics": {
     "playback": {
@@ -887,6 +988,12 @@
         "far": "netwerkverzoek",
         "disk": "schijfcache"
       }
+    }
+  },
+  "lyrics": {
+    "offline": {
+      "title": "Songteksten hebben een verbinding nodig",
+      "body": "Deze songteksten zijn nog niet op deze pc opgeslagen. Ze verschijnen zodra je weer online bent."
     }
   },
   "stage": {

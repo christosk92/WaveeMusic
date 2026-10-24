@@ -161,12 +161,14 @@ public static partial class Spotify
                     s_hits = s_misses = s_writes = s_forgotten = s_bad = s_dropped = 0;
                     s_phase = s_path is null ? KeyStorePhase.Detached : enabled() ? KeyStorePhase.Idle : KeyStorePhase.Off;
                 }
+                BumpVersion();
             }
 
             /// <summary>UI thread (the welcome effect): the account rows are scoped to; pre-opens the file off-thread.</summary>
             public static void UseAccount(string account)
             {
                 Volatile.Write(ref s_account, account.Length == 0 ? null : account);
+                BumpVersion();                                       // another account's keys are not this one's
                 if (account.Length > 0) Enqueue(new Op(OpKind.Warm, Volatile.Read(ref s_generation), account, null));
             }
 
@@ -206,6 +208,52 @@ public static partial class Spotify
                 }
             }
 
+            /// <summary>Is a key saved for <paramref name="fileId"/> under the current account? A presence check on the
+            /// caller's thread (an api or background thread, never the UI thread): no unseal, no touch, no hit or miss
+            /// counted. False when the store is off, detached, unscoped or broken, and for a key that is being forgotten.
+            /// The "on this PC" row fact reads it (<c>Playback.OnThisPc</c>); <see cref="Version"/> says when to ask again.</summary>
+            public static bool Contains(ReadOnlySpan<byte> fileId)
+            {
+                if (s_phase == KeyStorePhase.Detached || Volatile.Read(ref s_account) is not { } account) return false;
+                if (fileId.Length is 0 or > KeyRecord.MaxFileId || IsForgetting(fileId)) return false;
+                lock (DbGate)
+                {
+                    if (!ServesLocked()) return false;
+                    try
+                    {
+                        ScopeLocked(account);
+                        using SqliteCommand cmd = s_db!.CreateCommand();
+                        cmd.CommandText = "SELECT 1 FROM audio_key WHERE scope=$s AND file_id=$f LIMIT 1;";
+                        cmd.Parameters.AddWithValue("$s", s_scope);
+                        cmd.Parameters.AddWithValue("$f", fileId.ToArray());
+                        return cmd.ExecuteScalar() is not null;
+                    }
+                    catch (SqliteException ex) { FaultLocked("contains", ex); return false; }
+                }
+            }
+
+            /// <summary>Bumped whenever what <see cref="Contains"/> answers may have changed: a batch that wrote or forgot
+            /// keys, a Clear, the setting turning off, a fault that closed the file, an account change, Use and Shutdown.
+            /// Any thread.</summary>
+            public static long Version => Interlocked.Read(ref s_version);
+
+            /// <summary>Raised (on the writer thread, or the thread that cleared) after <see cref="Version"/> moved for a
+            /// committed write or a Clear. A handler only posts; it never calls back into the store. The setting turning
+            /// off and the account changing bump <see cref="Version"/> without raising: a reader compares it.</summary>
+            public static event Action? Changed;
+
+            static long s_version;
+
+            static void BumpVersion() => Interlocked.Increment(ref s_version);
+
+            static void RaiseChanged()
+            {
+                BumpVersion();
+                if (Changed is not { } handler) return;
+                try { handler(); }
+                catch (Exception ex) { Log.Warn("audio", "audio.keys.changed handler faulted (" + ex.GetType().Name + ")"); }
+            }
+
             /// <summary>A proven key, to be written (the proof, <see cref="KeyProof"/>, is the only caller). An enqueue.</summary>
             internal static void Put(byte[] fileId, byte[] key16, KeyOrigin origin)
             {
@@ -241,7 +289,7 @@ public static partial class Spotify
                 bool on = s_enabled();
                 if (!on && s_phase is not (KeyStorePhase.Off or KeyStorePhase.Detached))
                 {
-                    Move(KeyStoreSignal.SettingOff); CloseLocked(); Interlocked.Increment(ref s_generation);
+                    Move(KeyStoreSignal.SettingOff); CloseLocked(); Interlocked.Increment(ref s_generation); BumpVersion();
                     Log.Info("audio", "audio.keys.off (setting): no reads, no writes; the file is kept until cleared");
                 }
                 else if (on && s_phase == KeyStorePhase.Off) Move(KeyStoreSignal.SettingOn);
@@ -291,7 +339,8 @@ public static partial class Spotify
                 {
                     batch.Add(first);
                     while (batch.Count < MaxBatch && queue.TryTake(out Op next)) batch.Add(next);
-                    try { lock (DbGate) RunBatchLocked(batch); }
+                    bool changed = false;
+                    try { lock (DbGate) changed = RunBatchLocked(batch); }
                     catch (Exception ex) { Log.Warn("audio", "audio.keys.write faulted (" + ex.GetType().Name + ")"); }   // a writer must not take the process down
                     finally
                     {
@@ -302,20 +351,22 @@ public static partial class Spotify
                         }
                         batch.Clear();
                     }
+                    if (changed) RaiseChanged();                    // outside DbGate: what Contains answers moved
                 }
             }
 
-            static void RunBatchLocked(List<Op> batch)
+            /// <summary>Returns whether the batch committed a write or a forget (what <see cref="Contains"/> answers moved).</summary>
+            static bool RunBatchLocked(List<Op> batch)
             {
                 int gen = Volatile.Read(ref s_generation);
                 bool live = false;
                 foreach (Op op in batch)
                     if (op.Kind != OpKind.Barrier && op.Generation == gen) { live = true; break; }
-                if (!live || !ServesLocked()) return;                    // a Clear or a toggle-off dropped them; off / broken drops too
+                if (!live || !ServesLocked()) return false;              // a Clear or a toggle-off dropped them; off / broken drops too
                 try
                 {
                     using SqliteTransaction tx = s_db!.BeginTransaction();
-                    int puts = 0;
+                    int puts = 0, forgets = 0;
                     Span<byte> nonce = stackalloc byte[KeyRecord.NonceBytes];
                     foreach (Op op in batch)
                     {
@@ -343,6 +394,7 @@ public static partial class Spotify
                             case OpKind.Forget:
                                 cmd.CommandText = "DELETE FROM audio_key WHERE scope=$s AND file_id=$f;";
                                 s_forgotten++;
+                                forgets++;
                                 break;
                             default:
                                 continue;
@@ -352,8 +404,9 @@ public static partial class Spotify
                     tx.Commit();
                     s_writes += puts;
                     if (puts > 0) TrimLocked();
+                    return puts + forgets > 0;
                 }
-                catch (SqliteException ex) { FaultLocked("write", ex); }
+                catch (SqliteException ex) { FaultLocked("write", ex); return true; }
             }
 
             /// <summary>Above the cap, drop the oldest by last_used down to 90 % (<see cref="KeyStoreRules.EvictCount"/>).</summary>
@@ -564,8 +617,8 @@ public static partial class Spotify
                 Log.Event(WaveeLogLevel.Warning, "audio", "audio.keys.fault", "", null, -1, null,
                     WaveeLogField.Of("step", step), WaveeLogField.Of("code", code),
                     WaveeLogField.Of("verdict", recover ? "rebuild" : spent ? "memory-only" : "count"));
-                if (recover) { s_recovered = true; CloseLocked(); Store.Delete(s_path!); Move(KeyStoreSignal.Corrupt); }
-                else if (spent) { CloseLocked(); Move(KeyStoreSignal.CorruptAgain); }
+                if (recover) { s_recovered = true; CloseLocked(); Store.Delete(s_path!); Move(KeyStoreSignal.Corrupt); BumpVersion(); }
+                else if (spent) { CloseLocked(); Move(KeyStoreSignal.CorruptAgain); BumpVersion(); }
             }
 
             /// <summary>Settings › Clear saved keys (off the UI thread). Safe while playing: a Body holds its own key copy.
@@ -589,6 +642,7 @@ public static partial class Spotify
                 }
                 Log.Event(deleted || emptied ? WaveeLogLevel.Info : WaveeLogLevel.Warning, "audio", "audio.keys.clear", "", null, -1, null,
                     WaveeLogField.Of("deleted", deleted), WaveeLogField.Of("emptied", emptied));
+                RaiseChanged();
             }
 
             static bool EmptyInPlace(string path)
@@ -669,6 +723,7 @@ public static partial class Spotify
                     Move(KeyStoreSignal.Shutdown);
                     last = Read();
                 }
+                BumpVersion();
                 if (wasAttached)
                     Log.Event(WaveeLogLevel.Info, "audio", "audio.keys.stats", "", null, -1, null,
                         WaveeLogField.Of("hits", last.Hits), WaveeLogField.Of("misses", last.Misses), WaveeLogField.Of("writes", last.Writes),

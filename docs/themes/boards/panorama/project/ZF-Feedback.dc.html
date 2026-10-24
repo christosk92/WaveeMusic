@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings, feedback and help</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="none" crumb="Settings › Feedback and help" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|Feedback &amp; help|About" sub-sel="{{six}}" lower="{{lower}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); padding: 20px 36px 0 36px; display: flex; gap: 48px">
+    <div style="width: 860px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Feedback and help</h1>
+      <p style="margin: 4px 0 14px 0; font-size: 14px; line-height: 20px; color: var(--t2)">Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.</p>
+      <div style="border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <div style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px">
+          <span style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--acc); color: var(--onacc)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4v5M8 11.5v.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+          <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Report a problem</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Something broke or looks wrong. The report includes diagnostics you can check first.</span></span>
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <form aria-label="Report a problem" style="border-top: 1px solid var(--div); padding: 16px 16px 16px 64px; display: flex; flex-direction: column; gap: 12px">
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">Title<input type="text" value="Lyrics stop following after a seek in long songs" style="height: 32px; box-sizing: border-box; padding: 0 10px; border-radius: 4px; background: var(--field); border: 1px solid var(--ctrlb); border-bottom: 2px solid var(--acc); color: var(--t1); font: inherit; font-size: 14px; outline: 0"></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">What happened, and how to make it happen again<textarea rows="3" placeholder="For example: play Giorgio by Moroder, seek to 6:00, the lyrics stay on the first verse." style="height: 76px; box-sizing: border-box; padding: 6px 10px; resize: none; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-bottom: 1px solid var(--strong); color: var(--t1); font: inherit; font-size: 14px; line-height: 20px"></textarea></label>
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px"><input type="checkbox" checked style="width: 20px; height: 20px; margin: 0; accent-color: var(--acc)">Attach the last 200 log lines</label>
+          <span style="display: flex; gap: 8px; align-items: center">
+            <button type="button" style="min-width: 120px; height: 32px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Preview report</button>
+            <button type="button" style="min-width: 96px; height: 32px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Cancel</button>
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2); margin-left: 8px">You see the whole report before anything leaves this PC.</span>
+          </span>
+        </form>
+      </div>
+      <a href="#" style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)">
+        <span style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--sub); color: var(--acct)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Suggest something</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">A feature or a change you want</span></span>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </a>
+      <a href="#" style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)">
+        <span style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--sub); color: var(--acct)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 6a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.3v.4M8 11.6v.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Ask a question</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">How something works</span></span>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </a>
+      <h2 style="margin: 20px 0 4px 0; display: flex; align-items: baseline; gap: 10px; font-size: 14px; line-height: 20px; font-weight: 600">Sent from this PC<span style="font-size: 12px; font-weight: 400; color: var(--t2)">2</span></h2>
+      <sc-for list="{{sent}}" as="s" hint-placeholder-count="2">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px 140px; align-items: center; min-height: 52px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); font-size: 14px; line-height: 20px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{s.kind}}</span></span><span style="{{s.stateStyle}}">{{s.state}}</span><a href="#" style="text-align: right; color: var(--acct)">Open on GitHub</a></div>
+      </sc-for>
+    </div>
+    <aside aria-label="About reports" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding-top: 76px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">What a report holds</h2>
+      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{holds}}" as="h" hint-placeholder-count="4"><li style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 20px"><span style="{{h.mark}}"><sc-if value="{{h.yes}}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Included" role="img"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{h.no}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Never included" role="img"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></sc-if></span>{{h.t}}</li></sc-for>
+      </ul>
+      <h2 style="margin: 18px 0 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Diagnostics</h2>
+      <div style="display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 20px"><span style="flex-grow: 1">Log detail</span><span role="radiogroup" aria-label="Log detail" style="display: flex; gap: 2px; padding: 2px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb)"><sc-for list="{{logs}}" as="c" hint-placeholder-count="2"><button role="radio" aria-checked="{{c.on}}" style="{{c.style}}">{{c.label}}</button></sc-for></span></div>
+      <span style="display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; line-height: 20px"><a href="#" style="color: var(--acct)">Copy diagnostics</a><a href="#" style="color: var(--acct)">Open logs folder</a><a href="#" style="color: var(--acct)">Keyboard shortcuts</a></span>
+      <h2 style="margin: 18px 0 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Help</h2>
+      <span style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px"><a href="ZF-ReleaseNotes.dc.html" style="color: var(--acct)">What’s new in 1.6</a><a href="#" style="color: var(--acct)">Wavee on GitHub</a><a href="#" style="color: var(--acct)">How Wavee handles your data</a></span>
+    </aside>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', field: '#1f1f1f', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff', ok: '#6ccb5f', bad: '#ff99a4' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', field: '#ffffff', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92', ok: '#0f7b0f', bad: '#c42b1c' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const sent = [['Lyrics stop following after a seek in long songs', 'Problem · 3 Oct', 'Fixed in 1.6', true], ['Let me pin a show to the band', 'Suggestion · 19 Sep', 'Open', false]].map((d) => ({ title: d[0], kind: d[1], state: d[2], stateStyle: 'font-size: 14px; color: ' + (d[3] ? 'var(--ok)' : 'var(--t2)') }));
+  const holds = [['What you write, and the steps', true], ['Wavee and Windows versions, your GPU', true], ['The last 200 log lines, if you tick it', true], ['Never your account, password or files', false]].map((d) => ({ t: d[0], yes: d[1], no: !d[1],
+    mark: 'width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: ' + (d[1] ? 'var(--ok)' : 'var(--bad)') }));
+  const logs = ['Normal', 'Detailed'].map((l, i) => ({ label: l, on: i === 0 ? 'true' : 'false',
+    style: 'height: 28px; padding: 0 12px; border: 0; border-radius: 3px; font: inherit; font-size: 14px; ' + (i === 0 ? 'background: var(--acc); color: var(--onacc)' : 'background: transparent; color: var(--t1)') }));
+  return { vars, theme, accent, sent, holds, logs, six: 6, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

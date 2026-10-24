@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune empty states: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="albums" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px; overflow: hidden">
+    <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; color: #7a7a7a; font-size: 15px">by artist <span style="font-size: 11px">▾</span><span style="flex-grow: 1"></span><span style="font-size: 13px">0</span></div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; flex-shrink: 0">
+      <span style="width: 100%; aspect-ratio: 1 / 1; box-sizing: border-box; border: 1px dashed rgba(255,255,255,0.14); display: block"></span>
+      <span style="width: 100%; aspect-ratio: 1 / 1; box-sizing: border-box; border: 1px dashed rgba(255,255,255,0.08); display: block"></span>
+    </div>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 28px">no albums yet</span>
+    <span style="font-size: 15px; line-height: 22px; color: #c8c8c8; margin-top: 8px">Save an album with ♡ on its page and it lands here, sorted by artist.</span>
+    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 20px; flex-shrink: 0">
+      <a href="#" style="display: flex; align-items: center; gap: 14px; height: 56px; color: #ffffff; font-size: 15px"><span style="{{goRing}}">→</span>new releases</a>
+      <a href="#" style="display: flex; align-items: center; gap: 14px; height: 56px; color: #ffffff; font-size: 15px"><span style="{{ring}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></span>search</a>
+    </div>
+  </div>
+  <div style="height: 64px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px">
+    <span style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"></span>
+    <span style="width: 44px; height: 44px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.14); display: block; flex-shrink: 0"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 15px; line-height: 20px; color: #a8a8a8">nothing playing</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">pick something and it shows up here</span></span>
+    <button style="{{pill}}">▶ liked songs</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return {
+    accent,
+    goRing: 'width: 40px; height: 40px; border-radius: 20px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; color: #ffffff; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    pill: 'height: 40px; padding: 0 14px; box-sizing: border-box; border-radius: 20px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px; white-space: nowrap; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

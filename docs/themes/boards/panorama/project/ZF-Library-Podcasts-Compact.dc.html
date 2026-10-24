@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Collection podcasts, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="library" items="Liked|Playlists|Albums:312|Artists:184|Podcasts|Audiobooks" sub-sel="{{four}}" lower="{{lower}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 4px 0 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-right: 8px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Followed shows</h2>
+      <span style="font-size: 12px; color: var(--t2)">14</span>
+      <span style="flex-grow: 1"></span>
+      <a href="#" style="height: 40px; display: flex; align-items: center; padding: 0 8px; font-size: 14px; color: var(--acct)">All shows</a>
+    </div>
+    <div style="display: flex; gap: 12px; flex-shrink: 0; overflow: hidden; padding-top: 4px">
+      <sc-for list="{{shows}}" as="s" hint-placeholder-count="5"><a href="#" style="width: 80px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; color: var(--t1)"><span style="{{s.art}}"><sc-if value="{{s.fresh}}" hint-placeholder-val="{{ false }}"><span role="img" aria-label="{{s.newLabel}}" style="position: absolute; top: 6px; right: 6px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--acc); color: var(--onacc); font-size: 11px; line-height: 18px; text-align: center">{{s.n}}</span></sc-if></span><span style="font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span></a></sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; padding-right: 8px; margin-top: 16px; min-height: 0">
+      <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Your episodes</h2>
+        <span style="font-size: 12px; color: var(--t2)">24 · 6 h 12 min</span>
+      </div>
+      <div role="radiogroup" aria-label="Show" style="display: flex; gap: 8px; margin-top: 6px; flex-shrink: 0; overflow: hidden">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button role="radio" aria-checked="{{c.on}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+      </div>
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+        <section aria-label="{{g.title}}" style="display: flex; flex-direction: column; flex-shrink: 0">
+          <h3 style="margin: 0; height: 36px; display: flex; align-items: flex-end; gap: 8px; padding-bottom: 4px; box-sizing: border-box; font-size: 14px; line-height: 20px; font-weight: 600">{{g.title}}<span style="font-size: 12px; font-weight: 400; color: var(--t2)">{{g.count}}</span></h3>
+          <sc-for list="{{g.rows}}" as="e" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 4px; height: 52px; flex-shrink: 0"><a href="#" style="flex-grow: 1; min-width: 0; height: 52px; display: flex; align-items: center; gap: 12px; color: var(--t1)"><span style="{{e.art}}"><sc-if value="{{e.hasBar}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 4px; right: 4px; bottom: 4px; height: 3px; border-radius: 2px; background: rgba(0,0,0,0.45)"><span style="{{e.fill}}"></span></span></sc-if></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{e.title}}">{{e.name}}</span><span style="{{e.metaStyle}}">{{e.meta}}</span></span><sc-if value="{{e.cached}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="On this PC" role="img" style="flex-shrink: 0; color: var(--t2)"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></a><button aria-label="{{e.more}}" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button></div>
+          </sc-for>
+        </section>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="podcast" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const shows = [['The Rest Is Football', '#2f4a3b', 3], ['The Rest Is History', '#4a3b2f', 2], ['Twenty Thousand Hertz', '#4a2f3b', 1], ['Planet Money', '#2f3b4a', 2], ['Hurry Slowly', '#3b3b2f', 0]].map((d) => ({ name: d[0], n: String(d[2]), fresh: d[2] > 0, newLabel: d[2] + ' new episodes',
+    art: 'position: relative; width: 80px; height: 80px; border-radius: 8px; display: block; background: ' + d[1] }));
+  const chips = ['All', 'Unplayed', 'In progress', 'Played'].map((l, i) => ({ label: l, on: i === 0 ? 'true' : 'false',
+    style: 'height: 40px; flex-shrink: 0; padding: 0 14px; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === 0 ? 'border: 0; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const mk = (list) => list.map((d) => { const p = !!d[4], pct = d[3];
+    return { name: d[0], meta: d[1], hasBar: pct > 0, cached: !!d[5], more: 'More options for ' + d[0],
+      art: 'position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; overflow: hidden; display: block; background: ' + d[2],
+      fill: 'position: absolute; left: 0; top: 0; height: 3px; border-radius: 2px; width: ' + pct + '%; background: var(--acc)',
+      title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (p ? 'var(--acct); font-weight: 600' : 'var(--t1)'),
+      metaStyle: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (p ? 'var(--acct)' : 'var(--t2)') }; });
+  const groups = [
+    { title: 'Today', count: '3', rows: mk([['The hidden history of the synthesizer', 'Twenty Thousand Hertz · 12 min left', '#4a2f3b', 62, false, true], ['What the Fed did next', 'Planet Money · 24 min', '#2f3b4a', 0, false, false], ['The Princes in the Tower', 'The Rest Is History · 52 min', '#4a3b2f', 0, false, true]]) },
+    { title: 'This week', count: '9', rows: mk([['Why the Premier League keeps changing', 'The Rest Is Football · 9 Oct · 24 min left', '#2f4a3b', 49, true, true], ['Episode 312: slow mornings', 'Hurry Slowly · 54 min', '#3b3b2f', 0, false, false]]) }
+  ];
+  return { vars, theme, accent, shows, chips, groups, four: 4, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

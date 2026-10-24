@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: appearance, huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="settings › appearance" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="1840px,52px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -2.5px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+        <div style="position: absolute; left: 48px; top: 176px; right: 48px; bottom: 0; display: flex; gap: 40px">
+          <nav aria-label="settings sections" style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column">
+            <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+          </nav>
+          <div style="width: 760px; flex-shrink: 0; display: flex; flex-direction: column">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">appearance</span>
+            <span style="display: flex; align-items: baseline; gap: 14px; margin-top: 20px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">theme</span><span style="font-size: 13px; color: #7a7a7a">changes every page, the player and how you move around</span></span>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 14px">
+              <button style="display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; text-align: left">
+                <span style="width: 100%; height: 120px; background: #1c1c1c; position: relative; display: block; overflow: hidden"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 40px; background: #242424"></span><span style="position: absolute; left: 7px; top: 12px; width: 26px; height: 5px; border-radius: 2px; background: #5a5a5a"></span><span style="position: absolute; left: 7px; top: 24px; width: 21px; height: 5px; border-radius: 2px; background: #5a5a5a"></span><span style="position: absolute; left: 52px; top: 14px; width: 52px; height: 52px; border-radius: 7px; background: #3b4a6b"></span><span style="position: absolute; left: 114px; top: 14px; width: 52px; height: 52px; border-radius: 7px; background: #6b2f4a"></span><span style="position: absolute; left: 0; right: 0; bottom: 0; height: 18px; background: #121212"></span></span>
+                <span style="display: flex; flex-direction: column"><span style="font-size: 15px; line-height: 20px">wavee</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a">the original look</span></span>
+              </button>
+              <button style="display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; text-align: left">
+                <span style="width: 100%; height: 120px; background: #202020; position: relative; display: block; overflow: hidden"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 48px; background: #1c1c1c"></span><span style="position: absolute; left: 7px; top: 14px; width: 34px; height: 10px; border-radius: 5px; background: #2d2d2d"></span><span style="position: absolute; left: 7px; top: 14px; width: 2px; height: 10px; background: #60cdff"></span><span style="position: absolute; left: 58px; top: 14px; right: 12px; height: 48px; border-radius: 4px; background: #2b2b2b; box-shadow: 0 0 0 1px rgba(255,255,255,0.06)"></span><span style="position: absolute; left: 58px; top: 72px; width: 36px; height: 12px; border-radius: 4px; background: #60cdff"></span><span style="position: absolute; left: 0; right: 0; bottom: 0; height: 18px; background: #1a1a1a"></span></span>
+                <span style="display: flex; flex-direction: column"><span style="font-size: 15px; line-height: 20px">winui</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a">windows 11, fluent</span></span>
+              </button>
+              <button aria-pressed="true" style="display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; text-align: left">
+                <span style="{{zuneTile}}"><span style="position: absolute; left: 10px; top: 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 11px; color: #7a7a7a; white-space: nowrap"><span style="color: #ffffff; font-weight: 600">home</span>  browse  library</span><span style="position: absolute; left: 7px; top: 22px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 52px; font-weight: 200; line-height: 56px; white-space: nowrap; color: #ffffff">quickplay</span><span style="position: absolute; left: 10px; top: 82px; width: 24px; height: 24px; border-radius: 1px; background: #6b2f4a"></span><span style="position: absolute; left: 40px; top: 82px; width: 24px; height: 24px; border-radius: 1px; background: #3b4a6b"></span><span style="{{zuneDot}}"></span><span style="position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #111111"></span></span>
+                <span style="display: flex; flex-direction: column"><span style="{{zuneName}}">zune</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a">metro, panorama, pivots</span></span>
+              </button>
+              <button style="display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; text-align: left">
+                <span style="width: 100%; height: 120px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 48px; font-weight: 200; color: #a8a8a8">+</span>
+                <span style="display: flex; flex-direction: column"><span style="font-size: 15px; line-height: 20px">add a theme</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a">from a folder</span></span>
+              </button>
+            </div>
+            <span style="font-size: 13px; color: #7a7a7a; margin-top: 16px">community themes · none installed yet · <a href="#">open the themes folder</a> · <a href="#">how to make a theme</a></span>
+            <span style="display: flex; align-items: baseline; gap: 14px; margin-top: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">zune options</span><a href="#" style="font-size: 13px">all options ›</a></span>
+            <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 24px; row-gap: 22px; align-items: center; margin-top: 18px">
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">accent</span><span style="font-size: 12px; color: #7a7a7a">play, the playing row, selection</span></span>
+              <span style="display: flex; align-items: center; gap: 12px"><sc-for list="{{accents}}" as="a" hint-placeholder-count="5"><button aria-label="{{a.name}}" style="{{a.style}}"></button></sc-for><span style="font-size: 13px; color: #a8a8a8; margin-left: 6px">pink</span><a href="#" style="font-size: 13px; margin-left: 12px">use the windows accent</a></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">ground</span><span style="font-size: 12px; color: #7a7a7a">the page colour</span></span>
+              <span style="display: flex; gap: 8px"><sc-for list="{{ground}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">background</span><span style="font-size: 12px; color: #7a7a7a">what sits behind page titles</span></span>
+              <span style="display: flex; gap: 8px"><sc-for list="{{background}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-top: 40px">window</span>
+            <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 24px; row-gap: 22px; align-items: center; margin-top: 18px">
+              <span style="font-size: 15px">language</span>
+              <span style="font-size: 14px">english · follows windows <a href="#" style="font-size: 13px; margin-left: 12px">change</a></span>
+              <span style="font-size: 15px">on close</span>
+              <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="width: 40px; height: 20px; background: rgba(255,255,255,0.14); position: relative; display: block; flex-shrink: 0"><span style="position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; background: #ffffff; display: block"></span></span>keep playing in the notification area</label>
+            </div>
+          </div>
+          <div style="flex-grow: 1; min-width: 640px; display: flex; flex-direction: column; gap: 12px; padding-top: 8px">
+            <span style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">preview</span><span style="font-size: 13px; color: #7a7a7a">zune · dark · pink · artwork wash</span></span>
+            <div style="width: 100%; height: 420px; flex-shrink: 0; background: #161616; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; overflow: hidden; margin-top: 4px">
+              <div style="position: absolute; left: 20px; top: 14px; display: flex; gap: 16px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px"><span style="color: #ffffff; font-weight: 600">home</span><span style="color: #7a7a7a; font-weight: 350">browse</span><span style="color: #7a7a7a; font-weight: 350">library</span><span style="color: #7a7a7a; font-weight: 350">recents</span></div>
+              <div style="position: absolute; left: 20px; top: 48px; display: flex; gap: 14px; font-size: 12px; color: #a8a8a8"><span style="color: #ffffff; font-weight: 600">all</span><span>music</span><span>podcasts</span><span>audiobooks</span></div>
+              <div style="position: absolute; left: 20px; top: 80px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px">pins</div>
+              <div style="position: absolute; left: 20px; top: 112px; display: flex; gap: 12px"><sc-for list="{{prevPins}}" as="t" hint-placeholder-count="5"><span style="display: flex; flex-direction: column; gap: 5px; width: 96px"><span style="{{t.art}}"></span><span style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span></span></sc-for></div>
+              <div style="position: absolute; left: 0; right: 0; top: 248px; height: 72px; display: flex; background: #1b1b1b"><span style="width: 96px; flex-shrink: 0; background: linear-gradient(135deg, #4a2f5b, #7a3b6b 60%, #1b1b1b)"></span><span style="display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 16px; min-width: 0"><span style="font-size: 10px; color: #a8a8a8">your daylist · afternoon</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 18px; font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">sad girl synth-pop tuesday afternoon</span></span><span style="flex-grow: 1"></span><span style="{{prevPlay}}">▶</span></div>
+              <div style="position: absolute; left: 20px; top: 334px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px">made for you</div>
+              <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: #111111"><span style="position: absolute; left: 0; top: 0; right: 0; height: 1px; background: rgba(255,255,255,0.12)"></span><span style="{{prevProgress}}"></span><span style="position: absolute; left: 12px; top: 7px; width: 22px; height: 22px; border-radius: 1px; background: #3a2f22"></span><span style="position: absolute; left: 42px; top: 10px; font-size: 11px; color: #a8a8a8">Get Lucky · Daft Punk</span><span style="{{prevDisc}}"></span></div>
+            </div>
+            <span style="font-size: 13px; color: #7a7a7a">home · at the size it draws in a 1440 window, scaled to fit</span>
+            <div style="width: 100%; height: 300px; flex-shrink: 0; background: #161616; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; overflow: hidden; margin-top: 12px">
+              <div style="position: absolute; left: 0; top: 0; right: 0; height: 190px; background: linear-gradient(180deg, #3a2f22 0%, #161616 100%)"></div>
+              <div style="position: absolute; left: 20px; top: 12px; display: flex; gap: 14px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 16px"><span style="color: #7a7a7a">home</span><span style="color: #7a7a7a">browse</span><span style="color: #ffffff; font-weight: 600">library</span><span style="color: #7a7a7a">recents</span></div>
+              <div style="position: absolute; left: 14px; top: 34px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 72px; font-weight: 200; line-height: 80px; white-space: nowrap; letter-spacing: -1.5px">random access memories</div>
+              <span style="position: absolute; left: 20px; top: 124px; width: 112px; height: 112px; border-radius: 2px; background: #3a2f22; box-shadow: 0 0 0 1px rgba(255,255,255,0.08)"></span>
+              <span style="position: absolute; left: 20px; top: 252px; display: flex; align-items: center; gap: 8px; font-size: 12px"><span style="{{prevPlaySmall}}">▶</span>play</span>
+              <div style="position: absolute; left: 156px; top: 124px; right: 20px; display: flex; flex-direction: column">
+                <sc-for list="{{prevRows}}" as="r" hint-placeholder-count="6"><span style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 11px; color: #7a7a7a; font-variant-numeric: tabular-nums">{{r.time}}</span></span></sc-for>
+              </div>
+            </div>
+            <span style="font-size: 13px; color: #7a7a7a">album · the artwork wash tints the top from the cover</span>
+            <span style="font-size: 13px; line-height: 20px; color: #7a7a7a; margin-top: 12px; max-width: 640px">switching paints the next frame in the new theme. playback, the queue and the page you are on stay put.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" from="playing from random access memories" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 52px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 24px; line-height: 32px; ' + (n === 'appearance' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const accents = [['pink', '#ff3ca6'], ['orange', '#ff7a1a'], ['blue', '#60cdff'], ['green', '#8fd14f'], ['purple', '#b983ff']].map((d) => ({ name: d[0], style: 'width: 36px; height: 36px; border: 0; padding: 0; flex-shrink: 0; background: ' + d[1] + (d[1] === accent ? '; outline: 2px solid #ffffff; outline-offset: 2px' : '') }));
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 36px; padding: 0 14px; border: 0; font: inherit; font-size: 15px; white-space: nowrap; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  const prevPins = [['late night drive', '#3b4a6b'], ['Liked Songs', '#5b2f6b'], ['OutRun', '#6b2f4a'], ['Odyssey', '#2f5b6b'], ['Random Access Memories', '#3a2f22']].map((d) => ({ name: d[0], art: 'width: 96px; height: 96px; border-radius: 2px; background: ' + d[1] + '; display: block' }));
+  const prevRows = [['1', 'Give Life Back to Music', '4:34'], ['2', 'The Game of Love', '5:21'], ['3', 'Giorgio by Moroder', '9:04'], ['▮▮▮', 'Get Lucky', '6:09'], ['9', 'Beyond', '4:50'], ['10', 'Motherboard', '5:41']].map((d) => { const play = d[0] === '▮▮▮'; return {
+    n: d[0], t: d[1], time: d[2],
+    row: 'display: grid; grid-template-columns: 40px minmax(0, 1fr) 48px; align-items: center; height: 28px',
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 9 : 18) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+  }; });
+  return {
+    accent, sections, accents, prevPins, prevRows,
+    ground: chips(['dark', 'light', 'follow windows'], 0),
+    background: chips(['artwork wash', 'mix', 'none'], 0),
+    zuneTile: 'width: 100%; height: 120px; background: #161616; position: relative; display: block; overflow: hidden; outline: 2px solid ' + accent + '; outline-offset: 2px',
+    zuneDot: 'position: absolute; left: 20px; top: 108px; width: 5px; height: 5px; border-radius: 3px; background: ' + accent,
+    zuneName: 'font-size: 15px; line-height: 20px; color: ' + accent,
+    prevPlay: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 12px; align-self: center; margin-right: 16px; flex-shrink: 0',
+    prevPlaySmall: 'width: 28px; height: 28px; border-radius: 14px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 10px',
+    prevProgress: 'position: absolute; left: 0; top: 0; width: 41%; height: 1px; background: ' + accent,
+    prevDisc: 'position: absolute; left: 50%; top: 6px; width: 24px; height: 24px; margin-left: -12px; border-radius: 12px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

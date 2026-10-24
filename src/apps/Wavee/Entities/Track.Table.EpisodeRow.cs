@@ -43,7 +43,7 @@ public readonly partial struct Track
         public override Element Render()
         {
             var shape = _host.ShapeValue;
-            bool narrow = shape.Density < 2;
+            bool narrow = shape.NarrowEpisode;
             var bound = new BoundItemScope<Episode.RowItem>(_scope, _item);
             var ctx = new Episode.RowContext
             {
@@ -53,7 +53,7 @@ public readonly partial struct Track
                 Menu = _host.EpisodeMenuFor,
                 Selection = _host.EpisodeSelection,
             };
-            return Episode.ReaderRow(in bound, ctx, narrow);
+            return Episode.ReaderRow(_host.EpisodeStyle, in bound, ctx, narrow);
         }
     }
 }

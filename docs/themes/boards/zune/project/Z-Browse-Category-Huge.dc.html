@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune browse category: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="browse › music › pop" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="browse" sub="top,for you,genres,charts,concerts" on="genres" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 260px; flex-shrink: 0; background: #8d2f5b; position: relative; overflow: hidden">
+          <div style="position: absolute; left: 38px; top: 48px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -3px; white-space: nowrap; color: #ffffff">pop</div>
+          <div style="position: absolute; right: 48px; bottom: 28px; display: flex; align-items: center; gap: 24px; font-size: 14px; color: rgba(255,255,255,0.8)"><span>music · category · 1,240 playlists</span><button aria-label="share" style="{{ringLight}}">↗</button></div>
+        </div>
+        <div style="display: flex; flex-direction: column; padding: 32px 48px 0 48px; gap: 36px">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">popular playlists</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{playlists}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">new releases</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{releases}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">pop artists</span>
+            <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{artists}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 8px; align-items: center; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 15px; color: #ffffff; white-space: nowrap">{{t.name}}</span></a></sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const sq = (c, round) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: ' + (round ? '50%' : '2px') + '; background: ' + c + '; display: block';
+  const playlists = [['Today\'s Top Hits', 'spotify', '#8d2f5b'], ['Pop Rising', 'spotify', '#5b2f8d'], ['Hot Hits NL', 'spotify', '#2f5b8d'], ['Pop Up', 'spotify', '#8d5b2f'], ['Teen Beats', 'spotify', '#2f8d6b'], ['Soft Pop Hits', 'spotify', '#6b2f3b'], ['Pop Sauce', 'spotify', '#3b6b2f'], ['Just Hits', 'spotify', '#2f3b6b']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const releases = [['Supernova', 'aespa', '#5b2f6b'], ['How Sweet', 'NewJeans', '#6b2f3b'], ['Magnetic', 'ILLIT', '#6b5b2f'], ['Sticky', 'KISS OF LIFE', '#2f6b5b'], ['Guess', 'Charli xcx', '#8d8d2f'], ['Espresso', 'Sabrina Carpenter', '#8d5b5b'], ['Birds of a Feather', 'Billie Eilish', '#2f5b5b'], ['Good Luck, Babe!', 'Chappell Roan', '#8d2f8d']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const artists = [['Dua Lipa', '#5b2f4a'], ['The Weeknd', '#2a2433'], ['Olivia Rodrigo', '#6b2f5b'], ['Harry Styles', '#2f4a6b'], ['Taylor Swift', '#4a3b5b'], ['Billie Eilish', '#2f5b5b'], ['Sabrina Carpenter', '#8d5b5b'], ['Troye Sivan', '#6b4a2f']].map((d) => ({ name: d[0], art: sq(d[1], true) }));
+  return {
+    accent, playlists, releases, artists,
+    ringLight: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center',
+  };
+}
+}
+</script>
+</body>
+</html>

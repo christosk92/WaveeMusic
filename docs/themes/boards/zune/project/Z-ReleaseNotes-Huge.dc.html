@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune release notes · huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="settings › about › what's new" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="none" sub="" accent="{{accent}}" hint-size="1840px,52px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -2.5px; white-space: nowrap; opacity: 0.9">what's new</div>
+        <span style="position: absolute; left: 48px; top: 156px; font-size: 13px; color: #a8a8a8">since you last looked: 3 releases · 1.4.0 → 1.6.0 · comparing 1.6.0 with 1.5.2</span>
+        <div style="position: absolute; left: 48px; right: 48px; top: 204px; bottom: 0; display: flex; gap: 32px">
+          <sc-for list="{{cols}}" as="c" hint-placeholder-count="2">
+            <div style="width: 760px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px">
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <span style="{{c.tagStyle}}">{{c.tag}}</span>
+                <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">{{c.title}}</span>
+              </div>
+              <sc-if value="{{c.hasHighlights}}" hint-placeholder-val="{{ true }}">
+                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+                  <sc-for list="{{c.highlights}}" as="h" hint-placeholder-count="3">
+                    <div style="background: #1b1b1b; padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 140px; box-sizing: border-box"><span style="{{h.swatch}}"></span><span style="font-size: 15px">{{h.title}}</span><span style="font-size: 12px; color: #a8a8a8; line-height: 17px">{{h.text}}</span><a href="#" style="{{h.link}}">try it →</a></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{c.hasSummary}}" hint-placeholder-val="{{ false }}">
+                <div style="background: #1b1b1b; padding: 16px 20px; min-height: 140px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 6px">
+                  <span style="font-size: 15px">a fix release</span>
+                  <span style="font-size: 13px; color: #a8a8a8; line-height: 18px">{{c.summary}}</span>
+                </div>
+              </sc-if>
+              <sc-for list="{{c.groups}}" as="g" hint-placeholder-count="3">
+                <div style="display: flex; flex-direction: column">
+                  <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; height: 40px; display: flex; align-items: flex-end; padding-bottom: 6px">{{g.title}}</span>
+                  <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+                    <div style="display: flex; align-items: center; gap: 12px; min-height: 36px; font-size: 14px"><span style="color: #c8c8c8; flex-grow: 1; min-width: 0">{{r.text}}</span><span style="{{r.chip}}">{{r.issue}}</span><span style="{{r.avatar}}"></span><span style="font-size: 12px; color: #7a7a7a; white-space: nowrap; width: 150px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0">{{r.who}}</span></div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <div style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 8px">releases</span>
+            <sc-for list="{{releases}}" as="v" hint-placeholder-count="6">
+              <a href="#" style="{{v.row}}"><span style="{{v.name}}">{{v.v}}</span><span style="font-size: 11px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.tags}}</span></a>
+            </sc-for>
+            <span style="font-size: 11px; line-height: 15px; color: #7a7a7a; margin-top: 12px">ctrl-click a second release to read it beside yours</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const highlights = [['themes', 'classic, winui and zune: one app, three looks, each with its own options.', accent], ['the zune band', 'pivots across the top, your pins beside them, no sidebar.', '#60cdff'], ['liked songs, grouped', 'this week, last week, then the months.', '#8fd14f']].map((d) => ({ title: d[0], text: d[1], link: 'font-size: 13px; color: ' + accent + '; margin-top: auto', swatch: 'width: 24px; height: 24px; background: ' + d[2] + '; display: block' }));
+  const chip = (state) => 'font-size: 11px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0; color: ' + (state === 'closed' ? '#8fd14f' : state === 'open' ? '#60cdff' : '#a8a8a8') + '; background: rgba(255,255,255,0.06)';
+  const avatar = (c) => 'width: 18px; height: 18px; border-radius: 9px; background: ' + c + '; display: block; flex-shrink: 0';
+  const mk = (gs) => gs.map((g) => ({ title: g.title, rows: g.rows.map((r) => ({ text: r[0], issue: r[1], who: r[2], avatar: avatar(r[3]), chip: chip('closed') })) }));
+  const g160 = mk([
+    { title: 'added', rows: [['Themes: Classic, WinUI and Zune, each with its own options', '#210 closed', 'christosk92', '#5b6b3b'], ['Liked Songs groups by week and month when sorted by date added', '#203 closed', 'christosk92', '#5b6b3b'], ['The Zune band shows up to six pins beside the pivots', '#205 closed', 'fable · first contribution', '#6b2f4a']] },
+    { title: 'changed', rows: [['The right panel sits inline from 820 wide and floats below that', '#198 closed', 'christosk92', '#5b6b3b'], ['Track rows: the playing song is drawn in the accent, with no plate', '#201 closed', 'christosk92', '#5b6b3b']] },
+    { title: 'fixed', rows: [['A theme switch never paints a frame in the old theme', '#214 closed', 'christosk92', '#5b6b3b'], ['The daylist clock no longer drifts after sleep', '#190 closed', 'sonnet · first contribution', '#2f5b6b']] },
+  ]);
+  const g152 = mk([
+    { title: 'changed', rows: [['Sign in opens your browser instead of a window inside wavee', '#176 closed', 'christosk92', '#5b6b3b'], ['The queue keeps its order after a restart', '#181 closed', 'christosk92', '#5b6b3b']] },
+    { title: 'fixed', rows: [['Playback resumes after the pc wakes from sleep', '#184 closed', 'christosk92', '#5b6b3b'], ['Lyrics stay in sync after you seek', '#186 closed', 'christosk92', '#5b6b3b'], ['Explicit badges no longer overlap long song titles', '#187 closed', 'christosk92', '#5b6b3b'], ['The mini player remembers its place on a second screen', '#188 closed', 'christosk92', '#5b6b3b'], ['Search keeps your query when you go back', '#189 closed', 'christosk92', '#5b6b3b']] },
+  ]);
+  const cols = [
+    { tag: 'you have this · latest · stable', tagStyle: 'font-size: 13px; color: ' + accent, title: 'wavee 1.6.0 "aurora"', hasHighlights: true, hasSummary: false, highlights, summary: '', groups: g160 },
+    { tag: 'the release before yours · stable', tagStyle: 'font-size: 13px; color: #a8a8a8', title: 'wavee 1.5.2', hasHighlights: false, hasSummary: true, highlights: [], summary: 'playback after sleep, lyrics timing and sign in. no new features; the queue and search behave the way they should.', groups: g152 },
+  ];
+  const releases = [['1.7.0-beta.1', 'beta', ''], ['1.6.0', 'you · latest · stable', accent], ['1.5.2', 'stable · beside it', '#ffffff'], ['1.5.0', '', ''], ['1.4.1', '', ''], ['1.4.0', '', '']].map((d) => ({ v: d[0], tags: d[1], row: 'display: flex; flex-direction: column; gap: 2px; padding: 8px 0; ' + (d[2] ? 'box-shadow: inset 2px 0 0 ' + d[2] + '; padding-left: 12px' : ''), name: 'font-size: 15px; color: ' + (d[2] ? '#ffffff' : '#c8c8c8') + '; font-variant-numeric: tabular-nums' }));
+  return { accent, cols, releases };
+}
+}
+</script>
+</body>
+</html>

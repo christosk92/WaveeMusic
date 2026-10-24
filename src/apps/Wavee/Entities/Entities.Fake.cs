@@ -65,7 +65,7 @@ public static partial class Entities
     static readonly string[] s_artistNames =
     [
         "Christos", "Alex Rivers", "Mia Solace", "The Wavee Collective", "Nova Kite", "Sable & Sun",
-        "Half Moon Radio", "Kimmuseum", "Dry Season", "The Longtime", "Iris Overdrive", "Coral Hours",
+        "Half Moon Radio", "Kimmuseum", "Dry Season", "The Longtime", "Iris Overdrive and the Nightjars", "Coral Hours",
     ];
 
     static readonly string[] s_playlistNames =
@@ -103,6 +103,9 @@ public static partial class Entities
     static string Cover(int i)
         => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "cover" + Wrap(i, CoverCount).ToString("D2") + ".jpg");
 
+    /// <summary>The bundled bright header photograph (a white sky over a pale ground), as an absolute path like <see cref="Cover"/>.</summary>
+    static string BrightHeaderPhoto() => Path.Combine(AppContext.BaseDirectory, "assets", "covers", "header-bright.jpg");
+
     // ── the seed ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The demo catalog, as columns. Called once, from the app's boot sequence, only when
@@ -114,7 +117,7 @@ public static partial class Entities
         var staging = Staging.Rent();
         try
         {
-            SeedRows(staging, now0);
+            SeedRows(staging);
             Commit(staging);
         }
         finally
@@ -175,6 +178,12 @@ public static partial class Entities
     /// <c>Platform.cs</c>'s <c>--fake</c> arm must set <c>CatalogScope.Account</c> to this same literal (reported).</summary>
     public const string FakeAccount = "wavee-listener";
 
+    /// <summary>The own account's PROFILE address. A real account's row is keyed `spotify:user:&lt;username&gt;` (<c>Entities.ResolveMe</c>), so
+    /// <c>ProfileRoute.For(User.Me)</c> routes to it; the fake's "me" row is keyed by the bare <see cref="FakeAccount"/> (every library relation
+    /// hangs off it, and the scope names the account so), which no route can address. The seed adds this row beside it, the same identity and
+    /// profile facts with the CurrentUser flag, so `goto uri=spotify:user:wavee-listener` opens the own profile.</summary>
+    public const string FakeProfileUri = "spotify:user:" + FakeAccount;
+
     static partial void SeedAlbumSurfaces(long now0);
     static partial void SeedArtistSurfaces(long now0);
     static partial void SeedLibrarySurfaces(long now0);
@@ -190,6 +199,16 @@ public static partial class Entities
     };
 
     static string TrackUri(int i) => "spotify:track:tr" + Wrap(i, TrackCount);
+
+    /// <summary>The demo's "on this PC" spread (<c>Playback.OnThisPc.UseFake</c>): every third pool track, and none of the rest, by a stable
+    /// hash of the uri text (FNV-1a: no <c>string.GetHashCode</c>, which is salted per process).</summary>
+    internal static bool FakeOnThisPc(EntityId id)
+    {
+        if (id.Kind != EntityKind.Track) return false;
+        uint h = 2166136261u;
+        foreach (char c in id.Text) h = (h ^ c) * 16777619u;
+        return h % 3u == 0u;
+    }
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);
     static string ArtistUri(int i) => "spotify:artist:ar" + Wrap(i, ArtistCount);
     static string PlaylistUri(int i) => "spotify:playlist:pl" + Wrap(i, PlaylistCount);
@@ -207,15 +226,16 @@ public static partial class Entities
         _ => (AlbumKind.Album, 10),
     };
 
-    static void SeedRows(Staging s, long now0)
+    static void SeedRows(Staging s)
     {
-        // ── users: me + three owners ────────────────────────────────────────────────────────────────────────────────
-        for (int i = 0; i < 4; i++)
+        // ── users: me + three owners, and me's profile address (FakeProfileUri) ───────────────────────────────────
+        for (int i = 0; i < 5; i++)
         {
-            ref var row = ref s.Users.RowFor(s.AddText(Utf8(UserUri(i))), Authority.Seed, (uint)UserFields.Identity);
-            row.Name = s.AddText(Utf8(i == 0 ? "Wavee Listener" : s_artistNames[i - 1]));
-            row.Image = s.AddText(Utf8(Cover(i)));
-            row.Color = s_userColors[i];
+            int u = i < 4 ? i : 0;   // the profile address is me again
+            ref var row = ref s.Users.RowFor(s.AddText(Utf8(i < 4 ? UserUri(i) : FakeProfileUri)), Authority.Seed, (uint)UserFields.Identity);
+            row.Name = s.AddText(Utf8(u == 0 ? "Wavee Listener" : s_artistNames[u - 1]));
+            row.Image = s.AddText(Utf8(Cover(u)));
+            row.Color = s_userColors[u];
         }
 
         // ── tracks: the 166-row liked pool, reused (via Wrap) as album and playlist membership ─────────────────────

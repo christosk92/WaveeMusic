@@ -62,7 +62,7 @@ public static partial class Sidebar
         for (int i = 0; i < s_account.ExpandedFolders.Count; i++) s_expandedFolders.Add(s_account.ExpandedFolders[i]);
         s_folderVersion.Value = s_folderVersion.Peek() + 1;
         s_firstSeen = s_account.FirstSeen.Count > 0 ? [.. s_account.FirstSeen] : null;
-        Binder?.ResetFirstSeen();
+        s_model?.ResetFirstSeen();                             // a model that does not exist yet has nothing to re-seed
         Log.Info("sidebar", "account.loaded key=" + (key.Length == 0 ? "signed-out" : SidebarAccountKey.Hash(key))
                             + " pins=" + Pins.Count.ToString(CultureInfo.InvariantCulture));
     }

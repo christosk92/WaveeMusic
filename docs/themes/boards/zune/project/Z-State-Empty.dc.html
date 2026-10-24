@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune state: empty</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #0e0e0e; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 28px 48px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 28px 48px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0">
+    <span style="font-size: 13px; color: #7a7a7a">collection · nothing saved yet · the sub-pivots stay, the sentence says how to fill it</span>
+    <div style="flex-grow: 1; background: #161616; padding: 16px 32px; display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+      <div style="display: flex; gap: 20px; font-size: 14px"><a href="#">liked</a><a href="#">playlists</a><a href="#" style="color: #ffffff; font-weight: 600">albums</a><a href="#">artists</a><a href="#">podcasts</a><a href="#">audiobooks</a></div>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 40px">no albums yet</span>
+      <span style="font-size: 14px; line-height: 20px; color: #a8a8a8; max-width: 440px">Save an album with ♡ on its page and it lands here, sorted by artist.</span>
+      <span style="display: flex; gap: 22px; padding-top: 10px; font-size: 14px">
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">→</span>new releases</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">⌕</span>search</button>
+      </span>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0">
+    <span style="font-size: 13px; color: #7a7a7a">search · no results · facet counts go dim, a spelling guess, then recent searches</span>
+    <div style="flex-grow: 1; background: #161616; padding: 16px 32px; display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+      <div style="display: flex; gap: 20px; font-size: 14px; color: #4f4f4f"><span style="color: #ffffff; font-weight: 600">all</span><span>songs 0</span><span>albums 0</span><span>playlists 0</span><span>artists 0</span><span>podcasts 0</span></div>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 40px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">nothing for "nightcal kavinksy"</span>
+      <span style="font-size: 14px; color: #a8a8a8">did you mean <a href="#" style="color: #ffffff; text-decoration: underline; text-underline-offset: 3px">nightcall kavinsky</a>? or try fewer words.</span>
+      <span style="font-size: 12px; color: #7a7a7a; margin-top: 12px">recent searches</span>
+      <span style="display: flex; gap: 20px; font-size: 14px"><a href="#" style="color: #ffffff">the weeknd</a><a href="#" style="color: #ffffff">midnight</a><a href="#" style="color: #ffffff">daft punk</a><a href="#">clear</a></span>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0">
+    <span style="font-size: 13px; color: #7a7a7a">liked songs · empty · the hero keeps its height so the first like does not move the page</span>
+    <div style="flex-grow: 1; background: linear-gradient(180deg, #2a1f33 0%, #161616 60%); padding: 20px 32px; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px">liked songs</span>
+      <span style="font-size: 14px; color: #a8a8a8">0 songs</span>
+      <span style="display: flex; gap: 22px; padding-top: 8px; font-size: 14px; color: #4f4f4f">
+        <span style="display: flex; align-items: center; gap: 10px"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #4f4f4f; display: flex; align-items: center; justify-content: center; font-size: 13px">▶</span>play</span>
+        <span style="display: flex; align-items: center; gap: 10px"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #4f4f4f; display: flex; align-items: center; justify-content: center; font-size: 13px">⇄</span>shuffle</span>
+      </span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-top: 34px">songs you like show up here</span>
+      <span style="font-size: 14px; color: #a8a8a8">press ♡ on any song, in any list or in the play bar.</span>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0">
+    <span style="font-size: 13px; color: #7a7a7a">queue panel · nothing playing · one way in, in the accent</span>
+    <div style="flex-grow: 1; background: #161616; display: flex; overflow: hidden">
+      <div style="flex-grow: 1; padding: 20px 32px; display: flex; flex-direction: column; gap: 12px">
+        <span style="width: 70%; height: 12px; background: rgba(255,255,255,0.04); display: block"></span><span style="width: 50%; height: 12px; background: rgba(255,255,255,0.04); display: block"></span><span style="width: 60%; height: 12px; background: rgba(255,255,255,0.04); display: block"></span>
+      </div>
+      <div style="width: 340px; flex-shrink: 0; background: #1b1b1b; padding: 12px 20px 16px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: center; gap: 18px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 10px"><a href="#" style="color: #ffffff">queue</a><a href="#" style="color: #6f6f6f">lyrics</a><a href="#" style="color: #6f6f6f">now playing</a></div>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; margin-top: 30px">nothing playing</span>
+        <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">pick something and it shows up here. songs you add with play next go to the top.</span>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 8px 0 0 0"><span style="{{playRing}}">▶</span>play liked songs</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f","#b983ff"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return {
+    accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

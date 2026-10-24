@@ -34,7 +34,7 @@ public readonly partial struct Home
     /// <summary>THE install method (contract §7): the eight routes owner P renders, the omnibar's suggestion source, and
     /// every notification seam the feed host fills. The composition calls it once, from App.cs, after
     /// <c>Track.InstallActions</c>. UI thread. Assignments: <c>Shell.SetPage</c> × 8, <c>Shell.Omnibar.Source</c>
-    /// (live builds only — <c>--fake</c> keeps the navigation-log answer), <c>Notify.RefreshFeeds</c>, and the feed host's
+    /// (live builds ask Spotify, <c>--fake</c> the fake catalogue), <c>Notify.RefreshFeeds</c>, and the feed host's
     /// three watches (<see cref="Feeds"/>: the feeds once per online session, the update row merge, the daylist note).</summary>
     public static void InstallPages()
     {
@@ -49,7 +49,7 @@ public readonly partial struct Home
         Shell.SetPage(Shell.RouteKind.Browse, Browse.DirectoryPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseCategory, Browse.CategoryPageFor);
         Shell.SetPage(Shell.RouteKind.Recents, Recents.PageFor);
-        if (!Platform.Args.Fake) Shell.Omnibar.Source = Spotify.Api.SuggestAsync;
+        Shell.Omnibar.Source = Platform.Args.Fake ? Entities.FakeSuggestAsync : Spotify.Api.SuggestAsync;
         Notify.RefreshFeeds = Feeds.Refresh;
         Feeds.Install();
     }
@@ -79,64 +79,10 @@ public readonly partial struct Home
         /// <summary>The podium's rank depth (0.2.9 <c>TopArtists</c>).</summary>
         public const int TopLimit = 10;
 
-        // ── the warm-start marks (a KEEP-ALIVE eviction must not force a cold-boot skeleton) ────────────────────────
-        //
-        // A remounted HomeLandingView loses its page-local Loadable/HomeRevealGate — that is the whole point of keep-
-        // alive eviction — but the entity graph does not lose the sections, and a page that already painted this
-        // content once THIS SESSION must not re-shimmer it merely because its component instance was thrown away.
-        // The mark below is what lets `Home.Page.cs`'s warm-start seed (`InitialHome`/`InitialCharts`) tell that case
-        // apart from a genuine cold boot: a disk-warmed row can carry Known sections BEFORE its first live check
-        // concludes (`Store.Warm`), and painting THOSE immediately is the "cached grid, then everything jumps"
-        // regression `Home.Classify` exists to prevent (ch 10 §7). So this mark is set ONLY from the same place that
-        // already cleared Classify's gate once (`HomeLandingView.Publish`, `ChartsTick`) — it remembers a fact, it
-        // never substitutes for the check. Scope-keyed (not page-keyed), so it survives eviction and resets clean on
-        // a scope change (a new account, a re-auth) — a fresh scope must never inherit a stale mark.
-
-        static Scope? s_revealScope;
-        static readonly HashSet<string> s_revealedFacets = new(StringComparer.Ordinal);
-        static bool s_chartsRevealed;
-
-        static void EnsureRevealScope()
-        {
-            var scope = Entities.Current;
-            if (ReferenceEquals(scope, s_revealScope)) return;
-            s_revealScope = scope;
-            s_revealedFacets.Clear();
-            s_chartsRevealed = false;
-        }
-
-        /// <summary>Has the Home landing painted a REAL verdict for <paramref name="facet"/> at least once in the
-        /// current scope's lifetime? ("" = the unfiltered feed, same as <see cref="Home.SelectedFacet"/>.)</summary>
-        public static bool HasRevealed(string facet)
-        {
-            EnsureRevealScope();
-            return s_revealedFacets.Contains(facet);
-        }
-
-        /// <summary>Record that <paramref name="facet"/> just cleared the reveal gate for real (called once from
-        /// <c>HomeLandingView.Publish</c>, never speculatively).</summary>
-        public static void MarkRevealed(string facet)
-        {
-            EnsureRevealScope();
-            s_revealedFacets.Add(facet);
-        }
-
-        /// <summary>The Charts row's own mark — it has no facet, one flag covers it.</summary>
-        public static bool HasChartsRevealed()
-        {
-            EnsureRevealScope();
-            return s_chartsRevealed;
-        }
-
-        public static void MarkChartsRevealed()
-        {
-            EnsureRevealScope();
-            s_chartsRevealed = true;
-        }
-
         // ── the watches ─────────────────────────────────────────────────────────────────────────────────────────────
 
         static ReactiveRuntime? s_runtime;
+        // Never read on purpose: the fields hold the three app-lifetime watches (the effects' owner references).
         static Effect? s_sessionWatch, s_updateWatch, s_daylistWatch;
         static bool s_flushPosted;
         static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };

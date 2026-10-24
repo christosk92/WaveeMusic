@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Discography, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="artist:Billie Eilish · Albums" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="artists" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+      <header style="display: flex; flex-direction: column; flex-shrink: 0">
+        <nav aria-label="Breadcrumb" style="height: 20px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600"><a href="#" style="color: rgba(255,255,255,0.773)">Billie Eilish</a><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529); margin-bottom: 3px"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg><span>Albums</span></nav>
+        <div style="height: 52px; display: flex; align-items: flex-end; gap: 16px; border-bottom: 1px solid rgba(255,255,255,0.082)">
+          <h1 style="margin: 0 0 4px; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em; height: 48px; overflow: hidden">Albums</h1>
+          <div role="tablist" aria-label="Release type" style="display: flex; gap: 2px"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="3"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+        </div>
+      </header>
+      <div style="height: 40px; display: flex; align-items: center; gap: 10px; flex-shrink: 0"><span style="width: 3px; height: 22px; border-radius: 2px; background: #60cdff"></span><span style="font-size: 20px; line-height: 28px; font-weight: 600">Albums</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">2020s · 3 releases</span><span style="flex-grow: 1"></span><button aria-label="Collapse era" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></div>
+      <div style="display: grid; grid-template-columns: repeat(3, 210px); gap: 16px 16px; flex-shrink: 0">
+        <sc-for list="{{cards}}" as="c" hint-placeholder-count="3"><a href="#" style="{{c.plate}}"><span style="{{c.art}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{c.s}} ⌄</span></a></sc-for>
+      </div>
+      <div style="position: relative; flex-shrink: 0; margin-top: 4px">
+        <span aria-hidden="true" style="position: absolute; left: 97px; top: -7px; width: 16px; height: 8px; background: rgba(255,255,255,0.031); clip-path: polygon(50% 0, 100% 100%, 0 100%)"></span>
+        <div style="border-radius: 8px; background: rgba(255,255,255,0.031); border: 1px solid rgba(255,255,255,0.06); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Play HIT ME HARD AND SOFT" style="width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 16px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg></button><span style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 4px; background: #2f4a6b"></span><span style="font-size: 14px; font-weight: 600; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">HIT ME HARD AND SOFT <span style="font-weight: 400; color: rgba(255,255,255,0.773)">· Album · 2024 · 10 tracks · 44 min</span></span><a href="#" aria-label="Go to album" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #fff"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></a></div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px">
+            <sc-for list="{{drawer}}" as="r" hint-placeholder-count="4"><div style="height: 32px; display: grid; grid-template-columns: 26px 28px minmax(0, 1fr) 44px 32px; align-items: center; font-size: 13px"><span style="color: rgba(255,255,255,0.529); font-size: 12px">{{r.n}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="{{r.h}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="text-align: right; color: rgba(255,255,255,0.773); font-size: 12px">{{r.d}}</span><span></span></div></sc-for>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['Albums', 'Singles & EPs', 'Compilations'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', s: 'position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 0 ? 'position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const R = [['HIT ME HARD AND SOFT', 'May 17, 2024 · 10 tracks', '#2f4a6b'], ['Happier Than Ever', 'Jul 30, 2021 · 16 tracks', '#c0a080'], ['Live at the Steve Jobs Theater', 'Apr 2, 2021 · 6 tracks', '#3b3b3b']];
+  const cards = R.map((r, i) => ({ t: r[0], s: r[1], plate: 'display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 8px; min-width: 0' + (i === 0 ? '; background: rgba(255,255,255,0.059)' : ''), art: 'display: block; width: 194px; height: 194px; margin-bottom: 6px; border-radius: 8px; background: linear-gradient(160deg, ' + r[2] + ', #151515)' }));
+  const D = [['SKINNY', '3:39'], ['LUNCH', '3:00'], ['CHIHIRO', '5:03'], ['BIRDS OF A FEATHER', '3:30', 1]];
+  const drawer = D.map((d, i) => ({ n: i + 1, t: d[0], d: d[1], h: 'color: ' + (d[2] ? '#60cdff' : 'transparent') }));
+  return { tabs, cards, drawer };
+}
+}
+</script>
+</body>
+</html>

@@ -73,6 +73,170 @@ public static class App
         catch { FluentGpu.Dsl.Materials.EnergySaver = false; }
     }
 
+    /// <summary>The composition between <c>Platform.Boot</c> and the window: shapes, store, entities, session, playback,
+    /// modules, sidebar, the UI installs and the pages, in the ONE order both profiles share (the `boot.entities`,
+    /// `boot.playback` and `boot.pages` marks fall in the same places). <see cref="BootProfile.Gui"/> is <c>Main</c>'s;
+    /// <see cref="BootProfile.HeadlessFake"/> is the shell test host's (<c>Shell.Headless.Boot</c>), which skips the GUI
+    /// process's own steps: the marshallers and the single-instance gate (the host owns its posters and holds no
+    /// instance), the power-session subscription, the Modules idle timer, the diagnostics services, the updater and the
+    /// crash uploader. Returns false only when the single-instance gate handed this launch to a running instance — the
+    /// caller then leaves, having opened no store.</summary>
+    public static bool BootCore(BootProfile profile)
+    {
+        bool gui = profile == BootProfile.Gui;
+        if (gui)
+        {
+            Shell.InstallMarshallers();  // FIRST of the GUI boot: every seam posts to the UI thread; posts queue until the root attaches (G-013)
+            // The single-instance gate (D1), BEFORE anything registers a shape, opens the store or writes a setting: the
+            // 2026-09-18 corruption was exactly this ordering inverted — a second launch's own boot ran ahead of the gate
+            // and could delete/recreate the running instance's cache file out from under it. A refused acquire means
+            // another instance already has this launch's activation payload; leave now, having touched no store.
+            if (!Shell.AcquireInstance()) return false;
+        }
+        RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
+        // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
+        // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
+        // Zune is Developer-only: with Developer mode off a stored "zune" resolves to Classic (and is kept for when it is on again).
+        // A `--screenshot` run's `--theme <id>` selects that theme for the run (a review capture of a Developer-only theme such as Zune in a --fake
+        // profile): Developer mode on and the id stored in the run's settings, which --fake keeps in memory. Ignored without --screenshot, so the
+        // owner's launches never see it.
+        string[] argv = Environment.GetCommandLineArgs();
+        int themeAt = Array.IndexOf(argv, "--theme");
+        // A `--fake --frame-bench` run takes it too (the bench's theme, e.g. the nav-gc scenario on Zune): --fake keeps the setting in memory.
+        bool fakeBench = Array.IndexOf(argv, "--fake") >= 0
+            && Array.Exists(argv, static a => a == "--frame-bench" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
+        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench))
+        {
+            Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);
+        }
+        InstallThemes();
+        if (!Platform.Args.Fake)
+        {
+            Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)
+            StoreFiles.Reap(Platform.LocalFolder, Store.FileName);   // stale schemas, the legacy library.db set, .dead-* leftovers — after the gate, before the open
+            Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
+            // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
+            Store.Policy = Store.Policy with { ByteBudget = Math.Max(0L, Platform.Settings.Get(Platform.Keys.MetadataCacheBudgetBytes)) };
+            // The saved audio keys (G-123): records the path and the setting and opens NOTHING — the file opens off-thread at the AP welcome or on the first lookup. --fake stays detached.
+            Spotify.Audio.KeyStore.Use(Spotify.Audio.KeyStore.DefaultPath(), OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector(),
+                static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
+            // "On this PC" (ZC2): the persisted (track, quality) → file id map loads off-thread; the row fact reads the cache index and the key store above. Indicator only (NQ4).
+            Playback.OnThisPc.Use(Playback.AudioFileMap.PathUnder(Platform.LocalFolder));
+        }
+        Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
+        Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
+        Settings.ClearLicenseKeys = Spotify.Audio.KeyStore.Clear;
+        Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
+        Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
+        if (Platform.Args.Fake) Playback.OnThisPc.UseFake(Entities.FakeOnThisPc);   // --fake: a stable spread of "on this PC" rows (ZC2's fact has no cache to read)
+        if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
+        Spotify.Boot();                  // session static, signals created once; login later
+        Spotify.Api.Boot();              // Fetch.Register(Transport): the planner's provider (G-003)
+#if WAVEE_PLAYPLAY_LOCAL
+        if (!Platform.Args.Fake) PlayPlayHost.Install();   // D3: the junctioned private package's one entry — the key deriver, the native body decryptor, the runtime host, the diagnostics source
+#endif
+        // A monotonic clock that never freezes (decision D22): the audio thread, the Connect snapshot and the SMTC throttles
+        // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
+        // domain as FrameTime, so render sites convert explicitly.
+        Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
+        Playback.Audio.EnumerateEndpoints = static () =>
+        {
+            var endpoints = FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints();
+            var rows = new Playback.Audio.LocalAudioDevice[endpoints.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var endpoint = endpoints[i];
+                byte kind = endpoint.FormFactor switch { 3 or 5 => 2, 8 or 9 => 4, 1 => 1, _ => 0 };
+                rows[i] = new(endpoint.Id, endpoint.Name, kind, endpoint.IsDefault);
+            }
+            return rows;
+        };
+        Playback.Boot();                 // state, host loop, audio pump, os bridges
+        Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
+        if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
+        if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
+        Modules.Boot(startIdleTimer: gui);   // the headless host sweeps nothing: its idle timer would outlive a test
+        Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
+        Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
+        Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
+        HomeUi.HomeLayout.Boot();        // home-layout.json v2 loaded once, before the first Home/Customize render (F29)
+        Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
+        Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
+        Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
+        Shell.InstallUi();               // RootFactory + the Wave-4 pages; must precede Run (I1)
+        FrameModel.UnknownRouteSink = static key => Log.Warn("nav", "route.unknown: " + key);   // the frame decides when (first sighting), the host says it
+        Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, PlayLinkRouter.Modules/Match (WP-6.T)
+        Queue.InstallUi();               // rail/stage queue bodies, the queue verbs and Shell.OnPlayContext; after Actions.Registry.Build (WP-5.Q)
+        Track.InstallActions();          // the track row verbs; AFTER Queue.InstallUi, whose Play/PlayNext/AddToQueue registrations win (WP-4.5)
+        // EAGER, deliberately — this was made lazy and then REVERTED (2026-09-15). `Shell.PageFor` still carries the
+        // install-on-miss seam (Shell.cs §1.3) as a safety net, and the ordering guard in `BootOrderingTests` is worth
+        // keeping either way, but these three calls stay here.
+        //
+        // WHY: these installers do TWO jobs. They register page factories — which really is deferrable — and they also
+        // install CROSS-CUTTING SEAMS that nothing navigational triggers. Deferring them silently disabled three
+        // working features until the user happened to visit an unrelated page: "View credits" on a track row (needs
+        // Album's group), the omnibar's suggestion source (Home's), and the whole-window drop-a-file-to-play target
+        // (Playlist's). They fail closed rather than throwing, which makes it WORSE, not better — a feature that is
+        // quietly absent reports as nothing at all.
+        //
+        // The measured prize was `boot.pages` ≈ 78 ms out of a 1,464 ms first frame (~5%), and the dominant cost is
+        // the 735 ms the ENGINE spends between window creation and first present. Three silently-dead features is not
+        // a trade worth 5%. If this is revisited: split the installers so the seams stay eager and only the factory
+        // registration defers — do not defer a whole group again.
+        Home.InstallPages();             // home, search, browse, recents + the omnibar's suggestion source (WP-5.P)
+        Album.InstallPages();            // album, prerelease, show + the track row's "View credits" seam (WP-5.M)
+        Playlist.InstallPages();         // playlist, liked, library + the window's file-drop play target (WP-5.O)
+        Artist.InstallPages();           // artist + discography + concerts (hub, schedule, detail), ConcertHost (WP-5.N)
+        Settings.InstallScreens();       // the Settings page, What's new, the report dialog and the setup wizard (WP-6.R)
+        Diagnostics.InstallPages();      // the diagnostics pages and the screens' diagnostics seams (WP-6.S)
+        if (gui) Diagnostics.InstallServices();   // run marker, frame watch, network cost host, the GUI probe arms (WP-6.S)
+        Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);
+        if (gui)
+        {
+            Shell.StartUpdater();        // AFTER Diagnostics.InstallServices: the updater reads Update.Host.IsMetered at start (WP-6.R)
+            Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
+        }
+        if (!Platform.Args.Fake)         // --fake stays providerless; its tracks answer from the word-synced fixture instead
+            Lyrics.Boot(Lyrics.ResolveRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);   // G-008: compose the lyrics stack once
+        else Lyrics.Store.Fixture = Lyrics.Fixtures.For;
+        if (Platform.Args.Fake) Spotify.BootFake();                        // --fake: the session presents Online over the seeded account, no network (G-065)
+        else if (Platform.HasStoredCredential()) Spotify.Login();         // resume the stored credential at launch (G-002); its posts wait for the root's poster
+        return true;
+    }
+
+    /// <summary>The seams that need the REAL overlay service, input hooks and UI poster, filled once from inside the overlay
+    /// host (the 0.2.9 <c>ActionServicesOverlayBinder</c>); the overlay lane (<c>Shell.Overlays()</c>) calls this from its mount
+    /// effect, where those values first exist. A confirm-required bound action refuses to run without them. The returned
+    /// action unbinds the two that must not outlive the host. Everything else is idempotent (<c>??=</c>): the first host wins.</summary>
+    public static Action? BindOverlayServices(FluentGpu.Controls.IOverlayService overlay, FluentGpu.Hooks.InputHooks hooks, Action<Action> post)
+    {
+        var s = Actions.Services;
+        s.CanConfirm = static () => true;
+        s.Confirm = request => Controls.Confirm(overlay, FluentGpu.Localization.Loc.Get(request.TitleLocKey),
+            FluentGpu.Localization.Loc.Get(request.BodyLocKey), FluentGpu.Localization.Loc.Get(request.PrimaryLocKey), request.OnConfirm);
+        s.Clipboard ??= text => hooks.Clipboard?.SetText(text);
+        s.OpenExternal ??= url => hooks.OpenUri?.Invoke(url);
+        s.Post ??= post;
+        Shell.OnPlayLink ??= PlayLinkRouter.Direct;
+        Track.DrawerOverlay = overlay;
+        Shell.OnReportRequested ??= arg => Shell.ReportDialogOpener?.Invoke(overlay, arg);
+        return () =>
+        {
+            s.CanConfirm = null;
+            s.Confirm = null;
+        };
+    }
+
+    /// <summary>The ids of the themes this app ships, in picker order (what the `--inspect` server's `mount theme=` accepts).</summary>
+    public static readonly string[] ShippedThemeIds = [Wavee.Themes.Classic.ClassicTheme.Id, Wavee.Themes.Zune.ZuneTheme.Id, Wavee.Themes.WinUi.WinUiTheme.Id];
+
+    /// <summary>Installs the shipped compositions and activates the stored one (<c>theme.id</c>): the boot's one call, and what
+    /// the `--inspect` server repeats to switch theme between mounts (Screens/Diagnostics.Inspect.Kit.cs). App.cs is where
+    /// WVTH001 lets core name the theme packages.</summary>
+    public static void InstallThemes()
+        => Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create(),
+            Wavee.Themes.WinUi.WinUiTheme.Create());
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -81,11 +245,14 @@ public static class App
         // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the
         // app log (crash-diagnostics-implementation.md §B.1, §I: "Child arm").
         if (Crash.Handler.TryRun(args, out int handlerCode)) return handlerCode;
+        // `--inspect` (docs/guide/agent-inspect.md): the agent server boots its own headless shell on a SCRATCH profile, so it
+        // runs here, before `Platform.Boot` would open the user's profile, and never reaches the single-instance gate.
+        if (Diagnostics.Probe.TryRunInspect(args, out int inspectCode)) return inspectCode;
         Platform.ProfileRoot = Diagnostics.Probe.ProfileArg(args);   // "" = the default profile folder; read by LocalFolder (headless plan §3.6)
         bool bootThrew = false;
         try
         {
-            Platform.Boot();              // log, credentials, settings, update policy (shell); parses --fake; migrates the zoom mode at settings load (ch 00 §9.5)
+            Platform.Boot(Environment.GetCommandLineArgs());   // log, credentials, settings, update policy (shell); parses --fake; migrates the zoom mode at settings load (ch 00 §9.5)
         }
         catch (Exception bootEx)
         {
@@ -129,7 +296,7 @@ public static class App
                 // "Start Wavee" after a failed Boot(): the user may just have freed the disk or fixed the folder — try the
                 // boot ONCE more instead of running headfirst into the same fault. A second failure ends the process with
                 // a non-zero code (the handler is not up yet, so there is nothing to catch it either way).
-                try { Platform.Boot(); bootThrew = false; }
+                try { Platform.Boot(Environment.GetCommandLineArgs()); bootThrew = false; }
                 catch (Exception bootEx)
                 {
                     try { Console.Error.WriteLine(bootEx); } catch { }
@@ -139,96 +306,7 @@ public static class App
             }
         }
 
-        Shell.InstallMarshallers();      // FIRST of the GUI boot: every seam posts to the UI thread; posts queue until the root attaches (G-013)
-        // The single-instance gate (D1), BEFORE anything registers a shape, opens the store or writes a setting: the
-        // 2026-09-18 corruption was exactly this ordering inverted — a second launch's own boot ran ahead of the gate
-        // and could delete/recreate the running instance's cache file out from under it. A refused acquire means
-        // another instance already has this launch's activation payload; leave now, having touched no store.
-        if (!Shell.AcquireInstance()) { Platform.Shutdown(); return 0; }
-        RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
-        if (!Platform.Args.Fake)
-        {
-            Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)
-            StoreFiles.Reap(Platform.LocalFolder, Store.FileName);   // stale schemas, the legacy library.db set, .dead-* leftovers — after the gate, before the open
-            Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
-            // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
-            Store.Policy = Store.Policy with { ByteBudget = Math.Max(0L, Platform.Settings.Get(Platform.Keys.MetadataCacheBudgetBytes)) };
-            // The saved audio keys (G-123): records the path and the setting and opens NOTHING — the file opens off-thread at the AP welcome or on the first lookup. --fake stays detached.
-            Spotify.Audio.KeyStore.Use(Spotify.Audio.KeyStore.DefaultPath(), OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector(),
-                static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
-        }
-        Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
-        Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
-        Settings.ClearLicenseKeys = Spotify.Audio.KeyStore.Clear;
-        Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
-        Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
-        if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
-        Spotify.Boot();                  // session static, signals created once; login later
-        Spotify.Api.Boot();              // Fetch.Register(Transport): the planner's provider (G-003)
-#if WAVEE_PLAYPLAY_LOCAL
-        if (!Platform.Args.Fake) PlayPlayHost.Install();   // D3: the junctioned private package's one entry — the key deriver, the native body decryptor, the runtime host, the diagnostics source
-#endif
-        // A monotonic clock that never freezes (decision D22): the audio thread, the Connect snapshot and the SMTC throttles
-        // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
-        // domain as Design.FrameTime, so render sites convert explicitly.
-        Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
-        Playback.Audio.EnumerateEndpoints = static () =>
-        {
-            var endpoints = FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints();
-            var rows = new Playback.Audio.LocalAudioDevice[endpoints.Length];
-            for (int i = 0; i < rows.Length; i++)
-            {
-                var endpoint = endpoints[i];
-                byte kind = endpoint.FormFactor switch { 3 or 5 => 2, 8 or 9 => 4, 1 => 1, _ => 0 };
-                rows[i] = new(endpoint.Id, endpoint.Name, kind, endpoint.IsDefault);
-            }
-            return rows;
-        };
-        Playback.Boot();                 // state, host loop, audio pump, os bridges
-        Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
-        WireMaterialPolicy();            // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
-        if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
-        Modules.Boot();
-        Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
-        Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
-        Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
-        HomeUi.HomeLayout.Boot();        // home-layout.json v2 loaded once, before the first Home/Customize render (F29)
-        Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
-        Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
-        Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
-        Shell.InstallUi();               // RootFactory + the Wave-4 pages; must precede Run (I1)
-        Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, Shell.LinkModules/MatchLink (WP-6.T)
-        Queue.InstallUi();               // rail/stage queue bodies, the queue verbs and Shell.OnPlayContext; after Actions.Registry.Build (WP-5.Q)
-        Track.InstallActions();          // the track row verbs; AFTER Queue.InstallUi, whose Play/PlayNext/AddToQueue registrations win (WP-4.5)
-        // EAGER, deliberately — this was made lazy and then REVERTED (2026-09-15). `Shell.PageFor` still carries the
-        // install-on-miss seam (Shell.cs §1.3) as a safety net, and the ordering guard in `BootOrderingTests` is worth
-        // keeping either way, but these three calls stay here.
-        //
-        // WHY: these installers do TWO jobs. They register page factories — which really is deferrable — and they also
-        // install CROSS-CUTTING SEAMS that nothing navigational triggers. Deferring them silently disabled three
-        // working features until the user happened to visit an unrelated page: "View credits" on a track row (needs
-        // Album's group), the omnibar's suggestion source (Home's), and the whole-window drop-a-file-to-play target
-        // (Playlist's). They fail closed rather than throwing, which makes it WORSE, not better — a feature that is
-        // quietly absent reports as nothing at all.
-        //
-        // The measured prize was `boot.pages` ≈ 78 ms out of a 1,464 ms first frame (~5%), and the dominant cost is
-        // the 735 ms the ENGINE spends between window creation and first present. Three silently-dead features is not
-        // a trade worth 5%. If this is revisited: split the installers so the seams stay eager and only the factory
-        // registration defers — do not defer a whole group again.
-        Home.InstallPages();             // home, search, browse, recents + the omnibar's suggestion source (WP-5.P)
-        Album.InstallPages();            // album, prerelease, show + the track row's "View credits" seam (WP-5.M)
-        Playlist.InstallPages();         // playlist, liked, library + the window's file-drop play target (WP-5.O)
-        Artist.InstallPages();           // artist + discography + concerts (hub, schedule, detail), ConcertHost (WP-5.N)
-        Settings.InstallScreens();       // the Settings page, What's new, the report dialog and the setup wizard (WP-6.R)
-        Diagnostics.Install();           // run marker, diagnostics pages, network cost host, the screens' diagnostics seams (WP-6.S)
-        Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);
-        Shell.StartUpdater();            // AFTER Diagnostics.Install: the updater reads Update.Host.IsMetered at start (WP-6.R)
-        Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
-        if (!Platform.Args.Fake)         // --fake stays providerless; its tracks answer from the word-synced fixture instead
-            Lyrics.Boot(Lyrics.ResolveRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);   // G-008: compose the lyrics stack once
-        else Lyrics.Store.Fixture = Lyrics.Fixtures.For;
-        if (Platform.Args.Fake) Spotify.BootFake();                        // --fake: the session presents Online over the seeded account, no network (G-065)
-        else if (Platform.HasStoredCredential()) Spotify.Login();         // resume the stored credential at launch (G-002); its posts wait for the root's poster
+        if (!BootCore(BootProfile.Gui)) { Platform.Shutdown(); return 0; }
         Shell.Run();                     // window + engine loop; never returns until exit
         // The loop is gone — no more beats reach the crash handler from here on, and the exit tail below can run for
         // up to 10 minutes (Update.Host.ApplyOnExit); without this the watchdog would eventually read that as a hang.
@@ -248,6 +326,7 @@ public static class App
         Playback.Audio.Shutdown();
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.AudioKeys);
         Spotify.Audio.KeyStore.Shutdown();   // after the pump stopped asking: drain the queued key writes, checkpoint, close
+        Playback.OnThisPc.Shutdown();        // the (track, quality) → file id map's last debounced save
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Video);
         Playback.Video.Shutdown();
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Modules);

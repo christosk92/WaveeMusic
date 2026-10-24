@@ -20,7 +20,7 @@ Build, sign, and publish the two shipping apps in this tree — **FluentGpu Gall
 | **`Wavee.AppInstaller.template.xml`** | Wavee's `.appinstaller` template (`__VERSION__`/`__ARCH__`/`__PUBLISHER__`/`__APPINSTALLER_URI__`/`__MSIX_URI__`) |
 | **`publish-wavee-aot.ps1`** | Plain NativeAOT publish of Wavee (no packaging) — the fast "does AOT still link?" loop |
 | **`Wavee.Build.psm1`** | Shared build helpers imported by both pack scripts *and* by `ops/release/wavee-release.ps1`: `Get-WindowsSdkTools`, `Add-VsInstallerToPath`, `Test-X64CrossToolchain`, `Get-WaveeVersionProps` / `Set-WaveeBuild`, `Invoke-Native`, `Invoke-TrustedSigning` / `Invoke-DevCertSigning`, `Test-MsixSignature`, `Get-MsixIdentity`, `Get-PeMachine` / `Test-PeMachine` |
-| **`../release/`** | The Wavee **release** orchestrator (`wavee-release.ps1`), its pure helpers (`Wavee.Release.psm1`), the feed-release body, the per-version notes folders, and the Pester tests — Wavee has **no** CI release job |
+| **`../release/`** | The Wavee **release** orchestrator (`wavee-release.ps1`), its pure helpers (`Wavee.Release.psm1`), the feed-release body, the per-version notes folders, and the local update rehearsal — Wavee has **no** CI release job |
 
 ## Local build
 

@@ -20,7 +20,7 @@
 // ── WHAT IS NOT HERE ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // No caps transform. The prototype sets the door label in capitals via CSS; this file does NOT upper-case a localized
-// string (Design.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
+// string (R.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
 // casing at 11/700 with +90 tracking. The ledger and the stars never format a number: their callers pass values.
 
 using FluentGpu.Animation;
@@ -60,7 +60,8 @@ public static partial class Controls
     /// <summary>A toned chip's plate: the tone at 22 % (the prototype's <c>.chip.tone</c>).</summary>
     public const float BadgeToneFill = 0.22f;
 
-    /// <summary>A small badge beside a title — "exclusive", "E", "video", "episode 9", "subscribers only". Neutral:
+    /// <summary>THE static badge beside a title — "exclusive", "E", "video", "episode 9", "subscribers only", and Search's
+    /// "matched title" / "lyrics match" on the top result (D7: one badge, one chip; no private boxes). Neutral:
     /// <c>TextSecondary</c> on the subtle plate. <paramref name="tone"/>: the show's tone ink on the tone at 22 %
     /// (<paramref name="toneOf"/>, the system accent text when null). Not interactive — a filter chip is the OTHER
     /// <c>Chip</c> overload (<c>Controls.Art.cs</c>).</summary>
@@ -84,59 +85,12 @@ public static partial class Controls
 
     // ══ 2. THE LEDGER BAR ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The ledger bar: 4 high, 2 between parts, every part at least 2 wide.</summary>
-    public const float LedgerHeight = 4f, LedgerGap = 2f, LedgerMinPart = 2f;
-    /// <summary>The in-progress part's tone (the prototype's 45 % mix) and the floor a part's weight never drops under
-    /// (so an empty part keeps its 2-DIP stub and the flex never divides by zero).</summary>
-    public const float LedgerProgressTone = 0.45f, LedgerFloor = 0.001f;
-
     /// <summary>The played ledger (W1): three flex parts — played (the tone), in progress (the tone at 45 %), to go (the
     /// subtle ground). <paramref name="played"/> and <paramref name="progress"/> are FRACTIONS of the show (0..1, the
     /// rest is "to go"); both are live (<see cref="Prop{T}"/>), and a change re-renders only this bar and slides each
     /// part from its old rect over 250 ms (plan §7 — a mark-played animates, a rail drag does not).</summary>
     public static Element LedgerBar(Prop<float> played, Prop<float> progress, Func<ColorF> tone)
         => Embed.Comp(new LedgerProps(played, progress, tone), static () => new LedgerHost());
-
-    /// <summary>The three part weights for <see cref="LedgerBar"/>: each fraction clamped into what is left of the whole
-    /// (progress never overlaps played), the rest to go, every weight floored at <see cref="LedgerFloor"/>.</summary>
-    public static (float Played, float Progress, float ToGo) LedgerPartsOf(float played, float progress)
-    {
-        float a = Clamp01(played);
-        float b = MathF.Min(Clamp01(progress), 1f - a);
-        float c = MathF.Max(0f, 1f - a - b);
-        return (MathF.Max(LedgerFloor, a), MathF.Max(LedgerFloor, b), MathF.Max(LedgerFloor, c));
-
-        static float Clamp01(float v) => float.IsNaN(v) ? 0f : Math.Clamp(v, 0f, 1f);
-    }
-
-    /// <summary>Where the flex puts the three parts in a bar <paramref name="width"/> wide — the FLIP's "from" and "to"
-    /// (the layout itself is the engine's flex; this mirrors it closely enough to start a slide from). A part whose share
-    /// falls under <see cref="LedgerMinPart"/> is pinned at it and the others share what is left, Yoga's freeze-and-
-    /// redistribute.</summary>
-    public static void LedgerGeometry(float width, float played, float progress, float toGo, Span<float> x, Span<float> w)
-    {
-        Span<float> g = stackalloc float[3];
-        g[0] = played; g[1] = progress; g[2] = toGo;
-        Span<bool> pinned = stackalloc bool[3];
-        float pool = MathF.Max(0f, width - 2f * LedgerGap), sum = g[0] + g[1] + g[2];
-        for (int pass = 0; pass < 3; pass++)
-        {
-            bool changed = false;
-            for (int i = 0; i < 3; i++)
-            {
-                if (pinned[i]) continue;
-                float share = sum > 0f ? pool * g[i] / sum : 0f;
-                if (share >= LedgerMinPart) continue;
-                pinned[i] = true; w[i] = LedgerMinPart; pool -= LedgerMinPart; sum -= g[i]; changed = true;
-            }
-            if (!changed) break;
-        }
-        for (int i = 0; i < 3; i++)
-            if (!pinned[i]) w[i] = sum > 0f ? MathF.Max(0f, pool) * g[i] / sum : 0f;
-        x[0] = 0f;
-        x[1] = w[0] + LedgerGap;
-        x[2] = x[1] + w[1] + LedgerGap;
-    }
 
     sealed record LedgerProps(Prop<float> Played, Prop<float> Progress, Func<ColorF> Tone);
 
@@ -166,18 +120,18 @@ public static partial class Controls
         public override Element Render()
         {
             var p = UseProps<LedgerProps>();
-            (_a, _b, _c) = LedgerPartsOf(p.Played.Current(), p.Progress.Current());
+            (_a, _b, _c) = PodcastLedgerRules.PartsOf(p.Played.Current(), p.Progress.Current());
             if (!ReferenceEquals(_tone, p.Tone))
             {
                 Func<ColorF> tone = p.Tone;
                 _tone = tone;
                 _playedInk = Prop.Of(tone);
-                _progressInk = Prop.Of(() => ToneAt(tone(), LedgerProgressTone));
+                _progressInk = Prop.Of(() => ToneAt(tone(), PodcastLedgerRules.ProgressTone));
             }
             UseLayoutEffect(_slide, DepKey.From(_a, _b));
             return new BoxEl
             {
-                Direction = 0, Height = LedgerHeight, Gap = LedgerGap, MinWidth = 0f, Shrink = 0f,
+                Direction = 0, Height = PodcastLedgerRules.Height, Gap = PodcastLedgerRules.Gap, MinWidth = 0f, Shrink = 0f,
                 OnBoundsChanged = _measured,
                 Children = [Part(0, _a, _playedInk), Part(1, _b, _progressInk), Part(2, _c, Tok.FillSubtleTertiary)],
             };
@@ -185,7 +139,7 @@ public static partial class Controls
 
         BoxEl Part(int i, float weight, Prop<ColorF> fill) => new()
         {
-            Grow = weight, Basis = 0f, MinWidth = LedgerMinPart, Corners = CornerRadius4.All(LedgerHeight / 2f),
+            Grow = weight, Basis = 0f, MinWidth = PodcastLedgerRules.MinPart, Corners = CornerRadius4.All(PodcastLedgerRules.Height / 2f),
             Fill = fill, TransformOriginX = 0f, OnRealized = _realized[i],
         };
 
@@ -198,8 +152,8 @@ public static partial class Controls
             Span<float> ow = stackalloc float[3];
             Span<float> nx = stackalloc float[3];
             Span<float> nw = stackalloc float[3];
-            LedgerGeometry(_barW, pa, pb, pc, ox, ow);
-            LedgerGeometry(_barW, a, b, c, nx, nw);
+            PodcastLedgerRules.Geometry(_barW, pa, pb, pc, ox, ow);
+            PodcastLedgerRules.Geometry(_barW, a, b, c, nx, nw);
             for (int i = 0; i < 3; i++)
             {
                 if (_parts[i].IsNull) continue;
@@ -242,7 +196,7 @@ public static partial class Controls
                   {
                       Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => r(n),
                       HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                      HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                      HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                   }, Strings.Podcast.Rate.Stars(n))
                 : cell with { IsEnabled = false };
         }
@@ -278,7 +232,7 @@ public static partial class Controls
         };
         var copy = new List<Element>(5)
         {
-            Design.Type.Eyebrow(d.Label) with
+            R.Type.Eyebrow(d.Label) with
             {
                 Color = Prop.Of(d.Tone),
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -342,7 +296,7 @@ public static partial class Controls
             WhileHover = s_doorLift, Transition = MotionTok.ControlFast,
             Children = layers.ToArray(),
         };
-        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextMenu.Attach(card, overlay, menu) : card;
+        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextSheets.Attach(card, overlay, menu) : card;
     }
 
     /// <summary>The lead door's wash: the tone at 26 % in the top-left corner fading into the card fill by 70 % of the
@@ -379,7 +333,7 @@ public static partial class Controls
         Width = DoorDisc, Height = DoorDisc, Shrink = 0f, Corners = Radii.Circle(DoorDisc),
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Prop.Of(tone),
         Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered, Cursor = CursorId.Hand,
-        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
         BlocksDragArm = true, OnClick = play,
         Children =
         [
@@ -392,7 +346,7 @@ public static partial class Controls
                     {
                         // Pause while THIS episode is the one playing (a coarse-first subscribing read: the glyph node
                         // re-skins, the door does not re-render).
-                        Text = Prop.Of(() => ShowsPause(playId) ? Icons.Pause : Icons.Play),
+                        Text = Prop.Of(() => PlayRelation.ShowsPause(playId) ? Icons.Pause : Icons.Play),
                         Color = Prop.Of(() => ColorContrast.PickContrast(tone())),
                     },
                 ],

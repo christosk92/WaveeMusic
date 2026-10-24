@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune recents · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="recents" sub="all,music,podcasts,artists" on="all" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 16px 0 16px; overflow: hidden">
+    <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">october</span><span style="font-size: 13px; color: #a8a8a8">212 plays so far</span><span style="flex-grow: 1"></span><button aria-label="previous month" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; padding: 0; margin-right: -8px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button></div>
+      <div style="display: grid; grid-template-columns: repeat(7, 40px); gap: 4px; justify-content: space-between">
+        <sc-for list="{{week}}" as="w" hint-placeholder-count="7"><span style="font-size: 11px; color: #7a7a7a; text-align: center">{{w}}</span></sc-for>
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="35"><button aria-label="{{c.label}}" style="{{c.style}}">{{c.day}}</button></sc-for>
+      </div>
+      <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #7a7a7a">quieter <span style="display: flex; gap: 2px"><sc-for list="{{legend}}" as="l" hint-placeholder-count="4"><span style="{{l}}"></span></sc-for></span> busier <span style="flex-grow: 1"></span><a href="#" style="height: 32px; display: flex; align-items: center">jump to today</a></span>
+    </div>
+    <sc-for list="{{days}}" as="d" hint-placeholder-count="2">
+      <div style="display: flex; flex-direction: column; flex-shrink: 0">
+        <div style="display: flex; align-items: center; gap: 12px; height: 44px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">{{d.label}}</span><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.08)"></span><span style="font-size: 13px; color: #7a7a7a">{{d.count}}</span></div>
+        <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+          <a href="#" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.title}}">{{r.name}}</span><span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.caption}}</span></span><span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #a8a8a8">{{r.chev}}</span></a>
+          <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; padding: 0 0 6px 56px">
+              <sc-for list="{{r.tracks}}" as="t" hint-placeholder-count="3"><div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 48px; align-items: center; height: 44px"><span style="{{t.num}}">{{t.n}}</span><span style="{{t.title}}">{{t.name}}</span><span style="font-size: 13px; color: #9c9c9c; text-align: right">{{t.time}}</span></div></sc-for>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const shade = (v) => v === 0 ? 'background: rgba(255,255,255,0.06)' : 'background: ' + accent + '; opacity: ' + (v === 1 ? 0.35 : v === 2 ? 0.65 : 1);
+  const pat = [0,1,2,1,0,3,2, 1,1,2,3,2,1,0, 2,3,3,2,1,1,2, 0,1,2,2,3,1,0, 1,2,0,0,0,0,0];
+  const cells = pat.map((v, i) => {
+    const day = i + 1, today = day === 30, future = day > 30;
+    return {
+      day: future ? '' : String(day), label: future ? 'no plays yet' : 'october ' + day,
+      style: 'width: 40px; height: 40px; border: 0; padding: 0 0 3px 4px; box-sizing: border-box; display: flex; align-items: flex-end; font: inherit; font-size: 10px; color: ' + (v === 3 ? '#000000' : '#c8c8c8') + '; ' + shade(future ? 0 : v) + (today ? '; outline: 2px solid #ffffff; outline-offset: -2px' : ''),
+    };
+  });
+  const legend = [0, 1, 2, 3].map((v) => 'width: 10px; height: 10px; display: block; ' + shade(v));
+  const row = (name, caption, color, open, playing, round) => ({
+    name, caption, open, chev: open ? '▴' : '▾',
+    row: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; flex-shrink: 0; color: #ffffff; ' + (open ? 'background: rgba(255,255,255,0.05); margin: 0 -16px; padding: 0 16px' : ''),
+    art: 'width: 44px; height: 44px; background: ' + color + '; display: block; border-radius: ' + (round ? '22px' : '2px'),
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? accent : '#ffffff'),
+    tracks: open ? [['Nightcall', '4:18', true], ['Midnight City', '4:03', false], ['Resonance', '3:32', false]].map((t, i) => ({ n: t[2] ? '▮▮▮' : String(i + 1), name: t[0], time: t[1], num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (t[2] ? 10 : 20) + 'px; letter-spacing: ' + (t[2] ? '1px' : '0') + '; color: ' + (t[2] ? accent : '#7a7a7a'), title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (t[2] ? accent : '#ffffff') })) : [],
+  });
+  const days = [
+    { label: 'today', count: '12', rows: [row('late night drive', 'playlist · 6 tracks · 14:32', '#3b4a6b', true, true, false), row('Random Access Memories', 'album · Daft Punk · 11:05', '#3a2f22', false, false, false), row('The Rest Is Football', 'podcast · 23 min · 08:40', '#2f4a3b', false, false, false)] },
+    { label: 'yesterday', count: '31', rows: [row('The Midnight', 'artist · 8 tracks · 22:18', '#6b4a2f', false, false, true)] },
+  ];
+  return { accent, cells, legend, days, week: ['m', 't', 'w', 't', 'f', 's', 's'] };
+}
+}
+</script>
+</body>
+</html>

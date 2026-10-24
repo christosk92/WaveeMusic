@@ -1,0 +1,219 @@
+// ── Themes/Zune/Structure/Rules/Tiers.cs — Zune's window tiers and the frame's tier records (themes plan 3.2, 6.3; P5 Z0) ─────────
+//
+// THE LADDERS (board `Z-Sizes-Breakpoints`, the tier source of truth: "widening commits at the line, narrowing holds 24 dip below it"):
+//
+//   window   Compact 300-639 · Small 640-1007 · Standard 1008-1919 · Huge 1920-3199 · Huge 4K from 3200. Every edge commits at the
+//            line on widening and holds 24 on narrowing, so a narrowing window changes tier only below 616 / 984 / 1896 / 3176. A fresh
+//            resolve (a launch, a navigation, a theme switch) uses the line itself. Zune DRAWS the Huge 4K band (gutter 64, title bar 56,
+//            play bar 88), so its fifth edge is present, unlike Classic's.
+//   content  the same edges over the content width (the window less the docked panels: Zune has no nav pane).
+//   height   Short below 700 tall, Regular from 700, held 24 on shrinking (the board's "short height < 700"; the hold of 24 is the
+//            lane's assumption, plan "Zune specifics").
+//   rungs    `pane.second` at 1920 and `pane.third` at 3200, on the window axis: the docked panel's second and third pane
+//            (queue | lyrics · friends at Huge, queue | lyrics | friends at Huge 4K). `ZunePolicies` caps them by `maxDockedPanes`.
+//
+// THE RECORDS. A view reads `ctx.Tier()` and one of the records below; it never compares a width (WVTH013).
+//   · `ZuneFrameLayout` per WINDOW tier: the gutter every band inset and page title share (16 / 24 / 48 / 48 / 64), the title bar
+//     (48, 56 at Huge 4K), the band (read from the band's own record, `ZuneBandRules.Band`: 92 at Compact where row 2 is the 40-tall touch
+//     row, 84 at Small / Standard / Huge, 112 at Huge 4K; collapsed 52, 72 at Huge 4K), the play bar (mini 64 at Compact, 72 on the desktop
+//     tiers, 88 at Huge 4K) and the frame's clip region (the docked panel, Standard and up).
+//   · The frame's finer records (the title bar's height motion, the band's type at Huge 4K, the Short collapse, the chrome budgets the core
+//     allocates the title row by) are `Tiers.Frame.cs` and `Tiers.Band.cs` (ZT1).
+//
+// FAMILY HOOKS. A later lane adds its finer ladders and rungs in its own `Rules\Tiers.<Family>.cs`, implementing the partial methods
+// below (`LaddersPlayer`, `RungsDetail`, ...). They run inside `Policy`'s initializer, so an implementation must not read a static of
+// this class declared in another file (the textual order across partial files is undefined): keep its numbers in its own class.
+//
+// Public, so `Wavee.Tests` pins the ladders and the records (the assembly has no InternalsVisibleTo).
+
+using System.Collections.Immutable;
+using FluentGpu.Foundation;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+
+namespace Wavee.Themes.Zune;
+
+/// <summary>Zune's tier policy and the frame's tier records.</summary>
+public static partial class ZuneTiers
+{
+    // ── the window ladder (Z-Sizes-Breakpoints) ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Small begins here.</summary>
+    public const float SmallFrom = 640f;
+
+    /// <summary>Standard begins here (the panel docks inline from this width).</summary>
+    public const float StandardFrom = 1008f;
+
+    /// <summary>Huge begins here (the second docked pane, <see cref="PaneSecondRung"/>).</summary>
+    public const float HugeFrom = 1920f;
+
+    /// <summary>Huge 4K begins here (the third docked pane, <see cref="PaneThirdRung"/>).</summary>
+    public const float Huge4KFrom = 3200f;
+
+    /// <summary>Every edge's hold: none on widening, 24 on narrowing (the board's player-bar hysteresis, used for every tier).</summary>
+    public const float Hold = 24f;
+
+    /// <summary>The window ladder: 640, 1008, 1920 and 3200, each committing at the line on widening and held 24 on narrowing.</summary>
+    public static TierLadder Window { get; } = WidthLadder();
+
+    /// <summary>The content ladder: the same edges and holds over the content width.</summary>
+    public static TierLadder Content { get; } = WidthLadder();
+
+    private static TierLadder WidthLadder() => TierLadder.Of(
+        new TierEdge(SmallFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(StandardFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(HugeFrom, NarrowHold: Hold, WidenHold: 0f),
+        new TierEdge(Huge4KFrom, NarrowHold: Hold, WidenHold: 0f));
+
+    // ── the height ladder ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The window is Short below this height (Z-Sizes-Breakpoints: "short height &lt; 700").</summary>
+    public const float ShortBelow = 700f;
+
+    /// <summary>The height ladder: Short below 700, Regular from 700, held 24 on shrinking.</summary>
+    public static TierLadder Height { get; } = TierLadder.Of(new TierEdge(ShortBelow, NarrowHold: Hold, WidenHold: 0f));
+
+    /// <summary>The page height Zune's Short layout guarantees at the 330-DIP window minimum: 330 less the 48 title bar, the 84 band
+    /// and the 72 play bar.</summary>
+    public const float ShortFloorH = 126f;
+
+    // ── the rungs ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The docked panel's second pane (queue | lyrics · friends, 720 in all) from the Huge edge.</summary>
+    public const string PaneSecondRung = "pane.second";
+
+    /// <summary>The docked panel's third pane (queue | lyrics | friends, 1080 in all) from the Huge 4K edge.</summary>
+    public const string PaneThirdRung = "pane.third";
+
+    /// <summary>Zune's policy. One instance, so the facts a structure republishes compare equal. Declared after the ladders it names:
+    /// property initializers run in textual order.</summary>
+    public static TierPolicy Policy { get; } = new TierPolicy(
+        Window, Content, Height,
+        CompactFloor: TierPolicy.WindowFloor,
+        ShortFloor: ShortFloorH,
+        Rungs: BuildRungs(),
+        Ladders: BuildLadders());
+
+    private static ImmutableArray<NamedRung> BuildRungs()
+    {
+        var rungs = ImmutableArray.CreateBuilder<NamedRung>();
+        rungs.Add(new NamedRung(PaneSecondRung, new TierEdge(HugeFrom, NarrowHold: Hold, WidenHold: 0f), RungAxis.Window));
+        rungs.Add(new NamedRung(PaneThirdRung, new TierEdge(Huge4KFrom, NarrowHold: Hold, WidenHold: 0f), RungAxis.Window));
+        RungsFrame(rungs);
+        RungsBand(rungs);
+        RungsLists(rungs);
+        RungsPlayer(rungs);
+        RungsStage(rungs);
+        RungsDiscovery(rungs);
+        RungsDetail(rungs);
+        RungsArtist(rungs);
+        RungsCollection(rungs);
+        RungsOverlays(rungs);
+        RungsScreens(rungs);
+        return rungs.ToImmutable();
+    }
+
+    private static ImmutableArray<NamedLadder> BuildLadders()
+    {
+        var ladders = ImmutableArray.CreateBuilder<NamedLadder>();
+        LaddersFrame(ladders);
+        LaddersBand(ladders);
+        LaddersLists(ladders);
+        LaddersPlayer(ladders);
+        LaddersStage(ladders);
+        LaddersDiscovery(ladders);
+        LaddersDetail(ladders);
+        LaddersArtist(ladders);
+        LaddersCollection(ladders);
+        LaddersOverlays(ladders);
+        LaddersScreens(ladders);
+        return ladders.ToImmutable();
+    }
+
+    // The family hooks: each later lane implements its own in `Rules\Tiers.<Family>.cs` (an unimplemented one compiles away).
+    static partial void RungsFrame(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsBand(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsLists(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsPlayer(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsStage(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsDiscovery(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsDetail(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsArtist(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsCollection(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsOverlays(ImmutableArray<NamedRung>.Builder rungs);
+    static partial void RungsScreens(ImmutableArray<NamedRung>.Builder rungs);
+
+    static partial void LaddersFrame(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersBand(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersLists(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersPlayer(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersStage(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersDiscovery(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersDetail(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersArtist(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersCollection(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersOverlays(ImmutableArray<NamedLadder>.Builder ladders);
+    static partial void LaddersScreens(ImmutableArray<NamedLadder>.Builder ladders);
+
+    // ── the frame's records (per window tier) ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The page reserves the desktop play bar's height at every tier, so the mini 64 ↔ 72 cross-fade moves nothing below it.</summary>
+    public const float BarReserveH = 72f;
+
+    /// <summary>The frame's clip region at the docking tiers (ZT1): the docked panel keeps its 340 on a resized frame that narrows the window
+    /// under the old tier's layout; the body clips it instead of squeezing it (the panel host never shrinks, `ZuneFrame`).</summary>
+    public const string PanelRegionId = "frame.panel";
+
+    private static readonly ImmutableArray<TierRegion> s_docked = [new TierRegion(PanelRegionId, MinWidth: ZuneFrameRules.PanelFloatW)];
+
+    // The band's two heights are the band's own record (`ZuneBandRules.Band`, Z-Part-Band): ONE source, so the frame (the floating panel's
+    // fallback top, the Short floor) never disagrees with what the band draws (ZT1: Z0's record said 84 at Huge 4K where the band draws 112).
+    private static readonly ZuneFrameLayout[] s_frames =
+    [
+        // Compact (Z-Frame-Compact): gutter 16, the 48 title bar with 40 icons, the band 92 (row 2 is the 40-tall touch row), the mini bar 64.
+        Record(WidthTier.Compact, gutter: 16f, titleBarH: 48f, barH: 64f, ImmutableArray<TierRegion>.Empty),
+        // Small (Z-Frame-Small): gutter 24, the band 84 (row 2 is 32 under a fade), the bar 72; the panel floats, nothing docks.
+        Record(WidthTier.Small, gutter: 24f, titleBarH: 48f, barH: 72f, ImmutableArray<TierRegion>.Empty),
+        // Standard (Z-Frame-Home): gutter 48, the band 84, the bar 72; the panel docks.
+        Record(WidthTier.Standard, gutter: 48f, titleBarH: 48f, barH: 72f, s_docked),
+        // Huge (Z-Frame-Huge): gutter 48, the band 84 (never collapses at a Regular height: there is room), the bar 72.
+        Record(WidthTier.Huge, gutter: 48f, titleBarH: 48f, barH: 72f, s_docked),
+        // Huge 4K (Z-Frame-Huge4K): gutter 64, the 56 title bar (the engine's `TitleBarOptions.Height`), the band 112 / 72, the bar 88.
+        Record(WidthTier.Huge4K, gutter: 64f, titleBarH: 56f, barH: 88f, s_docked),
+    ];
+
+    private static ZuneFrameLayout Record(WidthTier tier, float gutter, float titleBarH, float barH, ImmutableArray<TierRegion> regions)
+    {
+        var band = ZuneBandRules.Band(tier);
+        return new ZuneFrameLayout(tier, gutter, titleBarH, band.ExpandedH, band.CollapsedH, barH, regions);
+    }
+
+    /// <summary>The frame's record for window tier <paramref name="window"/>.</summary>
+    public static ZuneFrameLayout Frame(WidthTier window) => s_frames[Math.Clamp((int)window, 0, s_frames.Length - 1)];
+
+    /// <summary>The frame's record for <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
+    public static ZuneFrameLayout FrameOf(in TierFacts facts) => Frame(facts.Policy is null ? WidthTier.Standard : facts.Window);
+
+    /// <summary>THE page gutter: the frame's (the window tier's: 16 / 24 / 48 / 48 / 64). The band's lead inset, the title bar's wordmark and every page's column read it, so a
+    /// docked panel (which narrows the content tier, not the window's) moves none of them: no gutter snaps or eases, and the three share one left edge.</summary>
+    public static float GutterOf(in TierFacts facts) => FrameOf(in facts).Gutter;
+}
+
+/// <summary>What Zune's frame lays out in one window tier.</summary>
+/// <param name="Tier">The window tier.</param>
+/// <param name="Gutter">The gutter the band's inset and every page title share: 16 / 24 / 48 / 48 / 64.</param>
+/// <param name="TitleBarH">The title bar's height: 48, 56 at Huge 4K.</param>
+/// <param name="BandH">The band's height with both rows (the band record's <see cref="ZuneBandLayout.ExpandedH"/>): 92 at Compact (row 2
+/// is the touch row), 84 at Small, Standard and Huge, 112 at Huge 4K.</param>
+/// <param name="BandCollapsedH">The band's height with row 1 alone, collapsed on scroll or with no row 2 (<see cref="ZuneBandLayout.CollapsedH"/>):
+/// 52, 72 at Huge 4K.</param>
+/// <param name="BarH">The play bar's height: mini 64 at Compact, 72 on the desktop tiers, 88 at Huge 4K.</param>
+/// <param name="Regions">The regions a resized frame may clip, each with its floor: the docked panel (<see cref="ZuneTiers.PanelRegionId"/>,
+/// 340) at the docking tiers, Standard and up; none at Compact and Small, where the panel floats or is a sheet.</param>
+public sealed record ZuneFrameLayout(WidthTier Tier, float Gutter, float TitleBarH, float BandH, float BandCollapsedH, float BarH,
+    ImmutableArray<TierRegion> Regions) : ITierLayoutRecord
+{
+    /// <summary>The node keys of the frame's three top-level regions (the tier harness finds them): the title bar, the content column
+    /// (the band and the page) and the play bar. The same keys as Classic's frame, so the harness reads the stand-in frame and Zune's.</summary>
+    public const string TitleBarKey = "shell.titlebar", ContentKey = "shell.content.card", PlayerBarKey = "shell.playerbar";
+}

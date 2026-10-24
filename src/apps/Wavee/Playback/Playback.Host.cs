@@ -87,6 +87,9 @@ public static partial class Playback
     static Effects s_fx;
     static DeviceIdentity s_identity;
 
+    /// <summary>The name this PC shows in every other Spotify app's device picker (Settings › Devices &amp; Connect names it). Before <see cref="Boot"/> it is the name Boot would register.</summary>
+    public static string DeviceName => s_identity.DeviceName is { Length: > 0 } name ? name : Environment.MachineName + " - Wavee";
+
     /// <summary>Which host holds the row the reducer last loaded: the audio pump, or the video host. Pause, resume and
     /// seek follow it; a load for the other kind stops it first (G-140).</summary>
     static PlayableKind s_hostKind = PlayableKind.Audio;
@@ -1419,6 +1422,33 @@ public static partial class Playback
         ResetWireForTests();
         s_boundScope = Entities.Current;
         Ticker(false);
+        Publish();
+    }
+
+    /// <summary>Put the DECK back to <paramref name="boot"/> (a <see cref="Snap"/> taken right after <see cref="Boot"/>) on a
+    /// process that keeps running: the shell test host between facts (<c>Shell.Headless.ResetPlayback</c>). A stop keeps the
+    /// stopped row on the deck on purpose (the bar holds the last track's face), so without this the next fact would mount
+    /// over whatever row the previous fact played, and a row with a video adds the bar's video split. Everything
+    /// <see cref="ResetForTests"/> clears is cleared, except what the boot set up once for the process: the device identity
+    /// and the hello count. The epochs move FORWARD from the live ones (never back to the boot's), so a late signal from the
+    /// previous fact's audio chain names an epoch the reset deck has already left and is dropped as stale. The host that holds
+    /// the row (and whatever the hand-off parked) is stopped first, so no session of the previous fact keeps ticking under the
+    /// next. UI THREAD, with nothing mounted.</summary>
+    public static void ResetDeckForTests(in State boot)
+    {
+        ParkAndCut.Stop(s_hostKind);
+        DeviceIdentity identity = s_identity;
+        int hellos = s_hellos;
+        uint epoch = Math.Max(s_state.Epoch, boot.Epoch) + 1;
+        uint publishSeq = Math.Max(s_state.PublishSeq, boot.PublishSeq);
+        ResetForTests();
+        s_identity = identity;
+        s_hellos = hellos;
+        s_state = boot;
+        s_state.Epoch = epoch;
+        s_state.LoadEpoch = epoch;
+        s_state.TransferEpoch = epoch;
+        s_state.PublishSeq = publishSeq;
         Publish();
     }
 }

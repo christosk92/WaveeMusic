@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings: Appearance and theme</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|settings:Settings" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="settings" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Settings</h1>
+      <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <sc-for list="{{tabs}}" as="v" hint-placeholder-count="7"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+      <div style="max-width: 1000px; display: flex; flex-direction: column; gap: 20px">
+        <section style="display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px"><span style="font-size: 14px; font-weight: 600">Theme</span><span style="font-size: 12px; color: #c5c5c5">Which theme draws Wavee, and the options that theme defines</span></div>
+          <div style="display: flex; flex-direction: column; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <div style="display: flex; align-items: center; gap: 16px; min-height: 68px; padding: 12px 16px; box-sizing: border-box">
+              <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="color: #fff"><path d="M8 1.5a6.5 6.5 0 1 0 0 13c1 0 1.5-.6 1.5-1.3 0-.6-.4-.9-.4-1.5 0-.7.6-1.2 1.4-1.2h1.3a2.7 2.7 0 0 0 2.7-2.7A6.5 6.5 0 0 0 8 1.5zM5 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm2.5-2.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM11 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" fill="none" stroke="currentColor" stroke-width="1"></path></svg>
+              <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px">Theme</span><span style="font-size: 12px; color: #c5c5c5">Changes everything that is presentation: pages, player and navigation. Core features stay the same.</span></span>
+              <span style="font-size: 14px; color: #c5c5c5">WinUI</span>
+              <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 16px; padding: 16px 16px 16px 52px; border-top: 1px solid rgba(255,255,255,0.0837)">
+              <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+                <sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
+                  <button aria-pressed="{{t.on}}" style="{{t.style}}">
+                    <span style="{{t.preview}}"><span style="{{t.pvTop}}"></span><span style="display: flex; flex-grow: 1"><span style="{{t.pvNav}}"></span><span style="{{t.pvMain}}"></span></span><span style="{{t.pvBar}}"></span></span>
+                    <span style="display: flex; align-items: center; gap: 8px; width: 100%"><span style="font-size: 14px; font-weight: 600; flex-grow: 1; text-align: left">{{t.name}}</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{t.check}}"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></span>
+                    <span style="font-size: 12px; color: #c5c5c5; text-align: left">{{t.sub}}</span>
+                  </button>
+                </sc-for>
+                <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 148px; border-radius: 4px; border: 1px dashed rgba(255,255,255,0.2); color: #fff; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Browse community themes</a>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: #c5c5c5; padding: 4px 0">WinUI theme options</span>
+                <sc-for list="{{opts}}" as="o" hint-placeholder-count="6">
+                  <div style="display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 8px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0326); border: 1px solid rgba(0,0,0,0.1)">
+                    <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px">{{o.label}}</span><span style="font-size: 12px; color: #c5c5c5">{{o.desc}}</span></span>
+                    <sc-if value="{{o.combo}}" hint-placeholder-val="{{ true }}"><span style="height: 32px; min-width: 180px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); font-size: 14px">{{o.value}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if>
+                    <sc-if value="{{o.toggle}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="{{o.track}}"><span style="{{o.knob}}"></span></span><span style="width: 28px">{{o.value}}</span></span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; min-height: 68px; padding: 12px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1 0 13zM8 1.5v13" fill="none" stroke="currentColor" stroke-width="1"></path></svg>
+            <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 14px">App mode</span><span style="font-size: 12px; color: #c5c5c5">System follows the Windows setting live</span></span>
+            <span style="height: 32px; min-width: 180px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); font-size: 14px">Use system setting<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; min-height: 68px; padding: 12px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14M5 7h4M7 5v4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+            <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 14px">Zoom</span><span style="font-size: 12px; color: #c5c5c5">Scales the whole window</span></span>
+            <span style="height: 32px; min-width: 180px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); font-size: 14px">Auto (100%)<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => vs(l, i === 1));
+  const th = [
+    { name: 'Wavee Classic', sub: 'Today’s look. Row style and sidebar options.', on: false, top: '#1b1b1b', nav: '#121212', main: '#181818', bar: '#101010', accent: '#1db954' },
+    { name: 'WinUI', sub: 'Windows 11: Mica, NavigationView, tabs in the title bar.', on: true, top: '#1c1c1c', nav: '#202020', main: '#282828', bar: '#202020', accent: '#60cdff' },
+    { name: 'Zune', sub: 'Metro: lowercase pivots, big light type, pink accent.', on: false, top: '#000000', nav: '#000000', main: '#0a0a0a', bar: '#000000', accent: '#ec008c' }
+  ];
+  const themes = th.map(t => ({ name: t.name, sub: t.sub, on: t.on ? 'true' : 'false', check: t.on ? 'display: block; color: #60cdff' : 'display: none',
+    style: 'display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 4px; font: inherit; color: #fff; cursor: default; ' + (t.on ? 'background: rgba(255,255,255,0.0605); border: 2px solid #60cdff' : 'background: rgba(255,255,255,0.0326); border: 1px solid rgba(255,255,255,0.0698); margin: 1px'),
+    preview: 'display: flex; flex-direction: column; width: 100%; aspect-ratio: 16 / 9; border-radius: 4px; overflow: hidden; background: ' + t.main,
+    pvTop: 'display: block; height: 10%; background: ' + t.top, pvNav: 'display: block; width: 22%; background: ' + t.nav, pvMain: 'display: block; flex-grow: 1; background: ' + t.main + '; border-left: 1px solid rgba(255,255,255,0.08)',
+    pvBar: 'display: block; height: 12%; background: ' + t.bar + '; border-top: 2px solid ' + t.accent }));
+  const combo = (l, d, v) => ({ label: l, desc: d, value: v, combo: true, toggle: false });
+  const tog = (l, d, on) => ({ label: l, desc: d, value: on ? 'On' : 'Off', combo: false, toggle: true, track: 'width: 40px; height: 20px; border-radius: 10px; position: relative; display: block; box-sizing: border-box; ' + (on ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.5442)'), knob: 'position: absolute; top: ' + (on ? '4px' : '3px') + '; left: ' + (on ? '24px' : '3px') + '; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : '#c5c5c5') });
+  const opts = [combo('Backdrop', 'The window material behind the title bar, pane and player', 'Mica'), combo('Navigation pane', 'Expanded, compact rail, or automatic by window width', 'Automatic'), combo('Density', 'Row and pane item height', 'Default'), tog('Tabs in the title bar', 'Off hides the strip; open tabs stay and come back when it’s on', true), tog('Artwork in track rows', 'Shows a 40 px cover on playlist and liked rows', true), tog('Use the Windows accent colour', 'Off uses Wavee’s own blue', true)];
+  return { tabs, themes, opts };
+}
+}
+</script>
+</body>
+</html>

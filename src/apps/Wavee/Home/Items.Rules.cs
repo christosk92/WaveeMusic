@@ -13,8 +13,8 @@
 
 namespace Wavee.HomeUi;
 
-/// <summary>The wide-tile shelf card's tertiary meta line (Sixth pass, `Zones.UI.cs`'s WideTiles/VideoTiles cell
-/// builder): "Spotify · 200 songs" when both an owner and a track count are known, "200 songs" alone when only the
+/// <summary>The wide-tile shelf card's tertiary meta line (Sixth pass, the WideTiles/VideoTiles cell builder in
+/// `ClassicHomeZones.cs`): "Spotify · 200 songs" when both an owner and a track count are known, "200 songs" alone when only the
 /// count is, "Spotify" alone when only the owner is, and <c>null</c> when neither is — a bare <see cref="CardData.Meta"/>
 /// line, so a caller with nothing to say draws no line at all rather than an empty one.</summary>
 public static class CardMeta
@@ -42,7 +42,7 @@ public readonly record struct HomeCardGridShape(bool Circular, bool ShowSubtitle
         CanMenu: kind != HomeCardKind.Episode);
 }
 
-/// <summary>The daylist card's art source (`Daylist.UI.cs`): the daylist's header image, else its square cover, else
+/// <summary>The daylist card's art source (`ClassicHomeDaylist.cs`): the daylist's header image, else its square cover, else
 /// null (no art layer and no veil: the plain card). The art cover-fills the WHOLE card, so its SHAPE is the card's,
 /// never the picture's — no aspect or width cap rides along.</summary>
 public static class DaylistArt
@@ -51,10 +51,10 @@ public static class DaylistArt
         => headerImage is { Length: > 0 } ? headerImage : image is { Length: > 0 } ? image : null;
 }
 
-/// <summary>The daylist card's form (`Daylist.UI.cs`, hero fade variant A): the header art fills the whole card under
+/// <summary>The daylist card's form (`ClassicHomeDaylist.cs`, hero fade variant A): the header art fills the whole card under
 /// the artist hero's horizontal veil, and the copy column (eyebrow · title · tags · meta · actions · clock) sits on the
 /// veil's opaque left side. <c>inner</c> is the card's content width — the card minus the copy's side insets
-/// (<c>Daylist.CopyPadding</c>) — and <see cref="CopyWidth"/> is the copy's text width at it: half of it, held between
+/// (<c>ClassicHomeRules.DaylistCopyPadding</c>) — and <see cref="CopyWidth"/> is the copy's text width at it: half of it, held between
 /// <see cref="TextMin"/> and <see cref="CopyMax"/>, and all of it once it is narrower than <see cref="SplitMin"/>.</summary>
 public static class DaylistForm
 {
@@ -79,12 +79,18 @@ public static class DaylistForm
     public static float CopyWidth(float inner)
         => inner < SplitMin ? Math.Max(0f, inner) : Math.Clamp(inner * CopyShare, TextMin, CopyMax);
 
+    /// <summary>Where the horizontal veil's hold ends on a card <paramref name="cardWidth"/> wide whose copy is padded by <paramref name="padHorizontal"/>:
+    /// the copy column's right edge as a fraction of the card, so the veil holds its near-opaque rung under ALL of the copy (the timeline's last
+    /// labels sat on its shoulder, where the art showed through). NaN for a card with no width yet (the veil's default hold).</summary>
+    public static float VeilHold(float cardWidth, float padHorizontal)
+        => cardWidth <= 1f ? float.NaN : (padHorizontal + CopyWidth(Math.Max(0f, cardWidth - padHorizontal))) / cardWidth;
+
     /// <summary>Whether a text column <paramref name="textWidth"/> wide keeps the 40/52 hero title (inclusive at
     /// <see cref="HeroTitleMinText"/>).</summary>
     public static bool UseHeroTitle(float textWidth) => textWidth >= HeroTitleMinText;
 }
 
-/// <summary>The daylist card's five-segment daypart timeline (Seventh pass, `Daylist.UI.cs`'s `DaylistClock`): one
+/// <summary>The daylist card's five-segment daypart timeline (Seventh pass, `ClassicHomeDaylistClock.cs`): one
 /// determinate bar per <see cref="Daypart"/>, done parts full, the current one at the window's elapsed fraction,
 /// future ones empty; the labels row shares the bars' equal cells.</summary>
 public static class DaypartTimeline
@@ -131,21 +137,5 @@ public static class DaylistCountdownLine
     {
         int i = formatted.IndexOf(Slot, StringComparison.Ordinal);
         return i < 0 ? (formatted, "") : (formatted[..i], formatted[(i + Slot.Length)..]);
-    }
-}
-
-public static class ItemsRules
-{
-    /// <summary>One bar's height for the Recently-played "Listening history" week sparkline (<see cref="Items.HistoryItem"/>):
-    /// <paramref name="dayCount"/> scaled against the week's peak (<paramref name="weekMax"/>), floored at 1 DIP so a
-    /// silent day still draws a sliver rather than vanishing. <paramref name="weekMax"/> is clamped to at least 1 so an
-    /// entirely silent week (every day 0) never divides by zero; a negative <paramref name="dayCount"/> (should not
-    /// happen, but the caller is a raw int off a signal) floors to 0 rather than drawing a negative-height bar.</summary>
-    public static float WeekBarHeight(int dayCount, int weekMax, float maxHeight)
-    {
-        int max = weekMax < 1 ? 1 : weekMax;
-        int count = dayCount < 0 ? 0 : dayCount;
-        float h = count / (float)max * maxHeight;
-        return h < 1f ? 1f : h;
     }
 }

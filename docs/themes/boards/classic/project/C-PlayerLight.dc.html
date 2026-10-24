@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player bar, light</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 640px; box-sizing: border-box; padding: 24px 0 0; display: flex; flex-direction: column; gap: 14px; background: #e4e4e4; color: rgba(0,0,0,0.894); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <sc-for list="{{bars}}" as="b" hint-placeholder-count="5">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="padding: 0 24px; display: flex; gap: 12px; align-items: baseline"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{b.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(0,0,0,0.62)">{{b.d}}</span></div>
+      <dc-import name="C-PlayerBar" theme="light" variant="{{b.v}}" w="{{b.w}}" panel="{{b.p}}" hint-size="1440px,72px"></dc-import>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":640}}'>
+class Component extends DCLogic {
+renderVals() {
+  const bars = [['Music, queue open', 'Accent #005FB8 on Mica #EDEDED; latched Queue on the shared plate', 'music', 1440, 'queue'], ['Podcast with chapters', 'Chapter gaps in the rail; speed 1.2×', 'podcast', 1440, 'none'], ['Video', 'Video split latched', 'video', 1440, 'none'], ['Remote device', '“Playing on Living room TV” in accent text #004275', 'remote', 1440, 'none'], ['Compact tier (600)', 'Queue kept (P1)', 'music', 600, 'none']].map(b => ({ t: b[0], d: b[1], v: b[2], w: b[3], p: b[4] }));
+  return { bars };
+}
+}
+</script>
+</body>
+</html>

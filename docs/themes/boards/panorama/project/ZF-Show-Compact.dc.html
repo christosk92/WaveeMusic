@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Show, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="library" ctx="The Rest Is Football" items="Episodes|About" sub-sel="{{zero}}" lower="{{lower}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 16px; align-items: flex-end">
+      <span aria-hidden="true" style="width: 128px; height: 128px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #3b6b4a, #1f3a2a)"></span>
+      <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 2px">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Podcast</span>
+        <a href="#" style="font-size: 14px; line-height: 20px; color: var(--acct)">Goalhanger</a>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">4.8 · 12K ratings</span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">812 episodes · weekdays</span>
+      </span>
+    </div>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">The Rest Is Football</h1>
+    <span style="display: flex; gap: 4px; align-items: center">
+      <button style="{{s.acc}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Resume · 24 min left</button>
+      <button aria-pressed="true" style="{{s.std}}">Following</button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="More: notifications, share, about" style="{{s.icon}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </span>
+    <div role="group" aria-label="Filter episodes" style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent)">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="3"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+    </div>
+    <section aria-label="Episodes" style="display: flex; flex-direction: column; margin: 0 -4px">
+      <div style="display: flex; align-items: baseline; gap: 10px; height: 32px; padding: 0 4px; border-bottom: 1px solid var(--div)"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">October</h2><span style="font-size: 12px; color: var(--t2)">9 episodes</span></div>
+      <sc-for list="{{episodes}}" as="e" hint-placeholder-count="4">
+        <div role="row" style="{{e.row}}">
+          <span style="{{e.art}}"></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <a href="#" style="{{e.title}}">{{e.name}}</a>
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; font-variant-numeric: tabular-nums"><sc-if value="{{e.isNew}}" hint-placeholder-val="{{ false }}"><span style="color: var(--acct); font-weight: 600">New</span></sc-if>{{e.meta}}<sc-if value="{{e.cached}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span>
+            <sc-if value="{{e.hasBar}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px"><span style="width: 72px; height: 3px; border-radius: 2px; background: var(--div); display: block"><span style="{{e.fill}}"></span></span><span style="{{e.stateStyle}}">{{e.state}}</span></span></sc-if>
+          </span>
+          <button aria-label="{{e.actionLabel}}" style="{{e.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{e.icon}}" fill="currentColor"></path></svg></button>
+        </div>
+      </sc-for>
+    </section>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="podcast" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const s = {
+    acc: 'height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; margin-right: 4px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px; white-space: nowrap',
+    std: 'height: 40px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px',
+    icon: 'width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)'
+  };
+  const PLAY = 'M4.5 2.8v10.4L13 8z', PAUSE = 'M4 3h3v10H4zM9 3h3v10H9z';
+  const chips = [['All', '812'], ['Unplayed', '690'], ['Played', '120']].map((c, i) => ({ label: c[0] + ' · ' + c[1], pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 40px; flex-shrink: 0; padding: 0 14px; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const eps = [
+    ['Why the Premier League keeps changing', '#812 · 9 Oct · 48 min', 'playing', 49, '24 min left', true],
+    ['The north London derby, revisited', '#811 · 8 Oct · 52 min', 'new', 0, '', true],
+    ['Q&A: the best away ends in England', '#810 · 8 Oct · 39 min', 'none', 0, '', false],
+    ['Deep dive: the 1993 title race', '#808 · 7 Oct · 47 min', 'started', 87, '6 min left', false]
+  ];
+  const episodes = eps.map((d) => { const st = d[2]; const playing = st === 'playing'; return { name: d[0], meta: d[1], state: d[4], isNew: st === 'new', hasBar: playing || st === 'started', cached: d[5],
+    actionLabel: (playing ? 'Pause ' : 'Play ') + d[0], icon: playing ? PAUSE : PLAY,
+    row: 'display: grid; grid-template-columns: 64px minmax(0, 1fr) 44px; align-items: center; height: 80px; margin-top: 2px; padding-left: 4px; border-radius: 4px; ' + (playing ? 'background: var(--sub)' : ''),
+    art: 'width: 52px; height: 52px; border-radius: 4px; display: block; background: linear-gradient(160deg, #3b6b4a, #1f3a2a)',
+    title: 'font-size: 14px; line-height: 20px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: ' + (playing ? 'var(--acct)' : 'var(--t1)'),
+    fill: 'display: block; height: 3px; border-radius: 2px; background: var(--acc); width: ' + d[3] + '%',
+    stateStyle: 'color: ' + (playing ? 'var(--acct)' : 'var(--t2)'),
+    btn: 'width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 20px; font: inherit; ' + (playing ? 'border: 0; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); color: var(--t1)') }; });
+  return { vars, theme, accent, s, chips, episodes, zero: 0, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

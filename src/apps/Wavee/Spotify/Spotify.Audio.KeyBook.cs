@@ -124,7 +124,7 @@ public static partial class Spotify
                 Outcome result = Outcome.Transient;
                 try
                 {
-                    result = Attempts(fileId, attempt, ct);
+                    result = Attempts(attempt, ct);
                     return result;
                 }
                 finally
@@ -139,7 +139,7 @@ public static partial class Spotify
                 }
             }
 
-            Outcome Attempts(string fileId, Func<int, CancellationToken, Outcome> attempt, CancellationToken ct)
+            Outcome Attempts(Func<int, CancellationToken, Outcome> attempt, CancellationToken ct)
             {
                 Outcome last = Outcome.Transient;
                 for (int n = 1; n <= MaxAttempts; n++)

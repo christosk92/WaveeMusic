@@ -21,7 +21,6 @@
 // The palettes are literal hex — a deck is a physical object, identical in light and dark (ch 23 §4.1). The only
 // localised string a face renders is the WMP preset caption; every other string is part of the device's own look.
 
-using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using FluentGpu.Animation;
@@ -578,7 +577,7 @@ public static partial class Deck
                 new CanvasChild(0f, barH - 1f, new BoxEl { Width = w, Height = 1f, Shrink = 0f, Fill = Hex(0x8B93A3) }),
                 new CanvasChild(0.03f * w, barH * 0.22f, new TextEl(Prop.Of(static () => Playback.IsPlaying.Value ? Icons.Play : Icons.Pause))
                 {
-                    Size = MathF.Max(6f, chrome * 0.92f), FontFamily = Theme.IconFont, Color = Hex(0x1C2230),
+                    Size = MathF.Max(6f, chrome * 0.92f), FontFamily = Tok.Definition.Fonts.Icon, Color = Hex(0x1C2230),
                     Width = chrome * 1.4f, AlignSelf = FlexAlign.Start,   // Start: a Canvas child with no height stretches
                 }),
                 new CanvasChild(w - 0.03f * w - battW, barH * 0.28f, new BoxEl
@@ -719,7 +718,7 @@ public static partial class Deck
             {
                 Width = w, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = onClick,
-                Children = [new TextEl(glyph) { Size = size, FontFamily = Theme.IconFont, Color = ink }],
+                Children = [new TextEl(glyph) { Size = size, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }],
             };
 
             void Down(Point2 local)
@@ -978,7 +977,6 @@ public static partial class Deck
     static class WinampFace
     {
         const int SpectrumBands = 19;
-        static readonly FormatCache<int> TimeCache = FormatCache.Create<int>();
 
         public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
         {

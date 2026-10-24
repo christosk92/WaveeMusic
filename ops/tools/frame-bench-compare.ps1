@@ -24,7 +24,6 @@
   different scales; processCpuPct, uiCoresTimes and renderCoresTimes come from GetProcessTimes/GetThreadTimes and need no rate).
 
   A scenario skipped on either side, or a metric null (NaN) on either side, is reported, never compared.
-  Tests: ops/tools/frame-bench-compare.tests.ps1.
 
 .PARAMETER Before
   The baseline summary (a file, or a directory holding frame-bench-summary.json).

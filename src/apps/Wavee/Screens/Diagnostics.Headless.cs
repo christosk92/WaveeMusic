@@ -877,16 +877,23 @@ public static partial class Diagnostics
 
         // ── 7. the two store wrappers (§2.8) ───────────────────────────────────────────────────────────────────────
         /// <summary>Reads fall through; writes stay here. A headless `quality lossless` never reaches HKCU. Locked: the
-        /// audio pump reads the quality rung on its own thread while the loop writes it.</summary>
+        /// audio pump reads the quality rung on its own thread while the loop writes it. A removal is a TOMBSTONE, not a
+        /// deleted entry: dropping the overlay's entry would let the inner store's value show through again, and the
+        /// inner store is the one this overlay exists never to write.</summary>
         public sealed class OverlaySettings(IAppSettings inner) : IAppSettings
         {
+            static readonly object Tombstone = new();
             readonly Dictionary<string, object> _writes = new(StringComparer.Ordinal);
             readonly Lock _gate = new();
 
             public T Get<T>(SettingKey<T> key)
             {
                 lock (_gate)
-                    if (_writes.TryGetValue(key.Name, out object? v) && v is T t) return t;
+                    if (_writes.TryGetValue(key.Name, out object? v))
+                    {
+                        if (v is T t) return t;
+                        if (ReferenceEquals(v, Tombstone)) return key.Default;
+                    }
                 return inner.Get(key);
             }
 
@@ -896,7 +903,28 @@ public static partial class Diagnostics
                 lock (_gate) _writes[key.Name] = value;
             }
 
-            public int WriteCount { get { lock (_gate) return _writes.Count; } }
+            public bool TryGet<T>(SettingKey<T> key, out T value)
+            {
+                lock (_gate)
+                    if (_writes.TryGetValue(key.Name, out object? v))
+                    {
+                        if (v is T t) { value = t; return true; }
+                        if (ReferenceEquals(v, Tombstone)) { value = key.Default; return false; }
+                    }
+                return inner.TryGet(key, out value);
+            }
+
+            public bool Has(string name)
+            {
+                lock (_gate)
+                    if (_writes.TryGetValue(name, out object? v)) return !ReferenceEquals(v, Tombstone);
+                return inner.Has(name);
+            }
+
+            public void Remove(string name)
+            {
+                lock (_gate) _writes[name] = Tombstone;
+            }
         }
 
         /// <summary>The credential blob may be read and refreshed but never removed; the device id is namespaced so the

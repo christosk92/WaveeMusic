@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Full screen, Artist photo, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; overflow: hidden; background: #0a0a0a; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div role="img" aria-label="Daft Punk" style="position: absolute; inset: 0; transform: scale(1.06); transform-origin: 38% 40%; background: radial-gradient(14% 26% at 30% 40%, #d8d8d8 0%, #8a8a8a 40%, rgba(80,80,80,0) 70%), radial-gradient(14% 26% at 46% 42%, #e0c060 0%, #8a6a2f 40%, rgba(80,60,20,0) 70%), radial-gradient(60% 80% at 40% 30%, #4a3b2a, #1a140c 60%, #0a0a0a)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 60%; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.85))"></div>
+  <div aria-hidden="true" style="position: absolute; top: 0; bottom: 0; right: 0; width: 1500px; background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,0.6) 30%)"></div>
+
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 10px; background: linear-gradient(180deg, rgba(0,0,0,0.42), rgba(0,0,0,0))">
+    <span aria-hidden="true" style="width: 18px; height: 18px; flex-shrink: 0; border-radius: 4px; background: #60cdff"></span><span style="font-size: 12px; font-weight: 600">Wavee</span><span style="font-size: 12px; color: rgba(255,255,255,0.7)">Now playing · full screen</span>
+    <span style="flex-grow: 1"></span>
+    <div role="tablist" aria-label="Full screen view" style="display: flex; gap: 4px; padding: 2px; border-radius: 6px; background: rgba(255,255,255,0.1)"><sc-for list="{{modes}}" as="m" hint-placeholder-count="4"><button role="tab" aria-selected="{{m.sel}}" style="{{m.s}}">{{m.l}}</button></sc-for></div>
+    <span style="flex-grow: 1"></span>
+    <button aria-label="Full screen options" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <button style="height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.1); color: #fff; font: inherit; font-size: 13px">Exit full screen</button>
+  </header>
+
+  <div style="position: absolute; left: 96px; bottom: 200px; width: 1000px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: 0.18em">NOW PLAYING</span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 84px; line-height: 96px; font-weight: 700; letter-spacing: -0.02em">Daft Punk</span>
+    <span style="display: flex; align-items: center; gap: 14px"><span role="img" aria-label="Random Access Memories cover" style="width: 58px; height: 58px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg,#111,#bdbdbd 52%,#111)"></span><span style="display: flex; flex-direction: column"><span style="font-size: 20px; line-height: 28px; font-weight: 600">Get Lucky</span><span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.8)">with Pharrell Williams, Nile Rodgers · Random Access Memories</span></span></span>
+  </div>
+
+  <div style="position: absolute; right: 96px; top: 120px; width: 1382px; height: 1100px; box-sizing: border-box; padding-top: 340px; display: flex; flex-direction: column; gap: 22px; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%, #000 80%, transparent)">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="9"><div style="position: relative"><span style="{{l.pill}}"></span><p style="{{l.s}}">{{l.a}}<span style="opacity: 0.58">{{l.b}}</span></p></div></sc-for>
+  </div>
+
+  <section aria-label="Playback" style="position: absolute; left: 24px; right: 24px; bottom: 24px; height: 112px; box-sizing: border-box; padding: 14px 24px; border-radius: 8px; background: rgba(44,44,44,0.72); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(30px); display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.8); font-variant-numeric: tabular-nums"><span>2:40</span><span role="slider" aria-label="Seek" aria-valuenow="43" style="flex-grow: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 43%; border-radius: 2px; background: #60cdff"></span></span><span>-3:29</span></div>
+    <div style="display: flex; align-items: center">
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.6)">Playing from album</span><a href="#" style="font-size: 14px; line-height: 20px; font-weight: 600">Random Access Memories</a></span>
+      <span style="display: flex; align-items: center; gap: 12px">
+        <button aria-label="Previous" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3v10M13 3 6 8l7 5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Pause" style="width: 56px; height: 56px; border: 0; border-radius: 28px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+        <button aria-label="Next" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M12 3v10M3 3l7 5-7 5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </span>
+      <span style="flex: 1; display: flex; justify-content: flex-end; align-items: center; gap: 8px">
+        <button aria-label="Remove from Liked Songs" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #60cdff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button>
+        <span role="slider" aria-label="Volume" aria-valuenow="70" style="width: 128px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 70%; background: #60cdff; border-radius: 2px"></span></span>
+        <button aria-label="More" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+      </span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const modes = ['Lyrics', 'Visualizer', 'Up next', 'Artist'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', s: 'height: 32px; padding: 0 14px; border: 0; border-radius: 4px; font: inherit; font-size: 13px; background: ' + (i === 0 ? '#60cdff' : 'transparent') + '; color: ' + (i === 0 ? '#000' : '#fff') }));
+  const L = ['we walk the long way home', 'counting windows, one by one', 'a light left on in the hall', 'so the morning finds us here', 'and nothing has to change', 'hold the moment, let it stay', 'until the record ends'];
+  const op = [0.13, 0.19, 1, 0.45, 0.24, 0.14, 0.11];
+  const lines = L.map((t, i) => {
+    const active = i === 2;
+    return { a: active ? 'a light left on ' : t, b: active ? 'in the hall' : '',
+      s: 'margin: 0; padding-left: 20px; font-size: 52px; line-height: 64px; font-weight: 700; opacity: ' + op[i] + (active ? '; text-shadow: 0 0 24px rgba(255,255,255,0.25)' : ''),
+      pill: active ? 'position: absolute; left: 0; top: 12px; width: 4px; height: 40px; border-radius: 2px; background: #60cdff' : 'display: none' };
+  });
+  return { modes, lines };
+}
+}
+</script>
+</body>
+</html>

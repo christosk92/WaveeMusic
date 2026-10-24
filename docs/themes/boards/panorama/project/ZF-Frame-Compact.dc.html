@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frame: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}
+</style>
+</helmet>
+<div style="{{vars}} width: 880px; height: 860px; display: flex; gap: 80px; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; color: var(--t1)">
+  <section aria-label="Search open" style="position: relative; width: 400px; height: 860px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--mica)">
+    <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="home" items="All|Music|Podcasts|Audiobooks" sub-sel="{{zero}}" query="night" search-open="{{yes}}" back="{{yes}}" hint-size="400px,136px"></dc-import>
+    <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Pins</h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <span style="aspect-ratio: 1 / 1; border-radius: 8px; background: #3b4a6b"></span><span style="aspect-ratio: 1 / 1; border-radius: 8px; background: linear-gradient(135deg, #4a3b8b, #7a8bd1)"></span>
+      </div>
+    </main>
+    <div role="listbox" aria-label="Search suggestions" style="position: absolute; left: 8px; right: 8px; top: 46px; box-sizing: border-box; padding: 4px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: var(--shadow); display: flex; flex-direction: column">
+      <span style="padding: 8px 12px 4px 12px; font-size: 12px; line-height: 16px; color: var(--t2)">Recent</span>
+      <sc-for list="{{recent}}" as="r" hint-placeholder-count="3">
+        <a href="#" role="option" style="height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px; color: var(--t1); font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--t2)"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg><span style="flex-grow: 1">{{r}}</span></a>
+      </sc-for>
+      <span style="height: 1px; margin: 4px -4px; background: var(--div)"></span>
+      <span style="padding: 8px 12px 4px 12px; font-size: 12px; line-height: 16px; color: var(--t2)">Top matches</span>
+      <sc-for list="{{hits}}" as="h" hint-placeholder-count="5">
+        <a href="#" role="option" style="{{h.row}}"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.sub}}</span></span></a>
+      </sc-for>
+      <a href="#" style="height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px; margin-top: 2px; border-radius: 4px; color: var(--acct); font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>See all results for “night”</a>
+    </div>
+    <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+  </section>
+  <section aria-label="Queue sheet" style="position: relative; width: 400px; height: 860px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--mica)">
+    <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="library" ctx="Random Access Memories" items="Songs|More by Daft Punk|Details" sub-sel="{{zero}}" hint-size="400px,136px"></dc-import>
+    <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+      <div style="display: flex; gap: 16px; align-items: flex-end">
+        <span style="width: 128px; height: 128px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #4a3a26, #2a2118)"></span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#" style="font-size: 14px; line-height: 20px; color: var(--acct)">Daft Punk</a><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2013 · 13 songs</span></span>
+      </div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Random Access Memories</h1>
+    </main>
+    <div style="position: absolute; inset: 0 0 64px 0; background: rgba(0,0,0,0.3)"></div>
+    <div style="position: absolute; left: 0; bottom: 64px">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="sheet" w="{{sheetW}}" h="{{sheetH}}" friends="{{yes}}" hint-size="400px,700px"></dc-import>
+    </div>
+    <div style="position: absolute; left: 0; bottom: 0">
+      <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" pane="queue" hint-size="400px,64px"></dc-import>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":880,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', fly: '#2c2c2c', flyb: 'rgba(0,0,0,0.2)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acct: pink ? '#ffb3dd' : '#99ebff', shadow: '0 8px 16px rgba(0,0,0,0.26)' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', fly: '#fcfcfc', flyb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acct: pink ? '#9b0062' : '#003e92', shadow: '0 8px 16px rgba(0,0,0,0.14)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const recent = ['nightcall', 'the midnight', 'night drive'];
+  const hits = [['Nightcall', 'Song · Kavinsky', '#6b2f4a', false, true], ['The Midnight', 'Artist', '#6b4a2f', true, false], ['Night Drive', 'Album · Timecop1983', '#2f3b4a', false, false], ['Midnight City', 'Song · M83', '#3b4a6b', false, false], ['late night drive', 'Playlist · Christos', '#3b4a6b', false, false]].map((h) => ({ name: h[0], sub: h[1],
+    row: 'height: 52px; display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; padding: 0 12px; margin-top: 2px; border-radius: 4px; color: var(--t1); ' + (h[4] ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; border-radius: ' + (h[3] ? '20px' : '4px') + '; background: ' + h[2] }));
+  return { vars, theme, accent, recent, hits, zero: 0, yes: true, sheetW: 400, sheetH: 690 };
+}
+}
+</script>
+</body>
+</html>

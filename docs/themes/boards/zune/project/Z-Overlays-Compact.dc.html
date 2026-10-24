@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune overlays, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="home" sub="all,music,podcasts,audiobooks" on="all" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div role="status" style="height: 40px; flex-shrink: 0; background: #2a2416; display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; font-size: 13px; color: #ffcf7a">
+    <span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">you're offline · cached music still plays</span>
+    <a href="#" style="height: 40px; display: flex; align-items: center; padding: 0 16px; color: #ffcf7a">retry</a>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 22px; padding: 8px 16px 0 16px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">pins</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{pins}}" as="t" hint-placeholder-count="4"><span style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span></span></sc-for>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 4px">history</span>
+        <sc-for list="{{history}}" as="h" hint-placeholder-count="3"><span style="display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; height: 56px"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">{{h.name}}</span><span style="font-size: 13px; color: #9c9c9c">{{h.sub}}</span></span></span></sc-for>
+      </div>
+      <div style="height: 112px; flex-shrink: 0; display: flex; background: #1b1b1b; margin: 0 -16px">
+        <div style="width: 112px; flex-shrink: 0; background: linear-gradient(135deg, #4a2f5b, #7a3b6b 60%, #1b1b1b)"></div>
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 16px; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">your daylist · afternoon</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">sad girl synth-pop tuesday afternoon</span></div>
+      </div>
+    </div>
+    <div style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.72)"></div>
+    <nav aria-label="hub" style="position: absolute; left: 0; top: 0; right: 0; background: #161616; box-shadow: 0 16px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; padding: 12px 16px 20px 16px">
+      <sc-for list="{{hub}}" as="w" hint-placeholder-count="6"><a href="#" style="{{w.style}}">{{w.name}}</a></sc-for>
+    </nav>
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 12px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; height: 52px; font-size: 14px">
+      <span style="flex-grow: 1; min-width: 0">added 3 to queue</span>
+      <a href="#" style="{{toastAction}}">open queue</a>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + c + '; display: block';
+  const pins = [['late night drive', '#3b4a6b'], ['Liked Songs', '#5b2f6b'], ['OutRun', '#6b2f4a'], ['Odyssey', '#2f5b6b']].map((d) => ({ name: d[0], art: sq(d[1]) }));
+  const history = [['OutRun', 'album · Kavinsky', '#6b2f4a'], ['Endless Summer', 'album · The Midnight', '#6b4a2f'], ['Trilogy', 'album · Carpenter Brut', '#6b2f2f']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[2] + '; display: block' }));
+  const hub = ['home', 'browse', 'library', 'recents', 'profile', 'settings'].map((n, i) => ({
+    name: n,
+    style: 'height: 52px; display: flex; align-items: center; text-decoration: none; font-family: ' + D + '; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; color: ' + (i === 0 ? '#ffffff' : '#7a7a7a'),
+  }));
+  return {
+    accent, pins, history, hub,
+    toastAction: 'height: 52px; display: flex; align-items: center; padding: 0 16px; color: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact dialog, local playback</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main aria-hidden="true" style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098)"></main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="idle" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-label="Set up local playback" style="position: absolute; left: 16px; right: 16px; top: 160px; box-sizing: border-box; border-radius: 8px; background: #2b2b2b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); overflow: hidden">
+    <div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 12px">
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Set up local playback</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Wavee plays music on this PC with a small runtime it downloads once.</p>
+      <div style="padding: 14px 16px 4px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600">Download from Spotify’s CDN</span>
+        <div role="alert" style="display: flex; gap: 10px; padding: 10px 12px; border-radius: 4px; background: #442726; font-size: 13px; line-height: 18px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #ff99a4"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM6 6l4 4M10 6l-4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span>Couldn’t verify the download. Check your connection, then try again.</span></div>
+        <button aria-expanded="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; border-top: 1px solid rgba(255,255,255,0.06); background: transparent; color: #fff; font: inherit; font-size: 14px"><span style="flex-grow: 1; text-align: left">Advanced</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+      </div>
+    </div>
+    <footer style="padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 8px; background: rgba(32,32,32,0.6); border-top: 1px solid rgba(255,255,255,0.06)">
+      <div style="display: flex; flex-wrap: wrap; gap: 0 16px; font-size: 14px"><a href="#" style="padding: 10px 0">Advanced options</a><a href="#" style="padding: 10px 0">View diagnostics</a></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px"><button style="height: 40px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Not now</button><button style="height: 40px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Try again</button></div>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

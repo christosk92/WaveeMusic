@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: sign in, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 800px; height: 600px; box-sizing: border-box; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 800px; height: 48px; display: flex; align-items: center; gap: 12px; padding-left: 16px; box-sizing: border-box; opacity: 0.4">
+    <span style="width: 16px; height: 16px; border-radius: 4px; background: var(--acc)"></span><span style="font-size: 12px">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3.5 3.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span></span>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 12px; top: 48px; height: 48px; display: flex; align-items: center; opacity: 0.25; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; color: var(--t3); white-space: nowrap"><span style="padding: 0 12px">Home</span><span style="padding: 0 12px">Browse</span><span style="padding: 0 12px">Library</span><span style="padding: 0 12px">Recents</span></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 136px; bottom: 0; background: var(--layer); border-top: 1px solid var(--stroke); opacity: 0.5"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <div role="dialog" aria-modal="true" aria-labelledby="setup-title" style="position: absolute; left: 40px; top: 50px; width: 720px; height: 500px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 8px; background: var(--dlg); border: 1px solid var(--dlgb); box-shadow: 0 32px 64px rgba(0,0,0,0.37), 0 2px 21px rgba(0,0,0,0.21)">
+    <div style="position: relative; width: 160px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; padding: 20px; background: var(--acc); color: var(--onacc)">
+      <span aria-hidden="true" style="position: absolute; left: 12px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; line-height: 150px; font-weight: 600; opacity: 0.22">2</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Sign in</span>
+      <ol aria-label="Setup steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">
+        <sc-for list="{{steps}}" as="st" hint-placeholder-count="4"><li aria-current="{{st.current}}" style="{{st.style}}"><span style="{{st.mark}}"><sc-if value="{{st.done}}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span>{{st.label}}</li></sc-for>
+      </ol>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 22px 24px 14px 24px">
+        <h1 id="setup-title" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; white-space: nowrap">Sign in to Spotify</h1>
+        <p style="margin: 0; font-size: 14px; line-height: 20px; color: var(--t2)">Sign in with your Spotify account on the Spotify website, or scan the code with your phone.</p>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 4px">
+          <a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)">
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 600"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct); flex-shrink: 0"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1"></circle><path d="M1.5 8h13M8 1.5c-2 2-2.8 4-2.8 6.5S6 12.5 8 14.5M8 1.5c2 2 2.8 4 2.8 6.5S10 12.5 8 14.5" fill="none" stroke="currentColor" stroke-width="1"></path></svg>Continue in your browser</span>
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Opens accounts.spotify.com in your default browser</span>
+            <span style="display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 14px; color: var(--acct)">Open browser<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          </a>
+          <div style="display: flex; gap: 12px; padding: 14px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+            <span role="img" aria-label="Sign-in code ABCD-1234 as a QR code" style="width: 72px; height: 72px; flex-shrink: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; padding: 4px; box-sizing: border-box; border-radius: 4px; background: #ffffff">
+              <sc-for list="{{qr}}" as="q" hint-placeholder-count="36"><span style="{{q.s}}"></span></sc-for>
+            </span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+              <span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Scan with your phone</span>
+              <span style="font-size: 16px; line-height: 22px; font-weight: 600; font-variant-numeric: tabular-nums">ABCD-1234</span>
+              <span style="font-size: 12px; line-height: 16px; color: var(--t2)">spotify.com/pair · 4:59</span>
+              <button style="align-self: flex-start; height: 24px; padding: 0; border: 0; background: transparent; color: var(--acct); font: inherit; font-size: 12px">Copy code</button>
+            </span>
+          </div>
+        </div>
+        <span role="status" style="display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--t2)"><span aria-hidden="true" style="width: 16px; height: 16px; box-sizing: border-box; border-radius: 8px; border: 2px solid var(--sub); border-top-color: var(--acc); border-right-color: var(--acc)"></span>Waiting for you to authorize…</span>
+        <span style="flex-grow: 1"></span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Wavee needs Spotify Premium. Don’t have a Spotify account? <a href="#" style="color: var(--acct)">Sign up</a></span>
+      </div>
+      <div style="height: 72px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 24px; background: var(--foot); border-top: 1px solid var(--stroke)">
+        <span style="display: flex; flex-direction: column; gap: 6px; width: 160px"><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Step 2 of 4</span><span role="progressbar" aria-label="Setup progress" aria-valuenow="2" aria-valuemin="0" aria-valuemax="4" style="height: 4px; border-radius: 2px; background: var(--strong); position: relative; display: block"><span style="position: absolute; left: 0; top: 0; width: 50%; height: 4px; border-radius: 2px; background: var(--acc)"></span></span></span>
+        <span style="flex-grow: 1"></span>
+        <button style="min-width: 96px; height: 32px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Back</button>
+        <button disabled style="min-width: 96px; height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: var(--disbg); color: var(--dis); font: inherit; font-size: 14px">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', dlg: '#2b2b2b', dlgb: 'rgba(255,255,255,0.0837)', foot: '#202020', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', disbg: 'rgba(255,255,255,0.1581)', dis: 'rgba(255,255,255,0.5302)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', dlg: '#ffffff', dlgb: 'rgba(0,0,0,0.0578)', foot: '#f3f3f3', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', disbg: 'rgba(0,0,0,0.2169)', dis: '#ffffff', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const steps = [['Terms', 'done'], ['Sign in', 'cur'], ['Layout', ''], ['Local playback', '']].map((s) => ({ label: s[0], done: s[1] === 'done', current: s[1] === 'cur' ? 'step' : 'false',
+    style: 'display: flex; align-items: center; gap: 8px; ' + (s[1] === 'cur' ? 'font-weight: 600' : (s[1] === 'done' ? 'opacity: 0.85' : 'opacity: 0.65')),
+    mark: 'width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; border-radius: 8px; display: flex; align-items: center; justify-content: center; ' + (s[1] === 'done' ? 'background: var(--onacc); color: var(--acc)' : (s[1] === 'cur' ? 'border: 2px solid var(--onacc)' : 'border: 1px solid var(--onacc)')) }));
+  const pat = [1,1,1,0,1,0, 1,0,1,1,0,1, 1,1,1,0,1,0, 0,1,0,1,0,1, 1,0,1,1,1,1, 0,1,0,1,0,1];
+  const qr = pat.map((v) => ({ s: 'display: block; background: ' + (v ? '#000000' : '#ffffff') }));
+  return { vars, steps, qr };
+}
+}
+</script>
+</body>
+</html>

@@ -1,8 +1,12 @@
 // ── Entities/Album.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // the album surface's self-subscribing components: the billed-artist FACE PILE and its every-artist flyout (ch 05 §0.5,
 // W16, §6), the prerelease COUNTDOWN card in its three states incl. Bare (W13, §5's clock rule) and the trailing section
-// STACK (W12: capped at 5, one-way "Show all N") — plus the LIBRARY PANE STATICS (§4, library rework §5.5): the hero ⋯
-// menu over a handle, the 36-px command circle, PaneHeader and PaneCommands, which Album.Pane and Artist.Reader paint
+// STACK (W12: capped at 5, one-way "Show all N").
+//
+// T9b (themes plan 6.1): the PICTURES of the three components are Classic's (`Themes\Classic\Structure\Views\Detail\ClassicAlbumArtist.cs`,
+// `ClassicAlbumRelease.cs`, `ClassicAlbumTrailing.cs`; the keys `Theming\Contracts\ViewKeys.DetailAlbumPlaylist.cs`). What stays here is each host's gate
+// (the stamp over the tables it paints), its demands, its state (the countdown's clock, the stack's expand cell, the flyout's open handle) and its verbs;
+// each builds one props record per render and mounts its key. The library pane's header and command row moved with the pane's picture (T10c1: `ClassicLibraryPaneKit.cs`).
 //
 // Role: UI
 // Owner: M
@@ -28,7 +32,9 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -36,7 +42,7 @@ public readonly partial struct Album
 {
     // ══ 1. THE FACE PILE (ch 05 §0.5, W16, §6) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The billed-artist row: the rail's ONE artist-line look (<see cref="Detail.RailArtistLineBox"/>) fed from
+    /// <summary>The billed-artist row: the rail's ONE artist-line look (the `Album.ArtistLine` view) fed from
     /// this host's gated stamp. The NAME is what survives the rail's width pressure: Wide paints a three-face pile + the
     /// <c>+N</c> overflow + the billed names, Medium the lead face + names on two lines + <c>+N</c>, Narrow the names alone,
     /// and the chevron follows the text. The whole line is ONE trigger: with more than one artist on the album it opens the
@@ -51,6 +57,7 @@ public readonly partial struct Album
 
     sealed record FacePileProps(int AlbumSlot, float MaxWidth);
 
+    [CoreHost]
     sealed class FacePileHost : Component
     {
         int _albumSlot;
@@ -136,7 +143,7 @@ public readonly partial struct Album
             UseEffect(_demand);
 
             // An album with no resolvable artist has no attribution row at all (§6's empty-box arm).
-            if (stamp.Source == 0) return new BoxEl();
+            if (stamp.Source == 0) return ViewSlots.View(ViewKeys.AlbumArtistLine, new AlbumArtistLineProps(Detail.RailArtistMode.Wide, null));
             var a = new Album(p.AlbumSlot);
             ReadOnlySpan<int> source = _fromBilled ? a.ArtistSlots : _all.AsSpan(0, _allCount);
             int drawn = _drawn, overflow = _overflow;
@@ -155,9 +162,9 @@ public readonly partial struct Album
             bool menu = _allCount > 1;
             var mode = Detail.RailArtistLine.Mode(p.MaxWidth, _mode);
             _mode = mode;
-            return Detail.RailArtistLineBox(mode, new Detail.RailArtistLineSpec(
+            return ViewSlots.View(ViewKeys.AlbumArtistLine, new AlbumArtistLineProps(mode, new ArtistLineSpec(
                 _faces, JoinNames(source), source.Length, overflow, p.MaxWidth, Loc.Get(Strings.Detail.ViewAllArtists), menu,
-                menu ? _toggle : leadLive ? _goLead : null, menu ? _key : null, _realized));
+                menu ? _toggle : leadLive ? _goLead : null, menu ? _key : null, _realized)));
         }
 
         static string JoinNames(ReadOnlySpan<int> artists)
@@ -200,48 +207,19 @@ public readonly partial struct Album
             _handle = handle;
         }
 
-        /// <summary>W16: every DISTINCT artist across the album, 44-DIP rows in a 280 × 360 flyout. Built at OPEN.</summary>
+        /// <summary>W16: every DISTINCT artist across the album (the `Album.ArtistFlyout` view: 44-DIP rows in a 280 × 360 flyout). Built at OPEN.</summary>
         Element Flyout()
         {
-            var rows = new Element[_allCount];
+            var rows = new PersonFlyoutRow[_allCount];
             for (int i = 0; i < rows.Length; i++) rows[i] = FlyoutRow(new Artist(_all[i]), _close);
-            var list = new BoxEl { Direction = 1, Gap = 2f, Width = Design.Size.FacePileListW, Children = rows };
-            return new BoxEl
-            {
-                Direction = 1, Width = Design.Size.FacePileFlyoutW, MaxHeight = Design.Size.FacePileFlyoutH,
-                Padding = Edges4.All(Spacing.S),
-                Children =
-                [
-                    ScrollView(list) with
-                    {
-                        Width = Design.Size.FacePileListW, MaxHeight = Design.Size.FacePileListH,
-                        ContentSized = true, AutoEdgeFade = true, Grow = 0f,
-                    },
-                ],
-            };
+            return ViewSlots.View(ViewKeys.AlbumArtistFlyout, new PersonFlyoutProps(rows));
         }
 
-        static Element FlyoutRow(Artist artist, Action close)
+        static PersonFlyoutRow FlyoutRow(Artist artist, Action close)
         {
             bool live = artist.IsValid && artist.Uri.IsValid;
             string name = artist.Name;
-            return new BoxEl
-            {
-                Direction = 0, Height = Design.Size.FacePileRowH, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = CornerRadius4.All(6f),
-                Role = AutomationRole.MenuItem, Focusable = true,
-                Cursor = live ? CursorId.Hand : (CursorId?)null,
-                OnClick = live ? () => { Track.GoToArtist(artist); close(); } : null,
-                Children =
-                [
-                    PersonPicture.Create("", 32f, displayName: name, imageSourcePath: Controls.ArtUrl(artist.ImageId)),
-                    new TextEl(name)
-                    {
-                        Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
-                        Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                ],
-            }.Interactive(Interaction.Subtle);
+            return new PersonFlyoutRow(name, Controls.ArtUrl(artist.ImageId), live ? () => { Track.GoToArtist(artist); close(); } : null);
         }
     }
 
@@ -265,9 +243,10 @@ public readonly partial struct Album
         public override int GetHashCode() => HashCode.Combine(ReleaseAt, Bare);
     }
 
+    [CoreHost]
     sealed class CountdownHost : Component
     {
-        const float RingSize = 34f, TickMs = 1000f;
+        const float TickMs = 1000f;
 
         // ONE wall-clock sample at first render and never again; every later "now" is that sample plus the FRAME clock's
         // own delta (FlipCountdown's fix for the stuck-timer bug — a per-tick wall-clock poll bakes every coarse OS-clock
@@ -283,11 +262,11 @@ public readonly partial struct Album
             var p = UseProps<CountdownProps>();
             if (_frameAnchorMs == 0)
             {
-                _frameAnchorMs = Design.FrameTime.NowMs;
+                _frameAnchorMs = FrameTime.NowMs;
                 _unixAnchorMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             }
             _ = _tick.Value;                                        // a once-a-second ping, never the value itself
-            long nowMs = _unixAnchorMs + (Design.FrameTime.NowMs - _frameAnchorMs);
+            long nowMs = _unixAnchorMs + (FrameTime.NowMs - _frameAnchorMs);
             long leftMs = Math.Max(0L, p.ReleaseAt * 1000L - nowMs);
             bool released = leftMs == 0;
             UseInterval(_ping, TickMs, enabled: !released);
@@ -298,35 +277,8 @@ public readonly partial struct Album
             // the card on the palette's account.
             ColorF ringAccent = Reactive.Untrack(p.Accent);
 
-            Element body = released
-                ? new TextEl(Loc.Get(Strings.Detail.PreReleaseOut))
-                {
-                    Size = 15f, Weight = 700, Color = Tok.TextPrimary, MaxLines = 1,
-                    Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-                }
-                : Controls.PreReleaseCountdown(TimeSpan.FromMilliseconds(leftMs));
-            if (p.Bare) return body;
-
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
-                Padding = Edges4.All(Spacing.M), Corners = CornerRadius4.All(Radii.Card),
-                Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                Children =
-                [
-                    // isActive: !released — the ring's own Inactive state fades it; it is never removed.
-                    ProgressRing.Indeterminate(size: RingSize, isActive: !released, foreground: ringAccent),
-                    new BoxEl
-                    {
-                        Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f,
-                        Children =
-                        [
-                            Design.Type.Eyebrow(Loc.Get(Strings.Detail.PreReleaseEyebrow)) with { Color = Prop.Of(p.Accent), MaxLines = 1 },
-                            body,
-                        ],
-                    },
-                ],
-            };
+            // The card (the ring with "Coming soon" and the four unit tiles, or "Out now") or, Bare, only its body: the `Album.Countdown` view.
+            return ViewSlots.View(ViewKeys.AlbumCountdown, new AlbumCountdownProps(released, TimeSpan.FromMilliseconds(leftMs), p.Bare, p.Accent, ringAccent));
         }
     }
 
@@ -343,6 +295,7 @@ public readonly partial struct Album
 
     sealed record StackProps(string Title, int Count, TrailKind Kind, int Parent);
 
+    [CoreHost]
     sealed class StackHost : Component
     {
         readonly Signal<bool> _expanded = new(false);
@@ -419,203 +372,11 @@ public readonly partial struct Album
             _ = UseComputed(_stamp).Value;
 
             int shown = expanded ? p.Count : Math.Min(p.Count, PageRules.StackCap);
-            var rows = new Element[shown];
+            var rows = new TrailRowData[shown];
             for (int i = 0; i < shown; i++) rows[i] = TrailRow(p.Kind, p.Parent, i);
 
-            Element title = Design.Type.RailHeader(p.Title) with
-            {
-                Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-            Element header = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = p.Count > shown
-                    ? [title, HyperlinkButton.Create(Strings.Home.ShowAllCount(p.Count), _expand, size: ControlSize.Small)]
-                    : [title],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.M, Grow = 1f, AlignSelf = FlexAlign.Stretch,
-                // "Show all" lengthens the box in place — the new height reveals.
-                Children = [header, new BoxEl { Direction = 1, Gap = Spacing.XS, Animate = Design.Reveal.Resize, Children = rows }],
-            };
+            // The `Album.TrailStack` view: the title and the one-way "Show all N" over the rows ("Show all" lengthens the box in place — the new height reveals).
+            return ViewSlots.View(ViewKeys.AlbumTrailStack, new AlbumTrailStackProps(p.Title, p.Count, shown, _expand, rows));
         }
-    }
-
-    // ══ 4. THE LIBRARY PANE STATICS (library rework §5.5, wave L1) ════════════════════════════════════════════════════
-    //
-    // What `Album.Pane` (and `Artist.Reader`, which paints the same commands over one release block) calls: the hero ⋯ as
-    // a function of a HANDLE, the 36-px command circle, and the pane's header + command row. Every one is a VALUE over its
-    // arguments — no hooks, no signals, nothing read but the album it is handed — so a selection change re-skins both
-    // panes in place and neither remounts. Accent-NEUTRAL: nothing here reads a palette (ch 15 §0.8).
-
-    /// <summary>The pane covers' one edge — 128, the show pane's too (it renders this same header).</summary>
-    public const float PaneCover = 128f;
-
-    /// <summary>The pane header's STATED height: the cover plus its own padding (128 + 20 + 12 = 160). Stated, not
-    /// content-derived, because a content-derived header is a header that MOVES: the text column reaches past the cover
-    /// the moment a title wraps to two lines, and everything under it — the command row, the column header, the first
-    /// row — slid ~9 DIP down on those albums and back up on the next one. With one number the rows below start on the
-    /// same DIP for every release, and the column that has to fit inside it is sized to fit (see
-    /// <see cref="PaneHeader"/>'s own note).</summary>
-    public const float PaneHeaderHeight = PaneCover + Spacing.XL + Spacing.M;
-
-    // ── the header's TYPE BUDGET ──────────────────────────────────────────────────────────────────────────────────────
-    // A stated height only helps if what goes in it FITS: an overflowing column would move the clipping instead of the
-    // layout. So the four lines and the gaps between them are numbers, `PaneHeader` lays itself out FROM those numbers,
-    // and `PaneHeaderTextHeight` adds them up — which makes "a two-line title cannot push the tracklist down" a pure
-    // assertion (AlbumPageRulesTests) rather than a screenshot. Raising the title back to the prototype's 28/34 now
-    // fails that test instead of shipping a 9-DIP jump.
-
-    /// <summary>Between the header's text lines.</summary>
-    public const float PaneHeaderGap = 3f;
-    /// <summary>The eyebrow's line box — <c>Design.Type.Eyebrow</c> is <c>Ui.Caption</c>, 12 / 16.</summary>
-    public const float PaneHeaderEyebrowLine = 16f;
-    /// <summary>The title link. 24 / 30 and not the prototype's 28 / 34: at 34 two lines alone spent 129 of the 128 the
-    /// cover leaves. A one-line title — the common case — reads the same at either size.</summary>
-    public const float PaneTitleSize = 24f;
-    /// <inheritdoc cref="PaneTitleSize"/>
-    public const float PaneTitleLine = 30f;
-    /// <summary>The title wraps to two lines and ellipsizes after them.</summary>
-    public const int PaneTitleMaxLines = 2;
-    /// <summary>The attribution's line box — <c>Detail.ArtistLine</c> sets its names 14 / 20.</summary>
-    public const float PaneHeaderAttributionLine = 20f;
-    /// <summary>The meta line, 12.5 / 16.</summary>
-    public const float PaneHeaderMetaSize = 12.5f;
-    /// <inheritdoc cref="PaneHeaderMetaSize"/>
-    public const float PaneHeaderMetaLine = 16f;
-
-    /// <summary>What the block leaves its text column: everything it states, less its own padding — the cover's 128.</summary>
-    public const float PaneHeaderTextBudget = PaneHeaderHeight - Spacing.XL - Spacing.M;
-
-    /// <summary>The text column's height for a title of <paramref name="titleLines"/> lines: the four line boxes and the
-    /// three gaps. The title link's 2-DIP inset is cancelled by its own negative margin, so it contributes nothing.</summary>
-    public static float PaneHeaderTextHeight(int titleLines)
-        => PaneHeaderEyebrowLine + PaneTitleLine * Math.Clamp(titleLines, 1, PaneTitleMaxLines)
-           + PaneHeaderAttributionLine + PaneHeaderMetaLine + 3f * PaneHeaderGap;
-
-    /// <summary>The pane's and the reader's secondary verb: the standard 32/r4 <see cref="Controls.IconAction"/>, named
-    /// by its tooltip.
-    /// <para><c>// Workstream B</c>: was a 36-px subtle CIRCLE — the detail rail's round FAB shape. Every non-media icon
-    /// affordance is now this same square ladder, so a pane's Shuffle and the rail's satellites read as one grammar.</para></summary>
-    public static Element CommandCircle(string glyph, string name, Action tap)
-        => Controls.Named(Controls.IconAction(glyph, tap), name);
-
-    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) ·
-    /// the attribution (<c>Detail.ArtistLine(id.Artists)</c>, or a show's publisher line) · meta 12.5/16.
-    /// <c>AlignItems End</c>: the text block sits on the cover's baseline, the prototype's stance.
-    /// <para>The block is <see cref="PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the
-    /// 128 the cover leaves: 16 eyebrow + 60 title (two 30-DIP lines; the 2-DIP link inset is cancelled by its own
-    /// negative margin) + 20 attribution + 16 meta + three 3-DIP gaps = 121. That budget is why the title is 24/30 and
-    /// not the prototype's 28/34 — at 34 a two-line title alone put the column at 129 and pushed the whole tracklist
-    /// down. A one-line title is the common case and reads the same; a wrapped one now costs nothing below it. The
-    /// <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose
-    /// metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
-    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
-    {
-        // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show).
-        // A title-only hyperlink left the cover inert in the library pane.
-        Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Shrink = 0f,
-        Height = PaneHeaderHeight, ClipToBounds = true,
-        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-        Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = PaneCover, Height = PaneCover, Shrink = 0f, Corners = Radii.CardAll, ClipToBounds = true, Shadow = Elevation.Card,
-                Children = [Controls.Artwork(cover, PaneCover, PaneCover, Radii.Card, decodePx: 256)],
-            },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, Gap = PaneHeaderGap, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-                Children =
-                [
-                    Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
-                    new TextEl(title)
-                    {
-                        Size = PaneTitleSize, LineHeight = PaneTitleLine, Weight = 600,
-                        Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
-                        BrushTransitionMs = Design.Motion.Faster, MaxLines = PaneTitleMaxLines,
-                        Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                    attribution,
-                    // The SAME rung for the show pane, which renders this header: "one geometry for both kinds, so
-                    // a selection crossing album -> show moves nothing but the words" (that file's header, and this
-                    // one's). A typography alias here made the album pane's meta 13/18 secondary against the show
-                    // pane's 12.5/16 tertiary, and put PaneHeaderTextHeight's arithmetic 2 DIP out.
-                    new TextEl(meta)
-                    {
-                        Size = PaneHeaderMetaSize, LineHeight = PaneHeaderMetaLine, Color = Tok.TextTertiary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                ],
-            },
-        ],
-    }.Interactive(Interaction.Subtle);
-
-    /// <summary><see cref="PaneHeader"/>'s loading twin, for the album pane AND the show pane (both render <see cref="PaneHeader"/>,
-    /// rung for rung): the cover square and three stand-in bars — eyebrow, title, attribution — in the SAME
-    /// stated <see cref="PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real header is a
-    /// dissolve and never a reflow. The header's STATED height, not this tree's content height, is the point: the two must
-    /// occupy the same band. Inert — no click, no role, no focus (a header that cannot say what it opens offers nothing).</summary>
-    public static BoxEl PaneHeaderSkeleton() => new()
-    {
-        Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Height = PaneHeaderHeight, ClipToBounds = true,
-        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-        Children =
-        [
-            new BoxEl { Width = PaneCover, Height = PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
-            new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Children = [Controls.PendingBar(80f, 11f), Controls.PendingBar(220f, 26f), Controls.PendingBar(120f, 11f)],
-            },
-        ],
-    };
-
-    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (32/r4 icon actions each) ·
-    /// spacer · "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule).
-    /// Never a second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's
-    /// hosts (the SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.
-    /// <para>The link is the row's one SHRINKING child (#158): the verbs before it are ~300 DIP that never shrink, and
-    /// with the link `Shrink 0` too a pane under ~400 DIP clipped it off the edge. Now the spacer gives way first, then
-    /// the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip
-    /// (<c>Controls.TrimTip</c>). The tooltip wraps the LABEL, in a column slot of its own, rather than the whole link:
-    /// that slot is exactly the text's box, so the trim test compares like with like (around the link it would measure
-    /// a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only
-    /// be sized as a COLUMN child (the engine's rule 11).</para></summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open)
-    {
-        string openLabel = Loc.Get(Strings.Library.OpenAlbum);
-        TextEl label = Design.Type.DenseMeta(openLabel) with
-        {
-            Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary,
-            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
-        };
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
-            Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
-            Children =
-            [
-                Controls.PlayButton(Tok.AccentDefault, play),
-                CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
-                save, more,
-                new BoxEl { Grow = 1f },
-                new BoxEl
-                {
-                    Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 1f, MinWidth = 0f,
-                    Padding = new Edges4(Spacing.S, 6f, Spacing.S, 6f),
-                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
-                    Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
-                    Children =
-                    [
-                        new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [Controls.TrimTip(label, openLabel, label)] },
-                        Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
-                    ],
-                },
-            ],
-        };
     }
 }

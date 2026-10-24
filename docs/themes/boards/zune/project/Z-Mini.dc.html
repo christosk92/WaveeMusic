@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune mini player and docked video</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1000px; height: 620px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; gap: 48px; padding: 32px 48px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 500px; flex-shrink: 0">
+    <span style="font-size: 13px; color: #7a7a7a">mini player · the floating video (360 × 202, 16 from the edge) over whatever else is on screen · controls appear on hover</span>
+    <div style="width: 500px; height: 340px; background: #2b2b2b; position: relative; overflow: hidden">
+      <div style="position: absolute; right: 16px; bottom: 16px; width: 360px; height: 202px; background: linear-gradient(135deg, #0b1220 0%, #1b2a3a 50%, #2a1b3a 100%); box-shadow: 0 16px 40px rgba(0,0,0,0.55); overflow: hidden">
+        <div style="position: absolute; left: 0; top: 0; right: 0; height: 32px; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px; gap: 0; background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0)); font-size: 12px; color: #ffffff"><span style="margin-right: auto; padding-left: 10px; color: #c8c8c8">Nightcall · Kavinsky</span><button aria-label="back to wavee" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; font-size: 13px; padding: 0">⤢</button><button aria-label="close" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; font-size: 13px; padding: 0">✕</button></div>
+        <div style="position: absolute; left: 0; bottom: 0; right: 0; height: 64px; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.8)); display: flex; flex-direction: column; justify-content: flex-end; padding: 0 12px 8px 12px; gap: 6px">
+          <span style="height: 2px; background: rgba(255,255,255,0.2); display: block"><span style="{{progress}}"></span></span>
+          <span style="display: flex; align-items: center; gap: 6px"><button aria-label="previous" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button><button aria-label="pause" style="{{miniDisc}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button aria-label="next" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button><span style="font-size: 11px; color: #c8c8c8; margin-left: 4px">1:14 · -3:04</span><span style="flex-grow: 1"></span><button aria-label="mute" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><button aria-label="more" style="width: 28px; height: 28px; border: 0; background: transparent; color: #ffffff; font-size: 14px; padding: 0">⋯</button></span>
+        </div>
+      </div>
+    </div>
+    <span style="font-size: 12px; color: #7a7a7a">there is no music mini player: the compact form of music is the narrow window tier (shell page)</span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; min-width: 0">
+    <span style="font-size: 13px; color: #7a7a7a">docked video · sits on top of the inline panel, draggable height up to 560</span>
+    <div style="width: 340px; height: 500px; background: #1b1b1b; display: flex; flex-direction: column; padding: 12px 20px 16px 24px; gap: 10px; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 18px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px"><a href="#" style="color: #ffffff">now playing</a><a href="#" style="color: #6f6f6f">queue</a><span style="flex-grow: 1"></span><button aria-label="close" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 14px; padding: 0; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif">✕</button></div>
+      <div style="display: flex; gap: 16px; font-size: 13px"><a href="#">art</a><a href="#" style="color: {{accent}}">video</a><span style="flex-grow: 1"></span><a href="#">mini player</a><a href="#">full screen</a></div>
+      <div style="width: 296px; height: 167px; background: linear-gradient(135deg, #0b1220 0%, #1b2a3a 50%, #2a1b3a 100%); position: relative; margin-left: -4px"><span style="position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,0.2); display: block"><span style="{{progress}}"></span></span></div>
+      <span style="height: 4px; display: flex; align-items: center; justify-content: center"><span style="width: 40px; height: 2px; background: rgba(255,255,255,0.18); display: block"></span></span>
+      <span style="font-size: 17px; color: {{accent}}">Nightcall</span>
+      <span style="font-size: 13px; color: #a8a8a8; margin-top: -6px">Kavinsky · OutRun · ♡</span>
+      <span style="font-size: 13px; color: #7a7a7a; margin-top: 10px">about the artist</span>
+      <span style="font-size: 13px; color: #c8c8c8; line-height: 19px">Vincent Belorgey, known as Kavinsky, is a French electro house artist whose 2010 single "Nightcall" became the sound of the film Drive. <a href="#">more</a></span>
+      <span style="font-size: 13px; color: #7a7a7a; margin-top: 10px">next up</span>
+      <div style="display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; height: 44px"><span style="width: 36px; height: 36px; border-radius: 2px; background: #2f5b6b"></span><span style="display: flex; flex-direction: column"><span style="font-size: 14px">Resonance</span><span style="font-size: 12px; color: #9c9c9c">HOME</span></span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1000,"height":620}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return { accent, progress: 'display: block; width: 29%; height: 2px; background: ' + accent, miniDisc: 'width: 32px; height: 32px; border-radius: 16px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0' };
+}
+}
+</script>
+</body>
+</html>

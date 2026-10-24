@@ -1,17 +1,15 @@
 // ── Entities/Artist.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// The artist page's LEAVES and its three CORE layout sections: ArtistHeroLayout and ArtistPopularLayout (ported VERBATIM
-// from 0.2.9's Features/Detail/ArtistHeroLayout.cs / ArtistPopularLayout.cs, ch 08 §8) and ArtistSections (the page's
-// new pure decisions: section order, pivot membership, the top band's wide latch, the chart's column clamp, the
-// profile-facts list, the fans fallback, the page-failure verdict). Then the UI leaves: the full-bleed hero (HeroArt, the
-// two presentation arms, identity, meta, actions), the artist pick and the gallery lightbox. The Top-tracks chart is the
-// named partial Artist.UI.Chart.cs. The composition, the context band wiring, the shelves, the biography band and the
-// three banner sections (upcoming, latest release, tour) are Artist.Page.cs — the banners moved there to keep this file
-// and its chart partial inside +30 % of their shared 1,500 (1,797 together).
+// The artist page's CORE layout sections and facts: the hero's metrics and its tier-free collapse arithmetic (ArtistHeroLayout; WHERE the hero's
+// sub-tiers break and what each lays out is the structure's since TC6, `Theming\Policies\ArtistTierPolicy.cs`), ArtistPopularLayout (ported VERBATIM
+// from 0.2.9's Features/Detail/ArtistPopularLayout.cs, ch 08 §8) and ArtistSections (the page's pure decisions: section order, pivot
+// membership, the chart's column clamp, the profile-facts list, the fans fallback, the page-failure verdict), then the
+// hero's facts (HeroText) and the gallery lightbox's core (the overlay, the open index, the export). The hero, the artist pick, the shelves, the
+// biography band and the banners are the structure's since T10b1 (`Themes\Classic\Structure\Views\Pages\ClassicArtist*.cs`), the lightbox's
+// picture since T10b2 (`ClassicArtistLightbox.cs`, `ViewKeys.ArtistLightbox`); the Top-tracks chart is the named partial Artist.UI.Chart.cs.
 //
-// Role: UI (+ CORE sections 1-3, engine-free except the Spacing constants)
+// Role: CORE (sections 1-3 engine-free except the Spacing constants; section 4 the hero's facts and the lightbox's overlay, index and export)
 // Owner: N (stream N-A)
 // Wave: 5
-// Budget: 1500 lines (together with Artist.UI.Chart.cs)
 // Spec: ch 08 §8-§9
 //
 // ── WHY THE CORE LIVES IN A UI FILE ──────────────────────────────────────────────────────────────────────────────────
@@ -25,14 +23,13 @@
 // 0.2.9 sized the hero from the HYSTERETIC tier while the blend wash and the magazine gutter read the bare-width
 // HeroHeightFor/PageGutterFor, so between 856 and 880 the hero was 440 tall with a 36 gutter while the wash was sized for
 // 384 + 96. The page now resolves ONE ArtistHeroMetrics per render and hands it to the hero, the band, the wash
-// (BlendBackdropHeightFor/BlendBoundaryFor(in metrics)) and the magazine gutter (metrics.Gutter). The width-only forms
-// stay, verbatim, for their tests.
+// (BlendBackdropHeightFor/BlendBoundaryFor(in metrics)) and the magazine gutter (metrics.Gutter). The width-only height
+// forms went with the core's tier ladder (TC6): the structure's records are the only place a hero height is named.
 //
 // NAME NOTE: inside `struct Artist` the simple names `Uri`, `Id`, `Name`, `Version`, `Pick`, `Latest` and `Links` are the
 // handle's INSTANCE members — `System.Uri` is spelled in full and nothing here declares a nested type of those names.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -42,11 +39,13 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
-// ══ 1. CORE — THE HERO LAYOUT (verbatim, ArtistHeroLayout.cs) ════════════════════════════════════════════════════════
+// ══ 1. CORE — THE HERO'S METRICS AND ITS COLLAPSE ARITHMETIC ═══════════════════════════════════════════════════════════
 
 public enum ArtistHeroTier : byte { Narrow, Compact, Medium, Wide }
 public enum ArtistHeroVeilAxis : byte { Horizontal, Vertical }
@@ -59,98 +58,30 @@ public readonly record struct ArtistHeroMetrics(
     float CopyMaxWidth)
 {
     public bool Stacked => VeilAxis == ArtistHeroVeilAxis.Vertical;
+
+    /// <summary>The photograph's own extent when it is a slice of the hero (a stacked arm); 0 when the photograph fills the whole hero.</summary>
+    public float PhotoHeight { get; init; }
 }
 
-/// <summary>Responsive geometry for the full-bleed artist hero. The photo always fills the hero; pressure changes only
-/// the copy placement and veil direction. Tier selection retains the detail layout's 24-DIP recovery band.</summary>
+/// <summary>The full-bleed artist hero's tier-free arithmetic: the photograph's extent, its fade and parallax, and the collapse into the 56-DIP band. WHERE
+/// the hero's sub-tiers break (the hero ladder, <see cref="Wavee.Theming.ArtistLadders.Hero"/>) and what each one lays out (its height, gutter, veil and copy
+/// measure: <see cref="Wavee.Theming.ArtistTierPolicy.Hero"/>) is the structure's (Classic: <c>Rules\Tiers.Artist.cs</c>).</summary>
 public static class ArtistHeroLayout
 {
-    // Lowered from 480/760/1040: the old thresholds dropped into the stacked presentation at ordinary desktop widths.
-    public const float CompactWidth = 360f;
-    public const float MediumWidth = 600f;
-    public const float WideWidth = 880f;
-    public const float TierHysteresis = 24f;
+    /// <summary>The photograph's own extent: the full hero, or the slice the metrics name. Both the banner's media box and <c>HeroArt</c> derive from THIS,
+    /// so they cannot disagree.</summary>
+    public static float PhotoHeightFor(in ArtistHeroMetrics m) => m.PhotoHeight > 0f ? MathF.Min(m.PhotoHeight, m.MinHeight) : m.MinHeight;
 
-    public const float WideHeight = 440f;
-    public const float MediumHeight = 384f;
-
-    // Stacked (Compact/Narrow): the photograph is a FIELD at the top and the identity column sits BELOW it.
-    public const float CompactPhotoHeight = 200f;
-    public const float NarrowPhotoHeight = 176f;
-
-    // The stacked identity band's WORST-CASE anatomy: verified caption + a 2-line title + a 2-line bio + meta (one row at
-    // Compact, three stacked rows at Narrow) + gaps + 12/20 padding + actions (one 32 row at Compact, two at Narrow).
-    // Workstream B (button standardisation): the action row's control lost 4 DIP — the old media pill/FollowButton's
-    // PillHeight (36) is replaced by the new grammar's ButtonHeight (32, Controls.Cta.cs) for PlayButton/Shuffle/
-    // FollowToggle/radio IconAction alike — so each 36 action row shrinks to 32. Compact stacks ONE action row
-    // (252 - 4 = 248); Narrow stacks TWO (300 - 2×4 = 292).
-    public const float CompactExpandedIdentityHeight = 248f;
-    public const float NarrowExpandedIdentityHeight = 292f;
-    public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;
-    public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;
-
-    /// <summary>The photograph's own extent: the full hero on horizontal tiers, the top slice on stacked tiers. Both the
-    /// banner's media box and <c>HeroArt</c> derive from THIS, so they cannot disagree.</summary>
-    public static float PhotoHeightFor(in ArtistHeroMetrics m) => !m.Stacked ? m.MinHeight
-        : m.Tier == ArtistHeroTier.Compact ? CompactPhotoHeight
-        : NarrowPhotoHeight;
-
-    public const float WideCopyMaxWidth = 1120f;
-    public const float MediumCopyMaxWidth = 760f;
-    public const float CompactCopyMaxWidth = 640f;
-    public const float NarrowCopyMaxWidth = 520f;
     public const float PhotoParallaxFraction = 0.15f;
-    public const float ContentBlendTail = Spacing.XXXL * 3f;
+    public static float ContentBlendTail => Spacing.XXXL * 3f;
     public const float CompactIdentityHeight = Detail.VerticalLayout.CompactIdentityHeight;
-
-    public static ArtistHeroTier TierFor(float width, ArtistHeroTier previous)
-    {
-        if (previous == ArtistHeroTier.Wide && width >= WideWidth - TierHysteresis) return previous;
-        if (previous == ArtistHeroTier.Medium && width >= MediumWidth - TierHysteresis && width < WideWidth + TierHysteresis) return previous;
-        if (previous == ArtistHeroTier.Compact && width >= CompactWidth - TierHysteresis && width < MediumWidth + TierHysteresis) return previous;
-
-        if (width >= WideWidth + ((byte)previous < (byte)ArtistHeroTier.Wide ? TierHysteresis : 0f)) return ArtistHeroTier.Wide;
-        if (width >= MediumWidth + ((byte)previous < (byte)ArtistHeroTier.Medium ? TierHysteresis : 0f)) return ArtistHeroTier.Medium;
-        if (width >= CompactWidth + ((byte)previous < (byte)ArtistHeroTier.Compact ? TierHysteresis : 0f)) return ArtistHeroTier.Compact;
-        return ArtistHeroTier.Narrow;
-    }
-
-    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous)
-    {
-        var tier = TierFor(width, previous);
-        return tier switch
-        {
-            ArtistHeroTier.Wide => new(tier, WideHeight, Spacing.PageWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
-            ArtistHeroTier.Medium => new(tier, MediumHeight, Spacing.XXXL, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
-            ArtistHeroTier.Compact => new(tier, CompactHeight, Spacing.L, ArtistHeroVeilAxis.Vertical, CompactCopyMaxWidth),
-            _ => new(tier, NarrowHeight, Spacing.PageNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
-        };
-    }
-
-    public static float PageGutterFor(float width) => width >= WideWidth ? Spacing.PageWide
-        : width >= MediumWidth ? Spacing.XXXL
-        : width >= CompactWidth ? Spacing.L
-        : Spacing.PageNarrow;
 
     public static float PhotoFadeBandFor(float height) => Math.Clamp(height * 0.28f, 120f, 180f);
     public static float CollapseDistance(float height) => MathF.Max(1f, height - CompactIdentityHeight);
     public static float ExpandedFadeStart(float collapseDistance) => Detail.VerticalLayout.ExpandedFadeStart(collapseDistance);
     public static float CompactRevealStart(float collapseDistance) => Detail.VerticalLayout.CompactRevealStart(collapseDistance);
 
-    public static float HeroHeightFor(float width) => width >= WideWidth ? WideHeight
-        : width >= MediumWidth ? MediumHeight
-        : width >= CompactWidth ? CompactHeight
-        : NarrowHeight;
-    public static float BlendBackdropHeightFor(float width) => HeroHeightFor(width) + ContentBlendTail;
-    public static float BlendBoundaryFor(float width)
-    {
-        float height = HeroHeightFor(width);
-        return height / (height + ContentBlendTail);
-    }
-
-    // ── 0.3: the resolved-metrics forms (ch 08 §9 inconsistency #1) ──
-
-    /// <summary>The wash's extent from the RESOLVED (hysteretic) metrics the hero itself is sized from.</summary>
+    /// <summary>The wash's extent from the RESOLVED (hysteretic) metrics the hero itself is sized from (ch 08 §9 inconsistency #1).</summary>
     public static float BlendBackdropHeightFor(in ArtistHeroMetrics m) => m.MinHeight + ContentBlendTail;
 
     /// <summary>The wash's boundary stop, <c>h/(h+96)</c>, from the resolved metrics.</summary>
@@ -225,14 +156,9 @@ public static class ArtistSections
 {
     public const int Count = 16;
 
-    /// <summary>Both <c>Responsive.Of</c> call sites decide their first composed frame at 900, not the real pane
-    /// (ch 08 breakpoint table "Pre-measure width", parity 90).</summary>
-    public const float PreMeasureWidth = 900f;
-
-    /// <summary>The Top-tracks band goes side by side at 760 and holds down to 736 once wide (TopTracks.cs:17-27).</summary>
-    public const float TopBandWideW = 760f, TopBandHysteresis = 24f;
-
-    /// <summary>The chart: never taller than five rows, never more than two columns, never more than 50 tracks.</summary>
+    /// <summary>The chart: never taller than five rows, never more than 50 tracks; its widest column count and its rows per column are the structure's per
+    /// tier (<see cref="Wavee.Theming.ArtistTierPolicy.ChartMaxColumns"/>, <see cref="Wavee.Theming.ArtistTierPolicy.ChartRows"/>), two and five where it
+    /// declares none.</summary>
     public const int ChartMaxRows = 5, ChartMaxColumns = 2, ChartMaxTracks = 50;
 
     /// <summary>"Fans also like" falls back to this many followed artists, excluding the page artist.</summary>
@@ -308,14 +234,24 @@ public static class ArtistSections
     public static bool ShowsCountdown(long releaseAtUnix, long nowUnix)
         => releaseAtUnix > nowUnix && releaseAtUnix - nowUnix <= CountdownWindowSeconds;
 
-    /// <summary>The top band's latched wide/stacked decision.</summary>
-    public static bool TopBandWide(float width, bool wasWide)
-        => wasWide ? width >= TopBandWideW - TopBandHysteresis : width >= TopBandWideW;
+    /// <summary>Never offer more columns than the rows can fill: a chart no longer than one column's <paramref name="rows"/> is ONE column at any width
+    /// (ArtistPopular.cs:138, ch 08 audit #4), and never more than <paramref name="maxColumns"/> (the tier's).</summary>
+    public static int ChartColumns(int total, int maxColumns = ChartMaxColumns, int rows = ChartMaxRows)
+    {
+        int perColumn = Math.Max(1, rows);
+        return Math.Clamp((total + perColumn - 1) / perColumn, 1, Math.Max(1, maxColumns));
+    }
 
-    /// <summary>Never offer more columns than the rows can fill: a ≤5-track chart is ONE column at any width
-    /// (ArtistPopular.cs:138, ch 08 audit #4).</summary>
-    public static int ChartColumns(int total)
-        => Math.Clamp((total + ChartMaxRows - 1) / ChartMaxRows, 1, ChartMaxColumns);
+    /// <summary>The chart skeleton's counts: the rows shown (the known count, else the overview's seed cap: an empty edge assumes the overview's
+    /// ten, W5), the columns the real layout would offer at the tier's <paramref name="maxColumns"/> and <paramref name="rows"/> (so the skeleton
+    /// keeps the chart's own columns per tier) and the rows per column. The structure's skeleton draws them (`ArtistChartStyle.Skeleton`).</summary>
+    public static (int Total, int Columns, int PerColumn) ChartSkeletonShape(int knownCount, int maxColumns = ChartMaxColumns, int rows = ChartMaxRows)
+    {
+        int total = knownCount > 0 ? Math.Min(knownCount, ArtistPopularTracks.OverviewSeedCap) : ArtistPopularTracks.OverviewSeedCap;
+        int cols = ChartColumns(total, maxColumns, rows);
+        int perCol = Math.Min(Math.Max(1, rows), Math.Max(1, (total + cols - 1) / cols));
+        return (total, cols, perCol);
+    }
 
     /// <summary>The profile-facts tiles in their fixed order, a zero stat dropping its WHOLE tile (never "0 Albums").
     /// Returns the count written into <paramref name="into"/> (≥ 6). Zero tiles ⇒ the biography takes the full width.</summary>
@@ -354,15 +290,16 @@ public static class ArtistSections
         => !overviewKnown && !overviewPending && chartReadiness == EdgeState.Failed;
 }
 
-// ══ 4. THE LEAVES ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// ══ 4. THE HERO'S FACTS AND THE LIGHTBOX'S CORE ═══════════════════════════════════════════════════════════════════════
 
 public readonly partial struct Artist
 {
-    // ── 4.1 the hero (ch 08 W1-W4b, §3 hero rows, §5 hero motion) ────────────────────────────────────────────────────
+    // ── 4.1 what the hero states (ch 08 W1-W4b, §3 hero rows) ─────────────────────────────────────────────────────────
 
     /// <summary>What the hero STATES, resolved once per page render. <see cref="Placeholder"/> is the representative
     /// shape the page's derived skeleton is built from — its words are never shown (the deriver paints bars in their
-    /// place), so the shimmer carries the loaded hero's exact geometry (ch 08 §0 #15, W5).</summary>
+    /// place), so the shimmer carries the loaded hero's exact geometry (ch 08 §0 #15, W5). The hero itself is Classic's
+    /// (`ClassicArtistHero`); these are the facts it draws.</summary>
     internal readonly record struct HeroText(string Name, string Lead, bool Verified, ushort Rank, uint Monthly, uint Followers)
     {
         public static HeroText For(Artist a) => new(a.Name, Entities.Strings.Resolve(a.BioLeadId), a.IsVerified,
@@ -372,945 +309,62 @@ public readonly partial struct Artist
             Verified: true, Rank: 100, Monthly: 10_000_000, Followers: 10_000_000);
     }
 
-    /// <summary>The full-bleed hero and its collapse into the 56-DIP band (ArtistPage.Hero.cs:22-198). Horizontal tiers
-    /// are a ZStack (photo · veil · copy centred); stacked tiers are a column (photo band · identity justified End) —
-    /// two compositions, never one with a flag (ch 08 §9 #1). A null <paramref name="play"/> is the skeleton arm: no
-    /// veil leaf, no band, the actions as their shapes.</summary>
-    internal static Element HeroBanner(in HeroText text, string uri, string? photoUrl, string? paletteUrl, float width,
-                                       in ArtistHeroMetrics m, ColorF accent, bool compactCanHit,
-                                       Action? play, Action? shuffle, Action? radio, Element? band,
-                                       uint headerAccent = 0)
-    {
-        float w = MathF.Max(1f, width);
-        float height = m.MinHeight;
-        float collapse = ArtistHeroLayout.CollapseDistance(height);
-        float photoH = ArtistHeroLayout.PhotoHeightFor(m);
-
-        // W4b: no url ⇒ HeroArt is NOT mounted; the flat theme neutral stands in (never a cover tint — ch 08 §4 row 6b).
-        // KEYED ON THE ARTIST, NOT THE URL (ch 08 BUG E #2): the caller already latches which art identity is showing
-        // (Detail.CoverLatch.PreferVisible), so the url itself still changes CDN size/rendition across a render — a
-        // key on `src` would remount HeroArt (and its zoom/settle state) on every one of those, undoing the latch. The
-        // url instead reaches the mounted instance live as a re-pushed prop (HeroArtProps + UseProps), exactly like the
-        // wash and veil below.
-        // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF — the same frozen-placeholder defect as
-        // PersonPicture's fill (Artist.UI.cs's pick avatar, below). No url here means no tint EITHER way (the "never a
-        // cover tint" rule above still holds — Design.WatchedPlaceholder(null) resolves to the same flat neutral), but
-        // it is now a live-bound Prop like every other art slot's placeholder instead of a value baked in at this
-        // render, so a future caller of this arm with a real (still-ungrading) url repaints instead of staying grey.
-        Element art = photoUrl is { Length: > 0 } src
-            ? Embed.Comp(new HeroArtProps(src, w, photoH), static () => new HeroArt()) with { Key = "heroart:" + uri }
-            : new BoxEl { Width = w, Height = photoH, Fill = Design.WatchedPlaceholder(photoUrl) };
-        Element media = new BoxEl
-        {
-            Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
-            TransformOriginX = 0.5f, TransformOriginY = 0f,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
-            Children = [art],
-        }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
-
-        // Shared by both arms: the expanded presentation slides up and fades as the band takes over.
-        ScrollEffectSpec[] collapseEffects =
-        [
-            new(ScrollEffect.Parallax(0.0, collapse, 0f, -collapse)),
-            new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
-        ];
-
-        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio);
-        Element expanded;
-        if (m.Stacked)
-        {
-            // No veil: no type sits on the photograph on these tiers (ch 08 §0 #2).
-            expanded = new BoxEl
-            {
-                Width = w, Height = height, Direction = 1,
-                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
-                Children =
-                [
-                    media,
-                    new BoxEl
-                    {
-                        Grow = 1f, MinHeight = 0f, Direction = 1,
-                        Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
-                        Padding = new Edges4(m.Gutter, Spacing.M, m.Gutter, Spacing.XL),
-                        Children = [identity],
-                    },
-                ],
-            };
-        }
-        else
-        {
-            Element copy = new BoxEl
-            {
-                Width = w, Height = height, Direction = 1,
-                Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
-                Padding = new Edges4(m.Gutter, Spacing.XXL, m.Gutter, Spacing.XXL),
-                Children = [identity],
-            };
-            // A cover-keyed leaf: a late grading swaps the gradient without rebuilding the banner (ch 08 §4 row 3).
-            // headerAccent (row.HeaderAccent) is the raw payload rung: the caller passes it as an optional param so
-            // this stays source-compatible until Artist.Page.cs's two HeroBanner call sites are wired to pass it.
-            // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
-            // over a growing photo left an unveiled band above the hero's top edge.
-            Element veil = play is null
-                ? new BoxEl()
-                : new BoxEl
-                {
-                    Width = w, Height = height, ZStack = true, HitTestVisible = false,
-                    TransformOriginX = 0.5f, TransformOriginY = 0f,
-                    Children =
-                    [
-                        Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                               payloadAccent: headerAccent),
-                    ],
-                }.StretchFromTop();
-            expanded = new BoxEl
-            {
-                Width = w, Height = height, ZStack = true,
-                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
-                Children = [media, veil, copy],
-            };
-        }
-
-        // Pinned at the viewport top and COLLAPSING into the compact band: over the collapse distance the presented height
-        // shrinks from the banner height to the band, and the Leading collapse cuts the expanded presentation (paint and
-        // input) at that edge by itself — the presentation carries its own slide-away (collapseEffects). No ClipToBounds:
-        // a box clip here would also cut the photo's overscroll stretch above the root's top (a dark band over the photo).
-        return new BoxEl
-        {
-            Direction = 1, Height = height, ZStack = true,
-            Children = band is null ? [expanded] : [expanded, band],
-        }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
-    }
-
-    /// <summary>Verified · name · first sentence · meta, then the action row (Hero.cs:34-95).</summary>
-    static Element HeroIdentity(in HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
-                                Action? play, Action? shuffle, Action? radio)
-    {
-        Element verified = text.Verified
-            ? new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Children =
-                [
-                    InfoBadge.Icon(Icons.Accept, color: accent),
-                    Caption(Loc.Get(Strings.Artist.Verified)) with { Color = Tok.TextSecondary },
-                ],
-            }
-            : new BoxEl();
-
-        TextEl name = m.Tier switch
-        {
-            ArtistHeroTier.Wide => Design.Type.ArtistDisplay(text.Name),
-            ArtistHeroTier.Medium => Design.Type.ArtistTitle(text.Name),
-            _ => Design.Type.ArtistCompactTitle(text.Name),
-        };
-        name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
-
-        // The lead is a COMMIT-computed column (ch 08 GAP 3): the hero never strips HTML on a render.
-        Element bio = text.Lead.Length == 0
-            ? new BoxEl()
-            : Body(text.Lead) with
-            {
-                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f,
-            };
-
-        return new BoxEl
-        {
-            Direction = 1,
-            Width = MathF.Min(m.CopyMaxWidth, MathF.Max(1f, w - 2f * m.Gutter)),
-            MaxWidth = m.CopyMaxWidth, MinWidth = 0f, Gap = Spacing.S,
-            // The page-level SkelRegion owns the single reveal. A second hero-copy entrance here made the
-            // already-revealed page flash and move for another frame when the overview landed.
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                    // Meta stays ONE horizontal row at Compact; only Narrow stacks it.
-                    Children = [verified, name, bio, HeroMeta(in text, m.Tier == ArtistHeroTier.Narrow)],
-                },
-                HeroActions(text.Name, uri, accent, play, shuffle, radio, m.Tier),
-            ],
-        };
-    }
-
-    /// <summary>"#N in the world" (accent) · monthly listeners · followers — a zero stat drops its run (Hero.cs:236-259).</summary>
-    static Element HeroMeta(in HeroText text, bool stacked)
-    {
-        int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
-        var kids = new Element[count];
-        int k = 0;
-        if (text.Rank > 0)
-            kids[k++] = BodyStrong(Strings.Artist.WorldRank(text.Rank.ToString(CultureInfo.CurrentCulture)))
-                with { Color = Tok.AccentTextPrimary };
-        if (text.Monthly > 0)
-            kids[k++] = Body(CountLabel(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with { Color = Tok.TextSecondary };
-        if (text.Followers > 0)
-            kids[k++] = Body(CountLabel(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers)) with { Color = Tok.TextSecondary };
-        return new BoxEl
-        {
-            Direction = (byte)(stacked ? 1 : 0),
-            AlignItems = stacked ? FlexAlign.Start : FlexAlign.Center,
-            Gap = stacked ? Spacing.XS : Spacing.L,
-            MinWidth = 0f,
-            Children = kids,
-        };
-    }
-
-    /// <summary>Play (the cover's accent) · Shuffle · Follow · Radio; at Narrow [Play, Follow] over [Shuffle, Radio]
-    /// (Hero.cs:200-234). Never skeleton content (ch 08 §9 #8).
-    /// <para>Workstream B grammar: [<see cref="Controls.PlayButton(ColorF,Action,string?,string?)"/>][Shuffle, a stock
-    /// Standard <c>Button.Create</c>][<see cref="Controls.FollowToggle"/>][radio, <see cref="Controls.IconAction"/>].</para></summary>
-    static Element HeroActions(string name, string uri, ColorF accent, Action? play, Action? shuffle, Action? radio,
-                               ArtistHeroTier tier)
-    {
-        Element playButton = Controls.PlayButton(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
-        // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
-        Element follow = uri.Length == 0
-            ? Controls.FollowToggle.SkeletonShape()
-            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
-                with { Key = "artist-follow:" + uri, SkeletonProxy = s_followShape };
-        Element shuffleButton = Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop,
-            ButtonAppearance.Standard, glyph: Icons.Shuffle);
-        Element radioButton = Controls.Named(
-            Controls.IconAction(Icons.RadioTower, radio), Loc.Get(Strings.Artist.ArtistRadio));
-
-        if (tier == ArtistHeroTier.Narrow)
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S,
-                Children =
-                [
-                    new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = [playButton, follow] },
-                    new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = [shuffleButton, radioButton] },
-                ],
-            }.Skeletonized(false);
-
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Children = [playButton, shuffleButton, follow, radioButton],
-        }.Skeletonized(false);
-    }
-
-    static readonly Func<Element> s_followShape = static () => Controls.FollowToggle.SkeletonShape();
-    static readonly Action s_noop = static () => { };
-
-    /// <summary>A count in the current culture's grouping ("20,577,457").</summary>
-    internal static string CountLabel(long n) => n.ToString("N0", CultureInfo.CurrentCulture);
-
-    sealed record HeroArtProps(string Url, float Width, float PhotoHeight);
-
-    /// <summary>The photograph: one gentle image-only entrance settle. The page keeps its shimmer until this exact
-    /// image is resident, so the photo never fades over a flat hero after the rest of the page has appeared. The scale
-    /// is owned by this keyed component and runs once per artist; it never restarts when a CDN rendition or window
-    /// measurement changes. The decode size is latched at the first measured width so a resize cannot create a visible
-    /// resize flash.</summary>
-    sealed class HeroArt : Component
-    {
-        const float StartScale = 1f, RestScale = 1.03f, FrameScale = 1.02f, FrameLiftFraction = 0.02f;
-        static readonly Keyframe[] s_enterScale =
-            [new(0f, StartScale, Easing.Linear), new(1f, RestScale, Easing.FluentDecelerate)];
-        static readonly Keyframe[] s_enterOpacity = [new(0f, 0f, Easing.Linear), new(1f, 1f, Easing.FluentDecelerate)];
-        static readonly Keyframe[] s_restOpacity = [new(0f, 1f), new(1f, 1f)];
-
-        public override Element Render()
-        {
-            var p = UseProps<HeroArtProps>();
-            float width = MathF.Max(1f, p.Width);
-            float height = MathF.Max(1f, p.PhotoHeight);
-
-            var decode = UseRef((0, 0));
-            if (decode.Value.Item1 <= 0 && width > 1f)
-            {
-                int decodeW = Math.Clamp((int)MathF.Round(width), 320, 1920);
-                int decodeH = Math.Max(1, (int)MathF.Round(decodeW * (height / width)));
-                decode.Value = (decodeW, decodeH);
-            }
-            int baseW = decode.Value.Item1 > 0 ? decode.Value.Item1 : (int)width;
-            int baseH = decode.Value.Item2 > 0 ? decode.Value.Item2 : Math.Max(1, (int)height);
-            // The zoom scale still reaches the decode budget (recomputed per render, outside the resize latch).
-            float scale = UseContext(Viewport.Scale);
-            int dw = Design.ImageDecodeScale.For(baseW, scale);
-            int dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
-            float aspect = (float)dw / dh;
-
-            // THE HERO OWNS ITS OWN ENTRANCE, and the page no longer waits for it (`ArtistReadiness.BodyReady`): the
-            // copy, the chart and the rails reveal as soon as THEY are ready, and the photograph scales up from its
-            // 1.00 start to its 1.03 rest and fades 0 -> 1 when its bitmap actually lands, however long that takes.
-            //
-            // This is what the page-wide wait was standing in for, badly. Blocking the whole reveal on the decode
-            // meant a slow photo held an otherwise fully-known page at a shimmer; and when it did land, the page
-            // reveal and the image fade were two animations over the same pixels (stillwrong.mp4). One owner, one
-            // entrance, keyed on the ready EDGE so it plays once per photo and never re-runs on a plain re-render.
-            var image = UseImage(p.Url, dw, dh, ImagePriority.Visible, blurHash: null, transition: ImageTransition.None);
-            bool ready = image.State is ImageState.Ready or ImageState.Failed;
-            var zoom = UseRef(false);
-            if (!zoom.Value && ready) zoom.Value = true;
-            UseKeyframes(AnimChannel.ScaleX, zoom.Value ? s_enterScale : s_restScale,
-                zoom.Value ? MotionTok.EmphasizedEnter.DurationMs : MotionTok.ControlFaster.DurationMs,
-                loop: false, DepKey.From(zoom.Value));
-            UseKeyframes(AnimChannel.ScaleY, zoom.Value ? s_enterScale : s_restScale,
-                zoom.Value ? MotionTok.EmphasizedEnter.DurationMs : MotionTok.ControlFaster.DurationMs,
-                loop: false, DepKey.From(zoom.Value));
-            // Same ready edge as the scale settle. Reduced motion is a duration of 0, never a skipped call.
-            float enterOpacityMs = Design.Reduced ? 0f : Design.Motion.Standard;
-            UseKeyframes(AnimChannel.Opacity, zoom.Value ? s_enterOpacity : s_restOpacity,
-                zoom.Value ? enterOpacityMs : MotionTok.ControlFaster.DurationMs,
-                loop: false, DepKey.From(zoom.Value));
-
-            return new BoxEl
-            {
-                Width = width, Height = height, ZStack = true, ScaleX = 1f, ScaleY = 1f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        ZStack = true, ScaleX = FrameScale, ScaleY = FrameScale, OffsetY = -height * FrameLiftFraction,
-                        Children =
-                        [
-                            // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design.
-                            Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
-                                     placeholder: Design.ArtworkPlaceholder, blurHash: null, transition: ImageTransition.None)
-                                with { FocusX = 0.62f, FocusY = 0.34f },
-                        ],
-                    },
-                ],
-            };
-        }
-
-        static readonly Keyframe[] s_restScale = [new(0f, RestScale), new(1f, RestScale)];
-    }
-
-    // ── 4.2 the artist pick (0.2.9 MediaCard.ArtistPick, MediaCard.cs:299-471) ──────────────────────────────────────
-
-    const float PickPhotoHeight = 150f;    // the rail arm's photograph band; the column supplies the width
-    const float PickPhotoColumnW = 300f;   // the band arm: photography as a right column, stretched to the panel
-    const float PickPhotoAspect = 1.6f;
-    const int PickPhotoDecodeW = 640;
-    /// <summary>The photo ImageEl's decode HEIGHT, derived EXACTLY as the reconciler derives it for a width-less aspect
-    /// image (<c>Reconciler.ImageDecodeTarget</c>: <c>round(decodePx / aspect)</c>) — so <see cref="PickPhoto"/>'s
-    /// <c>UseImage</c> observes the very cache handle the mounted image pins (key = (src, 640, 400)), never a second
-    /// decode.</summary>
-    static readonly int PickPhotoDecodeH = (int)MathF.Round(PickPhotoDecodeW / PickPhotoAspect);
-
-    /// <summary>The artist-authored pinned item as ONE tone panel: accent wash, the artist speaking, an optional wide
-    /// photograph (the pick's own campaign art, else the artist's header — never a blurred cover stand-in), then the
-    /// record as a footer row with Play, or Pre-save while it is not out. ONE record per panel (ch 08 §9 #9). The caller
-    /// keys it on the rail/band arm (props freeze at mount).
-    /// <para>The photograph is EARNED, never reserved: <see cref="PickPhoto"/> requests the art while the band is
-    /// collapsed to nothing, and the band only mounts once the image is Ready — growing open (height on the rail arm,
-    /// width on the band arm) and fading in. While pending the card is just header + comment + footer, and on a real
-    /// failure it stays that way: no flat placeholder block ever stands in for a photo that may never come (the grey
-    /// slab a stuck decode used to leave behind).</para></summary>
-    internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay = null)
-    {
-        ColorF tint = accent();
-        ref readonly ArtistPick pick = ref a.Pick;
-        string title = Entities.Strings.Resolve(pick.Title);
-        string kind = Entities.Strings.Resolve(pick.Subtitle);
-        string comment = Entities.Strings.Resolve(pick.Comment.IsEmpty ? pick.Eyebrow : pick.Comment);
-        string item = Entities.Strings.Resolve(pick.ItemUri);
-        string target = item.Length > 0 ? item : Entities.Strings.Resolve(pick.Uri);
-        string? cover = Controls.ArtUrl(pick.Cover);
-        string? background = Controls.ArtUrl(pick.Background.IsEmpty ? a.HeaderId : pick.Background);
-        int releaseAt = pick.ReleaseAt;
-        string artistName = a.Name;
-        string? avatar = Controls.ArtUrl(a.ImageId);
-        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-        var targetUri = EntityUri.Parse(target);
-        Action open = () => Shell.GoTo(Shell.For(targetUri, title));
-        Action play = () => Playback.PlayOrToggleContext(target);
-
-        Element wash = new BoxEl
-        {
-            Grow = 1f, HitTestVisible = false,
-            Gradient = GradientDown(
-                new GradientStop(0f, tint with { A = 0.16f }),
-                new GradientStop(0.55f, tint with { A = 0.05f }),
-                new GradientStop(0.85f, tint with { A = 0f })),
-        };
-        Element head = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, 0f),
-            Children =
-            [
-                // ch 08 BUG F: PersonPicture.Create's `imageSourcePath` arm paints its photo over a FROZEN `fill`
-                // ColorF (no watch subscription — the flat grey the pick avatar never repainted from once the
-                // palette grading landed). Controls.Artwork stacks Shimmer's Design.WatchedPlaceholder tile under
-                // the real photo instead — 32 DIP is below Design.ShimmerMinEdge (80f), so it takes the cheap
-                // static-but-LIVE-bound arm, not the breathing pulse. The no-photo arm keeps PersonPicture.Create
-                // (its initials/glyph fallback has no art to watch).
-                avatar is { Length: > 0 }
-                    ? new BoxEl
-                      {
-                          Width = 32f, Height = 32f, Shrink = 0f, ZStack = true, ClipToBounds = true,
-                          Corners = Radii.Circle(32f), BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                          Children = [Controls.Artwork(avatar, 32f, 32f, 16f, decodePx: 64)],
-                      }
-                    : PersonPicture.Create("", 32f, displayName: artistName) with { BorderColor = Tok.StrokeCardDefault, Shrink = 0f },
-                new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Grow = 1f, Basis = 0f,
-                    Children =
-                    [
-                        BodyStrong(artistName) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                        Caption(Loc.Get(Strings.Artist.ArtistPick)) with { Color = Tok.TextSecondary, MaxLines = 1 },
-                    ],
-                },
-            ],
-        };
-        Element quote = new BoxEl
-        {
-            Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.L),
-            Grow = horizontal ? 1f : 0f,
-            Children =
-            [
-                Design.Type.PickQuote(comment) with
-                {
-                    Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                },
-            ],
-        };
-        // Props freeze at mount: the photo embed is keyed on the url it waits for (the arm is already the card's key).
-        Element? photo = background is { Length: > 0 } bgUrl
-            ? Embed.Comp(() => new PickPhoto { Url = bgUrl, Band = horizontal }) with
-              {
-                  Key = "pick-photo:" + bgUrl,
-                  // The skeleton deriver can't see into a component: hand it the band's real shape (an image block), or a
-                  // loading page shows one default bar where the photo will be.
-                  SkeletonProxy = () => PickPhoto.Shape(bgUrl, horizontal),
-              }
-            : null;
-
-        // Props freeze at mount: the pre-save embed is keyed on the uri it would pre-save.
-        Element trailing = releaseAt > now
-            ? Embed.Comp(() => new Controls.PreSaveButton { Uri = target, Name = title, Accent = accent })
-                with { Key = "pick-presave:" + target }
-            : Controls.PlayButton(tint, play);
-        Element metaKind = Design.Type.TrackMeta(kind) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        TextEl titleText = Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        Element foot = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-            Children =
-            [
-                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, 44f, 44f, Radii.Control, decodePx: 96)] },
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-                    Children =
-                    [
-                        Controls.TrimmedTitle(titleText, title),   // under the footer column's width, never a shrink-wrapped run
-                        new BoxEl
-                        {
-                            Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                            Children = releaseAt > 0
-                                ? [metaKind, Caption(Strings.Detail.ReleasesOn(Track.Format.ShortDate(releaseAt, now)))
-                                    with { Color = tint, Weight = 600, MaxLines = 1 }]
-                                : [metaKind],
-                        },
-                    ],
-                },
-                new BoxEl { Shrink = 0f, Children = [trailing] }.Skeletonized(false),
-            ],
-        };
-
-        Element copy = new BoxEl
-        {
-            Direction = 1,
-            Grow = horizontal ? 1f : 0f, Basis = horizontal ? 0f : float.NaN, MinWidth = horizontal ? 0f : float.NaN,
-            Children = !horizontal && photo is not null ? [head, quote, photo, foot] : [head, quote, foot],
-        };
-        Element content = horizontal && photo is not null ? new BoxEl { Direction = 0, Children = [copy, photo] } : copy;
-
-        // The panel keeps its own tree (a quote over a footer), but its clickable shell is the shared one: the plate's
-        // hover/press reveal, the Button role, the tab stop and the hand cursor all come from `SurfaceParts.Shell` and
-        // the ownership rule (a clickable, free surface), not from a hand-set copy. The panel's own fill, hairline and
-        // card shadow ride on top, and its extent stays the content's (the shell's stack Grow is zeroed).
-        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
-        BoxEl panel = SurfaceParts.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
-                                         Shape.Grid, in mode, target) with
-        {
-            Grow = 0f, ClipToBounds = true,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
-            OnClick = open,
-            Draggable = Drag.Source(() => new DragPayload(Drag.KindOfUri(target), target, target, title, ArtUrl: cover)),
-        };
-        // The record is a container (or a track) like any other card: right-click opens the same menu.
-        return overlay is not null && !Controls.IsNullOverlay(overlay)
-            ? ContextMenu.Attach(panel, overlay, () => PickMenu(targetUri, title, cover, kind))
-            : panel;
-    }
-
-    /// <summary>The pick's menu: the record's own kind decides — an album, playlist, artist or show gets the one container
-    /// menu, a track the track menu; any other kind has none.</summary>
-    static ContextMenuModel? PickMenu(EntityUri uri, string title, string? cover, string subtitle)
-    {
-        if (!uri.IsValid) return null;
-        if (uri.Kind == EntityKind.Track)
-        {
-            Track.EnsureActions();
-            return Track.Menu([Entities.Track(uri)], new Track.MenuOptions(ShowGoToAlbum: true));
-        }
-        var target = uri.Kind switch
-        {
-            EntityKind.Album => ActionTarget.ForAlbum(uri, title),
-            EntityKind.Playlist => ActionTarget.ForPlaylist(uri, title),
-            EntityKind.Artist => ActionTarget.ForArtist(uri, title),
-            EntityKind.Show => ActionTarget.ForShow(uri, title),
-            _ => default,
-        };
-        return target.Kind == TargetKind.None ? null : Menus.Container(in target, cover, subtitle);
-    }
-
-    /// <summary>The pick's photograph band, mounted only once its image is Ready (see <see cref="PickCard"/>).
-    ///
-    /// <para>REQUEST WHILE HIDDEN: <c>UseImage</c> is <c>ImageCache.Request</c> + a read of that ONE handle's status
-    /// signal (RenderContext.UseImage) — the decode starts with no node mounted, and this component re-renders only on
-    /// that handle's own edges (never the global image epoch, never another card). Its (src, decode) key is the
-    /// ImageEl's own (<see cref="PickPhotoDecodeH"/>), so when the band mounts the image pins the SAME Ready entry and
-    /// paints on its first frame.</para>
-    ///
-    /// <para>LATCHED like <see cref="Controls.CoverShimmer"/>: Ready (shown) or a real failure (collapsed for good) stops
-    /// the hook call, so a settled card unsubscribes and never re-renders again. A Canceled leftover is NOT a verdict —
-    /// the next edge re-requests it. Nothing here polls or loops: the frame clock only runs for the one finite reveal.
-    /// The image hook consumes no hook cell, so the conditional call is safe.</para>
-    ///
-    /// <para>The root is an always-present, zero-extent wrapper (a component root's Key is inert — the keyed band is its
-    /// CHILD); the band's clip box grows open through real layout (Reflow + mount opt-in, the drawer idiom) while the
-    /// photo fades in inside it. Ready already at mount (a warm cache) snaps in with no motion: a page visit never
-    /// replays the entrance.</para></summary>
-    sealed class PickPhoto : Component
-    {
-        public required string Url { get; init; }
-        /// <summary>The band arm (photo as a right column) — else the rail arm (photo as a band under the comment).</summary>
-        public bool Band { get; init; }
-
-        static readonly LayoutTransition s_growRail = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
-            Enter: new EnterExit(Active: true), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height,
-            SuppressDescendantTransitions: true);
-        static readonly LayoutTransition s_growBand = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
-            Enter: new EnterExit(Active: true), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width,
-            SuppressDescendantTransitions: true);
-        static readonly LayoutTransition s_fadeIn = new(TransitionChannels.Opacity, MotionTok.ControlNormal.ToDynamics(),
-            Enter: new EnterExit(Opacity: 0f, Active: true));
-
-        bool _shown, _failed, _rendered, _instant;
-
-        /// <summary>The photo band itself (150 tall under the comment, or a 300-wide right column): the ONE builder the
-        /// revealed band and the skeleton proxy share.</summary>
-        internal static BoxEl Shape(string url, bool band) => new()
-        {
-            Key = "pick-photo-band",
-            Height = band ? float.NaN : PickPhotoHeight,
-            Width = band ? PickPhotoColumnW : float.NaN,
-            Shrink = 0f, AlignSelf = band ? FlexAlign.Stretch : FlexAlign.Auto,
-            ZStack = true, ClipToBounds = true,
-            Children =
-            [
-                // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF (Controls.ArtworkFill's own
-                // pattern). The entry is Ready when this mounts, so the placeholder only covers an eviction race.
-                Ui.Image(url, ImageFit.Cover, aspect: PickPhotoAspect, decodePx: PickPhotoDecodeW, corners: 0f,
-                         placeholder: (ColorF?)null) with
-                {
-                    Placeholder = Design.WatchedPlaceholder(url),
-                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                },
-            ],
-        };
-
-        public override Element Render()
-        {
-            if (!_shown && !_failed)
-            {
-                var image = UseImage(Url, PickPhotoDecodeW, PickPhotoDecodeH);
-                if (image.State == ImageState.Ready) { _shown = true; _instant = !_rendered; }
-                else if (image.State == ImageState.Failed && image.Failure != ImageFailureKind.Canceled) _failed = true;
-            }
-            _rendered = true;
-
-            var root = new BoxEl
-            {
-                Direction = (byte)(Band ? 0 : 1), Shrink = 0f, MinWidth = 0f,
-                AlignSelf = Band ? FlexAlign.Stretch : FlexAlign.Auto,
-            };
-            if (!_shown) return root;   // zero extent: no band, no placeholder, nothing reserved
-
-            Element picture = Shape(Url, Band) with { Animate = _instant ? null : s_fadeIn };
-            return root with
-            {
-                Children =
-                [
-                    new BoxEl
-                    {
-                        // The CLIP box eases its size only (a position terminal here would move the window itself); the
-                        // band inside it fades under the stationary window. Reduced motion snaps the size, keeps the fade.
-                        Key = "pick-photo", Direction = (byte)(Band ? 0 : 1), MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
-                        AlignSelf = Band ? FlexAlign.Stretch : FlexAlign.Auto,
-                        Animate = _instant || Design.Reduced ? null : Band ? s_growBand : s_growRail,
-                        Children = [picture],
-                    },
-                ],
-            };
-        }
-    }
-
-    // ── 4.3 the gallery lightbox (ArtistGalleryLightbox.cs, W21) ────────────────────────────────────────────────────
+    // ── 4.2 the gallery lightbox: the overlay, the open index and the export (ArtistGalleryLightbox.cs, W21) ──────────
 
     /// <summary>Open the full-window modal lightbox at <paramref name="index"/>: focus-trapped, no light dismiss; Escape
-    /// closes — unless zoomed, where it unzooms and VETOES the close.</summary>
+    /// closes — unless zoomed, where the view unzooms and VETOES the close. The picture (the pager, the pan/zoom mode, the
+    /// chrome, the filmstrip) is the structure's <see cref="ViewKeys.ArtistLightbox"/>; this keeps the overlay, the selected
+    /// index (one signal per open), the close, the Escape veto's wiring and the export.</summary>
     internal static void GalleryOpen(IOverlayService? overlay, string[] photos, int index)
     {
         if (photos.Length == 0 || Controls.IsNullOverlay(overlay)) return;
         OverlayHandle? handle = null;
-        GalleryLightbox? viewer = null;
+        Func<bool>? consumeEscape = null;
+        Action? closed = null;
+        var selected = new Signal<int>(Math.Clamp(index, 0, Math.Max(0, photos.Length - 1)));
+        var saving = new Signal<bool>(false);
+        var props = new ArtistLightboxProps
+        {
+            Photos = photos,
+            Selected = selected,
+            Select = i => { if (selected.Peek() != i) selected.Value = i; },
+            Saving = saving,
+            Export = (at, post) => { if ((uint)at < (uint)photos.Length) GalleryExport.Start(photos[at], at, saving, post); },
+            Close = () => handle?.Close(),
+            Attach = (escape, onClosed) => { consumeEscape = escape; closed = onClosed; },
+        };
         handle = overlay.Open(
             static () => NodeHandle.Null,
-            () => Embed.Comp(() => viewer = new GalleryLightbox(photos, index, () => handle)),
+            () => Slots.View(ViewKeys.ArtistLightbox, props),
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal));
-        handle.ClosingAction = _ => !(viewer?.TryConsumeEscape() ?? false);
-        handle.ClosedAction = () => viewer?.Cleanup();
+        handle.ClosingAction = _ => !(consumeEscape?.Invoke() ?? false);
+        handle.ClosedAction = () => closed?.Invoke();
     }
 
-    /// <summary>FlipView paging under auto-hiding floating chrome (2600 ms of pointer stillness), a filmstrip, and a real
-    /// pan/zoom mode that REPLACES the pager and the filmstrip subtrees so drag/wheel ownership is never ambiguous. The
-    /// photo list and the opening index are mount-stable by construction (the overlay mounts one instance per open).
-    /// 0.3 changes: the unzoom settle is a frame-clock <c>UseTimeout</c> instead of <c>Task.Delay</c> (ch 08 §5), and
-    /// every string goes through its key (ch 08 §6).</summary>
-    sealed class GalleryLightbox : Component
+    /// <summary>The lightbox's export: the native Save As picker, then the original bytes — a CDN url downloads, a local
+    /// cover (the offline seed's bundled art) copies — and the notice. <c>saving</c> is the open's flag the view reads.</summary>
+    static class GalleryExport
     {
-        const float IdleHideMs = 2600f, UnzoomSettleMs = 260f;
-        const float ZoomMax = 4f, ZoomClick = 2.2f, ZoomWheelK = 0.0011f;   // per DIP of wheel delta: ~7 % zoom per 64 DIP notch
-        const float Thumb = 56f, StripPad = 14f;
-
-        static readonly GradientSpec TopScrim = GradientDown(
-            new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 158)),
-            new GradientStop(1f, ColorF.FromRgba(0, 0, 0, 0)));
-
         /// <summary>One client for the process's exports, created on the first one.</summary>
         static HttpClient? s_http;
 
-        readonly string[] _photos;
-        readonly int _initialIndex;
-        readonly Func<OverlayHandle?> _handle;
-        readonly Signal<bool> _saving = new(false);
-        readonly Signal<bool> _chrome = new(true);
-        readonly Signal<bool> _zoomMode = new(false);
-
-        // pan/zoom live state — screen px written straight onto the carrier's anim channels, never through a render
-        NodeHandle _zoomNode;
-        float _s = 1f, _tx, _ty;
-        Point2 _pendingAnchor;
-        bool _hasPendingAnchor;
-        readonly Keyframe[] _seedKeys = new Keyframe[2];
-        Point2 _dragLast, _dragDown;
-        bool _dragMoved;
-        TimerHandle _idleHide, _unzoom;
-        int _renderCurrent;
-        Action<Action> _post = static a => a();
-
-        public GalleryLightbox(string[] photos, int initialIndex, Func<OverlayHandle?> handle)
+        public static void Start(string url, int index, Signal<bool> saving, Action<Action> post)
         {
-            _photos = photos;
-            _initialIndex = Math.Clamp(initialIndex, 0, Math.Max(0, photos.Length - 1));
-            _handle = handle;
-        }
-
-        /// <summary>Zoomed ⇒ unzoom and report the Escape consumed (the overlay vetoes its close).</summary>
-        public bool TryConsumeEscape()
-        {
-            if (!_zoomMode.Peek()) return false;
-            SpringZoomHome();
-            return true;
-        }
-
-        public void Cleanup()
-        {
-            _idleHide.Cancel();
-            _unzoom.Cancel();
-        }
-
-        public override Element Render()
-        {
-            var vp = UseContext(Viewport.Size);
-            var (selected, setSelected) = UseState(_initialIndex);
-            var post = UsePost();
-            int current = Math.Clamp(selected, 0, Math.Max(0, _photos.Length - 1));
-            _renderCurrent = current;
-            _post = post;
-            bool zoomed = _zoomMode.Value;
-            _idleHide = UseTimeout(() => { if (_chrome.Peek()) _chrome.Value = false; }, IdleHideMs);
-            // Swap back to the pager only once the spring has visibly settled, and only if nobody zoomed in again.
-            _unzoom = UseTimeout(() => { if (_zoomMode.Peek() && _s <= 1.001f) _zoomMode.Value = false; }, UnzoomSettleMs);
-
-            return new BoxEl
-            {
-                Grow = 1f, ZStack = true, Fill = ColorF.FromRgba(0, 0, 0, 224), Focusable = true,
-                OnKeyDown = e => OnKeys(e, current, setSelected),
-                OnHoverMove = _ => Poke(),
-                Children =
-                [
-                    zoomed ? ZoomSurface(_photos[current], vp) : Pager(vp, current, i => { ResetZoomState(); setSelected(i); }),
-                    TopChrome(current, post),
-                    zoomed ? new BoxEl() : Filmstrip(current, i => { ResetZoomState(); setSelected(i); }),
-                ],
-            };
-        }
-
-        Element Pager(Size2 vp, int current, Action<int> onSelect)
-        {
-            var pages = new Element[_photos.Length];
-            for (int i = 0; i < pages.Length; i++)
-                pages[i] = new BoxEl
-                {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    // Ctrl+wheel / a touchpad pinch enters zoom; everything else bubbles to the FlipView.
-                    OnPointerWheel = e =>
-                    {
-                        if ((e.Mods & KeyModifiers.Ctrl) == 0) return;
-                        e.Handled = true;
-                        EnterZoom(e.Local);
-                    },
-                    Children = [Photo(_photos[i], vp)],
-                };
-            return FlipView.Create(pages, vp.Width, vp.Height, new Signal<int>(current), onChange: onSelect);
-        }
-
-        /// <summary>The photo's placeholder is fully TRANSPARENT, so a still-decoding frame shows the black ground.</summary>
-        static Element Photo(string url, Size2 vp) => new ImageEl
-        {
-            Key = "gallery-image:" + url,
-            Source = url, Width = vp.Width, Height = vp.Height, Fit = ImageFit.Contain,
-            DecodePx = MathF.Min(MathF.Max(vp.Width, vp.Height), Design.ImageDecodeScale.Ceiling),
-            Placeholder = ColorF.FromRgba(0, 0, 0, 0),
-            RevealTransition = ImageTransition.Fade(140f),
-        };
-
-        Element ZoomSurface(string url, Size2 vp) => new BoxEl
-        {
-            Width = vp.Width, Height = vp.Height, ClipToBounds = true,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = CursorId.Hand,
-            OnPointerDown = lp => { _dragLast = lp; _dragDown = lp; _dragMoved = false; },
-            OnDrag = lp =>
-            {
-                float dx = lp.X - _dragLast.X, dy = lp.Y - _dragLast.Y;
-                if (MathF.Abs(lp.X - _dragDown.X) + MathF.Abs(lp.Y - _dragDown.Y) > 4f) _dragMoved = true;   // 4-px slop
-                _dragLast = lp;
-                _tx += dx;
-                _ty += dy;
-                ClampPan(vp);
-                WriteTransform();
-            },
-            OnClick = () => { if (!_dragMoved) SpringZoomHome(); },
-            OnPointerWheel = e =>
-            {
-                e.Handled = true;
-                if ((e.Mods & KeyModifiers.Ctrl) != 0)
-                {
-                    float s1 = _s * MathF.Exp(-e.Delta * ZoomWheelK);
-                    if (s1 <= 1.02f) { SpringZoomHome(); return; }
-                    ZoomAt(e.Local, s1, vp);
-                    WriteTransform();
-                }
-                else
-                {
-                    _tx -= e.DeltaX;
-                    _ty -= e.Delta;
-                    ClampPan(vp);
-                    WriteTransform();
-                }
-            },
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                    OnRealized = nh => { _zoomNode = nh; SeedEnterZoom(vp); },
-                    Children = [Photo(url, vp)],
-                },
-            ],
-        };
-
-        void EnterZoom(Point2 anchor)
-        {
-            _pendingAnchor = anchor;
-            _hasPendingAnchor = true;
-            _s = 1f; _tx = 0f; _ty = 0f;
-            _zoomMode.Value = true;
-        }
-
-        void SeedEnterZoom(Size2 vp)
-        {
-            WriteTransform();
-            Point2 a = _hasPendingAnchor ? _pendingAnchor : new Point2(vp.Width * 0.5f, vp.Height * 0.5f);
-            _hasPendingAnchor = false;
-            ZoomAt(a, ZoomClick, vp);
-            SpringChannels();
-        }
-
-        void ZoomAt(Point2 local, float s1, Size2 vp)
-        {
-            s1 = Math.Clamp(s1, 1f, ZoomMax);
-            float dx = local.X - vp.Width * 0.5f, dy = local.Y - vp.Height * 0.5f;
-            float k = s1 / _s;
-            _tx = dx - (dx - _tx) * k;
-            _ty = dy - (dy - _ty) * k;
-            _s = s1;
-            ClampPan(vp);
-        }
-
-        /// <summary>The pan bound. The gallery edge carries no pixel dimensions, so the contain box is taken as the
-        /// viewport's shorter side squared — a bound that never lets the photo leave the window.</summary>
-        void ClampPan(Size2 vp)
-        {
-            float edge = MathF.Min(vp.Width, vp.Height);
-            float maxX = MathF.Max(0f, (edge * _s - vp.Width) * 0.5f);
-            float maxY = MathF.Max(0f, (edge * _s - vp.Height) * 0.5f);
-            _tx = Math.Clamp(_tx, -maxX, maxX);
-            _ty = Math.Clamp(_ty, -maxY, maxY);
-        }
-
-        void WriteTransform()
-        {
-            var anim = Context.Anim;
-            if (anim is null || _zoomNode.IsNull) return;
-            Seed(anim, AnimChannel.ScaleX, _s);
-            Seed(anim, AnimChannel.ScaleY, _s);
-            Seed(anim, AnimChannel.TranslateX, _tx);
-            Seed(anim, AnimChannel.TranslateY, _ty);
-        }
-
-        void Seed(AnimEngine anim, AnimChannel ch, float v)
-        {
-            _seedKeys[0] = new Keyframe(0f, v, Easing.Linear);
-            _seedKeys[1] = new Keyframe(1f, v, Easing.Linear);
-            anim.Keyframes(_zoomNode, ch, _seedKeys, 1f);
-        }
-
-        void SpringChannels()
-        {
-            var anim = Context.Anim;
-            if (anim is null || _zoomNode.IsNull) return;
-            var sp = SpringParams.FromResponse(0.32f, 0.9f);
-            anim.Spring(_zoomNode, AnimChannel.ScaleX, _s, sp);
-            anim.Spring(_zoomNode, AnimChannel.ScaleY, _s, sp);
-            anim.Spring(_zoomNode, AnimChannel.TranslateX, _tx, sp);
-            anim.Spring(_zoomNode, AnimChannel.TranslateY, _ty, sp);
-        }
-
-        void SpringZoomHome()
-        {
-            _s = 1f; _tx = 0f; _ty = 0f;
-            SpringChannels();
-            _unzoom.Restart();
-        }
-
-        void ResetZoomState()
-        {
-            _s = 1f; _tx = 0f; _ty = 0f;
-            if (_zoomMode.Peek()) _zoomMode.Value = false;
-        }
-
-        void OnKeys(KeyEventArgs e, int current, Action<int> setSelected)
-        {
-            if (e.Handled) return;
-            if (e.KeyCode is Keys.Left or Keys.Right)
-            {
-                int next = Math.Clamp(current + (e.KeyCode == Keys.Right ? 1 : -1), 0, _photos.Length - 1);
-                if (next != current) { ResetZoomState(); setSelected(next); }
-                e.Handled = true;
-            }
-        }
-
-        /// <summary>ONE 72-DIP row: [Gallery / "n / N"] · spacer · Export · Close (ch 08 audit #3).</summary>
-        Element TopChrome(int current, Action<Action> post)
-        {
-            bool saving = _saving.Value;
-            return new BoxEl
-            {
-                Height = 72f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                Gradient = TopScrim,
-                Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Gap = 2f,
-                        Children =
-                        [
-                            new TextEl(Loc.Get(Strings.Artist.Gallery)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary },
-                            new TextEl((current + 1).ToString(CultureInfo.CurrentCulture) + " / "
-                                       + _photos.Length.ToString(CultureInfo.CurrentCulture)) { Size = 12f, Color = Tok.TextSecondary },
-                        ],
-                    },
-                    new BoxEl { Grow = 1f },
-                    Button.Accent(Loc.Get(saving ? Strings.Artist.GalleryExporting : Strings.Artist.GalleryExport),
-                        () => ExportImage(_photos[current], current, post), isEnabled: !saving),
-                    Button.Standard(Loc.Get(Strings.Common.Close), () => _handle()?.Close()),
-                ],
-            };
-        }
-
-        Element Filmstrip(int current, Action<int> setSelected)
-        {
-            var thumbs = new Element[_photos.Length];
-            for (int i = 0; i < thumbs.Length; i++)
-            {
-                int idx = i;
-                bool active = i == current;
-                thumbs[i] = new BoxEl
-                {
-                    Width = Thumb, Height = Thumb, Shrink = 0f,
-                    Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
-                    BorderWidth = 2f, BorderColor = active ? Tok.AccentTextPrimary : ColorF.FromRgba(0, 0, 0, 0),
-                    Opacity = active ? 1f : 0.55f, Transition = MotionTok.ControlFast,
-                    OnClick = () => setSelected(idx), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-                    HoverScale = Design.Motion.ScaleStandard.Hover,
-                    Children = [Controls.Artwork(_photos[idx], Thumb, Thumb, Radii.Control, decodePx: 128)],
-                };
-            }
-            return new BoxEl
-            {
-                Height = Thumb + 2f * StripPad, AlignSelf = FlexAlign.End,
-                Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = Edges4.All(StripPad),
-                Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
-                Children = thumbs,
-            };
-        }
-
-        void Poke()
-        {
-            if (!_chrome.Peek()) _chrome.Value = true;
-            _idleHide.Restart();
-        }
-
-        /// <summary>The native Save As picker, then the original bytes: a CDN url downloads, a local cover (the offline
-        /// seed's bundled art) copies.</summary>
-        void ExportImage(string url, int index, Action<Action> post)
-        {
-            if (_saving.Peek() || url.Length == 0) return;
+            if (saving.Peek() || url.Length == 0) return;
             Pickers.Pick(
                 PickerRequest.Save(Loc.Get(Strings.Artist.GalleryExportTitle),
                     "artist-gallery-" + (index + 1).ToString("D2", CultureInfo.InvariantCulture) + ExtensionOf(url),
                     (Loc.Get(Strings.Artist.GalleryImages), "*.jpg;*.jpeg;*.png;*.webp"),
                     (Loc.Get(Strings.Artist.GalleryAllFiles), "*.*")),
-                done: path => { if (path is not null) _ = SaveImage(url, path, post); },
+                done: path => { if (path is not null) _ = SaveImage(url, path, saving, post); },
                 failed: ex => Log.Warn("artist", "the gallery export dialog failed", ex));
         }
 
-        /// <summary>The bytes half of <see cref="ExportImage"/>, once the Save As dialog answered (UI thread in).</summary>
-        async Task SaveImage(string url, string path, Action<Action> post)
+        /// <summary>The bytes half of <see cref="Start"/>, once the Save As dialog answered (UI thread in).</summary>
+        static async Task SaveImage(string url, string path, Signal<bool> saving, Action<Action> post)
         {
-            _saving.Value = true;
+            saving.Value = true;
             try
             {
                 if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
@@ -1328,7 +382,7 @@ public readonly partial struct Artist
                 }
                 post(() =>
                 {
-                    _saving.Value = false;
+                    saving.Value = false;
                     Notify.Say(Loc.Get(Strings.Artist.GalleryExported), InfoBarSeverity.Success);
                 });
             }
@@ -1339,7 +393,7 @@ public readonly partial struct Artist
                 string reason = ex.Message;
                 post(() =>
                 {
-                    _saving.Value = false;
+                    saving.Value = false;
                     Notify.Say(Strings.Artist.GalleryExportFailed(reason), InfoBarSeverity.Error);
                 });
             }

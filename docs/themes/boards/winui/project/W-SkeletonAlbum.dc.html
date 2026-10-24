@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album loading skeleton</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|album:Armageddon:#5b2f6b" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="albums" hint-size="280px,800px"></dc-import>
+    <main aria-busy="true" style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; background: #5b2f6b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="height: 16px; display: flex; align-items: center"><span style="{{sk.meta}}"></span></div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Armageddon</h1>
+          <div style="height: 20px; display: flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: rgba(255,255,255,0.0605)"></span><span style="{{sk.byline}}"></span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+            <span style="{{sk.play}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.icon}}"></span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <div style="height: 40px; display: flex; align-items: center; gap: 8px"><span style="{{sk.tool}}"></span><span style="flex-grow: 1"></span><span style="{{sk.tool}}"></span><span style="{{sk.tool}}"></span></div>
+        <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 120px 40px 72px 40px 32px; align-items: center; height: 36px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5"><span style="padding-left: 14px">#</span><span>Title</span><span style="text-align: right">Plays</span><span></span><span style="text-align: right; padding-right: 8px">Time</span><span></span><span></span></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+          <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 120px 40px 72px 40px 32px; align-items: center; height: 40px; margin-top: 2px; opacity: {{r.o}}">
+            <span style="padding-left: 14px"><span style="display: block; width: 14px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+            <span><span style="{{r.title}}"></span></span>
+            <span style="display: flex; justify-content: flex-end"><span style="display: block; width: 56px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+            <span></span>
+            <span style="display: flex; justify-content: flex-end; padding-right: 8px"><span style="display: block; width: 32px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+            <span></span><span></span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const f = 'rgba(255,255,255,0.0605)';
+  const bar = (w, h, r) => 'display: block; width: ' + w + 'px; height: ' + h + 'px; border-radius: ' + (r || 2) + 'px; background: ' + f;
+  const sk = { meta: bar(150, 12), byline: bar(240, 14), play: bar(104, 32, 4), btn: bar(88, 32, 4), icon: bar(32, 32, 4), tool: bar(72, 24, 4) };
+  const widths = [180, 240, 150, 210, 170, 260, 140, 200, 230, 160];
+  const rows = widths.map((w, i) => ({ title: bar(w, 14), o: (i < 7 ? 1 : 1 - (i - 6) * 0.22).toFixed(2) }));
+  return { sk, rows };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concert, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="browse" ctx="The Midnight · Live" items="Top|For you|Genres|Charts|Concerts" sub-sel="{{four}}" lower="{{lower}}" hint-size="400px,136px"></dc-import>
+  <main style="height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 16px; align-items: flex-end">
+      <span aria-hidden="true" style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #8b5a2f, #3a2418 70%)"></span>
+      <span style="display: flex; gap: 12px; align-items: center; min-width: 0">
+        <span style="width: 64px; height: 64px; box-sizing: border-box; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums">14</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Nov</span></span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Concert · <span style="color: var(--acct)">On sale</span></span><span style="font-size: 14px; line-height: 20px">Saturday 20:00</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Doors 19:00 · in 34 days</span></span>
+      </span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">The Midnight · Live</h1>
+      <span style="font-size: 14px; line-height: 20px; color: var(--t2)"><a href="#" style="color: var(--acct)">Paradiso</a> · Amsterdam · ages 18+</span>
+    </div>
+    <span style="display: flex; gap: 4px; align-items: center">
+      <button aria-pressed="true" style="{{s.std}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="currentColor"></path></svg>Interested</button>
+      <button aria-label="Add to calendar" style="{{s.icon}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="Share" style="{{s.icon}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </span>
+    <section aria-label="Tickets" style="display: flex; flex-direction: column; padding: 4px 8px 8px 8px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+      <div style="height: 36px; display: flex; align-items: center"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Tickets</h2></div>
+      <sc-for list="{{offers}}" as="o" hint-placeholder-count="3"><a href="#" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; height: 44px; padding: 0 4px; color: var(--t1); border-top: 1px solid var(--div)"><span style="font-size: 14px; line-height: 20px">{{o.name}}</span><span style="font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{o.price}}</span></a></sc-for>
+      <button style="height: 40px; margin-top: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Buy tickets<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M11.5 9.5v4h-9v-9h4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </section>
+    <section aria-label="Lineup" style="display: flex; flex-direction: column; margin: 0 -4px">
+      <div style="display: flex; align-items: baseline; gap: 10px; height: 32px; padding: 0 4px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Lineup</h2><span style="font-size: 12px; color: var(--t2)">2 artists</span></div>
+      <sc-for list="{{lineup}}" as="l" hint-placeholder-count="2"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; height: 52px; margin-top: 2px; padding-left: 4px; border-radius: 4px; color: var(--t1)"><span style="{{l.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{l.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{l.role}}</span></span><span aria-hidden="true" style="display: flex; justify-content: center; color: var(--t2)"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></a></sc-for>
+    </section>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const s = {
+    std: 'height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px',
+    icon: 'width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)'
+  };
+  const offers = [['Ticketmaster', 'from €45'], ['Eventim', 'from €48'], ['Paradiso box office', '€45 at the door']].map((d) => ({ name: d[0], price: d[1] }));
+  const lineup = [['The Midnight', 'Headliner · 2.1M monthly listeners', '#6b4a2f'], ['FM-84', 'Support', '#4a3b2f']].map((d) => ({ name: d[0], role: d[1], art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, s, offers, lineup, four: 4, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

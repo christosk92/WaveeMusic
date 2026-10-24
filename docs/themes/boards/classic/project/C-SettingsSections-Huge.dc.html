@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings Playback, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; overflow: hidden">
+      <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Settings</h1></div>
+      <div role="tablist" aria-label="Settings sections" style="display: flex; gap: 4px; margin: 12px 0 0 -12px; border-bottom: 1px solid rgba(255,255,255,0.082); flex-shrink: 0"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="7"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+      <div style="display: flex; gap: 32px; padding-top: 16px; align-items: flex-start">
+        <sc-for list="{{cols}}" as="col" hint-placeholder-count="2">
+          <div style="width: 1000px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+            <sc-for list="{{col.rows}}" as="r" hint-placeholder-count="10">
+              <sc-if value="{{r.isH}}" hint-placeholder-val="{{false}}"><div style="{{r.hs}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-if>
+              <sc-if value="{{r.isCard}}" hint-placeholder-val="{{true}}"><div style="{{r.cs}}"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{r.g}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span>
+                <sc-if value="{{r.pill}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #393d1b; color: #6ccb5f">{{r.v}}</span></sc-if>
+                <sc-if value="{{r.tog}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="{{r.track}}"><span style="{{r.knob}}"></span></button></sc-if>
+                <sc-if value="{{r.combo}}" hint-placeholder-val="{{false}}"><button aria-label="{{r.l}}" style="width: 200px; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></sc-if>
+                <sc-if value="{{r.seg}}" hint-placeholder-val="{{false}}"><span role="radiogroup" aria-label="{{r.l}}" style="display: flex; flex-shrink: 0; padding: 2px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button role="radio" aria-checked="{{o.on}}" style="{{o.s}}">{{o.l}}</button></sc-for></span></sc-if>
+                <sc-if value="{{r.slider}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.v}}</span><span role="slider" aria-label="{{r.l}}" style="position: relative; width: 200px; height: 4px; flex-shrink: 0; border-radius: 2px; background: rgba(255,255,255,0.3)"><span style="{{r.fill}}"></span><span style="{{r.thumb}}"></span></span></sc-if>
+              </div></sc-if>
+              <sc-if value="{{r.isEq}}" hint-placeholder-val="{{false}}"><div style="padding: 16px 16px 16px 52px; border-radius: 4px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px"><div role="group" aria-label="Equalizer bands" style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 12px; height: 140px; align-items: stretch"><sc-for list="{{r.bands}}" as="b" hint-placeholder-count="10"><span style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span role="slider" aria-label="{{b.l}}" style="position: relative; flex-grow: 1; width: 4px; border-radius: 2px; background: rgba(255,255,255,0.3)"><span style="{{b.thumb}}"></span></span><span style="font-size: 11px; color: rgba(255,255,255,0.7)">{{b.l}}</span></span></sc-for></div><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Flat · every band at 0 dB</span></div></sc-if>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => ({ l, sel: i === 2 ? 'true' : 'false', s: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 2 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 2 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const G = { run: 'M5 3v10l8-5z', q: 'M3 13V9M6 13V5M9 13V7M12 13V3', net: 'M2 6.5a9 9 0 0 1 12 0M4 9a5.5 5.5 0 0 1 8 0M6.3 11.4a2 2 0 0 1 3.4 0', vol: 'M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5', auto: 'M3 8a5 5 0 0 1 8.5-3.5L13 6M13 2.5V6H9.5M13 8a5 5 0 0 1-8.5 3.5L3 10M3 13.5V10h3.5', norm: 'M2 8h2l2-4 3 8 2-4h3', eq: 'M4 3v10M8 3v10M12 3v10M2.5 10h3M6.5 6h3M10.5 9h3', fade: 'M2 12c4 0 4-8 6-8s2 8 6 8', bar: 'M2 10.5h12v3H2zM4 12h4', time: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 5v3l2 1.5', vid: 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z', prep: 'M8 2.5v8M5 7.5l3 3 3-3M3 13.5h10', att: 'M10.5 5.5 6 10a1.8 1.8 0 0 1-2.5-2.5L8.5 2.5a3 3 0 0 1 4.2 4.2L8 11.4' };
+  const cs = 'min-height: 68px; box-sizing: border-box; padding: 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px';
+  const base = { isH: false, isCard: false, isEq: false, pill: false, tog: false, combo: false, seg: false, slider: false };
+  const sw = (on) => ({ tog: true, on: on ? 'true' : 'false', state: on ? 'On' : 'Off', track: 'width: 40px; height: 20px; flex-shrink: 0; padding: 0; box-sizing: border-box; border-radius: 10px; position: relative; ' + (on ? 'border: 0; background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.6); background: transparent'), knob: 'position: absolute; top: ' + (on ? 4 : 3) + 'px; left: ' + (on ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : 'rgba(255,255,255,0.773)') });
+  const mkH = () => { let first = true; return (l, d, g) => { const r = Object.assign({}, base, { isH: true, l, d, g: G[g], hs: 'display: flex; align-items: center; gap: 8px; margin: ' + (first ? 0 : 28) + 'px 0 4px' }); first = false; return r; }; };
+  const C = (l, d, g, ctl) => Object.assign({}, base, { isCard: true, l, d, g: G[g], cs }, ctl);
+  const combo = v => ({ combo: true, v });
+  const seg = (vals, sel) => ({ seg: true, opts: vals.map((l, i) => ({ l, on: i === sel ? 'true' : 'false', s: 'height: 28px; padding: 0 12px; border: 0; border-radius: 3px; font: inherit; font-size: 13px; background: ' + (i === sel ? '#60cdff' : 'transparent') + '; color: ' + (i === sel ? '#000' : '#fff') })) });
+  const slider = (v, pct) => ({ slider: true, v, fill: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + pct + '%; border-radius: 2px; background: #60cdff', thumb: 'position: absolute; top: -8px; left: calc(' + pct + '% - 10px); width: 20px; height: 20px; box-sizing: border-box; border-radius: 10px; background: #454545; border: 5px solid #60cdff' });
+  const bands = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'].map(l => ({ l, thumb: 'position: absolute; left: -8px; top: calc(50% - 10px); width: 20px; height: 20px; box-sizing: border-box; border-radius: 10px; background: #454545; border: 5px solid #60cdff' }));
+  const HL = mkH(), HR = mkH();
+  const left = [
+    C('Playback runtime', 'Ready · decodes and plays Spotify audio on this PC', 'run', { pill: true, v: 'Ready' }),
+    HL('Audio', 'Quality, volume and loudness', 'vol'),
+    C('Audio quality', 'Very high needs Premium', 'q', combo('Very high')),
+    C('On metered connections', 'Quality while on a metered network', 'net', combo('Normal')),
+    C('Remember volume', 'Start at the last volume you used', 'vol', sw(true)),
+    C('Autoplay', 'Keep playing similar music when your queue ends', 'auto', sw(true)),
+    C('Audio normalization', 'Play every song at a similar loudness', 'norm', sw(true)),
+    C('Loudness level', 'How loud normalized audio plays', 'norm', seg(['Quiet', 'Normal', 'Loud'], 1)),
+    C('Album normalization', 'Keep the loudness steps between songs on an album', 'norm', sw(false)),
+    HL('Sound', 'Equalizer and crossfade', 'eq'),
+    C('Equalizer', '10 bands with presets', 'eq', combo('Flat')),
+    Object.assign({}, base, { isEq: true, bands }),
+    C('Crossfade', 'Blend the end of one song into the next', 'fade', slider('Off', 0))
+  ];
+  const right = [
+    HR('Player bar', '', 'bar'),
+    C('Show remaining time', 'Show “-m:ss” instead of the total length', 'time', sw(true)),
+    HR('Video', 'Music videos and video podcasts', 'vid'),
+    C('Video quality', 'The highest quality Wavee picks on its own', 'vid', combo('720p (Auto)')),
+    C('Video Auto on metered connections', 'Drop to a lower quality while metered', 'net', sw(true)),
+    C('Prepare videos ahead of time', 'Start loading the next song’s video before it plays', 'prep', sw(true)),
+    C('Attached videos', 'Play a song’s video when one is attached to it', 'att', combo('Dock in the side panel'))
+  ];
+  const cols = [{ rows: left }, { rows: right }];
+  return { tabs, cols };
+}
+}
+</script>
+</body>
+</html>

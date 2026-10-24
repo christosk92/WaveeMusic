@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune row: playlist table</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#ffffff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1280px; height: 620px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 36px 48px; display: flex; flex-direction: column">
+  <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 40px; font-weight: 300; line-height: 48px">late night drive</div>
+    <div style="font-size: 14px; color: #a8a8a8">42 songs · 2 hr 31 min</div>
+  </div>
+  <div style="display: grid; grid-template-columns: 56px 52px minmax(0, 3fr) minmax(0, 2fr) 120px 64px 40px; align-items: center; height: 32px; font-size: 13px; color: #8f8f8f">
+    <span></span><span></span><span>song</span><span>album</span><span>added</span><span style="text-align: right">time</span><span></span>
+  </div>
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+    <button onClick="{{r.pick}}" style="{{r.rowStyle}}">
+      <span style="{{r.numStyle}}">{{r.num}}</span>
+      <span style="{{r.artStyle}}"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px; text-align: left">
+        <span style="{{r.titleStyle}}">{{r.title}}</span>
+        <span style="{{r.subStyle}}">{{r.artist}}</span>
+      </span>
+      <span style="{{r.factStyle}}">{{r.album}}</span>
+      <span style="{{r.factStyle}}">{{r.added}}</span>
+      <span style="{{r.timeStyle}}">{{r.time}}</span>
+      <span style="{{r.moreStyle}}">⋯</span>
+    </button>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"density":{"editor":"enum","default":"default","options":["compact","default","comfortable"]},"$preview":{"width":1280,"height":620}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { selected: 4, hover: 2 }; }
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const density = this.props.density ?? 'default';
+  const h = density === 'compact' ? 44 : density === 'comfortable' ? 60 : 52;
+  const art = density === 'compact' ? 32 : density === 'comfortable' ? 48 : 40;
+  const data = [
+    ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', 'Sep 12', '4:03', '#3b4a6b'],
+    ['Nightcall', 'Kavinsky', 'OutRun', 'Sep 12', '4:18', '#6b2f4a'],
+    ['Resonance', 'HOME', 'Odyssey', 'Sep 20', '3:32', '#2f5b6b'],
+    ['Tech Noir', 'Gunship', 'Gunship', 'Sep 28', '4:56', '#5b3b6b'],
+    ['Sunset', 'The Midnight', 'Endless Summer', 'Oct 2', '5:07', '#6b4a2f'],
+    ['Turbo Killer', 'Carpenter Brut', 'Trilogy', 'Oct 4', '3:16', '#6b2f2f'],
+    ['A Real Hero', 'College, Electric Youth', 'Drive (Original Motion Picture Soundtrack)', 'Oct 6', '4:28', '#4a6b2f'],
+    ['Days of Thunder', 'The Midnight', 'Days of Thunder', 'Oct 9', '4:48', '#2f3b6b'],
+  ];
+  const playing = 1;
+  const rows = data.map((d, i) => {
+    const isPlay = i === playing, isSel = i === this.state.selected, isHover = i === this.state.hover;
+    const wash = isSel ? 'background: ' + accent + '1f' : isHover ? 'background: rgba(255,255,255,0.05)' : 'background: transparent';
+    return {
+      num: isPlay ? '▮▮▮' : String(i + 1), title: d[0], artist: d[1], album: d[2], added: d[3], time: d[4],
+      pick: () => this.setState({ selected: i }),
+      rowStyle: 'display: grid; grid-template-columns: 56px 52px minmax(0, 3fr) minmax(0, 2fr) 120px 64px 40px; align-items: center; width: 100%; height: ' + h + 'px; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; ' + wash,
+      numStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (isPlay ? 11 : 22) + 'px; letter-spacing: ' + (isPlay ? '1px' : '0') + '; text-align: left; padding-left: 4px; color: ' + (isPlay ? accent : '#7a7a7a') + '; font-variant-numeric: tabular-nums',
+      artStyle: 'width: ' + art + 'px; height: ' + art + 'px; background: ' + d[5] + '; border-radius: 2px',
+      titleStyle: 'font-size: 15px; line-height: 20px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (isPlay ? accent : '#ffffff'),
+      subStyle: 'font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (isPlay ? accent : (isHover || isSel ? '#c8c8c8' : '#9c9c9c')) + '; opacity: ' + (isPlay ? 0.8 : 1),
+      factStyle: 'font-size: 13px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; color: ' + (isHover || isSel ? '#c8c8c8' : '#9c9c9c'),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (isPlay ? accent : '#9c9c9c'),
+      moreStyle: 'font-size: 16px; text-align: center; color: #c8c8c8; opacity: ' + (isHover || isSel ? 1 : 0),
+    };
+  });
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

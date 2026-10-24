@@ -23,6 +23,14 @@
 //   Pulse        → DaylistStrip      the flip countdown (daylist only)
 //   LikedFacts   → User.FactsPanel   the facts bento (owner B), when FactsHas
 //
+// ── ROW 2 (P5 Z6b1, contract 1.26) ───────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the page's title, its views and its actions in its band's row 2, so the page publishes them through the
+// `PageChromeSink` the content host provides around the page (the album's pattern, Album.Page.cs): the view "Songs" (current: the page itself) and the
+// actions Play and Shuffle (disabled while the list is known to be empty) and, on a playlist that is not the viewer's own, Save / Saved (the word follows
+// the saved set). The inputs are folded into a value the render computes; a keyed effect hands it to a signal, and an auto-tracked effect (it also reads
+// the saved set) publishes the row, so a save elsewhere re-words the action without re-rendering the page. Classic draws its own head and reads none of it.
+//
 // ── DEMAND (the GateAlbumPage pattern) ───────────────────────────────────────────────────────────────────────────────
 //
 // Once per (playlist slot, scope epoch): PlaylistFields.All + the membership through THE OPEN RULE (§6: ListOpen.Open,
@@ -35,14 +43,13 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Contracts = Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -116,7 +123,8 @@ public readonly partial struct Playlist
 
     /// <summary>The overlay the last mounted playlist page saw — where a context-menu verb with no overlay seam of its
     /// own (rename, invite, the picker) opens (<see cref="ActionServices"/> carries none; see the report's gaps).</summary>
-    static IOverlayService? s_overlay;
+    static readonly RootState<IOverlayService?> s_overlayState = new("Playlist.Overlay");   // ROOT-LIFETIME (RootScope.cs)
+    static IOverlayService? s_overlay { get => s_overlayState.Value; set => s_overlayState.Value = value; }
 
     static IOverlayService? ActionOverlay => !Controls.IsNullOverlay(s_overlay) ? s_overlay
                                            : !Controls.IsNullOverlay(Track.DrawerOverlay) ? Track.DrawerOverlay : null;
@@ -148,7 +156,7 @@ public readonly partial struct Playlist
     /// <see cref="PageRules.MetaArmFor"/>).</param>
     public readonly record struct PageStamp(uint Epoch, int Slot, uint Row, EdgeState Membership, uint MembersEdge, ulong Members,
                                             int OwnerSlot, uint Owner, EdgeState Recommendations, uint Tuning, bool EditsLive, bool Facts,
-                                            bool Holding, int TrackCount, bool CountKnown, int Saves, bool SavesKnown);
+                                            bool Holding, int TrackCount, bool CountKnown, int Saves, bool SavesKnown, bool Settling = false);
 
     /// <summary>What the hero's meta line ("N songs · 2 hr 59 min") shows. THREE answers, never a fourth.</summary>
     public enum MetaArm : byte
@@ -209,10 +217,6 @@ public readonly partial struct Playlist
         public static DemandArm DemandArmFor(bool rowValid, bool local)
             => !rowValid ? DemandArm.Bail : local ? DemandArm.Local : DemandArm.Open;
 
-        /// <summary>Does a demand run with this arm REACH the open? <see cref="DemandArm.Local"/> legitimately never
-        /// does: Local Files settles through <c>SettleLocalFiles</c> and has no list to revalidate.</summary>
-        public static bool DemandOpens(DemandArm arm) => arm == DemandArm.Open;
-
         /// <summary>What to ask of the playlist's owner row. Identity unknown ⇒ Ensure (Pathfinder refuses to seal
         /// Identity on a nameless ownerV2, so a page that never Ensures the owner paints a blank name forever).
         /// Identity known below Full ⇒ Invalidate the Thin card/header name so the profile/avatar can land.
@@ -263,8 +267,8 @@ public readonly partial struct Playlist
             => (editable ? 1 : 0) | (recs ? 2 : 0) | (tune ? 4 : 0) | (local ? 8 : 0) | ((int)lensExtent << 4);
 
         /// <summary>The <c>FrameSlots</c> cache key: which optional slots are present.</summary>
-        public static int SlotsMask(bool editableMeta, bool daylist, bool facts)
-            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0);
+        public static int SlotsMask(bool editableMeta, bool daylist, bool facts, bool recs = false)
+            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0) | (recs ? 8 : 0);
     }
 
     sealed class PlaylistPage : Component
@@ -293,6 +297,8 @@ public readonly partial struct Playlist
         readonly User.LensCell _lens = new();
 
         readonly Detail.FrameActions _actions, _actionsReadOnly;
+        readonly Action _inviteAction;
+        Detail.FrameActions? _actionsShown;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
         readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes;
@@ -306,9 +312,20 @@ public readonly partial struct Playlist
         readonly Func<float> _lensExtent;
         readonly Action<IReadOnlyList<int>> _removeRows;
         readonly Func<Element?> _recs, _lensHeader;
+        readonly Func<Element> _recsAside;
         readonly Func<float, Element> _cover, _compactCover, _attribution, _description, _facts;
         readonly Func<float, float, Element> _title;
         readonly Func<Element> _pulse;
+
+        // ── row 2 (P5 Z6b1): what the band draws for this page (see the file header) ──
+        Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
+        ChromeInputs _chromeNext;
+        readonly Signal<ChromeInputs> _chromeIn = new(default);
+        readonly Action _syncChrome, _publishChrome, _playChrome, _shuffleChrome, _noView;
+
+        /// <summary>What row 2 says: the playlist, its title once known, the heart's presence (not the viewer's own, not Local Files) and whether the list is
+        /// known to be empty (Play and Shuffle are drawn disabled then).</summary>
+        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty);
 
         public PlaylistPage()
         {
@@ -327,6 +344,7 @@ public readonly partial struct Playlist
             _lensExtent = () => User.LensExtentFor(_lens, DetailKind.Playlist);
             _removeRows = rows => Spotify.PlaylistEdits.RemoveRows(_playlist, rows);
             _recs = () => RecommendationsSection(_playlist);
+            _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
             _cover = size => CoverSlot(_playlist, size);
             _compactCover = size => CoverArt(_playlist, size);
@@ -335,12 +353,18 @@ public readonly partial struct Playlist
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);
             _title = (size, lineHeight) => TitleSlot(_playlist, size, lineHeight);
             _pulse = () => DaylistStrip(_playlist, compact: true, _accent);
+            _syncChrome = () => _chromeIn.SetIfChanged(_chromeNext);
+            _publishChrome = PublishChrome;
+            _playChrome = () => { var pl = _playlist; if (pl.IsValid) DetailVerbs.PlayContext(pl.Uri)(); };
+            _shuffleChrome = Shuffle;
+            _noView = static () => { };
             _actions = new Detail.FrameActions
             {
                 Shuffle = Shuffle, More = MoreMenu, CoverDrag = CoverPayload, DepositOnPage = _deposit,
                 GoLibrary = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryAlbums)),
             };
             _actionsReadOnly = _actions with { DepositOnPage = null };
+            _inviteAction = () => { var pl = _playlist; if (pl.IsValid && !Controls.IsNullOverlay(_overlay)) OpenAccessPanel(_overlay, pl, null, FlyoutPlacement.BottomEdgeAlignedLeft); };
         }
 
         public override Element Render()
@@ -413,9 +437,18 @@ public readonly partial struct Playlist
             // (a preallocated delegate — no per-render alloc).
             UseActivation(onActivated: _activated);
 
+            // Row 2 (P5 Z6b1): the inputs this render knows, handed to the publishing effect. Hooks before any early return.
+            _sink = UseContext(Contracts.PageChromeSink.Context);
+            _chromeNext = ChromeOf(pl);
+            UseEffect(_syncChrome, DepKey.From(_chromeNext.GetHashCode()));
+            UseEffect(_publishChrome);
+
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false } : Detail.Config.Playlist;
+            // Your own playlist has no heart (tuned Classic D1): following it means nothing; a followed one keeps it as Unfollow.
+            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false }
+                : pl.IsOwner ? Detail.Config.Playlist with { Heart = HeartMode.None }
+                : Detail.Config.Playlist;
             bool editable = pl.Editable;
             bool recs = PageRules.ShowsRecommendations(_local, editable, pl.Uri.Provider == EntityProvider.Spotify, stamp.EditsLive, stamp.Recommendations);
             bool tune = !_local && HasTuneChoice(pl) && pl.TuningCurrent;
@@ -442,7 +475,7 @@ public readonly partial struct Playlist
 
             bool editableMeta = pl.EditableMetadata && !_local;
             bool daylist = pl.DaylistExpiresAt > 0;
-            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts);
+            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts, recs);
             if (_slots is null || _slotsMask != slotsMask)
             {
                 _slotsMask = slotsMask;
@@ -455,6 +488,8 @@ public readonly partial struct Playlist
                     Description = editableMeta ? _description : null,
                     Pulse = daylist ? _pulse : null,
                     LikedFacts = facts ? _facts : null,
+                    // The Huge aside's body (C-Playlist-Huge): the recommended songs move there from the list's tail while it is docked.
+                    Aside = recs ? _recsAside : null,
                 };
             }
 
@@ -474,10 +509,49 @@ public readonly partial struct Playlist
                 Config = cfg,
                 Source = _source,
                 Profile = _profile,
-                Actions = editable ? _actions : _actionsReadOnly,
+                Actions = ActionsFor(editable ? _actions : _actionsReadOnly, tune, InviteAllowed(pl)),
                 Slots = _slots,
                 RouteKey = p.RouteKey,
             });
+        }
+
+        /// <summary>The frame's verbs with the hero's optional pair: Tune (the list has a tune choice) and Invite (<see cref="InviteAllowed"/>). Equality is
+        /// presence only, so the instance is kept while the presence holds.</summary>
+        Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite)
+        {
+            var next = basis with { Tune = tune ? _tune : null, Invite = invite ? _inviteAction : null };
+            if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
+            return _actionsShown = next;
+        }
+
+        /// <summary>The invite affordance's gate, the owner menu's (<see cref="AppendOwnerItems"/>): an owner who can administrate the permissions, on a live edit
+        /// path (item 58: absent under <c>--fake</c>).</summary>
+        bool InviteAllowed(Playlist pl) => !_local && pl.IsOwner && pl.Live && pl.CanAdministratePermissions && EditsLiveNow();
+
+        /// <summary>Row 2's inputs for <paramref name="pl"/> (default while there is no playlist).</summary>
+        ChromeInputs ChromeOf(Playlist pl)
+            => !pl.IsValid
+                ? default
+                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !_local && !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty);
+
+        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
+        void PublishChrome()
+        {
+            var c = _chromeIn.Value;
+            if (!c.Valid) return;
+            var views = new List<Contracts.PageView>(1) { new("songs", Loc.Get(Strings.Search.Songs), true, _noView) };
+            var actions = new List<Contracts.PageAction>(3)
+            {
+                new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play, !c.Empty),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), _shuffleChrome, Contracts.PageActionKind.Shuffle, !c.Empty),
+            };
+            if (c.Save && Controls.Library is { } lib)
+            {
+                string target = c.Subject.Text, title = c.Title ?? "";
+                bool saved = lib.IsSaved(target);
+                actions.Add(new Contracts.PageAction("save", Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.Save), () => lib.ToggleSaved(target, title)));
+            }
+            _sink.Publish(new Contracts.PageChromeRow(views, actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true), c.Title));
         }
 
         /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the seven counters this page depends on —
@@ -502,6 +576,7 @@ public readonly partial struct Playlist
             _ = e.PlaylistRecs.Changed.Value;
             _ = e.TrackArtists.Changed.Value;          // FactsHas: a keyed credit alone earns the bento
             _ = ListOpen.Changed.Value;                // the open's hold: taken, answered, out of budget
+            _ = global::Wavee.Fetch.Settled.Value;     // MetaSettlingOf: an answer that names no field still ends the wait
             // The open ITSELF — HeldRows.Held switches rule at it — is the source's own signal, read through Held below.
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
@@ -518,7 +593,25 @@ public readonly partial struct Playlist
             return new PageStamp(epoch, slot, pl.Version, e.PlaylistTracks.Readiness(slot), e.PlaylistTracks.Version(slot),
                                  RowFold.Rows(scope.Tracks, pl.TrackSlots), owner.Slot, RowFold.Version(scope.Users, owner.Slot),
                                  e.PlaylistRecs.State(slot), e.PlaylistTuning.Version(slot), editsLive, facts, holding,
-                                 pl.TrackCount, pl.Knows(PlaylistFields.TrackCount), pl.Saves, pl.Knows(PlaylistFields.Saves));
+                                 pl.TrackCount, pl.Knows(PlaylistFields.TrackCount), pl.Saves, pl.Knows(PlaylistFields.Saves),
+                                 MetaSettlingOf(pl));
+        }
+
+        /// <summary>Is a later part of the meta line still on its way? A row whose duration is unknown while its fields are in flight
+        /// (the line gains "· 98 hr 18 min" when they land), or the owner whose name is unknown while their profile is (the line gains
+        /// "QmusicNL" and the avatar). Nothing in flight (offline, an answer that named nothing) settles at once. One pass over the
+        /// membership per publication, the same order as the fold beside it; allocates nothing.</summary>
+        static bool MetaSettlingOf(Playlist pl)
+        {
+            var owner = pl.Owner;
+            if (owner.IsValid && NameOf(owner).Length == 0 && Entities.Current.Users.Inflight[owner.Slot] != 0) return true;
+            var slots = pl.TrackSlots;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var t = new Track(slots[i]);
+                if (!t.Knows(TrackFields.Duration) && t.InFlight) return true;
+            }
+            return false;
         }
 
         /// <summary>The identity snapshot every arm renders (ch 06 §7's table, read off the columns and the membership).
@@ -587,10 +680,12 @@ public readonly partial struct Playlist
                                           pl.Knows(PlaylistFields.Visibility)),
                 Meta = meta,
                 MetaLoading = metaLoading,
+                MetaSettling = !_local && MetaSettlingOf(pl),
                 OwnerName = _local && !owner.IsValid ? Loc.Get("localFile.onThisDevice") : NameOf(owner),
                 OwnerImageUrl = Controls.ArtUrl(owner.ImageId),
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
+                IsPublic = !_local && pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
                 DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription") : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,
@@ -600,6 +695,7 @@ public readonly partial struct Playlist
                          : spotify ? "https://open.spotify.com/playlist/" + new string(EntityUri.IdOf(pl.Uri.Text.AsSpan())) : null,
                 Notice = pl.Notice,
                 EditableMetadata = editableMeta,
+                Empty = pl.RowsState(0) == PlaylistRowsState.Empty,
             };
         }
 
@@ -1002,7 +1098,7 @@ public readonly partial struct Playlist
             if (!p.IsValid || p.Uri.Provider != EntityProvider.Spotify) continue;
             candidates.Add(new DepositCandidate(p.Uri.Text, Entities.Strings.Resolve(p.TitleId), p.Editable, p.Slot));
         }
-        var recents = PlaylistDepositTargets.Parse(Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents));
+        var recents = PlaylistDepositPref.Recents();
         var ordered = PlaylistDepositTargets.Order(candidates, recents, exclude.IsValid ? exclude.Text : null);
         var tiles = new string[1];
         foreach (var c in ordered)
@@ -1020,9 +1116,7 @@ public readonly partial struct Playlist
     /// re-filing into the front playlist costs no settings write (ch 06 §6.3).</summary>
     public static void RememberDeposit(string uri)
     {
-        string current = Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents) ?? "";
-        string next = PlaylistDepositTargets.Serialize(PlaylistDepositTargets.Remember(PlaylistDepositTargets.Parse(current), uri));
-        if (!string.Equals(current, next, StringComparison.Ordinal)) Platform.Settings.Set(Platform.Keys.PlaylistDepositRecents, next);
+        PlaylistDepositPref.Remember(uri);
     }
 
     // ══ 4. THE PLAYLIST VERBS (ActionServices rows the sidebar, cards and queue menus ask for) ═══════════════════════

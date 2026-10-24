@@ -12,34 +12,105 @@
 // Wave: interaction-consistency (WP6)
 // Budget: 200 lines
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
 /// <summary>Where the about card sits: <see cref="Rail"/> = a narrow column (hero band over name, fact chips, 5-line bio,
 /// Follow footer under the link); <see cref="Page"/> = a full-width row (84 round portrait, eyebrow, name, 2-line bio,
-/// Follow trailing).</summary>
-public enum AboutLayout : byte { Rail, Page }
+/// Follow trailing); <see cref="Aside"/> = the detail page's Huge aside (C-Album-Huge: a full-bleed image band over the eyebrow, the name beside
+/// Follow, the monthly listeners in accent ink and a 4-line bio; appended, contract 1.21).</summary>
+public enum AboutLayout : byte { Rail, Page, Aside }
 
 public static partial class Controls
 {
-    /// <summary>The about-the-artist card. Props freeze at mount, so a caller keys it on the artist.</summary>
-    public static Element ArtistAboutCard(Artist artist, AboutLayout layout)
+    /// <summary>The about-the-artist card. Props freeze at mount, so a caller keys it on the artist. <paramref name="bandHeight"/> is the
+    /// <see cref="AboutLayout.Aside"/> card's image band (the structure's, per tier); the other layouts ignore it. <paramref name="follow"/> builds the
+    /// card's Follow toggle from (uri, name) in the structure's own look (appended, P6 detail polish); null is the shared <see cref="FollowToggle"/>.</summary>
+    public static Element ArtistAboutCard(Artist artist, AboutLayout layout, float bandHeight = 0f, Func<string, string, Element>? follow = null)
     {
         string name = artist.Name;
         string artistUri = artist.Uri.Text;
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
         Action open = () => Track.GoToArtist(artist);
-        Element follow = Embed.Comp(() => new FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri };
-        return layout == AboutLayout.Rail ? RailAbout(artist, name, mode, open, follow) : PageAbout(artist, name, mode, open, follow);
+        Element followEl = (follow is null
+            ? Embed.Comp(() => new FollowToggle { Uri = artistUri, Name = name })
+            : follow(artistUri, name)) with { Key = "follow:" + artistUri };
+        return layout switch
+        {
+            AboutLayout.Rail => RailAbout(artist, name, mode, open, followEl),
+            AboutLayout.Aside => AsideAbout(artist, name, mode, open, followEl, bandHeight),
+            _ => PageAbout(artist, name, mode, open, followEl),
+        };
+    }
+
+    /// <summary>The Huge aside's card (C-Album-Huge): the artist's hero image (else the portrait) as a <paramref name="bandHeight"/> band over the eyebrow, the
+    /// 20/28 name with Follow at its end, the monthly listeners in accent ink and the bio clamped to four lines. The link (band + words) is the click owner;
+    /// Follow sits beside the name row, outside it.</summary>
+    static Element AsideAbout(Artist artist, string name, SurfaceOwnership mode, Action open, Element follow, float bandHeight)
+    {
+        float bandH = bandHeight > 0f ? bandHeight : 270f;
+        string? image = ArtUrl(artist.HeroImageId) is { Length: > 0 } hero ? hero : ArtUrl(artist.ImageId);
+        string bio = Entities.Strings.Resolve(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
+        Element band = new BoxEl
+        {
+            Height = bandH, ZStack = true, ClipToBounds = true, Fill = Tok.FillSubtleSecondary,
+            Children = image is { Length: > 0 } url ? [Ui.Image(url, ImageFit.Cover, 1.6f, 640f, 0f, Tok.FillSubtleSecondary)] : [],
+        };
+        var words = new List<Element>(4)
+        {
+            R.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist)) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            new BoxEl
+            {
+                // The right pad keeps the name clear of Follow, which is laid over the row's end (outside the link).
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Padding = new Edges4(0f, 0f, 128f, 0f),
+                Children =
+                [
+                    new TextEl(name)
+                    {
+                        Size = 20f, LineHeight = 28f, Weight = 600, Color = Tok.TextPrimary,
+                        Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
+                    artist.IsVerified ? Icon(Icons.Check, 12f, Tok.AccentTextPrimary) with { Shrink = 0f } : new BoxEl { Width = 0f, Shrink = 0f },
+                ],
+            },
+        };
+        if (artist.MonthlyListeners > 0)
+            words.Add(new TextEl(Detail.Text.CompactCount(artist.MonthlyListeners) + " " + Loc.Get(Strings.Artist.MetaMonthly))
+            {
+                Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+            });
+        if (!string.IsNullOrWhiteSpace(bio))
+            words.Add(new TextEl(bio) { Size = 14f, LineHeight = 20f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis });
+        var link = new BoxEl
+        {
+            Direction = 1, HoverFill = Tok.FillCardDefault,
+            Role = mode.Role, Focusable = mode.OwnsFocus, Cursor = SurfaceRules.Cursor(in mode),
+            FocusVisualMargin = Design.FocusInsetBordered, OnClick = open,
+            Children = [band, new BoxEl { Direction = 1, Gap = 6f, Padding = new Edges4(20f, 16f, 20f, 20f), Children = words.ToArray() }],
+        };
+        return new BoxEl
+        {
+            ZStack = true, AlignSelf = FlexAlign.Stretch, Corners = Radii.CardAll, Fill = Tok.FillCardSecondary, ClipToBounds = true,
+            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Children =
+            [
+                link,
+                // Follow at the name row's end, OUTSIDE the link (never a button inside a button): pinned over the card at the row's offset.
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
+                    Padding = new Edges4(0f, bandH + 16f + 16f + 6f - 2f, 20f, 0f),
+                    Children = [follow],
+                },
+            ],
+        };
     }
 
     static Element PageAbout(Artist artist, string name, SurfaceOwnership mode, Action open, Element follow)
@@ -64,7 +135,7 @@ public static partial class Controls
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
                     Children =
                     [
-                        Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist))
+                        R.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist))
                             with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         new BoxEl
                         {
@@ -83,7 +154,7 @@ public static partial class Controls
                             ],
                         },
                         bio.Length > 0
-                            ? Design.Type.DenseMeta(bio) with
+                            ? R.Type.DenseMeta(bio) with
                             {
                                 Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                             }

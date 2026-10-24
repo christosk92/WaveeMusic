@@ -129,7 +129,6 @@ public static partial class AiLyrics
     public static bool SettingsCardVisible { get; set; }
 
     static Action<Action> s_post = static a => a();
-    static IReadOnlyList<ComputeAdapterInfo> s_npus = Array.Empty<ComputeAdapterInfo>();
     static CancellationTokenSource? s_downloadCts;
     static CancellationTokenSource? s_loadCts;
     static bool s_pauseRequested;
@@ -182,7 +181,6 @@ public static partial class AiLyrics
     static void Seed(IReadOnlyList<ComputeAdapterInfo> npus, Availability availability, IReadOnlyList<string> languages,
         List<PackFile> missing, long used)
     {
-        s_npus = npus;
         var npu = Rules.SupportedNpu(npus);
         bool enabled = Platform.Settings.Get(Platform.Keys.AiLyricsEnabled);
         var phase = Rules.InitialPhase(availability, enabled, missing.Count == 0);
@@ -407,7 +405,7 @@ public static partial class AiLyrics
         Current.Value = st with { Phase = SetupPhase.Error, Error = kind, ErrorDetail = detail };
         if (Rules.ToastOnError(SettingsCardVisible, kind))
             Notify.Say(Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
-                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Tab.Appearance),
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
                 dedupeKey: "ai-lyrics-error");
     }
 

@@ -83,6 +83,8 @@ public static partial class Entities
         [
             "The Build Trap", "Latency, Honestly", "On Craft", "Tape Loops", "The Quiet Release", "Edge Cases",
             "First Principles", "After Hours", "The Long Game", "Cold Start", "Postmortem", "Signal Lost",
+            // More than the longest show's fourteen, so no title repeats within one show.
+            "Dead Reckoning", "The Slow Fix", "Small Hours", "Loose Ends", "Feedback Loops", "What We Kept",
         ];
 
         /// <summary>The track drawer's four fixtures, as (album, row).</summary>
@@ -465,6 +467,9 @@ public static partial class Entities
             return s_merchNames.Length;
         }
 
+        /// <summary>The pool track with the long credit line.</summary>
+        const int LongCreditsTrack = 10;
+
         static void LandTracks()
         {
             var e = Current.Edges;
@@ -495,6 +500,13 @@ public static partial class Entities
                 Tags(slot, i, false, zeros, tags);
                 Traits(slot);
             }
+
+            // tr10 (Afterglow) is the long credit line: three artists, the longest name first ("Iris Overdrive and the Nightjars, Sable & Sun,
+            // The Wavee Collective"), so a single-line credit slot has something to cut.
+            artists[0] = Wrap(LongCreditsTrack, ArtistCount);
+            artists[1] = 5;
+            artists[2] = 3;
+            Artists(SlotOf(Current.Tracks, TrackUri(LongCreditsTrack)), artists[..3], targets);
 
             // the prerelease's and the waterfall's own rows, and the four counterparts
             for (int a = PreReleaseAlbum; a <= WaterfallAlbum; a++)
@@ -631,6 +643,25 @@ public static partial class Entities
                 Current.Edges.ShowEpisodes.Replace(show, targets[..n], default,
                     total > n ? EdgeState.Partial : EdgeState.Complete, total);
             }
+            LandListenLater();
+        }
+
+        /// <summary>The Podcasts library's Your Episodes: the listen-later playlist (`User.SavedEpisodesReader.FakeSavedUri`) holds a few episodes across the seeded shows, so the demo's feed has
+        /// rows (discovery itself is not faked). The playlist row is minted here if the library fixture did not carry it.</summary>
+        static void LandListenLater()
+        {
+            // Across the feed's date groups (episode i of show s came out s + 7i days before now0): sh0 #14 today, sh1 / sh3 / sh4's newest within the week, the rest earlier; sh0 #9 is the in
+            // progress one (46 %) and #8 a played one, so every status renders.
+            (int Show, int Index)[] picks = [(0, 0), (1, 0), (3, 0), (4, 0), (0, 1), (1, 1), (0, 5), (0, 6)];
+            Span<int> targets = stackalloc int[picks.Length];
+            Span<PlaylistTrackEdge> payload = stackalloc PlaylistTrackEdge[picks.Length];
+            for (int k = 0; k < picks.Length; k++)
+            {
+                targets[k] = SlotOf(Current.Episodes, EpisodeUri(picks[k].Show, picks[k].Index));
+                payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0, PlaylistItemKind.Episode);
+            }
+            int list = Current.Playlists.Slot("spotify:playlist:37i9dQZF1FgnTBfUlzkeKt".AsSpan());
+            Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, picks.Length);
         }
     }
 }

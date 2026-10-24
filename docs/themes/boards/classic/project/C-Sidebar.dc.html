@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav aria-label="Sidebar" style="{{s.root}}">
+  <sc-if value="{{account}}" hint-placeholder-val="{{false}}">
+    <div style="{{s.acct}}">
+      <a href="#" style="{{s.acctLink}}"><span style="{{s.acctAv}}">C</span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Chris</span><span style="{{s.sub}}">Account and more</span></span></a>
+      <button aria-label="Notifications, 1 unread" style="{{s.acctBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"></path></svg><span style="{{s.acctBadge}}">1</span></button>
+      <button aria-label="Friend activity" style="{{s.acctBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 7.5a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6zM1.8 13c.3-2.4 2-3.7 4.2-3.7s3.9 1.3 4.2 3.7M10.5 3.2a2.2 2.2 0 0 1 0 4.2M11.8 9.6c1.4.4 2.3 1.6 2.5 3.4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+    </div>
+  </sc-if>
+  <sc-for list="{{items}}" as="it" hint-placeholder-count="16">
+    <sc-if value="{{it.isSep}}" hint-placeholder-val="{{false}}"><span style="{{it.style}}"></span></sc-if>
+    <sc-if value="{{it.isHead}}" hint-placeholder-val="{{false}}">
+      <div style="{{it.style}}"><span style="flex-grow: 1; min-width: 0">{{it.label}}</span><span style="{{it.tools}}"><span style="{{s.inline}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg></span><span style="{{s.inline}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></span></span><span style="{{s.inline}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="{{it.chev}}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></div>
+    </sc-if>
+    <sc-if value="{{it.isRow}}" hint-placeholder-val="{{true}}">
+      <a href="#" title="{{it.label}}" style="{{it.style}}">
+        <span style="{{it.pill}}"></span>
+        <sc-if value="{{it.glyph}}" hint-placeholder-val="{{true}}"><span style="{{it.glyphBox}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{it.d}}" fill="{{it.fill}}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if>
+        <sc-if value="{{it.art}}" hint-placeholder-val="{{false}}"><span style="{{it.artStyle}}"></span></sc-if>
+        <sc-if value="{{it.showText}}" hint-placeholder-val="{{true}}">
+          <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{it.textStyle}}">{{it.label}}</span><sc-if value="{{it.sub}}" hint-placeholder-val="{{false}}"><span style="{{s.sub}}">{{it.sub}}</span></sc-if></span>
+          <sc-if value="{{it.pin}}" hint-placeholder-val="{{false}}"><span title="Unpin" style="{{s.pin}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5l3.5 3.5-2 1-2.5 2.5.5 3-1 1-6-6 1-1 3 .5L9 4.5zM5 11l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"></path></svg></span></sc-if>
+          <sc-if value="{{it.eq}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: flex-end; gap: 2px; height: 12px; margin-right: 6px"><span style="{{s.eq1}}"></span><span style="{{s.eq2}}"></span><span style="{{s.eq3}}"></span></span></sc-if>
+          <sc-if value="{{it.off}}" hint-placeholder-val="{{false}}"><span title="Not available offline" style="{{s.pin}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></span></sc-if>
+          <span style="{{it.slot}}">{{it.slotText}}</span>
+        </sc-if>
+      </a>
+    </sc-if>
+    <sc-if value="{{it.isLib}}" hint-placeholder-val="{{false}}">
+      <div style="display: flex; flex-direction: column">
+        <div style="{{s.libHead}}"><span style="flex-grow: 1">Your Library</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></div>
+        <div style="{{s.chips}}"><sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button aria-pressed="{{c.on}}" style="{{c.style}}">{{c.l}}</button></sc-for></div>
+        <div style="{{s.tools}}">
+          <button aria-label="Search your library" style="{{s.tb}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+          <span style="flex-grow: 1"></span>
+          <button style="{{s.sort}}">Recents<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"></path></svg></button>
+          <button aria-label="Show as list" aria-pressed="{{listOn}}" style="{{s.tbList}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+          <button aria-label="Show as grid" aria-pressed="{{gridOn}}" style="{{s.tbGrid}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+          <button aria-label="Create" style="{{s.tb}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <span style="{{s.rule}}"></span>
+        <sc-if value="{{failed}}" hint-placeholder-val="{{false}}"><div role="alert" style="{{s.fail}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 5v3.5M8 11v.01" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span style="flex-grow: 1">Couldn’t refresh your library. Showing what was loaded.</span><button style="{{s.retry}}">Retry</button></div></sc-if>
+        <sc-if value="{{grid}}" hint-placeholder-val="{{false}}"><div style="{{s.grid}}"><sc-for list="{{tiles}}" as="g" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{g.art}}"></span><span style="{{g.t}}">{{g.l}}</span></span></sc-for></div></sc-if>
+      </div>
+    </sc-if>
+  </sc-for>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"layout":{"editor":"enum","options":["classic","library","rail"],"default":"classic"},"covers":{"editor":"boolean","default":true},"density":{"editor":"enum","options":["default","compact"],"default":"default"},"view":{"editor":"enum","options":["list","grid"],"default":"list"},"state":{"editor":"enum","options":["normal","offline","failed","loading"],"default":"normal"},"sel":{"editor":"text","default":"home"},"hover":{"editor":"text","default":""},"w":{"editor":"int","default":280},"h":{"editor":"int","default":780},"account":{"editor":"boolean","default":false},"$preview":{"width":280,"height":780}}'>
+class Component extends DCLogic {
+renderVals() {
+  const p = this.props;
+  const dark = (p.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { mica: '#202020', t1: '#ffffff', t2: 'rgba(255,255,255,0.773)', t3: 'rgba(255,255,255,0.529)', sub: 'rgba(255,255,255,0.059)', sub2: 'rgba(255,255,255,0.039)', div: 'rgba(255,255,255,0.082)', ctl: 'rgba(255,255,255,0.059)', ctlS: 'rgba(255,255,255,0.071)', acc: '#60cdff', onAcc: '#000', cau: 'rgba(67,53,25,1)', sk: 'rgba(255,255,255,0.07)' }
+    : { mica: '#ededed', t1: 'rgba(0,0,0,0.894)', t2: 'rgba(0,0,0,0.62)', t3: 'rgba(0,0,0,0.447)', sub: 'rgba(0,0,0,0.035)', sub2: 'rgba(0,0,0,0.024)', div: 'rgba(0,0,0,0.059)', ctl: 'rgba(255,255,255,0.702)', ctlS: 'rgba(0,0,0,0.09)', acc: '#005fb8', onAcc: '#fff', cau: '#fff4ce', sk: 'rgba(0,0,0,0.06)' };
+  const layout = p.layout ?? 'classic', rail = layout === 'rail';
+  const w = rail ? 48 : Number(p.w ?? 280), h = Number(p.h ?? 780);
+  const covers = !(p.covers === false || p.covers === 'false');
+  const compact = (p.density ?? 'default') === 'compact';
+  const state = p.state ?? 'normal', sel = p.sel ?? 'home', hover = p.hover ?? '';
+  const I = { home: 'M2.5 7.5 8 3l5.5 4.5V13H10V9.5H6V13H2.5z', heart: 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', albums: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z', artists: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4', podcasts: 'M8 7.5v6.5M6 14h4M5.2 4.8a4 4 0 0 0 0 5.4M10.8 4.8a4 4 0 0 1 0 5.4M3.5 3a6.5 6.5 0 0 0 0 9M12.5 3a6.5 6.5 0 0 1 0 9', audiobooks: 'M3 3h4a1 1 0 0 1 1 1v9a1 1 0 0 0-1-1H3zM13 3H9a1 1 0 0 0-1 1v9a1 1 0 0 1 1-1h4z', folder: 'M2 4.5h4l1.5 1.5H14v6.5H2z', episodes: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM6.5 5.8v4.4L10.2 8z', browse: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z' };
+  const items = [];
+  const rowBase = (k, hgt) => {
+    const on = k === sel, hov = k === hover;
+    return 'position: relative; height: ' + hgt + 'px; margin: 2px 4px; flex-shrink: 0; display: flex; align-items: center; border-radius: 4px; text-decoration: none; color: ' + T.t1 + '; background: ' + (on ? T.sub : hov ? T.sub : 'transparent');
+  };
+  const pill = k => k === sel ? 'position: absolute; left: 0; top: 50%; margin-top: -8px; width: 3px; height: 16px; border-radius: 2px; background: ' + T.acc : 'display: none';
+  const slot = (k, count) => {
+    const hov = k === hover;
+    return { slot: 'width: 26px; flex-shrink: 0; margin-right: 10px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + T.t3, slotText: hov ? '⋯' : (count || '') };
+  };
+  const text = (sec) => 'font-size: 14px; line-height: ' + (sec ? 18 : 20) + 'px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis';
+  const glyphRow = (k, label, g, count) => {
+    if (rail) return { isRow: true, glyph: true, d: I[g], fill: 'none', label, style: rowBase(k, 36) + '; width: 40px; justify-content: center', pill: pill(k), glyphBox: 'display: flex', showText: false };
+    return Object.assign({ isRow: true, glyph: true, d: I[g], fill: g === 'heart' && sel === k ? 'currentColor' : 'none', label, style: rowBase(k, 36), pill: pill(k), glyphBox: 'width: 40px; flex-shrink: 0; display: flex; justify-content: center; margin-right: 4px', showText: true, textStyle: text(false) }, slot(k, count));
+  };
+  const entityRow = (k, label, sub, art, extra) => {
+    extra = extra || {};
+    const off = state === 'offline' && extra.pin;
+    if (rail) return { isRow: true, art: true, label, style: rowBase(k, 40) + '; width: 40px; justify-content: center', pill: pill(k), artStyle: 'width: 32px; height: 32px; border-radius: 6px; background: ' + art, showText: false };
+    const base = { isRow: true, label, pill: pill(k), showText: true, pin: !!extra.pin && !off, eq: !!extra.eq, off };
+    if (covers || layout === 'library') {
+      const hh = compact ? 36 : 40, a = compact ? 24 : 32;
+      return Object.assign(base, { style: rowBase(k, hh) + '; padding-left: ' + (compact ? 8 : 4) + 'px; gap: 8px' + (off ? '; color: ' + T.t3 : ''), art: true, artStyle: 'width: ' + a + 'px; height: ' + a + 'px; flex-shrink: 0; border-radius: ' + (extra.round ? a / 2 : a <= 28 ? 4 : 6) + 'px; background: ' + art + (off ? '; opacity: 0.45' : ''), textStyle: text(!compact), sub: compact ? '' : sub }, slot(k, extra.count));
+    }
+    const folder = !!extra.folder, child = !!extra.child;
+    return Object.assign(base, { style: rowBase(k, 36) + '; padding-left: ' + (child ? 43 : 12) + 'px' + (off ? '; color: ' + T.t3 : ''), glyph: folder, d: I.folder, fill: 'none', glyphBox: 'width: 16px; flex-shrink: 0; display: flex; margin-right: 8px', textStyle: text(false) }, slot(k, extra.count));
+  };
+  const head = (k, label, collapsed) => {
+    if (rail) { items.push({ isSep: true, style: 'display: block; height: 1px; margin: 8px 12px; background: ' + T.div }); return; }
+    const hov = k === hover;
+    items.push({ isHead: true, label, chev: collapsed ? 'M6 4l4 4-4 4' : 'M4 6l4 4 4-4', style: 'height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px 0 16px; font-size: 14px; font-weight: 600; color: ' + (hov ? T.t1 : T.t2), tools: hov ? 'display: flex; gap: 2px' : 'display: none' });
+  };
+  const sep = () => items.push({ isSep: true, style: 'display: block; height: 1px; margin: 3px ' + (rail ? 12 : 8) + 'px 4px; background: ' + T.div });
+  const pl = [['dm1', 'Daily Mix 1', 'Playlist · Spotify', '#5b3b6b'], ['kpop', 'K-Pop Duets (러블리 듀엣)', 'Playlist · Chris', '#6b3b4a'], ['lol', 'LoL Worlds Songs 2014–2026', 'Playlist · Chris', '#5b5b5b'], ['nl', '90’s Nederlandstalig', 'Playlist · Chris', '#2f5b6b'], ['summer', 'Summer Songs 2026', 'Playlist · Chris', '#b8862f'], ['run', 'Running 170 BPM', 'Playlist · Chris', '#3b6b4a'], ['dw', 'Discover Weekly', 'Playlist · Spotify', '#3b4a8a'], ['rr', 'Release Radar', 'Playlist · Spotify', '#2f6b6b'], ['coffee', 'Coffee & Code', 'Playlist · Chris', '#6b4a2f'], ['tth', 'Today’s Top Hits', 'Playlist · Spotify', '#4a8a3b']];
+  let chips = [], tiles = [];
+  if (layout === 'library') {
+    items.push(glyphRow('home', 'Home', 'home'));
+    sep();
+    items.push(entityRow('rock', 'korean r&b k-indie sunday evening', 'Playlist · Spotify', 'linear-gradient(135deg,#c08a3e,#8a4ab0)', { pin: true }));
+    items.push(entityRow('liked', 'Liked Songs', 'Playlist · 1,284 songs', 'linear-gradient(135deg,#4a3b8a,#6fa3c8)', { pin: true }));
+    items.push({ isLib: true });
+    chips = ['Playlists', 'Albums', 'Artists', 'Podcasts'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', style: 'height: 32px; flex-shrink: 0; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 13px; ' + (i === 0 ? 'border: 0; background: ' + T.acc + '; color: ' + T.onAcc : 'background: ' + T.ctl + '; border: 1px solid ' + T.ctlS + '; color: ' + T.t1) }));
+    if ((p.view ?? 'list') === 'grid' || state === 'loading') {
+      tiles = pl.slice(0, 8).map((r, i) => ({ l: state === 'loading' ? '' : r[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 6px; background: ' + (state === 'loading' ? T.sk : r[3]), t: state === 'loading' ? 'display: block; height: 10px; width: 70%; border-radius: 2px; background: ' + T.sk : 'font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' }));
+    } else {
+      pl.forEach((r, i) => items.push(entityRow(r[0], r[1], r[2], r[3], { eq: i === 6 })));
+    }
+  } else {
+    items.push(glyphRow('home', 'Home', 'home'));
+    if (rail) { sep(); } else { head('pinned', 'Pinned'); }
+    if (rail) {
+      ['heart:liked:Liked Songs', 'albums:albums:Albums', 'artists:artists:Artists', 'podcasts:podcasts:Podcasts', 'audiobooks:audiobooks:Audiobooks'].forEach(x => { const a = x.split(':'); items.push(glyphRow(a[1], a[2], a[0])); });
+      sep();
+      pl.slice(0, 7).forEach(r => items.push(entityRow(r[0], r[1], r[2], r[3])));
+    } else {
+      items.push(entityRow('rock', 'korean r&b k-indie sunday evening', 'Playlist · Spotify', 'linear-gradient(135deg,#c08a3e,#8a4ab0)', { pin: true }));
+      items.push(entityRow('episodes', 'Your Episodes', 'Saved episodes', '#2f6b4a', { pin: true }));
+      head('collections', 'Collections');
+      items.push(glyphRow('liked', 'Liked Songs', 'heart', '1,284'));
+      items.push(glyphRow('albums', 'Albums', 'albums', '214'));
+      items.push(glyphRow('artists', 'Artists', 'artists', '86'));
+      items.push(glyphRow('podcasts', 'Podcasts', 'podcasts', '12'));
+      items.push(glyphRow('audiobooks', 'Audiobooks', 'audiobooks', '3'));
+      head('playlists', 'Playlists');
+      items.push(entityRow('mixes', 'Mixes', 'Folder · 2 playlists', '#4a4a6b', { folder: true }));
+      items.push(entityRow('dm1', 'Daily Mix 1', 'Playlist · Spotify', '#5b3b6b', { child: true }));
+      items.push(entityRow('dm2', 'Daily Mix 2', 'Playlist · Spotify', '#3b5b6b', { child: true }));
+      pl.slice(1).forEach((r, i) => items.push(entityRow(r[0], r[1], r[2], r[3], { eq: r[0] === 'dw' })));
+    }
+  }
+  const tb = 'width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; font: inherit; color: ' + T.t2;
+  const gridOn = (p.view ?? 'list') === 'grid';
+  const eqb = (hh, o) => 'width: 3px; height: ' + hh + 'px; border-radius: 1px; background: ' + T.acc + '; opacity: ' + o;
+  const s = {
+    root: 'width: ' + w + 'px; height: ' + h + 'px; box-sizing: border-box; padding: 3px 0 8px; display: flex; flex-direction: column; overflow: hidden; background: ' + T.mica + '; color: ' + T.t1 + "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif",
+    inline: 'width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: ' + T.t2,
+    sub: 'font-size: 12px; line-height: 16px; color: ' + T.t2 + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    pin: 'width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: ' + T.t3,
+    eq1: eqb(8, 1), eq2: eqb(12, 0.8), eq3: eqb(5, 1),
+    libHead: 'height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 16px; font-size: 14px; font-weight: 600',
+    chips: 'height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent)',
+    tools: 'height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 12px',
+    tb, tbList: tb + (gridOn ? '' : '; background: ' + T.sub + '; color: ' + T.t1), tbGrid: tb + (gridOn ? '; background: ' + T.sub + '; color: ' + T.t1 : ''),
+    sort: 'height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; font: inherit; font-size: 12px; font-weight: 600; color: ' + T.t2,
+    rule: 'display: block; height: 1px; margin: 0 12px 4px; background: ' + T.div,
+    fail: 'margin: 4px 8px 6px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; border-radius: 4px; font-size: 12px; line-height: 16px; background: ' + T.cau + '; color: ' + T.t1,
+    retry: 'height: 24px; padding: 0 8px; border-radius: 4px; background: ' + T.ctl + '; border: 1px solid ' + T.ctlS + '; font: inherit; font-size: 12px; color: ' + T.t1,
+    grid: 'display: grid; grid-template-columns: repeat(' + Math.max(2, Math.min(4, Math.floor((w - 24) / 116))) + ', minmax(0, 1fr)); gap: 8px; padding: 4px 12px'
+  };
+  const account = p.account === true || p.account === 'true';
+  s.acct = 'height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 4px; margin-bottom: 4px; border-bottom: 1px solid ' + T.div;
+  s.acctLink = 'flex-grow: 1; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 8px; border-radius: 4px; text-decoration: none; color: ' + T.t1;
+  s.acctAv = 'width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; background: linear-gradient(135deg, #8a5a44, #3b5b7a); color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center';
+  s.acctBtn = 'position: relative; width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; font: inherit; color: ' + T.t1;
+  s.acctBadge = 'position: absolute; right: 6px; top: 6px; min-width: 14px; height: 14px; border-radius: 7px; background: ' + T.acc + '; color: ' + T.onAcc + '; font-size: 9px; font-weight: 600; display: flex; align-items: center; justify-content: center';
+  return { s, account, items, chips, tiles, grid: tiles.length > 0, failed: state === 'failed', listOn: gridOn ? 'false' : 'true', gridOn: gridOn ? 'true' : 'false' };
+}
+}
+</script>
+</body>
+</html>

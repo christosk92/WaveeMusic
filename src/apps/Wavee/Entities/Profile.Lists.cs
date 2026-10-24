@@ -12,7 +12,7 @@
 //   · ProfileGridFit / ProfileLetterRows — the card grid: how many columns fit, and the flat "letter header | row of N cards"
 //                            projection the bound list scrolls over (the Recents / library pattern: PINNED extents, so the
 //                            sticky letter and the jump strip never drift from what is painted).
-// The UI half (Profile.Lists.Page.cs) reads these and paints; it decides nothing.
+// The host (Profile.Lists.Page.cs) reads these and hands them to the structure's view (`ClassicProfileList`), which paints; neither decides anything else.
 
 using System.Globalization;
 
@@ -149,14 +149,10 @@ public sealed class ProfileListModel
     public int Count => _count;
     public int VisibleCount => _visibleCount;
     public ProfileChipCounts Counts { get; private set; }
-    public ReadOnlySpan<ProfileEntry> Entries => _entries.AsSpan(0, _count);
-    /// <summary>The visible entries as indices into <see cref="Entries"/>, in display order.</summary>
-    public ReadOnlySpan<int> Visible => _visible.AsSpan(0, _visibleCount);
     /// <summary>Per VISIBLE entry: its filing letter (non-decreasing) and whether it is an artist.</summary>
     public ReadOnlySpan<int> VisibleLetters => _letters.AsSpan(0, _visibleCount);
     public ReadOnlySpan<bool> VisibleArtists => _artist.AsSpan(0, _visibleCount);
 
-    public ProfileEntry EntryAt(int entry) => _entries[entry];
     /// <summary>The <paramref name="k"/>-th VISIBLE entry.</summary>
     public ProfileEntry VisibleAt(int k) => _entries[_visible[k]];
 
@@ -175,7 +171,7 @@ public sealed class ProfileListModel
             int size = Math.Max(_count, _order.Length * 2);
             _order = new int[size]; _visible = new int[size]; _letters = new int[size]; _artist = new bool[size];
         }
-        Counts = ProfileListFilter.Counts(Entries);
+        Counts = ProfileListFilter.Counts(_entries.AsSpan(0, _count));
         ProfileListFilter.Order(_entries, _count, _order);
         _visibleCount = 0;
     }
@@ -216,33 +212,29 @@ public static class ProfileEntryName
 /// <summary>The measured body → how many cards fit, how wide each is, whether the A–Z strip and the side-by-side tools fit.</summary>
 public readonly record struct ProfileGridPlan(bool Strip, bool StackTools, int Columns, float CellWidth);
 
+/// <summary>The grid's arithmetic. WHERE the A–Z strip and the side-by-side tools appear (the list ladder, <see cref="Wavee.Theming.ArtistLadders.ProfileList"/>)
+/// and the narrowest card per tier (<see cref="Wavee.Theming.ArtistTierPolicy.ProfileListMinCell"/>) are the structure's (TC6; Classic
+/// <c>Rules\Tiers.Profile.cs</c>): the page resolves its arm and hands both in.</summary>
 public static class ProfileGridFit
 {
-    public const float MinCell = 176f;                 // SectionScreen's SectionCardMinWidth
     public const float ActionLine = 32f + 8f;          // FollowToggle (32) + Spacing.S above it
-    public const float StripMinWidth = 640f;
-    public const float ToolsStackBelow = 640f;
     /// <summary>The A–Z strip's own width and the gap between it and the list (= <c>Spacing.S</c>).</summary>
     public const float StripWidth = 18f, StripGap = 8f;
 
-    public static int Columns(float width, float gap) => width <= 0f ? 0 : Math.Max(1, (int)((width + gap) / (MinCell + gap)));
+    public static int Columns(float width, float gap, float minCell) => width <= 0f ? 0 : Math.Max(1, (int)((width + gap) / (minCell + gap)));
     public static float CellWidth(float width, int cols, float gap) => cols <= 0 ? 0f : MathF.Floor((width - (cols - 1) * gap) / cols);
 
     /// <summary>The card row's PINNED height — the surface's own grid estimate (≥ its rendered height), so the seed extent
     /// equals the measured one and the list never re-pins its scroll anchor.</summary>
     public static float CardRow(float cellW) => SurfaceGeometry.GridRowEstimate(cellW, Shape.Grid, hasSubtitle: true);
 
-    public static bool ShowsStrip(float width) => width >= StripMinWidth;
-
-    /// <summary>The plan for a body of <paramref name="bodyW"/> DIP (unmeasured = 0 → no columns, and the wide tools
-    /// arrangement, the one most windows have). The strip takes <see cref="StripWidth"/> + <see cref="StripGap"/> off the
-    /// list's width when it shows.</summary>
-    public static ProfileGridPlan For(float bodyW, float cardGap)
+    /// <summary>The plan for a body of <paramref name="bodyW"/> DIP (unmeasured = 0 → no columns) in the list's arm: <paramref name="wide"/> shows the
+    /// strip and lays the tools side by side. The strip takes <see cref="StripWidth"/> + <see cref="StripGap"/> off the list's width when it shows.</summary>
+    public static ProfileGridPlan For(float bodyW, float cardGap, bool wide, float minCell)
     {
-        bool strip = ShowsStrip(bodyW);
-        float listW = bodyW - (strip ? StripWidth + StripGap : 0f);
-        int cols = Columns(listW, cardGap);
-        return new(strip, bodyW > 0f && bodyW < ToolsStackBelow, cols, CellWidth(listW, cols, cardGap));
+        float listW = bodyW - (wide ? StripWidth + StripGap : 0f);
+        int cols = Columns(listW, cardGap, minCell);
+        return new(wide, !wide, cols, CellWidth(listW, cols, cardGap));
     }
 }
 

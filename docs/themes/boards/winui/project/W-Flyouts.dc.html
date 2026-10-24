@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flyouts and menus</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; padding: 36px; display: grid; grid-template-columns: 420px 520px minmax(0, 1fr); gap: 36px; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <section aria-label="Device picker" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">Devices flyout · from the player bar</h2>
+    <div style="width: 360px; box-sizing: border-box; padding: 4px; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column">
+      <div style="padding: 12px 12px 8px 12px; display: flex; align-items: center; gap: 12px">
+        <span style="width: 40px; height: 40px; border-radius: 4px; background: rgba(96,205,255,0.16); color: #60cdff; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v7.5H2zM5.5 13.5h5M8 11v2.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></span>
+        <span style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #c5c5c5">Playing on</span><span style="font-size: 14px; font-weight: 600">This computer</span></span>
+      </div>
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 12px 4px 12px; font-size: 12px; font-weight: 600; color: #c5c5c5">This computer</div>
+      <sc-for list="{{local}}" as="d" hint-placeholder-count="3">
+        <button role="menuitemradio" aria-checked="{{d.checked}}" style="{{d.style}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{d.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1; text-align: left"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{d.label}}</span><span style="{{d.subStyle}}">{{d.sub}}</span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="{{d.check}}"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button>
+      </sc-for>
+      <span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span>
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 12px 4px 12px; font-size: 12px; font-weight: 600; color: #c5c5c5">Spotify Connect</div>
+      <sc-for list="{{connect}}" as="d" hint-placeholder-count="3">
+        <button role="menuitem" style="{{d.style}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{d.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1; text-align: left"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{d.label}}</span><span style="{{d.subStyle}}">{{d.sub}}</span></span></button>
+      </sc-for>
+      <span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span>
+      <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; font-size: 12px; color: #c5c5c5"><span style="flex-grow: 1">Very high · 320 kbps · Ogg Vorbis</span><a href="#">Output settings</a></div>
+    </div>
+    <div style="display: flex; justify-content: flex-end; width: 360px">
+      <span style="display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 8px; background: #202020; border: 1px solid rgba(255,255,255,0.0837)">
+        <span style="width: 40px; height: 40px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+        <span style="width: 40px; height: 40px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(255,255,255,0.0605)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></span>
+      </span>
+    </div>
+    <p style="margin: 0; width: 360px; font-size: 12px; line-height: 16px; color: #9e9e9e">Opens BottomEdgeAlignedRight from the Devices button; the button keeps its subtle-pressed fill while open. The same rows render in the full-screen stage’s “Playing on” flyout.</p>
+  </section>
+  <section aria-label="Search suggestions" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">AutoSuggestBox · suggestions while typing</h2>
+    <label style="width: 520px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: #1f1f1f; border: 1px solid rgba(255,255,255,0.0698); border-bottom: 2px solid #60cdff; font-size: 14px; color: #fff"><span style="flex-grow: 1">stereo lo</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></label>
+    <div role="listbox" aria-label="Suggestions" style="width: 520px; margin-top: -8px; box-sizing: border-box; padding: 4px; border-radius: 0 0 8px 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column">
+      <sc-for list="{{recent}}" as="r" hint-placeholder-count="2">
+        <div role="option" aria-selected="false" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M8 1.5a6.5 6.5 0 1 1-6.3 8M1.5 5.5v4h4M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">{{r.q}}</span><button aria-label="Remove from history" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #c5c5c5; font: inherit"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button></div>
+      </sc-for>
+      <span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span>
+      <sc-for list="{{sugg}}" as="s" hint-placeholder-count="4">
+        <div role="option" aria-selected="{{s.sel}}" style="{{s.style}}"><span style="{{s.pill}}"></span><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{s.s}}</span></span></div>
+      </sc-for>
+      <span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span>
+      <div style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg><span style="flex-grow: 1">See all results for “stereo lo”</span><span style="font-size: 12px; color: #9e9e9e">Enter</span></div>
+    </div>
+    <p style="margin: 0; width: 520px; font-size: 12px; line-height: 16px; color: #9e9e9e">The box squares its bottom corners while the list is open; arrow keys move the 3×16 pill. A failed fetch shows one row “Couldn’t load suggestions” with Retry, never an empty list.</p>
+  </section>
+  <section aria-label="Sort menu and tooltip" style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">Sort and view menu · Library toolbar</h2>
+    <button style="align-self: flex-start; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #fff; font: inherit; font-size: 14px">Recently added<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <div role="menu" aria-label="Sort and view" style="width: 260px; box-sizing: border-box; padding: 4px; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column">
+      <sc-for list="{{sort}}" as="m" hint-placeholder-count="9">
+        <sc-if value="{{m.head}}" hint-placeholder-val="{{ false }}"><div style="height: 32px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: #9e9e9e">{{m.label}}</div></sc-if>
+        <sc-if value="{{m.sep}}" hint-placeholder-val="{{ false }}"><span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span></sc-if>
+        <sc-if value="{{m.item}}" hint-placeholder-val="{{ true }}"><button role="menuitemradio" aria-checked="{{m.checked}}" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 8px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><span style="width: 16px; display: flex; justify-content: center"><span style="{{m.dot}}"></span></span><span style="flex-grow: 1; text-align: left">{{m.label}}</span></button></sc-if>
+      </sc-for>
+    </div>
+    <h2 style="margin: 12px 0 0 0; font-size: 14px; line-height: 20px; font-weight: 600">ToolTip</h2>
+    <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+      <span style="width: 40px; height: 36px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(255,255,255,0.0605)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5 13.5 6.5l-1.8.4-2.2 2.2.4 2.6-3.3-3.3L3 12.5l-.5-.5 4.1-3.6L3.3 5.1l2.6.4 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></span>
+      <span role="tooltip" style="padding: 6px 8px 8px 8px; border-radius: 4px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 4px 8px rgba(0,0,0,0.26); font-size: 12px; line-height: 16px">Pin this page to the sidebar <span style="color: #9e9e9e">Ctrl+D</span></span>
+    </div>
+    <h2 style="margin: 12px 0 0 0; font-size: 14px; line-height: 20px; font-weight: 600">Rules</h2>
+    <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; color: #c5c5c5">
+      <li>Every flyout: acrylic #2c2c2c, radius 8, 1 px black 20% stroke, 8/16 shadow, 4 px inner padding.</li>
+      <li>Items 36 high, 4 px radius, subtle hover fill; icon 16 at 12 px from the edge; accelerators in text 3.</li>
+      <li>Separators run edge to edge; group headers are caption text 3, never bold uppercase.</li>
+      <li>Radio items show a dot, check items a checkmark; submenus a 12 px chevron, opening on hover after 400 ms.</li>
+    </ul>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const spk = 'M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5', head = 'M3 10V8a5 5 0 0 1 10 0v2M3 10h2.5v3.5H3zM10.5 10H13v3.5h-2.5z', sys = 'M2 3.5h12v7.5H2zM5.5 13.5h5M8 11v2.5', home = 'M4 2.5h8v11H4zM8 5a1 1 0 1 1 0 .01M8 8a2.2 2.2 0 1 1 0 4.4A2.2 2.2 0 0 1 8 8z', phone = 'M5 1.5h6v13H5zM7.5 12.5h1', tv = 'M1.5 3h13v8.5h-13zM5 14h6';
+  const row = (label, sub, d, checked, sel) => ({ label, sub, d, checked: checked ? 'true' : 'false', check: checked ? 'flex-shrink: 0; display: block; color: #60cdff' : 'display: none',
+    subStyle: 'font-size: 12px; line-height: 16px; color: ' + (checked ? '#99ebff' : '#c5c5c5'),
+    style: 'height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 4px; color: #fff; font: inherit; background: ' + (sel ? 'rgba(255,255,255,0.0605)' : 'transparent') });
+  const local = [row('Speakers (Realtek(R) Audio)', 'Playing · Wavee', spk, true), row('Headphones (WH-1000XM5)', 'Bluetooth', head, false, true), row('System default', 'Follows Windows', sys, false)];
+  const connect = [row('Living room speaker', 'Sonos · Spotify Connect', home, false), row('Pixel 9', 'Phone · Spotify', phone, false), row('Bravia 4K', 'TV · Spotify', tv, false)];
+  const recent = [{ q: 'stereo love' }, { q: 'stereo hearts' }];
+  const sg = [['Stereo Love', 'Song · Edward Maya, Vika Jigulina', '#3b5b7a', 4, true], ['Edward Maya', 'Artist', '#2a3b4c', 16, false], ['The Stereo Love Show', 'Album · Edward Maya', '#3b5b7a', 4, false], ['Stereo Love (Remixes)', 'Single · Edward Maya', '#4a6b8a', 4, false]];
+  const sugg = sg.map(s => ({ t: s[0], s: s[1], sel: s[4] ? 'true' : 'false', art: 'width: 32px; height: 32px; flex-shrink: 0; border-radius: ' + s[3] + 'px; background: ' + s[2],
+    pill: s[4] ? 'position: absolute; left: 0; top: 16px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+    style: 'position: relative; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px; background: ' + (s[4] ? 'rgba(255,255,255,0.0605)' : 'transparent') }));
+  const h = l => ({ head: true, sep: false, item: false, label: l });
+  const r = (l, c) => ({ head: false, sep: false, item: true, label: l, checked: c ? 'true' : 'false', dot: c ? 'width: 6px; height: 6px; border-radius: 3px; background: #ffffff' : 'display: none' });
+  const sort = [h('Sort by'), r('Recently added', true), r('Recently played', false), r('Alphabetical', false), r('Artist', false), { head: false, sep: true, item: false }, h('View'), r('Grid', true), r('List', false), r('Compact list', false)];
+  return { local, connect, recent, sugg, sort };
+}
+}
+</script>
+</body>
+</html>

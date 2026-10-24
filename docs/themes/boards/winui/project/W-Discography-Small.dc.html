@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Discography, small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|artist:Arash:#4a3b2f" sel="1" hint-size="800px,88px"></dc-import>
+  <div style="display: flex; height: 440px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="compact" sel="artists" height="440" hint-size="48px,440px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 20px 24px 0 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="height: 48px; flex-shrink: 0; margin: -20px -24px 0 -24px; padding: 0 16px 0 24px; display: flex; align-items: center; gap: 12px; background: #282828; border-bottom: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap">Discography</h1>
+        <div style="display: flex; gap: 2px; align-self: stretch; align-items: stretch">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="3"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+        <span style="flex-grow: 1"></span>
+        <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Newest<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <div style="display: flex; height: 32px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.0698); overflow: hidden">
+          <button aria-label="Grid view" aria-pressed="true" style="width: 36px; border: 0; background: rgba(255,255,255,0.0837); color: #fff; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></button>
+          <button aria-label="List view" aria-pressed="false" style="width: 36px; border: 0; background: transparent; color: #c5c5c5; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+        </div>
+      </div>
+      <div style="height: 64px; flex-shrink: 0; overflow: hidden">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: -148px">
+          <sc-for list="{{row1}}" as="a" hint-placeholder-count="2">
+            <a href="#" style="{{a.card}}"><span style="{{a.art}}"></span><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.t}}</span><span style="font-size: 12px; color: #c5c5c5">{{a.s}}</span></a>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; padding: 16px 20px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <div style="display: flex; align-items: flex-end; gap: 16px">
+          <span style="width: 112px; height: 112px; border-radius: 8px; background: #6b8f8a; flex-shrink: 0"></span>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Superman</span>
+            <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Album · Jun 12, 2014 · 12 tracks · 41 min</span>
+            <div style="display: flex; gap: 8px; padding-top: 12px"><button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button><a href="#" style="height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font-size: 14px">Go to album</a></div>
+          </div>
+          <button aria-label="Close album details" style="width: 32px; height: 32px; align-self: flex-start; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <sc-for list="{{tracks}}" as="r" hint-placeholder-count="5">
+            <div style="display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px 64px; align-items: center; height: 40px; border-radius: 4px"><span style="padding-left: 8px; font-size: 14px; color: #9e9e9e; font-variant-numeric: tabular-nums">{{r.n}}</span><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="text-align: center">{{r.h}}</span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.d}}</span></div>
+          </sc-for>
+          <a href="#" style="font-size: 14px; padding: 8px">Show all 12 tracks</a>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="compact" width="800" variant="music" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Albums', true), vs('Singles & EPs', false), vs('Compilations', false)];
+  const row1 = [['Superman', 'Jun 12, 2014 · 12 tracks', '#6b8f8a', true], ['Donya', 'Jun 20, 2008 · 14 tracks', '#5b4a3b', false]].map(a => ({ t: a[0], s: a[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + a[2], card: 'display: flex; flex-direction: column; gap: 6px; padding: 8px; margin: -8px; min-width: 0; border-radius: 8px; color: #fff; ' + (a[3] ? 'background: rgba(255,255,255,0.0605)' : '') }));
+  const tracks = [['Superman', '3:02', ''], ['One Day (feat. Helena)', '3:33', '♥'], ['She Makes Me Go (feat. Sean Paul)', '3:31', ''], ['Sex Love Rock n Roll (feat. T-Pain)', '3:19', ''], ['Broken Angel (feat. Helena)', '3:11', '♥']].map((t, i) => ({ n: String(i + 1), t: t[0], d: t[1], h: t[2] }));
+  return { views, row1, tracks };
+}
+}
+</script>
+</body>
+</html>

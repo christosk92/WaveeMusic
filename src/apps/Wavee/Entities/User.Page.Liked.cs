@@ -22,6 +22,12 @@
 //
 // The page never asks "am I fake": it demands the liked edge, the row bundle and the curated chip set through Fetch on
 // mount, and --fake answers them because the seed already committed them.
+//
+// ── ROW 2 (P5 Z6b1, contract 1.26) ───────────────────────────────────────────────────────────────────────────────────
+//
+// A band-style structure (Zune) draws the page's actions in its band's row 2, so the page publishes Play and Shuffle through the `PageChromeSink` the
+// content host provides around the page (the album's pattern, Album.Page.cs). It publishes no VIEWS: the library route's own row (liked, playlists, albums,
+// artists, podcasts, audiobooks) stands. Classic draws its own head and reads none of it.
 
 using System.Runtime.InteropServices;
 using FluentGpu.Controls;
@@ -30,6 +36,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Contracts = Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -45,7 +53,7 @@ public readonly partial struct User
 
     sealed record LikedPageProps(string RouteKey);
 
-    /// <summary>The web link the rail's Share FAB copies (the collection has no ShareUrl column behind it).</summary>
+    /// <summary>The web link the vertical hero's Share copies (the collection has no ShareUrl column behind it).</summary>
     const string LikedShareUrl = "https://open.spotify.com/collection/tracks";
 
     /// <summary>ch 07 §7's demand bundle for every liked row: the row the table paints (Identity — credits included — +
@@ -75,25 +83,30 @@ public readonly partial struct User
         readonly Func<Element?> _chipBar;
         readonly Func<Element?> _lensHeader;
 
+        // ── row 2 (P5 Z6b1): the page's actions (see the file header) ──
+        Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
+        readonly Action _publishChrome, _playChrome;
+
         public LikedPage()
         {
+            _publishChrome = PublishChrome;
+            _playChrome = () => { if (_subject.IsValid) Actions.Services.Play?.Invoke(_subject); };
             _demandModel = DemandModel;
             _demandRows = DemandRows;
             _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
-                ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
+                ? Embed.Comp(new ChipBarHostProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
                 : null;
             _lensHeader = () => LensHeader(_lens, DetailKind.Liked);
             _lens.ChipTitles = () => _chips?.Value.Titles ?? [];
 
-            // The cover slots: the dynamic treatment WITH its style picker on the rail and the vertical hero, the flat
-            // mosaic / stock with NO picker on the 96-DIP strip (ch 03 item 23, ch 07 §1.1 mount table).
+            // The cover slot: the dynamic treatment WITH its style picker on the vertical hero (ch 03 item 23). The wide arm has no rail and
+            // no collapsed strip, so no cover (tuned Classic D16: the head is the title and the meta over the page bar).
             Func<float, Element> cover = static size => LikedCover(size, Radii.Card, picker: true);
-            Func<float, Element> compactCover = static size => LikedCover(size, Radii.Card, picker: false);
             Func<float, Element> facts = width => _source is { } src ? FactsPanel(src, DetailKind.Liked, _lens, width, false) : new BoxEl();
-            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover, LikedFacts = facts };
-            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover };
+            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, LikedFacts = facts };
+            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover };
             _actions = new Detail.FrameActions { Shuffle = Shuffle, CoverDrag = CoverDragPayload };
         }
 
@@ -126,6 +139,10 @@ public readonly partial struct User
             var chips = UseComputed(_computeChips);
             _chips = chips;
             var lensOn = UseComputed(_lensActive);
+
+            // Row 2 (P5 Z6b1): Play and Shuffle, once per account per scope. Hooks before any early return.
+            _sink = UseContext(Contracts.PageChromeSink.Context);
+            UseEffect(_publishChrome, DepKey.From(_me.Slot, (int)scopeEpoch));
 
             if (!_me.IsValid || _source is null) return Controls.Vacancy(Controls.VacancyVoice.Empty);
 
@@ -245,6 +262,20 @@ public readonly partial struct User
             return new LikedChipModel(names, set.EvidencedCount);
         }
 
+        // ── row 2 ──
+
+        /// <summary>Publishes Play and Shuffle (no views: the library route's row stands).</summary>
+        void PublishChrome()
+        {
+            if (!_me.IsValid) return;
+            var actions = new List<Contracts.PageAction>(2)
+            {
+                new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), Shuffle, Contracts.PageActionKind.Shuffle),
+            };
+            _sink.Publish(new Contracts.PageChromeRow([], actions, new Contracts.PageBackdrop(Bleed: null, TallWash: true)));
+        }
+
         // ── the page verbs ──
 
         void Shuffle()
@@ -289,40 +320,41 @@ public readonly partial struct User
         public override int GetHashCode() => HashCode.Combine(Titles.Length, Evidenced);
     }
 
-    sealed record LikedChipBarProps(IReadSignal<LikedChipModel> Chips, string ScrollKey);
+    sealed record ChipBarHostProps(IReadSignal<LikedChipModel> Chips, string ScrollKey);
 
-    /// <summary>ONE line that scrolls (the rail's own edge fade), "All" first, EXCLUSIVE selection (All + at most one),
-    /// re-tapping the active chip clears it, and an un-evidenced curated chip rendered DISABLED as one contiguous tail —
-    /// the evidence is a prefix, so the order IS the state. Reads and writes the table's filter through
-    /// <c>Track.TableLiveSlot</c> (it is built under the table's provider). 0 DIP when there is no set (W19).</summary>
+    /// <summary>The chip rail's CORE HALF (T9c; the picture is the structure's <c>Liked.ChipBar</c>): reads and writes the table's filter
+    /// through <c>Track.TableLiveSlot</c> (it is built under the table's provider) and hands the view the titles, the evidence prefix, the
+    /// selected tag and the two verbs. No titles (no set, or no table above it) is a 0 DIP rail (W19).</summary>
     sealed class LikedChipBar : Component
     {
         Track.TableLive? _live;
         readonly Action _selectAll;
+        readonly Action<string?> _select;
 
-        public LikedChipBar() => _selectAll = () => Select(null);
+        public LikedChipBar()
+        {
+            _selectAll = () => Select(null);
+            _select = Select;
+        }
 
         public override Element Render()
         {
-            var p = UseProps<LikedChipBarProps>();
+            var p = UseProps<ChipBarHostProps>();
             var live = UseContext(Track.TableLiveSlot);
             _live = live;
             var model = p.Chips.Value;
-            if (live is null || model.Titles.Length == 0) return new BoxEl { Key = "chips:off", HitTestVisible = false };
-
-            string? selected = live.View.Value.Filters.Tag;   // subscribe: the selected chip IS filter state
-            var kids = new Element[model.Titles.Length + 1];
-            // AllChip, not AllTracks: a chip beside "Pop" and "K-Pop", where the short word reads as one of the set.
-            kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, _selectAll) with { Key = "chip:all" };
-            for (int i = 0; i < model.Titles.Length; i++)
+            bool on = live is not null && model.Titles.Length > 0;
+            return ViewSlots.View(Contracts.ViewKeys.LikedChipBar, new Contracts.LikedChipBarProps
             {
-                string tag = model.Titles[i];
-                bool on = string.Equals(tag, selected, StringComparison.OrdinalIgnoreCase);
-                bool available = i < model.Evidenced;
-                kids[i + 1] = Controls.Chip(tag, on, available, available ? () => Select(on ? null : tag) : null)
-                    with { Key = "chip:" + tag };
-            }
-            return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
+                Titles = on ? model.Titles : [],
+                Evidenced = model.Evidenced,
+                // subscribe: the selected chip IS filter state
+                Selected = on ? live!.View.Value.Filters.Tag : null,
+                ScrollKey = p.ScrollKey,
+                Inline = live?.InlineChips ?? false,
+                SelectAll = _selectAll,
+                Select = _select,
+            });
         }
 
         void Select(string? tag)

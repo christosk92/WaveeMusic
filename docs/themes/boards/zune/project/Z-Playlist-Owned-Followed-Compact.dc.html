@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune playlist owned and followed: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 480px; background: linear-gradient(180deg, #1f1a24 0%, #1b1820 50%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0; display: flex; flex-direction: column">
+    <dc-import name="Z-Part-TitleBar" tier="compact" crumb="library › playlists › late night drive" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+    <dc-import name="Z-Part-Band" tier="compact" section="library" sub="songs,recommended,collaborators" on="songs" title="late night drive" actions="invite" collapsed="false" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 10px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); text-underline-offset: 10px; text-decoration-thickness: 1px">late night drive</div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 80px; bottom: 0; display: flex; flex-direction: column">
+      <div style="display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+        <span style="width: 120px; height: 120px; flex-shrink: 0; position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 2px; overflow: hidden">
+          <span style="background: #3b4a6b"></span><span style="background: #6b2f4a"></span><span style="background: #2f5b6b"></span><span style="background: #5b3b6b"></span>
+          <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; font-size: 12px">change cover</span>
+        </span>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 2px">
+          <span style="font-size: 13px; line-height: 18px; color: #7a7a7a">add an optional description</span>
+          <span style="display: flex; gap: 8px; align-items: center; font-size: 15px; line-height: 20px"><span style="width: 20px; height: 20px; border-radius: 10px; background: #5b6b3b; flex-shrink: 0"></span><a href="#" style="color: #ffffff">christos</a></span>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">public · collaborative · 2 collaborators</span>
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">42 songs · 2 hr 31 min</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; height: 40px; margin-top: 16px; flex-shrink: 0">
+        <button aria-label="play" style="{{playRing}}">▶</button>
+        <button aria-label="shuffle" style="{{ring}}">⇄</button>
+        <button aria-label="invite collaborators" style="{{ring}}">+</button>
+        <button aria-label="share" style="{{ring}}">↗</button>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="more, including delete" style="{{ring}}">⋯</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 40px; margin-top: 10px; flex-shrink: 0; font-size: 13px; white-space: nowrap; overflow: hidden">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><a href="#" style="{{c.style}}">{{c.name}}</a></sc-for>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="sort and filter" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4h12M4 8h8M6 12h4"/></svg></button>
+      </div>
+      <div style="display: flex; flex-direction: column; margin-top: 4px">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><span style="{{r.mark}}">↓</span></sc-if>{{r.sub}}</span></span>
+            <button aria-label="more" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+      <div style="position: absolute; left: -16px; right: -16px; bottom: 0; height: 112px; background: #1a2024; box-sizing: border-box; padding: 12px 16px; display: flex; gap: 14px; align-items: center">
+        <span style="width: 72px; height: 72px; background: #2f3b6b; border-radius: 2px; flex-shrink: 0"></span>
+        <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0; flex-grow: 1">
+          <span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">synthwave essentials</span>
+          <span style="font-size: 12px; line-height: 16px; color: #c8c8c8; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">Neon-lit retro-futurism: the essential synthwave tracks, from the pioneers to the new wave.</span>
+          <span style="font-size: 12px; line-height: 16px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><a href="#" style="color: #ffffff">Spotify</a> · 120 songs · 1,204,331 saves</span>
+        </div>
+        <button style="{{followPill}}">♥ following</button>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const chips = ['all', 'pop', 'synthwave', 'electronic'].map((n, i) => ({ name: n, style: 'height: 32px; padding: 0 12px; display: flex; align-items: center; flex-shrink: 0; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: #242424; color: #c8c8c8') }));
+  const data = [['Nightcall', 'Kavinsky', '4:18', '#6b2f4a', true, true], ['Resonance', 'HOME', '3:32', '#2f5b6b', false, true], ['Tech Noir', 'Gunship', '4:57', '#5b3b6b', false, false], ['Sunset', 'The Midnight', '5:09', '#6b4a2f', false, false]];
+  const rows = data.map((d) => {
+    const play = d[4];
+    return {
+      title: d[0], sub: d[1] + ' · ' + d[2], cached: d[5],
+      rowStyle: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px',
+      art: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[3] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; color: ' + (play ? accent : '#9c9c9c'),
+      mark: 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + (play ? accent : '#a8a8a8') + '; color: ' + (play ? accent : '#a8a8a8') + '; font-size: 8px; line-height: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    };
+  });
+  return {
+    accent, chips, rows,
+    playRing: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    followPill: 'height: 40px; padding: 0 14px; box-sizing: border-box; border-radius: 20px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px; flex-shrink: 0; white-space: nowrap',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Playlist, owned</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|playlist:LoL Worlds Songs 2014–2026:#5b5b5b" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="lol" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; overflow: hidden; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex-shrink: 0"><span style="background: #3b4a7a"></span><span style="background: #7a5a3b"></span><span style="background: #2f4a6b"></span><span style="background: #6b3b2f"></span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #c5c5c5"><span>Playlist · Public</span><span style="height: 20px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #c5c5c5"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="2"></path></svg>Saved</span></div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">LoL Worlds Songs 2014–2026</h1>
+          <div style="font-size: 14px; line-height: 20px; color: #9e9e9e">Add an optional description</div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: #c5c5c5"><span style="width: 24px; height: 24px; border-radius: 12px; background: #6b5b4a"></span><span><a href="#">Luhkas</a> · 70 songs · 1,203 saves · 4 hr 32 min</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+            <div style="display: flex; height: 32px; border-radius: 4px; overflow: hidden; background: #60cdff; color: #000; font-size: 14px"><button style="display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; background: transparent; color: #000; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; background: rgba(0,0,0,0.2)"></span><button aria-label="More play options" style="width: 32px; border: 0; background: transparent; color: #000; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.8a2.2 2.2 0 1 1 0 4.4A2.2 2.2 0 0 1 6 2.8zM1.5 13c0-2.3 2-3.8 4.5-3.8s4.5 1.5 4.5 3.8M12.5 6v5M10 8.5h5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Invite</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Tune</button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 8px; height: 40px">
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Find</button>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Custom order<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M4.5 8h7M7 12.5h2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Filter</button>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Select</button>
+        </div>
+        <div role="row" style="display: grid; grid-template-columns: 48px minmax(0, 1.6fr) minmax(0, 1fr) 140px 40px 72px 40px; align-items: center; height: 36px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5">
+          <span style="padding-left: 14px">#</span><span>Title</span><span>Album</span><button style="justify-self: start; border: 0; background: transparent; color: #c5c5c5; font: inherit; font-size: 12px; padding: 0">Date added</button><span></span><span style="text-align: right; padding-right: 8px">Time</span><span></span>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+          <div role="row" style="{{r.style}}">
+            <span style="{{r.num}}">{{r.n}}</span>
+            <span style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span></span>
+            <span style="font-size: 14px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px">{{r.album}}</span>
+            <span style="font-size: 14px; color: #c5c5c5">{{r.added}}</span>
+            <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.heart}}</span>
+            <span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+            <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.more}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const data = [['Warriors', 'Imagine Dragons, League of Legends', 'Warriors', '12 Oct 2014', '2:51', '#3b4a7a', true, false], ['Worlds Collide', 'Nicki Taylor, League of Legends', 'Worlds Collide', '3 Oct 2015', '3:46', '#7a5a3b', false, false], ['Ignite', 'Zedd, League of Legends', 'Ignite', '1 Oct 2016', '3:52', '#2f4a6b', false, false], ['Legends Never Die', 'Against The Current, League of Legends', 'Legends Never Die', '22 Sep 2017', '3:55', '#6b3b2f', true, true], ['RISE', 'The Glitch Mob, Mako, The Word Alive', 'RISE', '30 Sep 2018', '3:12', '#5b2f6b', false, false], ['Phoenix', 'Cailin Russo, Chrissy Costanza', 'Phoenix', '26 Sep 2019', '3:06', '#2f5b6b', false, false], ['Take Over', 'Jeremy McKinnon, MAX, Henry', 'Take Over', '25 Sep 2020', '3:09', '#6b4a2f', false, false], ['Burn It All Down', 'PVRIS, League of Legends', 'Burn It All Down', '30 Sep 2021', '2:52', '#4a4a6b', false, false], ['STAR WALKIN’', 'Lil Nas X', 'STAR WALKIN’', '23 Sep 2022', '3:30', '#6b2f3b', false, false]];
+  const rows = data.map((d, i) => ({ n: d[7] ? '▶' : String(i + 1), t: d[0], a: d[1], album: d[2], added: d[3], time: d[4], heart: d[6] ? '♥' : (d[7] ? '♡' : ''), more: d[7] ? '⋯' : '',
+    style: 'display: grid; grid-template-columns: 48px minmax(0, 1.6fr) minmax(0, 1fr) 140px 40px 72px 40px; align-items: center; height: 48px; margin-top: 2px; border-radius: 4px; ' + (d[7] ? 'background: rgba(255,255,255,0.0605)' : ''),
+    num: 'padding-left: 14px; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (d[7] ? '#ffffff' : '#9e9e9e'),
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + d[5],
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff' }));
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

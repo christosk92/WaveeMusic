@@ -13,7 +13,7 @@
 // ── ONE RAIL, EVERY SURFACE ──────────────────────────────────────────────────────────────────────────────────────────
 //
 // The library rework drew the rail privately inside `User`; the podcast reader needs the same words for its filter,
-// its sort and (Big) its episode tabs, so the rail lives here and `User.WordRail/ScopeRail/ReaderSortRail` are thin
+// its sort and (Big) its episode tabs, so the rail lives here and Classic's `ClassicLibraryRails.WordRail/ScopeRail/ReaderSortRail` are thin
 // adapters over it. The library's metrics are the rail's metrics (13.5/18, gap 14, height 32, 400 → 600, ink 50 % /
 // 85 % hover / 100 %, a 2-DIP underline 3 DIP under the run): moving the rail must not move a library pixel.
 //
@@ -37,6 +37,14 @@
 // shape that is safe to freeze. A different word SET is a remount (a `Key` at the call site); a word that appears later
 // (an episode tab whose data answered) rides `Word.Visible`, a bound presence, and needs no remount.
 //
+// ── FIT: THE WORDS THAT FIT, THE REST BEHIND "more" (the library's sort rail) ─────────────────────────────────────────
+//
+// A `fill` rail scrolls and feathers its overflow, which on a navigator too narrow for its words read as a clipped fourth word ("rece…") at EVERY size.
+// A `fit` rail never clips a word: it shows the LEADING words that fit its slot whole and folds the rest into a trailing "more ▾" word that opens a radio
+// menu of them. When the selected word is one of the folded ones, that word takes the trailing slot instead (its label, the heavy run, the underline), so
+// the selection is always on screen. The words' natural widths are measured while they are shown and kept while they are folded (they never shrink: a
+// word is `Shrink 0`), so the fit cannot oscillate; before a word was ever laid out its width is estimated from its label. Pinned by `FitCount`.
+//
 // ── ZERO ALLOCATION AFTER MOUNT ──────────────────────────────────────────────────────────────────────────────────────
 //
 // Every word, bind thunk, bounds handler and realize handler is built ONCE. A selection change re-fires binds and one
@@ -48,6 +56,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
@@ -162,6 +171,30 @@ public static partial class Controls
             return MathF.Abs(t - offset) < 0.5f ? float.NaN : t;
         }
 
+        /// <summary>A <c>fit</c> rail's estimate of a word's width (DIP per character of its label) before it was ever laid out, and its trailing word's
+        /// chevron (10) and the gap before it.</summary>
+        public const float FitCharW = 7f, FitChevron = 10f, FitChevronGap = 4f;
+
+        /// <summary>How many LEADING words of <paramref name="widths"/> (each word's natural width) a <c>fit</c> rail shows in <paramref name="available"/> DIP with
+        /// <paramref name="gap"/> between them: all of them when they fit whole; otherwise as many as leave room for the trailing word
+        /// (<paramref name="trailing"/> wide, a gap before it) — possibly none. Nothing laid out yet (<paramref name="available"/> not positive): all.</summary>
+        public static int FitCount(ReadOnlySpan<float> widths, float gap, float available, float trailing)
+        {
+            if (!(available > 0f) || widths.IsEmpty) return widths.Length;
+            float total = 0f;
+            for (int i = 0; i < widths.Length; i++) total += widths[i] + (i > 0 ? gap : 0f);
+            if (total <= available + 0.5f) return widths.Length;
+            float used = 0f;
+            int k = 0;
+            for (; k < widths.Length; k++)
+            {
+                float next = used + (k > 0 ? gap : 0f) + widths[k];
+                if (next + gap + trailing > available + 0.5f) break;
+                used = next;
+            }
+            return k;
+        }
+
         /// <summary>A rail's measure, reported whenever it moves by more than half a DIP: <paramref name="total"/> is the
         /// row's own arranged width (the words, their counts and the gaps between them — what a toolbar must reserve for a
         /// rail it never lets shrink) and <paramref name="words"/> each word's arranged width, in word order (a hidden
@@ -186,12 +219,15 @@ public static partial class Controls
         /// element.</para>
         /// <para><paramref name="onMeasured"/> exposes the rail's natural width and each word's width (<see cref="Measured"/>)
         /// to a host that decides, from numbers, how much room the rail needs — the show reader's toolbar. Mount-time, like
-        /// every other callback here.</para></summary>
+        /// every other callback here.</para>
+        /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
+        /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
-                                   Measured? onMeasured = null)
-            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill, onMeasured));
+                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null)
+            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
+                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More)));
 
         sealed class RailHost : Component
         {
@@ -223,9 +259,23 @@ public static partial class Controls
             Action? _afterLayout;
             int _shown = int.MinValue;   // the code whose underline was last on screen — the slide's "from"
 
+            // `fit` only: each word's natural width (kept while it is folded), the slot's width, how many leading words show, the trailing word's anchor and menu.
+            readonly bool _fit;
+            readonly Prop<string> _more;
+            readonly float[]? _nat;
+            readonly Signal<int>? _fitShown;
+            float _avail;
+            NodeHandle _moreAnchor;
+            OverlayHandle? _menu;
+            IOverlayService? _overlay;
+
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
-                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured)
+                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured,
+                            bool fit = false, Prop<string>? more = null)
             {
+                _fit = fit;
+                _more = more ?? (Prop<string>)"";
+                if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
                 _fill = fill;
@@ -254,8 +304,9 @@ public static partial class Controls
 
             public override Element Render()
             {
+                if (_fit) _overlay = UseContext(Overlay.Service);
                 _row ??= Build();
-                _mount ??= _fill ? Scroller(_row) : _row;
+                _mount ??= _fill ? Scroller(_row) : _fit ? FitSlot(_row) : _row;
                 if (_scroll is { } scroll)
                     UseSignalEffect(() =>
                     {
@@ -273,8 +324,9 @@ public static partial class Controls
 
             Element Build()
             {
-                var kids = new Element[_words.Count];
-                for (int i = 0; i < kids.Length; i++) kids[i] = BuildWord(i);
+                var kids = new Element[_words.Count + (_fit ? 1 : 0)];
+                for (int i = 0; i < _words.Count; i++) kids[i] = BuildWord(i);
+                if (_fit) kids[^1] = MoreWord();
                 return new BoxEl
                 {
                     Direction = 0, Height = _big ? BigHeight : Height, Gap = _big ? BigGap : Gap,
@@ -303,6 +355,13 @@ public static partial class Controls
                 Func<ColorF> tone = _tone;
                 bool big = _big;
                 Func<bool> isOn = () => selected.Value == code;
+                Prop<bool> visible = w.Visible ?? true;
+                if (_fitShown is { } shown)
+                {
+                    var own = w.Visible;
+                    int index = i;
+                    visible = Prop.Of(() => index < shown.Value && (own is null || own.Value.Current()));
+                }
                 Element ink = new BoxEl
                 {
                     ZStack = true, Shrink = 0f,
@@ -318,8 +377,13 @@ public static partial class Controls
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
                     Role = _role, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Tap(code),
                     Opacity = Prop.Of(() => isOn() ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
-                    Visible = w.Visible ?? true,
-                    OnBoundsChanged = r => { _x[i] = r.X; _w[i] = r.W; if (_onMeasured is not null) ReportMeasure(); },
+                    Visible = visible,
+                    OnBoundsChanged = r =>
+                    {
+                        _x[i] = r.X; _w[i] = r.W;
+                        if (_onMeasured is not null) ReportMeasure();
+                        if (_nat is { } nat && r.W > MinSlideWidth && MathF.Abs(nat[i] - r.W) > 0.5f) { nat[i] = r.W; Refit(); }
+                    },
                     // Keyboard tabbing onto a word scrolled out of a `fill` rail's viewport brings it back — a no-op
                     // (RevealWord's own `!_fill` guard) on every other rail.
                     OnFocusChanged = on => { if (on) RevealWord(i, Design.Reduced ? Reveal.Snap : Reveal.Glide); },
@@ -367,6 +431,112 @@ public static partial class Controls
                 AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
             };
 
+            // ── fit ──
+
+            /// <summary>The fit rail's slot: the space the toolbar gives it (it grows and shrinks, never past its words), clipping nothing but holding the row.</summary>
+            Element FitSlot(Element row) => new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Height = _big ? BigHeight : Height, ClipToBounds = true,
+                OnBoundsChanged = r => { if (MathF.Abs(r.W - _avail) > 0.5f) { _avail = r.W; Refit(); } },
+                Children = [row],
+            };
+
+            /// <summary>Re-decide how many leading words show (<see cref="FitCount"/>), from their kept natural widths (or the label estimate) and the slot.</summary>
+            void Refit()
+            {
+                if (_nat is not { } nat || _fitShown is not { } shown) return;
+                Span<float> widths = stackalloc float[nat.Length];
+                for (int i = 0; i < nat.Length; i++)
+                {
+                    var w = _words[i];
+                    bool present = w.Visible is not { } v || v.Current();
+                    widths[i] = !present ? 0f : nat[i] > 0f ? nat[i] : w.Label.Current().Length * FitCharW;
+                }
+                float gap = _big ? BigGap : Gap;
+                float moreW = _more.Current().Length * FitCharW + FitChevronGap + FitChevron;
+                int k = FitCount(widths, gap, _avail, moreW);
+                // The selected word folded: it takes the trailing slot, so the slot must hold IT.
+                int active = IndexOf(_selected.Peek());
+                if (k < widths.Length && active >= k)
+                    k = Math.Min(k, FitCount(widths, gap, _avail, widths[active] + FitChevronGap + FitChevron));
+                shown.SetIfChanged(k);
+            }
+
+            /// <summary>The trailing word: "more ▾", or the selected word when it is one of the folded ones (its label at the heavy weight, its underline). It opens
+            /// a radio menu of the folded words; picking one is a tap on it (the active one re-selects: the library flips its direction).</summary>
+            Element MoreWord()
+            {
+                var shown = _fitShown!;
+                var selected = _selected;
+                Func<ColorF> tone = _tone;
+                bool big = _big;
+                Func<int> foldedActive = () =>
+                {
+                    int a = IndexOf(selected.Value);
+                    return a >= shown.Value ? a : -1;
+                };
+                var label = Prop.Of(() => foldedActive() is int a and >= 0 ? _words[a].Label.Current() : _more.Current());
+                return new BoxEl
+                {
+                    Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = OpenMore, OnRealized = h => _moreAnchor = h,
+                    Opacity = Prop.Of(() => foldedActive() >= 0 ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
+                    Visible = Prop.Of(() => shown.Value < _words.Count),
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 0, Gap = FitChevronGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    ZStack = true, Shrink = 0f,
+                                    Children =
+                                    [
+                                        Ink(label, big ? BigLightWeight : LightWeight, Prop.Of(() => foldedActive() >= 0 ? ColorF.Transparent : Tok.TextPrimary), big),
+                                        Ink(label, big ? BigHeavyWeight : HeavyWeight, Prop.Of(() => foldedActive() >= 0 ? Tok.TextPrimary : ColorF.Transparent), big),
+                                    ],
+                                },
+                                new BoxEl { Width = FitChevron, Height = FitChevron, Shrink = 0f, Children = [Icon(Icons.ChevronDown, FitChevron, Tok.TextSecondary)] },
+                            ],
+                        },
+                        new BoxEl
+                        {
+                            Height = UnderlineThickness, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(1f),
+                            Fill = Prop.Of(() => foldedActive() >= 0 ? tone() : ColorF.Transparent),
+                        },
+                    ],
+                };
+            }
+
+            /// <summary>The folded words' radio menu under the trailing word (a second click closes it).</summary>
+            void OpenMore()
+            {
+                var overlay = _overlay;
+                if (overlay is null || Controls.IsNullOverlay(overlay) || _fitShown is not { } shown) return;
+                if (_menu is { IsOpen: true } open) { open.Close(); return; }
+                _menu = overlay.Open(
+                    () => _moreAnchor,
+                    () =>
+                    {
+                        var items = new List<MenuFlyoutItem>(_words.Count);
+                        int selectedCode = _selected.Peek();
+                        for (int i = shown.Peek(); i < _words.Count; i++)
+                        {
+                            var w = _words[i];
+                            if (w.Visible is { } v && !v.Current()) continue;
+                            int code = _codes[i];
+                            items.Add(MenuFlyoutItem.RadioItem(w.Label.Current(), code == selectedCode, () => Tap(code)));
+                        }
+                        return MenuFlyout.Create(items, () => _menu?.Close(), size: OverlayFit.MenuSize);
+                    },
+                    FlyoutPlacement.BottomEdgeAlignedLeft,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
+                _menu.ClosedAction = () => _menu = null;
+            }
+
             void Tap(int code)
             {
                 if (IsReselect(_selected.Peek(), code)) { _onReselect?.Invoke(code); return; }
@@ -378,6 +548,7 @@ public static partial class Controls
             {
                 int code = _selected.Value;             // subscription 1
                 if (_fill) _ = _geom.Value;              // subscription 2 — a resize or a late word re-runs this too
+                if (_fit) Refit();                       // a selection that folded must take the trailing slot
                 int from = _shown;
                 _shown = code;
 

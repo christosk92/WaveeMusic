@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Report a problem, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|settings:Settings" sel="2" badge="2" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="settings" height="1280" hint-size="280px,1280px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 32px 48px 0 48px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Settings</h1>
+      <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <sc-for list="{{tabs}}" as="v" hint-placeholder-count="7"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+      <div style="display: grid; grid-template-columns: 1200px minmax(0, 1fr); gap: 48px; align-items: start; padding-top: 8px">
+        <section style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <div style="display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px"><span style="font-size: 14px; font-weight: 600">Feedback</span><span style="font-size: 12px; color: #c5c5c5">Tell us what broke or what you’d like to see</span></div>
+          <sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 16px; min-height: 68px; padding: 12px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{c.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px">{{c.label}}</span><span style="font-size: 12px; color: #c5c5c5">{{c.desc}}</span></span><span style="{{c.ctl}}">{{c.value}}</span></div>
+          </sc-for>
+          <div style="display: flex; flex-direction: column; gap: 2px; padding: 20px 0 8px 0"><span style="font-size: 14px; font-weight: 600">Diagnostics</span><span style="font-size: 12px; color: #c5c5c5">What Wavee keeps on this PC to help with reports</span></div>
+          <sc-for list="{{diag}}" as="c" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 16px; min-height: 68px; padding: 12px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{c.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px">{{c.label}}</span><span style="font-size: 12px; color: #c5c5c5">{{c.desc}}</span></span><span style="{{c.ctl}}">{{c.value}}</span></div>
+          </sc-for>
+        </section>
+        <aside aria-label="Logs on this PC" style="display: flex; flex-direction: column; gap: 12px; padding-top: 30px; min-width: 0">
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Logs on this PC</span>
+          <div style="display: flex; flex-direction: column; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <sc-for list="{{logs}}" as="l" hint-placeholder-count="4"><div style="{{l.style}}"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">{{l.k}}</span><span style="font-size: 14px">{{l.v}}</span></div></sc-for>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" hint-size="2560px,72px"></dc-import>
+
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 40px; bottom: 0; background: rgba(0,0,0,0.3)"></div>
+  <div role="dialog" aria-label="Report a problem" style="position: absolute; left: 900px; top: 236px; width: 760px; box-sizing: border-box; border-radius: 8px; overflow: hidden; background: #2b2b2b; border: 1px solid rgba(117,117,117,0.4); box-shadow: 0 32px 64px rgba(0,0,0,0.4); display: flex; flex-direction: column">
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Report a problem</h1><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Opens a prefilled GitHub form in your browser and copies the redacted report to your clipboard. Nothing is sent until you click.</span></div>
+      <div role="radiogroup" aria-label="Kind" style="display: flex; gap: 20px; font-size: 14px">
+        <sc-for list="{{kinds}}" as="k" hint-placeholder-count="4"><label style="display: flex; align-items: center; gap: 8px"><span style="{{k.ring}}"><span style="{{k.dot}}"></span></span>{{k.label}}</label></sc-for>
+      </div>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">Title<span style="height: 32px; display: flex; align-items: center; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom: 2px solid #60cdff; color: #fff">Queue pane keeps the old theme for one frame after switching</span></label>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">What happened<span style="height: 88px; padding: 6px 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); color: #c5c5c5; font-size: 14px; line-height: 20px">Switched to the Zune theme while the queue pane was open; the pane painted one frame in WinUI colours.</span></label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">Steps to reproduce<span style="height: 88px; padding: 6px 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); color: #9e9e9e; font-size: 14px; line-height: 20px">1. Open the queue pane 2. Settings › Appearance › Theme › Zune 3. Watch the pane</span></label>
+      </div>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">Expected behaviour<span style="height: 56px; padding: 6px 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); color: #9e9e9e; font-size: 14px; line-height: 20px">Never paint a frame in the wrong theme.</span></label>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="width: 20px; height: 20px; border-radius: 4px; background: #60cdff; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="#000" stroke-width="1.6"></path></svg></span>Include diagnostics and the last 200 log lines</label>
+      <div style="display: flex; flex-direction: column; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <button aria-expanded="true" style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border: 0; background: transparent; color: #fff; font: inherit; text-align: left"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px">Report preview</span><span style="font-size: 12px; color: #c5c5c5">Personal paths, account details and secrets are removed. Track names are kept.</span></span><span style="height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); font-size: 14px">Save as…</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <div style="display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.0837); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; line-height: 18px; color: #c5c5c5">
+          <sc-for list="{{preview}}" as="p" hint-placeholder-count="8"><span style="{{p.style}}">{{p.t}}</span></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 24px; background: #202020; border-top: 1px solid rgba(255,255,255,0.0837)">
+      <button style="height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">Report on GitHub</button>
+      <button style="height: 32px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Copy report</button>
+      <button style="height: 32px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Not now</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => vs(l, i === 5));
+  const btn = 'height: 32px; flex-shrink: 0; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); font-size: 14px';
+  const combo = 'height: 32px; min-width: 200px; flex-shrink: 0; display: inline-flex; align-items: center; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); font-size: 14px';
+  const plain = 'font-size: 14px; color: #c5c5c5';
+  const cards = [
+    { label: 'Report a problem', desc: 'Opens a prefilled GitHub form and copies a redacted report', value: 'Report…', ctl: btn, d: 'M3 2.5h7l3 3v8H3zM10 2.5v3h3M5.5 8h5M5.5 10.5h3.5' },
+    { label: 'Suggest a feature', desc: 'Start a discussion on GitHub', value: 'Open', ctl: btn, d: 'M8 2a4 4 0 0 1 2.5 7.1V11h-5V9.1A4 4 0 0 1 8 2zM6 13.5h4' },
+    { label: 'Known issues', desc: 'What we are already working on in 1.6.0', value: 'View', ctl: btn, d: 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 5v3.5M8 10.5v.5' }
+  ];
+  const diag = [
+    { label: 'Keep diagnostic logs', desc: 'The last 7 days, stored on this PC only', value: 'On', ctl: plain, d: 'M2.5 3h11M2.5 6.5h11M2.5 10h7M2.5 13.5h5' },
+    { label: 'Crash reports', desc: 'What happens after Wavee closes unexpectedly', value: 'Ask before sending', ctl: combo, d: 'M8 2 14 13H2zM8 6.5V9.5M8 11.5v.5' },
+    { label: 'Frame timing overlay', desc: 'Shows render pace and slow frames in the corner', value: 'Off', ctl: plain, d: 'M2 13.5h12M4 11V8M7 11V5M10 11V7M13 11V3.5' },
+    { label: 'Clear logs', desc: 'Removes every log file Wavee has written', value: 'Clear', ctl: btn, d: 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5' }
+  ];
+  const ld = [['Folder', '%LOCALAPPDATA%\\Wavee\\logs'], ['Size', '18.4 MB · 7 files'], ['Oldest entry', '4 Oct 2026'], ['Last report', 'None sent']];
+  const logs = ld.map((l, i) => ({ k: l[0], v: l[1], style: 'display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; ' + (i > 0 ? 'border-top: 1px solid rgba(255,255,255,0.0837)' : '') }));
+  const kinds = ['Bug', 'Feature', 'Question', 'Idea'].map((l, i) => ({ label: l, ring: 'width: 20px; height: 20px; border-radius: 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; ' + (i === 0 ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.5442)'), dot: i === 0 ? 'width: 8px; height: 8px; border-radius: 4px; background: #000' : 'display: none' }));
+  const pl = [['Wavee 1.6.0 “Harbour” · WinUI theme · Dark', false], ['Windows 11 Pro 26340 · window 2560 × 1440 at 100 %', false], ['Account: ‹removed›  ·  Profile path: C:\\Users\\‹user›\\…', true], ['[21:04:31.208] theme.switch WinUI → Zune', false], ['[21:04:31.216] pane.queue painted with the previous theme (1 frame)', false], ['[21:04:31.224] pane.queue theme applied', false], ['[21:04:31.230] render.pace 120 Hz · no slow frames', false], ['… 193 more lines', true]];
+  const preview = pl.map(p => ({ t: p[0], style: 'white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (p[1] ? '#9e9e9e' : '#c5c5c5') }));
+  return { tabs, cards, diag, logs, kinds, preview };
+}
+}
+</script>
+</body>
+</html>

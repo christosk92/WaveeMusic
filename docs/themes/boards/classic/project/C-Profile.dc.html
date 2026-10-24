@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Profile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="profile:Chris" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(110,80,60,0.32), rgba(58,58,58,0.298) 360px); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <section aria-label="Chris" style="height: 260px; flex-shrink: 0; box-sizing: border-box; padding: 0 36px 28px; display: flex; align-items: flex-end; gap: 36px">
+        <span style="width: 184px; height: 184px; flex-shrink: 0; border-radius: 92px; background: linear-gradient(135deg, #8a5a44, #3b5b7a); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 16px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 600">C</span>
+        <div style="display: flex; flex-direction: column; gap: 12px; padding-bottom: 6px">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">Profile</span>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 84px; line-height: 96px; font-weight: 700; letter-spacing: -0.028em">Chris</h1>
+          <div style="display: flex; align-items: flex-end; gap: 24px">
+            <sc-for list="{{stats}}" as="s" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; padding: 2px 6px; margin: 0 -6px; border-radius: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350">{{s.n}}</span><span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">{{s.l}}</span></a></sc-for>
+            <span style="flex-grow: 1"></span>
+          </div>
+        </div>
+        <span style="flex-grow: 1"></span>
+        <div style="display: flex; gap: 8px; padding-bottom: 6px"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Open account ↗</button><button aria-label="Share" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">⇪</button><button aria-label="More" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">⋯</button></div>
+      </section>
+      <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 36px; border-bottom: 1px solid rgba(255,255,255,0.082)"><sc-for list="{{pivots}}" as="p" hint-placeholder-count="5"><a href="#" style="{{p.s}}">{{p.l}}<span style="{{p.bar}}"></span></a></sc-for></div>
+      <div style="padding: 24px 36px 0; display: flex; flex-direction: column; gap: 28px">
+        <section aria-label="Top artists this month" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 10px"><span style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Top artists this month</h2><span style="width: 20px; height: 2px; background: #60cdff"></span></span><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.059); color: rgba(255,255,255,0.773)">Only visible to you</span></div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px"><sc-for list="{{artists}}" as="a" hint-placeholder-count="6"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; position: relative"><span style="{{a.art}}"></span><span style="font-size: 14px; font-weight: 600">{{a.n}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Artist</span><span style="position: absolute; left: 8px; top: 4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350; text-shadow: 0 2px 6px rgba(0,0,0,0.6)">{{a.r}}</span></a></sc-for></div>
+        </section>
+        <section aria-label="Public playlists" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Public playlists</h2><span style="width: 20px; height: 2px; background: #60cdff"></span></div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px"><sc-for list="{{lists}}" as="l" hint-placeholder-count="6"><span style="{{l}}"></span></sc-for></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const stats = [['42', 'Followers'], ['118', 'Following'], ['23', 'Public playlists']].map(s => ({ n: s[0], l: s[1] }));
+  const pivots = ['Top artists', 'Playlists', 'Artists', 'Following', 'Followers'].map((l, i) => ({ l, s: 'position: relative; font-size: 14px; font-weight: 600; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 0 ? 'position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: #60cdff' : 'display: none' }));
+  const artists = [['Daft Punk', '#2f2f2f'], ['Billie Eilish', '#2f4a6b'], ['aespa', '#8a8a9b'], ['Troye Sivan', '#5a8ab0'], ['LAUV', '#c0c0b0'], ['Conan Gray', '#8aa0b0']].map((a, i) => ({ n: a[0], r: i + 1, art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; background: ' + a[1] }));
+  const lists = ['#6b3b4a', '#5b5b5b', '#2f5b6b', '#b8862f', '#3b6b4a', '#6b4a2f'].map(c => 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: linear-gradient(160deg, ' + c + ', #1a1a1a)');
+  return { stats, pivots, artists, lists };
+}
+}
+</script>
+</body>
+</html>

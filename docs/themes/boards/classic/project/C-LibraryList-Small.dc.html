@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Library Artists, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="artists:Artists" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="artists" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <section aria-label="Artists" style="position: relative; width: 240px; flex-shrink: 0; box-sizing: border-box; padding: 16px 12px 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+        <div style="display: flex; align-items: baseline; gap: 10px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Artists</h1><span style="font-size: 14px; color: rgba(255,255,255,0.529)">86</span></div>
+        <div style="display: flex; gap: 14px; height: 32px; align-items: center"><sc-for list="{{words}}" as="w" hint-placeholder-count="3"><button style="{{w.s}}">{{w.l}}<span style="{{w.bar}}"></span></button></sc-for></div>
+        <label style="height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); border-bottom-color: rgba(255,255,255,0.545); font-size: 14px; color: rgba(255,255,255,0.773)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3-1.5V8.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg>Filter</label>
+        <div style="display: flex; flex-direction: column; padding-right: 18px">
+          <sc-for list="{{list}}" as="r" hint-placeholder-count="7">
+            <sc-if value="{{r.h}}" hint-placeholder-val="{{false}}"><div style="height: 28px; flex-shrink: 0; display: flex; align-items: center; padding: 0 8px; margin-top: 4px; border-radius: 4px; background: rgba(255,255,255,0.031); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: rgba(255,255,255,0.529)">{{r.l}}</div></sc-if>
+            <sc-if value="{{r.row}}" hint-placeholder-val="{{true}}"><a href="#" style="{{r.s}}"><span style="{{r.pill}}"></span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span></a></sc-if>
+          </sc-for>
+        </div>
+        <div aria-hidden="true" style="position: absolute; right: 0; top: 150px; width: 18px; display: flex; flex-direction: column; align-items: center; font-size: 10px; line-height: 12px; color: rgba(255,255,255,0.529)"><sc-for list="{{az}}" as="a" hint-placeholder-count="26"><span style="{{a.s}}">{{a.l}}</span></sc-for></div>
+      </section>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0; display: flex; justify-content: center"><span style="width: 1px; background: rgba(255,255,255,0.082)"></span></span>
+      <section aria-label="Daft Punk" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 88px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 8px">
+          <span role="img" aria-label="Daft Punk" style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 28px; background: linear-gradient(135deg, #2f2f2f, #6b5b2f)"></span>
+          <span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 700; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Daft Punk</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">In your library: 3 albums · 35 songs</span></span>
+          <button style="flex-shrink: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play all</button>
+          <button aria-pressed="true" style="flex-shrink: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4M10 11.5l1.8 1.8 3-3.3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Following</button>
+          <button aria-label="More: Shuffle, Open artist page" style="flex-shrink: 0; width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="height: 41px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 13.5px; white-space: nowrap"><button style="padding: 0; border: 0; background: transparent; color: #fff; font: inherit; font-weight: 600">in your library</button><button style="padding: 0; border: 0; background: transparent; color: rgba(255,255,255,0.5); font: inherit">all releases · 142</button><span style="flex-grow: 1"></span><button style="padding: 0; border: 0; background: transparent; color: #fff; font: inherit; font-weight: 600">newest</button><button style="padding: 0; border: 0; background: transparent; color: rgba(255,255,255,0.5); font: inherit">oldest</button><button style="padding: 0; border: 0; background: transparent; color: rgba(255,255,255,0.5); font: inherit">alphabetical</button></div>
+        <sc-for list="{{blocks}}" as="b" hint-placeholder-count="2">
+          <div style="display: flex; gap: 16px; padding: 16px 16px 0 8px">
+            <span style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0"><span style="{{b.art}}"></span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{b.y}}</span></span>
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+              <div style="display: flex; align-items: center; gap: 4px; height: 44px"><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 20px; line-height: 26px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{b.m}}</span></span><button aria-label="Play album" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg></button><button aria-label="Remove from Your Library" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #60cdff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button><button aria-label="More" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div>
+              <sc-for list="{{b.rows}}" as="r" hint-placeholder-count="4"><div style="{{r.s}}"><span style="font-size: 12px; color: rgba(255,255,255,0.529); text-align: center">{{r.n}}</span><span style="{{r.ts}}">{{r.t}}</span><span style="font-size: 12px; text-align: right; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const words = ['recents', 'alphabetical', 'albums'].map((l, i) => ({ l, s: 'position: relative; padding: 0; border: 0; background: transparent; font: inherit; font-size: 13.5px; line-height: 18px; font-weight: ' + (i === 1 ? 600 : 400) + '; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.5)'), bar: i === 1 ? 'position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: #60cdff' : 'display: none' }));
+  const L = [['C'], ['Chappell Roan', '1 album · 14 songs', '#c06a8a'], ['Conan Gray', '2 albums · 8 songs', '#8aa0b0'], ['D'], ['Daft Punk', '3 albums · 35 songs', '#6b5b2f', 1], ['Dominic Fike', '1 album · 3 songs', '#c0a080'], ['E'], ['Edward Maya', '1 album · 12 songs', '#3b5b7a']];
+  const list = L.map(r => r.length === 1 ? { h: true, row: false, l: r[0] } : { h: false, row: true, l: r[0], sub: r[1],
+    s: 'position: relative; height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 4px' + (r[3] ? '; background: rgba(255,255,255,0.059)' : ''),
+    pill: r[3] ? 'position: absolute; left: 0; top: 20px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 20px; background: ' + r[2] });
+  const az = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => ({ l, s: l === 'D' ? 'color: #60cdff; font-weight: 700' : (l === 'Q' || l === 'X' ? 'opacity: 0.3' : '') }));
+  const tr = (arr, playing) => arr.map((r, i) => ({ n: i + 1, t: r[0], d: r[1],
+    s: 'height: 36px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 48px; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px',
+    ts: 'white-space: nowrap; overflow: hidden; text-overflow: ellipsis' + (i === playing ? '; color: #a6d8ff; font-weight: 600' : '') }));
+  const blocks = [{ t: 'Random Access Memories', y: '2013 · Album', m: '13 songs · 1 hr 14 min', art: 'width: 88px; height: 88px; border-radius: 6px; background: linear-gradient(135deg,#111,#bdbdbd 52%,#111)', rows: tr([['Give Life Back to Music', '4:34'], ['Instant Crush', '5:37'], ['Get Lucky', '6:09'], ['Doin’ it Right', '4:11']], 2) }, { t: 'Discovery', y: '2001 · Album', m: '14 songs · 1 hr 1 min', art: 'width: 88px; height: 88px; border-radius: 6px; background: #6b5b2f', rows: tr([['One More Time', '5:20'], ['Digital Love', '4:58']], -1) }];
+  return { words, list, az, blocks };
+}
+}
+</script>
+</body>
+</html>

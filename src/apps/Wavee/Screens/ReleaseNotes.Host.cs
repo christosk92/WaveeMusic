@@ -185,9 +185,6 @@ public static partial class ReleaseNotes
         }
     }
 
-    /// <summary>Replace the store (a harness, a loopback feed). The composition root does not need to call it.</summary>
-    public static void UseStore(Store store) => Volatile.Write(ref s_notes, store);
-
     /// <summary>Fill the seams other owners left for this store: the updater's two notes seams
     /// (<c>Update.Host.PeekIndexEntry</c> / <c>PrefetchNotes</c>, read through static forwarders at call time, so the order
     /// against <c>Update.Host.Start</c> does not matter) and the diagnostics page's pipeline receipts.</summary>
@@ -284,6 +281,7 @@ public static partial class ReleaseNotes
             if (string.IsNullOrWhiteSpace(semver)) return null;
             semver = semver.Trim();
             if (!IsSafeVersion(semver)) return null;
+            if (Platform.Args.Fake) { Note("fake"); return FakeDocument(semver); }   // the demo never reaches GitHub
 
             // The embedded copy is THIS build's notes and nothing else: handing it back for another version is a silent lie.
             if (TryReadDocument(Path.Combine(_embeddedRoot, DocName)) is { } embedded && string.Equals(embedded.Version, semver, StringComparison.Ordinal))
@@ -329,10 +327,8 @@ public static partial class ReleaseNotes
             }
         }
 
-        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path.</summary>
-        public Task<ReleaseNotesIndex?> PeekIndexAsync(CancellationToken ct) => Task.FromResult(PeekIndex());
-
-        /// <summary>The synchronous half of <see cref="PeekIndexAsync"/> (the updater's seam is synchronous).</summary>
+        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path,
+        /// synchronous like the updater's seam.</summary>
         public ReleaseNotesIndex? PeekIndex()
         {
             if (IndexSnapshot() is { } live) return live;
@@ -361,6 +357,7 @@ public static partial class ReleaseNotes
         /// <summary>Re-read the rolling index into memory + the cache. A failure keeps whatever index we had.</summary>
         public async Task RefreshIndexAsync(CancellationToken ct)
         {
+            if (Platform.Args.Fake) { Volatile.Write(ref _index, FakeIndex()); return; }
             byte[]? bytes = await GetBytesAsync(_releasesRoot + _feedRelease + "/" + IndexName, ct).ConfigureAwait(false);
             if (bytes is null) return;
             ReleaseNotesIndex? index;

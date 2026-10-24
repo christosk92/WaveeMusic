@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loading, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="compact" sel="library" items="Songs|More by the artist|Details" sub-sel="{{zero}}" hint-size="400px,136px"></dc-import>
+  <main aria-busy="true" style="position: relative; height: 660px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 0 16px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div role="progressbar" aria-label="Loading" style="position: absolute; left: 0; right: 0; top: 0; height: 3px; overflow: hidden"><span style="position: absolute; left: 30%; width: 34%; height: 3px; border-radius: 2px; background: var(--acc)"></span></div>
+    <div style="display: flex; gap: 16px; align-items: flex-end">
+      <span style="{{s.sk}} width: 128px; height: 128px; border-radius: 8px; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px"><span style="{{s.sk}} width: 64px; height: 12px; border-radius: 4px"></span><span style="{{s.sk}} width: 96px; height: 16px; border-radius: 4px"></span><span style="{{s.sk}} width: 112px; height: 12px; border-radius: 4px"></span></span>
+    </div>
+    <span style="{{s.sk}} width: 86%; height: 28px; border-radius: 4px; margin-top: 4px"></span>
+    <span style="display: flex; gap: 8px"><span style="{{s.sk}} width: 88px; height: 40px; border-radius: 4px"></span><span style="{{s.sk}} width: 96px; height: 40px; border-radius: 4px"></span><span style="flex-grow: 1"></span><span style="{{s.sk}} width: 40px; height: 40px; border-radius: 4px"></span></span>
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+        <div style="display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; height: 52px; margin-top: 2px"><span style="{{r.num}}"></span><span style="display: flex; flex-direction: column; gap: 6px"><span style="{{r.title}}"></span><span style="{{r.meta}}"></span></span></div>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="compact" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', sk: 'rgba(255,255,255,0.0605)', skhi: 'rgba(255,255,255,0.0837)', t1: '#ffffff', acc: pink ? '#ff7ac3' : '#60cdff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', sk: 'rgba(0,0,0,0.0578)', skhi: 'rgba(0,0,0,0.0241)', t1: '#1b1b1b', acc: pink ? '#c4007a' : '#005fb8' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const sk = 'display: block; background: linear-gradient(90deg, var(--sk) 0%, var(--skhi) 40%, var(--sk) 70%);';
+  const widths = [[62, 38], [48, 30], [70, 34], [34, 28], [55, 36], [74, 32], [40, 30]];
+  const rows = widths.map((w) => ({
+    num: sk + ' width: 12px; height: 18px; border-radius: 4px; margin-left: 4px',
+    title: sk + ' width: ' + w[0] + '%; height: 14px; border-radius: 4px',
+    meta: sk + ' width: ' + w[1] + '%; height: 10px; border-radius: 4px' }));
+  return { vars, theme, accent, rows, s: { sk }, zero: 0 };
+}
+}
+</script>
+</body>
+</html>

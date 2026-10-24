@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing, full screen, huge 4K</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 3840px; height: 2160px; box-sizing: border-box; overflow: hidden; color: #ffffff; background: radial-gradient(circle at 17% 32%, #b04a78 0%, #8a4e7a 18%, #4a2440 40%, #202020 72%); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.18)"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="font-size: 12px; margin-left: 8px">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <button style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 4px; background: rgba(44,44,44,0.6); color: #ffffff; font: inherit; font-size: 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h5v11h-5zM9.5 2.5h4v5h-4zM9.5 9.5h4v4h-4z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Layout: Card</button>
+    <button style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-right: 8px; border: 0; border-radius: 4px; background: rgba(44,44,44,0.6); color: #ffffff; font: inherit; font-size: 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1"></circle><circle cx="8" cy="8" r="2.5" fill="currentColor"></circle></svg>Face: Bloom</button>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  <nav aria-label="Full screen views" style="position: absolute; left: 24px; top: 52px; height: 40px; display: flex">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.style}}">{{t.label}}<sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></sc-if></a></sc-for>
+  </nav>
+
+  <section aria-label="Now playing" style="position: absolute; left: 160px; top: 180px; width: 960px; display: flex; flex-direction: column; gap: 6px">
+    <span role="img" aria-label="OutRun cover" style="width: 960px; height: 960px; border-radius: 8px; background: linear-gradient(150deg, #a8456f, #4a1f38); box-shadow: 0 32px 64px rgba(0,0,0,0.37)"></span>
+    <span style="font-size: 17px; line-height: 24px; color: rgba(255,255,255,0.78); padding-top: 28px">Playing from <a href="#" style="color: #ffffff">late night drive</a></span>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Nightcall</h1>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; color: rgba(255,255,255,0.86)"><a href="#" style="color: rgba(255,255,255,0.86)">Kavinsky</a> · <a href="#" style="color: rgba(255,255,255,0.86)">OutRun</a> · 2013</span>
+    <span style="display: flex; gap: 8px; padding-top: 16px">
+      <button aria-label="Saved to Liked Songs" style="height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 15px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg>Saved</button>
+      <button style="height: 36px; padding: 0 14px; border: 0; border-radius: 4px; background: transparent; color: #ffffff; font: inherit; font-size: 15px">Go to album</button>
+      <button style="height: 36px; padding: 0 14px; border: 0; border-radius: 4px; background: transparent; color: #ffffff; font: inherit; font-size: 15px">Go to artist</button>
+    </span>
+    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 32px; padding: 16px 20px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); color: var(--ft1)">
+      <span style="font-size: 13px; line-height: 18px; color: var(--ft2); padding-bottom: 4px">Credits</span>
+      <sc-for list="{{credits}}" as="c" hint-placeholder-count="3"><span style="display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; font-size: 15px; line-height: 26px"><span style="color: var(--ft2)">{{c.k}}</span><span>{{c.v}}</span></span></sc-for>
+    </div>
+  </section>
+
+  <section aria-label="Lyrics" style="position: absolute; left: 1240px; top: 180px; width: 1040px; height: 1760px; display: flex; flex-direction: column; gap: 22px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 12px; height: 40px; flex-shrink: 0">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Lyrics</h2>
+      <span style="flex-grow: 1"></span>
+      <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Translation: Dutch</button>
+      <button aria-label="Open lyrics full screen" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 22px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">
+      <span style="color: rgba(255,255,255,0.3)">[AN EARLIER LINE]</span>
+      <span style="color: rgba(255,255,255,0.35)">[ANOTHER EARLIER LINE]</span>
+      <span style="color: rgba(255,255,255,0.4)">[THE LINE BEFORE]</span>
+      <span style="display: flex; flex-direction: column; gap: 6px"><span><span style="color: #ffffff">[THE LINE BEING </span><span style="color: rgba(255,255,255,0.6)">SUNG NOW]</span></span><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 400; color: rgba(255,255,255,0.78)">[ITS DUTCH TRANSLATION]</span></span>
+      <span style="color: rgba(255,255,255,0.6)">[THE NEXT LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[A LINE STILL TO COME]</span>
+      <span style="color: rgba(255,255,255,0.6)">[A LONGER LINE THAT WRAPS ONTO A SECOND ROW AT READING WIDTH]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE CHORUS, FIRST LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE CHORUS, SECOND LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE CHORUS, THIRD LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE BRIDGE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE LAST VERSE, FIRST LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE LAST VERSE, SECOND LINE]</span>
+      <span style="color: rgba(255,255,255,0.6)">[THE OUTRO]</span>
+    </div>
+    <span style="font-size: 13px; line-height: 18px; color: rgba(255,255,255,0.78)">Lyrics by Musixmatch</span>
+  </section>
+  <div aria-hidden="true" style="position: absolute; left: 1240px; top: 1640px; width: 1040px; height: 320px; background: linear-gradient(180deg, rgba(36,28,34,0), rgba(32,30,32,0.9))"></div>
+
+  <section aria-label="Up next" style="position: absolute; left: 2400px; top: 180px; width: 1280px; height: 1760px; box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 20px; border-radius: 8px; background: var(--pane); border: 1px solid var(--flyb); color: var(--ft1); overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 12px; height: 40px; flex-shrink: 0">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Up next</h2>
+      <span style="font-size: 13px; color: var(--ft2)">41 songs · 2 h 58 min</span>
+      <span style="flex-grow: 1"></span>
+      <button style="height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--ft1); font: inherit; font-size: 14px">Clear queue</button>
+      <button style="height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--ft1); font: inherit; font-size: 14px">Open queue</button>
+    </div>
+    <div style="display: flex; align-items: baseline; gap: 10px; height: 48px; padding: 12px 0 0 12px; box-sizing: border-box; flex-shrink: 0"><h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">Next in queue</h3><span style="font-size: 13px; color: var(--ft2)">2 songs you added</span></div>
+    <sc-for list="{{queued}}" as="r" hint-placeholder-count="2">
+      <div role="row" style="{{r.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; line-height: 28px; color: var(--ft3); font-variant-numeric: tabular-nums; padding-left: 12px">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 17px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 13px; line-height: 18px; color: var(--ft2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><a href="#" style="font-size: 15px; color: var(--ft2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</a><span style="text-align: right; font-size: 15px; color: var(--ft2); font-variant-numeric: tabular-nums; padding-right: 12px">{{r.d}}</span></div>
+    </sc-for>
+    <div style="display: flex; align-items: baseline; gap: 10px; height: 56px; padding: 20px 0 0 12px; box-sizing: border-box; flex-shrink: 0"><h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">Next up from late night drive</h3><span style="font-size: 13px; color: var(--ft2)">39 songs</span></div>
+    <sc-for list="{{upNext}}" as="r" hint-placeholder-count="20">
+      <div role="row" style="{{r.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; line-height: 28px; color: var(--ft3); font-variant-numeric: tabular-nums; padding-left: 12px">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 17px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 13px; line-height: 18px; color: var(--ft2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><a href="#" style="font-size: 15px; color: var(--ft2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</a><span style="text-align: right; font-size: 15px; color: var(--ft2); font-variant-numeric: tabular-nums; padding-right: 12px">{{r.d}}</span></div>
+    </sc-for>
+  </section>
+
+  <div style="position: absolute; left: 50%; bottom: 48px; width: 1600px; margin-left: -800px; box-sizing: border-box; padding: 16px 28px 14px 28px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: 0 8px 16px rgba(0,0,0,0.26); color: var(--ft1); display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <span style="width: 48px; font-size: 13px; color: var(--ft2); font-variant-numeric: tabular-nums">1:14</span>
+      <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: var(--rail)"></div><div style="position: absolute; left: 0; width: 29%; height: 4px; border-radius: 2px; background: var(--acc)"></div><div style="position: absolute; left: calc(29% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; border: 1px solid var(--thumbb); background: var(--thumb); display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: var(--acc)"></span></div></div>
+      <span style="width: 48px; text-align: right; font-size: 13px; color: var(--ft2); font-variant-numeric: tabular-nums">-3:04</span>
+    </div>
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center">
+      <span style="display: flex; gap: 2px; align-items: center">
+        <button aria-label="Shuffle, on" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--facct)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Repeat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <span style="font-size: 13px; color: var(--ft2); margin-left: 12px">Playing on this PC</span>
+      </span>
+      <span style="display: flex; align-items: center; gap: 16px">
+        <button aria-label="Previous" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Pause" style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 28px; background: var(--acc); color: var(--onacc)"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+        <button aria-label="Next" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      </span>
+      <span style="display: flex; justify-content: flex-end; align-items: center; gap: 2px">
+        <button aria-label="Volume" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <span style="position: relative; width: 140px; height: 18px; display: flex; align-items: center; margin-right: 8px"><span style="width: 100%; height: 4px; border-radius: 2px; background: var(--rail)"></span><span style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: var(--acc)"></span></span>
+        <button aria-label="Devices" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Exit full screen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":3840,"height":2160}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', facct: pink ? '#ffb3dd' : '#99ebff', fly: 'rgba(44,44,44,0.78)', pane: 'rgba(32,32,32,0.55)', flyb: 'rgba(0,0,0,0.2)', ft1: '#ffffff', ft2: '#c5c5c5', ft3: '#9e9e9e', rail: 'rgba(255,255,255,0.5442)', thumb: '#454545', thumbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)' }
+    : { acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', facct: pink ? '#9b0062' : '#003e92', fly: 'rgba(252,252,252,0.86)', pane: 'rgba(249,249,249,0.84)', flyb: 'rgba(0,0,0,0.0578)', ft1: '#1b1b1b', ft2: '#626262', ft3: '#8a8a8a', rail: 'rgba(0,0,0,0.4458)', thumb: '#ffffff', thumbb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const tabs = [['Now playing', true], ['Lyrics', false], ['Queue', false], ['Details', false]].map((t) => ({ label: t[0], on: t[1],
+    style: 'position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; font-size: 14px; color: ' + (t[1] ? '#ffffff' : 'rgba(255,255,255,0.78)') }));
+  let n = 0;
+  const mk = (list) => list.map((d) => { n += 1; const h = !!d[5]; return { n: String(n), t: d[0], a: d[1], album: d[2], d: d[3],
+    row: 'display: grid; grid-template-columns: 56px 64px minmax(0, 1fr) 360px 72px; align-items: center; height: 60px; flex-shrink: 0; margin-top: 2px; border-radius: 4px; ' + (h ? 'background: var(--sub)' : ''),
+    art: 'width: 48px; height: 48px; border-radius: 4px; display: block; background: ' + d[4] }; });
+  const queued = mk([['Get Lucky', 'Daft Punk, Pharrell Williams', 'Random Access Memories', '6:09', '#3a2f22'], ['Instant Crush', 'Daft Punk, Julian Casablancas', 'Random Access Memories', '5:37', '#3a2f22', true]]);
+  const upNext = mk([['Resonance', 'HOME', 'Odyssey', '3:32', '#2f5b6b'], ['Tech Noir', 'Gunship', 'GUNSHIP', '4:57', '#5b3b6b'], ['Sunset', 'The Midnight', 'Endless Summer', '5:20', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', 'Trilogy', '3:20', '#6b2f2f'], ['Running in the Night', 'FM-84', 'Atlas', '4:14', '#4a3b2f'], ['A Real Hero', 'College, Electric Youth', 'Drive (Original Motion Picture Soundtrack)', '4:28', '#5b4a2f'], ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', '4:03', '#3b4a6b'], ['Odd Look', 'Kavinsky', 'OutRun', '4:12', '#6b2f4a'], ['Fly for Your Life', 'Gunship', 'GUNSHIP', '5:10', '#5b3b6b'], ['Days of Thunder', 'The Midnight', 'Days of Thunder', '4:49', '#4a2f5b'], ['Tick of the Clock', 'Chromatics', 'Night Drive', '4:48', '#2f2f4a'], ['Runaway', 'Electric Youth', 'Innerworld', '4:30', '#5b3b4a'], ['Future Club', 'Perturbator', 'Dangerous Days', '4:41', '#4a2f3b'], ['Derezzed', 'Daft Punk', 'Tron: Legacy', '1:44', '#2a4a5a'], ['Roller Mobster', 'Carpenter Brut', 'Trilogy', '3:59', '#6b2f2f'], ['Protect Me From What I Want', 'Kavinsky', 'OutRun', '4:31', '#6b2f4a'], ['Blinding Lights', 'The Weeknd', 'After Hours', '3:20', '#5a2a2a'], ['Supermassive Black Hole', 'Muse', 'Black Holes and Revelations', '3:32', '#3a3a5a'], ['Out of Time', 'The Weeknd', 'Dawn FM', '3:34', '#2a3a5a'], ['Starboy', 'The Weeknd, Daft Punk', 'Starboy', '3:50', '#5a2a3a']]);
+  const credits = [['Vocals', 'Lovefoxxx, Kavinsky'], ['Written by', 'Vincent Belorgey, Guy-Manuel de Homem-Christo'], ['Produced by', 'Kavinsky, Guy-Manuel de Homem-Christo']].map((d) => ({ k: d[0], v: d[1] }));
+  return { vars, tabs, queued, upNext, credits };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loading skeleton, album, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|album:Random Access Memories" sel="1" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="albums" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main aria-busy="true" aria-label="Loading album" style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <aside style="width: 320px; flex-shrink: 0; box-sizing: border-box; padding: 24px 8px 24px 16px; display: flex; flex-direction: column; gap: 14px; background: rgba(58,58,58,0.298); border-top-left-radius: 8px">
+        <span role="img" aria-label="Random Access Memories cover" style="width: 296px; height: 296px; border-radius: 8px; background: linear-gradient(135deg, #111 0%, #3a3a3a 40%, #bdbdbd 52%, #3a3a3a 64%, #111 100%); opacity: 0.9"></span>
+        <span style="{{b.w32}}"></span>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; margin-top: -6px">Random Access Memories</span>
+        <span style="{{b.w40}}"></span>
+        <span style="{{b.w62}}"></span>
+        <span style="display: flex; gap: 8px"><span style="{{b.cta}}"></span><span style="{{b.sq}}"></span><span style="{{b.sq}}"></span><span style="{{b.sq}}"></span><span style="{{b.sq}}"></span></span>
+        <span style="{{b.card110}}"></span>
+      </aside>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px 0 0">
+        <div style="height: 44px; display: flex; align-items: center; gap: 16px; padding: 0 8px"><span style="{{b.tool}}"></span><span style="{{b.tool}}"></span><span style="flex-grow: 1"></span><span style="{{b.tool}}"></span><span style="{{b.tool}}"></span><span style="{{b.sq}}"></span></div>
+        <div style="height: 36px; margin: 0 8px; border-bottom: 1px solid rgba(255,255,255,0.082)"></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="20"><div style="{{r.s}}"><span style="{{b.num}}"></span><span style="{{r.t}}"></span><span style="flex-grow: 1"></span><span style="{{b.plays}}"></span><span style="{{b.dur}}"></span></div></sc-for>
+      </div>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; margin: 24px 16px 0; background: rgba(255,255,255,0.082)"></span>
+      <aside style="width: 520px; flex-shrink: 0; box-sizing: border-box; padding: 24px 24px 0 0; display: flex; flex-direction: column; gap: 20px">
+        <span style="{{b.h120}}"></span>
+        <span style="{{b.card160}}"></span>
+        <span style="{{b.h120}}"></span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 8px"><sc-for list="{{fans}}" as="f" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="{{b.circle}}"></span><span style="{{b.w60}}"></span></span></sc-for></div>
+        <span style="{{b.h120}}"></span>
+        <div style="display: flex; flex-direction: column"><sc-for list="{{more}}" as="m" hint-placeholder-count="5"><span style="display: flex; align-items: center; gap: 12px; height: 56px"><span style="{{b.cover44}}"></span><span style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1"><span style="{{m}}"></span><span style="{{b.w30}}"></span></span></span></sc-for></div>
+      </aside>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const g = 'rgba(255,255,255,0.07)';
+  const bar = (w, h) => 'display: block; width: ' + w + '; height: ' + (h || 12) + 'px; border-radius: 4px; background: ' + g;
+  const b = { w32: bar('32%'), w40: bar('40%', 14), w62: bar('62%'), w60: bar('60%'), w30: bar('30%', 10), h120: bar('120px', 16),
+    cta: 'width: 121px; height: 32px; border-radius: 4px; background: ' + g, sq: 'width: 32px; height: 32px; border-radius: 4px; background: ' + g,
+    tool: 'width: 72px; height: 12px; border-radius: 4px; background: ' + g,
+    card110: 'display: block; height: 110px; border-radius: 8px; background: ' + g, card160: 'display: block; height: 160px; border-radius: 8px; background: ' + g,
+    num: 'width: 14px; height: 10px; border-radius: 3px; background: ' + g, plays: 'width: 56px; height: 10px; margin-right: 32px; border-radius: 3px; background: ' + g,
+    dur: 'width: 32px; height: 10px; border-radius: 3px; background: ' + g, circle: 'width: 96px; height: 96px; border-radius: 48px; background: ' + g,
+    cover44: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; background: ' + g };
+  const W = [52, 38, 61, 44, 57, 35, 49, 42, 58, 33, 46, 55, 40, 63, 37, 51, 45, 59, 36, 48];
+  const rows = W.map((w, i) => ({ s: 'height: 56px; flex-shrink: 0; margin: 0 8px; display: flex; align-items: center; gap: 24px; padding: 0 8px; border-radius: 6px', t: bar((w * 0.6) + '%', 12) }));
+  const fans = [1, 2, 3, 4, 5, 6];
+  const more = ['55%', '40%', '62%', '48%', '36%'].map(w => bar(w, 12));
+  return { b, rows, fans, more };
+}
+}
+</script>
+</body>
+</html>

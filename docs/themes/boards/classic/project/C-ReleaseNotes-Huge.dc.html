@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What’s new, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="tag:What’s new" sel="0" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; gap: 32px; overflow: hidden">
+      <div style="flex-grow: 1; min-width: 0; max-width: 1600px; display: flex; flex-direction: column; gap: 20px">
+        <div style="display: flex; align-items: center; gap: 12px"><svg width="22" height="22" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h5.2l6 6-5.2 5.2-6-6zM5.2 5.2h.01" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">What’s new</h1></div>
+        <section aria-label="Wavee 0.3" style="padding: 22px 24px 20px; border-radius: 12px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: flex-end; gap: 32px">
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; gap: 6px"><span style="font-size: 11px; line-height: 16px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #60cdff; color: #000">Latest</span><span style="font-size: 11px; line-height: 16px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: rgba(255,255,255,0.08)">Stable</span></div>
+            <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600">Wavee 0.3 “Themes”</h2>
+            <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Pick how Wavee looks: Classic, WinUI, Zune or Zune Fluent.</span>
+            <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">Released Oct 2026 · Requires Windows 10 1809 or later · wavee-v0.3.0</span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-shrink: 0"><a href="#" style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font-size: 14px">Open on GitHub<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></a><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Copy link</button></div>
+        </section>
+        <section aria-label="Highlights" style="display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Highlights</h2>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 420px)); gap: 16px">
+            <sc-for list="{{hl}}" as="h" hint-placeholder-count="3"><div style="border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><span style="{{h.poster}}"><span style="{{h.pill}}">{{h.k}}</span></span><div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13.5px; line-height: 18px; font-weight: 600">{{h.t}}</span><span style="font-size: 12.5px; line-height: 17px; color: rgba(255,255,255,0.773)">{{h.b}}</span><a href="#" style="font-size: 12px; line-height: 16px">Read more</a></div></div></sc-for>
+          </div>
+        </section>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start">
+          <sc-for list="{{secs}}" as="s" hint-placeholder-count="3">
+            <section aria-label="{{s.l}}" style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: center; gap: 8px"><span style="{{s.badge}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.g}}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">{{s.l}}</h2><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{s.n}}</span></div>
+              <div style="border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><sc-for list="{{s.rows}}" as="f" hint-placeholder-count="4"><div style="min-height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; line-height: 20px"><span style="flex-grow: 1; min-width: 0">{{f.t}}</span><sc-if value="{{f.has}}" hint-placeholder-val="{{false}}"><a href="#" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.773)">{{f.i}}</a></sc-if></div></sc-for></div>
+            </section>
+          </sc-for>
+        </div>
+      </div>
+      <aside aria-label="Releases" style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 72px">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; color: rgba(255,255,255,0.773); margin-bottom: 4px">Releases</span>
+        <sc-for list="{{rel}}" as="r" hint-placeholder-count="10"><a href="#" style="{{r.s}}"><span style="font-size: 14px; line-height: 20px; color: #fff">{{r.v}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">{{r.d}}</span></a></sc-for>
+      </aside>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pill = c => 'position: absolute; left: 10px; top: 10px; font-size: 11px; line-height: 16px; font-weight: 600; padding: 0 6px; border-radius: 4px; background: ' + c + '; color: #000';
+  const hl = [['New', 'Themes', 'Classic, WinUI, Zune and Zune Fluent: each a complete look with its own pages, shell, player and navigation.', '#6ccb5f', 'linear-gradient(135deg,#3b4a8a,#8a4e7a)'], ['Improved', 'Smoother sidebar sections', 'Sections open, close and reorder without a jump, and the sidebar remembers its width.', '#60cdff', 'linear-gradient(135deg,#2f4a6b,#60cdff)'], ['Rebuilt', 'Liked Songs', 'One bar for play, mood chips, filter and sort, with Insights beside the list.', '#fce100', 'linear-gradient(135deg,#4a3b8a,#6fa3c8)']].map(h => ({ k: h[0], t: h[1], b: h[2], pill: pill(h[3]), poster: 'position: relative; display: block; aspect-ratio: 16 / 9; background: ' + h[4] }));
+  const row = (t, i) => ({ t, i: i || '', has: !!i });
+  const badge = c => 'width: 22px; height: 22px; border-radius: 11px; background: ' + c + '; color: #000; display: flex; align-items: center; justify-content: center';
+  const secs = [
+    { l: 'Added', n: '4', g: 'M8 3.5v9M3.5 8h9', badge: badge('#6ccb5f'), rows: [row('Themes: Classic, WinUI, Zune and Zune Fluent'), row('Classic options in Settings › Appearance'), row('Full-screen layouts: Large cover, Centered cover, Artist photo'), row('Lyrics and Queue dock side by side on wide windows')] },
+    { l: 'Fixed', n: '3', g: 'M3 8.5l3 3 7-7', badge: badge('#fce100'), rows: [row('Queue stays in the player bar on narrow windows', '#205'), row('The window can no longer shrink below a usable height', '#197'), row('Player style is hidden until it changes Now playing', '#199')] },
+    { l: 'Changed', n: '3', g: 'M3 9c1.5-2 3.5-2 5 0s3.5 2 5 0', badge: badge('#60cdff'), rows: [row('Color washes is now Surfaces: Off, Subtle or Rich'), row('The sidebar opens at 320 by default'), row('Play is one split button on every page')] }
+  ];
+  const rel = [['0.3.0', 'Oct 2026', 1], ['0.2.9', 'Sep 2026'], ['0.2.8', 'Sep 2026'], ['0.2.7', 'Aug 2026'], ['0.2.6', 'Aug 2026'], ['0.2.5', 'Jul 2026']].map(r => ({ v: r[0], d: r[1], s: 'position: relative; display: flex; flex-direction: column; padding: 6px 10px; border-radius: 4px' + (r[2] ? '; background: rgba(255,255,255,0.059); box-shadow: inset 3px 0 0 #60cdff' : '') }));
+  return { hl, secs, rel };
+}
+}
+</script>
+</body>
+</html>

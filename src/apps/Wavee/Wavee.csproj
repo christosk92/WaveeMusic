@@ -67,13 +67,15 @@
   <!-- Memory posture (2026-07 heap audit): the engine's PixelBufferPool bounds decoded-pixel retention; these bound
        what remains. SharedArrayPool defaults to 8 arrays/bucket × ProcessorCount partitions — on a 12-core machine
        that legally parks hundreds of MB; 4×4 keeps the remaining users (encoded fetch buffers, BCL/HTTP) to a few MB.
-       ConserveMemory=5 makes the workstation-concurrent GC decommit the churned heap floor more aggressively. -->
+       ConserveMemory=5 makes the workstation-concurrent GC decommit the churned heap floor more aggressively.
+       System.GC.RegionSize=1 MB (the P16b trial, plan §3.1) is REVERTED per the plan's own rule (reverted if it does not
+       help): measured 2026-10-18 (page-mount RCA round 5) it changed neither the gen-0 budget (6 MB either way), the GC
+       rate or pauses on a home/page navigation loop, nor the footprint of a 94-navigation mem-soak (private bytes after
+       idle within run-to-run noise of the default 4 MB regions). -->
   <ItemGroup>
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxPartitionCount" Value="4" />
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxArraysPerPartition" Value="4" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
-    <!-- trial (plan §3.1 P16b), measured in Wave 6 -->
-    <RuntimeHostConfigurationOption Include="System.GC.RegionSize" Value="1048576" />
   </ItemGroup>
 
   <Import Project="Wavee.Publish.props" />
@@ -232,6 +234,22 @@
     <CompilerVisibleProperty Include="FluentGpuLocNamespace" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <!-- ── Theme layering analyzers (Wavee.Analyzers, WVTH rules) ───────────────────────────────────────────────
+       Loaded as an analyzer only (never linked). Each rule's grandfathered violations are AdditionalFiles named
+       analyzer-baseline\WVTHnnn.txt; a baseline entry that matches nothing is itself a warning (WVTH900). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Wavee.Analyzers\Wavee.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="analyzer-baseline\*.txt" />
+    <!-- Inputs of rules that need a list the source cannot hold: WVTH010 (retired keys and members), WVTH011 (the structure-parameter probe matrix). -->
+    <AdditionalFiles Include="analyzer-input\*.txt" />
+    <CompilerVisibleProperty Include="ProjectDir" />
+  </ItemGroup>
+  <!-- The style roles are read in ~140 files as `R.Type.X`, `R.Space.X`, `R.Motion.X` (themes plan 5.4): a global using keeps
+       that call syntax free of a per-file import, the way ImplicitUsings does for System. Test projects import it themselves. -->
+  <ItemGroup>
+    <Using Include="Wavee.Theming.Roles" />
   </ItemGroup>
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->

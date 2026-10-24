@@ -84,6 +84,19 @@ public static partial class Entities
         SeedRecents(now0);
     }
 
+    /// <summary>The pins a --fake account starts with (the band's and the Home quickplay's "pins" group): four of the fake playlists the user
+    /// library already pins (<c>Entities.Fake.cs</c>: pl0, pl1, pl2, pl4), named and covered like the rail's rows. Silent, never written: the
+    /// sidebar's account file is the demo's temp folder.</summary>
+    internal static IReadOnlyList<SidebarPin> FakePins(long now0)
+    {
+        int[] pinned = [0, 1, 2, 4];
+        var pins = new SidebarPin[pinned.Length];
+        for (int i = 0; i < pins.Length; i++)
+            pins[i] = new SidebarPin(SidebarPinId.PlaylistPrefix + PlaylistUri(pinned[i]), SidebarEntryKind.Playlist, PlaylistUri(pinned[i]),
+                s_playlistNames[Wrap(pinned[i], s_playlistNames.Length)], (now0 - i * 86_400L) * 1000L) { Cover = Cover(pinned[i] + 8) };
+        return pins;
+    }
+
     // ── 1. the catalogue: the "Spotify" owner and forty editorial playlists ─────────────────────────────────────────
 
     static void SeedCatalogue(long now0)
@@ -185,6 +198,9 @@ public static partial class Entities
     // Charlie Puth/Rich Brian/ROSE/Henry Moodie each get a minted `spotify:album:hm...` id, real artist name,
     // invented date.
 
+    /// <summary>The longest album title of the fixtures (Jump back in's Arcane soundtrack): the long-text album an agent opens.</summary>
+    public const string LongTitleAlbumUri = "spotify:album:2x6LWti2bjYS6AllSomoV7";
+
     static void SeedHomeMockupAll(long now0)
     {
         var s = Staging.Rent();
@@ -197,6 +213,13 @@ public static partial class Entities
                 "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
             StageDaylistSection(s, "spotify:section:wavee-mockup-daylist", daylistId,
                 ["scream", "teen pop", "belter", "garage band", "international", "hollywood"]);
+            // Two long daylist names on no shelf, opened by uri only: the detail hero title's fit (one line, then two smaller lines, then the
+            // ellipsis; owner 2026-10-21) needs a name the size of the owner's own and one far past two lines.
+            MockPlaylist(s, "spotify:playlist:plt0", "throwback pop 2010s wednesday morning",
+                "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
+            MockPlaylist(s, "spotify:playlist:plt1",
+                "throwback pop 2010s wednesday morning with the windows down and the volume all the way up because nothing else matters right now honestly",
+                "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg", 50, PlaylistFormat.Daylist);
 
             // -- Made for you --
             var dw = MockPlaylist(s, "spotify:playlist:37i9dQZEVXcKDbGa6CckPI", "Discover Weekly",
@@ -255,14 +278,18 @@ public static partial class Entities
             string roseAlbumUri = "spotify:album:hmRoseUpcoming", roseArtistUri = "spotify:artist:hmRose";
             string henryAlbumUri = "spotify:album:hmHenryMoodieNewSingle", henryArtistUri = "spotify:artist:hmHenryMoodie";
 
+            // The release shelf is dated against the WALL clock, not the fixed seed epoch: the planner's "released in the last 42 days" test
+            // (ReleaseDetect) reads the wall clock, and the fixed epoch is already 50 days in the past, so on it this whole shelf (and the
+            // "new" quickplay group fed by it) vanished from every --fake Home. The dates stay relative offsets, so "friday" / "last week" read right.
+            long fresh0 = Math.Max(now0, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             var vaultboy = MockAlbum(s, vaultboyAlbumUri, "I loved you too much to just laugh it off",
-                "https://i.scdn.co/image/ab67616d00001e02a28a0b1cc269fa15e243eb77", (int)now0, AlbumKind.Single);
-            var troye = MockAlbum(s, troyeAlbumUri, "Slip", Cover(31), (int)now0, AlbumKind.Single);
-            var puth = MockAlbum(s, puthAlbumUri, "Charlie", Cover(32), (int)(now0 - 2 * 86_400), AlbumKind.EP);
-            var richBrianRelease = MockAlbum(s, richBrianAlbumUri, "New Wave", Cover(33), (int)(now0 - 1 * 86_400), AlbumKind.Single);
+                "https://i.scdn.co/image/ab67616d00001e02a28a0b1cc269fa15e243eb77", (int)fresh0, AlbumKind.Single);
+            var troye = MockAlbum(s, troyeAlbumUri, "Slip", Cover(31), (int)fresh0, AlbumKind.Single);
+            var puth = MockAlbum(s, puthAlbumUri, "Charlie", Cover(32), (int)(fresh0 - 2 * 86_400), AlbumKind.EP);
+            var richBrianRelease = MockAlbum(s, richBrianAlbumUri, "New Wave", Cover(33), (int)(fresh0 - 1 * 86_400), AlbumKind.Single);
             var rose = MockAlbum(s, roseAlbumUri, "rosie (Pre-Save)", "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966",
-                (int)(now0 + 8 * 86_400), AlbumKind.Album);
-            var henryMoodieRelease = MockAlbum(s, henryAlbumUri, "Better Now", Cover(34), (int)(now0 - 4 * 86_400), AlbumKind.Single);
+                (int)(fresh0 + 8 * 86_400), AlbumKind.Album);
+            var henryMoodieRelease = MockAlbum(s, henryAlbumUri, "Better Now", Cover(34), (int)(fresh0 - 4 * 86_400), AlbumKind.Single);
 
             MockArtist(s, vaultboyArtistUri, "vaultboy", Cover(39));
             MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35));
@@ -288,8 +315,8 @@ public static partial class Entities
                 "https://i.scdn.co/image/ab67706f000000024b2cb319c9b6d646fdf27e8c", 50, PlaylistFormat.Editorial);
             var emailsAlbum = MockAlbum(s, "spotify:album:2g4aJTa5ejGpp0O0GKzWAQ", "emails i can't send fwd:",
                 "https://i.scdn.co/image/ab67616d00001e020f45623be014a592a5815827", (int)(now0 - 200 * 86_400));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like Troye Sivan", SectionKind.HomeBaseline,
-                [troyeRadio, popTerjineun, emailsAlbum], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like", SectionKind.HomeBaseline,
+                [MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35)), troyeRadio, popTerjineun, emailsAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
 
             var roseRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4vmmujp8nGFY", "ROSÉ Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3eVa5w3URK5duf6eyVDbu9/en", 50, PlaylistFormat.Radio);
@@ -299,22 +326,22 @@ public static partial class Entities
             var rosieAlbum = MockAlbum(s, rosieAlbumUri, "rosie",
                 "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966", (int)(now0 - 150 * 86_400));
             albumArtistLinks.Add((rosieAlbumUri, roseArtistUri));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like ROSÉ", SectionKind.HomeBaseline,
-                [roseRadio, romanticizing, rosieAlbum], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like", SectionKind.HomeBaseline,
+                [MockArtist(s, roseArtistUri, "ROSÉ", Cover(37)), roseRadio, romanticizing, rosieAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
 
             var sadHour = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWSqBruwoIXkA", "sad hour",
                 "https://i.scdn.co/image/ab67706f000000021ec2ef7e5cc1221d4b45354e", 150, PlaylistFormat.Editorial);
             var thisIsHenry = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO4j9SIr", "This Is Henry Moodie",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/7hr9W3IjXcm3UlLY7guLk5/nl", 50, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of Henry Moodie", SectionKind.HomeBaseline,
-                [sadHour, thisIsHenry, dm4], total: 3, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of", SectionKind.HomeBaseline,
+                [MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38)), sadHour, thisIsHenry, dm4], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
 
             var thisIsSavage = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO2drKmY", "This Is Savage Garden",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/3NRFinRTEqUCfaTTZmk8ek/en-GB", 50, PlaylistFormat.Editorial);
             var guiltyPleasures = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX4pUKG1kS0Ac", "Guilty Pleasures",
                 "https://i.scdn.co/image/ab67706f000000027773630113d067b9590817f4", 150, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of Savage Garden", SectionKind.HomeBaseline,
-                [thisIsSavage, guiltyPleasures], total: 2, nextOffset: SectionPaging.Complete);
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of", SectionKind.HomeBaseline,
+                [MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40)), thisIsSavage, guiltyPleasures], total: 3, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
 
             // -- RecentGrid support: WLUWD and 90's Nederlandstalig are two of the real uris `s_recentsSeed` (above)
             // points at, staged here (no section membership needed) purely so the RecentGrid renders a real title/
@@ -328,7 +355,7 @@ public static partial class Entities
                 "https://i.scdn.co/image/ab6761610000517473a7c008c663a8177c9f6af4");
 
             // -- Jump back in (the first mixed-kind Generic section, per ZonePlanner's own rule) --
-            var arcane = MockAlbum(s, "spotify:album:2x6LWti2bjYS6AllSomoV7",
+            var arcane = MockAlbum(s, LongTitleAlbumUri,
                 "Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)",
                 "https://i.scdn.co/image/ab67616d00001e024aaf2413384c1efcc38353c6", (int)(now0 - 40 * 86_400));
             var chillMix = MockPlaylist(s, "spotify:playlist:37i9dQZF1EVHGWrwldPRtj", "Chill Mix",
@@ -391,6 +418,38 @@ public static partial class Entities
             int artistSlot = ResolveSeedSlot(EntityKind.Artist, artistUri);
             if (albumSlot != Table.None && artistSlot != Table.None)
                 Current.Edges.AlbumArtists.ReplaceRun(albumSlot, [artistSlot], default);
+        }
+
+        // The two long-named daylists carry the fifty rows their headers count, so the title-fit renders show the list under the hero.
+        Span<int> longTargets = stackalloc int[50];
+        Span<PlaylistTrackEdge> longPayload = stackalloc PlaylistTrackEdge[50];
+        string[] longUris = ["spotify:playlist:plt0", "spotify:playlist:plt1"];
+        for (int p = 0; p < longUris.Length; p++)
+        {
+            int start = Wrap(p * 29 + 11, TrackCount);
+            for (int k = 0; k < longTargets.Length; k++)
+            {
+                longTargets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(start + k));
+                longPayload[k] = new PlaylistTrackEdge(StringId.Empty, (int)(now0 - (p + k) * 3600L), Table.None, 0, 0, 0, 0);
+            }
+            int slot = ResolveSeedSlot(EntityKind.Playlist, longUris[p]);
+            if (slot != Table.None) Current.Edges.PlaylistTracks.ReplaceRun(slot, longTargets, longPayload);
+        }
+
+        // The longest-titled album (Jump back in's "Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)", the long-text
+        // fixture) carries rows too: a mock album has no provider, so without a run its page read "Couldn't load these songs" under the very
+        // title an agent opens it for.
+        int arcaneSlot = ResolveSeedSlot(EntityKind.Album, LongTitleAlbumUri);
+        if (arcaneSlot != Table.None)
+        {
+            Span<int> arcaneTargets = stackalloc int[12];
+            Span<AlbumTrackEdge> arcaneNumbers = stackalloc AlbumTrackEdge[12];
+            for (int k = 0; k < arcaneTargets.Length; k++)
+            {
+                arcaneTargets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(90 + k));
+                arcaneNumbers[k] = new AlbumTrackEdge(1, (ushort)(k + 1));
+            }
+            Current.Edges.AlbumTracks.ReplaceRun(arcaneSlot, arcaneTargets, arcaneNumbers);
         }
 
         // Prepend every mockup band ahead of the bundled capture's own sections (canvas order: Daylist, Made for you,
@@ -479,7 +538,7 @@ public static partial class Entities
     /// batch as `StagedId` values -- every mockup card is a real entity `Mock*` already minted, so re-encoding its uri
     /// as text a second time (what `StageSection`'s `string[]` overload does) would just waste arena bytes.</summary>
     static StagedId StageSectionIds(Staging s, string sectionUri, string title, SectionKind kind,
-        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset)
+        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
         ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
@@ -493,6 +552,15 @@ public static partial class Entities
         int mark = s.Edges.PendingMark;
         foreach (var cardId in cardIds) s.Edges.Push().Target = cardId;
         s.Edges.Close(Relation.SectionCards, in id, mark);
+
+        // A baseline ("because you like") band's rows are its PREVIEW TRACKS (ClusterFold reads `Edges.SectionPreviewTracks`; a live feed fills them
+        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks.
+        if (firstPreviewTrack >= 0)
+        {
+            int pm = s.Edges.PendingMark;
+            for (int i = 0; i < 3; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
+            s.Edges.Close(Relation.SectionPreviewTracks, in id, pm);
+        }
         return id;
     }
 
@@ -1013,8 +1081,162 @@ public static partial class Entities
 
     static readonly string[] s_relatedQueries = ["a day to remember", "arctic monkeys", "adele", "a-ha", "ariana grande"];
 
+    /// <summary>The query that stays unanswered under --fake (agents render the page's loading skeleton with it: `--inspect state kind=loading`).</summary>
+    public const string FakePendingQuery = "zzqx";
+
+    /// <summary>An artist the fake catalogue never answers: its page stays on the skeleton for the first frames (`goto uri=spotify:artist:arzzqx`), then fails; `ar0`..`ar11` load at once.</summary>
+    public const string FakePendingArtistUri = "spotify:artist:arzzqx";
+
+    static bool s_fakeSearch;
+    static readonly HashSet<string> s_fakeSearched = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Under --fake, answer the search row's query from the fake catalogue (a name that contains the query, every kind), once per query; `a` keeps its hand-built
+    /// answer and <see cref="FakePendingQuery"/> none. True when the fake answered (the fetch is skipped). The skipped fetch still leaves the marks a real one
+    /// would (Search.Page.cs READINESS reads them): a group the fake left unknown is asked, and in flight for the pending query (the page stays on its
+    /// skeleton) or concluded for any other (the facet's empty), never un-asked (the error vacancy, a transport failure).</summary>
+    internal static bool FakeSearchAnswer(Search row, SearchFields wanted)
+    {
+        if (!s_fakeSearch) return false;
+        string q = Strings.Resolve(row.QueryId).Trim();
+        if (q.Length == 0 || string.Equals(q, FakeSearchQuery, StringComparison.OrdinalIgnoreCase)) return false;
+        bool pending = string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase);
+        if (!pending && s_fakeSearched.Add(q)) SeedSearchQuery(q);
+        var t = Current.Searches;
+        int slot = row.Slot;
+        uint missing = (uint)wanted & ~t.Known[slot];
+        if (missing != 0)
+        {
+            t.Asked[slot] |= missing;
+            if (pending) t.Inflight[slot] = FakePendingStamp;
+        }
+        return true;
+    }
+
+    /// <summary>The request stamp of the pending query's fetch that never lands.</summary>
+    const uint FakePendingStamp = 0x2A9Du;
+
+    /// <summary>The fake rows whose name contains the query, per kind, in slot order: the numbered catalogue and every hand-built row (Home's
+    /// recents, "Easy", ...), whatever the user can see in the app (the search answer and the omnibar's suggestions).</summary>
+    sealed record FakeMatches(List<int> Tracks, List<int> Artists, List<int> Albums, List<int> Playlists, List<int> Shows, List<int> Users)
+    {
+        public static FakeMatches Of(string q)
+        {
+            static List<int> Find(EntityKind kind, string q, int cap)
+            {
+                var found = new List<int>();
+                if (TableFor(kind) is not { } t) return found;
+                for (int slot = Table.None + 1; slot < t.Count && found.Count < cap; slot++)
+                    if (t.Id[slot].IsValid && Wavee.Search.TitleOf(new EntityRef(kind, slot)).Contains(q, StringComparison.OrdinalIgnoreCase)) found.Add(slot);
+                return found;
+            }
+
+            return new FakeMatches(Find(EntityKind.Track, q, 30), Find(EntityKind.Artist, q, ArtistCount), Find(EntityKind.Album, q, AlbumCount),
+                Find(EntityKind.Playlist, q, 20), Find(EntityKind.Show, q, ShowCount), Find(EntityKind.User, q, 3));
+        }
+
+        /// <summary>Up to <paramref name="cap"/> hits, the artist first (the Top Result), then the kinds taken in turn.</summary>
+        public List<EntityRef> Mixed(int cap)
+        {
+            var mixed = new List<EntityRef>(cap);
+            var lists = new (EntityKind Kind, List<int> Slots)[]
+                { (EntityKind.Artist, Artists), (EntityKind.Track, Tracks), (EntityKind.Album, Albums), (EntityKind.Playlist, Playlists), (EntityKind.Show, Shows), (EntityKind.User, Users) };
+            for (int round = 0; mixed.Count < cap; round++)
+            {
+                bool any = false;
+                foreach (var (kind, slots) in lists)
+                    if (round < slots.Count && mixed.Count < cap) { mixed.Add(new EntityRef(kind, slots[round])); any = true; }
+                if (!any) break;
+            }
+            return mixed;
+        }
+    }
+
+    /// <summary>Under --fake, the omnibar's suggestion source (Home.InstallPages): the related queries that start with the typed text, then the fake
+    /// catalogue's rows whose name contains it (<see cref="FakeMatches.Mixed"/>), answered at once. <see cref="FakePendingQuery"/> never answers (the
+    /// popup stays on its progress row), as its search page stays on its skeleton.</summary>
+    internal static Task<Shell.Omnibar.Suggestions> FakeSuggestAsync(string query, CancellationToken ct)
+    {
+        string q = query?.Trim() ?? "";
+        if (q.Length == 0) return Task.FromResult(Shell.Omnibar.Suggestions.Empty);
+        if (ct.IsCancellationRequested) return Task.FromCanceled<Shell.Omnibar.Suggestions>(ct);
+        if (string.Equals(q, FakePendingQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            var never = new TaskCompletionSource<Shell.Omnibar.Suggestions>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ct.Register(static o => ((TaskCompletionSource<Shell.Omnibar.Suggestions>)o!).TrySetCanceled(), never);
+            return never.Task;
+        }
+
+        var queries = new List<string>();
+        foreach (string r in s_relatedQueries) if (r.StartsWith(q, StringComparison.OrdinalIgnoreCase) && !r.Equals(q, StringComparison.OrdinalIgnoreCase)) queries.Add(r);
+        var items = new List<Shell.Omnibar.Item>(Shell.Omnibar.MaxRichRows);
+        foreach (var hit in FakeMatches.Of(q).Mixed(Shell.Omnibar.MaxRichRows))
+        {
+            if (TableFor(hit.Kind) is not { } table) continue;
+            var card = new HomeCard(hit);
+            var (kind, detail) = hit.Kind switch
+            {
+                EntityKind.Track => (Shell.Omnibar.ItemKind.Track, card.Subtitle),
+                EntityKind.Album => (Shell.Omnibar.ItemKind.Album, card.Subtitle),
+                EntityKind.Playlist => (Shell.Omnibar.ItemKind.Playlist, card.OwnerName),
+                EntityKind.Show => (Shell.Omnibar.ItemKind.Podcast, card.Subtitle),
+                EntityKind.User => (Shell.Omnibar.ItemKind.User, (string?)null),
+                _ => (Shell.Omnibar.ItemKind.Artist, (string?)null),
+            };
+            items.Add(new Shell.Omnibar.Item(kind, new EntityUri(table.Id[hit.Slot]), Wavee.Search.TitleOf(hit), detail, Wavee.Search.CoverOf(hit)));
+        }
+        return Task.FromResult(queries.Count == 0 && items.Count == 0 ? Shell.Omnibar.Suggestions.Empty : new Shell.Omnibar.Suggestions(queries, items));
+    }
+
+    static void SeedSearchQuery(string q)
+    {
+        var m = FakeMatches.Of(q);
+        var (tracks, artists, albums, playlists, shows, users) = (m.Tracks, m.Artists, m.Albums, m.Playlists, m.Shows, m.Users);
+
+        var genreTiles = new List<int>();
+        for (int i = 0; i < s_browseTiles.Length && genreTiles.Count < 8; i++)
+            if (s_browseTiles[i].Title.Contains(q, StringComparison.OrdinalIgnoreCase)) genreTiles.Add(BrowseNode(s_browseTiles[i].Uri.AsSpan()).Slot);
+
+        var all = Search(q.AsSpan());
+        var facets = new List<SearchFacet>(7);
+        var totals = new List<int>(7);
+        void Chip(SearchFacet f, int n) { if (n > 0) { facets.Add(f); totals.Add(n); } }
+        Chip(SearchFacet.Tracks, tracks.Count); Chip(SearchFacet.Artists, artists.Count); Chip(SearchFacet.Albums, albums.Count);
+        Chip(SearchFacet.Playlists, playlists.Count); Chip(SearchFacet.Podcasts, shows.Count); Chip(SearchFacet.Profiles, users.Count); Chip(SearchFacet.Genres, genreTiles.Count);
+        all.SetChips(facets.ToArray(), totals.ToArray());
+
+        // The All facet: the artist first (the Top Result), then the kinds taken in turn.
+        var mixed = m.Mixed(10);
+        all.ApplyResults(0, mixed.ToArray(), mixed.Count);
+
+        void Facet(SearchFacet f, EntityKind kind, List<int> slots)
+        {
+            if (slots.Count == 0) return;
+            var row = Search(q.AsSpan(), f);
+            row.ApplyResults(0, slots.ToArray(), kind, slots.Count);
+            Current.Searches.Bump(row.Slot, (uint)SearchFields.Results);
+        }
+        Facet(SearchFacet.Tracks, EntityKind.Track, tracks); Facet(SearchFacet.Artists, EntityKind.Artist, artists); Facet(SearchFacet.Albums, EntityKind.Album, albums);
+        Facet(SearchFacet.Playlists, EntityKind.Playlist, playlists); Facet(SearchFacet.Podcasts, EntityKind.Show, shows); Facet(SearchFacet.Profiles, EntityKind.User, users);
+
+        Current.Edges.SearchGenres.ReplaceRun(all.Slot, genreTiles.ToArray(), default);
+        var related = new List<string>();
+        foreach (string r in s_relatedQueries) if (r.StartsWith(q, StringComparison.OrdinalIgnoreCase) && !r.Equals(q, StringComparison.OrdinalIgnoreCase)) related.Add(r);
+        var none = new int[related.Count];
+        var payload = new SearchRelatedEdge[related.Count];
+        for (int i = 0; i < related.Count; i++)
+        {
+            none[i] = Table.None;
+            StringId text = default;
+            RetainText(ref text, Intern(Utf8(related[i])));
+            payload[i] = new SearchRelatedEdge(text);
+        }
+        Current.Edges.SearchRelated.ReplaceRun(all.Slot, none, payload);
+        Current.Searches.Bump(all.Slot, (uint)(SearchFields.Results | SearchFields.Genres | SearchFields.Related));
+    }
+
     static void SeedSearch()
     {
+        s_fakeSearch = true;
         ReadOnlySpan<char> q = FakeSearchQuery.AsSpan();
         var all = Search(q);
 

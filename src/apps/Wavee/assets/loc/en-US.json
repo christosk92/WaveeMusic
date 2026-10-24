@@ -53,6 +53,8 @@
   },
   "detail": {
     "play": "Play",
+    "moreWaysToPlay": "More ways to play",
+    "startRadio": "Start radio",
     "shuffle": "Shuffle",
     "tuning": {
       "tune": "Tune",
@@ -62,9 +64,7 @@
       "current": "Current",
       "reset": "Reset tuning",
       "applied": "Playlist tuned",
-      "applyFailed": "Couldn’t tune this playlist. Try again.",
-      "tipTitle": "Tune this playlist",
-      "tipBody": "Adjust the mix's direction right from here — Wavee rebuilds the track list."
+      "applyFailed": "Couldn’t tune this playlist. Try again."
     },
     "playNext": "Play next",
     "playAfter": "Play after",
@@ -82,6 +82,7 @@
     "selectAll": "Select all",
     "select": "Select",
     "clearSelection": "Clear selection",
+    "doneSelecting": "Done",
     "goToArtist": "Go to artist",
     "artist": "Artist",
     "aboutTheArtist": "About the artist",
@@ -108,6 +109,7 @@
     "today": "Today",
     "yesterday": "Yesterday",
     "durationHrMin": "{hours} hr {minutes} min",
+    "durationHr": "{hours} hr",
     "durationMin": "{minutes} min",
     "metaLine": "{count} · {duration}",
     "tempoColumn": "BPM · Key column",
@@ -130,6 +132,7 @@
     },
     "sort": {
       "customOrder": "Custom order",
+      "albumOrder": "Album order",
       "title": "Title",
       "artist": "Artist",
       "album": "Album",
@@ -137,7 +140,8 @@
       "duration": "Duration",
       "ascending": "Ascending",
       "descending": "Descending",
-      "menu": "Sort"
+      "menu": "Sort",
+      "named": "Sort: {order}"
     },
     "filter": {
       "title": "Filter tracks",
@@ -190,7 +194,17 @@
       "tempoFast": "120–139 BPM",
       "tempoVeryFast": "140+ BPM",
       "onlyLiked": "Only songs I liked",
-      "hideUnplayable": "Hide songs I can’t play"
+      "hideUnplayable": "Hide songs I can’t play",
+      "unavailable": {
+        "$comment": "The bar over a list that holds songs the user cannot play (boards C-Unavailable / C-Unavailable-Compact). `summary` is the short form; `explained` names the reasons, joined from `region` / `upcoming`, or `allRegion` / `allUpcoming` when every such song shares one reason. `hide` turns on the filter card's `hideUnplayable` switch.",
+        "summary": "{count, plural, one {# song here can’t be played.} other {# songs here can’t be played.}}",
+        "explained": "{count, plural, one {# song here can’t be played} other {# songs here can’t be played}}: {reasons}.",
+        "region": "{count, plural, one {one isn’t available in your country} other {# aren’t available in your country}}",
+        "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
+        "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
+        "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
+        "hide": "{count, plural, one {Hide it} other {Hide them}}"
+      }
     },
     "density": {
       "rowSize": "Row size",
@@ -203,7 +217,10 @@
       "$comment": "The three things that can stand in for rows. `noTracks` is a VERDICT (the membership landed and it is empty); `loadFailed` is the absence of a verdict (the fetch failed and nothing is resident) and is deliberately a different sentence — saying \"Nothing here yet\" about a playlist we simply could not read is a lie the user cannot act on.",
       "noTracks": "Nothing here yet",
       "noMatch": "No songs match your filter",
-      "loadFailed": "Couldn't load these songs"
+      "loadFailed": "Couldn't load these songs",
+      "$commentLead": "An EMPTY playlist's lead over its Recommended songs (Compact): findSongs is the line under noTracks, searchSongs the placeholder of the field that looks for songs to add.",
+      "findSongs": "Find songs to add, or start from the suggestions below.",
+      "searchSongs": "Search for songs or episodes"
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",
@@ -231,6 +248,7 @@
       "collaborative": "Collaborative playlist",
       "publicPlaylist": "Public playlist",
       "inviteCollaborators": "Invite collaborators",
+      "invite": "Invite",
       "copyInviteLink": "Copy invite link",
       "inviteHint": "Anyone with the link can join this playlist as a collaborator.",
       "collaborativeHint": "Collaborators can add, remove, and reorder songs.",
@@ -294,6 +312,8 @@
       "video": "Music video",
       "localFile": "Local file",
       "unavailable": "Audio unavailable",
+      "unavailableShort": "Unavailable",
+      "unavailableReason": "This song isn’t available to play",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"
@@ -392,7 +412,6 @@
     "factSong": "Song",
     "factLength": "Length",
     "factLabel": "Label",
-    "factOfCount": "{n} of {total}",
     "otherVersions": "Other versions",
     "recommended": "Recommended songs",
     "noSuggestions": "No suggestions right now",
@@ -403,6 +422,11 @@
     "collabView": "View collaborators",
     "queueUnavailable": "Can’t add to queue right now",
     "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
+    "filteredMark": "(filtered)",
+    "dateGroup": {
+      "thisWeek": "This week",
+      "earlier": "Earlier"
+    },
     "episodeCountOf": "{shown} of {count, plural, one {# episode} other {# episodes}}",
     "rail": {
       "artistsMenu": "Artists"
@@ -576,7 +600,11 @@
       "relatedConcerts": "Related concerts",
       "onSaleFrom": "On sale from {start}",
       "onSaleUntil": "On sale until {end}",
-      "onSaleRange": "On sale {start} - {end}"
+      "onSaleRange": "On sale {start} - {end}",
+      "onSale": "On sale",
+      "playLineup": "Play the lineup",
+      "interested": "Interested",
+      "interestedOn": "Interested ✓"
     },
     "setLocation": "Set location",
     "nearApproximate": "Near {place} (approximate)",
@@ -1031,6 +1059,13 @@
     "selectShow": "Select a show to see its episodes",
     "selectAlbumTracks": "Select a release",
     "openAlbum": "Open album",
+    "openPlaylist": "Open playlist",
+    "playlistsCount": "{p, plural, one {# playlist} other {# playlists}} · {f, plural, one {# folder} other {# folders}}",
+    "playlistGroup": {
+      "madeByYou": "Made by you",
+      "madeForYou": "Made for you",
+      "followed": "Followed"
+    },
     "playAll": "Play all",
     "playAlbum": "Play {name}",
     "alsoBy": "Also by {name} in your library",
@@ -1052,20 +1087,14 @@
     "sortBy": "Sort by",
     "viewAs": "View as",
     "size": "Size",
-    "sort": {
-      "recents": "Recents",
-      "recentlyAdded": "Recently added",
-      "alphabetical": "Alphabetical",
-      "creator": "Artist",
-      "releaseDate": "Release date"
-    },
     "rail": {
       "recents": "recents",
       "alphabetical": "alphabetical",
       "creator": "artist",
       "recentlyAdded": "recently added",
       "releaseDate": "release date",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "more"
     },
     "scope": {
       "inLibrary": "in your library",
@@ -1100,6 +1129,8 @@
       "layoutSub": "Classic or Library. Applies immediately.",
       "density": "Density",
       "densitySub": "Two-line or one-line rows for playlists and albums",
+      "showCovers": "Show covers",
+      "showCoversSub": "Artwork beside playlists and albums. Off shows compact text rows.",
       "reset": "Reset this layout",
       "resetSub": "Back to the default sections and order",
       "fileFault": "Your sidebar layout couldn't be read, so the default is shown.",
@@ -1172,6 +1203,82 @@
       "storage": "Storage & cache",
       "privacy": "Privacy & diagnostics",
       "about": "About"
+    },
+    "areas": {
+      "$comment": "The page's twelve sections (the Zune boards' list). Each is a composition of document sections (Settings.Areas.cs): the names are the rail's, the Compact list's and the deep links'.",
+      "account": "Account",
+      "appearance": "Appearance",
+      "playback": "Playback",
+      "audio": "Audio",
+      "lyrics": "Lyrics",
+      "devices": "Devices & Connect",
+      "storage": "Storage & cache",
+      "notifications": "Notifications",
+      "keyboard": "Keyboard",
+      "privacy": "Privacy",
+      "feedback": "Feedback & help",
+      "about": "About"
+    },
+    "account": {
+      "title": "Account",
+      "subtitle": "The Spotify account Wavee is signed in to",
+      "signedInAs": "Signed in as",
+      "profile": "Your profile",
+      "profileSub": "Open your Spotify profile in Wavee",
+      "manage": "Manage account on spotify.com",
+      "manageSub": "Plan, payment and password live on Spotify's site",
+      "signOutSub": "You'll need to authorize Wavee again to stream your library."
+    },
+    "devices": {
+      "title": "Spotify Connect",
+      "subtitle": "Phones and speakers on your account can play here",
+      "thisPc": "This PC shows up as",
+      "thisPcSub": "The name other Spotify apps list for this computer"
+    },
+    "keyboard": {
+      "title": "Keyboard shortcuts",
+      "subtitle": "The keys Wavee answers to",
+      "playPause": "Play or pause",
+      "playPauseSub": "Anywhere except while typing in a text field",
+      "seekBack": "Seek back 5 seconds",
+      "seekBackSub": "With the player focused; hold to step 15, then 30",
+      "seekForward": "Seek forward 5 seconds",
+      "seekForwardSub": "With the player focused; hold to step 15, then 30",
+      "seekBackFine": "Seek back 1 second",
+      "seekForwardFine": "Seek forward 1 second",
+      "volumeUp": "Volume up",
+      "volumeUpSub": "With the player focused",
+      "volumeDown": "Volume down",
+      "volumeDownSub": "With the player focused",
+      "search": "Search",
+      "palette": "Command palette",
+      "settings": "Open settings",
+      "newTab": "New tab",
+      "back": "Go back",
+      "forward": "Go forward",
+      "fullscreen": "Full screen",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Reset zoom",
+      "escape": "Close full screen, the palette or the stage"
+    },
+    "feedback": {
+      "title": "Feedback & help",
+      "subtitle": "Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.",
+      "reportProblem": "Report a problem",
+      "reportProblemSub": "Something broke or looks wrong · opens the report with diagnostics",
+      "suggest": "Suggest something",
+      "suggestSub": "A feature or a change you want",
+      "ask": "Ask a question",
+      "askSub": "How something works",
+      "diagnosticsTitle": "Diagnostics",
+      "copyAction": "Copy",
+      "holdsTitle": "What a report holds",
+      "holdsWrite": "What you write, and the steps",
+      "holdsVersions": "Wavee and Windows versions, your install and architecture",
+      "holdsLogs": "The last {count} log lines, if you tick it",
+      "holdsNever": "Never your account details, secrets or personal paths",
+      "helpTitle": "Help"
     },
     "language": {
       "title": "Language & region",
@@ -1302,20 +1409,51 @@
       "title": "Now playing",
       "subtitle": "The player styles behind the pinned cover"
     },
+    "themePicker": {
+      "$comment": "Settings > Appearance > Theme: the strip of installed-theme cards (themes plan 8.1).",
+      "subtitle": "A theme changes how every page, the player and navigation look",
+      "sub": "Each theme keeps its own options",
+      "none": "No themes are installed",
+      "developer": "Developer",
+      "switchFailed": "This theme could not be applied, so Wavee kept the current one"
+    },
+    "themeOptions": {
+      "$comment": "Settings > Appearance > the active theme's options: one expander, rows grouped (themes plan 8.1). The title is built from the theme's own name.",
+      "title": "{theme} options",
+      "none": "This theme has no options",
+      "displayTitle": "Display",
+      "animationEffects": "Animation effects",
+      "animationEffectsSub": "Follows the Windows animation setting",
+      "reset": "Reset options",
+      "resetSub": "Put every option of this theme back to its default. Your other settings are not changed.",
+      "resetConfirmTitle": "Reset options?",
+      "resetConfirmBody": "Every option of this theme goes back to its default. This can't be undone.",
+      "resetAction": "Reset",
+      "surfaces": "Tinted surfaces",
+      "surfacesSub": "How much the artwork tints the shell, the page ground, the hero washes and the photo veils",
+      "surfacesOff": "Off",
+      "surfacesSubtle": "Subtle",
+      "surfacesRich": "Rich",
+      "accentFromArtwork": "Accent from artwork",
+      "accentFromArtworkSub": "Play, Follow, hearts and links take their colour from the cover. Off uses your Windows accent",
+      "nowPlayingColors": "Now playing colours",
+      "nowPlayingColorsSub": "Full screen, lyrics and the queue take their colour from the playing cover. Off keeps them neutral",
+      "group": {
+        "sidebar": "Sidebar",
+        "trackLists": "Track lists",
+        "trackPages": "Track pages",
+        "surfaces": "Surfaces"
+      }
+    },
+    "home": {
+      "title": "Home",
+      "subtitle": "How Home shows your daylist"
+    },
     "appearance": {
       "title": "Theme",
       "subtitle": "Theme, zoom and shell effects",
       "marquee": "Marquee text",
       "marqueeSub": "Scroll overflowing titles instead of truncating them",
-      "colorWashes": "Color washes",
-      "colorWashesSub": "Tint the shell and page surfaces from artwork",
-      "pageMotion": "Page motion",
-      "pageMotionSub": "How pages animate when you navigate",
-      "pageMotionFluent": "Fluent",
-      "pageMotionSpatial": "Spatial",
-      "pageMotionWinUi": "WinUI",
-      "pageMotionClassic": "Classic",
-      "pageMotionNone": "None",
       "zoom": "Zoom",
       "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
       "zoomAuto": "Auto ({percent}%)",
@@ -1324,6 +1462,7 @@
       "zoomReset": "Reset zoom",
       "theme": "Theme",
       "themeSub": "System follows the Windows setting live",
+      "appMode": "App mode",
       "rowDensity": "Row density",
       "rowDensitySub": "Choose how much music fits on screen; the miniature rows preview the real spacing.",
       "trackListStyle": "Track list style",
@@ -1348,7 +1487,6 @@
       "railResetConfirmBody": "This resets the left rail's remembered width and collapsed state for albums, playlists, Liked Songs and podcasts back to their defaults. This can't be undone.",
       "lyricsBlur": "Lyrics blur",
       "lyricsBlurSub": "Depth-of-field and glow blur on the lyrics. 0 turns them off — lighter on the GPU.",
-      "lyricsBlurAuto": "Auto",
       "npvPresentation": "Hero",
       "npvPresentationSub": "Show the cover or a player above the track details",
       "npvStyle": "Player style",
@@ -1557,7 +1695,7 @@
       "noticesMissing": "Third-party notices are generated at packaging time."
     },
     "diagnostics": {
-      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Diagnostics.UI.cs, Diagnostics.Capture.UI.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
+      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Screens/Diagnostics.Pages.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
       "openLogFolder": "Open log folder",
       "refresh": "Refresh"
     },
@@ -1735,7 +1873,9 @@
     "closeTab": "Close tab",
     "closeOtherTabs": "Close other tabs",
     "closeTabsRight": "Close tabs to the right",
-    "closeAllUnpinned": "Close all unpinned tabs"
+    "closeAllUnpinned": "Close all unpinned tabs",
+    "switchTabs": "{count} open tabs",
+    "accountAndMore": "Account and more"
   },
   "friends": {
     "title": "Friend activity",
@@ -1883,6 +2023,9 @@
     "lyrics": "Lyrics",
     "resyncLyrics": "Resync",
     "lyricsSyncUnavailableDuringVideo": "Synced lyrics aren't available while a video is playing",
+    "lyricsSyncedWords": "Synced · word by word",
+    "lyricsSyncedLines": "Synced · line by line",
+    "lyricsNotSynced": "Not synced",
     "expandLyrics": "Expand lyrics",
     "closeLyrics": "Close lyrics",
     "closeLyricsHint": "Close lyrics (Esc)",
@@ -2138,6 +2281,7 @@
     "recents": "Recents",
     "playlist": "Playlist",
     "playlistPrivate": "Playlist · private",
+    "playlistPublic": "Playlist · public",
     "playlistCollaborative": "Playlist · collaborative",
     "album": "Album",
     "artist": "Artist",
@@ -2237,7 +2381,8 @@
       "pageSuffix": "· {page}",
       "search": "Search in Your Library",
       "searchPlaceholder": "Search in Your Library",
-      "options": "More options"
+      "options": "More options",
+      "refreshFailed": "Couldn’t refresh your library. Showing what was loaded."
     },
     "view": {
       "list": "List",
@@ -2297,9 +2442,6 @@
       "shortcutsUnpinned": "Shortcuts unpinned",
       "resetEverything": "Sidebar reset",
       "settingsHidden": "Settings hidden. It stays in the profile menu"
-    },
-    "palette": {
-      "useLayout": "Use {layout} layout"
     },
     "active": "Active",
     "pinned": "Pinned",
@@ -2361,10 +2503,12 @@
       "unpinnedNamed": "Unpinned {name}",
       "pinTo": "Pin to sidebar",
       "unpin": "Unpin from sidebar",
+      "unpinShort": "Unpin",
       "undo": "Undo",
       "emptyHint": "Or use the pin action on any library item.",
       "folderMissing": "Not in your library on this device yet",
       "unavailable": "Unavailable",
+      "offline": "Not available offline",
       "dropHere": "Drop here to pin",
       "signedOut": "Sign in to pin to the sidebar",
       "folder": "Folder",
@@ -2491,12 +2635,17 @@
     "close": "Close",
     "retry": "Retry",
     "dismiss": "Dismiss",
-    "offline": "You're offline — showing saved content.",
+    "offline": "You're offline · showing saved content.",
+    "offlineTitle": "You're offline",
+    "offlineNeeds": "{page} needs a connection. Your downloads and the pages you opened recently still work.",
+    "offlineNeedsAny": "This page needs a connection. Your downloads and the pages you opened recently still work.",
+    "goToLibrary": "Go to Your Library",
     "emptyTitle": "Nothing here yet",
     "emptySubtitle": "When there's something to show, it'll appear here.",
     "errorTitle": "Something went wrong.",
     "errorSubtitle": "Check your connection and try again.",
     "offlineBanner": "You're offline. Cached content still works; playback and edits resume when you're back.",
+    "offlineSubtitle": "Cached content still works; playback and edits resume when you're back.",
     "controlledByDevice": "Controlled by {device}",
     "restartNow": "Restart now",
     "restartToApply": "Applies after restart",
@@ -2625,6 +2774,12 @@
     "goLive": "Go live",
     "behind": "−{time}"
   },
+  "track": {
+    "$comment": "Facts about one track row that are not playback state. `onThisPc` is the row indicator for a track whose audio is fully cached on this computer at the current quality with its key saved (Playback.OnThisPc). It is NOT offline playback and not a download, and it is a different key from settings.storage.onThisPc (the Storage section header).",
+    "onThisPc": "On this PC",
+    "notOnThisPc": "Not on PC",
+    "notOnThisPcReason": "You're offline, and this song isn't saved on this PC."
+  },
   "modulePage": {
     "$comment": "A page a playback module DESCRIBES and the app renders (Part 9). `title` is the destination's fallback label — used by the tab strip, the breadcrumb and a pinned row when the navigating surface carried no name of its own. `openOn` takes the module's display name ({name}), so the row reads 'Open on YouTube'. There is deliberately no `loading` and no `retry` here: the loading state is a shimmer DERIVED from the page itself and carries no copy at all, and the retry label is the app's one `common.retry` (ErrorState owns it) — a second spelling of either would be a dead key that drifts. `playing` is the WATCH layout's inert state capsule — it replaces the play capsule while this page's entity is the item in the bar, so it is a state badge and never a control.",
     "title": "Module",
@@ -2648,10 +2803,338 @@
     "unavailable": "This category isn't available right now",
     "homeSubtitle": "Genres, moods and charts — everything Spotify is featuring right now."
   },
+  "theme": {
+    "$comment": "Installed themes: their names and one-line descriptions, referenced by each theme's manifest (Theming/Composition/ThemeManifest.cs).",
+    "classic": {
+      "name": "Wavee Classic",
+      "description": "Today’s Wavee: sidebar, tabs, washes"
+    },
+    "zune": {
+      "$comment": "Zune (P5, Developer-only). Z0 owns name, description and options; each family lane writes only inside its own object below.",
+      "name": "Zune",
+      "description": "Big type, pivots and a band in place of the sidebar",
+      "options": {
+        "background": "Background",
+        "backgroundSub": "What sits behind page titles",
+        "backgroundArtworkWash": "Artwork wash",
+        "backgroundMix": "Mix",
+        "backgroundNone": "None",
+        "panoramaFit": "Panorama titles",
+        "panoramaFitSub": "Page titles bleed off the edge, or fit the window",
+        "panoramaFitBleed": "Bleed off the edge",
+        "panoramaFitFit": "Fit the window",
+        "bandPins": "Pins in the band",
+        "bandPinsSub": "Show up to six pinned items beside the pivots when the window is wide enough",
+        "group": {
+          "pages": "Pages",
+          "band": "Band"
+        },
+        "parameter": {
+          "$comment": "Structure parameters: never shown in Settings; a composition sets them.",
+          "collapseBand": "Collapse the band on scroll",
+          "pivotOverflow": "Pivots that do not fit",
+          "edgeFadeScroll": "Scroll under an edge fade",
+          "moreMenu": "More menu",
+          "seekTimes": "Play bar times",
+          "inFace": "Beside the title",
+          "atSliderEnds": "At the ends of the seek bar",
+          "panelMode": "Right panel",
+          "inlineWhenRoom": "Inline when there is room",
+          "alwaysOverlay": "Always overlay",
+          "maxDockedPanes": "Docked panes"
+        }
+      },
+      "style": {
+        "group": { "colour": "colour" },
+        "accent": "accent",
+        "accentSub": "play, the playing row, selection",
+        "useWindowsAccent": "use the windows accent",
+        "useWindowsAccentSub": "follow the accent colour windows uses",
+        "density": "row size",
+        "densitySub": "every song list",
+        "densityCompact": "compact 44",
+        "densityStandard": "standard 52",
+        "densityComfortable": "comfortable 60",
+        "bigNumerals": "big light numbers",
+        "bigNumeralsSub": "albums, artists, the queue"
+      },
+      "frame": {
+        "$comment": "Z2a: the title bar's wordmark (cased by the style), Back's tool tip, the pill's placeholder (Zune writes it lowercase), the suggestions' see-all row ({query} is the typed text, never re-cased), the panel's close tool tip.",
+        "wordmark": "wavee",
+        "back": "Back",
+        "searchPlaceholder": "search",
+        "searchHint": "ctrl f",
+        "searchSeeAll": "see all results for “{query}”",
+        "closePanel": "Close"
+      },
+      "band": {
+        "$comment": "Z2b: the band's words (cased by the style's roles). library is the library pivot's word (the core's destination says Your Library; the boards say library); pinned leads the pins; playPin is a pin's play disc tool tip ({name} is the pin's own name, never re-cased).",
+        "library": "Library",
+        "pinned": "Pinned",
+        "playPin": "Play {name}"
+      },
+      "lists": {},
+      "player": {
+        "$comment": "Z4a: the play bar's and the panel bodies' words (cased by the style's roles: Zune writes them lowercase). Names follow these words in their own casing.",
+        "devices": "Devices",
+        "playingOn": "Playing on",
+        "playOn": "Play on",
+        "playingFrom": "Playing from",
+        "nextUpFrom": "Next up from",
+        "translate": "Translate"
+      },
+      "stage": {
+        "$comment": "Z4b: the fullscreen stage's word actions (lowercased by the case roles). The stage's other words are stage.*.",
+        "options": "Options",
+        "layoutWord": "Layout · {layout}",
+        "faceWord": "Face · {face}",
+        "next": "Next",
+        "$comment2": "Z4c: the rest of the stage, the Up next column, the lyrics view and video (lowercased by the case roles; names are never re-cased).",
+        "aboutArtist": "About the artist",
+        "upNextFrom": "From",
+        "upNextMore": "{count} more",
+        "autoplayWhenEnds": "Autoplay when the queue ends",
+        "autoplayBlurb": "When {name} ends, Wavee keeps going with songs like it.",
+        "autoplayIsOn": "Autoplay is on",
+        "autoplayIsOff": "Autoplay is off",
+        "playedBeforeThis": "Played before this",
+        "playedBeforeEmpty": "Nothing played before this yet.",
+        "videoFullScreen": "Video · full screen",
+        "videoKind": "Official video",
+        "videoSwitchToAudio": "Switch to audio",
+        "videoMiniPlayerWord": "Mini player",
+        "videoPlayHeading": "Play video"
+      },
+      "discovery": {
+        "$comment": "Z5: Home's quickplay heads (pins, history, new), the pins' edit word, the Browse category banner's kind word. Written as people say them; the style's case roles lower them.",
+        "pins": "Pins",
+        "history": "History",
+        "new": "New",
+        "edit": "Edit",
+        "category": "Category"
+      },
+      "detail": {
+        "$comment": "Z6a1: the heading over a detail page's track list. Written as people say it; the style's case roles lower it.",
+        "songs": "Songs",
+        "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
+        "chooseCover": "Choose a cover",
+        "emptyTitle": "Let’s find something for this playlist",
+        "emptyLine": "Search below, or drag songs here from anywhere in Wavee",
+        "refresh": "Refresh",
+        "add": "Add",
+        "details": "Details",
+        "ticketsNote": "Prices come from the ticket providers, not Wavee"
+      },
+      "artist": {
+        "$comment": "Z6a2: the artist page, its lightbox and the discography. Written as people say them; the style's case roles lower them. Names are never re-cased.",
+        "discography": "Discography",
+        "about": "About"
+      },
+      "collection": {
+        "$comment": "Z7: the collection (library, Recents, profile). Words are written as people say them; the style's case roles lower them. library: sort and view are the head's two labels, the sizes are the grid's S/M/L menu steps. recents: busiestDay leads the overview's 'Busiest day · Oct 6 · 31 plays' line, jumpToToday is its link. profile: the page's words are the core's person.* keys; nothing new.",
+        "library": {
+          "sort": "Sort",
+          "view": "View",
+          "findIn": "find in {kind}",
+          "savedMeta": "{n} saved · {time}",
+          "feedToday": "Today",
+          "feedWeek": "This week",
+          "feedEarlier": "Earlier",
+          "emptyKind": "No {kind} in your library yet",
+          "countAlbums": "{n, plural, one {# album} other {# albums}}",
+          "countArtists": "{n, plural, one {# artist} other {# artists}}",
+          "countShows": "{n, plural, one {# show} other {# shows}}",
+          "countAudiobooks": "{n, plural, one {# audiobook} other {# audiobooks}}",
+          "heroAlbums": "albums",
+          "heroSongs": "songs saved",
+          "inYourLibrary": "in your library",
+          "artistKind": "artist",
+          "artistAlbums": "Albums",
+          "artistInLibrary": "in your library",
+          "allArtists": "All artists",
+          "allAlbums": "All albums",
+          "albumsInLibrary": "{n, plural, one {# album} other {# albums}} · in your library",
+          "sizeSmall": "Small",
+          "sizeMedium": "Medium",
+          "sizeLarge": "Large"
+        },
+        "recents": {
+          "busiestDay": "Busiest day",
+          "jumpToToday": "Jump to today"
+        },
+        "profile": {}
+      },
+      "overlays": {
+        "$comment": "Z8a: the overlays (the offline strip's notice). Words are written as people say them; the style's case roles lower them.",
+        "offlineNotice": "You're offline · cached content still works; playback and edits resume when you're back",
+        "offlineNoticeShort": "You're offline · cached music still plays"
+      },
+      "screens": {
+        "$comment": "Z8b: the screens (Settings preview, setup). Words are written as people say them; the style's case roles lower them.",
+        "previewLabel": "Preview",
+        "previewNote": "Every option is a token the Zune theme reads. Pages never ask which theme is on.",
+        "previewPivotHome": "Home",
+        "previewPivotBrowse": "Browse",
+        "previewPivotLibrary": "Library",
+        "previewPivotRecents": "Recents",
+        "previewTitle": "Random Access Memories",
+        "previewTrack1": "Give Life Back to Music",
+        "previewTrack2": "The Game of Love",
+        "previewTrack3": "Giorgio by Moroder",
+        "previewTrack4": "Get Lucky",
+        "previewPlay": "Play",
+        "previewNowPlaying": "Get Lucky · Daft Punk",
+        "setupSteps": "Terms · Sign in · Theme · Local playback",
+        "setupStepTerms": "Terms",
+        "setupStepSignIn": "Sign in",
+        "setupStepTheme": "Theme",
+        "setupStepPlayback": "Local playback",
+        "setupBack": "Back"
+      },
+      "states": {}
+    },
+    "winui": {
+      "$comment": "WinUI (P6, Developer-only). W0 owns name, description, options and style (the six W-ThemeOptions options); each family lane writes only inside its own object below.",
+      "name": "WinUI",
+      "description": "Fluent navigation view, title-bar tabs and Mica",
+      "options": {
+        "navigationPane": "Navigation pane",
+        "navigationPaneSub": "Expanded, compact rail, or automatic by window width",
+        "navigationPaneExpanded": "Expanded",
+        "navigationPaneCompact": "Compact",
+        "navigationPaneAutomatic": "Automatic",
+        "tabs": "Tabs in the title bar",
+        "tabsSub": "Off hides the strip; open tabs stay and come back when it’s on",
+        "artworkInRows": "Artwork in track rows",
+        "artworkInRowsSub": "Shows a 40 px cover on playlist and liked rows",
+        "group": {
+          "window": "Window"
+        }
+      },
+      "style": {
+        "$comment": "The style's three options (WinUiStyle, W1): keys only, W0 wrote them with the structure's so the six land together.",
+        "backdrop": "Backdrop",
+        "backdropSub": "The window material behind the title bar, pane and player",
+        "backdropMica": "Mica",
+        "backdropMicaAlt": "Mica Alt",
+        "backdropAcrylic": "Acrylic",
+        "backdropNone": "None (solid)",
+        "density": "Density",
+        "densitySub": "Row and pane item height",
+        "densityStandard": "Default",
+        "densityCompact": "Compact",
+        "useWindowsAccent": "Use the Windows accent colour",
+        "useWindowsAccentSub": "Off uses Wavee’s own blue"
+      },
+      "frame": {
+        "$comment": "The frame family (W2a): the two-row title bar's tooltips, the Wavee mark, the short search placeholder.",
+        "appName": "Wavee",
+        "search": "Search",
+        "back": "Back",
+        "forward": "Forward",
+        "more": "More"
+      },
+      "nav": {
+        "$comment": "W2b: the navigation pane. The Collections section is called Library under WinUI (board Shell-Nav); Settings is the route's own title.",
+        "library": "Library"
+      },
+      "discovery": {
+        "$comment": "W5 (the discovery pages): the daylist's eyebrow (Your daylist, capitalised as the board writes it) and the Small clock line.",
+        "yourDaylist": "Your daylist",
+        "nextIn": "Next in {t}",
+        "more": "Podcasts & audiobooks",
+        "resultsFor": "Results for “{q}”"
+      },
+      "lists": {
+        "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
+      },
+      "detail": {
+        "$comment": "W6a (P6): the detail pages and the artist family under WinUI (boards W-Album, W-Artist, W-Discography). The album's own words and the artist's keep their shared keys; these are the words only WinUI draws.",
+        "aboutAlbum": "About this album",
+        "copyright": "Copyright",
+        "artistsOnAlbum": "Artists on this album",
+        "monthlyListeners": "{count} monthly listeners",
+        "featuredOn": "Featured on {title}",
+        "overview": "Overview",
+        "about": "About",
+        "seeMore": "See more",
+        "showAllAlbums": "Show all {count, plural, one {# album} other {# albums}}",
+        "showAll": "Show all",
+        "newest": "Newest",
+        "oldest": "Oldest",
+        "popular": "Popular",
+        "sortBy": "Sort by",
+        "typeFilter": "Release type",
+        "latestRelease": "Latest release",
+        "discography": "Discography",
+        "readMore": "Read more",
+        "viewGrid": "Grid",
+        "viewList": "List",
+        "verifiedArtist": "Verified artist",
+        "artistRadio": "Artist radio"
+      },
+      "stage": {
+        "$comment": "W4b: the fullscreen stage (W-Stage, W-Lyrics): the layouts' short names, the options popover's sections, the bar's Romanization word, the Huge card's eyebrow.",
+        "layoutCard": "Card",
+        "layoutLarge": "Large art",
+        "layoutCentered": "Centered",
+        "layoutArtist": "Artist",
+        "face": "Face",
+        "layout": "Layout",
+        "backgroundBlur": "Background blur",
+        "blurOff": "0 · off",
+        "romanization": "Romanization",
+        "nowPlaying": "Now playing"
+      },
+      "screens": {
+        "$comment": "W8b (P6): the screens. The seven Settings tabs (WinUiSettingsGrouping), the theme card and its options, the keyboard list's Ctrl+Tab row.",
+        "tabGeneral": "General",
+        "tabAppearance": "Appearance",
+        "tabPlayback": "Playback",
+        "tabNotifications": "Notifications",
+        "tabStorage": "Storage & cache",
+        "tabPrivacy": "Privacy & diagnostics",
+        "tabAbout": "About",
+        "themeSection": "Theme",
+        "themeSectionSub": "Which theme draws Wavee, and the options that theme defines",
+        "themeTitle": "Theme",
+        "themeSub": "Changes everything that is presentation: pages, player and navigation. Core features stay the same.",
+        "optionsTitle": "{name} theme options",
+        "on": "On",
+        "off": "Off",
+        "navNoteMinimal": "Now minimal: the window is {width} wide. The rail returns from {rail}, the full pane from {pane}.",
+        "navNoteRail": "Now the rail: the window is {width} wide. The full pane returns from {pane}.",
+        "navNoteExpanded": "Now the full pane: the window is {width} wide.",
+        "previewTitle": "Preview",
+        "cycleTabs": "Next tab",
+        "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden."
+      },
+      "overlays": {
+        "$comment": "W8a: the overlays and the dialogs. The offline strip is an InfoBar: the title is common.offlineTitle, the body is this.",
+        "offlineStripBody": "Cached content still works; playback and edits resume when you're back."
+      },
+      "player": {
+        "$comment": "W4a: the play bar, the side panes and their bodies (boards Shell-Player, W-Queue, W-PaneLyrics, W-PaneNowPlaying, W-Shell-*).",
+        "thisPc": "This PC",
+        "devices": "Devices",
+        "wherePlayVideo": "Where to play the video",
+        "closePane": "Close pane",
+        "morePaneTabs": "More pane tabs: {names}",
+        "friends": "Friends",
+        "grabber": "Drag down to close",
+        "nowPlaying": "Now playing",
+        "deckStyle": "Now playing style",
+        "playingFrom": "Playing from",
+        "showLyrics": "Show lyrics",
+        "from": "from",
+        "translate": "Translate"
+      }
+    }
+  },
   "setup": {
-    "layout": {
-      "title": "Choose your sidebar",
-      "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
+    "theme": {
+      "title": "Choose your theme",
+      "body": "A theme changes how every page, the player and navigation look. You can switch any time in Settings."
     },
     "next": "Next",
     "stepOf": "Step {n} of {total}",
@@ -2826,7 +3309,10 @@
     "homePodcasts": "Home: Podcasts",
     "homeAudiobooks": "Home: Audiobooks",
     "homeFollowingOn": "Home: Following on",
-    "homeFollowingOff": "Home: Following off"
+    "homeFollowingOff": "Home: Following off",
+    "themeOptionOn": "{option}: on",
+    "themeOptionOff": "{option}: off",
+    "themeOptionChoice": "{option}: {choice}"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -3034,6 +3520,7 @@
     "tryIt": "Try it →",
     "storeCta": "Get it from the Microsoft Store",
     "readMore": "Read more",
+    "tryIt": "Try it →",
     "showAll": "Show all {count}",
     "asOf": "Issue states as of {date}",
     "releases": "Releases",
@@ -3495,7 +3982,7 @@
     }
   },
   "logs": {
-    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.UI.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
+    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.Host.cs + Themes/Common/CommonLogs.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
     "title": "Logs",
     "thisSession": "This session · pid {pid} · running {uptime}",
     "openFolder": "Open folder",
@@ -3573,6 +4060,10 @@
       "payloadsNote": "Payloads are only captured when a fan-out actually runs; cached answers have none."
     },
     "noLyrics": "No lyrics available",
+    "offline": {
+      "title": "Lyrics need a connection",
+      "body": "These lyrics aren’t saved on this PC yet. They’ll appear when you’re back online."
+    },
     "debug": {
       "pill": "lyrics debug",
       "title": "Lyrics search",

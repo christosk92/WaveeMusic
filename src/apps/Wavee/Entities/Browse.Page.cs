@@ -1,7 +1,8 @@
 // ── Entities/Browse.Page.cs ────────────────────────────────────────────────────────────────────────────────────────
-// the Browse directory page and a Browse category page (0.2.9 BrowseDirectoryPage + BrowsePage + BrowsePageHost)
+// the Browse directory page, its Charts band and a Browse category page: the CORE HOSTS (0.2.9 BrowseDirectoryPage + BrowsePage +
+// BrowsePageHost); T10a2 moved the pictures to Classic (`Pages.Browse`, `Browse.Charts`, `Pages.BrowseCategory`)
 //
-// Role: UI
+// Role: UI (core hosts)
 // Owner: P (stream P3)
 // Wave: 5
 // Budget: 700 lines
@@ -17,41 +18,40 @@
 //
 // READINESS IS READ OFF THE COLUMNS, NEVER A LOADABLE: known = the row Knows its group; failed = this page demanded it,
 // nothing is in flight and it is still unknown (a terminal failure un-asks the group); anything else is pending. Each
-// page mounts ONE `SkelRegionEl` over cached delegates reading fields the render latched (Artist.Page's precedent), so a
-// table publish re-renders the page and rebinds the region — it never remounts it.
+// host publishes ONE `BrowseLoad` verdict and the view mounts ONE `SkelRegionEl` over it (Artist.Page's precedent), so a
+// table publish re-renders the host and rebinds the region — it never remounts it.
 //
 // ── THE DIRECTORY (W15-W18) ──────────────────────────────────────────────────────────────────────────────────────────
 //
-// The masthead band paints NOTHING (live Mica), so the directory cuts ITSELF at the band's lower edge: an 100-DIP spacer
+// The masthead band paints NOTHING (live Mica), so the directory view cuts ITSELF at the band's lower edge: an 100-DIP spacer
 // ABOVE a node clipped with `StickyClip(84)`, whose 24-DIP top feather arms only on the clip's engage edge — content
 // dissolves into the band, is never guillotined by it, and never softens at rest. `SkelReveal.None`: the bands own the
-// entrance (Browse.UI.cs). The Charts band is its OWN component over the chart section rows, so a Featured outage never
-// blanks the rest of the directory and a categories outage never blanks the Charts band (two retries, W22).
+// entrance (`ClassicBrowseDirectory`). The Charts band is its OWN host over the chart section rows, so a Featured outage never
+// blanks the rest of the directory and a categories outage never blanks the Charts band (two retries, W22). The host keeps the
+// memoized band list (`BrowseTaxonomy.Grouped` over the tile rows), rebuilt ONLY when the tile list or a tile row changed.
 //
 // ── THE CATEGORY PAGE (W19-W22) ──────────────────────────────────────────────────────────────────────────────────────
 //
 // The masthead title is PUBLISHED, outside the skeleton (`Shell.Mastheads`): until the page's own title lands the band
 // already shows the route's arg, so the breadcrumb never shimmers (§9 must-not-simplify 9). `BrowsePageLayout` decides
-// the body's SHAPE: Shelves keeps a page ScrollView; a flattened body hands scroll to `HomeModules.SectionGrid`'s own
-// virtual viewport inside a Grow-1 / MinHeight-0 slot (a virtual viewport inside a page ScrollView measures 0 and shears
-// every cover — must-not-simplify 10). FlattenOne is the SINGLE-SECTION page (`BrowseSingleSection`, the official
-// client's rule): the page's model is that section's WHOLE item list, which the query layer walks to the server's end
-// (`Spotify.Api.Browse.cs`) — so the page never pages anything itself: no "Show all" tool, no tail preloader, no
+// the body's SHAPE and the host hands it to the view with each band's rows: Shelves keeps a page ScrollView; a flattened body hands
+// scroll to `HomeModules.SectionGrid`'s own virtual viewport inside a Grow-1 / MinHeight-0 slot (a virtual viewport inside a page
+// ScrollView measures 0 and shears every cover — must-not-simplify 10). FlattenOne is the SINGLE-SECTION page
+// (`BrowseSingleSection`, the official client's rule): the page's model is that section's WHOLE item list, which the query layer walks
+// to the server's end (`Spotify.Api.Browse.cs`) — so the page never pages anything itself: no "Show all" tool, no tail preloader, no
 // viewport demand (RCA 2026-09-30; the owner's "no page-side fetch windows" rule). The lone section's title heads the
 // grid when it says more than the masthead. FlattenTwoStacked renders as Shelves (0.2.9's documented pragmatic
 // deviation, kept). The shimmer is an explicit, NON-virtual stand-in (a PagedShelf yields zero rows against an
 // unmeasured viewport — must-not-simplify 11), revealed FadeOnly.
 
-using FluentGpu.Animation;
-using FluentGpu.Scroll.Effects;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -80,51 +80,49 @@ public readonly partial struct Browse
 {
     // ══ 1. THE DIRECTORY PAGE ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The <c>browse</c> route's page (RouteKind.Browse). No props: the directory is one row per scope.</summary>
+    /// <summary>The <c>browse</c> route's page (RouteKind.Browse). The directory is one row per scope; the only prop is the route's band (ZC1:
+    /// <see cref="BrowseBands.Canonical"/>, "" for the whole directory). The slot is the same for every band (<c>KeyedByArg</c> is false), so a
+    /// band switch re-pushes the props to the mounted page rather than remounting it.</summary>
     // MOUNT POINT (Home.InstallPages — contract §7)
     public static Element DirectoryPageFor(in Shell.Route route)
-        => Embed.Comp(static () => new DirectoryPage()) with { Key = "browse-directory" };
+        => Embed.Comp(new DirectoryProps(BrowseBands.Canonical(Entities.Strings.Resolve(route.Arg))), static () => new DirectoryPage())
+            with { Key = "browse-directory" };
+
+    sealed record DirectoryProps(string Band);
 
     /// <summary>The origin a drill out of the directory hands over: the IA root itself, which is what keeps the trail at
     /// <c>Browse › X</c> rather than <c>Browse › Browse › X</c>.</summary>
-    static Shell.NavOrigin DirectoryOrigin => new(Loc.Get(Strings.Browse.HomeTitle), new Shell.Route(Shell.RouteKind.Browse));
+    internal static Shell.NavOrigin DirectoryOrigin => new(Loc.Get(Strings.Browse.HomeTitle), new Shell.Route(Shell.RouteKind.Browse));
 
+    [CoreHost]
     sealed class DirectoryPage : Component
     {
+        static readonly IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> s_noGroups =
+            Array.Empty<(BrowseGroup, IReadOnlyList<BrowseCategory>)>();
+
         Scope? _scope;
         Browse _dir;
-        bool _demanded, _ready, _failed;
+        bool _demanded;
         long _dataKey = long.MinValue;
-        Element? _body, _skeleton;
+        string _band = "";
+        IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> _groups = s_noGroups;
 
-
-        readonly Func<bool> _pendingFn, _failedFn;
-        readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _retry;
-        readonly Func<int, Element> _chartsBandAt;
 
         public DirectoryPage()
         {
-            _pendingFn = () => !_ready && !_failed;
-            _failedFn = () => _failed;
-            _contentFn = () => _body ?? new BoxEl();
-            _shimmerFn = () => _skeleton ??= DirectorySkeleton();
             _demand = Demand;
             _retry = Retry;
-            // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
-            // Asked-and-unanswered is exactly a no-op for `Ensure` (P4's dedupe: `wanted & ~known & ~asked`), so a
-            // failed directory's Retry button did nothing until it un-asks first (root cause of the failure card).
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
-            _chartsBandAt = static index => new BoxEl
-            {
-                Direction = 1, MinWidth = 0f,
-                Animate = Design.Entrance.Row(index),
-                Children = [Embed.Comp(static () => new ChartsBand())],
-            };
         }
 
         public override Element Render()
         {
+            string band = UseProps<DirectoryProps>().Band;
+            if (!string.Equals(_band, band, StringComparison.Ordinal))
+            {
+                _band = band;
+                _dataKey = long.MinValue;                         // the band is part of what the memoized group list holds
+            }
             uint epoch = Entities.ScopeEpoch.Value;              // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             _ = scope.Browses.Changed.Value;
@@ -142,45 +140,27 @@ public readonly partial struct Browse
             var edges = scope.Edges;
             bool known = d.IsValid && (d.Knows(BrowseFields.Identity) || edges.BrowseDirectory.State(d.Slot) != EdgeState.Unknown);
             var load = BrowseLoadGate.Of(known, _demanded, scope.Browses.Inflight[d.Slot] != 0);
-            _ready = load == BrowseLoad.Ready;
-            _failed = load == BrowseLoad.Failed;
-            if (_ready)
+            if (load == BrowseLoad.Ready)
             {
-                // The body is rebuilt ONLY when the tile list or a tile row changed — the under-band edge re-render below
-                // hands the region the same instance.
+                // The band list is rebuilt ONLY when the tile list or a tile row changed — the under-band edge re-render hands the
+                // view the same instance.
                 long key = ((long)edges.BrowseDirectory.Version(d.Slot) << 32) | scope.Browses.Changed.Peek();
                 if (key != _dataKey)
                 {
                     _dataKey = key;
                     var categories = CategoriesOf(edges.BrowseDirectory.Targets(d.Slot));
-                    _body = categories.Length == 0
-                        ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Browse.Unavailable), subtitle: "")
-                        : DirectoryBody(BrowseTaxonomy.Grouped(categories), live: true, _chartsBandAt);
+                    _groups = categories.Length == 0 ? s_noGroups : BrowseBands.Filter(BrowseTaxonomy.Grouped(categories), _band);
                 }
             }
 
-            // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
-            Element region = new SkelRegionEl(
-                Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
-                SmoothResize: false);
-
-            Element directory = new BoxEl
+            return Slots.View(ViewKeys.BrowseDirectory, new BrowseDirectoryProps
             {
-                Direction = 1, MinWidth = 0f, Gap = Spacing.L,
-                Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.XXL),
-                // Feathered exactly while the clip is engaged, on the render turn that poses it (RCA 2026-09-25 F(ii)).
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true },
-                Children = [region],
-            }.StickyClip(BrowseMastheadMetrics.ClipInset);
-
-            return ScrollView(new BoxEl
-            {
-                Direction = 1, MinWidth = 0f,
-                // The reserve is a SPACER above the clipped node, not padding inside it: the cut engages exactly when the
-                // content reaches the band.
-                Children = [new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false }, directory],
-            }) with { Grow = 1f, MinWidth = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "browse" };
+                // One offset per band: a filtered directory is a different page height, and the whole directory's key is unchanged.
+                ScrollKey = UseContext(Shell.PageScrollScope) + (band.Length == 0 ? "browse" : "browse:" + band),
+                Load = load,
+                Groups = load == BrowseLoad.Ready ? _groups : null,
+                Retry = _retry,
+            });
         }
 
         void Demand()
@@ -204,76 +184,6 @@ public readonly partial struct Browse
         }
     }
 
-    /// <summary>The Charts band (0.2.9 <c>BrowseDirectory.ChartsBand</c>): the SAME Fold deck Home's Charts row renders,
-    /// over the SAME five chart section rows, with the deck's own header (no eyebrow above it — parity 64) and no per-tile
-    /// eyebrow (parity 65). Pending shimmers the three blank folds; Ready-and-empty is the compact "No charts right now";
-    /// Failed is a compact vacancy WITH its own Retry, refetching only the deck (parity 66, 97).</summary>
-    sealed class ChartsBand : Component
-    {
-        HomeLoad _state = HomeLoad.Pending;
-        IReadOnlyList<HomeSectionView> _deck = Array.Empty<HomeSectionView>();
-
-        readonly Func<bool> _pendingFn, _failedFn;
-        readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _retry, _openHeader;
-        readonly Action<HomeSectionView> _openTile;
-
-        public ChartsBand()
-        {
-            _demand = HomeBrowseCards.EnsureChartDeck;
-            _retry = Retry;
-            _openTile = static s => HomeCardNav.OpenBrowseSection(s, DirectoryOrigin);
-            _openHeader = static () => Shell.GoTo(BrowseTiles.PageRoute(ChartPages.Charts, Loc.Get(Strings.Home.Charts)));
-            _pendingFn = () => _state == HomeLoad.Pending;
-            _failedFn = () => _state == HomeLoad.Failed;
-            _contentFn = () => _deck.Count == 0
-                ? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Home.ChartsEmpty), subtitle: "")
-                : HomeModules.FoldDeck(_deck, Loc.Get(Strings.Browse.Charts), _openTile, _openHeader);
-            _shimmerFn = static () => HomeModules.FoldDeck(HomeBrowseCards.ChartDeckSeed, Loc.Get(Strings.Browse.Charts), s_noopSection);
-            // Retry, never `_demand`: by the time this band reads Failed, `ChartSections.Featured` is exactly the row
-            // shape `Entities.Ensure`'s dedupe skips (Asked survives the answer on purpose — Fetch.cs's "the seal that
-            // stops a thin track re-resolving on every cluster update"). Only `Entities.Refresh` un-asks it, which is
-            // what turns this button back into a real retry instead of a card that reappears no matter how many times
-            // it is pressed.
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: _retry);
-        }
-
-        /// <summary>Ask every chart section row AGAIN, whatever the scope sealed — the Charts band's own Retry
-        /// (ch 13 §9 gap 6: "Browse has two retry buttons, not one", this is the second one, and it refetches only
-        /// the deck).</summary>
-        static void Retry()
-        {
-            var scope = Entities.Current;
-            var uris = ChartSections.All;
-            for (int i = 0; i < uris.Count; i++)
-            {
-                int slot = Entities.BrowseSection(uris[i].AsSpan()).Slot;
-                Entities.Refresh(scope.Sections, new ReadOnlySpan<int>(in slot), (uint)SectionFields.Identity);
-            }
-        }
-
-        public override Element Render()
-        {
-            uint epoch = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            _ = scope.Sections.Changed.Value;
-            _ = scope.Edges.SectionCards.Changed.Value;
-            // The fold covers read their card rows live: a hydrating cover re-describes the tile.
-            _ = scope.Playlists.Changed.Value;
-            _ = scope.Albums.Changed.Value;
-            _ = scope.Shows.Changed.Value;
-            _ = scope.Tracks.Changed.Value;
-            UseEffect(_demand, DepKey.From((int)epoch));
-
-            // hasLiveCatalog: a page never asks "am I fake" — the seed answers every chart row, so the deck is Ready.
-            _deck = HomeBrowseCards.ChartDeck(hasLiveCatalog: true, out _state);
-            return new SkelRegionEl(
-                Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
-                SmoothResize: false);
-        }
-    }
-
     // ══ 2. THE CATEGORY PAGE ════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The <c>browse:&lt;pageUri&gt;</c> route's page (RouteKind.BrowseCategory; the page uri is
@@ -288,13 +198,12 @@ public readonly partial struct Browse
 
     sealed record CategoryProps(Shell.Route Route, string PageUri);
 
-    /// <summary>The state the flattened grid's responsive box is gated on: the memoized card list BY REFERENCE, its key and
-    /// the DECODED chart bit (never a uri lookup — ch 12 trap 10).</summary>
-    sealed record GridState(IReadOnlyList<HomeCard> Cards, string Key, bool Charts);
-
+    [CoreHost]
     sealed class CategoryPage : Component
     {
         static readonly BrowsePageLayout.Result s_noSections = new(BrowsePageLayout.Mode.Shelves, Array.Empty<BrowseSectionFacts>());
+        static readonly IReadOnlyList<BrowseBand> s_noBands = Array.Empty<BrowseBand>();
+        static readonly IReadOnlyList<HomeCard> s_noCards = Array.Empty<HomeCard>();
 
         CategoryProps? _props;
         Scope? _scope;
@@ -310,33 +219,25 @@ public readonly partial struct Browse
         HomeSectionView? _concatA, _concatB;
         IReadOnlyList<HomeCard> _concat = Array.Empty<HomeCard>();
 
-        Element? _body;
         IOverlayService? _overlay;
         string _scrollScope = "";                         // the tab (Shell.PageScrollScope), composed onto the restore keys
 
-        readonly Func<bool> _pendingFn, _failedFn;
-        readonly Func<Element> _contentFn, _failedPanelFn;
-        readonly Action _demand, _retry, _demandCards, _publish;
-        readonly Action<HomeCard> _openCard;
+        readonly Action _demand, _retry, _demandCards, _publish, _exploreAll;
         readonly Action<string, string> _openCategory;
+        readonly Action<HomeSectionView> _openSection;
 
         public CategoryPage()
         {
             // A chip drills with this page as its origin; both inputs are read when the chip is CLICKED.
             _openCategory = (uri, title) => Shell.GoTo(BrowseTiles.PageRoute(uri, title),
                 _props is { } p ? BrowseTileOrigin.For(isDirectory: false, _title, p.Route) : null);
-            _pendingFn = () => !_known && !_failed;
-            _failedFn = () => _failed;
-            _contentFn = () => _body ?? new BoxEl();
+            // A TITLED shelf's header drills into `browse-section:` with this page as the origin (read when the header is CLICKED).
+            _openSection = view => HomeCardNav.OpenBrowseSection(view, _props is { } p ? new Shell.NavOrigin(_title, p.Route) : null);
             _demand = Demand;
             _retry = Retry;
             _demandCards = DemandCards;
             _publish = Publish;
-            _openCard = static c => HomeCardNav.Open(in c);
-            // W22 + 0.3's Retry (§9 gap 9): the error arm offers Retry AND the Explore link, inside the scroll frame.
-            // `_retry`, never `_demand`: the page only reads Failed once the row is Asked-and-unanswered, which is
-            // exactly the shape `Entities.Ensure` no-ops on — `Entities.Refresh` un-asks it first.
-            _failedPanelFn = () => Framed(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry));
+            _exploreAll = GoDirectory;
         }
 
         public override Element Render()
@@ -386,26 +287,21 @@ public readonly partial struct Browse
 
             UseEffect(_publish, DepKey.From(HashCode.Combine(_title, (int)_layout.Mode), _page.Slot));
 
-            _body = _known ? Body() : null;
-
-            // FadeOnly: this body owns no entrance, and None would floor the shimmer's exit at 400 ms and leave a ghost
-            // under real content (must-not-simplify 12). smoothResize false (must-not-simplify 2).
-            Element region = new SkelRegionEl(
-                Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: s_shimmer,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null,
-                SmoothResize: false);
-
-            // The outer column owns the frame: the family gutters and the overlay masthead's reserve (the band takes no
-            // in-flow height), with Spacing.L under the body; only the region below it ever shimmers.
-            return new BoxEl
+            return Slots.View(ViewKeys.BrowseCategory, new BrowseCategoryProps
             {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.L),
-                Children =
-                [
-                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [region] },
-                ],
-            };
+                Load = _known ? BrowseLoad.Ready : _failed ? BrowseLoad.Failed : BrowseLoad.Pending,
+                Title = _title,
+                PageUri = _uri,
+                ScrollKey = _scrollScope + "browse:" + _uri,
+                Mode = _layout.Mode,
+                Bands = _known ? Bands() : s_noBands,
+                Merged = _known && _layout.Mode == BrowsePageLayout.Mode.FlattenTwoConcat ? Merged() : s_noCards,
+                Overlay = _overlay,
+                Retry = _retry,
+                OpenCategory = _openCategory,
+                OpenSection = _openSection,
+                ExploreAll = _exploreAll,
+            });
         }
 
         // ── the model ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -443,151 +339,44 @@ public readonly partial struct Browse
             _layout = BrowsePageLayout.Of(new BrowsePageFacts(_uri, _title, facts));
         }
 
-        // ── the body ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-        Element Body()
-        {
-            if (_layout.Sections.Count == 0) return Framed(EmptyVacancy());
-            return _layout.Mode switch
-            {
-                BrowsePageLayout.Mode.FlattenOne => FlattenBody(concat: false),
-                BrowsePageLayout.Mode.FlattenTwoConcat => FlattenBody(concat: true),
-                // FlattenTwoStacked — 0.2.9's pragmatic deviation, kept: two virtual grids cannot both own scroll, and one
-                // shared scroller re-creates the zero-height trap. The pure rule still tells the two modes apart.
-                _ => ShelvesBody(),
-            };
-        }
-
-        static Element EmptyVacancy()
-            => Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Browse.Unavailable), subtitle: "");
-
-        /// <summary>Shelves: the page owns a ScrollView (keyed by the page uri); every section keyed by its own uri, then
-        /// the Explore link; the dock clearance lives INSIDE the scrolled content so the viewport reaches the pane edge.</summary>
-        Element ShelvesBody()
+        /// <summary>Every answered band's rows, in wire order: a shelf band its card view, a grid / related band its category
+        /// tiles (the section's category relation, titled tiles only). Built every render — a hydrating card row re-describes a shelf.</summary>
+        IReadOnlyList<BrowseBand> Bands()
         {
             var sections = _layout.Sections;
-            var kids = new Element[sections.Count + 1];
-            for (int i = 0; i < sections.Count; i++)
+            if (sections.Count == 0) return s_noBands;
+            var bands = new BrowseBand[sections.Count];
+            for (int i = 0; i < bands.Length; i++)
             {
                 var f = sections[i];
-                kids[i] = f.Kind == BrowseSectionKind.Shelf ? Shelf(in f) : CategoryBlockOf(in f);
-            }
-            kids[^1] = ExploreAll(GoDirectory);
-            return ScrollView(new BoxEl
-            {
-                Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-                Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
-                Children = kids,
-            }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
-        }
-
-        /// <summary>The empty and error arms get the same scroll shell by hand (the region picks them before the mode
-        /// dispatch), with the Explore link under the vacancy (parity 79-80).</summary>
-        Element Framed(Element content) => ScrollView(new BoxEl
-        {
-            Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-            Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
-            Children = [content, ExploreAll(GoDirectory)],
-        }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
-
-        /// <summary>One shelf band (0.2.9 <c>BrowsePage.Shelf</c>): a PagedShelf of the house shelf cell — play FAB, card
-        /// menu, and a drag source for everything but tracks and episodes. A TITLED shelf's header drills into
-        /// <c>browse-section:</c> with this page as the origin; an untitled one has no header row at all (parity 77).</summary>
-        Element Shelf(in BrowseSectionFacts f)
-        {
-            var view = HomeSectionView.Of(new Section(f.Slot));
-            var items = new HomeCards.ShelfItem[view.Cards.Count];
-            for (int i = 0; i < items.Length; i++)
-            {
-                var c = view.Cards[i];
-                items[i] = HomeCards.ShelfItemOf(in c, HomeCards.PlainText(c.Subtitle), c.Kind == HomeCardKind.Artist);
-            }
-            var host = _overlay;
-            Element? header = null;
-            string? shelfTitle = f.Title;
-            if (!string.IsNullOrWhiteSpace(shelfTitle) && _props is { } props)
-            {
-                var origin = new Shell.NavOrigin(_title, props.Route);
-                header = HomeModules.DrillHeader(shelfTitle, () => HomeCardNav.OpenBrowseSection(view, origin));
-            }
-            return PagedShelf.Create<HomeCards.ShelfItem>(items,
-                (item, i, cardW) =>
+                if (f.Kind == BrowseSectionKind.Shelf)
                 {
-                    var c = item.Card;
-                    return HomeCards.ShelfCell(in item, cardW, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                                               HomeCardNav.DragOf(in c), host, HomeCardNav.MenuOf(in c));
-                },
-                onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open
-                cardHeight: HomeModuleLayout.ShelfCardHeight,
-                header: header,
-                minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
-                gap: HomeModuleLayout.ShelfGap, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-                prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
-                lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
-                keyOf: static (item, i) => "browse-shelf-card:" + item.Card.Uri)
-               with { Key = "browse-shelf:" + f.Uri };
-        }
-
-        /// <summary>A grid / related band: its category tiles as live link cells under a LABEL header. A tile drills with THIS
-        /// page as its origin (<see cref="BrowseTileOrigin"/>), so Decades › 00s keeps its parent crumb; the origin is read at
-        /// click time from the page's own fields (<see cref="_title"/>, the route), never frozen into a mount-time closure.</summary>
-        Element CategoryBlockOf(in BrowseSectionFacts f)
-        {
-            var targets = Entities.Current.Edges.SectionCategories.Targets(f.Slot);
-            var tiles = new List<BrowseTileModel>(targets.Length);
-            for (int i = 0; i < targets.Length; i++)
-                if (CategoryAt(targets[i]) is { } c) tiles.Add(BrowseTiles.ToModel(c, _openCategory, BrowseTiles.OpenFeature));
-            return CategoryBlock(f.Title, tiles) with { Key = "browse-cats:" + f.Uri };
-        }
-
-        /// <summary>A flattened body (0.2.9 <c>BrowsePage.FlattenBody</c>): the non-shelf blocks and the Explore link PIN
-        /// above a Grow-1 / MinHeight-0 slot whose grid owns its own scroll. FlattenOne is the single-section page: its
-        /// grid is the section's WHOLE list as the query layer walked it — nothing here pages — headed by the section's
-        /// title when that says more than the masthead (<see cref="BrowsePageLayout.TitleIsRedundant"/>).
-        /// FlattenTwoConcat merges both shelves.</summary>
-        Element FlattenBody(bool concat)
-        {
-            var pinned = new List<Element>(3);
-            HomeSectionView? first = null, second = null;
-            string key = _uri;
-            string? heading = null;
-            var sections = _layout.Sections;
-            for (int i = 0; i < sections.Count; i++)
-            {
-                var f = sections[i];
-                if (f.Kind != BrowseSectionKind.Shelf) { pinned.Add(CategoryBlockOf(in f)); continue; }
-                var view = HomeSectionView.Of(new Section(f.Slot));
-                if (first is null)
-                {
-                    first = view;
-                    if (!concat)
-                    {
-                        key = f.Uri;
-                        if (!BrowsePageLayout.TitleIsRedundant(f.Title, _title)) heading = f.Title!.Trim();
-                    }
+                    bands[i] = new BrowseBand { Facts = f, Shelf = HomeSectionView.Of(new Section(f.Slot)) };
+                    continue;
                 }
+                var targets = Entities.Current.Edges.SectionCategories.Targets(f.Slot);
+                var tiles = new List<BrowseCategory>(targets.Length);
+                for (int t = 0; t < targets.Length; t++)
+                    if (CategoryAt(targets[t]) is { } c) tiles.Add(c);
+                bands[i] = new BrowseBand { Facts = f, Tiles = tiles };
+            }
+            return bands;
+        }
+
+        /// <summary>FlattenTwoConcat's merged list: the first two shelves' cards, memoized on the two view instances.</summary>
+        IReadOnlyList<HomeCard> Merged()
+        {
+            HomeSectionView? first = null, second = null;
+            var sections = _layout.Sections;
+            for (int i = 0; i < sections.Count; i++)
+            {
+                var f = sections[i];
+                if (f.Kind != BrowseSectionKind.Shelf) continue;
+                var view = HomeSectionView.Of(new Section(f.Slot));
+                if (first is null) first = view;
                 else second ??= view;
             }
-            if (heading is not null) pinned.Insert(0, HomeModules.DrillHeader(heading, null));
-            pinned.Add(ExploreAll(GoDirectory));
-
-            IReadOnlyList<HomeCard> cards;
-            if (concat) cards = Merge(first, second);
-            else cards = first?.Cards ?? (IReadOnlyList<HomeCard>)Array.Empty<HomeCard>();
-            bool charts = first is { IsChart: true } && (!concat || second is null || second.IsChart);
-
-            Element grid = Responsive.Of(new GridState(cards, key, charts), (st, w) => HomeModules.SectionGrid(
-                st.Cards, st.Key, w, _openCard, charts: st.Charts), fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
-
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.L,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = pinned.ToArray() },
-                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [grid] },
-                ],
-            };
+            return Merge(first, second);
         }
 
         IReadOnlyList<HomeCard> Merge(HomeSectionView? a, HomeSectionView? b)
@@ -650,47 +439,67 @@ public readonly partial struct Browse
             Shell.Mastheads.Publish(p.Route, new Shell.MastheadPublication(_title.Length > 0 ? _title : null));
         }
     }
+}
 
-    // ══ 3. THE CATEGORY SHIMMER (W21) ═══════════════════════════════════════════════════════════════════════════════
+/// <summary>The Charts band of the Browse directory (0.2.9 <c>BrowseDirectory.ChartsBand</c>): the SAME Fold deck Home's Charts row renders,
+/// over the SAME five chart section rows, with the deck's own header (no eyebrow above it — parity 64) and no per-tile
+/// eyebrow (parity 65). The host owns the demand, the deck and the Retry; the view (`Browse.Charts`) draws: Pending shimmers the three
+/// blank folds; Ready-and-empty is the compact "No charts right now"; Failed is a compact vacancy WITH its own Retry, refetching only the
+/// deck (parity 66, 97). Public because the directory view mounts it as a component.</summary>
+[CoreHost]
+public sealed class BrowseChartsBand : Component
+{
+    HomeLoad _state = HomeLoad.Pending;
+    IReadOnlyList<HomeSectionView> _deck = Array.Empty<HomeSectionView>();
 
-    /// <summary>A NON-virtualized stand-in for the Shelves geometry: a Related block over five placeholder tiles and two
-    /// shelf bands of six shared-surface seed cards — no PagedShelf, no virtual grid, every box sized off the same constants the
-    /// real body uses, so nothing measures zero and nothing reflows when the real width lands. Body only: the masthead
-    /// is real from frame one. Its words are never shown (the deriver paints bars in their place).</summary>
-    static readonly Func<Element> s_shimmer = static () => new BoxEl
+    readonly Action _demand;
+
+    static readonly Action<HomeSectionView> s_openTile = static s => HomeCardNav.OpenBrowseSection(s, Browse.DirectoryOrigin);
+    static readonly Action s_openHeader = static () => Shell.GoTo(BrowseTiles.PageRoute(ChartPages.Charts, Loc.Get(Strings.Home.Charts)));
+    // Retry, never `_demand`: by the time this band reads Failed, `ChartSections.Featured` is exactly the row
+    // shape `Entities.Ensure`'s dedupe skips (Asked survives the answer on purpose — Fetch.cs's "the seal that
+    // stops a thin track re-resolving on every cluster update"). Only `Entities.Refresh` un-asks it, which is
+    // what turns this button back into a real retry instead of a card that reappears no matter how many times
+    // it is pressed.
+    static readonly Action s_retry = Retry;
+
+    public BrowseChartsBand()
     {
-        Direction = 1, Gap = Spacing.L, MinWidth = 0f, Grow = 1f,
-        Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
-        Children = [ShimmerRelated(), ShimmerShelf(), ShimmerShelf()],
-    };
-
-    static readonly string[] s_shimmerTileUris =
-        ["wavee:skeleton:related:0", "wavee:skeleton:related:1", "wavee:skeleton:related:2", "wavee:skeleton:related:3", "wavee:skeleton:related:4"];
-
-    static Element ShimmerRelated()
-    {
-        var tiles = new BrowseTileModel[s_shimmerTileUris.Length];
-        for (int i = 0; i < tiles.Length; i++)
-            tiles[i] = new BrowseTileModel(Loc.Get(Strings.Browse.Genres), s_shimmerTileUris[i], null, null, BrowseTiles.ToModelNoop);
-        return CategoryBlock(Loc.Get(Strings.Browse.More), tiles);
+        _demand = HomeBrowseCards.EnsureChartDeck;
     }
 
-    static Element ShimmerShelf()
+    /// <summary>Ask every chart section row AGAIN, whatever the scope sealed — the Charts band's own Retry
+    /// (ch 13 §9 gap 6: "Browse has two retry buttons, not one", this is the second one, and it refetches only
+    /// the deck).</summary>
+    static void Retry()
     {
-        var cards = new Element[6];
-        for (int i = 0; i < cards.Length; i++) cards[i] = ShimmerCard();
-        return new BoxEl
+        var scope = Entities.Current;
+        var uris = ChartSections.All;
+        for (int i = 0; i < uris.Count; i++)
         {
-            Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-            Children =
-            [
-                Design.Type.ModuleHeader(Loc.Get(Strings.Browse.ExploreAll)),
-                new BoxEl { Direction = 0, Gap = HomeModuleLayout.ShelfGap, MinWidth = 0f, ClipToBounds = true, Children = cards },
-            ],
-        };
+            int slot = Entities.BrowseSection(uris[i].AsSpan()).Slot;
+            Entities.Refresh(scope.Sections, new ReadOnlySpan<int>(in slot), (uint)SectionFields.Identity);
+        }
     }
 
-    /// <summary>The real shelf card's SEED face (cover + title bar + caption bar) at the shelf's MIN width — the shared
-    /// surface's own skeleton, exactly as tall as <see cref="HomeModuleLayout.ShelfCardHeight"/> says the live card is.</summary>
-    static Element ShimmerCard() => Controls.Surface(Controls.CardData.Seed, Shape.Shelf(), HomeModuleLayout.ShelfCardMin);
+    public override Element Render()
+    {
+        uint epoch = Entities.ScopeEpoch.Value;
+        var scope = Entities.Current;
+        _ = scope.Sections.Changed.Value;
+        _ = scope.Edges.SectionCards.Changed.Value;
+        // The fold covers read their card rows live: a hydrating cover re-describes the tile.
+        _ = scope.Playlists.Changed.Value;
+        _ = scope.Albums.Changed.Value;
+        _ = scope.Shows.Changed.Value;
+        _ = scope.Tracks.Changed.Value;
+        UseEffect(_demand, DepKey.From((int)epoch));
+
+        // hasLiveCatalog: a page never asks "am I fake" — the seed answers every chart row, so the deck is Ready.
+        _deck = HomeBrowseCards.ChartDeck(hasLiveCatalog: true, out _state);
+        return Slots.View(ViewKeys.BrowseCharts, new BrowseChartsProps
+        {
+            State = _state, Deck = _deck, OpenTile = s_openTile, OpenHeader = s_openHeader, Retry = s_retry,
+        });
+    }
 }

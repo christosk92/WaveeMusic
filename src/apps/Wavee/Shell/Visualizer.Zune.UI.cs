@@ -35,7 +35,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 
@@ -104,7 +104,7 @@ public static partial class Visualizer
     /// fresh start, never a jump.</summary>
     static float ZuneDeltaMs(ref long last)
     {
-        long now = Design.FrameTime.NowMs;
+        long now = FrameTime.NowMs;
         long gap = last == 0 ? 0 : now - last;
         last = now;
         return gap is <= 0 or > 100 ? 0f : gap;
@@ -115,7 +115,7 @@ public static partial class Visualizer
     /// <summary>Three giant lowercase rows (artist 420/300, title 300/600 in the accent, album 150/300) cropped by the
     /// edges and drifting at speeds the energy drives; the title brightens on the kick. A "now playing" eyebrow under the
     /// now-playing card. Preview: the three rows, static.</summary>
-    public static Element TypeFace(Slab slab, in Palette pal, in FaceSpec spec)
+    public static Element TypeFace(Slab slab, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
         bool preview = spec.Preview;
@@ -182,8 +182,8 @@ public static partial class Visualizer
                         Direction = 1, HitTestVisible = false,
                         Children =
                         [
-                            new TextEl(ZuneLower(Loc.Get(Strings.Player.NowPlaying))) { Size = 20f, LineHeight = 28f, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.8f } },
-                            new TextEl(line) { Size = 20f, LineHeight = 28f, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.55f }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = Stage.Layout.NowPlayingCardW },
+                            new TextEl(ZuneLower(Loc.Get(Strings.Player.NowPlaying))) { Size = 20f, LineHeight = 28f, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.8f } },
+                            new TextEl(line) { Size = 20f, LineHeight = 28f, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.55f }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = Stage.Layout.NowPlayingCardW },
                         ],
                     }));
                 }
@@ -249,7 +249,7 @@ public static partial class Visualizer
 
         TextEl Glyphs() => new(Word)
         {
-            Size = Size, LineHeight = Size, Weight = Weight, FontFamily = Design.Type.DisplayFace, Color = Color,
+            Size = Size, LineHeight = Size, Weight = Weight, FontFamily = R.Type.DisplayFace, Color = Color,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
         };
     }
@@ -258,7 +258,7 @@ public static partial class Visualizer
 
     /// <summary>A Metro wall of the queue's and recently played covers (12 columns, ~14 % 2×2): on every beat two tiles flip (bound ScaleX, the source swapped edge-on), each column dims and brightens with
     /// its band, and the title sits big over a bottom fade. Preview: a 6 × 3 static wall.</summary>
-    public static Element MosaicFace(Slab slab, in Palette pal, in FaceSpec spec)
+    public static Element MosaicFace(Slab slab, in FaceSpec spec)
     {
         bool preview = spec.Preview;
         int cols = preview ? Covers.Tiles.PreviewCols : Covers.Tiles.Cols;
@@ -616,13 +616,13 @@ public static partial class Visualizer
             if (artist.Length > 0)
                 kids.Add(new CanvasChild(x + 8f * k, artistY, new TextEl(artist)
                 {
-                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Prop.Bind(Slab.A),
+                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Prop.Bind(Slab.A),
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                 }));
             if (title.Length > 0)
                 kids.Add(new CanvasChild(x, titleY, new TextEl(title)
                 {
-                    Size = size, LineHeight = size, Weight = 300, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.92f },
+                    Size = size, LineHeight = size, Weight = 300, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.92f },
                     MaxLines = 1, Trim = TextTrim.Clip, MaxWidth = W - x,
                 }));
             return new BoxEl { Width = W, Height = H, HitTestVisible = false, Children = [Canvas.Create(W, H, kids)] };
@@ -859,13 +859,13 @@ public static partial class Visualizer
                 float x = 64f * k, metaY = top + 0.16f * nameSize - 20f * k - 28f * k, titleY = metaY - 30f * k;
                 kids.Add(new CanvasChild(x, titleY, new TextEl(ZuneLower(track.Title))
                 {
-                    Size = 22f * k, LineHeight = 30f * k, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
+                    Size = 22f * k, LineHeight = 30f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                 }));
                 if (meta.Length > 0)
                     kids.Add(new CanvasChild(x, metaY, new TextEl(ZuneLower(meta))
                     {
-                        Size = 20f * k, LineHeight = 28f * k, FontFamily = Design.Type.DisplayFace, Color = Ink.InkSecondary,
+                        Size = 20f * k, LineHeight = 28f * k, FontFamily = R.Type.DisplayFace, Color = Ink.InkSecondary,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                     }));
             }
@@ -897,7 +897,7 @@ public static partial class Visualizer
                 [
                     new TextEl(Word)
                     {
-                        Size = Size, LineHeight = Size, Weight = 300, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
+                        Size = Size, LineHeight = Size, Weight = 300, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
                         Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
                     },
                 ],

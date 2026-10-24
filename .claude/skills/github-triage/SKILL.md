@@ -19,11 +19,10 @@ There is **no CI**: everything below is applied locally with `gh` from the dev b
 | Thing | Where | Notes |
 |---|---|---|
 | Label set (53) | `ops/github/labels.json` → applied by `ops/github/sync-labels.ps1` | source of truth; idempotent; never deletes; renames the 7 stock labels in place |
-| Label test | `ops/release/tests/GitHub.Labels.Tests.ps1` | pure Pester 3.4 syntax (`Should Be`); runs with `Invoke-Pester -Path ops/release/tests` |
 | Milestones | GitHub | `0.2.x Breaker` (#1), `0.3 Crest` (#2), `0.4 Drift` (#3), `Future` (#4) — **one per minor codename**; patches inherit the minor's milestone |
 | Project board | https://github.com/users/christosk92/projects/3 (number **3**, public, linked to the repo) | id `PVT_kwHOAM0O7s4BiKKu`; Status field `PVTSSF_lAHOAM0O7s4BiKKuzhhDNNI` (Triage · Backlog · Planned · In progress · In review · Done); Priority field `PVTSSF_lAHOAM0O7s4BiKKuzhhDNN8` (P0–P3) |
 | Issue forms | `.github/ISSUE_TEMPLATE/{bug_report,crash_report,feature_request}.yml` + `config.yml` | blank issues off; contact links → Discussions Q&A / Ideas, fluent-gpu issues, Store listing |
-| PR template | `.github/PULL_REQUEST_TEMPLATE.md` | the Debug+Release / tests / changelog / no-source-text-tests gates |
+| PR template | `.github/PULL_REQUEST_TEMPLATE.md` | the Debug build / changelog / no-tests gates |
 | Contributor docs | `CONTRIBUTING.md`, `SECURITY.md` | label scheme, branch/commit conventions, private vulnerability reporting |
 | Repo settings | GitHub | Discussions **on** (default categories), wiki **off**, delete-branch-on-merge **on**, private vulnerability reporting **on**, homepage = Store listing, topics set |
 | Token scopes | `gh auth status` | `repo, read:org, gist, project` — `project` is required for anything under `gh project` |
@@ -129,10 +128,9 @@ exactly what would fail, before anything is bumped or tagged.
 ## Changing the label set
 
 1. Edit `ops/github/labels.json` (keep the group colours; add `renameFrom` only for a rename).
-2. `Invoke-Pester -Path ops/release/tests/GitHub.Labels.Tests.ps1` — must be green.
-3. `powershell -File ops/github/sync-labels.ps1 -DryRun` → show the plan to the user → **ask** → run without
+2. `powershell -File ops/github/sync-labels.ps1 -DryRun` → show the plan to the user → **ask** → run without
    `-DryRun`. Expect `created=0 updated=53 renamed=0` and no `extra` lines on a no-op re-run.
-4. Deleting a label is never done by the script; if the user wants one gone: `gh label delete <name>` after approval.
+3. Deleting a label is never done by the script; if the user wants one gone: `gh label delete <name>` after approval.
 
 ## New minor / new milestone
 

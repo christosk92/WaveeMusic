@@ -396,7 +396,7 @@ public static partial class Spotify
         public static Result Send(RequestKind kind, scoped in RequestArgs args, CancellationToken ct)
         {
             Span<char> buffer = stackalloc char[512];
-            Request request = Build(Current, kind, args, buffer);
+            Request request = Build(kind, args, buffer);
             if (request.IsEmpty) return Result.Transport;
 
             string url = BaseUrl(request.Host) + new string(request.Path);
@@ -660,16 +660,6 @@ public static partial class Spotify
         // (kind, uri) and a half-answered uri reads as an answered one to the decoder, which is how a track ends up
         // permanently missing its descriptors.
 
-        /// <summary>Split <paramref name="uriCount"/> uris into POST-sized runs. PURE, and the reason it is separate
-        /// from the send: 700 uris must be 300 + 300 + 100, and a test says so without a socket.</summary>
-        public static int Batches(int uriCount, Span<Range> into)
-        {
-            int n = 0;
-            for (int start = 0; start < uriCount && n < into.Length; start += Fetch.MaxUrisPerRequest)
-                into[n++] = new Range(start, Math.Min(start + Fetch.MaxUrisPerRequest, uriCount));
-            return n;
-        }
-
         /// <summary>Build one <c>BatchedEntityRequest</c>. Every uri gets ONE <c>EntityRequest</c> carrying all of its
         /// kinds, in first-seen order — the wire shape <see cref="Decode.ExtendedMetadata"/> reads back.</summary>
         public static byte[] MetadataBody(ReadOnlySpan<string> uris, ReadOnlySpan<Xm.ExtensionKind> kinds,
@@ -748,7 +738,7 @@ public static partial class Spotify
             if (body.Length == 0) return Result.Transport;
             var args = new RequestArgs { Body = body };
             Span<char> buffer = stackalloc char[64];
-            Request request = Build(Current, RequestKind.ExtendedMetadata, args, buffer);
+            Request request = Build(RequestKind.ExtendedMetadata, args, buffer);
             string url = BaseUrl(request.Host) + new string(request.Path);
             HeaderSet headers = request.Headers | HeaderSet.GzipBody;
             return s_metadataCache.Execute(body, Current.Epoch.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -763,30 +753,12 @@ public static partial class Spotify
             return PostMetadata(MetadataBody(uri, one, Market, Catalogue), into, ct);
         }
 
-        /// <summary>One entity, several traits, ONE request — the track drawer's "everything about this row" call
-        /// (0.2.9 `SpotifyTrackExpansionService`, which made four).</summary>
-        public static int Extensions(string uri, ReadOnlySpan<Xm.ExtensionKind> kinds, Staging into, CancellationToken ct)
-            => PostMetadata(MetadataBody(uri, kinds, Market, Catalogue), into, ct);
-
         static int PostMetadata(byte[] body, Staging into, CancellationToken ct)
         {
             if (body.Length == 0) return 0;
             Result result = MetadataPost(body, ct);
             if (result.Ok && result.Length > 0) Decode.ExtendedMetadata(result.Bytes, into);
             return result.Status;
-        }
-
-        /// <summary>The four traits the track drawer opens with.</summary>
-        public static int TrackExpansion(string trackUri, Staging into, CancellationToken ct)
-        {
-            Xm.ExtensionKind[] kinds =
-            [
-                Xm.ExtensionKind.VideoAssociations,
-                Xm.ExtensionKind.AudioAssociations,
-                Xm.ExtensionKind.AudioFiles,
-                Xm.ExtensionKind.ThreebandWaveforms,
-            ];
-            return Extensions(trackUri, kinds, into, ct);
         }
 
         public static int TrackCredits(string trackUri, Staging into, CancellationToken ct)
@@ -797,11 +769,6 @@ public static partial class Spotify
 
         public static int Descriptors(string trackUri, Staging into, CancellationToken ct)
             => Extension(trackUri, Xm.ExtensionKind.TrackDescriptor, into, ct);
-
-        /// <summary>Kind 185 — the per-track play counts an album page shows. The proto's own name for 185 is
-        /// <c>ON_PLATFORM_REPUTATION_TRAIT</c>; <see cref="Decode.Ext.PlayCount"/> is what it carries.</summary>
-        public static int PlayCounts(string albumUri, Staging into, CancellationToken ct)
-            => Extension(albumUri, Xm.ExtensionKind.OnPlatformReputationTrait, into, ct);
 
         public static int Publishing(string trackUri, Staging into, CancellationToken ct)
             => Extension(trackUri, Xm.ExtensionKind.PublishingMetadataTrait, into, ct);
@@ -1200,7 +1167,7 @@ public static partial class Spotify
             if (body.Length == 0) return (0, null);
             var args = new RequestArgs { Body = body };
             Span<char> buffer = stackalloc char[64];
-            Request request = Build(Current, RequestKind.ExtendedMetadata, args, buffer);
+            Request request = Build(RequestKind.ExtendedMetadata, args, buffer);
             string url = BaseUrl(request.Host) + new string(request.Path);
             Result result = SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "",
                 CancellationToken.None);
@@ -2153,17 +2120,6 @@ public static partial class Spotify
             return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
         }
 
-        /// <summary>One friend's presence, fetched when the dealer pushes <c>hm://presence2/user/{id}</c>. 403 and 404
-        /// both mean "drop this row", never "retry".</summary>
-        public static Result FriendPresence(string userId, CancellationToken ct)
-        {
-            Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append("/presence-view/v1/user/");
-            w.AppendEscaped(userId);
-            return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
-        }
-
         public static Result Notifications(int limit, CancellationToken ct)
         {
             Span<char> path = stackalloc char[128];
@@ -2211,7 +2167,7 @@ public static partial class Spotify
         }
 
         /// <summary><c>/audio-attributes/v1/audio-analysis/{base62}</c> — the track's beat/bar grid as JSON (CommonJson, the
-        /// <see cref="FriendPresence"/> PathWriter shape). <paramref name="host"/> is <see cref="ApiHost.Spclient"/>
+        /// <see cref="FriendFeed"/> PathWriter shape). <paramref name="host"/> is <see cref="ApiHost.Spclient"/>
         /// (apresolve) for the data path; the probe also tries <see cref="ApiHost.SpclientWg"/>.</summary>
         public static Result AudioAnalysis(string trackId, ApiHost host, CancellationToken ct)
         {

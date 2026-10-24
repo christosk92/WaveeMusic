@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge" sel="browse" items="Top|For you|Genres|Charts|Concerts" sub-sel="{{zero}}" hint-size="2560px,136px"></dc-import>
+  <div style="height: 1220px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; padding: 20px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <section aria-label="Genres and moods" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Genres &amp; moods</h2><span style="font-size: 12px; color: var(--t2)">Playlists, new releases and charts for every sound</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all 60</a></div>
+        <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{tiles}}" as="t" hint-placeholder-count="16"><a href="#" style="{{t.style}}">{{t.name}}</a></sc-for>
+        </div>
+      </section>
+      <div style="display: flex; gap: 48px; min-height: 0; flex-grow: 1">
+        <section aria-label="Charts" style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Charts</h2><span style="font-size: 12px; color: var(--t2)">Updated daily</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">All charts</a></div>
+          <sc-for list="{{charts}}" as="c" hint-placeholder-count="14"><a href="#" style="{{c.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: var(--t3); font-variant-numeric: tabular-nums">{{c.n}}</span><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span></span><span style="font-size: 12px; color: var(--t2); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.top}}</span></a></sc-for>
+        </section>
+        <section aria-label="New releases" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">New releases</h2><span style="font-size: 12px; color: var(--t2)">This week</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{releases}}" as="r" hint-placeholder-count="9"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{r.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></a></sc-for>
+          </div>
+        </section>
+        <section aria-label="Concerts" style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Concerts</h2><span style="font-size: 12px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Near Amsterdam · artists you play</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct); white-space: nowrap">Change location</a></div>
+          <sc-for list="{{concerts}}" as="c" hint-placeholder-count="12"><a href="#" style="{{c.row}}"><span style="width: 40px; height: 40px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 16px; line-height: 18px; font-weight: 600; font-variant-numeric: tabular-nums">{{c.day}}</span><span style="font-size: 11px; line-height: 14px; color: var(--t2)">{{c.month}}</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.venue}}</span></span><span style="{{c.tagStyle}}">{{c.tag}}</span><span style="font-size: 12px; color: var(--t2); text-align: right; font-variant-numeric: tabular-nums">{{c.when}}</span></a></sc-for>
+        </section>
+      </div>
+    </main>
+    <div style="display: flex; flex-shrink: 0">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="lyrics" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge" variant="music" pane="queue" hint-size="2560px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const tiles = [['Pop', '#8d2f5b'], ['Hip-hop', '#2f5b8d'], ['Electronic', '#2f7a6b'], ['Rock', '#8d4a2f'], ['K-pop', '#7a2f8d'], ['Indie', '#4a6b2f'], ['Chill', '#2f6b7a'], ['Workout', '#8d2f2f'], ['Focus', '#3b4a6b'], ['Party', '#8d6b2f'], ['Sleep', '#2f3b5b'], ['Synthwave', '#5b2f6b'], ['Jazz', '#2f4a6b'], ['R&B', '#6b2f5b'], ['Classical', '#5b5b2f'], ['Latin', '#8d5b2f']].map((t) => ({ name: t[0],
+    style: 'height: 120px; box-sizing: border-box; display: flex; align-items: flex-end; padding: 14px 16px; border-radius: 8px; color: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; background: linear-gradient(135deg, ' + t[1] + ', ' + t[1] + 'cc)' }));
+  const charts = [['1', 'Top 50 · Global', 'Playlist · Updated today', 'APT. · ROSÉ, Bruno Mars', '#2f5b8d'], ['2', 'Top 50 · Netherlands', 'Playlist · Updated today', 'Blinding Lights · The Weeknd', '#8d4a2f'], ['3', 'Viral 50 · Global', 'Playlist · Updated today', 'Magnetic · ILLIT', '#2f7a6b'], ['4', 'Top Songs · Global', 'Weekly chart', 'Die With A Smile', '#5b2f6b'], ['5', 'Top Albums · Netherlands', 'Weekly chart', 'Hurry Up Tomorrow', '#8d2f5b'], ['6', 'Top Podcasts · Netherlands', 'Daily chart', 'The Rest Is Football', '#3b4a6b'], ['7', 'Viral 50 · Netherlands', 'Playlist · Updated today', 'How Sweet · NewJeans', '#2f7a6b'], ['8', 'Top Songs · Netherlands', 'Weekly chart', 'Supernova · aespa', '#6b3b5b'], ['9', 'Top Albums · Global', 'Weekly chart', 'Hurry Up Tomorrow', '#4a2a2a'], ['10', 'Top Artists · Global', 'Weekly chart', 'The Weeknd', '#3a2f4a'], ['11', 'Top 50 · Belgium', 'Playlist · Updated today', 'Get Lucky · Daft Punk', '#5b4a2f'], ['12', 'Top 50 · Germany', 'Playlist · Updated today', 'Blinding Lights · The Weeknd', '#2f3b6b'], ['13', 'Top 50 · United Kingdom', 'Playlist · Updated today', 'APT. · ROSÉ, Bruno Mars', '#6b2f2f'], ['14', 'Top 50 · USA', 'Playlist · Updated today', 'Die With A Smile', '#2f5b4a']].map((c) => ({ n: c[0], name: c[1], sub: c[2], top: c[3],
+    row: 'display: grid; grid-template-columns: 40px 52px minmax(0, 1fr) 160px; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)',
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + c[4] }));
+  const releases = [['Hurry Up Tomorrow', 'The Weeknd', '#4a2a2a'], ['Heroes', 'The Midnight', '#2f3b6b'], ['Supernova', 'aespa', '#5b2f4a'], ['Hostage', 'Gunship', '#2f4a3b'], ['Get Up', 'NewJeans', '#3b5b6b'], ['Leather Teeth', 'Carpenter Brut', '#3b2f2f'], ['Dimension', 'Jacob Banks', '#2f3b5b'], ['Odyssey', 'HOME', '#2f5b6b'], ['Nightdrive', 'FM-84', '#6b2f4a']].map((r, i) => ({ name: r[0], sub: (i === 2 || i === 4 ? 'Single · ' : 'Album · ') + r[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + r[2] + '; display: block' }));
+  const concerts = [['14', 'Nov', 'The Midnight', 'Paradiso · Amsterdam · with FM-84', 'Sat 20:00', 'Interested', true], ['21', 'Nov', 'Gunship', 'Melkweg · Amsterdam', 'Sat 20:30', '', false], ['26', 'Nov', 'M83', 'AFAS Live · Amsterdam', 'Thu 20:00', 'Few tickets', false], ['03', 'Dec', 'Carpenter Brut', 'TivoliVredenburg · Utrecht', 'Thu 21:00', '', false], ['07', 'Dec', 'Timecop1983', 'Patronaat · Haarlem', 'Mon 20:00', '', false], ['12', 'Dec', 'HOME', 'Paradiso Noord · Amsterdam', 'Sat 20:00', '', false], ['17', 'Jan', 'Kavinsky', 'AFAS Live · Amsterdam', 'Sun 20:30', 'Interested', true], ['24', 'Jan', 'Justice', 'Ziggo Dome · Amsterdam', 'Sun 20:00', '', false], ['06', 'Feb', 'aespa', 'Ziggo Dome · Amsterdam', 'Sat 19:00', 'On sale Friday', false], ['20', 'Feb', 'Parcels', 'Melkweg · Amsterdam', 'Sat 20:30', '', false], ['13', 'Mar', 'FM-84', 'Doornroosje · Nijmegen', 'Sat 20:00', '', false], ['20', 'Jun', 'The Weeknd', 'Johan Cruijff ArenA · Amsterdam', 'Sat 19:30', '', false]].map((c) => ({ day: c[0], month: c[1], name: c[2], venue: c[3], when: c[4], tag: c[5],
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 110px 80px; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)',
+    tagStyle: 'font-size: 12px; text-align: right; white-space: nowrap; color: ' + (c[6] ? 'var(--acct)' : 'var(--t2)') }));
+  return { vars, theme, accent, tiles, charts, releases, concerts, paneW: 380, midH: 1220, zero: 0, yes: true };
+}
+}
+</script>
+</body>
+</html>

@@ -403,12 +403,9 @@ public static partial class Spotify
             bool possible = Decode.LibraryDelta(result.Bytes, items, out string newSyncToken);
             if (!LibrarySyncLedger.CanApplyDelta(possible, newSyncToken)) return false;    // fall back, quietly, on any doubt
 
-            int added = 0, removed = 0;
-            for (int k = 0; k < items.Count; k++) { if (items[k].Removed) removed++; else added++; }
-
             outcome.Note(200);
             int baselineCount = stored.ItemCount;
-            Spotify.Post(() => Library.ApplyCollectionDelta(set, username, items, baselineCount, added, removed, newSyncToken));
+            Spotify.Post(() => Library.ApplyCollectionDelta(set, username, items, baselineCount, newSyncToken));
             return true;
         }
 
@@ -529,9 +526,6 @@ public static partial class Spotify
         }
 
         // ── 4. playlists, the rootlist and recents ───────────────────────────────────────────────────────────────────
-
-        /// <summary>The 8 bytes a CREATE sends as its base revision: four zeroes and ASCII "root". Never stored.</summary>
-        public static ReadOnlySpan<byte> CreateBaseRevision => [0, 0, 0, 0, (byte)'r', (byte)'o', (byte)'o', (byte)'t'];
 
         /// <summary>A membership item id: 8 random bytes as 16 lowercase hex characters. Minted by the CLIENT, which
         /// is why a freshly added row already has an addressable uid before the server has heard of it.</summary>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse category, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge" sel="browse" crumb="Browse › Genres" ctx="Synthwave" items="Top|For you|Genres|Charts|Concerts" sub-sel="{{two}}" lower="{{lower}}" hint-size="2560px,136px"></dc-import>
+  <div style="height: 1220px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; padding: 16px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <section aria-label="Synthwave" style="position: relative; height: 200px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: linear-gradient(120deg, #5b2f6b 0%, #2f2a5b 55%, #1d1826 100%); color: #ffffff">
+        <span aria-hidden="true" style="position: absolute; right: 380px; top: 26px; width: 280px; height: 280px; border-radius: 140px; background: linear-gradient(180deg, rgba(255,122,195,0.55), rgba(255,170,90,0.18)); display: block"></span>
+        <span aria-hidden="true" style="position: absolute; right: 380px; top: 136px; width: 280px; height: 64px; background: repeating-linear-gradient(180deg, rgba(29,24,38,0) 0px, rgba(29,24,38,0) 8px, rgba(29,24,38,0.9) 8px, rgba(29,24,38,0.9) 13px); display: block"></span>
+        <div style="position: absolute; left: 32px; right: 700px; bottom: 24px; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.86)">Genre · Electronic</span>
+          <h1 title="Synthwave" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Synthwave</h1>
+          <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.86)">Analog synths, gated drums and neon. The sound of 1980s film scores, made again for the drive home.</span>
+        </div>
+        <div style="position: absolute; right: 28px; bottom: 28px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px">
+          <button aria-label="Share Synthwave" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: rgba(255,255,255,0.14); color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.86)">1,240 playlists · 312 artists · updated daily</span>
+        </div>
+      </section>
+      <div role="group" aria-label="Styles" style="display: flex; align-items: center; gap: 8px; height: 32px; flex-shrink: 0">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="8"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+      </div>
+      <div style="display: flex; gap: 48px; min-height: 0; padding-top: 4px">
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+          <section aria-label="Popular playlists" style="display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; align-items: baseline; gap: 12px; height: 28px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Popular playlists</h2><span style="font-size: 12px; color: var(--t2)">Most saved this month</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{playlists}}" as="t" hint-placeholder-count="6"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+            </div>
+          </section>
+          <section aria-label="New releases" style="display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; align-items: baseline; gap: 12px; height: 28px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">New releases</h2><span style="font-size: 12px; color: var(--t2)">This week</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{releases}}" as="t" hint-placeholder-count="6"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+            </div>
+          </section>
+          <section aria-label="Popular in Synthwave" style="display: flex; flex-direction: column">
+            <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Popular in Synthwave</h2><span style="font-size: 12px; color: var(--t2)">Top 15 songs this week</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Play all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; column-gap: 24px">
+              <sc-for list="{{tracks}}" as="r" hint-placeholder-count="15"><div role="row" style="{{r.row}}"><span style="{{r.num}}"><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{r.showNum}}" hint-placeholder-val="{{ true }}">{{r.n}}</sc-if></span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.d}}</span></div></sc-for>
+            </div>
+          </section>
+        </div>
+        <div style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px">
+          <section aria-label="Synthwave artists" style="display: flex; flex-direction: column">
+            <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Synthwave artists</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all 312</a></div>
+            <sc-for list="{{artists}}" as="r" hint-placeholder-count="12"><a href="#" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span><span style="font-size: 12px; line-height: 16px; color: var(--acct); white-space: nowrap">{{r.tag}}</span></a></sc-for>
+          </section>
+          <section aria-label="Synthwave concerts" style="display: flex; flex-direction: column">
+            <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Concerts</h2><span style="font-size: 12px; color: var(--t2)">Near Amsterdam</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">All</a></div>
+            <sc-for list="{{concerts}}" as="c" hint-placeholder-count="2"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="width: 40px; height: 40px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 16px; line-height: 18px; font-weight: 600; font-variant-numeric: tabular-nums">{{c.day}}</span><span style="font-size: 11px; line-height: 14px; color: var(--t2)">{{c.month}}</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.venue}}</span></span><span style="font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums; padding-left: 8px">{{c.when}}</span></a></sc-for>
+          </section>
+        </div>
+      </div>
+    </main>
+    <div style="display: flex; flex-shrink: 0">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="friends" mode="inline" w="{{paneW}}" h="{{midH}}" friends="{{yes}}" hint-size="380px,1220px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge" variant="music" pane="queue" hint-size="2560px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; display: block; background: ' + c;
+  const chips = ['All', 'Outrun', 'Darksynth', 'Dreamwave', 'Synthpop', 'Chillwave', 'Retro gaming', 'Vaporwave'].map((l, i) => ({ label: l, pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 32px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 14px; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const playlists = [['Synthwave Essentials', 'Spotify · 1.2M saves', '#2f5b6b'], ['Outrun Nights', 'Spotify · 640K saves', '#6b2f4a'], ['Darksynth', 'Spotify · 410K saves', '#3b2f2f'], ['Night Drive', 'Spotify · 2.3M saves', '#2f3b6b'], ['Dreamwave', 'Spotify · 290K saves', '#5b3b6b'], ['late night drive', 'Christos and emma.k', '#3b4a6b']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const releases = [['Heroes', 'Album · The Midnight', '#2f3b6b'], ['Hostage', 'Single · Gunship', '#2f4a3b'], ['Leather Teeth', 'Album · Carpenter Brut', '#3b2f2f'], ['Odyssey', 'Album · HOME', '#2f5b6b'], ['Nightdrive', 'Album · FM-84', '#6b2f4a'], ['Atlas', 'Album · Timecop1983', '#4a3b6b']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const td = [['Nightcall', 'Kavinsky, Lovefoxxx', '4:18', '#6b2f4a', true], ['Resonance', 'HOME', '3:32', '#2f5b6b'], ['Sunset', 'The Midnight', '5:20', '#6b4a2f'], ['Tech Noir', 'Gunship', '4:57', '#5b3b6b'], ['Running in the Night', 'FM-84, Ollie Wride', '4:14', '#4a3b2f'], ['Turbo Killer', 'Carpenter Brut', '3:20', '#6b2f2f'], ['A Real Hero', 'College, Electric Youth', '4:28', '#5b4a2f'], ['Days of Thunder', 'The Midnight', '5:12', '#5b3b2f'], ['Neon Dreams', 'Timecop1983', '5:01', '#2f3b4a'], ['Protovision', 'Kavinsky', '4:42', '#6b2f4a'], ['Fly for Your Life', 'Gunship', '5:00', '#5b3b6b'], ['Lost Boy', 'The Midnight', '4:39', '#5b3b2f'], ['Roller Mobster', 'Carpenter Brut', '4:03', '#6b2f2f'], ['New Machines', 'HOME', '4:15', '#2f5b6b'], ['Never Stop', 'FM-84', '4:56', '#4a3b2f']];
+  const tracks = td.map((d, i) => ({ n: String(i + 1), t: d[0], a: d[1], d: d[2], playing: !!d[4], showNum: !d[4],
+    row: 'display: grid; grid-template-columns: 44px 52px minmax(0, 1fr) 56px; align-items: center; height: 52px; margin-top: 2px; border-radius: 4px; ' + (i === 6 ? 'background: var(--sub)' : ''),
+    num: 'padding-left: 12px; display: flex; align-items: center; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-variant-numeric: tabular-nums; color: ' + (d[4] ? 'var(--acct)' : 'var(--t3)'),
+    art: 'width: 40px; height: 40px; border-radius: 4px; display: block; background: ' + d[3],
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[4] ? 'var(--acct)' : 'var(--t1)') }));
+  const artists = [['The Midnight', '2.1M monthly listeners', '#5b3b2f', 'Following'], ['Kavinsky', '4.8M monthly listeners', '#6b2f4a', 'Following'], ['HOME', '2.6M monthly listeners', '#2f5b6b', ''], ['Gunship', '980K monthly listeners', '#5b3b6b', 'Following'], ['FM-84', '1.3M monthly listeners', '#4a3b2f', ''], ['Carpenter Brut', '1.1M monthly listeners', '#6b2f2f', ''], ['Perturbator', '1.4M monthly listeners', '#3b2f4a', ''], ['Timecop1983', '760K monthly listeners', '#2f3b4a', ''], ['Electric Youth', '640K monthly listeners', '#5b4a2f', ''], ['Mitch Murder', '520K monthly listeners', '#2f4a6b', ''], ['Lazerhawk', '410K monthly listeners', '#6b3b2f', ''], ['Power Glove', '380K monthly listeners', '#3b6b5b', '']].map((d, i) => ({ name: d[0], sub: d[1], tag: d[3],
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1); ' + (i === 2 ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  const concerts = [['14', 'Nov', 'The Midnight', 'Paradiso · Amsterdam · with FM-84', 'Sat 20:00'], ['21', 'Nov', 'Gunship', 'Melkweg · Amsterdam', 'Sat 20:30']].map((c) => ({ day: c[0], month: c[1], name: c[2], venue: c[3], when: c[4] }));
+  return { vars, theme, accent, chips, playlists, releases, tracks, artists, concerts, two: 2, yes: true, paneW: 380, midH: 1220, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

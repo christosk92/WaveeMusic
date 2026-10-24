@@ -1,6 +1,6 @@
 // ── Shell/Video.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// the docked cap surface, in-window PiP (8 resize zones), the fullscreen surface, the watch stage, the placement
-// menu
+// the core half of the video surfaces: the docked card's host, the stay-mounted presenter and the PiP gestures, the pop-out
+// window's content host, the fullscreen mode, the watch stage, the join fold and the placement rows
 //
 // Role: UI
 // Owner: K
@@ -43,9 +43,22 @@
 //      and it is driven by the element's idle machine rather than hover — see the header of `OnMedia.UI.cs` for why.
 //
 // Every decision is `Video.cs`'s (placement, hosting, stage input, persistence, the PiP maths, the scrub preview, the
-// join delay, the fullscreen entry) — this file lays out and forwards.
+// join delay, the fullscreen entry) — this file hosts and forwards.
+//
+// T7c MOVED THE PICTURES TO THE STRUCTURE (`Themes\Classic\Structure\Views\Video\*.cs`). The six keys, all mounted from here with a props
+// record (`Theming\Contracts\VideoProps.cs`): `Video.Docked` (the docked card, and the watch page's stage frame), `Video.Pip` (the
+// stay-mounted presenter's box, the docked hover strip, the mini player's drag strip, close and eight resize zones), `Video.PopOut` (the
+// pop-out window's content and title band), `Video.Fullscreen` (the exit chrome), `Video.JoinPoster` (the poster and the join notice) and
+// `Video.PlacementMenu` (the chevron's flyout, mounted by the player bar). WHAT STAYED HERE is everything that is the media pipeline or a
+// decision: the engine `MediaPlayerElement` and its keys and handles (`PlayerStage`, `MainVideoArea`), the hollow reservation the presenter
+// follows (the realized node, the slot signal, the fit and the log lines), the join fold (`JoinWatch`), the geometry binds, the PiP gestures
+// (they run on `PipGesture` and the panel policy's bounds), the pop-out's caption regions and move-loop hold, the fullscreen mode, focus
+// scope and Escape / F keys, and the placement rows. A theme draws around and over the hole and never between it and its ancestors.
+//
+// EVERY HOST HERE IS A [CoreHost] (P3): the boxes on the hole's ancestor chain (the video layer, the presenter's column, the area's stack, the
+// stage box), the fullscreen focus-scope root and the empty / zero-size placeholders are built in ONE place, `HoleBoxes` — core on purpose, so
+// the hole rule cannot be broken by a theme, and carrying no look (transparent, 0 / Grow, no motion).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
@@ -55,8 +68,9 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Media;
 using FluentGpu.Pal;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -73,6 +87,10 @@ public static partial class Video
     /// it changes long after any surface mounted, so it can only ever reach a child as a signal.</summary>
     public static readonly Signal<JoinVisual> JoinNow = new(JoinVisual.Poster);
 
+    /// <summary>The persistence key of the main window's video presenter (<c>Flow.Persist</c>): a theme switch's new root adopts the
+    /// playing picture's subtree under this key instead of re-creating its surface (plan A4.2).</summary>
+    public const string PresenterPersistKey = "video.presenter";
+
     /// <summary>Last laid-out window-DIP rect of the hollow docked reservation: the overlay's FALLBACK while it has no
     /// live reservation to follow (before the first one is realized, across a remount) and the source of the slot log. The
     /// docked overlay itself follows the reservation NODE (<see cref="s_dockedReservation"/>) in the same frame; this
@@ -83,8 +101,10 @@ public static partial class Video
 
     /// <summary>The live docked reservation node (UI thread; written at its realize, cleared at its unmount). The overlay's
     /// engine <c>FollowRect</c> answers it while the placement is docked. A freed node reads as "nothing to follow", so a
-    /// stale value across a remount is harmless: the overlay then keeps its last placed geometry.</summary>
-    static NodeHandle s_dockedReservation;
+    /// stale value across a remount is harmless: the overlay then keeps its last placed geometry. ROOT-LIFETIME state
+    /// (<see cref="RootScope"/>): the node belongs to the mounted root's tree, so a remounted root starts with none.</summary>
+    static readonly RootState<NodeHandle> s_dockedReservationState = new("Video.DockedReservation");
+    static NodeHandle s_dockedReservation { get => s_dockedReservationState.Value; set => s_dockedReservationState.Value = value; }
 
     /// <summary>The overlay's <c>FollowRect</c>: ONE cached delegate (a fresh closure per render would re-diff the box). It
     /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope.</summary>
@@ -107,31 +127,12 @@ public static partial class Video
         bool Live() => DockedHosting.ShouldMount(DockedFace.PageStage, PlacementCore.Resolve(State.Surface.Value),
             ownerStagePlayable, Shell.Ui.ActiveStagePlayable.Value, PlayingUri());
 
-        var layers = new List<Element>(3)
+        return ViewSlots.View(ViewKeys.VideoDocked, new VideoDockedProps
         {
-            // ALWAYS the bottom layer, byte-identical to the card's poster ground: the idle→live hand-over is ONE dissolve.
-            PosterGround(posterUrl),
-        };
-        if (onPlay is not null)
-        {
-            layers.Add(Flow.Show(() => !Live(), new BoxEl
-            {
-                Key = "module-stage-cta",
-                Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [ToolTip.Wrap(Controls.PlayFab(onPlay, size: 64f), Loc.Get(Strings.Detail.Play))],
-            }));
-        }
-        // Flow.Show, NOT a C# `if`: a KeepAlive-parked page cannot re-render, but the node-bound predicate still runs.
-        layers.Add(Flow.Show(Live, Embed.Comp(() => new DockedSurface(DockedFace.PageStage, ownerStagePlayable)) with { Key = "module-stage-video" }));
-
-        return new BoxEl
-        {
-            Key = "module-stage",
-            // A plain COLUMN carries the aspect (AspectRatio never reaches a ZStack's measure); the ZStack is its child.
-            Shrink = 0f, Direction = 1, AspectRatio = 16f / 9f, MaxHeight = Shell.DockedVideoMaxH,
-            ClipToBounds = true, Fill = Tok.MediaLetterbox,
-            Children = [new BoxEl { Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Children = layers.ToArray() }],
-        };
+            PageFrame = new VideoPageFrame(posterUrl, onPlay, Live,
+                () => Embed.Comp(() => new DockedSurface(DockedFace.PageStage, ownerStagePlayable)) with { Key = "module-stage-video" },
+                Shell.DockedVideoMaxH),
+        });
     }
 
     // MOUNT POINT (stage B contract)
@@ -144,17 +145,13 @@ public static partial class Video
     {
         PopOut.ContentFactory ??= static () => new PopOutRoot();
         PopOut.TitleFactory = static () => CurrentTitle() is { Length: > 0 } title ? title : Loc.Get(Strings.Player.NowPlaying);
-        return new BoxEl
-        {
-            Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true,
-            Children =
+        return HoleBoxes.Layer(
             [
                 Embed.Comp(static () => new PipSurface()),
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
                 Embed.Comp(static () => new JoinWatch()),
-            ],
-        };
+            ]);
     }
 
     // MOUNT POINT (stage B contract)
@@ -193,7 +190,7 @@ public static partial class Video
             // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
             // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
             return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p,
-                () => { State.FoldAvailability(hasVideo); State.OpenAt(p); }, icon, allowed) with { AcceleratorText = accel };
+                () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
         }
 
         var items = new List<MenuFlyoutItem>(7)
@@ -262,23 +259,9 @@ public static partial class Video
         s_customRatio.Value = Prefs.CustomRatio(Platform.Settings);
     }
 
-    static VideoAspectMode ToEngine(AspectPreference p) => p switch
-    {
-        AspectPreference.Crop => VideoAspectMode.UniformToFill,
-        AspectPreference.Stretch => VideoAspectMode.Fill,
-        AspectPreference.Native => VideoAspectMode.Native,
-        AspectPreference.Custom => VideoAspectMode.Custom,
-        _ => VideoAspectMode.Uniform,
-    };
+    static VideoAspectMode ToEngine(AspectPreference p) => AspectMapping.ToEngine(p);
 
-    static AspectPreference FromEngine(VideoAspectMode m) => m switch
-    {
-        VideoAspectMode.UniformToFill => AspectPreference.Crop,
-        VideoAspectMode.Fill => AspectPreference.Stretch,
-        VideoAspectMode.Native => AspectPreference.Native,
-        VideoAspectMode.Custom => AspectPreference.Custom,
-        _ => AspectPreference.Fit,
-    };
+    static AspectPreference FromEngine(VideoAspectMode m) => AspectMapping.FromEngine(m);
 
     // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -304,6 +287,14 @@ public static partial class Video
         return t.IsValid && t.Knows(TrackFields.Title) ? t.Title : "";
     }
 
+    /// <summary>The current track's artists as one line, "" when unknown. Subscribes like <see cref="CurrentTitle"/>.</summary>
+    static string CurrentArtists()
+    {
+        if (CurrentTrack() is not { } t || Entities.Current is not { } scope) return "";
+        _ = scope.Tracks.Changed.Value;
+        return t.IsValid && t.Knows(TrackFields.Row) ? Entities.Strings.Resolve(t.ArtistLineId) : "";
+    }
+
     /// <summary>The current track's cover url, or null. Subscribes.</summary>
     static string? CurrentArtUrl() => CurrentTrack() is { } t ? Controls.ArtUrl(t.ImageId) : null;
 
@@ -312,100 +303,21 @@ public static partial class Video
 
     // ── the poster ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The poster's GROUND alone — dimmed artwork. The watch page draws this byte-identical layer under its stage
-    /// so the idle→live hand-over is ONE cross-fade. A track with no art is the bare letterbox.</summary>
-    /// <summary>The poster ground: the current art, dimmed, FILLING the video box — and imposing no shape of its own.
-    /// <para><b>Never <c>Controls.ArtworkFill</c> here.</b> That helper is, by its own doc, "a square cover that fills
-    /// the width its layout hands it (aspect-ratio 1)", and a ZStack measures to its largest child — so hosting it as
-    /// the element's <c>PosterContent</c> made the video AREA width x width. Every downstream decision then fitted the
-    /// picture into a square: Fit centred it in the square (about 87 DIP low in a 16:9 card), Crop and Native fitted
-    /// the wrong box entirely, and the bottom-justified on-media transport laid out below the visible edge and was
-    /// clipped away — which read as "the controls never show on hover" when the machine was in fact revealing them.
-    /// A NaN aspect is the engine's "no derived height: fill the box your layout gives you"
-    /// (<c>FluentGpu.Engine/Dsl/Factories.cs</c>).</para></summary>
-    internal static Element PosterGround(string? url) => new BoxEl
-    {
-        Grow = 1f, Opacity = 0.4f, ClipToBounds = true,
-        Children = url is { Length: > 0 }
-            ? [Ui.Image(url, ImageFit.Cover, aspect: float.NaN, decodePx: 256f, corners: 0f, placeholder: (ColorF?)null)
-                   with { Placeholder = Design.WatchedPlaceholder(url) }]
-            : [],
-    };
+    /// <summary>The poster's two reads, cached so an equal props record skips the template: the CURRENT track's art (read inside the
+    /// poster's OWN render, so a stage whose key survives a source switch never shows the first track's art forever) and the fault's own
+    /// line (bound reactively: the reducer types the fault and it can land after the notice mounted).</summary>
+    static readonly Func<string?> s_artUrl = static () => CurrentArtUrl();
+    static readonly Func<string> s_faultTitle = static () => Loc.Get(Shell.PlayerBarRules.FaultTitleKey(Playback.Error.Value));
 
-    /// <summary>The "no picture yet" composition every surface shares: the live art over the letterbox, and — only for
-    /// the two states that have something to say — the notice over it. The ground is the SAME keyed
-    /// <see cref="LivePoster"/> in every state, so the notice appearing or the fault replacing it never re-fades the
-    /// artwork underneath and never reflows the card.</summary>
-    static Element Poster(JoinVisual visual) => new BoxEl
-    {
-        Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = Tok.MediaLetterbox,
-        Children = visual is JoinVisual.Working or JoinVisual.Failed
-            ? [LivePoster.Make(), JoinNotice(visual)]
-            : [LivePoster.Make()],
-    };
-
-    /// <summary>The CURRENT track's art, read inside its OWN render — so a stage whose key survives a source switch never
-    /// shows the first track's art forever (<c>PosterContent</c> freezes at the element's mount).</summary>
-    sealed class LivePoster : Component
-    {
-        public override Element Render() => new BoxEl
+    /// <summary>The "no picture yet" composition every surface shares (<c>Video.JoinPoster</c>): the live art over the letterbox and, only
+    /// for the two states that have something to say, the notice over it. WHAT it says is <see cref="JoinNow"/>'s (decided by
+    /// <c>Joining.Decide</c> from the host's events, never a timer guess); the picture is the theme's. <paramref name="shown"/> collapses
+    /// the layer (still mounted) once the live picture is the one thing on screen.</summary>
+    static Element Poster(JoinVisual visual, bool shown = true, string? callerKey = null)
+        => ViewSlots.View(ViewKeys.VideoJoinPoster, new VideoJoinPosterProps
         {
-            Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.MediaLetterbox,
-            Children = [PosterGround(CurrentArtUrl())],
-        };
-
-        internal static Element Make() => Embed.Comp(static () => new LivePoster()) with { Key = "live-poster" };
-    }
-
-    /// <summary>What sits over the poster once the host has something to say. Inside the join budget there is no notice
-    /// at all — not a hidden one, none — so a switch that lands fast flashes nothing (ch 24 parity 75) and the ring
-    /// never animates unseen. Past the budget: the 20-DIP ring and "Loading…". On a failure: a warning glyph and the
-    /// fault's own line, and NO ring, because "not coming" must not draw the same picture as "still coming".
-    /// <para>The notice fades in rather than popping. An opacity channel is legal in this subtree and ONLY here: a
-    /// poster is mounted exactly while no player is bound, so there is no video hole below it for an ancestor opacity
-    /// to wash out (§0.1). The `Key` makes Working → Failed a real swap, so the new notice plays its own entrance
-    /// instead of the words changing under the user.</para></summary>
-    static Element JoinNotice(JoinVisual visual)
-    {
-        bool failed = visual == JoinVisual.Failed;
-        var stack = new BoxEl
-        {
-            Key = failed ? "join:failed" : "join:working",
-            Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.S, HitTestVisible = false,
-            // Reduced motion is the DEFAULT terminal — a hard cut, read as a VALUE, never a branch at the call site.
-            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
-            Children = failed ? FailedLine() : WorkingLine(),
-        };
-        return new BoxEl
-        {
-            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            HitTestPassThrough = true,
-            Children = [stack],
-        };
-    }
-
-    /// <summary>"Still coming": the 20-DIP indeterminate ring and "Loading…", both in ON-MEDIA ink.</summary>
-    static Element[] WorkingLine() =>
-    [
-        ProgressRing.Indeterminate(size: 20f, foreground: Tok.OnMediaPrimary),
-        new TextEl(Loc.Get(Strings.Player.Loading))
-        {
-            Size = 12f, Weight = 600, Color = Tok.OnMediaSecondary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        },
-    ];
-
-    /// <summary>"Not coming": a static warning glyph and the fault's OWN line — no ring, because a ring means wait. The
-    /// line is bound reactively: the reducer types the fault, and it can land after this notice mounted.</summary>
-    static Element[] FailedLine() =>
-    [
-        new TextEl(Icons.StatusWarning) { Size = 18f, FontFamily = Theme.IconFont, Color = Tok.OnMediaPrimary },
-        new TextEl(Prop.Of(static () => Loc.Get(Shell.PlayerBarRules.FaultTitleKey(Playback.Error.Value))))
-        {
-            Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        },
-    ];
+            Visual = visual, Shown = shown, ArtUrl = s_artUrl, FaultTitle = s_faultTitle,
+        }, callerKey);
 
     /// <summary>The ONE consumer of the host's switch events, and the only clock anywhere in the loading path. It folds
     /// <c>Playback.Video.Phase</c> / <c>.FirstFrame</c> / <c>.Player</c> and the placement into <see cref="JoinNow"/>,
@@ -417,6 +329,7 @@ public static partial class Video
     /// a `DepKey.Empty` timeout of its own, so the first join earned the 400 ms and every later one found it already
     /// spent and showed the ring instantly. The clock is the host timer's own (`TimerHandle.NowMs`) so the budget and
     /// the wake that samples it can never disagree — and the headless harness's virtual clock drives both.</para></summary>
+    [CoreHost]
     sealed class JoinWatch : Component
     {
         /// <summary>The grace timer's wake. Read by the fold, written by nothing else: the budget is SPENT, not polled.</summary>
@@ -475,23 +388,9 @@ public static partial class Video
                     $"gen={binding.Generation} key={Show(key)}");
             });
 
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            return HoleBoxes.Machinery();
         }
     }
-
-    /// <summary>A hover-revealed chrome glyph on the on-media ladder (24 × 24, 11-DIP icon). Its tooltip is its name, and
-    /// names the DESTINATION.</summary>
-    static Element ChromeGlyph(string glyph, string tip, Action onClick) => ToolTip.Wrap(new BoxEl
-    {
-        Width = 24f, Height = 24f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(Radii.Control),
-        Fill = ColorF.Transparent,
-        HoverFill = Tok.OnMediaPrimary with { A = 0.14f },
-        PressedFill = Tok.OnMediaPrimary with { A = 0.22f },
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-        Cursor = CursorId.Hand, OnClick = onClick,
-        Children = [new TextEl(glyph) { Size = 11f, FontFamily = Theme.IconFont, Color = Tok.OnMediaSecondary, HoverColor = Tok.OnMediaPrimary }],
-    }, tip);
 
     // ── the shared stage (the mini player, the pop-out, the fullscreen surface) ─────────────────────────────────────
 
@@ -501,7 +400,10 @@ public static partial class Video
     readonly record struct StageHost(TransportOwner Identity, Action FullscreenRequested, Action? SurfacePresented = null);
 
     /// <summary>One presenter of the bound player. Props freeze at mount: the host bundle is constant per surface.
-    /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off.</summary>
+    /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off. The on-media strip is
+    /// NOT the stage's: each host stacks it over its join poster (<see cref="OwnedStrip"/>), so a poster waiting for the first frame covers the
+    /// picture and never the transport.</summary>
+    [CoreHost]
     sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
     {
         long _loggedGen = -1;
@@ -552,7 +454,7 @@ public static partial class Video
             // No `hostFullscreen.Value` read here: the element reads HostFullscreen itself (MediaPlayerElement), so a
             // fullscreen edge re-renders only the element that cares, not this stage and its transport strip too.
             var binding = Playback.Video.Player.Value;
-            if (binding.Player is not { } player) return new BoxEl { Grow = 1f, MinHeight = 0f };
+            if (binding.Player is not { } player) return HoleBoxes.Vacancy();
             var cursor = StageInput.HidesCursorWindowed(host.Identity) ? CursorAutoHidePolicy.Always : CursorAutoHidePolicy.FullscreenOnly;
             if (_loggedGen != binding.Generation)
             {
@@ -562,12 +464,7 @@ public static partial class Video
                     + " engineTransport=" + MainWindowHole.EngineTransportEnabled
                     + " key=player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            return new BoxEl
-            {
-                Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Fill = ColorF.Transparent,
-                OnRealized = h => _box = h,
-                OnBoundsChanged = _ => TryLogMount(),
-                Children =
+            return HoleBoxes.Stage(h => _box = h, _ => TryLogMount(),
                 [
                     Embed.Comp(() => new MediaPlayerElement
                     {
@@ -579,7 +476,7 @@ public static partial class Video
                         AspectMode = s_aspect,
                         CustomAspectRatio = s_customRatio,
                         AspectModeChanged = s_aspectChanged,
-                        PosterContent = LivePoster.Make(),
+                        PosterContent = Poster(JoinVisual.Poster, callerKey: "live-poster"),
                         // The join poster (Poster(join)) stacks ABOVE this element and the host owns every loading and failure
                         // visual through JoinNow, so the engine's own status overlay would only animate under it (and flash a
                         // "Seeking" pill over the picture on a seek). Off: no ring, timer or tween runs for covered pixels.
@@ -590,15 +487,34 @@ public static partial class Video
                         SurfacePresented = host.SurfacePresented,
                         HostFullscreen = hostFullscreen,
                         CursorAutoHide = cursor,
+                        AutoHideTransportControls = !Wavee.Theming.InspectSwitches.HoverChromeAtRest,   // `mount chrome=shown`: the chrome at rest, no auto-hide
                         ChromeVisibleOut = chromeVisible,
                         ChromeFeed = feed,
                     }) with
                     {
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     },
-                    OnMedia.Transport(chromeVisible, feed),
-                ],
-            };
+                ]);
+        }
+    }
+
+    /// <summary>The on-media strip of the host <paramref name="identity"/> (audit B3, item 11): revealed by the window's idle machine, and only
+    /// while that host OWNS the transport (<c>State.Transport</c>, the placement's owner). In fullscreen the main window's presenter is Docked
+    /// by identity and the fullscreen surface owns the transport (its chrome draws the strip, `VideoFullscreenProps.Transport`), so this
+    /// one stands down and the window never draws two strips.</summary>
+    static Element OwnedStrip(TransportOwner identity, IReadSignal<bool> chromeVisible, PlayerChromeFeed feed)
+        => Embed.Comp(new StripHost.Props(identity, chromeVisible, feed), static () => new StripHost()) with { Key = "strip" };
+
+    [CoreHost]
+    sealed class StripHost : Component
+    {
+        public sealed record Props(TransportOwner Identity, IReadSignal<bool> ChromeVisible, PlayerChromeFeed Feed);
+
+        public override Element Render()
+        {
+            var p = UseProps<Props>();
+            var owned = UseComputed(() => p.ChromeVisible.Value && State.Transport.Value == p.Identity);
+            return OnMedia.Transport(owned, p.Feed);
         }
     }
 
@@ -616,7 +532,77 @@ public static partial class Video
     static readonly PlayerChromeFeed s_mainFeed = new();
     static readonly PlayerChromeFeed s_popOutFeed = new();
 
+    /// <summary>The track's title, bound by the pop-out's band and the fullscreen band (one cached delegate: an equal props record skips the template).</summary>
+    static readonly Func<string> s_currentTitle = static () => CurrentTitle();
+
     static string GenKey(long generation) => "gen:" + generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>THE HOLE'S STRUCTURAL BOXES, the one place this file builds an element (P3), so every host below is a <c>[CoreHost]</c> that WVTH008
+    /// guards. They stay core on purpose: they are the picture's ANCESTORS (the shell's video layer, the presenter's column, the video area's
+    /// stack, the stage box that holds the <c>MediaPlayerElement</c>) or the fullscreen mode's focus-scope root, and the hole rule (no layout
+    /// transition, opacity, offscreen effect or scale Enter/Exit on any ancestor of the hole) binds every theme: keeping the chain core means
+    /// no theme can put an effect between the picture and the window. They carry no look: no colour but transparent (an erasable, hit-testable
+    /// plate), no size but 0 and Grow, no motion. Everything a theme draws around and over the hole is a key (`Video.Pip`, `Video.Docked`,
+    /// `Video.PopOut`, `Video.Fullscreen`, `Video.JoinPoster`) placed INSIDE these boxes.</summary>
+    static class HoleBoxes
+    {
+        /// <summary>The shell's top-Z video layer (<see cref="PipLayer"/>): a pass-through ZStack where only the card takes input.</summary>
+        public static Element Layer(Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true, Children = children,
+        };
+
+        /// <summary>A surface whose mount decision is false (the docked card yielded, the presenter with nothing to present).</summary>
+        public static Element Unmounted() => new BoxEl();
+
+        /// <summary>Zero-size machinery (the join fold).</summary>
+        public static Element Machinery() => new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+
+        /// <summary>The player stage's place while no player is bound (the poster stacked over it shows).</summary>
+        public static Element Vacancy() => new BoxEl { Grow = 1f, MinHeight = 0f };
+
+        /// <summary>The player stage: the <c>MediaPlayerElement</c> and the on-media transport, clipped, over a transparent plate (the hole erases
+        /// it). <paramref name="realized"/> and <paramref name="bounds"/> feed the mount log.</summary>
+        public static Element Stage(Action<NodeHandle> realized, Action<RectF> bounds, Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Fill = ColorF.Transparent,
+            OnRealized = realized,
+            OnBoundsChanged = bounds,
+            Children = children,
+        };
+
+        /// <summary>The main window's video area: the stage over the poster, always the same ZStack shape (see <see cref="MainVideoArea"/>).</summary>
+        public static Element Area(Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = children,
+        };
+
+        /// <summary>The stay-mounted presenter's pass-through column around the theme's <c>Video.Pip</c> box (which carries the geometry binds).</summary>
+        public static Element Presenter(Element pip) => new BoxEl
+        {
+            Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [pip],
+        };
+
+        /// <summary>The fullscreen layer's pass-through column while fullscreen resolves.</summary>
+        public static Element FullscreenLayer(Element surface) => new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            HitTestPassThrough = true,
+            Children = [surface],
+        };
+
+        /// <summary>The fullscreen mode's root: the focus scope's node, with the Escape / F exit and the "never leave focus null" rule wired on it.</summary>
+        public static Element FullscreenRoot(Action<NodeHandle> realized, Action<KeyEventArgs> keyDown, Action<bool> focusChanged, Element chrome) => new BoxEl
+        {
+            Grow = 1f, Direction = 1, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            HitTestPassThrough = true,
+            Focusable = true,
+            OnRealized = realized,
+            OnKeyDown = keyDown,
+            OnFocusChanged = focusChanged,
+            Children = [chrome],
+        };
+    }
 
     /// <summary>F243: a minimum spacing for a log line that rides a GEOMETRY signal (the docked slot). A window or splitter
     /// resize writes it per frame; the line is for the settled value, not the sweep. A line that passes carries how many
@@ -659,6 +645,7 @@ public static partial class Video
     /// <summary>The docked music-video surface: video that simply LIVES in the app at zero commitment. Two faces, one
     /// card — the rail's Cap (height follows the content's own aspect, splitter-overridable) and the watch page's
     /// PageStage (the page owns the envelope). NO transition, NO shadow, NO corners of its own.</summary>
+    [CoreHost]
     sealed class DockedSurface(DockedFace face, string? ownerStagePlayable) : Component
     {
         /// <summary>F243: the docked slot lines are at most one per this many ms, the settled rect always written last (see
@@ -666,6 +653,8 @@ public static partial class Video
         const int GeometryLogGapMs = 250;
 
         NodeHandle _slot;
+        Action<NodeHandle>? _onRealized;   // the reservation's reports, built once (an equal props record skips the template)
+        Action<RectF>? _onBounds;
         string? _fittedFor;
         GeometryLogGate _slotGate;
         TimerHandle _slotFlush;
@@ -686,19 +675,21 @@ public static partial class Video
                 var catalogue = CurrentCatalogueSize();
                 float railW = Shell.Ui.RailWidth.Value;
                 if (face != DockedFace.Cap) return;
-                if (!string.Equals(sourceKey, _fittedFor, StringComparison.Ordinal))
+                // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height —
+                // is the pure `DockedFit`; this effect applies it.
+                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Peek(),
+                    Shell.Ui.DockedVideoHeight.Peek(), railW, decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
+                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek()));
+                if (fit.SourceChanged)
                 {
                     _fittedFor = sourceKey;
                     if (Shell.Ui.DockedVideoHeightPinned.Peek()) Shell.Ui.DockedVideoHeightPinned.Value = false;
                 }
-                string dimSource = NaturalSeed.Name(NaturalSeed.Pick(decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
-                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, out int naturalW, out int naturalH));
-                var natural = new SizeI(naturalW, naturalH);
-                bool pinned = Shell.Ui.DockedVideoHeightPinned.Peek();
-                float height = pinned
-                    ? Shell.Ui.DockedVideoHeight.Peek()
-                    : Shell.FitDockedVideoHeight(railW, natural.Width, natural.Height, Shell.Ui.RailBodyHeight.Peek());
-                if (!pinned) Shell.Ui.DockedVideoHeight.Value = height;
+                string dimSource = fit.DimSource;
+                var natural = new SizeI(fit.NaturalW, fit.NaturalH);
+                bool pinned = fit.Pinned;
+                float height = fit.Height;
+                if (fit.WritesHeight) Shell.Ui.DockedVideoHeight.Value = height;
                 var now = (sourceKey, railW, natural.Width, natural.Height, height, pinned, dimSource);
                 if (now == _loggedFit) return;
                 _loggedFit = now;
@@ -739,7 +730,8 @@ public static partial class Video
                 State.ReportLive(SurfacePlacement.Docked, false);
                 // Release OUR reservation only if a newer face has not already registered its own. Then (and only then)
                 // is nothing left to cover, so the fallback collapses; a successor keeps the last rect (see DockedSlot).
-                if (!_slot.IsNull && s_dockedReservation == _slot)
+                // (A cleanup that runs after its root's scope ended sees the next scope's empty slot: that is "nothing registered".)
+                if (!_slot.IsNull && (s_dockedReservation == _slot || s_dockedReservation.IsNull))
                 {
                     s_dockedReservation = default;
                     DockedSlot.Value = default;
@@ -749,37 +741,15 @@ public static partial class Video
             // The slot log's trailing edge: re-armed by every held line, so it fires GeometryLogGapMs after the sweep stops.
             _slotFlush = UseTimeout(FlushSlotLog, GeometryLogGapMs);
 
-            if (!mount) return new BoxEl();
+            if (!mount) return HoleBoxes.Unmounted();
 
-            BoxEl card = new BoxEl
+            // The card is the theme's (`Video.Docked`): a hollow reservation the stay-mounted presenter follows, with the Space key.
+            _onRealized ??= h => { _slot = h; s_dockedReservation = h; };
+            _onBounds ??= _ => PublishDockedSlot();
+            return ViewSlots.View(ViewKeys.VideoDocked, new VideoDockedProps
             {
-                ZStack = true, ClipToBounds = true,
-                // NO Shadow, NO Layout/Enter/Exit: a content-layer rung, and any transition here erases the hole.
-                OnPointerExit = static () => { },
-                OnKeyDown = static e =>
-                {
-                    if (e.KeyCode != Keys.Space) return;
-                    e.Handled = true;
-                    Playback.TogglePlay("video.space");
-                },
-                Focusable = true,
-                Children = [VideoArea()],
-            };
-
-            return face == DockedFace.PageStage
-                ? card with { Grow = 1f, MinHeight = 0f, Fill = Tok.MediaLetterbox }
-                : card with { Shrink = 0f, MinWidth = 0f, Height = Shell.Ui.DockedVideoHeight, Fill = Tok.MediaLetterbox };
-        }
-
-        Element VideoArea()
-        {
-            return new BoxEl
-            {
-                Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.MediaLetterbox,
-                HitTestVisible = false,
-                OnRealized = h => { _slot = h; s_dockedReservation = h; },
-                OnBoundsChanged = _ => PublishDockedSlot(),
-            };
+                Card = new VideoDockedCard(face, Shell.Ui.DockedVideoHeight, _onRealized, _onBounds, s_toggleSpace),
+            });
         }
 
         void PublishDockedSlot()
@@ -813,53 +783,54 @@ public static partial class Video
                 (held > 0 ? $" held={held}" : ""));
     }
 
-    static void EnterFullscreen()
+    /// <summary>Space on the focused docked card.</summary>
+    static readonly Action s_toggleSpace = static () => Playback.TogglePlay("video.space");
+
+    /// <summary>The docked hover strip's three verbs (the strip itself is the theme's, in `Video.Pip`): each announces its destination.</summary>
+    static readonly Action s_toMiniPlayer = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
+        State.OpenAt(SurfacePlacement.Floating);
+    };
+
+    static readonly Action s_toFullscreen = static () =>
     {
         Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
         State.OpenAt(SurfacePlacement.Fullscreen);
-    }
+    };
 
-    /// <summary>The hover-revealed top strip: mini player · full screen · off, right-aligned, no label.</summary>
-    static Element DockedOverlayChrome() => new BoxEl
-        {
-            Grow = 1f, Direction = 1, HitTestPassThrough = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Height = 30f, Shrink = 0f, Direction = 0,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.XXS,
-                    Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-                    Gradient = Tok.ScrimTop,
-                    Opacity = 0f, HoverOpacity = 1f,
-                    HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-                    Children =
-                    [
-                        ChromeGlyph(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), static () =>
-                        {
-                            Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
-                            State.OpenAt(SurfacePlacement.Floating);
-                        }),
-                        ChromeGlyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), EnterFullscreen),
-                        ChromeGlyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), static () =>
-                        {
-                            Announcer.Say(Loc.Get(Strings.Player.TurnOffVideo));
-                            // Sticky off through the model's HOST-CLOSE (it carries the stale-close identity guard).
-                            State.ReportClosed(SurfacePlacement.Docked);
-                        }),
-                    ],
-                },
-            ],
-        };
+    static readonly Action s_turnOffDocked = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.TurnOffVideo));
+        // Sticky off through the model's HOST-CLOSE (it carries the stale-close identity guard).
+        State.ReportClosed(SurfacePlacement.Docked);
+    };
+
+    /// <summary>The mini player's close button.</summary>
+    static readonly Action s_closePip = static () => State.ReportClosed(SurfacePlacement.Floating);
+
+    /// <summary>The mini player's own placement buttons (W-Video): each announces its destination, as the docked strip's do.</summary>
+    static readonly Action s_toDocked = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.DockInRail));
+        State.OpenAt(SurfacePlacement.Docked);
+    };
+
+    static readonly Action s_toSeparateWindow = static () =>
+    {
+        Announcer.Say(Loc.Get(Strings.Player.VideoInSeparateWindow));
+        State.OpenAt(SurfacePlacement.Detached);
+    };
 
     // ══ 3. THE IN-WINDOW MINI PLAYER ═════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>What the main-window presenter shows: the bound player's stage over the poster. Its OWN component so the
     /// switch's edges (Source, Player, JoinNow — three to five per switch) re-render this small subtree and not the whole
     /// <see cref="PipSurface"/> (its chrome, its eight resize bands, its tooltips and its geometry binds).
-    /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster], the poster KEYED and merely collapsed
+    /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster, strip?], the poster KEYED and merely collapsed
     /// (<c>Visible</c> false, which also takes it out of hit-test and paint) once the first frame is up. Swapping
     /// between a ZStack and a bare box at first frame re-laid the stage out on the very frame the hole went live.</para></summary>
+    [CoreHost]
     sealed class MainVideoArea : Component
     {
         public override Element Render()
@@ -868,7 +839,8 @@ public static partial class Video
             var binding = Playback.Video.Player.Value;
             var join = JoinNow.Value;
             bool stage = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
-            var poster = Poster(join) with { Key = "poster", Visible = SurfaceMount.PosterShown(stage, join) };
+            var poster = Poster(join, SurfaceMount.PosterShown(stage, join), "poster");
+            // the strip over the poster: a poster waiting for the first frame covers the picture, never the transport
             Element[] kids = stage
                 ? new Element[]
                 {
@@ -876,20 +848,25 @@ public static partial class Video
                         new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
                         with { Key = "mainstage:" + GenKey(binding.Generation) },
                     poster,
+                    OwnedStrip(TransportOwner.Docked, s_mainChrome, s_mainFeed),
                 }
                 : new Element[] { poster };
-            return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = kids };
+            return HoleBoxes.Area(kids);
         }
     }
 
     /// <summary>The stay-mounted main-window presenter: docked overlay, in-window PiP, and fullscreen share one
-    /// MediaPlayerElement. Geometry lives in bound <c>Transform</c>/<c>Width</c>/<c>Height</c> thunks.</summary>
-    sealed class PipSurface : Component
+    /// MediaPlayerElement. Geometry lives in bound <c>Transform</c>/<c>Width</c>/<c>Height</c> thunks. The box those binds are put on
+    /// and the chrome over the picture are the theme's (<c>Video.Pip</c>); this component keeps the binds, the picture's mount and the
+    /// mini player's gestures (<see cref="IVideoPipGestures"/>).</summary>
+    [CoreHost]
+    sealed class PipSurface : Component, IVideoPipGestures
     {
-        const float ScrimH = 30f;
-
         readonly Signal<float> _x = new(0f), _y = new(0f);
         readonly Signal<float> _w = new(Pip.DefaultW), _h = new(Pip.DefaultH);
+
+        /// <summary>The mini player's bounds: the active panel policy's (Classic: the 0.2.9 numbers), read at the moment of a gesture.</summary>
+        static PipBounds PipBoundsNow => ShellPolicy.Now.Panel.Pip;
         readonly Signal<bool> _placed = new(false);   // false = anchored (tracks the corner, reserves layout)
         bool _sized;                                  // the user sized it (a gesture or a remembered rect)
         float _fitRatio;
@@ -912,7 +889,7 @@ public static partial class Video
                 if (PlacementPersistence.TryLoadRect(Platform.Settings.Get(Platform.Keys.VideoPipRect), out float px, out float py, out float pw, out float ph))
                 {
                     _x.Value = px; _y.Value = py;
-                    _w.Value = MathF.Max(Pip.MinW, pw); _h.Value = MathF.Max(Pip.MinH, ph);
+                    _w.Value = MathF.Max(PipBoundsNow.MinW, pw); _h.Value = MathF.Max(PipBoundsNow.MinH, ph);
                     _placed.Value = true;
                     _sized = true;
                 }
@@ -935,7 +912,8 @@ public static partial class Video
             UseEffect(() => State.ReportLive(SurfacePlacement.Floating, livePip), DepKey.From(livePip));
             UseSignalEffect(() =>
                 FloatingSurfaceReserve.Value = PipGesture.Reserve(
-                    PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Floating, _placed.Value, _h.Value));
+                    PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Floating, _placed.Value, _h.Value,
+                    ShellPolicy.Tracked.Panel.Pip));
             UseEffect(() => () =>
             {
                 FloatingSurfaceReserve.Value = 0f;
@@ -956,10 +934,14 @@ public static partial class Video
                 float ratio = naturalW > 0 && naturalH > 0 ? (float)naturalH / naturalW : Pip.FallbackRatio;
                 if (!PipGesture.ShouldRefit(_sized, _fitRatio, ratio)) { if (_fitRatio <= 0f) _fitRatio = ratio; return; }
                 _fitRatio = ratio;
-                _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height);
+                _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height, ShellPolicy.Tracked.Panel.Pip);
             });
 
-            if (!mounted) return new BoxEl();
+            if (!mounted) return HoleBoxes.Unmounted();
+
+            // What the window can do with the video besides float it: the mini player offers "Dock in rail" where the rail fits, else the
+            // separate window (W-Video, -Small). Subscribed: the rail's fit flips it, rarely.
+            var capable = State.HostCapability.Value;
 
             if (!_widthBind.IsBound)
             {
@@ -968,157 +950,51 @@ public static partial class Video
                 _transformBind = Prop.Of(() => OverlayTransform(PlacementCore.Resolve(State.Surface.Value), vp.Value, _placed.Value, _x.Value, _y.Value, _w.Value, _h.Value, DockedSlot.Value));
             }
 
-            var surface = new BoxEl
-            {
-                Direction = 1, ClipToBounds = true, ZStack = true,
-                // A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes
-                // inactive, the element hides its DComp visual and pumps with an inert binding (nothing is placed or shown
-                // from this slot; the player's own state pump never depended on this element, F132), and uncovering
-                // re-places the same visual with no new slot.
-                Visible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value)),
-                // Docked: the engine places this box over the reservation's painted rect in the same frame (F169) and the
-                // three binds below stand down; every other placement is driven by them as before.
-                FollowRect = s_followDockedReservation,
-                Width = _widthBind,
-                Height = _heightBind,
-                Transform = _transformBind,
-                Fill = ColorF.Transparent,
-                Corners = resolved == SurfacePlacement.Floating ? CornerRadius4.All(Radii.Card) : default,
-                BorderWidth = resolved == SurfacePlacement.Floating ? 1f : 0f,
-                BorderColor = resolved == SurfacePlacement.Floating ? Prop.Of(static () => Tok.StrokeCardDefault) : ColorF.Transparent,
-                Shadow = resolved == SurfacePlacement.Floating ? Elevation.Flyout : default,
-                OnPointerExit = static () => { },
-                Children = OverlayChildren(resolved),
-            };
-
-            return new BoxEl { Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [surface] };
+            // The box, its frame and the chrome over the picture are the theme's (`Video.Pip`); the binds are the engine's geometry.
+            return HoleBoxes.Presenter(
+                    ViewSlots.View(ViewKeys.VideoPip, new VideoPipProps
+                    {
+                        Placement = resolved,
+                        Visible = s_surfaceVisible,
+                        FollowRect = s_followDockedReservation,
+                        Width = _widthBind,
+                        Height = _heightBind,
+                        Transform = _transformBind,
+                        Area = s_videoArea,
+                        Gestures = this,
+                        ToMiniPlayer = s_toMiniPlayer,
+                        ToFullscreen = s_toFullscreen,
+                        TurnOffDocked = s_turnOffDocked,
+                        ClosePip = s_closePip,
+                        ToDocked = (capable & PlacementSet.Docked) != 0 ? s_toDocked : null,
+                        ToSeparateWindow = (capable & PlacementSet.Detached) != 0 ? s_toSeparateWindow : null,
+                    }));
         }
 
-        Element[] OverlayChildren(SurfacePlacement resolved)
-        {
-            var kids = new List<Element>(4) { Embed.Comp(static () => new MainVideoArea()) with { Key = "video-area" } };
-            if (resolved == SurfacePlacement.Docked) kids.Add(DockedOverlayChrome());
-            if (resolved == SurfacePlacement.Floating) { kids.Add(Chrome()); kids.Add(ResizeBands()); }
-            return kids.ToArray();
-        }
+        /// <summary>A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes inactive, the
+        /// element hides its DComp visual and pumps with an inert binding (nothing is placed or shown from this slot; the player's own
+        /// state pump never depended on this element, F132), and uncovering re-places the same visual with no new slot.</summary>
+        static readonly Prop<bool> s_surfaceVisible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value));
 
-        static float OverlayWidth(SurfacePlacement resolved, Size2 vp, float pipW, RectF slot) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => vp.Width,
-            SurfacePlacement.Docked => slot.W,
-            _ => pipW,
-        };
+        /// <summary>The picture: the keyed video area (the player stage over the poster), one component of its own, PERSISTENT across a
+        /// theme switch (<c>Flow.Persist("video.presenter")</c>, plan A4.2): the switch remounts the root, and the new theme's presenter
+        /// adopts this very subtree (the MediaPlayerElement, its DComp surface and its binding), re-rendered once against the new
+        /// providers, so a playing video never loses its surface or shows a black frame. Without an adopter (the new theme draws no
+        /// presenter) it stays parked, then is released (<c>Flow.PersistParkMs</c>).</summary>
+        static readonly Func<Element> s_videoArea = static () => Flow.Persist(PresenterPersistKey, static () => Embed.Comp(static () => new MainVideoArea())) with { Key = "video-area" };
 
-        static float OverlayHeight(SurfacePlacement resolved, Size2 vp, float pipH, RectF slot) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => vp.Height,
-            SurfacePlacement.Docked => slot.H,
-            _ => pipH,
-        };
+        // The overlay's size and offset per resolved placement are the pure `PipOverlay` (PipGesture.cs); these only adapt the
+        // engine's value types to it.
+        static float OverlayWidth(SurfacePlacement resolved, Size2 vp, float pipW, RectF slot)
+            => PipOverlay.Width(resolved, vp.Width, pipW, slot.W);
+
+        static float OverlayHeight(SurfacePlacement resolved, Size2 vp, float pipH, RectF slot)
+            => PipOverlay.Height(resolved, vp.Height, pipH, slot.H);
 
         static Affine2D OverlayTransform(SurfacePlacement resolved, Size2 vp, bool placed, float x, float y, float w, float h, RectF slot)
         {
-            if (resolved == SurfacePlacement.Fullscreen) return Affine2D.Identity;
-            if (resolved == SurfacePlacement.Docked) return Affine2D.Translation(slot.X, slot.Y);
-            var (ax, ay) = placed ? (x, y) : Pip.Anchor(w, h, vp.Width, vp.Height);
-            return Affine2D.Translation(PipGesture.ClampX(ax, vp.Width, w), PipGesture.ClampY(ay, vp.Height, h));
-        }
-
-        /// <summary>The hover strip: a drag surface and the ✕, inset by the corner width and the edge band so neither sits
-        /// under a resize zone.</summary>
-        Element Chrome()
-        {
-            var dragSurface = new BoxEl
-            {
-                Grow = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
-                Cursor = CursorId.SizeAll,
-                OnRealized = h => _dragNode = h,
-                OnPointerDown = OnDragDown,
-                OnDrag = OnDragMove,
-                OnClick = PersistGeometry,          // an OnDrag node's click IS its release edge
-                OnDragCanceled = PersistGeometry,
-            };
-            var close = ChromeGlyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), static () => State.ReportClosed(SurfacePlacement.Floating));
-            var strip = new BoxEl
-            {
-                Height = ScrimH, Shrink = 0f, Direction = 0,
-                Padding = new Edges4(Pip.CornerW, Pip.EdgeBand, Pip.CornerW, 0f),
-                Gradient = Tok.ScrimTop,
-                Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f),
-                Opacity = 0f, HoverOpacity = 1f,
-                HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-                Children = [dragSurface, close],
-            };
-            return new BoxEl { Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [strip] };
-        }
-
-        /// <summary>The eight resize zones: a 3-row skeleton whose every non-band cell is pass-through, topmost so a band
-        /// always wins over the chrome. Corner rows are 12 tall, edge bands 6 thin.</summary>
-        Element ResizeBands()
-        {
-            BoxEl Band(int slot, PipEdge edge, CursorId cursor) => new BoxEl
-            {
-                Cursor = cursor,
-                OnRealized = h => _bandNodes[slot] = h,
-                OnPointerDown = p => OnResizeDown(slot, p),
-                OnDrag = p => OnResizeMove(slot, edge, p),
-                OnClick = PersistGeometry,
-                OnDragCanceled = PersistGeometry,
-            };
-
-            return new BoxEl
-            {
-                Grow = 1f, Direction = 1, HitTestPassThrough = true,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Height = Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
-                        Children =
-                        [
-                            Band(0, PipEdge.Left | PipEdge.Top, CursorId.SizeNWSE) with { Width = Pip.CornerW, Height = Pip.CornerH },
-                            Band(1, PipEdge.Top, CursorId.SizeNS) with { Grow = 1f, Height = Pip.EdgeBand },
-                            Band(2, PipEdge.Right | PipEdge.Top, CursorId.SizeNESW) with { Width = Pip.CornerW, Height = Pip.CornerH },
-                        ],
-                    },
-                    new BoxEl
-                    {
-                        Grow = 1f, MinHeight = 0f, Direction = 0, HitTestPassThrough = true,
-                        Children =
-                        [
-                            Band(3, PipEdge.Left, CursorId.SizeWE) with { Width = Pip.EdgeBand },
-                            new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                            Band(4, PipEdge.Right, CursorId.SizeWE) with { Width = Pip.EdgeBand },
-                        ],
-                    },
-                    new BoxEl
-                    {
-                        Height = Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, HitTestPassThrough = true,
-                        Children =
-                        [
-                            Band(5, PipEdge.Left | PipEdge.Bottom, CursorId.SizeNESW) with { Width = Pip.CornerW, Height = Pip.CornerH },
-                            Band(6, PipEdge.Bottom, CursorId.SizeNS) with { Grow = 1f, Height = Pip.EdgeBand },
-                            // The SE zone carries the one painted pixel of this layer, revealed with the chrome.
-                            Band(7, PipEdge.Right | PipEdge.Bottom, CursorId.SizeNWSE) with
-                            {
-                                Width = Pip.CornerW, Height = Pip.CornerH,
-                                Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.End,
-                                Opacity = 0f, HoverOpacity = 1f,
-                                HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-                                Children =
-                                [
-                                    new BoxEl
-                                    {
-                                        Width = 8f, Height = 8f, Margin = new Edges4(0f, 0f, 2f, 2f), HitTestVisible = false,
-                                        Corners = new CornerRadius4(0f, 0f, Radii.Control, 0f),
-                                        Fill = Tok.OnMediaTertiary,
-                                    },
-                                ],
-                            },
-                        ],
-                    },
-                ],
-            };
+            var o = PipOverlay.Offset(resolved, vp.Width, vp.Height, placed, x, y, w, h, slot.X, slot.Y, ShellPolicy.Tracked.Panel.Pip);
+            return o.Identity ? Affine2D.Identity : Affine2D.Translation(o.X, o.Y);
         }
 
         Size2 ViewportPeek() => _vpSig?.Peek() ?? new Size2(1280f, 720f);
@@ -1129,14 +1005,19 @@ public static partial class Video
         {
             var vp = ViewportPeek();
             float w = _w.Peek(), h = _h.Peek();
-            var (x, y) = _placed.Peek() ? (_x.Peek(), _y.Peek()) : Pip.Anchor(w, h, vp.Width, vp.Height);
-            _x.Value = PipGesture.ClampX(x, vp.Width, w);
-            _y.Value = PipGesture.ClampY(y, vp.Height, h);
+            var bounds = PipBoundsNow;
+            var (x, y) = _placed.Peek() ? (_x.Peek(), _y.Peek()) : Pip.Anchor(w, h, vp.Width, vp.Height, bounds);
+            _x.Value = PipGesture.ClampX(x, vp.Width, w, bounds);
+            _y.Value = PipGesture.ClampY(y, vp.Height, h, bounds);
             _placed.Value = true;
             _startX = _x.Peek(); _startY = _y.Peek(); _startW = w; _startH = h;
         }
 
-        void OnDragDown(Point2 local)
+        public void DragRealized(NodeHandle node) => _dragNode = node;
+
+        public void ZoneRealized(int slot, NodeHandle node) => _bandNodes[slot] = node;
+
+        public void DragDown(Point2 local)
         {
             var scene = Context.Scene;
             if (scene is null || _dragNode.IsNull || !scene.IsLive(_dragNode)) return;
@@ -1145,17 +1026,18 @@ public static partial class Video
             _startPx = local.X + abs.X; _startPy = local.Y + abs.Y;
         }
 
-        void OnDragMove(Point2 local)
+        public void DragMove(Point2 local)
         {
             var scene = Context.Scene;
             if (scene is null || _dragNode.IsNull || !scene.IsLive(_dragNode)) return;
             var abs = scene.AbsoluteRect(_dragNode);   // the grip moves WITH the surface → reconstruct window space
             var vp = ViewportPeek();
-            _x.Value = PipGesture.ClampX(_startX + (local.X + abs.X - _startPx), vp.Width, _w.Peek());
-            _y.Value = PipGesture.ClampY(_startY + (local.Y + abs.Y - _startPy), vp.Height, _h.Peek());
+            var bounds = PipBoundsNow;
+            _x.Value = PipGesture.ClampX(_startX + (local.X + abs.X - _startPx), vp.Width, _w.Peek(), bounds);
+            _y.Value = PipGesture.ClampY(_startY + (local.Y + abs.Y - _startPy), vp.Height, _h.Peek(), bounds);
         }
 
-        void OnResizeDown(int slot, Point2 local)
+        public void ZoneDown(int slot, Point2 local)
         {
             var scene = Context.Scene;
             var band = _bandNodes[slot];
@@ -1166,7 +1048,7 @@ public static partial class Video
             _startPx = local.X + abs.X; _startPy = local.Y + abs.Y;
         }
 
-        void OnResizeMove(int slot, PipEdge edge, Point2 local)
+        public void ZoneMove(int slot, PipEdge edge, Point2 local)
         {
             var scene = Context.Scene;
             var band = _bandNodes[slot];
@@ -1174,13 +1056,13 @@ public static partial class Video
             var abs = scene.AbsoluteRect(band);
             var vp = ViewportPeek();
             var r = PipGesture.Resize(edge, _startX, _startY, _startW, _startH,
-                local.X + abs.X - _startPx, local.Y + abs.Y - _startPy, vp.Width, vp.Height);
+                local.X + abs.X - _startPx, local.Y + abs.Y - _startPy, vp.Width, vp.Height, PipBoundsNow);
             _x.Value = r.X; _y.Value = r.Y; _w.Value = r.W; _h.Value = r.H;
         }
 
         /// <summary>One settings write per gesture, and only for a DELIBERATELY placed card (writing the computed anchor
         /// would freeze it against a later window resize).</summary>
-        void PersistGeometry()
+        public void Commit()
         {
             if (!_placed.Peek()) return;
             Platform.Settings.Set(Platform.Keys.VideoPipRect, PlacementPersistence.SaveRect(_x.Peek(), _y.Peek(), _w.Peek(), _h.Peek()));
@@ -1191,15 +1073,21 @@ public static partial class Video
 
     /// <summary>The detached window's root (installed as <see cref="PopOut.ContentFactory"/>). It wraps the content in its
     /// OWN overlay host — a detached window builds its own AppHost, so the shell's never reaches it and every transport
-    /// flyout would be a silent no-op. The child MUST be a component (the overlay host mounts its child once).</summary>
+    /// flyout would be a silent no-op — and in the theme providers (`ThemeRoot.Wrap`: the view registry, the option cells and the
+    /// facts): the same reason, so without them `Video.PopOut`, `Video.JoinPoster` and the on-media strip would resolve to nothing in
+    /// this window. A theme switch re-renders this root through the epoch `Wrap` reads, like the main window's. The child MUST be a
+    /// component (the overlay host mounts its child once).</summary>
+    [CoreHost]
     sealed class PopOutRoot : Component
     {
-        public override Element Render() => OverlayHost.Create(Embed.Comp(static () => new PopOutContent()), isPrimaryToastHost: false);
+        public override Element Render() => Theming.ThemeRoot.Wrap(static () =>
+            OverlayHost.Create(Embed.Comp(static () => new PopOutContent()), isPrimaryToastHost: false));
     }
 
     /// <summary>The pop-out's content: sized to THIS window's viewport, ALWAYS opaque (the hole erases the fill over the
     /// video rect; anything unpainted shows the desktop), the shared stage when a player exists and the POSTER otherwise
     /// (0.2.9 left a bare letterbox rect here — W14b, a deliberate divergence).</summary>
+    [CoreHost]
     sealed class PopOutContent : Component
     {
         // ── the title band is an OS caption region ──────────────────────────────────────────────────────────────────
@@ -1238,6 +1126,7 @@ public static partial class Video
             }, DepKey.Empty);
             var binding = Playback.Video.Player.Value;
             var join = JoinNow.Value;
+            long generation = binding.Generation;
             bool hostFullscreen = State.DetachedFullscreen.Value;
             // The band is the window's only chrome, so it rides the same idle machine as the transport: move the
             // pointer and both appear, idle and both go with the cursor.
@@ -1268,7 +1157,7 @@ public static partial class Video
                 if (!hostFullscreen && w > 0f)
                 {
                     regions.Value[0] = new TitleBarRegion(
-                        new RectF(0f, PopOut.ResizeStripDip, w, TitleBandHeightDip - PopOut.ResizeStripDip), TitleBarHit.Caption);
+                        new RectF(0f, PopOut.ResizeStripDip, w, PopOutBand.HeightDip - PopOut.ResizeStripDip), TitleBarHit.Caption);
                     count = 1;
                 }
                 hooks.SetTitleBarRegions?.Invoke(regions.Value, count);
@@ -1276,69 +1165,41 @@ public static partial class Video
                 return null;
             }, DepKey.From(hostFullscreen ? 1 : 0, (int)vp.Peek().Width, 0, (int)vp.Peek().Height));
 
-            Element body = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null)
-                ? new BoxEl
-                {
-                    Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
-                    Children =
-                    [
-                        Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
-                            with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) },
-                        join == JoinVisual.Video ? new BoxEl { HitTestVisible = false } : Poster(join),
-                        TitleBand(band, bandRef),
-                    ],
-                }
-                : Poster(join);
-            return new BoxEl
+            // The picture (the stage over the poster, the title band) is the theme's (`Video.PopOut`). `Generation` is the stage's
+            // identity: the stage key follows it, so a new binding generation must re-run the template even when nothing else moved.
+            return ViewSlots.View(ViewKeys.VideoPopOut, new VideoPopOutProps
             {
-                Direction = 1,
-                Width = Prop.Of(() => vp.Value.Width),
-                Height = Prop.Of(() => vp.Value.Height),
-                Fill = Tok.MediaLetterbox,
-                Children = [body],
-            };
+                Size = vp,
+                HasPlayer = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null),
+                Join = join,
+                BandShown = band,
+                Generation = generation,
+                Stage = s_popOutStage,
+                Strip = s_popOutStrip,
+                Poster = static visual => Poster(visual),
+                Title = s_currentTitle,
+                BandRealized = h => bandRef.Value = h,
+                BandPointerMoved = _onPointerMoveWithin,
+                BandPointerLeft = _onPointerExit,
+            });
         }
 
-        /// <summary>44 DIP: the caption region's height, pushed to <see cref="InputHooks.SetTitleBarRegions"/> and the
-        /// band's own layout height (they must match, or the region and the visible band drift apart).</summary>
-        const float TitleBandHeightDip = 44f;
+        /// <summary>The pop-out's stage: the shared player stage keyed by the binding generation (read when the template builds it).</summary>
+        static readonly Func<Element> s_popOutStage = static () =>
+            Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
+                with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) };
 
-        /// <summary>The pop-out's title band: the only identity this chromeless window has, and the visible answer to
-        /// "can I drag this?". Opacity is the TERMINAL, FadeChrome seeds the approach; the band is a sibling of the
-        /// hole, never an ancestor of it.</summary>
-        Element TitleBand(bool show, Ref<NodeHandle> bandRef) => new BoxEl
-        {
-            Grow = 1f, Direction = 1, HitTestPassThrough = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Shrink = 0f, Height = TitleBandHeightDip, Direction = 0, AlignItems = FlexAlign.Center,
-                    // Top inset is the OS's own resize strip (PopOut.ResizeStripDip): the band starts BELOW it, so
-                    // the top ~8 DIP of the window keeps answering HTTOP instead of the band stealing it for a drag.
-                    Padding = new Edges4(12f + Spacing.S, PopOut.ResizeStripDip, 12f, 0f), Gap = Spacing.M,
-                    Gradient = Tok.ScrimTop,
-                    Opacity = show ? 1f : 0f,
-                    HitTestVisible = show,
-                    // The move cursor still shows over the band: the engine resolves it from the synthesized NC hover and
-                    // Win32 re-asserts it on WM_SETCURSOR over a caption region instead of letting DefWindowProc arrow it.
-                    Cursor = show ? CursorId.SizeAll : (CursorId?)null,
-                    OnPointerMoveWithin = _onPointerMoveWithin,
-                    OnPointerExit = _onPointerExit,
-                    OnRealized = h => bandRef.Value = h,
-                    Children =
-                    [
-                        // Bound REACTIVELY: the window outlives a track change.
-                        new TextEl(Prop.Of(static () => CurrentTitle()))
-                        {
-                            Size = 15f, Weight = 600, Color = Tok.OnMediaPrimary,
-                            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            Shrink = 1f, MinWidth = 0f,
-                        },
-                    ],
-                },
-            ],
-        };
+        /// <summary>The pop-out's strip, which the template stacks over its poster.</summary>
+        static readonly Func<Element> s_popOutStrip = static () => OwnedStrip(TransportOwner.PopOut, s_popOutChrome, s_popOutFeed);
+
+    }
+
+    /// <summary>The pop-out's title band: the number the caption region (`InputHooks.SetTitleBarRegions`) and the theme's band must agree on.</summary>
+    public static class PopOutBand
+    {
+        /// <summary>44 DIP: the caption region's height, pushed to <see cref="InputHooks.SetTitleBarRegions"/> and the band's own layout
+        /// height (they must match, or the region and the visible band drift apart).</summary>
+        public const float HeightDip = 44f;
     }
 
     // ══ 5. THE FULLSCREEN SURFACE ════════════════════════════════════════════════════════════════════════════════════
@@ -1347,6 +1208,7 @@ public static partial class Video
     static PlacementState s_beforeFullscreen = PlacementState.Music;
 
     /// <summary>The shell-lifetime half: observes every placement change and mounts the surface while fullscreen resolves.</summary>
+    [CoreHost]
     sealed class FullscreenHost : Component
     {
         public override Element Render()
@@ -1358,38 +1220,38 @@ public static partial class Video
             });
             return Flow.Show(
                 static () => PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Fullscreen,
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                    HitTestPassThrough = true,
-                    Children = [Embed.Comp(static () => new FullscreenSurface())],
-                });
+                HoleBoxes.FullscreenLayer(Embed.Comp(static () => new FullscreenSurface())));
         }
     }
 
     /// <summary>A REAL fullscreen: the OS window goes borderless-fullscreen on its monitor and restores what it found; the
     /// shell collapses its chrome for the duration (one transport). Its lifetime IS the mode — mount = enter, unmount =
     /// exit, for every route out.</summary>
+    [CoreHost]
     sealed class FullscreenSurface : Component
     {
         NodeHandle _root;
+        IImmersiveHost? _immersiveHost;
+
+        /// <summary>Fullscreen is still wanted (the host mounts this surface while it resolves): a teardown that finds it true is a REMOUNT.</summary>
+        static bool FullscreenWanted() => PlacementCore.Resolve(State.Surface.Peek()) == SurfacePlacement.Fullscreen;
 
         public override Element Render()
         {
             var hooks = UseContext(InputHooks.Current);
-            var priorOsFullscreen = UseRef(false);
-            var priorFocus = UseRef<NodeHandle>(default);
+            var immersive = ImmersiveService.Shared;
+            var immersiveHost = _immersiveHost ??= new HooksImmersiveHost(hooks);
 
             bool live = PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Fullscreen;
             UseEffect(() => State.ReportLive(SurfacePlacement.Fullscreen, live), DepKey.From(live));
             UseEffect(() => () => State.ReportLive(SurfacePlacement.Fullscreen, false), DepKey.Empty);
 
-            // REAL OS fullscreen, restoring the REMEMBERED prior state — never an unconditional false.
+            // REAL OS fullscreen, restoring the REMEMBERED prior state — never an unconditional false (ImmersiveService: keyed by the
+            // mode, so a remount of this surface while fullscreen is still wanted does not leave it).
             UseLayoutEffect(() =>
             {
-                priorOsFullscreen.Value = hooks.IsWindowFullscreen?.Invoke() ?? false;
-                if (!priorOsFullscreen.Value) hooks.WindowSetFullscreen?.Invoke(true);
-                return () => { if (!priorOsFullscreen.Value) hooks.WindowSetFullscreen?.Invoke(false); };
+                immersive.EnterWindow(ImmersiveKind.VideoFullscreen, immersiveHost);
+                return () => { immersive.ReleaseWindow(ImmersiveKind.VideoFullscreen, immersiveHost, FullscreenWanted); };
             }, DepKey.Empty);
 
             // A focus SCOPE at the root (Tab cannot walk into the collapsed chrome); focus parks INSIDE the video — but only
@@ -1397,29 +1259,16 @@ public static partial class Video
             UseLayoutEffect(() =>
             {
                 if (Context.HostNode.IsNull) return null;
-                var root = Context.HostNode;
-                priorFocus.Value = hooks.GetFocus?.Invoke() ?? default;
-                hooks.PushFocusScope?.Invoke(root);
-                if (FullscreenEntry.UserInitiated(s_beforeFullscreen, State.Surface.Peek()))
-                    hooks.FocusNode?.Invoke(root, false);
-                return () =>
-                {
-                    hooks.PopFocusScope?.Invoke(root);
-                    var back = priorFocus.Value;
-                    priorFocus.Value = default;
-                    if (!back.IsNull) hooks.RestoreFocus?.Invoke(back);
-                };
+                immersive.PushFocus(ImmersiveKind.VideoFullscreen, immersiveHost, Context.HostNode,
+                    focusRoot: FullscreenEntry.UserInitiated(s_beforeFullscreen, State.Surface.Peek()));
+                return () => { immersive.ReleaseFocus(ImmersiveKind.VideoFullscreen, immersiveHost, FullscreenWanted); };
             }, DepKey.Empty);
 
-            return new BoxEl
-            {
-                Grow = 1f, Direction = 1, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                HitTestPassThrough = true,
-                Focusable = true,
-                OnRealized = h => _root = h,
+            return HoleBoxes.FullscreenRoot(
+                h => _root = h,
                 // Escape/F exit, handled at the ROOT (no focused control can swallow the way out). A modified key belongs
                 // to whatever else claims it — Shift+Esc does nothing, deliberately.
-                OnKeyDown = static e =>
+                static e =>
                 {
                     if (e.Handled || (e.Mods & (KeyModifiers.Ctrl | KeyModifiers.Alt | KeyModifiers.Shift)) != 0) return;
                     if (e.KeyCode != Keys.Escape && e.KeyCode != Keys.F) return;
@@ -1427,58 +1276,22 @@ public static partial class Video
                     State.ExitFullscreen();
                 },
                 // Never leave focus null while the surface is up.
-                OnFocusChanged = got =>
+                got =>
                 {
                     if (got || _root.IsNull) return;
                     if ((hooks.GetFocus?.Invoke() ?? default).IsNull) hooks.FocusNode?.Invoke(_root, false);
                 },
-                Children = [ExitChrome()],
-            };
+                ViewSlots.View(ViewKeys.VideoFullscreen, s_chromeProps));
         }
 
-        /// <summary>The hover band: the title at top-left (the only identity on screen) and the way out at top-right. The
-        /// opacity is on THIS band only, never on an ancestor of the hole.</summary>
-        static Element ExitChrome() => new BoxEl
+        /// <summary>The chrome's props, built once: the title (bound) and the way out. Its band is the theme's (`Video.Fullscreen`).</summary>
+        static readonly VideoFullscreenProps s_chromeProps = new()
         {
-            Grow = 1f, Direction = 1, HitTestPassThrough = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Shrink = 0f,
-                    Height = 56f, Padding = new Edges4(12f + Spacing.S, 12f, 12f, 0f), Gap = Spacing.M,
-                    Gradient = Tok.ScrimTop,
-                    Opacity = 0f, HoverOpacity = 1f,
-                    HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-                    Children =
-                    [
-                        // Bound REACTIVELY: the surface outlives a track change.
-                        new TextEl(Prop.Of(static () => CurrentTitle()))
-                        {
-                            Size = 15f, Weight = 600, Color = Tok.OnMediaPrimary,
-                            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            Shrink = 1f, MinWidth = 0f,
-                        },
-                        ToolTip.Wrap(ExitFab(), Loc.Get(Strings.Player.VideoExitFullScreen)),
-                    ],
-                },
-            ],
-        };
-
-        /// <summary>The way out over undimmed video: a 44-DIP ink-made plate with a card shadow — the one separation channel
-        /// that survives the stage's inverted light ink ladder. Its glyph never dims on hover.</summary>
-        static Element ExitFab() => new BoxEl
-        {
-            Width = 44f, Height = 44f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.Circle(44f),
-            Fill = Design.StageInk.GlassPlate, HoverFill = Design.StageInk.GlassPlateHover, PressedFill = Design.StageInk.GlassPlatePressed,
-            BorderWidth = 1f, BorderColor = Design.StageInk.Stroke,
-            Shadow = Elevation.Card,
-            BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            OnClick = static () => State.ExitFullscreen(),
-            Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Theme.IconFont, Color = Design.StageInk.Ink, HoverColor = Design.StageInk.Ink }],
+            Title = s_currentTitle, Exit = static () => State.ExitFullscreen(),
+            Artists = static () => CurrentArtists(), SwitchToAudio = static () => State.TurnOff(),
+            // The fullscreen owner's transport (TransportOwnerFor(Fullscreen) = Fullscreen): the main window's presenter keeps running the idle
+            // machine and the feed; the theme's chrome draws the strip over them.
+            Transport = RailWiring.OnMediaProps(s_mainChrome, s_mainFeed),
         };
     }
 }

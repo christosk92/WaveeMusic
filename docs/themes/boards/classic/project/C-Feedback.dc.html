@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Report a problem</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0"><dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" h="780" hint-size="280px,780px"></dc-import><main style="flex-grow: 1; background: rgba(58,58,58,0.298); border-top-left-radius: 8px"></main></div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-label="Report a problem" style="position: absolute; left: 446px; top: 70px; width: 548px; box-sizing: border-box; border-radius: 8px; background: #2b2b2b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); overflow: hidden; display: flex; flex-direction: column">
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 12px">
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Report a problem</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Opens a prefilled GitHub form. Nothing is sent until you submit it there.</p>
+      <div role="radiogroup" aria-label="Kind" style="display: flex; padding: 2px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); align-self: flex-start"><sc-for list="{{kinds}}" as="k" hint-placeholder-count="4"><span role="radio" aria-checked="{{k.on}}" style="{{k.s}}">{{k.l}}</span></sc-for></div>
+      <sc-for list="{{fields}}" as="f" hint-placeholder-count="4"><label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">{{f.l}}<span style="{{f.box}}">{{f.p}}</span></label></sc-for>
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="width: 20px; height: 20px; border-radius: 4px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center; font-size: 12px">✓</span>Include diagnostics and the last 200 log lines</label>
+      <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(255,255,255,0.071); font-size: 14px"><span style="flex-grow: 1">Report preview</span><span style="color: rgba(255,255,255,0.6)">⌄</span></div>
+    </div>
+    <footer style="padding: 24px; display: flex; gap: 8px; background: rgba(32,32,32,0.6); border-top: 1px solid rgba(255,255,255,0.06)"><button style="flex: 1; height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Open GitHub</button><button style="flex: 1; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Cancel</button></footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const kinds = ['Bug', 'Feature', 'Question', 'Idea'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', s: 'height: 28px; padding: 0 14px; display: flex; align-items: center; border-radius: 3px; font-size: 13px; ' + (i === 0 ? 'background: #60cdff; color: #000' : '') }));
+  const box = (h) => 'min-height: ' + h + 'px; box-sizing: border-box; padding: 6px 10px; border-radius: 4px; background: rgba(30,30,30,0.7); border: 1px solid rgba(255,255,255,0.071); border-bottom-color: rgba(255,255,255,0.545); font-size: 14px; color: rgba(255,255,255,0.6)';
+  const fields = [['Title', 'One line that says what’s wrong', 32], ['What happened', 'Queue disappears from the player bar when the window is narrow', 64], ['Steps to reproduce', '1. Make the window 800 px wide…', 64], ['Area', 'Player bar', 32]].map(f => ({ l: f[0], p: f[1], box: box(f[2]) }));
+  return { kinds, fields };
+}
+}
+</script>
+</body>
+</html>

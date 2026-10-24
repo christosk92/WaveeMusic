@@ -1,6 +1,7 @@
 ﻿// ── Screens/Diagnostics.Probe.Arms.cs ──────────────────────────────────────────────────────────────────────────────
 // the Wave-6 CLI probe arms: --qr-dump, --relaunch-after (the restart broker), --perf-bench, --startup-bench,
-// --crash-probe, --lyrics-advance-probe, the probe-out directory, and the NotificationSimulator ("Send event")
+// --crash-probe, --lyrics-advance-probe, the probe-out directory, the NotificationSimulator ("Send event"), and the
+// review-capture flags of a --screenshot run (--offscreen, --scale, --zoom, a wavee:// deep link; `CaptureOptions`)
 //
 // Role: SHELL
 // Owner: S
@@ -19,7 +20,7 @@
 // WAVEE_LYRICS_ADVANCE_PROBE / WAVEE_BENCH_OUT / WAVEE_PROBE_*_FRAMES; every one is a flag now (`ProbeOptions.Parse`).
 //
 // TWO DOORS. `TryRunCliArm` runs from `Probe.TryRun` before anything else of the arm table (no window: --qr-dump and the
-// broker). `InstallGuiArms` runs once from `Diagnostics.Install()` before `Shell.Run()`: it owns `FluentApp.DiagnosticRun`
+// broker). `InstallGuiArms` runs once from `Diagnostics.InstallServices()` before `Shell.Run()`: it owns `FluentApp.DiagnosticRun`
 // — the one pre-loop hook that holds the AppHost — so the ambient power policy attaches there on EVERY launch, and a bench
 // or the lyrics probe takes the loop over only when its flag was passed.
 
@@ -131,7 +132,7 @@ public static partial class Diagnostics
 
         // ══ 2. THE GUI ARMS ═════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Called ONCE by <c>Diagnostics.Install()</c>, before <c>Shell.Run()</c>. Idempotent.</summary>
+        /// <summary>Called ONCE by <c>Diagnostics.InstallServices()</c>, before <c>Shell.Run()</c>. Idempotent.</summary>
         internal static void InstallGuiArms(string[] args)
         {
             if (Interlocked.Exchange(ref s_guiInstalled, 1) != 0) return;
@@ -451,7 +452,8 @@ public static partial class Diagnostics
         /// the [wake] census, render pace) sees the ordinary frame loop driving a live karaoke wipe. The document comes
         /// from Lyrics.Fixtures; nothing here owns frames after the setup.
         /// <para>`--stage-demo`: the same track on the fullscreen STAGE instead of the rail, in the profile's stage mode (its
-        /// lyric caption shows in a compact window, e.g. `--height 440`); `--stage-viz` puts the stage in Visualizer mode,
+        /// lyric caption shows in a compact window, e.g. `--height 440`; `--stage-windowed` keeps the window at its `--width` / `--height`
+        /// instead of going fullscreen, for the tier screenshots); `--stage-viz` puts the stage in Visualizer mode,
         /// the caption over the face. Either way the census sees the stage's karaoke wipe.</para></summary>
         static bool TryLyricsDemo(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
@@ -463,6 +465,7 @@ public static partial class Diagnostics
             if (s_options.StageDemo)
             {
                 if (s_options.StageViz) Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
+                if (s_options.StageWindowed) ImmersiveService.Shared.KeepWindowed = true;
                 Stage.Open(null, "probe");
             }
             else
@@ -845,7 +848,7 @@ public static partial class Diagnostics
         bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
         bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0,
         bool PlayDemo = false, string PlayDemoShot = "",
-        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false)
+        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false, bool StageWindowed = false, bool MemSoakPlay = false)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -876,7 +879,8 @@ public static partial class Diagnostics
                 Array.IndexOf(args, "--mem-soak") >= 0, Int(args, "--mem-soak-rounds", 6, 1, 200), Int(args, "--mem-soak-idle-sec", 40, 5, 600),
                 Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048),
                 Array.IndexOf(args, "--play-demo") >= 0, shot, title,
-                Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0);
+                Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0,
+                Array.IndexOf(args, "--stage-windowed") >= 0, Array.IndexOf(args, "--mem-soak-play") >= 0);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)
@@ -892,6 +896,45 @@ public static partial class Diagnostics
             if (at + 1 >= args.Length) return "throw";
             string v = args[at + 1];
             return Array.IndexOf(KnownCrashModes, v) >= 0 ? v : "throw";
+        }
+    }
+
+    // ── the review-capture flags of a `--screenshot` run (a pure parse; Shell.Host reads it) ──
+    /// <summary>What a `--screenshot` run captures beyond the window it opens. Every flag is ignored without `--screenshot`, so
+    /// the owner's normal launches never see them.
+    /// <list type="bullet">
+    /// <item>`--offscreen`: lay out and render at `--width` x `--height` DIP (x `--scale` px) whatever the monitor holds, so a
+    /// 2560 or 3840 Huge layout can be captured on a smaller screen. The engine pins the host's surface to that size
+    /// (<c>HarnessOptions.SurfaceSizeDip</c>); the window on screen shows its top-left corner and takes no input. Implies
+    /// `--zoom 1` unless `--zoom` says otherwise (Auto zoom would fold a big window back towards 1920).</item>
+    /// <item>`--scale &lt;s&gt;` (0.5..4, default 1): the off-screen surface's DPI scale; `--offscreen` only.</item>
+    /// <item>`--zoom &lt;z&gt;` (0.25..5): a Manual app zoom for this run, applied before the first frame and never persisted
+    /// (the Auto loop stands down).</item>
+    /// <item>A `wavee://` deep link anywhere on the command line (e.g. `wavee://open?route=settings&amp;arg=playback`) is applied
+    /// the way a cold protocol launch applies it, so a capture can open a route and a Settings tab. Routes without a deep link
+    /// still come from the scratch profile's session.json (its `nav.active` and the `shell` panel state).</item>
+    /// </list>
+    /// Example: <c>Wavee.exe --fake --profile P --frames 240 --offscreen --width 3840 --height 2160 --screenshot out.png</c>.</summary>
+    public readonly record struct CaptureOptions(bool Screenshot, bool Offscreen, float Scale, float Zoom, string DeepLink)
+    {
+        /// <summary>The Manual zoom this run applies, or 0 for none (the profile's own zoom mode).</summary>
+        public float RunZoom => !Screenshot ? 0f : Zoom > 0f ? Zoom : Offscreen ? 1f : 0f;
+
+        public static CaptureOptions Parse(string[] args)
+        {
+            bool shot = Array.IndexOf(args, "--screenshot") >= 0;
+            string link = "";
+            foreach (string a in args)
+                if (a.StartsWith("wavee://", StringComparison.OrdinalIgnoreCase)) { link = a; break; }
+            return new CaptureOptions(shot, shot && Array.IndexOf(args, "--offscreen") >= 0,
+                Float(args, "--scale", 1f, 0.5f, 4f), Float(args, "--zoom", 0f, ZoomLadder.Min, ZoomLadder.Max), shot ? link : "");
+        }
+
+        static float Float(string[] args, string flag, float fallback, float lo, float hi)
+        {
+            int i = Array.IndexOf(args, flag);
+            return i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out float v)
+                && float.IsFinite(v) && v >= lo && v <= hi ? v : fallback;
         }
     }
 

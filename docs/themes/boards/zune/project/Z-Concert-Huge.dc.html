@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune concert: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="browse › live events › the midnight · live" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="browse" sub="details,lineup,related concerts" on="details" title="the midnight · live" actions="interested" collapsed="false" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -3px; white-space: nowrap; color: #ffffff; opacity: 0.92">the midnight · live</div>
+        <div style="position: absolute; left: 48px; right: 48px; top: 184px; bottom: 0; display: flex; flex-direction: column; gap: 44px">
+          <div style="display: flex; gap: 64px; flex-shrink: 0">
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 280px; flex-shrink: 0">
+              <span style="{{saleInk}}">concert · on sale</span>
+              <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 150px; letter-spacing: -3px">14</span>
+              <span style="font-size: 17px; color: #ffffff">november · saturday</span>
+              <span style="font-size: 14px; color: #a8a8a8">2026 · in 34 days</span>
+            </div>
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding-top: 30px">
+              <span style="font-size: 22px; line-height: 30px">20:00 · <span style="color: #a8a8a8">doors open 19:00</span></span>
+              <span style="font-size: 22px; line-height: 30px"><a href="#" style="color: #ffffff">Paradiso</a> · <span style="color: #a8a8a8">Weteringschans 6, Amsterdam</span></span>
+              <span style="font-size: 15px; color: #a8a8a8">ages 18+ · standing · 1,500 capacity</span>
+              <span style="display: flex; gap: 22px; align-items: center; padding-top: 18px; font-size: 14px">
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">♡</span>interested</button>
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">↗</span>share</button>
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">▶</span>play the lineup</button>
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">+</span>add to calendar</button>
+              </span>
+            </div>
+            <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; background: #1b1b1b; padding: 22px 28px; box-sizing: border-box; align-self: flex-start">
+              <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 6px">tickets</span>
+              <sc-for list="{{offers}}" as="o" hint-placeholder-count="3"><div style="display: flex; justify-content: space-between; align-items: center; height: 48px; font-size: 15px; border-top: 1px solid rgba(255,255,255,0.08)"><span>{{o.name}}</span><span style="color: #a8a8a8">{{o.price}}</span></div></sc-for>
+              <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 14px; padding: 12px 0 0 0"><span style="{{buyRing}}">→</span>buy tickets</button>
+              <span style="font-size: 12px; color: #7a7a7a; margin-top: 8px">on sale from 1 october · prices from the providers, not wavee</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">lineup</span><span style="font-size: 13px; color: #7a7a7a">2 artists</span></div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px">
+              <sc-for list="{{lineup}}" as="l" hint-placeholder-count="2">
+                <div style="display: flex; gap: 24px; min-width: 0">
+                  <a href="#" style="display: flex; flex-direction: column; gap: 8px; width: 180px; flex-shrink: 0"><span style="{{l.art}}"></span><span style="font-size: 17px; color: #ffffff">{{l.name}}</span><span style="font-size: 13px; color: #a8a8a8">{{l.role}}</span></a>
+                  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+                    <sc-for list="{{l.songs}}" as="s" hint-placeholder-count="4"><div style="{{s.row}}"><span style="{{s.num}}">{{s.n}}</span><span style="{{s.title}}">{{s.name}}</span><span style="{{s.time}}">{{s.len}}</span></div></sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">related concerts</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">near you</a></div>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{related}}" as="r" hint-placeholder-count="8">
+                <a href="#" style="display: flex; gap: 18px; align-items: center; background: #1b1b1b; padding: 16px 20px; min-width: 0"><span style="display: flex; flex-direction: column; align-items: center; width: 52px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 200; line-height: 40px; color: #ffffff">{{r.day}}</span><span style="font-size: 12px; color: #a8a8a8">{{r.month}}</span></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.venue}}</span></span></a>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Sunset" artist="The Midnight · Endless Summer" art="#6b4a2f" progress="72" from="playing from the midnight · live lineup" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const offers = [['Ticketmaster', 'from €45'], ['Eventim', 'from €48'], ['Paradiso box office', '€45 · at the door']].map((d) => ({ name: d[0], price: d[1] }));
+  const song = (d, i, playIdx) => {
+    const play = i === playIdx;
+    return {
+      n: play ? '▮▮▮' : String(i + 1), name: d[0], len: d[1],
+      row: 'display: grid; grid-template-columns: 44px minmax(0, 1fr) 56px; align-items: center; height: 52px; border-top: 1px solid rgba(255,255,255,0.06)',
+      num: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; color: ' + (play ? accent : '#7a7a7a'),
+      title: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      time: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  };
+  const lineup = [
+    { name: 'The Midnight', role: 'headliner · 2.1m monthly listeners', art: 'width: 180px; height: 180px; border-radius: 90px; background: #6b4a2f; display: block', songs: [['Sunset', '5:09'], ['Days of Thunder', '5:01'], ['Los Angeles', '5:12'], ['Vampires', '4:47']].map((d, i) => song(d, i, 0)) },
+    { name: 'FM-84', role: 'support · 640k monthly listeners', art: 'width: 180px; height: 180px; border-radius: 90px; background: #2f4a6b; display: block', songs: [['Running in the Night', '4:31'], ['Atlas', '4:05'], ['Arcade Summer', '4:58'], ['Wild Ones', '4:20']].map((d, i) => song(d, i, -1)) },
+  ];
+  const related = [['21', 'nov', 'Gunship', 'Melkweg · Amsterdam'], ['03', 'dec', 'Carpenter Brut', 'TivoliVredenburg · Utrecht'], ['12', 'dec', 'HOME', 'Paradiso Noord · Amsterdam'], ['17', 'jan', 'Kavinsky', 'AFAS Live · Amsterdam'], ['24', 'jan', 'Timecop1983', 'Doornroosje · Nijmegen'], ['02', 'feb', 'Perturbator', 'Melkweg · Amsterdam'], ['14', 'feb', 'M83', 'Ziggo Dome · Amsterdam'], ['28', 'feb', 'Lazerhawk', 'Paradiso · Amsterdam']].map((d) => ({ day: d[0], month: d[1], name: d[2], venue: d[3] }));
+  return {
+    accent, offers, lineup, related,
+    saleInk: 'font-size: 14px; color: ' + accent,
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    buyRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 14px',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 // ── Wavee/Diagnostics/Capture.Recent.cs — the in-app reader's data half (unit 6, realtime-capture-implementation.md §5.5) ──
 //
-// The in-app Diagnostics page (Screens/Diagnostics.Capture.UI.cs) needs a cheap, in-memory view of "the last N
+// The in-app Diagnostics page (`Screens/Diagnostics.Pages.cs` builds it; the Common `Pages.Diagnostics.Capture` view draws it) needs a cheap, in-memory view of "the last N
 // causal roots" without re-reading the .idx segment off disk on every 750 ms poll (§3.1's crash-safety story is a
 // DISK concern; the live view is a memory concern). Unit 2's writer (`Capture.Host.cs`) does not expose one, so
 // this file adds the small, bounded, engine-free pieces the plan asks for:

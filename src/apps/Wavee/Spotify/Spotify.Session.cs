@@ -313,6 +313,8 @@ public static partial class Spotify
     static void SignOutTeardown()
     {
         if (Connect.Hello is not null) Playback.Post(Playback.Input.Release(Playback.ReleaseCause.Logout));
+        Shell.PlayLog.Clear();          // the listening log (the Up next page's "played before this") and the local "interested" marks are the account's
+        ConcertInterest.Clear();
         if (FluentGpu.FluentApp.WindowHandle != 0) SignOutOsSurfaces();
     }
 
@@ -2388,7 +2390,7 @@ public static partial class Spotify
     static long FetchServerTimeMs(CancellationToken ct)
     {
         Span<char> path = stackalloc char[64];
-        var request = Build(Current, RequestKind.ServerTime, new RequestArgs(), path);
+        var request = Build(RequestKind.ServerTime, new RequestArgs(), path);
         byte[] body = Get(SpclientBaseUrl() + new string(request.Path), ct, authed: true);
         var reader = new Utf8JsonReader(body, new JsonReaderOptions { MaxDepth = 4 });
         while (reader.Read())

@@ -56,7 +56,7 @@ public static partial class Recovery
         /// folder is deliberately NOT gated on <paramref name="hasBundle"/>: with no bundle yet (e.g. a
         /// <see cref="Reason.BootFailed"/> launch whose settings/data folder itself could not be opened) it still
         /// opens the crash log root, which is useful evidence even without a specific bundle.</remarks>
-        public static IReadOnlyList<ActionKind> For(Reason reason, bool hasBundle, bool hasIngest)
+        public static IReadOnlyList<ActionKind> For(bool hasBundle, bool hasIngest)
         {
             var list = new List<ActionKind>(7) { ActionKind.Start };
             if (hasBundle && hasIngest) list.Add(ActionKind.Send);

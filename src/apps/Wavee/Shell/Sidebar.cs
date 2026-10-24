@@ -7,14 +7,15 @@
 // The sections, in file order:
 //
 //   CORE       `SidebarPaneBounds` — the expanded width's clamp pair and its default.
-//   GEOMETRY   `SidebarRowGeometry`, `SidebarRowExtents` — the one height/indent/art/lane ladder. Art starts at pane
-//              centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
+//   QUERIES    `SidebarPlanQueries` — the plan queries (which rows a disclosure owns). The row ladder, `SidebarRowExtents` and the
+//              planner are the structure's (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`, `SidebarPlanner.cs`): art starts
+//              at pane centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
 //              band breaks both the `Reorderable` slot pitch and the virtualizing host's extent table).
 //   ROWS       `SidebarRowKind`, `SidebarRow`/`SidebarRowPlan`, `SidebarProjectionInput`, `SidebarPlanBuffers` — the
 //              plan's vocabulary. The planner itself is `Sidebar.Planner.cs`: (document × projection) flattened into ONE
 //              array of row kinds, rendered by ONE bound list. The buffers are caller-owned and ALIAS.
-//   DIFF       `SidebarRowDiff`, `SidebarRowResolve`, `SidebarPillState` — which realized rows re-render, which row
-//              draws selected, and the one lit/dark rule for the accent pill.
+//   DIFF       `SidebarRowResolve`, `SidebarPillState` — which row draws selected, and the one lit/dark rule for the accent
+//              pill. (Which realized rows re-render is the structure's `SidebarPlanDiff`.)
 //   DROP       `RootlistSlotResolver` + `SidebarDropCue` + `RootlistDropDecision` + `RootlistTreeNav` — ONE resolver,
 //              ONE published slot, ONE commit. Line ⟺ ordering, plate ⟺ Into, never both. Every refusal has a
 //              sentence; a drop that cannot be honoured never returns silently.
@@ -30,12 +31,10 @@
 // NOT here: the layout document and its rules (`Sidebar.Layout.cs`), the planner (`Sidebar.Planner.cs`), the stores
 // and the binder pump (`Sidebar.Store.cs`, `Sidebar.Host.cs`), and every `Element` (`Sidebar.UI*.cs`).
 
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using FluentGpu.Foundation;
-using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -49,12 +48,16 @@ namespace Wavee;
 // `Sidebar.Resize.cs`.
 
 /// <summary>The expanded sidebar column's bounds. Issue #84 lowered the floor from 240 to 180 so the pane can go
-/// genuinely narrow; 460 is the ceiling. The collapsed rail is 48 DIP (`SidebarRowGeometry.RailWidth`), the same list
+/// genuinely narrow; 460 is the ceiling. The collapsed rail is 48 DIP (`NavPanePolicy.RailWidth`), the same list
 /// planned compact.</summary>
 public static class SidebarPaneBounds
 {
     /// <summary>THE clamp pair. Every writer goes through it.</summary>
     public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
+
+    /// <summary>The collapsed rail's width (WinUI NavigationViewCompactPaneLength). The shell's baseline: the structure's
+    /// answer is <c>NavPanePolicy.RailWidth</c>, which <c>NavPanePolicy.Default</c> is built from this.</summary>
+    public const float RailWidth = 48f;
 
     /// <summary>The width a fresh pane opens at, and the width Reset returns to.</summary>
     public const float DefaultWidth = 320f;
@@ -62,24 +65,19 @@ public static class SidebarPaneBounds
     /// <summary>The anti-flicker band for a threshold crossing (the regime flip's drag-back distance).</summary>
     public const float NavPaneHysteresisDip = 24f;
 
-    /// <summary>The one clamp.</summary>
-    public static float Clamp(float width)
-        => width < NavPaneMinW ? NavPaneMinW : width > NavPaneMaxW ? NavPaneMaxW : width;
+    /// <summary>Is the stored expanded width the USER's (contract 1.21)? Yes once a resize flagged it (<paramref name="flagged"/>: `paneWidthSet`), or, for a
+    /// store from before the flag, when a value is <paramref name="stored"/> that none of the old defaults explains: the sidebar migration wrote the legacy
+    /// design's default (280 Classic, 320 curated, 340 v3) for every profile that never dragged. Migration-free: nothing is rewritten.</summary>
+    public static bool IsUserWidth(bool flagged, bool stored, float width)
+        => flagged || (stored && width is not (280f or 320f or 340f));
+
+    /// <summary>The one clamp: the active nav-pane policy's bounds (Classic 180-460), or <paramref name="policy"/>'s. A
+    /// non-finite width reads as the policy's default width. The consts above are the shell's baseline that the default
+    /// policy is built from.</summary>
+    public static float Clamp(float width, Theming.NavPanePolicy? policy = null)
+        => ShellPolicy.NavOr(policy).ClampWidth(width);
 }
 
-public static partial class Sidebar
-{
-    // ── the planner, named ───────────────────────────────────────────────────────────────────────────────────────────
-    //
-    // One thin name over `SidebarRowPlanner` so a caller never has to pick an overload. The buffers are the CALLER's and
-    // they ALIAS: the plan points into them, so a caller keeps two and alternates — otherwise the outgoing rows die under
-    // the diff that is still reading them.
-
-    /// <summary>(document × projection) → ONE flat row array, for the expanded pane or the 48 rail.</summary>
-    public static SidebarRowPlan Plan(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,
-                                      SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.Build(doc, in input, in options, buffers);
-}
 // ── ROOTLIST MARKER STREAM + MOVE LEGALITY ─────────────────────────────────────────────────────────────────────────
 // The marker-stream value shape (RootlistEntry) and the item/placement/move value types every sidebar drop, every
 // "Move to folder…" destination and every Alt+↑/↓ verb is expressed against. CheckMove/CheckMoves are the ONE pure
@@ -312,13 +310,12 @@ public static class RootlistMarkerStream
     }
 }
 
-// ── GEOMETRY, EXTENTS, DIFF, RESOLVE, PILL, REORDER, STAGE-HOLD, MENUS, DIAG ─────────────────────────────────────
+// ── PLAN QUERIES, RESOLVE, PILL, REORDER, MENUS, DIAG ───────────────────────────────────────────────────────────
 //
-// The sidebar pane's pure numeric ladder and per-row bookkeeping: row/indent/tree-content geometry and the plan
-// geometry helpers built on it; the analytic row extent a plan seeds before anything measures; the per-row change
-// diff; the row→route selection join; the accent-pill lit rule; the reorder-clamp displacement hint; the mid-drag
-// stage-hold parking bay; context-menu verb layout; and the docked-pane terminal-state invariant. Every number here
-// is a fact verified against a screenshot ruler — port it exactly, never re-derive it.
+// The sidebar pane's pure per-row bookkeeping: the plan queries (which rows a disclosure owns); the row→route selection join; the
+// accent-pill lit rule; the reorder-clamp displacement hint; context-menu verb layout; and the docked-pane terminal-state
+// invariant. The row ladder, the analytic row extent, the publish diff and the mid-drag stage-hold parking bay are the
+// structure's (T5a, T5f): core asks the kit.
 
 /// <summary>Which of the three WinUI row shapes a section's rows take (design V.3). One shape per SECTION, never per
 /// row: a band's reorder pitch and the virtualizing host's extent table both assume it.</summary>
@@ -330,129 +327,16 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
+    /// <summary>Row D — an entity row as TEXT (the structure's covers are off, the Classic layout only): 36 tall, no art, title
+    /// only; a folder keeps its glyph. Appended (contract 1.3).</summary>
+    EntityText = 3,
 }
 
-/// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
-/// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
-/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 31-px
-/// folder indents (NavigationViewItemBase.h:63) and the 3×16 r2 pill at slot x 31·depth (TR:220-222). Numbers are SLOT
-/// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
-public static class SidebarRowGeometry
+/// <summary>THE PLAN QUERIES: which rows a disclosure owns, where a folder header or a route sits in a plan. No pixels: the row
+/// ladder (heights, columns, indents, the pill) is the structure's (<c>Themes/Classic/Structure/Rules/SidebarGeometry.cs</c>) and
+/// core reads it only through the kit (<c>NavRowKit</c>) and the nav-pane policy. Engine-free so Wavee.Tests pins every one.</summary>
+public static class SidebarPlanQueries
 {
-    // ── the pane ──
-    /// <summary>The list's horizontal inset (4) — WinUI's item margin X, applied ONCE around the list
-    /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
-    public const float PaneEdge = 4f;
-    /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
-    public const float PaneTopInset = 3f;
-    /// <summary>The vertical half of the 4,2 item margin, carried by every row.</summary>
-    public const float RowMarginY = 2f;
-    /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
-    public const float RailWidth = 48f;
-    /// <summary>A compact-rail row: the 48 rail less the two 4-px insets.</summary>
-    public const float TileWidth = 40f;
-
-    // ── rows ──
-    public const float RowHeight = 36f;
-    public const float TwoLineRowHeight = 40f;
-    /// <summary>The leading visual's box: the widest art (32); a glyph or the compact 24 art is centred in it.</summary>
-    public const float ArtSlot = 32f;
-    /// <summary>Slot x of the art's left edge: 7 clear of the 3-px selection pill, and the x the section headers' titles
-    /// share, so a header, a cover and a glyph's column start on one line.</summary>
-    public const float LeadInset = 10f;
-    public const float IconColumn = LeadInset + ArtSlot;                         // 42
-    public const float GlyphSize = 16f;
-    /// <summary>Between the icon column and the label: 8, so a glyph's label sits 16 past the glyph (as WinUI's 48-column
-    /// item) and a cover's 8 past the cover.</summary>
-    public const float LabelGap = 8f;
-    /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
-    public const float TrailingPad = 14f;
-    /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
-    public const float ChevronColumn = 40f;
-    public const float IndentStep = 31f;
-    public const int MaxIndentDepth = 3;
-    /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
-    public const float TrailingGap = 6f;
-
-    // ── chrome rows ──
-    public const float HeaderHeight = 40f;
-    /// <summary>The header title's x: the rows' <see cref="LeadInset"/> (pane 14), so a title starts where the covers do.</summary>
-    public const float HeaderTextX = LeadInset;
-    /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
-    public const float HeaderButton = 24f;
-    /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
-    public const float SeparatorHeight = 8f;
-    public const float SeparatorLineTop = 3f;
-    /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
-    public const float EmptyHintHeight = 40f;
-    /// <summary>The tree's closing drop gutter.</summary>
-    public const float TreeEndHeight = 24f;
-
-    // ── the pill ──
-    public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
-
-    public static float HeightOf(SidebarRowShape shape)
-        => shape == SidebarRowShape.EntityTwoLine ? TwoLineRowHeight : RowHeight;
-
-    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
-    public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
-
-    /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
-    public static float ArtOf(SidebarRowShape shape) => shape switch
-    {
-        SidebarRowShape.Glyph => GlyphSize,
-        SidebarRowShape.EntityTwoLine => 32f,
-        _ => 24f,
-    };
-
-    public static int ClampDepth(int depth) => depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
-
-    /// <summary>The content indent for a nesting depth: 31 per level, capped at 3 (93). The FILL stays full width; only
-    /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
-    public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
-
-    /// <summary>The pill's x in slot space (pane 4 + 31·depth).</summary>
-    public static float PillX(int depth) => IndentFor(depth);
-
-    /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
-    /// 2-px top margin.</summary>
-    public static float PillTop(float rowHeight) => RowMarginY + (rowHeight - PillH) * 0.5f;
-
-    /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
-    /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
-    public static float TreeContentX(int depth) => IndentFor(depth);
-
-    /// <summary>Pane-space rulers (diagnostics, tests).</summary>
-    public const float IconCentreX = PaneEdge + LeadInset + ArtSlot * 0.5f;     // 30
-    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 54
-    public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
-    public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
-
-    /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
-    public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
-        => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };
-
-    // ── pure plan geometry ──
-
-    /// <summary>The CONTENT-SPACE top of plan row <paramref name="index"/>: the prefix sum of every earlier row's
-    /// extent (the pane's rows are contiguous inside one virtualized list, so this IS the row's Y). Returns 0 for a
-    /// negative index and clamps an index past the end. <paramref name="extentOf"/> must report the row's MEASURED
-    /// height including any rhythm padding, or the result drifts from the rendered layout row by row.</summary>
-    public static float ContentYOf(int index, int count, Func<int, float> extentOf)
-    {
-        if (extentOf is null) throw new ArgumentNullException(nameof(extentOf));
-        if (index <= 0) return 0f;
-        int stop = index < count ? index : count;
-        float y = 0f;
-        for (int i = 0; i < stop; i++)
-        {
-            float e = extentOf(i);
-            if (float.IsNaN(e) || e <= 0f) continue;   // a zero/degenerate row contributes nothing
-            y += e;
-        }
-        return y;
-    }
-
     /// <summary>The first plan index whose row resolves to <paramref name="route"/>, or -1. <paramref name="routeAt"/>
     /// is the caller's row→route projection; null/empty means "this row is not a navigation target".</summary>
     public static int IndexOfRoute(int count, Func<int, string?> routeAt, string? route)
@@ -465,16 +349,6 @@ public static class SidebarRowGeometry
             if (r is { Length: > 0 } && string.Equals(r, route, StringComparison.Ordinal)) return i;
         }
         return -1;
-    }
-
-    /// <summary>Which way the selection TRAVELLED: +1 when the new row sits below the old one, -1 above, 0 when the
-    /// direction is unknowable (either row off-plan, or the same row). 0 is a first-class answer: a selection
-    /// arriving from off-plan (a deep link, a row inside a collapsed section, the first paint) must simply fade in
-    /// rather than slide from an invented side.</summary>
-    public static int DirectionOf(int fromIndex, int toIndex)
-    {
-        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return 0;
-        return toIndex > fromIndex ? 1 : -1;
     }
 
     /// <summary>The plan index of a <c>PlaylistTree</c> folder's header row, or −1. Addressed by the folder's OWN
@@ -525,26 +399,6 @@ public static class SidebarRowGeometry
     /// is not a track (a track is never pinnable — locked decision).</summary>
     public static bool ShowsPinGlyph(bool isPinned, bool isTrack) => isPinned && !isTrack;
 
-    // ── grid strip fallback (issue #84) ──
-    // The planner owns the column COUNT; re-deriving it from width here would disagree with how the planner already
-    // sliced entries into column-wide strips. What the 180-DIP floor (down from 240) broke is that the planned count
-    // can no longer be honoured without shrinking cells under the 40-DIP art floor, so the SLOT clamps the column
-    // count DOWN as a function of the width it has to render into, wrapping the strip to more lines instead.
-
-    /// <summary>The largest column count in <c>[1, plannedCols]</c> whose cells still clear <paramref name="minCell"/>
-    /// at <paramref name="availableWidth"/>. Never exceeds <paramref name="plannedCols"/> and never returns less
-    /// than 1.</summary>
-    public static int GridFallbackColumns(int plannedCols, float availableWidth, float gap, float minCell)
-    {
-        int cols = plannedCols < 1 ? 1 : plannedCols;
-        for (int c = cols; c > 1; c--)
-        {
-            float edge = (availableWidth - gap * (c - 1)) / c;
-            if (edge >= minCell) return c;
-        }
-        return 1;
-    }
-
     /// <summary>Resolve the contiguous BODY owned by one planned section header. A different section at the same or
     /// a shallower depth is a structural sibling and terminates the band even when that sibling is a divider or has
     /// no header of its own. Deeper rows belong to a nested CustomGroup subtree and stay inside the parent
@@ -588,84 +442,6 @@ public static class SidebarRowGeometry
         firstIndex = header + 1;
         count = end - firstIndex;
         return count > 0;
-    }
-}
-
-/// <summary>The pane's ANALYTIC ROW EXTENT — the height a planned row will occupy, computed from the plan alone (a
-/// pure function of row kind × section display options × previous row kind). It SEEDS the virtualizing host's
-/// extent table so a folder expand/collapse does not shuffle every row above and below it while unrealized rows
-/// measure themselves for the first time — the geometry is right before anything is realized.
-///
-/// It is a SEED, not a substitute for measurement: a <c>GridStrip</c> (and a header's wrapping chip strip) cannot be
-/// predicted exactly and report their best analytic guess; the measured seam corrects them on realize, exactly as
-/// every row does today.</summary>
-public static class SidebarRowExtents
-{
-    /// <summary>The analytic extent of plan row <paramref name="index"/>, read off the row's kind and its section's shape: one
-    /// SLOT (row + its 2 + 2 margin) per item kind, 40 per header, 8 per separator. NaN for a grid strip (estimate, then
-    /// correct on measure). A glyph row inside an entity section takes the SECTION's pitch, so a band never mixes two.</summary>
-    public static float HeightOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSection? section)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        if ((uint)index >= (uint)rows.Count || section is null) return 0f;
-        return rows[index].Kind switch
-        {
-            SidebarRowKind.SectionHeader => SidebarRowGeometry.HeaderHeight,
-            SidebarRowKind.Divider => SidebarRowGeometry.SeparatorHeight,
-            SidebarRowKind.IconRow or SidebarRowKind.SectionTile => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
-            SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Skeleton => SidebarRowGeometry.PitchOf(section.Shape),
-            SidebarRowKind.Empty => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
-            SidebarRowKind.DropBand => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
-            SidebarRowKind.TreeEnd => SidebarRowGeometry.TreeEndHeight,
-            _ => float.NaN,   // GridStrip: estimate, correct on measure
-        };
-    }
-}
-
-/// <summary>The per-row change detector behind the pane's row epochs. A bound row slot is a FROZEN child — a
-/// re-plan does not re-render it — so this is what lets a publish bump only the indices whose rendered content can
-/// actually have changed, instead of every realized row every time. Pure and engine-free.</summary>
-public static class SidebarRowDiff
-{
-    /// <summary>Fill <paramref name="changed"/> with "row i must re-render". The row RECORD is not enough on its
-    /// own: a row addresses its entry by INDEX, so a library refresh can leave every row record identical while the
-    /// entry behind it gained a name, a cover or a child count — both are therefore compared. A row present in the
-    /// new plan but not the old one always counts as changed, and so does a row whose entry index is valid in one
-    /// plan and not the other.</summary>
-    /// <param name="changed">Written for indices [0, newRows.Count); the caller sizes it. Any excess is left alone.</param>
-    public static void Diff(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        Span<bool> changed)
-    {
-        int n = Math.Min(newRows.Count, changed.Length);
-        for (int i = 0; i < n; i++)
-            changed[i] = RowChanged(oldRows, oldEntries, newRows, newEntries, i);
-    }
-
-    /// <summary>Does row <paramref name="index"/> render differently between the two plans?</summary>
-    public static bool RowChanged(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        int index)
-    {
-        if ((uint)index >= (uint)newRows.Count) return false;
-        if (index >= oldRows.Count) return true;              // the row is new at this slot
-        var row = newRows[index];
-        if (!row.Equals(oldRows[index])) return true;
-        return !SameEntry(oldEntries, newEntries, row.EntryIndex);
-    }
-
-    /// <summary>Compare the entry both plans' row addresses. An out-of-range index on BOTH sides is equal — the row
-    /// carries no entry (a header, a divider, a skeleton) and nothing behind it can go stale.</summary>
-    static bool SameEntry(IReadOnlyList<SidebarLibraryEntry> oldEntries, IReadOnlyList<SidebarLibraryEntry> newEntries,
-                          int entryIndex)
-    {
-        if (entryIndex < 0) return true;
-        bool inOld = entryIndex < oldEntries.Count;
-        bool inNew = entryIndex < newEntries.Count;
-        if (inOld != inNew) return false;
-        return !inNew || oldEntries[entryIndex].Equals(newEntries[entryIndex]);
     }
 }
 
@@ -785,72 +561,6 @@ public readonly record struct SidebarPillState(
         => this with { Selected = rowSelectsRoute && Lit(Route, liveRoute) };
 }
 
-/// <summary>The displacement hint for a reorder gesture whose destination was CLAMPED.
-///
-/// Normally the engine's own <c>ReorderList.OffsetFor</c> answers this — and still does everywhere no clamp is
-/// configured. But a clamp says "the gap opens HERE, not where the pointer is", and the engine's hint is computed
-/// from the target it holds internally, which the app cannot set without reaching into the control's gesture state.
-/// So the one clamped case reproduces the hint from the snapped destination instead: the sidebar's bands lift ONE
-/// row at one uniform band extent with no inter-row spacing — exactly the shape <c>ReorderList.OffsetFor</c>
-/// reduces to there. Engine-free, so a test can pin the gap against the same fixture the slot clamp uses.</summary>
-public static class SidebarReorderClamp
-{
-    /// <summary>Where sibling <paramref name="slot"/> sits while the row at <paramref name="from"/> is heading for
-    /// <paramref name="to"/>: the rows between the two close the gap the lift left (or part to make room),
-    /// everything else — and the lifted row itself — stays put.</summary>
-    public static float Offset(int slot, int from, int to, float extent)
-    {
-        if (slot < 0 || from < 0 || to < 0 || from == to || slot == from) return 0f;
-        if (to > from && slot > from && slot <= to) return -extent;
-        if (to < from && slot >= to && slot < from) return extent;
-        return 0f;
-    }
-}
-
-/// <summary>THE MID-DRAG PARKING BAY for a sidebar plan stage.
-///
-/// A rootlist organisation drag aims at the tree's ROWS. A re-projection that arrives mid-gesture (a dealer push
-/// from another device, our own optimistic ack, a background revalidate) re-keys those rows under the pointer, and
-/// the drop then lands somewhere the user did not aim. So the newest stage is HELD here instead of published, and
-/// applied on SESSION END (drop, cancel and Escape alike).
-///
-/// LAST WRITER WINS: a burst of publishes during one gesture converges to the newest stage, which is the only one
-/// worth applying. A stage that arrives AFTER the session ended is never held — <see cref="TryHold"/> says so, and
-/// the caller publishes it normally.
-///
-/// Generic and engine-free so a test can drive the real state machine without knowing what a stage IS.</summary>
-public sealed class SidebarStageHold<TStage> where TStage : class
-{
-    TStage? _held;
-
-    /// <summary>Is a stage parked right now? Diagnostics and tests only — the pane never branches on it.</summary>
-    public bool HasHeld => _held is not null;
-
-    /// <summary>Hold <paramref name="stage"/> instead of publishing it, when <paramref name="sessionLive"/>.
-    /// Returns TRUE when the stage was parked — the caller must NOT publish. Returns FALSE when no session is live,
-    /// which is the race that matters: a stage produced after the drag ended publishes on the spot rather than
-    /// waiting for a flush that will never come.</summary>
-    public bool TryHold(bool sessionLive, TStage stage)
-    {
-        if (!sessionLive) return false;
-        _held = stage;
-        return true;
-    }
-
-    /// <summary>Hand back the parked stage EXACTLY ONCE. The bay is emptied before the caller publishes, so a
-    /// publish that re-enters this type cannot flush the same stage twice.</summary>
-    public bool TryFlush(out TStage? stage)
-    {
-        stage = _held;
-        _held = null;
-        return stage is not null;
-    }
-
-    /// <summary>Drop the parked stage without publishing it — the pane is going away (unmount), or a stage got
-    /// published through another path and the parked one is now stale.</summary>
-    public void Discard() => _held = null;
-}
-
 /// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
     SidebarLayoutId Layout,
@@ -884,7 +594,9 @@ public static class SidebarPaneInvariant
 {
     public const float Tolerance = 0.5f;
 
-    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot s)
+    /// <summary>Inspect one settled observation. <paramref name="policy"/> is the nav-pane policy the pane ran under (null = the
+    /// active one): the rail's width is the structure's.</summary>
+    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot s, Theming.NavPanePolicy? policy = null)
     {
         if (!float.IsFinite(s.PreferredExpandedWidth) || !float.IsFinite(s.PresentedWidth) || !float.IsFinite(s.RenderedPaneWidth))
             return SidebarPaneInvariantFault.NonFiniteValue;
@@ -897,7 +609,7 @@ public static class SidebarPaneInvariant
         switch (s.Mode)
         {
             case SidebarPaneMode.Compact:
-                if (!Near(s.RenderedPaneWidth, SidebarRowGeometry.RailWidth)) fault |= SidebarPaneInvariantFault.RailWidthMismatch;
+                if (!Near(s.RenderedPaneWidth, ShellPolicy.NavOr(policy).RailWidth)) fault |= SidebarPaneInvariantFault.RailWidthMismatch;
                 break;
             case SidebarPaneMode.Minimal:
                 if (!Near(s.RenderedPaneWidth, 0f)) fault |= SidebarPaneInvariantFault.MinimalNotEmpty;
@@ -1002,8 +714,8 @@ public static class SidebarEntryKinds
 /// The positional members are the projection's own vocabulary. The trailing <c>init</c> members are display facts a
 /// surface needs but cannot derive (owner flags, the containing folder, an album's first artist) plus
 /// <see cref="IsPinned"/>, which the pin projection stamps. Everything else is computed, so the consumer names
-/// (<c>RouteKey</c>, <c>TrackCount</c>, <c>OwnerName</c>, <c>Publisher</c>, <c>FolderDepth</c>, <c>IsFolder</c>,
-/// <c>PinKey</c>) resolve without a second parallel record.
+/// (<c>RouteKey</c>, <c>TrackCount</c>, <c>OwnerName</c>, <c>Publisher</c>, <c>IsFolder</c>) resolve without a second
+/// parallel record.
 /// </summary>
 public readonly record struct SidebarLibraryEntry(
     string Id,                             // the pin/route id — also the recency key and the custom-order key
@@ -1047,7 +759,7 @@ public readonly record struct SidebarLibraryEntry(
     /// "0 songs". <c>Sidebar.PaneText.SubtitleOf</c> (Sidebar.UI.Rows.cs) gates the "N songs" subtitle on this bit
     /// for a playlist. For a FOLDER pin awaiting the rootlist's first answer this session
     /// (<see cref="SidebarProjection.ResolveFolderPinState"/>, trap 5) this is also stamped false — the data side is
-    /// correct, and <c>Sidebar.UI.Slot.cs</c>'s <c>FolderRow</c> gates its "N items" subtitle on it too.
+    /// correct, and <c>ClassicNavRow.cs</c>'s <c>FolderRow</c> gates its "N items" subtitle on it too.
     /// <para>The MEMBERSHIP fallback in <see cref="SidebarProjection.PlaylistCount"/> only counts when it carries a
     /// real number: a Partial page with no total and a Failed edge are both "resident" while knowing no length, and
     /// reading either as a count is what painted "0 songs" on every playlist.</para>
@@ -1115,18 +827,9 @@ public readonly record struct SidebarLibraryEntry(
     /// in place; never navigates) and for a track (it plays).</summary>
     public string? RouteKey => IsFolder || IsTrack ? null : Id;
 
-    /// <summary>The pin-store key for this row. The id IS the pin id for every pinnable kind.</summary>
-    public string PinKey => Id;
-
     public int TrackCount => Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album ? ChildCount : 0;
     public string OwnerName => Kind == SidebarEntryKind.Playlist ? Creator : "";
     public string Publisher => Kind == SidebarEntryKind.Show ? Creator : "";
-    public int FolderDepth => Depth;
-
-    /// <summary>Qualifier-chip match. A qualifier of 0 (Any/Unknown) matches everything; the non-zero values of the
-    /// Your Library chips are byte-identical to <see cref="SidebarPlaylistFlavor"/>, so one byte
-    /// comparison serves them all.</summary>
-    public bool MatchesQualifier(byte qualifier) => qualifier == 0 || (byte)Flavor == qualifier;
 
     /// <summary>An APP-ROUTE row (Home / Search / Liked / ...). Authored by the surface, never produced by the
     /// projection: the label + glyph are engine-bound and resolved by the renderer. The route key IS the id.</summary>
@@ -1148,7 +851,7 @@ public enum SidebarRowKind : byte
     FolderHeader  = 5,   // a rootlist folder; disclosure in the trailing chevron column
     GridStrip     = 6,   // Library grid: [EntryIndex, ItemCount] cells
     Empty         = 8,   // a quiet one-line hint (an empty Playlists, a search with no match)
-    Skeleton      = 9,   // the source is pending and nothing is known yet
+    Skeleton      = 9,   // the source is pending and nothing is known yet (ItemCount > 0: a grid strip of skeleton tiles)
     TreeEnd       = 14,  // the tree's closing drop gutter
     SectionTile   = 15,  // a collapsed section in the compact rail
     DropBand      = 16,  // empty Pinned while a pinnable drag is live: "Drop here to pin"
@@ -1166,7 +869,7 @@ public readonly record struct SidebarRow(
     string SectionId,
     byte Depth,          // 0 top-level, 1 inside a CustomGroup / rootlist folder, 2 deeper folder nesting...
     int EntryIndex,      // index into the plan's entry list; -1 when not applicable
-    int ItemCount,       // GridStrip only: how many entries this strip draws
+    int ItemCount,       // GridStrip: how many entries this strip draws; Skeleton: a grid skeleton strip's tile count (0 = a row)
     string Key);         // the stable reconciler/selection key
 
 /// <summary>The planner's output. <paramref name="Entries"/> is the flattened, per-section-ordered entry slices the
@@ -1213,628 +916,6 @@ public sealed class SidebarPlanBuffers
 {
     internal readonly List<SidebarRow> Rows = new(256);
     internal readonly List<SidebarLibraryEntry> Entries = new(256);
-}
-
-// ── DROP, TREE NAV, FOLDER FLYOUT AND MULTI-SELECTION ─────────────────────────────────────────────────────────────
-//
-// The rootlist drag-and-drop authority, and the non-mouse verbs that share it. ONE pure resolver turns a pointer
-// position over a row into a (kind, depth, refusal) slot; ONE decision layer maps an armed slot onto the real
-// marker-stream destination and checks it against the SAME legality the keyboard/menu verbs and the folder picker
-// ask; ONE selection model and ONE flyout stack carry the rest of non-mouse tree organisation. Nothing outside this
-// block computes a placement, a refusal reason, or "which folders may this be filed into" — every surface (row,
-// TreeEnd gutter, rail tile, folder picker) publishes and commits exactly what these types decide.
-
-// ── the drop-slot resolver ─────────────────────────────────────────────────────────────────────────────────────────
-//
-// ONE pure function turns (row facts, t, xInRow) into a SidebarDropSlot = (kind, depth, refusal). A row renders a
-// LINE (Before/After/EndOfList, indented to the resolved depth) or a PLATE (Into) — never both, never
-// neither-while-armed. Refusal lifts "folder into its own descendant" / "already there" from a silent `false` up to
-// the sentence the drag chip shows.
-
-/// <summary>What a rootlist drop at the resolved position MEANS. <see cref="None"/> is "nothing is armed here" — also
-/// what a REFUSED slot reports, so a refused row draws neither a line nor a plate.</summary>
-public enum SidebarDropKind : byte
-{
-    None = 0,
-    /// <summary>An insertion line ABOVE the row, at <see cref="SidebarDropSlot.Depth"/>.</summary>
-    Before = 1,
-    /// <summary>An insertion line BELOW the row, at <see cref="SidebarDropSlot.Depth"/> — may be SHALLOWER than the
-    /// row's own depth, which is the "move out of this folder" gesture.</summary>
-    After = 2,
-    /// <summary>Into the row: a folder takes the item as a child, an editable playlist takes the payload's TRACKS.
-    /// The plate — and the ONLY kind that draws one.</summary>
-    Into = 3,
-    /// <summary>The end of the whole tree, at depth 0 — the <c>TreeEnd</c> chrome row's only slot.</summary>
-    EndOfList = 4,
-}
-
-/// <summary>Why a drop at this position is refused, in the order the table evaluates. Each value maps to exactly one
-/// caption, because a refusing drop target is transparent to the engine and the caption is the ONLY thing that
-/// reaches the user.</summary>
-public enum SidebarDropRefusal : byte
-{
-    None = 0,
-    /// <summary>The row IS the dragged item.</summary>
-    Self = 1,
-    /// <summary>Into the dragged FOLDER itself.</summary>
-    IntoItself = 2,
-    /// <summary>The row lives inside the dragged folder — filing a folder into its own subtree.</summary>
-    IntoDescendant = 3,
-    /// <summary>The resolved destination is where the item already is.</summary>
-    NoOp = 4,
-    /// <summary>The list is showing a non-custom SORT, so a positional insert cannot be honoured.</summary>
-    SortedList = 5,
-    /// <summary>The rootlist has not arrived, so there is no order to write into.</summary>
-    NotLoaded = 6,
-    /// <summary>The geometry is degenerate (no plan row, no viewport, no scene) — refuse with a reason rather than
-    /// guess a placement.</summary>
-    Unavailable = 7,
-    /// <summary>The library write this gesture needs has no seam installed (<c>Sidebar.LibraryWrites</c> or the one
-    /// member of it) — the "never a silent no-op" arm of every drop, "+" and menu verb that writes the library.</summary>
-    WritesUnavailable = 8,
-}
-
-/// <summary>One localized sentence per refusal, keyed by the RAW dotted loc key (verified present in
-/// <c>assets/loc/en-US.json</c> under <c>drag.*</c>). Engine-free by construction: the Pane layer wraps this with its
-/// own <c>Loc.Get</c>/<c>Strings</c> lookup — the table itself, and the rule that every non-<see cref="SidebarDropRefusal.None"/>
-/// value has ONE entry, lives here so a refusal can never reach the UI as a silent <c>return false</c>.</summary>
-public static class SidebarDropRefusalText
-{
-    /// <summary>The dotted loc key for a refusal, or "" for <see cref="SidebarDropRefusal.None"/> (nothing to say).</summary>
-    public static string LocKey(SidebarDropRefusal refusal) => refusal switch
-    {
-        SidebarDropRefusal.Self => "drag.cantMoveHere",
-        SidebarDropRefusal.Unavailable => "drag.cantMoveHere",
-        SidebarDropRefusal.IntoItself => "drag.cantMoveIntoItself",
-        SidebarDropRefusal.IntoDescendant => "drag.cantMoveIntoItself",
-        SidebarDropRefusal.NoOp => "drag.alreadyThere",
-        SidebarDropRefusal.SortedList => "drag.clearSortingToReorder",
-        SidebarDropRefusal.NotLoaded => "drag.stillLoading",
-        SidebarDropRefusal.WritesUnavailable => "drag.libraryUnavailable",
-        _ => "",
-    };
-}
-
-/// <summary>Everything the resolver needs about ONE row, and nothing about the renderer. The one payload-dependent
-/// member (<see cref="SourceIsSelf"/>) is computed at HOVER, because that is the first moment the payload exists; the
-/// structural ones come from the plan.</summary>
-/// <param name="NextVisibleDepth">Depth of the next VISIBLE tree row; 0 when this is the last tree row. Together with
-/// <paramref name="Depth"/> it is the whole depth-ambiguity story: a slot is ambiguous iff the two differ downward.</param>
-/// <param name="CenterAccepts">This row has a dead centre that DEPOSITS: a folder (always), or an editable playlist
-/// whose centre takes the payload's tracks.</param>
-/// <param name="SourceIsSelf">This row IS the dragged item. Every OTHER legality question — cycle, no-op — is the
-/// marker stream's, never re-derived here.</param>
-/// <param name="IsListEnd">The synthetic <c>TreeEnd</c> row: the whole row is one <see cref="SidebarDropKind.EndOfList"/>
-/// slot at depth 0, with no bands at all.</param>
-public readonly record struct SidebarRowFacts(
-    bool IsFolder,
-    bool FolderExpanded,
-    bool FolderHasChildren,
-    int Depth,
-    int NextVisibleDepth,
-    bool CenterAccepts,
-    bool SourceIsSelf,
-    bool SortedNonCustom,
-    bool RootlistLoaded)
-{
-    public bool IsListEnd { get; init; }
-}
-
-/// <summary>The published slot: WHERE the drop lands, at WHAT depth, or WHY it will not.
-/// <para><b>Invariant:</b> a slot with a <see cref="Refusal"/> always carries <see cref="SidebarDropKind.None"/>. The
-/// cue therefore has one rule — line ⟺ Before/After/EndOfList, plate ⟺ Into — and a refusal draws neither.</para></summary>
-public readonly record struct SidebarDropSlot(int PlanIndex, SidebarDropKind Kind, int Depth, SidebarDropRefusal Refusal)
-{
-    public static readonly SidebarDropSlot None = new(-1, SidebarDropKind.None, 0, SidebarDropRefusal.None);
-
-    /// <summary>Is anything actually armed here (a line or a plate)?</summary>
-    public bool IsArmed => Kind != SidebarDropKind.None;
-
-    /// <summary>Delegates to <see cref="SidebarDropCue.DrawsLine"/> — two hand-written copies of "which kinds draw a
-    /// line" is exactly the drift the one-rule invariant exists to prevent.</summary>
-    public bool DrawsLine => SidebarDropCue.DrawsLine(Kind);
-
-    /// <summary>Delegates to <see cref="SidebarDropCue.DrawsPlate"/> for the same reason as <see cref="DrawsLine"/>.</summary>
-    public bool DrawsPlate => SidebarDropCue.DrawsPlate(Kind);
-}
-
-/// <summary>The pure geometry + legality rules behind every sidebar rootlist drop.</summary>
-public static class RootlistSlotResolver
-{
-    /// <summary>Fraction of the row height each edge band claims, before the clamp.</summary>
-    public const float EdgeFraction = 0.30f;
-    /// <summary>Minimum edge-band height. Below this the band is smaller than the pointer's own precision.</summary>
-    public const float MinEdge = 10f;
-    /// <summary>Maximum edge-band height. Above this a 48-DIP comfortable row loses its centre entirely.</summary>
-    public const float MaxEdge = 16f;
-    /// <summary>Hysteresis around each depth boundary (DIP). Without it the line flickers between two depths while
-    /// the hand holds still.</summary>
-    public const float DepthHysteresis = 4f;
-
-    /// <summary>The edge-band height for a row: <c>clamp(0.30·h, 10, 16)</c>, capped at half the row. ONE band for
-    /// every payload and ownership state.</summary>
-    public static float EdgeFor(float rowHeight)
-    {
-        if (!float.IsFinite(rowHeight) || rowHeight <= 0f) return MinEdge;
-        float edge = rowHeight * EdgeFraction;
-        if (edge < MinEdge) edge = MinEdge;
-        if (edge > MaxEdge) edge = MaxEdge;
-        // A degenerate (very short) row cannot carry two bands and a centre; half the row is the honest cap.
-        float half = rowHeight * 0.5f;
-        return edge > half ? half : edge;
-    }
-
-    /// <summary>The depths an <see cref="SidebarDropKind.After"/> slot on this row may address.
-    /// <para><c>Max</c> is the row's own depth. <c>Min</c> is the next visible row's depth, clamped so it never
-    /// exceeds <c>Max</c>. <c>Min &lt; Max</c> is exactly "after the last visible child of a (possibly nested)
-    /// folder" — the one genuinely ambiguous place.</para></summary>
-    public static (int Min, int Max) DepthRange(in SidebarRowFacts f)
-    {
-        int max = f.Depth < 0 ? 0 : f.Depth;
-        int min = f.NextVisibleDepth < 0 ? 0 : f.NextVisibleDepth;
-        if (min > max) min = max;
-        return (min, max);
-    }
-
-    /// <summary>Resolve one pointer position over one row into the slot it means.</summary>
-    /// <param name="planIndex">The row's plan index; negative = degenerate ⇒ <see cref="SidebarDropRefusal.Unavailable"/>.</param>
-    /// <param name="t">Normalized vertical position inside the row, 0 = top edge, 1 = bottom edge.</param>
-    /// <param name="xInRow">Pointer X relative to the row's own left edge — the DEPTH channel.</param>
-    /// <param name="rowHeight">The row's measured extent.</param>
-    /// <param name="previous">The slot published on the previous move, for depth hysteresis. Pass
-    /// <see cref="SidebarDropSlot.None"/> when there is none.</param>
-    public static SidebarDropSlot Resolve(int planIndex, float t, float xInRow, float rowHeight,
-                                          in SidebarRowFacts f, in SidebarDropSlot previous)
-    {
-        if (planIndex < 0 || !float.IsFinite(t) || !float.IsFinite(rowHeight) || rowHeight <= 0f)
-            return new SidebarDropSlot(planIndex, SidebarDropKind.None, 0, SidebarDropRefusal.Unavailable);
-
-        // The zone first: two refusals below (IntoItself, SortedList) depend on WHICH zone was picked.
-        var (kind, depth) = Zone(t, xInRow, rowHeight, in f, in previous);
-
-        var refusal = Refuse(kind, in f);
-        return refusal == SidebarDropRefusal.None
-            ? new SidebarDropSlot(planIndex, kind, depth, SidebarDropRefusal.None)
-            : new SidebarDropSlot(planIndex, SidebarDropKind.None, depth, refusal);
-    }
-
-    static SidebarDropRefusal Refuse(SidebarDropKind kind, in SidebarRowFacts f)
-    {
-        if (!f.RootlistLoaded) return SidebarDropRefusal.NotLoaded;
-        // Into the dragged folder itself gets its OWN sentence: "can't move a folder into itself" says the thing the
-        // user tried, where the generic "can't move here" would leave them guessing which rule they hit.
-        if (f.SourceIsSelf) return kind == SidebarDropKind.Into ? SidebarDropRefusal.IntoItself : SidebarDropRefusal.Self;
-        // A non-custom SORT cannot show a positional insert; a DEPOSIT into a folder/playlist is unaffected by sort.
-        if (f.SortedNonCustom && kind is SidebarDropKind.Before or SidebarDropKind.After or SidebarDropKind.EndOfList)
-            return SidebarDropRefusal.SortedList;
-        return SidebarDropRefusal.None;
-    }
-
-    static (SidebarDropKind Kind, int Depth) Zone(float t, float xInRow, float rowHeight,
-                                                  in SidebarRowFacts f, in SidebarDropSlot previous)
-    {
-        // The tree's END: one whole-row slot at the root level. No bands — there is nothing below it to be "after".
-        if (f.IsListEnd) return (SidebarDropKind.EndOfList, 0);
-
-        int depth = f.Depth < 0 ? 0 : f.Depth;
-        float edge = EdgeFor(rowHeight);
-        float top = edge / rowHeight;
-        float bottom = 1f - top;
-
-        if (f.IsFolder)
-        {
-            // Dropping ON a folder means INTO it (Explorer/Finder/VS Code/Spotify all agree).
-            if (t < top) return (SidebarDropKind.Before, depth);
-            if (t > bottom)
-                // The bottom band of an EXPANDED header is the precise "first child" slot: the line indents one step
-                // and the drop lands ahead of the folder's current first child.
-                return f.FolderExpanded && f.FolderHasChildren
-                    ? (SidebarDropKind.Before, depth + 1)
-                    : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
-            return (SidebarDropKind.Into, depth);
-        }
-
-        if (f.CenterAccepts)
-        {
-            // The retained copy gesture: an editable playlist's centre deposits the payload's tracks. Survives only
-            // because the PLATE now distinguishes it from the two edge bands, which draw a line.
-            if (t < top) return (SidebarDropKind.Before, depth);
-            if (t > bottom) return (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
-            return (SidebarDropKind.Into, depth);
-        }
-
-        // Everything else: two zones, no dead centre. A row that cannot take a deposit must not reserve half its
-        // height for one.
-        return t < 0.5f
-            ? (SidebarDropKind.Before, depth)
-            : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
-    }
-
-    /// <summary>The DEPTH channel: only an <see cref="SidebarDropKind.After"/> slot spanning more than one depth
-    /// reads the pointer's X at all. The default — pointer over the row's LABEL — is <c>Max</c> ("stay at this row's
-    /// depth"); travelling LEFT outdents one step per indent level.</summary>
-    static int PickDepth(float xInRow, in SidebarRowFacts f, in SidebarDropSlot previous)
-    {
-        var (min, max) = DepthRange(in f);
-        if (min >= max) return max;
-        if (!float.IsFinite(xInRow)) return max;
-
-        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (31 per level
-        // from the row origin, the pill's x) — so one step left is one outdent. There is no reserved disclosure cell
-        // (the folder chevron is trailing).
-        float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.IndentStep;
-        int picked = (int)MathF.Round(steps);
-        if (picked < min) picked = min;
-        if (picked > max) picked = max;
-
-        // HYSTERESIS. Without it the boundary between two depths sits under a still hand and the line flickers. The
-        // previous depth is held until the pointer is a clear 4 DIP past the boundary that would leave it.
-        if (previous.Kind == SidebarDropKind.After && previous.Depth >= min && previous.Depth <= max
-            && previous.Depth != picked)
-        {
-            float boundary = SidebarRowGeometry.TreeContentX(0)
-                + (previous.Depth + (picked > previous.Depth ? 0.5f : -0.5f)) * SidebarRowGeometry.IndentStep;
-            float travelled = MathF.Abs(xInRow - boundary);
-            if (travelled < DepthHysteresis) return previous.Depth;
-        }
-        return picked;
-    }
-}
-
-/// <summary>The insertion cue's PURE geometry + its one invariant, in the engine-free layer so a test can drive the
-/// real mapping.
-/// <para><b>The invariant:</b> <b>line ⟺ Before/After/EndOfList, plate ⟺ Into, never both, never
-/// neither-while-armed.</b> Three outcomes used to share one accent plate, so the surface could not say which of them
-/// a drop meant.</para></summary>
-public static class SidebarDropCue
-{
-    /// <summary>The caret's stroke (2 DIP).</summary>
-    public const float LineThickness = 2f;
-    /// <summary>Its corner radius — enough to round a 2-DIP bar's ends without reading as a pill.</summary>
-    public const float LineCorner = 1f;
-    /// <summary>The terminal dot at the left cap (6 DIP): what makes a hairline read as an insertion caret rather
-    /// than a divider.</summary>
-    public const float DotSize = 6f;
-
-    /// <summary>Does this slot draw the line? (The one predicate the row's Opacity bind reads.)</summary>
-    public static bool DrawsLine(SidebarDropKind kind)
-        => kind is SidebarDropKind.Before or SidebarDropKind.After or SidebarDropKind.EndOfList;
-
-    /// <summary>Does this slot draw the accent plate? (The one predicate the row's Fill/Border binds read.)</summary>
-    public static bool DrawsPlate(SidebarDropKind kind) => kind == SidebarDropKind.Into;
-
-    /// <summary>The caret's width: the row's content lane from <see cref="SidebarRowGeometry.TreeContentX"/> to the
-    /// row's right edge. ONE origin with the caret's transform and with <c>PickDepth</c>.</summary>
-    public static float LineWidth(float contentWidth, int depth)
-    {
-        float w = contentWidth - SidebarRowGeometry.TreeContentX(depth);
-        return w > 0f ? w : 0f;
-    }
-
-    /// <summary>The caret's Y inside its row: the TOP edge for Before (and the tree's end marker, whose whole row is
-    /// the slot), the bottom edge for After.</summary>
-    public static float LineY(SidebarDropKind kind, float rowHeight)
-        => kind is SidebarDropKind.Before or SidebarDropKind.EndOfList
-            ? 0f
-            : MathF.Max(0f, rowHeight - LineThickness);
-}
-
-/// <summary>Where a rootlist item CAME FROM, so a completed move can be offered back as Undo.
-/// <para>Pure, over the SAME depth-first flattened tree the planner consumes (the FULL tree, not the
-/// expansion-filtered plan), so the anchor is the item's real pre-move sibling and not whichever row happened to be
-/// visible. Expressed as an ordinary <c>(RootlistItemRef, RootlistDropPlacement)</c> pair, so the inverse rides the
-/// very same move seam the forward move did.</para></summary>
-public static class RootlistUndoAnchors
-{
-    /// <summary>Resolve the move that would put <paramref name="entryId"/> back exactly where it is now. The N=1
-    /// sugar over <see cref="TryResolveMany"/>.
-    /// <para>False when there is nothing to anchor against (the item is the tree's only member, or not in the tree at
-    /// all) — the caller then shows its toast WITHOUT an Undo action.</para></summary>
-    public static bool TryResolve(IReadOnlyList<SidebarLibraryEntry>? tree, string entryId,
-                                  out RootlistItemRef anchor, out RootlistDropPlacement placement)
-    {
-        anchor = default;
-        placement = RootlistDropPlacement.After;
-        if (!TryResolveMany(tree, [entryId], out var undo) || undo.Count != 1) return false;
-        anchor = undo[0].Target;
-        placement = undo[0].Placement;
-        return true;
-    }
-
-    /// <summary>Resolve the BATCH that would put a whole multi-selection back exactly where it is now, computed
-    /// BEFORE the move (once the rootlist has shifted, where the items used to be is unknowable). Each item anchors
-    /// on its previous UNSELECTED sibling (After) → its next unselected sibling (Before) → its parent folder
-    /// (Inside) — unselected siblings are the only rows guaranteed not to have moved. The emitted ORDER is
-    /// <see cref="RootlistBatchOrder.For"/>'s, applied per run of items sharing an anchor. False if ANY item has no
-    /// resolvable anchor: a partial Undo would scatter the rest, so the toast carries none.</summary>
-    public static bool TryResolveMany(IReadOnlyList<SidebarLibraryEntry>? tree, IReadOnlyList<string> ids,
-                                      out IReadOnlyList<RootlistMove> undo)
-    {
-        undo = Array.Empty<RootlistMove>();
-        if (tree is null || ids is null || ids.Count == 0) return false;
-
-        // The selection as the MOVE sees it: tree order, descendants of a selected folder dropped.
-        var selected = RootlistSelection.Normalize(tree, ids);
-        if (selected.Count == 0) return false;
-        var chosen = new HashSet<string>(selected.Count, StringComparer.Ordinal);
-        for (int i = 0; i < selected.Count; i++) chosen.Add(selected[i].Id);
-
-        var sources = new List<RootlistItemRef>(selected.Count);
-        var anchors = new List<(RootlistItemRef Target, RootlistDropPlacement Placement)>(selected.Count);
-        for (int i = 0; i < selected.Count; i++)
-        {
-            var self = selected[i];
-            var source = RefOf(self);
-            if (source.Key.Length == 0) return false;
-            if (!TryAnchor(tree, in self, chosen, out var target, out var placement)) return false;
-            sources.Add(source);
-            anchors.Add((target, placement));
-        }
-
-        var moves = new List<RootlistMove>(sources.Count);
-        for (int start = 0; start < sources.Count;)
-        {
-            int end = start + 1;
-            while (end < sources.Count && anchors[end] == anchors[start]) end++;
-            var run = sources.GetRange(start, end - start);
-            moves.AddRange(RootlistBatchOrder.For(run, anchors[start].Target, anchors[start].Placement));
-            start = end;
-        }
-        if (moves.Count == 0) return false;
-        undo = moves;
-        return true;
-    }
-
-    /// <summary>Where ONE item came from, expressed against a row the batch is NOT moving.</summary>
-    static bool TryAnchor(IReadOnlyList<SidebarLibraryEntry> tree, in SidebarLibraryEntry self,
-                          HashSet<string> selected, out RootlistItemRef anchor, out RootlistDropPlacement placement)
-    {
-        anchor = default;
-        placement = RootlistDropPlacement.After;
-
-        int at = -1;
-        for (int i = 0; i < tree.Count; i++)
-            if (string.Equals(tree[i].Id, self.Id, StringComparison.Ordinal)) { at = i; break; }
-        if (at < 0) return false;
-        int depth = self.Depth;
-
-        // The PREVIOUS unselected sibling — the exact anchor whenever one exists.
-        for (int i = at - 1; i >= 0; i--)
-        {
-            int d = tree[i].Depth;
-            if (d > depth) continue;                 // a descendant of an earlier sibling
-            if (d < depth) break;                    // the parent: this item is the first (unselected-wise) child
-            if (selected.Contains(tree[i].Id)) continue;
-            anchor = RefOf(tree[i]);
-            placement = RootlistDropPlacement.After;
-            return anchor.Key.Length > 0;
-        }
-
-        // First among its unselected siblings: anchor on the next one instead.
-        for (int i = at + 1; i < tree.Count; i++)
-        {
-            int d = tree[i].Depth;
-            if (d > depth) continue;                 // this item's own subtree, or a later sibling's
-            if (d < depth) break;                    // out of the folder: there is no next sibling
-            if (selected.Contains(tree[i].Id)) continue;
-            anchor = RefOf(tree[i]);
-            placement = RootlistDropPlacement.Before;
-            return anchor.Key.Length > 0;
-        }
-
-        // The only UNSELECTED-adjacent child of its folder: append back into that folder.
-        if (self.ParentFolderId is { Length: > 0 } parent)
-        {
-            anchor = new RootlistItemRef(parent, IsFolder: true);
-            placement = RootlistDropPlacement.Inside;
-            return true;
-        }
-        return false;   // the only top-level item — there is no move to undo
-    }
-
-    // The rootlist reference one entry moves AS is ONE rule and lives in RootlistTreeNav.RefOf.
-    static RootlistItemRef RefOf(in SidebarLibraryEntry entry) => RootlistTreeNav.RefOf(in entry);
-}
-
-// ── the drop decision: MAP then CHECK ─────────────────────────────────────────────────────────────────────────────
-//
-// THE ONE ANSWER TO "where does this drop land, and may it?". MAP turns the geometry cue plus the FULL projection
-// tree into a destination; CHECK asks the store's own marker stream via RootlistOps — the same authority the
-// keyboard/menu verbs and the folder picker use, so nothing here can disagree with them. A cue that cannot be mapped
-// is never armed; it publishes Unavailable rather than a placement that would silently drop nothing.
-
-/// <summary>A resolved rootlist destination: the tree entry it is expressed against, the seam ref + placement the
-/// mutation rides, and the folder the item will END UP IN.
-/// <para><see cref="DestinationName"/> is the toast's subject, computed from the MAPPED TARGET (never from whichever
-/// row the pointer happened to be over). Empty = the top level.</para>
-/// <para><see cref="Deposit"/> marks the one slot that is not a rootlist move at all — dropping a playlist on an
-/// editable playlist's centre to copy its songs.</para></summary>
-/// <param name="AnchorName">The name of the entry the placement is expressed AGAINST — for an outdent, the folder
-/// the item is leaving. Distinct from <paramref name="DestinationName"/>: they used to be answered by the same
-/// (wrong) field.</param>
-public readonly record struct RootlistSlotTarget(string EntryId, RootlistItemRef Ref, RootlistDropPlacement Placement,
-                                          string DestinationName, string AnchorName, bool Deposit);
-
-/// <summary>Cue + tree → destination. GEOMETRY IS NOT LEGALITY: nothing here refuses a move, and nothing here reads
-/// the visible (expansion-filtered) plan.</summary>
-public static class RootlistSlotMapper
-{
-    /// <summary>Map one armed cue onto the rootlist destination it means. <paramref name="rowEntryId"/> is the entry
-    /// behind the hovered plan row ("" for the synthetic <c>TreeEnd</c> row). <paramref name="tree"/> must be the
-    /// FULL flattened tree (collapsed subtrees included) so "first child" and the outdent walk still resolve inside
-    /// a collapsed folder. False = no destination; the caller must publish <c>Unavailable</c>, never an armed slot.</summary>
-    public static bool TryMap(in SidebarDropSlot cue, string rowEntryId,
-                              IReadOnlyList<SidebarLibraryEntry>? tree, out RootlistSlotTarget target)
-    {
-        target = default;
-        if (tree is null || tree.Count == 0) return false;
-
-        // The tree's END marker is CHROME: it stands for no entity, so it resolves before the row lookup. Its anchor
-        // is the last TOP-LEVEL entry, whose exclusive range end lands after a trailing folder's whole subtree.
-        if (cue.Kind == SidebarDropKind.EndOfList)
-        {
-            if (!TryLastTopLevel(tree, out var last)) return false;
-            target = new RootlistSlotTarget(last.Id, RootlistTreeNav.RefOf(in last),
-                                            RootlistDropPlacement.After, "", last.Name, false);
-            return true;
-        }
-
-        if (!RootlistTreeNav.TryEntry(tree, rowEntryId, out var entry)) return false;
-
-        switch (cue.Kind)
-        {
-            case SidebarDropKind.Into:
-                // A PLAYLIST's centre takes the payload's TRACKS — not a rootlist move at all. A FOLDER's centre
-                // takes the item as a child.
-                target = entry.IsFolder
-                    ? new RootlistSlotTarget(entry.Id, RootlistTreeNav.RefOf(in entry),
-                                             RootlistDropPlacement.Inside, entry.Name, entry.Name, false)
-                    : new RootlistSlotTarget(entry.Id, default, RootlistDropPlacement.Inside, entry.Name, entry.Name, true);
-                return true;
-
-            case SidebarDropKind.Before when cue.Depth > entry.Depth && entry.IsFolder:
-                // The bottom band of an EXPANDED folder header: the precise "first child" slot. An EMPTY folder has
-                // no child to land before, so "inside it" is the same place.
-                if (TryFirstChild(tree, in entry, out var firstChild))
-                {
-                    target = new RootlistSlotTarget(firstChild.Id, RootlistTreeNav.RefOf(in firstChild),
-                                                    RootlistDropPlacement.Before, entry.Name, firstChild.Name, false);
-                    return true;
-                }
-                target = new RootlistSlotTarget(entry.Id, RootlistTreeNav.RefOf(in entry),
-                                                RootlistDropPlacement.Inside, entry.Name, entry.Name, false);
-                return true;
-
-            case SidebarDropKind.Before:
-                target = new RootlistSlotTarget(entry.Id, RootlistTreeNav.RefOf(in entry),
-                                                RootlistDropPlacement.Before, entry.ParentFolderName, entry.Name, false);
-                return true;
-
-            case SidebarDropKind.After when cue.Depth < entry.Depth:
-                // THE OUTDENT: "after the last child of a folder", aimed left, means AFTER THE FOLDER. Expressing it
-                // against the CHILD (what the shifted depth pick forced) lands it straight back inside.
-                if (!TryAncestorFolder(tree, in entry, entry.Depth - cue.Depth, out var ancestor)) return false;
-                target = new RootlistSlotTarget(ancestor.Id, RootlistTreeNav.RefOf(in ancestor),
-                                                RootlistDropPlacement.After, ancestor.ParentFolderName, ancestor.Name, false);
-                return true;
-
-            case SidebarDropKind.After:
-                target = new RootlistSlotTarget(entry.Id, RootlistTreeNav.RefOf(in entry),
-                                                RootlistDropPlacement.After, entry.ParentFolderName, entry.Name, false);
-                return true;
-
-            default:
-                return false;
-        }
-    }
-
-    /// <summary>The folder's FIRST child in the full tree — the entry directly after it, one level deeper.</summary>
-    static bool TryFirstChild(IReadOnlyList<SidebarLibraryEntry> tree, in SidebarLibraryEntry folder,
-                              out SidebarLibraryEntry child)
-    {
-        child = default;
-        for (int i = 0; i < tree.Count; i++)
-        {
-            if (!string.Equals(tree[i].Id, folder.Id, StringComparison.Ordinal)) continue;
-            if (i + 1 >= tree.Count) return false;
-            var next = tree[i + 1];
-            if (next.Depth != folder.Depth + 1) return false;      // the folder is empty (or collapsed out of the tree)
-            child = next;
-            return true;
-        }
-        return false;
-    }
-
-    /// <summary>Walk <paramref name="levels"/> containing folders up from <paramref name="entry"/>, over the FULL tree.</summary>
-    static bool TryAncestorFolder(IReadOnlyList<SidebarLibraryEntry> tree, in SidebarLibraryEntry entry, int levels,
-                                  out SidebarLibraryEntry folder)
-    {
-        folder = entry;
-        if (levels <= 0) return false;
-        for (int i = 0; i < levels; i++)
-        {
-            if (folder.ParentFolderId is not { Length: > 0 } parent
-                || !RootlistTreeNav.TryFolder(tree, parent, out folder)) return false;
-        }
-        return folder.IsFolder;
-    }
-
-    /// <summary>The last TOP-LEVEL tree entry — the anchor "move to the end" files against.</summary>
-    static bool TryLastTopLevel(IReadOnlyList<SidebarLibraryEntry> tree, out SidebarLibraryEntry entry)
-    {
-        entry = default;
-        for (int i = tree.Count - 1; i >= 0; i--)
-            if (tree[i].Depth == 0) { entry = tree[i]; return true; }
-        return false;
-    }
-}
-
-/// <summary>THE published-slot decision: map, then check against the marker stream, then refuse or arm. Every
-/// rootlist drop surface publishes what this returns and commits the target it hands back, so a cue and its mutation
-/// cannot describe different destinations.</summary>
-public static class RootlistDropDecision
-{
-    /// <summary>The ONE <see cref="RootlistMoveCheck"/> → <see cref="SidebarDropRefusal"/> table. Every one of these
-    /// used to be a silent <c>false</c> three layers below the pointer.</summary>
-    public static SidebarDropRefusal RefusalFor(RootlistMoveCheck check) => check switch
-    {
-        RootlistMoveCheck.Ok => SidebarDropRefusal.None,
-        RootlistMoveCheck.NoOp => SidebarDropRefusal.NoOp,
-        RootlistMoveCheck.Cycle => SidebarDropRefusal.IntoDescendant,
-        RootlistMoveCheck.SameItem => SidebarDropRefusal.Self,
-        // Missing (source/target not in the stream) and Invalid (a placement the stream cannot express) are both
-        // "this position has no meaning" — the honest refusal, never a guessed placement.
-        _ => SidebarDropRefusal.Unavailable,
-    };
-
-    /// <summary>Refine a GEOMETRY cue into the slot the surface publishes, and hand back the destination it commits.
-    /// An unarmed cue passes through untouched; an armed one with no mapping is DISARMED with
-    /// <see cref="SidebarDropRefusal.Unavailable"/> rather than left publishing a slot nothing could map. A mapped
-    /// ordering is then checked against <paramref name="markers"/>.</summary>
-    /// <param name="sources">The dragged items as the rootlist addresses them, in TREE ORDER (one item = a list of
-    /// one). A source that IS the hovered target does NOT refuse the batch — it drops as a legal GATHER; hovering one
-    /// of your OWN rows still says <see cref="SidebarDropRefusal.Self"/>, from the resolver's <c>SourceIsSelf</c>
-    /// fact, which refuses the cue BEFORE it reaches here.</param>
-    /// <param name="markers">The store's marker stream. Null/empty refuses every ordering
-    /// <see cref="SidebarDropRefusal.Unavailable"/> rather than arming against indices nobody has.</param>
-    public static SidebarDropSlot Refine(in SidebarDropSlot cue, string rowEntryId,
-                                         IReadOnlyList<SidebarLibraryEntry>? tree,
-                                         IReadOnlyList<RootlistEntry>? markers,
-                                         IReadOnlyList<RootlistItemRef> sources, out RootlistSlotTarget target)
-    {
-        target = default;
-        if (!cue.IsArmed) return cue;
-        if (!RootlistSlotMapper.TryMap(in cue, rowEntryId, tree, out target))
-            return new SidebarDropSlot(cue.PlanIndex, SidebarDropKind.None, cue.Depth, SidebarDropRefusal.Unavailable);
-        if (target.Deposit) return cue;                       // a track copy is not a rootlist ORDERING at all
-
-        var refusal = RefusalFor(Check(markers, sources, target.Ref, target.Placement,
-                                       cue.Kind == SidebarDropKind.EndOfList));
-        return refusal == SidebarDropRefusal.None
-            ? cue
-            : new SidebarDropSlot(cue.PlanIndex, SidebarDropKind.None, cue.Depth, refusal);
-    }
-
-    /// <summary>The legality question, asked of the ONE authority. Every caller — hover, commit, the rail tile's
-    /// accept predicate, the folder picker, the bridge — goes through this.
-    /// <para>The batch it asks about is <see cref="RootlistBatchOrder.For"/>'s — the SAME ordered move list the
-    /// commit issues, so the cue cannot answer a different question from the write.</para></summary>
-    public static RootlistMoveCheck Check(IReadOnlyList<RootlistEntry>? markers,
-                                          IReadOnlyList<RootlistItemRef>? sources,
-                                          RootlistItemRef target, RootlistDropPlacement placement,
-                                          bool endOfList = false)
-    {
-        if (markers is null || markers.Count == 0) return RootlistMoveCheck.Missing;
-        if (sources is null || sources.Count == 0 || target.Key.Length == 0) return RootlistMoveCheck.Missing;
-        for (int i = 0; i < sources.Count; i++)
-            if (sources[i].Key.Length == 0) return RootlistMoveCheck.Missing;
-        return RootlistOps.CheckMoves(markers, RootlistBatchOrder.For(sources, target, placement, endOfList));
-    }
-
-    /// <summary>The N=1 sugar. One item is a batch of one, so it answers through the very same builder.</summary>
-    public static RootlistMoveCheck Check(IReadOnlyList<RootlistEntry>? markers, RootlistItemRef source,
-                                          RootlistItemRef target, RootlistDropPlacement placement)
-        => Check(markers, [source], target, placement);
 }
 
 // ── tree navigation: siblings, folder picker, selection and batch order ──────────────────────────────────────────────
@@ -2277,12 +1358,8 @@ public sealed class SidebarTreeSelection
     /// <summary>The Shift-range anchor (WinUI <c>SelectionModel.AnchorIndex</c>, by key). Null = none.</summary>
     public string? Anchor => _anchor;
 
-    /// <summary>Is the user in explicit CHECK MODE (entered from the row menu's "Select")? Distinct from
-    /// <see cref="CheckLaneVisible"/>: check mode survives the selection emptying, which lets a user turn the lane on
-    /// and then pick their first row.</summary>
-    public bool CheckMode => _checkMode;
-
-    /// <summary>Is the checkbox lane on screen? Explicit check mode, OR two or more rows selected — one selected row
+    /// <summary>Is the checkbox lane on screen? Explicit CHECK MODE (entered from the row menu's "Select"; it survives the
+    /// selection emptying, which lets a user turn the lane on and then pick their first row), OR two or more rows selected — one selected row
     /// is still "the row I clicked", two is a set and needs a visible handle.</summary>
     public bool CheckLaneVisible => _checkMode || _ids.Count >= 2;
 
@@ -2419,9 +1496,6 @@ public static class SidebarSort
     public static StringComparer NameComparer =>
         s_name ??= StringComparer.Create(CultureInfo.CurrentUICulture, ignoreCase: true);
 
-    /// <summary>Test/culture-switch hook: drop the cached collator so the next access rebuilds it.</summary>
-    public static void ResetCollator() => s_name = null;
-
     static readonly Comparison<SidebarLibraryEntry> s_recentsAsc = static (a, b) => Recents(in a, in b, desc: false);
     static readonly Comparison<SidebarLibraryEntry> s_recentsDesc = static (a, b) => Recents(in a, in b, desc: true);
     static readonly Comparison<SidebarLibraryEntry> s_addedAsc = static (a, b) => RecentlyAdded(in a, in b, desc: false);
@@ -2462,9 +1536,6 @@ public static class SidebarSort
     /// while the persisted preference is left untouched.</summary>
     public static SidebarLibrarySort Effective(SidebarLibrarySort sort, SidebarLibraryFilter filter) =>
         sort == SidebarLibrarySort.CustomOrder && filter != SidebarLibraryFilter.Playlists ? SidebarLibrarySort.Alphabetical : sort;
-
-    /// <summary>True when the direction affordance should be shown at all (Custom has no inverse).</summary>
-    public static bool SupportsDirection(SidebarLibrarySort sort) => sort != SidebarLibrarySort.CustomOrder;
 
     public static Dictionary<string, int> BuildRanks(IReadOnlyList<string>? order)
     {
@@ -2676,7 +1747,7 @@ public static class SidebarProjection
     public const int MosaicTrackPrefix = 8;
 
     /// <summary>G-059: a cover-less playlist's own 2×2 mosaic — the first ≤4 distinct member-track album covers, in
-    /// membership order, THE SAME RULE as <see cref="Playlist.MosaicTiles"/> (Entities/Playlist.UI.cs:95, the
+    /// membership order, THE SAME RULE as <see cref="Playlist.MosaicTiles"/> (Entities/Playlist.UI.cs, the
     /// playlist DETAIL page's own cover rule) — keep the two aligned if either changes. That rule resolves each
     /// track's image to a URL (its two other callers want one, for a palette/deposit-art fallback); this one does
     /// NOT — it collects the tracks' own <see cref="Track.ImageId"/> directly, already-interned StringIds with no
@@ -3479,9 +2550,11 @@ public static class SidebarBinderPipeline
     /// must never disappear), then OVERLAYS <paramref name="hydrated"/> once the binder resolves the handle.
     /// <para>Trap 5: <paramref name="rootlistState"/> defaults to <see cref="EdgeState.Complete"/> — a caller that
     /// does not pass it (every non-folder-pin-state test, and any future caller that genuinely does not care) keeps
-    /// the pre-existing "not found ⇒ missing" behaviour; only a FOLDER pin ever reads it at all.</para></summary>
+    /// the pre-existing "not found ⇒ missing" behaviour; only a FOLDER pin ever reads it at all.</para>
+    /// <para>S9: <paramref name="cachedCover"/> is the pin's last-known cover (<see cref="SidebarPin.Cover"/>, interned by the
+    /// caller), so a pin the session cannot hydrate (offline) keeps the cover it last had; hydration replaces it.</para></summary>
     public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated,
-        EdgeState rootlistState = EdgeState.Complete)
+        EdgeState rootlistState = EdgeState.Complete, StringId cachedCover = default)
     {
         // A folder pin has no separate hydration path (below) — its ONLY source of truth is the rootlist walk that
         // already ran this rebuild, so "not found" here means "not in the account's rootlist" only once that
@@ -3491,7 +2564,7 @@ public static class SidebarBinderPipeline
         var folderState = folder ? SidebarProjection.ResolveFolderPinState(rootlistState, foundInProjection: false)
                                   : SidebarPinFolderState.Normal;
         var baseEntry = new SidebarLibraryEntry(
-            pin.Id, pin.Kind, pin.Uri, pin.Name, "", StringId.Empty, null,
+            pin.Id, pin.Kind, pin.Uri, pin.Name, "", cachedCover, null,
             ChildCount: 0, AddedAtMs: pin.AddedAtMs, SortStamp: pin.AddedAtMs, LastVisitedTicksUtc: 0,
             SourceOrder: sourceOrder, Depth: 0, Circular: pin.Kind == SidebarEntryKind.Artist,
             Flavor: SidebarPlaylistFlavor.None)
@@ -3637,33 +2710,6 @@ public sealed class SidebarSourceIndex
         entry = default;
         return false;
     }
-
-    /// <summary>The IReadOnlyDictionary face the planner wants, without materialising a second map.</summary>
-    public IReadOnlyDictionary<string, SidebarLibraryEntry> AsLookup() => _view ??= new View(this);
-    View? _view;
-
-    sealed class View(SidebarSourceIndex owner) : IReadOnlyDictionary<string, SidebarLibraryEntry>
-    {
-        public bool TryGetValue(string key, out SidebarLibraryEntry value) => owner.TryGet(key, out value);
-        public bool ContainsKey(string key) => owner._byKey.ContainsKey(key);
-        public SidebarLibraryEntry this[string key] =>
-            owner.TryGet(key, out var v) ? v : throw new KeyNotFoundException(key);
-        public int Count => owner._byKey.Count;
-        public IEnumerable<string> Keys => owner._byKey.Keys;
-
-        public IEnumerable<SidebarLibraryEntry> Values
-        {
-            get { foreach (var kv in owner._byKey) yield return owner._entries[kv.Value]; }
-        }
-
-        public IEnumerator<KeyValuePair<string, SidebarLibraryEntry>> GetEnumerator()
-        {
-            foreach (var kv in owner._byKey)
-                yield return new KeyValuePair<string, SidebarLibraryEntry>(kv.Key, owner._entries[kv.Value]);
-        }
-
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-    }
 }
 
 // ── PINS, THE PIN MENU ROW AND THE EDIT PLAN ─────────────────────────────────────────────────────────────────────────
@@ -3686,6 +2732,10 @@ public sealed class SidebarSourceIndex
 /// projection uses.</summary>
 public sealed record SidebarPin(string Id, SidebarEntryKind Kind, string Uri, string Name, long AddedAtMs)
 {
+    /// <summary>The last-known cover image id (S9): part of the same display CACHE as <see cref="Name"/>, so a pin the
+    /// session cannot resolve (offline) still paints the cover it last had. "" until the projection has seen one.</summary>
+    public string Cover { get; init; } = "";
+
     /// <summary>Consumer alias — the pin store keys on <see cref="Id"/>.</summary>
     public string Key => Id;
 
@@ -3818,8 +2868,6 @@ public static class SidebarPinId
         return null;
     }
 
-    public static bool IsPinnableRoute(string? routeKey) => FromRoute(routeKey) is not null;
-
     /// <summary>A rootlist group id → its pin id. Folders are pinnable even though they never navigate.</summary>
     public static string ForFolder(string folderId) => FolderPrefix + folderId;
 
@@ -3853,11 +2901,6 @@ public static class SidebarPinId
     public static string FolderIdOf(string pinId) =>
         KindOf(pinId) == SidebarEntryKind.Folder ? pinId.Substring(FolderPrefix.Length) : "";
 
-    /// <summary>Whether a <see cref="SidebarEntryKind"/> can ever back a pin. <see cref="SidebarEntryKind.Track"/> is
-    /// the ONE refusal — every other kind is either a real navigable library entity or the bare-route family. Call
-    /// this at every pin-CREATION boundary rather than inferring pinnability from a fallback.</summary>
-    public static bool IsPinnable(SidebarEntryKind kind) => kind != SidebarEntryKind.Track;
-
     /// <summary>The pin id for a projected entry — the entry Id already IS the pin id, so this is the identity with
     /// the not-pinnable kinds screened out: internal routes and TRACK rows (queue / now playing / artist top tracks)
     /// are never pinnable.</summary>
@@ -3881,7 +2924,7 @@ public static class SidebarPinId
 public static class PinSyncRules
 {
     /// <summary>pin id → the collection2v2 item uri, or null when this pin is local-only.</summary>
-    public static string? TryWireUri(string? pinId, string username)
+    public static string? TryWireUri(string? pinId)
     {
         if (string.IsNullOrEmpty(pinId)) return null;
         if (SidebarPinRules.IsFixedRoute(pinId)) return null;
@@ -3911,7 +2954,7 @@ public static class PinSyncRules
         return id is null || SidebarPinRules.IsFixedRoute(id) ? null : id;
     }
 
-    public static bool IsSyncable(string? pinId, string username) => TryWireUri(pinId, username) is not null;
+    public static bool IsSyncable(string? pinId) => TryWireUri(pinId) is not null;
 }
 
 // ── 7. the pin menu-row decision ─────────────────────────────────────────────────────────────────────────────────────

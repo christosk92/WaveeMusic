@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune browse category: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="browse › music › pop" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="browse" sub="top,for you,genres,charts,concerts" on="genres" collapsed="true" accent="{{accent}}" hint-size="400px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 140px; flex-shrink: 0; background: #8d2f5b; position: relative; overflow: hidden">
+      <div style="position: absolute; left: 12px; top: 22px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff">pop</div>
+      <div style="position: absolute; left: 16px; bottom: 14px; font-size: 13px; color: rgba(255,255,255,0.8)">music · category</div>
+      <button aria-label="share" style="{{ringLight}}">↗</button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 22px; height: 40px; padding: 0 16px; margin-top: 8px; flex-shrink: 0; font-size: 14px; white-space: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent)">
+      <a href="#" style="color: #ffffff; font-weight: 600; flex-shrink: 0">playlists</a>
+      <a href="#" style="flex-shrink: 0">new releases</a>
+      <a href="#" style="flex-shrink: 0">artists</a>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px; padding: 8px 16px 0 16px">
+      <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">popular playlists</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{playlists}}" as="t" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 14px; margin-top: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">new releases</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+      <sc-for list="{{releases}}" as="r" hint-placeholder-count="3"><a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; color: #ffffff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span><span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span><span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: #a8a8a8; font-size: 16px">⋯</span></a></sc-for>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + c + '; display: block';
+  const playlists = [['Today\'s Top Hits', 'spotify', '#8d2f5b'], ['Pop Rising', 'spotify', '#5b2f8d'], ['Hot Hits NL', 'spotify', '#2f5b8d'], ['Pop Up', 'spotify', '#8d5b2f']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const releases = [['Supernova', 'single · aespa', '#5b2f6b'], ['How Sweet', 'single · NewJeans', '#6b2f3b'], ['Espresso', 'single · Sabrina Carpenter', '#8d5b5b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[2] + '; display: block' }));
+  return {
+    accent, playlists, releases,
+    ringLight: 'position: absolute; right: 16px; bottom: 10px; width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center',
+  };
+}
+}
+</script>
+</body>
+</html>

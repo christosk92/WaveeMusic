@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Artist, small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|artist:Arash:#4a3b2f" sel="1" hint-size="800px,88px"></dc-import>
+  <div style="display: flex; height: 440px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="compact" sel="artists" height="440" hint-size="48px,440px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 20px 24px 0 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="position: relative; height: 220px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #4a3b2f">
+        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.62))"></div>
+        <div style="position: absolute; left: 20px; right: 20px; bottom: 20px; display: flex; align-items: flex-end; gap: 16px">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #e0e0e0"><span style="width: 14px; height: 14px; border-radius: 7px; background: #60cdff; display: inline-flex; align-items: center; justify-content: center"><svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="#000" stroke-width="2.2"></path></svg></span>Verified artist</div>
+            <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Arash</h1>
+            <div style="font-size: 14px; line-height: 20px; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">20,577,457 monthly listeners · #112 in the world</div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-shrink: 0">
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+            <button aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(32,32,32,0.7); border: 1px solid rgba(255,255,255,0.12); color: #fff; font: inherit; font-size: 14px">Follow</button>
+            <button aria-label="Shuffle" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(32,32,32,0.7); border: 1px solid rgba(255,255,255,0.12); color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More: artist radio, share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(32,32,32,0.7); border: 1px solid rgba(255,255,255,0.12); color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 4px; flex-shrink: 0; overflow: hidden; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <sc-for list="{{views}}" as="v" hint-placeholder-count="6"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+      <section style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+        <div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Popular</h2><a href="#" style="font-size: 14px; padding: 4px 8px">See more</a></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, 48px); grid-auto-flow: column; gap: 0 24px">
+          <sc-for list="{{popular}}" as="p" hint-placeholder-count="5">
+            <div style="{{p.style}}">
+              <span style="width: 16px; flex-shrink: 0; font-size: 14px; color: #9e9e9e; text-align: right; font-variant-numeric: tabular-nums">{{p.num}}</span>
+              <span style="width: 40px; height: 40px; border-radius: 4px; background: #4a3b2f; flex-shrink: 0"></span>
+              <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.title}}</span><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #c5c5c5"><sc-if value="{{p.isNew}}" hint-placeholder-val="{{ false }}"><span style="height: 16px; display: inline-flex; align-items: center; padding: 0 4px; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #ffffff">New</span></sc-if>{{p.plays}}</span></span>
+              <span style="width: 20px; flex-shrink: 0; text-align: center; font-size: 14px">{{p.heart}}</span>
+              <span style="width: 36px; flex-shrink: 0; text-align: right; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{p.time}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Discography</h2><a href="#" style="font-size: 14px">Show all</a></div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="compact" width="800" variant="music" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Overview', true), vs('Albums', false), vs('Singles & EPs', false), vs('Compilations', false), vs('Appears on', false), vs('About', false)];
+  const pd = [['One Day (feat. Helena) - Radio Edit', '214,018,301 plays', '3:33', true, false], ['Broken Angel (feat. Helena)', '402,776,114 plays', '3:11', true, false], ['Dooset Daram (feat. Helena)', '12,340,882 plays', '3:24', false, true], ['Boro Boro', '88,201,540 plays', '3:47', false, false], ['Temptation (feat. Rebecca)', '61,998,003 plays', '3:20', false, false]];
+  const popular = pd.map((d, i) => ({ num: String(i + 1), title: d[0], plays: d[1], time: d[2], heart: d[3] ? '♥' : '', isNew: d[4],
+    style: 'display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px; border-radius: 4px; min-width: 0; ' + (i === 2 ? 'background: rgba(255,255,255,0.0605)' : '') }));
+  return { views, popular };
+}
+}
+</script>
+</body>
+</html>

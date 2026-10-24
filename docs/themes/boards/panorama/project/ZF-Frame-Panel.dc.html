@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frame: inline panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; overflow: hidden; background: #202020">
+  <dc-import name="ZF-Album" theme="{{theme}}" accent="{{accent}}" panel="{{panel}}" h="{{h}}" hint-size="1440px,900px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"panel":{"editor":"enum","options":["queue","lyrics","details"],"default":"queue"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  return { theme: this.props.theme ?? 'dark', accent: this.props.accent ?? 'windows', panel: this.props.panel ?? 'queue', h: 900 };
+}
+}
+</script>
+</body>
+</html>

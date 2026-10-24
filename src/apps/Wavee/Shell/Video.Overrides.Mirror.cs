@@ -33,10 +33,9 @@
 // would never be asked for again for that row — and would make `Album`'s `Knows(TrackFields.Video)` readiness gate
 // read true for a row nobody answered for. This writes the user's CURATION; the group's knowledge is untouched.
 //
-// WHY NOTHING AUTO-OPENS. `Video.OverrideMutation.Plan` also plans a reveal (`RevealSurfaceIfCurrent`) and a forced
-// reload; this mirror deliberately applies NEITHER. The decision (2026-09-18) is that attaching a file lights the
-// BUTTON and plays nothing, so the only surface effect is `State.FoldForTrack(hasVideo, boundary: false)`, whose
-// upgrade is DEFERRED (`Video.DeferUpgrade`): the badge lights now, the surface waits for the user's click.
+// WHY NOTHING AUTO-OPENS. The mirror neither reveals the surface nor forces a reload. The decision (2026-09-18) is that
+// attaching a file lights the BUTTON and plays nothing, so the only surface effect is
+// `State.FoldForTrack(hasVideo, boundary: false)`, whose upgrade is DEFERRED (`Video.DeferUpgrade`): the badge lights now, the surface waits for the user's click.
 //
 // AND THAT FOLD IS A BELT, NOT THE BRACES. `HostObserver`'s availability effect already re-folds on every tracks
 // publication (`Video.Host.Wiring.cs`: `CurrentHasVideo(subscribe: true)`), so the `Bump` + `Publish` below lights
@@ -48,7 +47,7 @@
 // THREAD. UI thread, and no marshalling — every producer of `Changed` is already on it: the five verbs in
 // `Entities/Track.Menu.Video.cs` (inside a menu invoke, around a modal picker that must run on the window's thread),
 // the two drop paths (`Entities/Playlist.Page.cs`, `Entities/Track.Table.cs`, inside an input handler), the Settings
-// roster (`Screens/Settings.UI.Video.cs`) and the undo callbacks on the notification queue. The roster raises
+// roster (`ClassicSettings.VideoOverrides.cs`) and the undo callbacks on the notification queue. The roster raises
 // `Changed` OUTSIDE its own lock, so a handler that writes columns and publishes cannot deadlock against it.
 // `EntityId.Parse` interns, and the column writes and `Publish` are C1 — a background producer would have to
 // marshal (`Playback.ToUi`) BEFORE it calls the roster, not here, because the roster's own `Persist` writes settings

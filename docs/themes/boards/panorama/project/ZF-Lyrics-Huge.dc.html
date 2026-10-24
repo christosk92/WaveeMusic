@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lyrics, full screen, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 2560px; height: 1440px; box-sizing: border-box; overflow: hidden; color: #ffffff; background: radial-gradient(circle at 26% 38%, #b04a78 0%, #8a4e7a 20%, #4a2440 44%, #202020 76%); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.28)"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="font-size: 12px; margin-left: 8px">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  <nav aria-label="Full screen views" style="position: absolute; left: 24px; top: 52px; height: 40px; display: flex; font-size: 14px">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.style}}">{{t.label}}<sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></sc-if></a></sc-for>
+  </nav>
+  <aside aria-label="Song" style="position: absolute; left: 460px; top: 160px; width: 480px; display: flex; flex-direction: column; gap: 12px">
+    <span role="img" aria-label="OutRun cover" style="width: 480px; height: 480px; border-radius: 8px; background: linear-gradient(150deg, #a8456f, #4a1f38); box-shadow: 0 32px 64px rgba(0,0,0,0.37)"></span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; padding-top: 8px">Nightcall</span>
+    <span style="font-size: 20px; line-height: 28px; color: rgba(255,255,255,0.86); margin-top: -8px"><a href="#" style="color: rgba(255,255,255,0.86)">Kavinsky</a> · <a href="#" style="color: rgba(255,255,255,0.86)">OutRun</a></span>
+    <span style="display: flex; gap: 8px; padding-top: 6px">
+      <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Translation: Dutch</button>
+      <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Follow the song</button>
+      <button aria-label="Lyrics options" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </span>
+    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 24px; padding: 14px 16px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); color: var(--ft1)">
+      <span style="font-size: 12px; line-height: 16px; color: var(--ft2); padding-bottom: 4px">Credits</span>
+      <sc-for list="{{credits}}" as="c" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; font-size: 14px; line-height: 24px"><span style="color: var(--ft2)">{{c.k}}</span><span>{{c.v}}</span></span></sc-for>
+    </div>
+    <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.78)">Lyrics by Musixmatch · <a href="#" style="color: #ffffff">Report a problem</a></span>
+  </aside>
+  <div style="position: absolute; left: 1060px; top: 120px; width: 1040px; height: 1160px; overflow: hidden; display: flex; flex-direction: column; gap: 20px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600">
+    <span style="color: rgba(255,255,255,0.3)">[AN EARLIER LINE]</span>
+    <span style="color: rgba(255,255,255,0.4)">[THE LINE BEFORE]</span>
+    <span style="display: flex; flex-direction: column; gap: 6px"><span><span style="color: #ffffff">[THE LINE BEING </span><span style="color: rgba(255,255,255,0.6)">SUNG NOW]</span></span><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 24px; line-height: 32px; font-weight: 400; color: rgba(255,255,255,0.78)">[ITS DUTCH TRANSLATION]</span></span>
+    <span style="color: rgba(255,255,255,0.6)">[THE NEXT LINE]</span>
+    <span style="color: rgba(255,255,255,0.6)">[A LINE STILL TO COME]</span>
+    <span style="color: rgba(255,255,255,0.6)">[A LONGER LINE THAT WRAPS ONTO A SECOND ROW]</span>
+    <span style="color: rgba(255,255,255,0.6)">[THE CHORUS, FIRST LINE]</span>
+    <span style="color: rgba(255,255,255,0.6)">[THE CHORUS, SECOND LINE]</span>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 1060px; top: 1080px; width: 1040px; height: 200px; background: linear-gradient(180deg, rgba(40,20,34,0), rgba(32,26,30,0.85))"></div>
+  <div style="position: absolute; left: 50%; bottom: 40px; width: 1200px; margin-left: -600px; box-sizing: border-box; padding: 12px 24px; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: 0 8px 16px rgba(0,0,0,0.26); color: var(--ft1); display: flex; align-items: center; gap: 12px">
+    <button aria-label="Previous" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    <button aria-label="Pause" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 22px; background: var(--acc); color: var(--onacc)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+    <button aria-label="Next" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    <span style="width: 44px; font-size: 12px; color: var(--ft2); font-variant-numeric: tabular-nums; margin-left: 8px">1:14</span>
+    <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: var(--rail)"></div><div style="position: absolute; left: 0; width: 29%; height: 4px; border-radius: 2px; background: var(--acc)"></div></div>
+    <span style="width: 44px; text-align: right; font-size: 12px; color: var(--ft2); font-variant-numeric: tabular-nums">-3:04</span>
+    <button aria-label="Volume" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1); margin-left: 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="position: relative; width: 140px; height: 18px; flex-shrink: 0; display: flex; align-items: center"><span style="width: 100%; height: 4px; border-radius: 2px; background: var(--rail)"></span><span style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: var(--acc)"></span></span>
+    <button aria-label="Exit full screen" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--ft1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', fly: 'rgba(44,44,44,0.78)', flyb: 'rgba(0,0,0,0.2)', ft1: '#ffffff', ft2: '#c5c5c5', rail: 'rgba(255,255,255,0.5442)' }
+    : { acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', fly: 'rgba(252,252,252,0.86)', flyb: 'rgba(0,0,0,0.0578)', ft1: '#1b1b1b', ft2: '#626262', rail: 'rgba(0,0,0,0.4458)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const tabs = [['Now playing', false], ['Lyrics', true], ['Queue', false], ['Details', false]].map((t) => ({ label: t[0], on: t[1],
+    style: 'position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; white-space: nowrap; color: ' + (t[1] ? '#ffffff' : 'rgba(255,255,255,0.78)') }));
+  const credits = [['Vocals', 'Lovefoxxx, Kavinsky'], ['Written by', 'Vincent Belorgey, Guy-Manuel de Homem-Christo'], ['Produced by', 'Kavinsky, Guy-Manuel de Homem-Christo'], ['Label', 'Record Makers']].map((d) => ({ k: d[0], v: d[1] }));
+  return { vars, tabs, credits };
+}
+}
+</script>
+</body>
+</html>

@@ -43,7 +43,7 @@ public static partial class Diagnostics
             PlaylistOpen = "playlist-open", PlaylistScroll = "playlist-scroll", Lyrics = "lyrics", LyricsLine = "lyrics-line",
             StageLyrics = "stage-lyrics", StageVisualizer = "stage-visualizer", TrackChange = "track-change", Video = "video",
             LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead", HideRestore = "hide-restore",
-            SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle";
+            SidebarDisclosure = "sidebar-disclosure", DrawerToggle = "drawer-toggle", NavGc = "nav-gc";
 
         /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
         /// with `--bench-gpu-passes`.</summary>
@@ -57,13 +57,17 @@ public static partial class Diagnostics
         /// window for tens of seconds per cycle, so a default run never does it. <see cref="SidebarDisclosure"/> (the Classic sidebar's
         /// Playlists section collapsing and expanding every 0.6 s) and <see cref="DrawerToggle"/> (a playlist row's drawer opening and
         /// closing every 0.6 s) measure the reveal motion; with `--bench-shots` they also capture every frame of two toggles as PNGs.</summary>
-        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle];
+        public static readonly string[] OptIn = [HideRestore, SidebarDisclosure, DrawerToggle, NavGc];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the
     /// `ProbeOptions` rule). <see cref="Real"/> is EXPLICIT: real data (the profile's account, real playback) is never implied.
     /// <see cref="GpuPasses"/> (`--bench-gpu-passes`) turns the pass-granular GPU timeline on for the run (it adds timestamp queries
     /// at every pass boundary, so it is opt-in, and the run then measures its cost).</summary>
+    /// <summary>What a frame-bench run looked like (summary schema 2.2): the active theme and kind, the window's scale, the lyrics
+    /// blur strength (0..100) and the stage's stored layout: a stage scenario's cost moves with each of them.</summary>
+    public readonly record struct FrameBenchLook(string Theme, string Kind, float Scale, int LyricsBlur, string StageLayout);
+
     public readonly record struct FrameBenchOptions(bool Enabled, string[] Scenarios, int MeasureSec, int WarmupSec, bool Real,
         string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false, int HideCycles = 3, int HiddenSec = 30, int CoverSec = 3, bool Shots = false)
     {
@@ -553,16 +557,17 @@ public static partial class Diagnostics
                || key.EndsWith(".off", StringComparison.Ordinal) || key.EndsWith(".on", StringComparison.Ordinal) ? 0
              : -1;
 
-        /// <summary>frame-bench-summary.json: schema, run identity (incl. the ONE cycles-per-ms every window was read at), then one
+        /// <summary>frame-bench-summary.json: schema, run identity (incl. the look: theme, kind, scale, lyrics blur, stage layout) (incl. the ONE cycles-per-ms every window was read at), then one
         /// object per scenario with its flat metrics (NaN → null).</summary>
         public static string Json(string version, string label, bool real, int processors, int refreshHz, string windowPx, int measureSec,
-            int warmupSec, double cyclesPerMs, DateTime utc, IReadOnlyList<FrameBenchScenarioSummary> scenarios, bool gpuPasses = false)
+            int warmupSec, double cyclesPerMs, DateTime utc, IReadOnlyList<FrameBenchScenarioSummary> scenarios, bool gpuPasses = false,
+            FrameBenchLook? look = null)
         {
             using var ms = new MemoryStream();
             using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
             {
                 w.WriteStartObject();
-                w.WriteString("schema", "wavee-frame-bench/2.1");
+                w.WriteString("schema", "wavee-frame-bench/2.2");
                 w.WriteString("version", version);
                 w.WriteString("label", label);
                 w.WriteString("data", real ? "real" : "fake");
@@ -573,6 +578,14 @@ public static partial class Diagnostics
                 w.WriteNumber("measureSec", measureSec);
                 w.WriteNumber("warmupSec", warmupSec);
                 w.WriteBoolean("gpuPasses", gpuPasses);
+                if (look is { } l)   // what the run looked like: a stage scenario's cost moves with the theme and the lyrics blur (2.2)
+                {
+                    w.WriteString("theme", l.Theme);
+                    w.WriteString("kind", l.Kind);
+                    Num(w, "scale", l.Scale);
+                    w.WriteNumber("lyricsBlur", l.LyricsBlur);
+                    w.WriteString("stageLayout", l.StageLayout);
+                }
                 Num(w, "cyclesPerMs", cyclesPerMs);
                 w.WriteStartArray("scenarios");
                 foreach (var s in scenarios)

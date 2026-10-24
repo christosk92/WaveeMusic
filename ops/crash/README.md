@@ -88,8 +88,7 @@ EXISTS`), run once against a fresh database and never edited again. Every later 
 `migrations/NNNN_description.sql` (`wrangler.toml` `migrations_dir = "migrations"`), applied with
 `wrangler d1 migrations apply`, which records each one in the database's `d1_migrations` table and so
 never runs it twice. **Never `d1 execute --file` a migration** — that bypasses the record, and the next
-`migrations apply` would run it again and fail on the duplicate columns. The Worker tests load exactly this
-sequence (`schema.sql`, then `migrations/*.sql` by name — `test/fixtures.ts`).
+`migrations apply` would run it again and fail on the duplicate columns.
 
 Write a migration so it is backward compatible with the Worker already deployed (added, defaulted columns;
 new indexes), apply it, **then** deploy the code that needs it (step 5).
@@ -344,35 +343,12 @@ dev --local` won't start on your machine for that reason:
 - `npx wrangler dev --remote` runs your local code against real Cloudflare infrastructure
   (real D1/R2 in a dev database if you point `wrangler.toml` at one) instead of the local `workerd`
   runtime, or
-- Iterate purely against the unit tests (`npm test` — see below) and do the end-to-end check via `wrangler
-  dev --remote` or a real deploy once.
+- Do the end-to-end check via `wrangler dev --remote` or a real deploy.
 
 Either way, before pointing a real WP-C build at a dev Worker, confirm a bundle from that build round-trips:
 `POST /v1/report` with a real multipart body → `201` → the row shows up via `GET /v1/reports/:id` (behind
 Access — so on the deployed host; a local Worker answers it `401`) with resolved `frames_json` if you've
 uploaded a matching `.symmap`.
-
-## 9. Tests
-
-```powershell
-cd ops/crash/worker
-npm install
-npm test              # vitest run
-npm run typecheck     # tsc --noEmit over src/
-npm run typecheck:test  # tsc --noEmit over src/ + test/
-```
-
-These are plain `vitest` unit/integration tests against hand-written D1/R2 doubles — see
-`vitest.config.ts` and `test/fixtures.ts` for why (`@cloudflare/vitest-pool-workers` needs `workerd`,
-unavailable on this Windows-ARM64 dev box; the D1 double is real in-memory SQLite via `better-sqlite3`
-loaded with the actual `schema.sql` plus every `migrations/*.sql`, not a hand-rolled query stub, so
-`src/store.ts`'s SQL is genuinely exercised). They do not need `wrangler`, D1, R2, or network access.
-`test/helpers.ts` holds the shared env/summary/ingest helpers and a recording alert sink; no test reaches
-Discord (`DISCORD_WEBHOOK_URL` is unset unless a test stubs `fetch` itself).
-
-`test/contract.test.ts` POSTs `ops/crash/contract/{managed,native}.multipart` — the byte-exact bodies the
-C# client produces (`ops/crash/contract/README.md`) — so the Worker is tested against the real client's
-bytes, not a re-implementation of them.
 
 ## Free-tier limits — verify these two before relying on them
 

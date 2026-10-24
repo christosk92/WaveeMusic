@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune Liked Songs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff;text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 36px 48px; display: flex; flex-direction: column">
+  <div style="display: flex; align-items: flex-end; gap: 40px">
+    <div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px">liked songs</div>
+      <div style="font-size: 14px; color: #a8a8a8">387 songs · 23 hr 12 min · 26 added this week</div>
+    </div>
+    <div style="display: flex; gap: 22px; font-size: 14px; padding-bottom: 10px">
+      <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+      <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 0"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px">⇄</span>shuffle</button>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding: 22px 0 8px 0; font-size: 14px">
+    <sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+      <button style="{{c.style}}">{{c.label}}</button>
+    </sc-for>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; gap: 22px; color: #c8c8c8"><a href="#">filter</a><a href="#">sort: date added</a><a href="#">find</a><a href="#">insights</a></span>
+  </div>
+  <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+    <div style="display: flex; flex-direction: column">
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 52px; padding-top: 10px; box-sizing: border-box">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300">{{g.title}}</span>
+        <span style="font-size: 13px; color: #8f8f8f">{{g.count}}</span>
+      </div>
+      <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+        <div style="{{r.rowStyle}}">
+          <span style="{{r.artStyle}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px">
+            <span style="{{r.titleStyle}}">{{r.title}}</span>
+            <span style="{{r.subStyle}}">{{r.artist}}</span>
+          </span>
+          <span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</span>
+          <span style="font-size: 13px; color: #9c9c9c">{{r.added}}</span>
+          <span style="{{r.timeStyle}}">{{r.time}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const on = 'height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid ' + accent + '; background: ' + accent + '; color: #000; font: inherit; font-size: 14px';
+  const off = 'height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.06); color: #fff; font: inherit; font-size: 14px';
+  const chips = ['All', 'Pop', 'K-Pop', 'Synthwave', 'Nostalgia', 'Chill'].map((l, i) => ({ label: l, style: i === 0 ? on : off }));
+  const mk = (rows, playIdx) => rows.map((d, i) => {
+    const play = i === playIdx;
+    return {
+      title: d[0], artist: d[1], album: d[2], added: d[3], time: d[4],
+      rowStyle: 'display: grid; grid-template-columns: 56px minmax(0, 3fr) minmax(0, 2fr) 120px 64px; align-items: center; height: 52px',
+      artStyle: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[5],
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'font-size: 13px; color: ' + (play ? accent : '#9c9c9c'),
+      timeStyle: 'font-size: 13px; text-align: right; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  });
+  const groups = [
+    { title: 'this week', count: '26', rows: mk([
+      ['Supernova', 'aespa', 'Armageddon', 'today', '2:58', '#5b2f6b'],
+      ['Magnetic', 'ILLIT', 'SUPER REAL ME', 'yesterday', '2:40', '#6b5b2f'],
+      ['Sticky', 'KISS OF LIFE', 'Sticky', 'Tuesday', '3:08', '#2f6b5b'],
+      ['How Sweet', 'NewJeans', 'How Sweet', 'Monday', '3:39', '#6b2f3b'],
+    ], 0) },
+    { title: 'last week', count: '11', rows: mk([
+      ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', 'Oct 2', '4:03', '#3b4a6b'],
+      ['Nightcall', 'Kavinsky', 'OutRun', 'Oct 1', '4:18', '#6b2f4a'],
+      ['Resonance', 'HOME', 'Odyssey', 'Sep 30', '3:32', '#2f5b6b'],
+    ], -1) },
+  ];
+  return { chips, groups, playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px' };
+}
+}
+</script>
+</body>
+</html>

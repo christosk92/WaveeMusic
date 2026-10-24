@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: section list · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="settings" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="400px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px; overflow: hidden">
+    <div style="height: 72px; flex-shrink: 0; margin: -4px -16px 0 -4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden">settings</div>
+    <label style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0; box-sizing: border-box; padding: 0 14px; margin-top: 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find a setting" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; width: 100%; outline: none; min-width: 0"></label>
+    <a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 24px; align-items: center; height: 72px; flex-shrink: 0; margin-top: 10px; color: #ffffff">
+      <span style="width: 44px; height: 44px; border-radius: 22px; background: #5b6b3b; display: block"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">christos</span><span style="{{plan}}">spotify premium · individual</span></span>
+      <span style="font-size: 16px; color: #7a7a7a">›</span>
+    </a>
+    <nav aria-label="settings sections" style="display: flex; flex-direction: column; flex-shrink: 0">
+      <sc-for list="{{sections}}" as="s" hint-placeholder-count="11">
+        <a href="#" style="{{s.row}}"><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{s.name}}">{{s.n}}</span><span style="font-size: 12px; line-height: 16px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.hint}}</span></span><span style="font-size: 16px; color: #7a7a7a">›</span></a>
+      </sc-for>
+    </nav>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const list = [['appearance', 'zune · pink · dark'], ['playback', 'crossfade 5 s · gapless · autoplay'], ['audio', 'very high · normalise volume'], ['lyrics', 'show lyrics · romanisation'], ['devices & connect', 'christos’s desktop · visible on your network'], ['storage', '1.1 gb cache · limit 2 gb'], ['notifications', 'new releases · updates'], ['keyboard', 'space plays or pauses · ctrl f searches'], ['privacy', 'crash reports: ask me'], ['feedback & help', 'tell us what broke'], ['about', 'wavee 1.6 · up to date']];
+  const sections = list.map((d) => ({
+    n: d[0], hint: d[1],
+    row: 'display: grid; grid-template-columns: minmax(0, 1fr) 24px; align-items: center; height: 60px; flex-shrink: 0; color: #ffffff',
+    name: 'font-family: ' + D + '; font-size: 22px; font-weight: 300; line-height: 28px; color: #ffffff',
+  }));
+  return { accent, sections, plan: 'font-size: 13px; line-height: 18px; color: ' + accent };
+}
+}
+</script>
+</body>
+</html>

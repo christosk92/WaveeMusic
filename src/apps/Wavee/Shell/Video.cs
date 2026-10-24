@@ -392,9 +392,6 @@ public static partial class Video
             _ => TransportOwner.GlobalBar,
         };
 
-        /// <summary><see cref="TransportOwnerFor"/> against a whole state (resolves first).</summary>
-        public static TransportOwner TransportOwnerOf(in PlacementState s) => TransportOwnerFor(Resolve(s));
-
         /// <summary>The ONE question every transport-bearing component asks: "am I the owner right now?".</summary>
         public static bool OwnsTransport(TransportOwner claimant, SurfacePlacement resolved)
             => claimant == TransportOwnerFor(resolved);
@@ -433,11 +430,6 @@ public static partial class Video
         /// placement is resolved, and closes whenever it is not — including when a DIFFERENT placement won.</summary>
         public static MountAction DecideOwned(SurfacePlacement resolved, SurfacePlacement owned, bool alive)
             => DecideMount(resolved == owned ? owned : SurfacePlacement.None, alive ? owned : SurfacePlacement.None);
-
-        /// <summary>The async-resolve fence: an in-flight content resolve may only publish if the generation it
-        /// captured when it started is still current — otherwise a superseded track's result overwrites the current
-        /// one ("changed track, got the previous video").</summary>
-        public static bool IsCurrentGeneration(long capturedGen, long currentGen) => capturedGen == currentGen;
 
         // ── data-driven driver (property tests) ─────────────────────────────────────────────────────────────────────
 
@@ -795,22 +787,12 @@ public static partial class Video
         /// the moment fullscreen is the placement: F11 and double-click then re-request the state the user is already
         /// in and read as dead buttons. The action stays constant; the DECISION is taken per press, here.</summary>
         public static bool FullscreenAffordanceExits(SurfacePlacement resolved) => resolved == SurfacePlacement.Fullscreen;
-
-        public static TransportOwner OwnerFor(SurfacePlacement resolved) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => TransportOwner.Fullscreen,
-            SurfacePlacement.Floating => TransportOwner.Docked,
-            SurfacePlacement.Docked => TransportOwner.Docked,
-            _ => TransportOwner.GlobalBar,
-        };
     }
 
     /// <summary>Stage and every video overlay draw the same on-media transport. Engine MediaPlayerElement chrome is off.</summary>
     public static class OnMediaTransport
     {
         public const string Id = "onmedia.transport";
-        public static bool UsesSharedPlayer(SurfacePlacement resolved)
-            => resolved is not SurfacePlacement.None;
     }
 
     // ── persistence codecs ──────────────────────────────────────────────────────────────────────────────────────────
@@ -956,8 +938,6 @@ public static partial class Video
     public readonly record struct OverrideDecision(OverrideTier Tier, OverrideRecord Override)
     {
         public static OverrideDecision None => new(OverrideTier.None, default);
-        /// <summary>True when the resolver should stop here and play <see cref="Override"/>.</summary>
-        public bool Wins => Tier == OverrideTier.UseOverride;
     }
 
     /// <summary>The status chip a curated attachment shows in Settings (and the badge language the toasts reuse).</summary>
@@ -1071,17 +1051,6 @@ public static partial class Video
         /// <summary>Extension test (case-insensitive, culture-invariant — a path is not prose).</summary>
         public static bool IsMp4(string? path)
             => path is { Length: > 0 } && path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase);
-
-        /// <summary>Is this a file the AUDIO host can play? The format list is the local-file resolver's, restated
-        /// here as ONE predicate so a surface can never accept a file the resolver would then refuse. It is kept in
-        /// step with <see cref="PlayableFilter"/> by the one test that reads both.</summary>
-        public static bool IsAudioFile(string? path)
-        {
-            if (path is not { Length: > 0 }) return false;
-            return path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase);
-        }
 
         /// <summary>Validate a picked/dropped path before it becomes an attachment: the right container, and actually
         /// there. <paramref name="fileExists"/> is injected so the rule is testable without a disk.</summary>
@@ -1309,166 +1278,72 @@ public static partial class Video
     /// <summary>What the warm override roster just did to one playable.</summary>
     public enum OverrideMutationKind : byte { Attach = 0, Replace = 1, Remove = 2 }
 
-    /// <summary>The pure plan for one override mutation — latch clears, whether to commit a has-video upgrade, whether
-    /// to force a same-kind video reload, and whether a reveal may <c>OpenAt</c> after the commit.</summary>
-    public readonly record struct OverrideMutationPlan(
-        bool ClearHasVideoLatch,
-        bool ClearDeadVideoLatch,
-        bool CommitHasVideoUpgrade,
-        bool ForceReloadIfVideo,
-        bool RevealSurfaceIfCurrent);
+    // ── the aspect policy's two vocabularies (C6, X16) ──────────────────────────────────────────────────────────────
 
-    /// <summary>Engine-free decision layer for local video-override mutations and the track-boundary / reveal rules.</summary>
-    public static class OverrideMutation
+    /// <summary>The app's storage-stable aspect names (<see cref="AspectPreference"/>) and the control kit's engine enum
+    /// (<c>VideoAspectMode</c>), mapped both ways. The two are deliberately not numerically aligned: persisted data must
+    /// survive an engine enum reorder. An unknown value on either side reads as Fit / Uniform. (The engine enum is plain
+    /// data; this is the one engine type in the file.)</summary>
+    public static class AspectMapping
     {
-        /// <summary>Plan the side-effects for one attach/replace/remove.</summary>
-        /// <param name="kind">What the roster just did.</param>
-        /// <param name="isCurrentPlayable">Is the mutated uri the now-playing track?</param>
-        /// <param name="videoAlreadyActive">Is the video surface already resolved?</param>
-        /// <param name="previousSourceKey">The resolved source key before this mutation (null = none published).</param>
-        /// <param name="nextSourceKey">The override's source key after the mutation (null on remove).</param>
-        public static OverrideMutationPlan Plan(
-            OverrideMutationKind kind,
-            bool isCurrentPlayable,
-            bool videoAlreadyActive,
-            string? previousSourceKey,
-            string? nextSourceKey)
+        public static FluentGpu.Media.VideoAspectMode ToEngine(AspectPreference p) => p switch
         {
-            bool remove = kind == OverrideMutationKind.Remove;
-            // Attach must NOT clear the has-video latch — that latch absorbs transient has=false / null-uri glitches so
-            // we do not pay a Video→Audio→Video round trip. Only a real user removal ends it.
-            bool clearHas = remove;
-            // Dead latch always clears: attach/replace re-arms a prior failed open; remove drops the playable entirely.
-            bool clearDead = true;
-            bool commitUpgrade = true;   // override mutations are explicit user actions — never deferred
-            // Force only when video is already live AND the source identity really changed (a replace). A first attach
-            // that flips Audio→Video is handled by the availability edge alone — forcing would double-load.
-            bool sourceChanged = nextSourceKey is { Length: > 0 }
-                && !string.Equals(previousSourceKey, nextSourceKey, StringComparison.Ordinal);
-            bool force = !remove && isCurrentPlayable && videoAlreadyActive && sourceChanged;
-            // Reveal after the has-video commit so OpenAt never runs against Available=None.
-            bool reveal = !remove && isCurrentPlayable;
-            return new OverrideMutationPlan(clearHas, clearDead, commitUpgrade, force, reveal);
-        }
+            AspectPreference.Crop => FluentGpu.Media.VideoAspectMode.UniformToFill,
+            AspectPreference.Stretch => FluentGpu.Media.VideoAspectMode.Fill,
+            AspectPreference.Native => FluentGpu.Media.VideoAspectMode.Native,
+            AspectPreference.Custom => FluentGpu.Media.VideoAspectMode.Custom,
+            _ => FluentGpu.Media.VideoAspectMode.Uniform,
+        };
 
-        /// <summary>Real track boundary for latch teardown. A null/empty next (or previous) uri is a mid-push glitch —
-        /// the has-video latch's own null-suppression only works if we do NOT clear the latch first.</summary>
-        public static bool IsRealTrackBoundary(string? previousUri, string? nextUri)
-            => previousUri is { Length: > 0 }
-               && nextUri is { Length: > 0 }
-               && !string.Equals(previousUri, nextUri, StringComparison.Ordinal);
-
-        /// <summary>Whether a reveal may <c>OpenAt</c>: the playable is current, has-video is already committed, and
-        /// the surface is not already active (opening an already-active surface is a no-op for media).</summary>
-        public static bool CanReveal(bool isCurrent, bool hasVideoCommitted, bool alreadyActive)
-            => isCurrent && hasVideoCommitted && !alreadyActive;
+        public static AspectPreference FromEngine(FluentGpu.Media.VideoAspectMode m) => m switch
+        {
+            FluentGpu.Media.VideoAspectMode.UniformToFill => AspectPreference.Crop,
+            FluentGpu.Media.VideoAspectMode.Fill => AspectPreference.Stretch,
+            FluentGpu.Media.VideoAspectMode.Native => AspectPreference.Native,
+            FluentGpu.Media.VideoAspectMode.Custom => AspectPreference.Custom,
+            _ => AspectPreference.Fit,
+        };
     }
 
-    // ── the in-window mini player's geometry ────────────────────────────────────────────────────────────────────────
+    // ── the docked cap's fit ────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The PiP's constants and its fit. The numbers are 0.2.9's verbatim, including the deliberately-inexact
-    /// default (<see cref="DefaultW"/>×<see cref="DefaultH"/> is 0.5611, not 9/16 = 0.5625): a rect restored from a
-    /// 0.2.9 profile must land identically, so the 0.25 % is kept rather than "corrected".</summary>
-    public static class Pip
+    /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
+    /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
+    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). A splitter drag PINS the height — for THIS source only: a
+    /// new source key unpins it.</summary>
+    public static class DockedFit
     {
-        public const float DefaultW = 360f, DefaultH = 202f;
-        public const float MinW = 240f, MinH = 135f;
-        /// <summary>The resize hit bands. Corner rows are 12 tall while the edge bands stay 6, so the bottom band
-        /// grazes only the transport's 8-DIP bottom padding. The chrome strip is inset by <see cref="CornerW"/>
-        /// left/right and <see cref="EdgeBand"/> top so neither the drag surface nor the ✕ sits under a resize band —
-        /// a ✕ whose corner is stolen by the NE zone is the classic overlay bug.</summary>
-        public const float EdgeBand = 6f, CornerW = 14f, CornerH = 12f;
-        /// <summary>The viewport margins the fit reserves (the player bar below, the chrome above).</summary>
-        public const float ReserveBottom = 72f, ReserveTop = 32f;
-        /// <summary>The no-report fallback ratio — <see cref="DefaultH"/>/<see cref="DefaultW"/>, NOT 9/16.</summary>
-        public const float FallbackRatio = DefaultH / DefaultW;
+        /// <param name="SourceKey">The playing source's key ("" with none).</param>
+        /// <param name="FittedFor">The source key the cap last fitted for (null before the first fit).</param>
+        /// <param name="Pinned">Is the height pinned by a splitter drag right now?</param>
+        /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
+        /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
+        /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
+        public readonly record struct Input(string SourceKey, string? FittedFor, bool Pinned, float PinnedHeight, float RailW,
+                                            int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
+                                            float RemainingRailH);
 
-        /// <summary>The card's height for a given width and source ratio, with BOTH a floor and a CEILING. Drop the
-        /// free term and a 9:16 portrait source in a 360-wide mini player asks for 640 DIP of height in a 900-tall
-        /// window and the card walks off the bottom. The floor wins the tie, so a very short window still gets a
-        /// 135-tall card rather than a degenerate one.</summary>
-        public static float FitHeight(float w, float ratio, float viewportH)
+        /// <param name="SourceChanged">A different source than the last fit: the caller records it and drops the pin.</param>
+        /// <param name="Pinned">Is the height pinned for THIS source (a source change unpins)?</param>
+        /// <param name="NaturalW">The natural size the fit used (0×0 ⇒ none known; 16:9 applies).</param>
+        /// <param name="DimSource">Which fact sized it (<see cref="NaturalSeed.Name"/>), for the always-on fit line.</param>
+        /// <param name="Height">The cap height: the pinned one, else the content fit.</param>
+        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Only when not pinned.</param>
+        public readonly record struct Result(bool SourceChanged, bool Pinned, int NaturalW, int NaturalH, string DimSource,
+                                             float Height, bool WritesHeight);
+
+        public static Result Decide(in Input i)
         {
-            float r = ratio > 0f && float.IsFinite(ratio) ? ratio : FallbackRatio;
-            float free = MathF.Max(MinH, viewportH - ReserveBottom - ReserveTop);
-            return MathF.Max(MinH, MathF.Min(w * r, free));
+            bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
+            bool pinned = i.Pinned && !changed;
+            string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
+                i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
+            float height = pinned ? i.PinnedHeight : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
+            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: !pinned);
         }
-
-        /// <summary>Clamp a placed rect back inside the viewport — what a window resize re-applies so a card parked at
-        /// the old bottom-right does not end up off-screen.</summary>
-        public static void ClampToViewport(ref float x, ref float y, float w, float h, float viewportW, float viewportH)
-        {
-            x = MathF.Max(0f, MathF.Min(x, MathF.Max(0f, viewportW - w)));
-            y = MathF.Max(0f, MathF.Min(y, MathF.Max(0f, viewportH - h)));
-        }
-
-        /// <summary>The anchored resting position: bottom-right, above the player bar. While the card is not yet
-        /// user-placed this is re-derived from the viewport every frame, which is what makes it track the corner.</summary>
-        public static (float X, float Y) Anchor(float w, float h, float viewportW, float viewportH)
-            => (MathF.Max(0f, viewportW - w - 16f), MathF.Max(0f, viewportH - h - ReserveBottom - 16f));
     }
 
-    // ── the mini player's gestures, the scrub preview, the join spinner, the fullscreen entry (stage B) ─────────────
-    //
-    // 0.2.9 kept these inside `InWindowVideoPip` / `WaveeShell`; stage B lifted them here so `Video.UI.cs` decides
-    // nothing. Values are 0.2.9's verbatim (ch 24 W8/W11/W12, `InWindowVideoPip.cs:452-534`, `WaveeShell.cs:793-807`).
-
-    /// <summary>Which edges a resize gesture drags; the anchored edges are the ones NOT named. Two edges at once is a
-    /// corner, so one handler covers all eight zones.</summary>
-    [Flags]
-    public enum PipEdge : byte { None = 0, Left = 1, Right = 2, Top = 4, Bottom = 8 }
-
-    /// <summary>The in-window mini player's drag, resize, clamp and layout reservation.</summary>
-    public static class PipGesture
-    {
-        /// <summary>The gap kept from every window edge (and above the player bar).</summary>
-        public const float Margin = 16f;
-
-        /// <summary>A card may sit no closer than <see cref="Margin"/> to either side.</summary>
-        public static float ClampX(float x, float viewportW, float w)
-            => Math.Clamp(x, Margin, MathF.Max(Margin, viewportW - w - Margin));
-
-        /// <summary>…and no closer than <see cref="Margin"/> to the top or to the player bar.</summary>
-        public static float ClampY(float y, float viewportH, float h)
-            => Math.Clamp(y, Margin, MathF.Max(Margin, viewportH - h - Pip.ReserveBottom - Margin));
-
-        /// <summary>The bottom space the page keeps clear: the card's height + the gap while it sits ANCHORED, 0 once the
-        /// user has placed it (a deliberately placed card is a free-floating overlay) or when it is not mounted.</summary>
-        public static float Reserve(bool mounted, bool placed, float h) => mounted && !placed ? h + Margin : 0f;
-
-        /// <summary>Should the card's HEIGHT follow the content? Always until the user sizes it; after that only when the
-        /// content's own shape changes by more than 0.01 (the user owns the width, the content owns the shape).</summary>
-        public static bool ShouldRefit(bool userSized, float fittedRatio, float contentRatio)
-            => !userSized || (fittedRatio > 0f && MathF.Abs(contentRatio - fittedRatio) > 0.01f);
-
-        /// <summary>One resize sample. The ANCHORED edge is the one not being dragged: growing right/bottom is bounded by
-        /// the viewport, growing left/top by the frozen far edge. Floors are <see cref="Pip.MinW"/> × <see cref="Pip.MinH"/>.</summary>
-        public static (float X, float Y, float W, float H) Resize(PipEdge edge, float startX, float startY, float startW,
-            float startH, float dx, float dy, float viewportW, float viewportH)
-        {
-            float x = startX, y = startY, w = startW, h = startH;
-            float right = startX + startW, bottom = startY + startH;
-            if ((edge & PipEdge.Left) != 0)
-            {
-                w = Math.Clamp(startW - dx, Pip.MinW, MathF.Max(Pip.MinW, right - Margin));
-                x = right - w;
-            }
-            else if ((edge & PipEdge.Right) != 0)
-            {
-                w = Math.Clamp(startW + dx, Pip.MinW, MathF.Max(Pip.MinW, viewportW - Margin - startX));
-            }
-            if ((edge & PipEdge.Top) != 0)
-            {
-                h = Math.Clamp(startH - dy, Pip.MinH, MathF.Max(Pip.MinH, bottom - Margin));
-                y = bottom - h;
-            }
-            else if ((edge & PipEdge.Bottom) != 0)
-            {
-                h = Math.Clamp(startH + dy, Pip.MinH, MathF.Max(Pip.MinH, viewportH - Margin - Pip.ReserveBottom - startY));
-            }
-            return (x, y, w, h);
-        }
-    }
+    // The in-window mini player's geometry (`Pip`, `PipBounds`, `PipEdge`, `PipGesture`, `PipOverlay`) is `PipGesture.cs`.
 
     /// <summary>A scrub PREVIEW (a pointer still down on the transport's rail) is a COARSE seek planned through
     /// <see cref="Playback.Video.SeekPlanner"/>: a buffered keyframe when there is one, the segment start when the grid is
@@ -1476,15 +1351,6 @@ public static partial class Video
     /// release is.</summary>
     public static class Scrub
     {
-        /// <summary>Where a preview lands for <paramref name="plan"/>.</summary>
-        public static long PreviewTargetMs(in Playback.Video.SeekPlan plan, long targetMs, long segmentLengthMs)
-            => plan.Verb switch
-            {
-                Playback.Video.SeekVerb.Fetch => segmentLengthMs > 0 ? plan.KeyframeMs : targetMs,
-                Playback.Video.SeekVerb.Ride => targetMs,
-                _ => plan.KeyframeMs >= 0 ? plan.KeyframeMs : targetMs,
-            };
-
         /// <summary>A preview never asks for decode-to-exact-PTS.</summary>
         public const bool PreviewAccurate = false;
     }
@@ -1565,11 +1431,7 @@ public static partial class Video
     /// already Fullscreen and the RESOLVE is only now catching up" (availability returned after a video-less track).</summary>
     public static class FullscreenEntry
     {
-        /// <summary>Did the resolved placement just become fullscreen?</summary>
-        public static bool Entered(in PlacementState before, in PlacementState after)
-            => PlacementCore.Resolve(after) == SurfacePlacement.Fullscreen && PlacementCore.Resolve(before) != SurfacePlacement.Fullscreen;
-
-        /// <summary>…and was it the user asking (so the surface may take focus)?</summary>
+        /// <summary>Did the user just ask for fullscreen (so the surface may take focus)?</summary>
         public static bool UserInitiated(in PlacementState before, in PlacementState after)
             => after.Requested == SurfacePlacement.Fullscreen && before.Requested != SurfacePlacement.Fullscreen;
     }

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lyrics, full screen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 1440px; height: 900px; box-sizing: border-box; overflow: hidden; color: #ffffff; background: radial-gradient(90% 120% at 20% 30%, #5a2340 0%, #2a1424 45%, #141014 100%); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="font-size: 12px; margin-left: 8px">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  <nav aria-label="Full screen views" style="position: absolute; left: 24px; top: 52px; height: 40px; display: flex; font-size: 14px">
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Now playing</a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: #ffffff; text-decoration: none">Lyrics<span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Queue</a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Details</a>
+  </nav>
+  <aside style="position: absolute; left: 96px; top: 150px; width: 300px; display: flex; flex-direction: column; gap: 12px">
+    <span style="width: 300px; height: 300px; border-radius: 8px; background: linear-gradient(150deg, #a8456f, #4a1f38); box-shadow: 0 32px 64px rgba(0,0,0,0.37)"></span>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Nightcall</span>
+    <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.78); margin-top: -8px">Kavinsky · OutRun</span>
+    <span style="display: flex; gap: 8px; padding-top: 6px">
+      <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Translation: Dutch</button>
+      <button aria-label="Lyrics options" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </span>
+  </aside>
+  <div style="position: absolute; left: 480px; right: 96px; top: 120px; display: flex; flex-direction: column; gap: 18px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">
+    <span style="color: rgba(255,255,255,0.4)">I'm giving you a night call</span>
+    <span style="color: rgba(255,255,255,0.4)">To tell you how I feel</span>
+    <span style="display: flex; flex-direction: column; gap: 4px"><span><span style="color: #ffffff">I want to drive you through </span><span style="color: rgba(255,255,255,0.6)">the night</span></span><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 18px; line-height: 24px; font-weight: 400; color: rgba(255,255,255,0.78)">Ik wil met je door de nacht rijden</span></span>
+    <span style="color: rgba(255,255,255,0.6)">Down the hills</span>
+    <span style="color: rgba(255,255,255,0.6)">I'm gonna tell you something</span>
+    <span style="color: rgba(255,255,255,0.6)">You don't want to hear</span>
+    <span style="color: rgba(255,255,255,0.6)">I'm gonna show you where it's dark</span>
+  </div>
+  <div style="position: absolute; left: 50%; bottom: 32px; width: 880px; margin-left: -440px; box-sizing: border-box; padding: 10px 20px; border-radius: 8px; background: rgba(44,44,44,0.78); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; align-items: center; gap: 12px">
+    <button aria-label="Pause" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 20px; background: var(--acc); color: #000000"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+    <span style="width: 40px; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">1:14</span>
+    <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 29%; height: 4px; border-radius: 2px; background: var(--acc)"></div></div>
+    <span style="width: 40px; text-align: right; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">-3:04</span>
+    <span style="font-size: 12px; color: rgba(255,255,255,0.78)">Lyrics by Musixmatch</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = { acc: pink ? '#ff7ac3' : '#60cdff' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  return { vars };
+}
+}
+</script>
+</body>
+</html>

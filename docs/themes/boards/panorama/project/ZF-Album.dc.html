@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album panorama</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" ctx="Random Access Memories" items="Songs|More by Daft Punk|Details" sub-sel="{{zero}}" crumb="Library › Albums › Daft Punk" hint-size="1440px,136px"></dc-import>
+  <div style="{{s.mid}}">
+    <main style="{{s.layer}}">
+      <h1 style="margin: 0; padding: 12px 36px 0 36px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Random Access Memories</h1>
+      <div style="display: flex; gap: 48px; padding: 8px 0 0 36px; min-height: 0; flex-grow: 1">
+        <section aria-label="Album" style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <span style="width: 260px; height: 260px; border-radius: 8px; background: linear-gradient(160deg, #4a3a26, #2a2118); display: block"></span>
+          <a href="#" style="font-size: 18px; line-height: 24px; color: var(--acct)">Daft Punk</a>
+          <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album · 2013 · 13 songs, 74 min</span>
+          <span style="display: flex; gap: 8px; align-items: center; padding-top: 6px">
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Saved</button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </span>
+          <span style="font-size: 12px; line-height: 18px; color: var(--t3); padding-top: 8px">Released 17 May 2013<br>© 2013 Daft Life Limited under exclusive license to Columbia Records</span>
+        </section>
+        <section aria-label="Songs" style="{{s.songs}}">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Songs</h2><span style="flex-grow: 1"></span><span style="font-size: 12px; color: var(--t2)">Plays</span><span style="width: 104px; text-align: right; font-size: 12px; color: var(--t2); padding-right: 8px">Time</span></div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="13">
+            <div role="row" style="{{r.row}}">
+              <sc-if value="{{r.sel}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if>
+              <span style="{{r.numStyle}}"><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{r.showNum}}" hint-placeholder-val="{{ true }}">{{r.n}}</sc-if></span>
+              <span style="{{r.titleStyle}}">{{r.t}}</span>
+              <span style="font-size: 12px; color: var(--t2); text-align: right; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+              <span style="display: flex; align-items: center; justify-content: center"><sc-if value="{{r.liked}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Liked" role="img"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if></span>
+              <span style="{{r.timeStyle}}">{{r.time}}</span>
+              <span style="display: flex; align-items: center; justify-content: center"><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="More" role="img"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></sc-if></span>
+            </div>
+          </sc-for>
+        </section>
+        <section aria-label="More by Daft Punk" style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">More by Daft Punk</h2><a href="#" style="font-size: 14px; color: var(--acct)">Show all 9</a></div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{more}}" as="m" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{m.art}}"></span><span style="font-size: 14px; line-height: 20px">{{m.n}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{m.y}}</span></a></sc-for>
+          </div>
+        </section>
+        <section aria-label="Details" style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Details</h2></div>
+          <div style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); font-size: 14px; line-height: 20px; color: var(--t2)">Recorded over five years in Paris, New York and Los Angeles with live session players, the duo's fourth studio album won Album of the Year at the 56th Grammy Awards.</div>
+        </section>
+      </div>
+      <div aria-hidden="true" style="height: 14px; flex-shrink: 0; position: relative"><span style="position: absolute; left: 36px; bottom: 6px; width: 46%; height: 2px; border-radius: 1px; background: var(--t3); opacity: 0.6"></span></div>
+    </main>
+    <sc-if value="{{hasPanel}}" hint-placeholder-val="{{ false }}"><dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="{{panel}}" h="{{midH}}" hint-size="340px,680px"></dc-import></sc-if>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="{{panel}}" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"panel":{"editor":"enum","options":["none","queue","lyrics","details"],"default":"none"},"h":{"editor":"int","default":960,"min":640,"max":1400},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const h = Number(this.props.h ?? 960);
+  const panel = this.props.panel ?? 'none';
+  const hasPanel = panel !== 'none';
+  const midH = h - 220;
+  const data = [['Give Life Back to Music', '412M', '4:34', {}], ['The Game of Love', '186M', '5:21', {}], ['Giorgio by Moroder', '298M', '9:04', { liked: true }], ['Within', '121M', '3:48', {}], ['Instant Crush', '1.1B', '5:37', { hover: true }], ['Lose Yourself to Dance', '640M', '5:53', {}], ['Touch', '98M', '8:18', { sel: true }], ['Get Lucky', '2.1B', '6:09', { playing: true, liked: true }], ['Beyond', '87M', '4:50', {}], ['Motherboard', '79M', '5:41', {}], ['Fragments of Time', '64M', '4:39', {}], ['Doin’ It Right', '402M', '4:11', { liked: true }], ['Contact', '58M', '6:21', {}]];
+  const rows = data.map((d, i) => {
+    const f = d[3];
+    return { n: String(i + 1), t: d[0], plays: d[1], time: d[2], playing: !!f.playing, showNum: !f.playing, liked: !!f.liked && !f.hover, hover: !!f.hover, sel: !!f.sel,
+      row: 'position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 40px 56px 32px; align-items: center; height: 40px; margin-top: 2px; border-radius: 4px; ' + ((f.hover || f.sel) ? 'background: var(--sub)' : ''),
+      numStyle: 'padding-left: 12px; display: flex; align-items: center; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-weight: 400; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t3)'),
+      titleStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (f.playing ? 'var(--acct)' : 'var(--t1)'),
+      timeStyle: 'text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t2)') };
+  });
+  const more = [['Discovery', '2001', '#2f3a5a'], ['Homework', '1997', '#2a2a2a'], ['Human After All', '2005', '#5a2a2a'], ['Tron: Legacy', '2010 · Soundtrack', '#2a4a5a']].map((m) => ({ n: m[0], y: m[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + m[2] + '; display: block' }));
+  const s = {
+    mid: 'height: ' + midH + 'px; flex-shrink: 0; display: flex; min-height: 0',
+    layer: 'flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); ' + (hasPanel ? 'border-right: 1px solid var(--stroke); border-top-right-radius: 8px' : ''),
+    songs: 'width: ' + (hasPanel ? 520 : 600) + 'px; flex-shrink: 0; display: flex; flex-direction: column'
+  };
+  return { vars, theme, accent, panel, hasPanel, midH, h, s, rows, more, zero: 0 };
+}
+}
+</script>
+</body>
+</html>

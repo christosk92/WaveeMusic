@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune playlist owned: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; width: 1840px; height: 720px; background: linear-gradient(180deg, #1f1a24 0%, #1b1820 50%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0">
+    <dc-import name="Z-Part-TitleBar" tier="huge" crumb="library › playlists › late night drive" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="library" sub="songs,recommended,collaborators" on="songs" title="late night drive" actions="invite" collapsed="false" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -3px; white-space: nowrap; color: #ffffff; opacity: 0.92; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.18); text-underline-offset: 18px; text-decoration-thickness: 2px">late night drive</div>
+        <div style="position: absolute; left: 48px; right: 48px; top: 184px; bottom: 0; display: flex; gap: 48px">
+          <div style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+            <span style="width: 320px; height: 320px; position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 2px; overflow: hidden">
+              <span style="background: #3b4a6b"></span><span style="background: #6b2f4a"></span><span style="background: #2f5b6b"></span><span style="background: #5b3b6b"></span>
+              <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; font-size: 13px">change cover</span>
+            </span>
+            <span style="font-size: 14px; line-height: 20px; color: #7a7a7a; margin-top: 4px">add an optional description</span>
+            <span style="display: flex; gap: 8px; align-items: center; font-size: 15px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b"></span><a href="#" style="color: #ffffff">christos</a></span>
+            <span style="font-size: 13px; line-height: 19px; color: #a8a8a8">public playlist · anyone can find and view · collaborative · 2 collaborators</span>
+            <span style="font-size: 13px; color: #a8a8a8">42 songs · 2 hr 31 min · <span style="{{markIdle}}">↓</span> 18 on this pc</span>
+            <div style="display: flex; gap: 14px; align-items: center; padding-top: 6px; font-size: 14px">
+              <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+              <button aria-label="shuffle" style="{{ringBtn}}">⇄</button>
+              <button aria-label="invite collaborators" style="{{ringBtn}}">+</button>
+              <button aria-label="share" style="{{ringBtn}}">↗</button>
+              <button aria-label="more, including delete" style="{{ringBtn}}">⋯</button>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 24px">collaborators</span>
+            <sc-for list="{{people}}" as="p" hint-placeholder-count="3"><a href="#" style="display: flex; gap: 12px; align-items: center; height: 48px; color: #ffffff; font-size: 15px"><span style="{{p.avatar}}"></span><span style="display: flex; flex-direction: column"><span>{{p.name}}</span><span style="font-size: 12px; color: #9c9c9c">{{p.role}}</span></span></a></sc-for>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+            <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; font-size: 14px">
+              <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><a href="#" style="{{c.style}}">{{c.name}}</a></sc-for>
+              <span style="flex-grow: 1"></span>
+              <span style="display: flex; gap: 22px; font-size: 13px"><a href="#">filter</a><a href="#" style="color: #ffffff">sort: custom order</a><a href="#">row size</a><a href="#">find</a></span>
+            </div>
+            <div style="{{tableHead}}"><span></span><span>title</span><span>album</span><span>added by</span><span>added</span><span style="text-align: right">time</span><span></span></div>
+            <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+              <div style="{{r.rowStyle}}">
+                <span style="{{r.numStyle}}">{{r.num}}</span>
+                <span style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><span style="{{r.mark}}">↓</span></sc-if>{{r.artist}}</span></span></span>
+                <span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</span>
+                <span style="font-size: 13px; color: #9c9c9c">{{r.by}}</span>
+                <span style="font-size: 13px; color: #9c9c9c">{{r.added}}</span>
+                <span style="{{r.timeStyle}}">{{r.time}}</span>
+                <button aria-label="more" style="{{r.moreStyle}}">⋯</button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="width: 400px; flex-shrink: 0; display: flex; flex-direction: column">
+            <div style="display: flex; align-items: baseline; gap: 14px; height: 44px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">recommended</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">refresh</a></div>
+            <span style="font-size: 13px; color: #7a7a7a; height: 32px">based on what's in this playlist</span>
+            <sc-for list="{{recs}}" as="r" hint-placeholder-count="10"><div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 56px; align-items: center; height: 56px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.artist}}</span></span><button style="{{addBtn}}">add</button></div></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const mark = (c) => 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + c + '; color: ' + c + '; font-size: 8px; line-height: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; vertical-align: -2px';
+  const cols = 'display: grid; grid-template-columns: 56px minmax(0, 3fr) minmax(0, 2fr) 120px 110px 64px 48px; align-items: center';
+  const chips = ['all', 'pop', 'synthwave', 'electronic'].map((n, i) => ({ name: n, style: 'height: 32px; padding: 0 12px; display: flex; align-items: center; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: #242424; color: #c8c8c8') }));
+  const data = [['Nightcall', 'Kavinsky', 'OutRun', 'christos', 'sep 12', '4:18', '#6b2f4a', true], ['Resonance', 'HOME', 'Odyssey', 'christos', 'sep 12', '3:32', '#2f5b6b', true], ['Tech Noir', 'Gunship', 'Gunship', 'jeroen', 'sep 14', '4:57', '#5b3b6b', false], ['Sunset', 'The Midnight', 'Endless Summer', 'christos', 'sep 20', '5:09', '#6b4a2f', true], ['Turbo Killer', 'Carpenter Brut', 'Trilogy', 'jeroen', 'sep 21', '3:20', '#6b2f2f', false], ['A Real Hero', 'College, Electric Youth', 'Drive (Original Motion Picture Soundtrack)', 'christos', 'sep 28', '4:28', '#4a6b2f', true], ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', 'christos', 'oct 1', '4:03', '#3b4a6b', false], ['Days of Thunder', 'The Midnight', 'Days of Thunder', 'anna', 'oct 2', '5:01', '#6b4a2f', false], ['Roller Mobster', 'Carpenter Brut', 'Trilogy', 'jeroen', 'oct 3', '4:04', '#6b2f2f', false], ['Odd Look', 'Kavinsky, The Weeknd', 'Odd Look', 'christos', 'oct 5', '4:12', '#6b2f4a', true], ['Running in the Night', 'FM-84, Ollie Wride', 'Atlas', 'anna', 'oct 7', '4:31', '#4a3b2f', false], ['Fly by Night', 'Timecop1983', 'Night Drive', 'christos', 'oct 9', '5:12', '#2f3b4a', false]];
+  const rows = data.map((d, i) => {
+    const play = i === 0, hover = i === 4;
+    const mk = play ? accent : '#a8a8a8';
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], artist: d[1], album: d[2], by: d[3], added: d[4], time: d[5], cached: d[7],
+      rowStyle: cols + '; height: 52px; flex-shrink: 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 8px; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#7a7a7a'),
+      art: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[6] + '; display: block; flex-shrink: 0',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'display: flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; overflow: hidden; color: ' + (play ? accent : '#9c9c9c'),
+      mark: mark(mk),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+      moreStyle: 'width: 40px; height: 40px; justify-self: center; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  const recs = [['Tokyo Rose', 'Gunship', '#5b3b6b'], ['Vampires', 'The Midnight', '#6b4a2f'], ['Dance with the Dead', 'Dance with the Dead', '#3b2f2f'], ['Le Perv', 'Carpenter Brut', '#6b2f2f'], ['Protovision', 'Kavinsky', '#6b2f4a'], ['Before the Night Is Over', 'FM-84', '#4a3b2f'], ['Tears', 'HOME', '#2f5b6b'], ['Shadows', 'Lindsey Stirling', '#3b4a6b'], ['Neon Medusa', 'Vector Hold', '#2f3b6b'], ['Arcade Summer', 'Timecop1983', '#2f3b4a']].map((d) => ({ title: d[0], artist: d[1], art: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[2] + '; display: block' }));
+  const people = [['christos', 'owner', '#5b6b3b'], ['jeroen', 'collaborator · 3 songs', '#3b5b4a'], ['anna', 'collaborator · 2 songs', '#5b3b6b']].map((d) => ({ name: d[0], role: d[1], avatar: 'width: 36px; height: 36px; border-radius: 18px; background: ' + d[2] + '; display: block' }));
+  return {
+    accent, chips, rows, recs, people,
+    markIdle: mark('#a8a8a8'),
+    tableHead: cols + '; height: 36px; flex-shrink: 0; font-size: 12px; color: #7a7a7a',
+    addBtn: 'height: 32px; padding: 0 12px; box-sizing: border-box; border-radius: 16px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font: inherit; font-size: 13px; justify-self: end',
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ringBtn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 13px; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

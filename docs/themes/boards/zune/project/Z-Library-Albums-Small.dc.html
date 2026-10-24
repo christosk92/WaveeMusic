@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: albums · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › albums" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="albums" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 24px 0 24px; gap: 12px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 20px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+      <button style="height: 28px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; display: flex; align-items: center; gap: 6px">recently added <span style="font-size: 10px; color: #a8a8a8">▾</span></button>
+      <span style="width: 1px; height: 14px; background: rgba(255,255,255,0.14)"></span>
+      <a href="#" style="color: #ffffff">grid</a><a href="#">list</a>
+      <span style="flex-grow: 1"></span>
+      <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in albums" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 120px; outline: none; padding: 2px 0"></label>
+      <span>312 albums</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <a href="#" style="height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; font-size: 15px; color: #ffffff">all artists <span style="font-size: 12px; color: #7a7a7a">184</span></a>
+        <sc-for list="{{artists}}" as="a" hint-placeholder-count="10">
+          <a href="#" style="{{a.row}}"><span style="{{a.letter}}">{{a.l}}</span><span style="{{a.name}}">{{a.n}}</span><span style="font-size: 12px; color: #7a7a7a; text-align: right; padding-right: 4px">{{a.count}}</span></a>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">daft punk</span><span style="font-size: 13px; color: #7a7a7a">6 albums · <a href="#">all releases</a></span><span style="flex-grow: 1"></span><button aria-label="play daft punk" style="{{playRing}}">▶</button></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <sc-for list="{{albums}}" as="al" hint-placeholder-count="6">
+            <a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{al.art}}"></span><span style="{{al.name}}">{{al.n}}</span><span style="font-size: 12px; color: #a8a8a8">{{al.year}}</span></a>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Get Lucky" artist="Daft Punk" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const list = [['a', 'aespa', 3], ['', 'Arcade Fire', 2], ['c', 'Carpenter Brut', 4], ['', 'College', 1], ['d', 'Daft Punk', 6, true], ['', 'Depeche Mode', 5], ['f', 'FM-84', 2], ['g', 'Gunship', 3], ['h', 'HOME', 2], ['j', 'Justice', 3]];
+  const artists = list.map((d) => ({
+    l: d[0], n: d[1], count: String(d[2]),
+    row: 'display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; height: 34px; flex-shrink: 0; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    letter: 'font-family: ' + D + '; font-size: 20px; font-weight: 300; color: #7a7a7a; padding-left: 2px',
+    name: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? '#ffffff; font-weight: 600' : '#c8c8c8'),
+  }));
+  const albums = [['Random Access Memories', '2013', '#3a2f22', true], ['Discovery', '2001', '#2f3a5a', false], ['Homework', '1997', '#2a2a2a', false], ['Human After All', '2005', '#5a2a2a', false], ['Alive 2007', '2007', '#3a3a5a', false], ['Tron: Legacy', '2010', '#2a4a5a', false]].map((d) => ({
+    n: d[0], year: d[1],
+    art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block; box-sizing: border-box' + (d[3] ? '; outline: 2px solid ' + accent + '; outline-offset: 2px' : ''),
+    name: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#ffffff'),
+  }));
+  return {
+    accent, artists, albums,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; border: 0; background: ' + accent + '; color: #000; font-size: 13px; padding: 0; flex-shrink: 0; align-self: center',
+  };
+}
+}
+</script>
+</body>
+</html>

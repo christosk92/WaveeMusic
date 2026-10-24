@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lyrics panel beside Artist</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="artist:Artist" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="artists" h="780" hint-size="48px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(46,58,74,0.55); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <section aria-label="Artist" style="position: relative; height: 440px; flex-shrink: 0; overflow: hidden; border-top-left-radius: 8px">
+        <div style="position: absolute; inset: 0; background: radial-gradient(40% 60% at 62% 55%, rgba(20,30,48,0.0), rgba(10,18,30,0.6)), linear-gradient(160deg, #3b5574 0%, #1d2d45 45%, #0e1828 100%)"></div>
+        <div style="position: absolute; left: 50%; top: 0; width: 46%; height: 70px; background: linear-gradient(180deg, #8a8f94, #50565c); opacity: 0.55"></div>
+        <div style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(40,58,82,0.96) 0%, rgba(40,58,82,0.92) 30%, rgba(40,58,82,0.35) 62%, rgba(40,58,82,0) 100%)"></div>
+        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 140px; background: linear-gradient(180deg, rgba(46,58,74,0), rgba(46,58,74,0.85))"></div>
+        <div style="position: relative; height: 100%; box-sizing: border-box; padding: 0 36px; display: flex; flex-direction: column; justify-content: center; gap: 8px; max-width: 620px">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.8)"><span style="width: 24px; height: 18px; border-radius: 9px; background: #5f8fd8; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="#fff" stroke-width="2"></path></svg></span>Verified artist</div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 84px; line-height: 96px; font-weight: 700; letter-spacing: -0.028em">Billie Eilish</h1>
+          <p style="margin: 0; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.8)">Billie Eilish remains one of the biggest stars to emerge in the 21st century.</p>
+          <div style="display: flex; gap: 16px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.8)"><span style="font-weight: 600; color: #a6d8ff">#19 in the world</span><span>78,536,574 monthly listeners</span><span>130,255,227 followers</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px">
+            <button style="min-width: 120px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #6a9be0; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.094); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+            <button aria-pressed="false" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.094); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4 1 0 1.9.2 2.6.6M12.5 9.5v4M10.5 11.5h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg>Follow</button>
+            <button aria-label="Artist radio" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 7.5v6.5M6 14h4M5.2 4.8a4 4 0 0 0 0 5.4M10.8 4.8a4 4 0 0 1 0 5.4M3.5 3a6.5 6.5 0 0 0 0 9M12.5 3a6.5 6.5 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></button>
+          </div>
+        </div>
+      </section>
+      <div style="height: 1px; background: rgba(255,255,255,0.082); flex-shrink: 0"></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px; padding: 24px 36px 0">
+        <section aria-label="Top tracks" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: flex-start"><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Top tracks</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div><span style="display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.6); font-size: 10px">‹ <span style="width: 6px; height: 6px; border-radius: 3px; background: #fff"></span><span style="width: 5px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.4)"></span><span style="width: 5px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.4)"></span><span style="width: 5px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.4)"></span> ›</span></div>
+          <sc-for list="{{tracks}}" as="t" hint-placeholder-count="4">
+            <div style="{{t.style}}"><span style="width: 24px; text-align: center; font-size: 12px; color: rgba(255,255,255,0.529)">{{t.n}}</span><span style="{{t.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{t.p}}</span></span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{t.heart}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg><span style="width: 40px; text-align: right; font-size: 13px; color: rgba(255,255,255,0.773)">{{t.d}}</span></div>
+          </sc-for>
+        </section>
+        <section aria-label="Artist pick" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Artist pick</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div>
+          <div style="padding: 14px; border-radius: 8px; background: linear-gradient(160deg, rgba(106,155,224,0.16), rgba(255,255,255,0.051) 60%); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 10px"><span style="width: 32px; height: 32px; border-radius: 16px; background: #1d2d45"></span><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Billie Eilish</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Artist pick</span></span></div>
+            <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; line-height: 30px">“HIT ME HARD AND SOFT, out now.”</div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <span style="width: 8px; flex-shrink: 0"></span>
+    <dc-import name="C-Rail" theme="dark" mode="lyrics" h="780" hint-size="340px,780px"></dc-import>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" panel="lyrics" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tr = [['BIRDS OF A FEATHER', '3,948,721,698 plays', '3:30', '#2f4a6b', true], ['WILDFLOWER', '2,231,004,512 plays', '4:21', '#3b5b7a', false], ['lovely (with Khalid)', '3,102,557,890 plays', '3:20', '#c0c0b0', false], ['What Was I Made For?', '1,281,447,203 plays', '3:42', '#d0c060', true]];
+  const tracks = tr.map((t, i) => ({ n: i + 1, t: t[0], p: t[1], d: t[2], art: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; background: ' + t[3], heart: 'flex-shrink: 0; color: #6a9be0; opacity: ' + (t[4] ? 1 : 0), style: 'height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 6px' + (i === 1 ? '; background: rgba(255,255,255,0.059); border: 1px solid rgba(0,0,0,0.098)' : '') }));
+  return { tracks };
+}
+}
+</script>
+</body>
+</html>
