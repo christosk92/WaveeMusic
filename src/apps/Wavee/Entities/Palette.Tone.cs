@@ -1,4 +1,4 @@
-// ── Entities/Palette.Tone.cs — SHELL: a photograph's luminance map, measured once, for the scrim under text on it ─────────────────────
+// ── Entities/Palette.Tone.cs — SHELL: a photograph's luminance map and subject, measured once, for the scrim under text on it and its crop ──
 //
 // The cover-colour plane answers "what colour is this image" from the provider; it cannot say how BRIGHT the photograph is where a
 // surface sets its copy, which is what the on-media scrim needs (`MediaScrim`, Platform/MediaScrim.cs). So the plane gets a second,
@@ -9,6 +9,10 @@
 // second download), WIC decodes them to a small map (`ToneImage`), and the map is posted back through the plane's own UI poster
 // (`Palette.Post`). A failure leaves the row null: the surface keeps its floor veil. The rows are bounded (`ToneRows`); past it the
 // measured ones are forgotten and measure again on their next ask.
+//
+// THE SUBJECT (lane B10) is read in the same pass from the same decode (`ToneImage.Read`: the OS's face detector over a grey copy):
+// `Subject(url)` returns where the photograph's subject stands (`PhotoSubject`), or null until the measurement settles. It always settles: a
+// photograph that cannot be fetched or decoded settles on the safe zone, so a surface that waits for it to crop never waits for ever.
 
 using System.Threading.Tasks;
 using FluentGpu.Media;
@@ -21,6 +25,7 @@ public static partial class Palette
     sealed class ToneRow
     {
         public readonly Signal<MediaScrim.LumaMap?> Map = new(null);
+        public readonly Signal<PhotoSubject?> Subject = new(null);
         public bool Started;
     }
 
@@ -34,7 +39,14 @@ public static partial class Palette
 
     /// <summary>The luminance map of the photograph at <paramref name="url"/> (an https url or a local path), or null until it is measured
     /// (or when it cannot be). Reading it subscribes the caller; the first read starts the measurement. UI thread.</summary>
-    public static MediaScrim.LumaMap? Tone(string? url)
+    public static MediaScrim.LumaMap? Tone(string? url) => RowOf(url)?.Map.Value;
+
+    /// <summary>Where the subject of the photograph at <paramref name="url"/> stands (faces, or the safe zone), or null until it is measured. Reading it
+    /// subscribes the caller; the first read starts the measurement (the one <see cref="Tone"/> runs). It always settles. UI thread.</summary>
+    public static PhotoSubject? Subject(string? url) => RowOf(url)?.Subject.Value;
+
+    /// <summary>The row of <paramref name="url"/>, its measurement started.</summary>
+    static ToneRow? RowOf(string? url)
     {
         if (url is not { Length: > 0 }) return null;
         if (!s_tones.TryGetValue(url, out ToneRow? row))
@@ -48,14 +60,14 @@ public static partial class Palette
             ToneRow target = row;
             _ = Task.Run(() => MeasureTone(url, target));
         }
-        return row.Map.Value;
+        return row;
     }
 
     static void ForgetMeasuredTones()
     {
         var done = new List<string>();
         foreach (var (key, row) in s_tones)
-            if (row.Map.Peek() is not null) done.Add(key);
+            if (row.Map.Peek() is not null || row.Subject.Peek() is not null) done.Add(key);
         foreach (string key in done) s_tones.Remove(key);
     }
 
@@ -66,12 +78,22 @@ public static partial class Palette
             DefaultImageFetcher fetcher = s_toneFetcher.Value;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             FetchResult fetched = await fetcher.FetchAsync(url, cts.Token).ConfigureAwait(false);
-            if (!fetched.Ok || fetched.Buffer is not { } buffer) return;
-            MediaScrim.LumaMap? map;
-            try { map = ToneImage.Measure(buffer, fetched.Length); }
+            if (!fetched.Ok || fetched.Buffer is not { } buffer) { SettleSafe(row); return; }
+            ToneImage.Reading reading;
+            try { reading = ToneImage.Read(buffer, fetched.Length); }
             finally { fetcher.ReturnBuffer(buffer); }
-            if (map is not null) Post(() => row.Map.Value = map);
+            var subject = reading.Subject;
+            Log.Info("palette", string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"photo subject {(subject.Faces ? "faces" : "safe zone")} at {subject.X:0.000}, {subject.Y:0.000}: {Path.GetFileName(url)}"));
+            Post(() =>
+            {
+                if (reading.Map is { } map) row.Map.Value = map;
+                row.Subject.Value = reading.Subject;
+            });
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or HttpRequestException or InvalidOperationException) { }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or HttpRequestException or InvalidOperationException) { SettleSafe(row); }
     }
+
+    /// <summary>A photograph that could not be measured: its subject settles on the safe zone (the map stays null: the surface keeps its floor).</summary>
+    static void SettleSafe(ToneRow row) => Post(() => row.Subject.Value = PhotoSubject.SafeZone);
 }
