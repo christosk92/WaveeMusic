@@ -403,11 +403,15 @@ internal static partial class ClassicSettings
             }) with { Key = library ? "library" : "classic" };
     }
 
-    static Element ActiveTag() => new BoxEl
+    static Element ActiveTag() => Tag(Loc.Get(Strings.Sidebar.Active), Tok.AccentDefault, Tok.TextOnAccentPrimary);
+
+    /// <summary>A pill tag (Active, Developer): its word at the type ramp's smallest rung (MicroMeta 11/15, semibold; it was 9, under the type floor),
+    /// the pill at least the tuned 16 tall and as tall as its word needs.</summary>
+    internal static Element Tag(string text, ColorF fill, ColorF ink) => new BoxEl
     {
-        Height = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = Tok.AccentDefault,
-        Children = [new TextEl(Loc.Get(Strings.Sidebar.Active)) { Size = ClassicSettingsRules.TagSize, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 }],
+        MinHeight = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = fill,
+        Children = [R.Type.MicroMeta(text) with { Weight = 600, Color = ink, MaxLines = 1 }],
     };
 
     /// <summary>Static semantic geometry at quarter scale (the compact counts) — never a mounted sidebar, never text.</summary>

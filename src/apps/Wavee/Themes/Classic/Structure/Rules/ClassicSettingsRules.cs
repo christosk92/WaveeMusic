@@ -52,9 +52,6 @@ internal static class ClassicSettingsRules
     /// <summary>The caption size of the small text the cards carry (12).</summary>
     public const float CaptionSize = 12f;
 
-    /// <summary>The pill tags' text (Active, Developer).</summary>
-    public const float TagSize = 9f;
-
     /// <summary>An expander item's text column starts here (the glyph's column plus its gap): group labels, report rows, footers.</summary>
     public const float TextColumnInset = 58f;
 
