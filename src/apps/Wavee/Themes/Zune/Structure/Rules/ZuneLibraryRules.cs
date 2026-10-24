@@ -124,9 +124,6 @@ public static class ZuneLibraryRules
     /// to half the step, else two lines at that floor (two half-size lines keep the one full-size line's block), then an ellipsis.</summary>
     public const float HeroNameFloorShare = 0.5f;
 
-    /// <summary>The hero's eyebrow ("artist · in your library: …") wraps to this many lines before it trims: the plate's air above the name takes the second.</summary>
-    public const int HeroEyebrowLines = 2;
-
     /// <summary>A column whose DECLARED width changes (the artists' list 220 ↔ 280, the gaps 40 ↔ 48, the third column's slot stepping in or aside): it eases through
     /// real layout, so the flexible column beside it widens or narrows on every tick (a size channel: the reflow-shove rule snaps a position slide that commits beside a
     /// live reflow). A flexible (grow) column cannot carry it: its width is the free space, so the declared neighbour does.</summary>

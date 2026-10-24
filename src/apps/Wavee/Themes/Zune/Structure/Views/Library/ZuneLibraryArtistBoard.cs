@@ -76,9 +76,9 @@ internal static partial class ZuneLibraryArtistReader
                             Children =
                             [
                                 Hero(host, in band, l), AlbumsHeading(),
-                                // The boards' three covers a row, two where three would go under the cover's floor (a narrow Small window).
-                                // Standard and Huge hold the board's three covers outright (the pane rung keeps the middle column wide enough once a crossing settles,
-                                // so the count never flips while the column glides); Small measures its lane.
+                                // The boards' three covers a row. Standard and Huge hold them outright (the pane rung keeps the middle column wide enough once a crossing
+                                // settles, so the count never flips while the column glides); Small measures its lane and stands two where three would go under the
+                                // cover's floor.
                                 Responsive.Of("board:grid", w => l.BoardFull ? LR.BoardCols : LR.BoardColumns(w), cols => Grid(releases, picked, _picked, beside, cols),
                                     fallback: LR.BoardCols * LR.BoardCellMin),
                             ],
