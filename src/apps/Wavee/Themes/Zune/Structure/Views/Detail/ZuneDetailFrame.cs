@@ -94,7 +94,12 @@ internal static class ZuneDetailFrame
 
         // ── the list column: the "songs" heading on a track page, the list, and the insights sheet's layer over it (composed open or not) ──
         Element listHost = ListHost(p, ctx, dock);
-        BoxEl right = Right(p, listHost) with { Margin = new Edges4(p.Head is null ? lay.ColumnGap : 0f, 0f, 0f, 0f) };
+        BoxEl right = Right(p, listHost);
+        // The gap between the identity column and the list is a spacer whose width eases (a margin cannot): the column gap changes on a crossing (3200).
+        Element columnGap = new BoxEl
+        {
+            Key = Z.ColumnGapKey, Width = p.Head is null ? lay.ColumnGap : 0f, Shrink = 0f, HitTestVisible = false, Animate = Z.ColumnReflow,
+        };
 
         Element arm;
         string armKey;
@@ -115,7 +120,7 @@ internal static class ZuneDetailFrame
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Children = [right, AsideSlot(p, lay, dock, enter)],
+                    Children = [columnGap, right, AsideSlot(p, lay, dock, enter)],
                 },
             ]);
         }
@@ -143,7 +148,7 @@ internal static class ZuneDetailFrame
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Children = [identity, right, AsideSlot(p, lay, dock, enter)],
+                    Children = [identity, columnGap, right, AsideSlot(p, lay, dock, enter)],
                 },
             ]);
         }
