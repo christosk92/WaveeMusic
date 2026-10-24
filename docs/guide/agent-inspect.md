@@ -441,7 +441,11 @@ others' placeholders; the two-column arm keeps the whole first page on its shimm
 `TableRules.RowsPending`'s hot-row gate, by design) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
 credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). `state cold-head` instead of `cold-list` also takes the
 HEADER away (title, description and owner unknown, Identity not known; the cover stays: a deep link's first frames), so the page shows its
-pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). Pass `trace=N` on a `state` command to trace its
+pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
+uri=<album|playlist|show|episode uri>` takes that page's title and its known bit away and opens it (the page draws its pending head over whatever
+else it knows), and `state kind=head-land` puts them back on the same page, so `state kind=head-land trace=40 prefix=...` traces the head landing
+in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). A `state` with `trace=N` (or `settle=false`) runs no frames before its
+trace, so the trace starts on the frame the state lands. Pass `trace=N` on a `state` command to trace its
 frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
 skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
 `settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. Without `loops=skeletons` the goto waits on the
