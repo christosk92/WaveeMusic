@@ -1025,7 +1025,7 @@ public readonly partial struct Album
                 var asideFans = new TrailCardData[fansStay ? 0 : fanCount];
                 for (int i = 0; i < asideFans.Length; i++) asideFans[i] = FanCard(new Artist(fans[i]));
                 Element? moreByStack = moreBy > 0 && billed.Length > 0
-                    ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)))
+                    ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name)
                     : null;
                 var billedArtists = new List<Artist>(billed.Length);
                 for (int i = 0; i < billed.Length; i++)
@@ -1046,7 +1046,7 @@ public readonly partial struct Album
             var lists = new List<Element>(4);
             if (moreBy > 0 && billed.Length > 0)
                 lists.Add(Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot,
-                                Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot))));
+                                Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)), name: lead.Name));
             if (featured > 0)
                 lists.Add(Stack(Loc.Get(Strings.Detail.FeaturedOn), featured, TrailKind.FeaturedOn, slot,
                                 Signature("featured:", featured, e.AlbumRecommendations.Targets(slot))));

@@ -192,6 +192,10 @@ public sealed record AlbumSectionsProps
 /// <param name="Rows">The drawn rows.</param>
 public sealed record AlbumTrailStackProps(string Title, int Count, int Shown, Action Expand, IReadOnlyList<TrailRowData> Rows)
 {
+    /// <summary>The name the title carries ("Mia Solace" in "More by Mia Solace"), contract 1.62; null when the title is all words ("Featured on"). A theme
+    /// may re-case the title's words, never the name.</summary>
+    public string? Name { get; init; }
+
     /// <inheritdoc />
     public bool Equals(AlbumTrailStackProps? other) => ReferenceEquals(this, other);
 
