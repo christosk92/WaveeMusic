@@ -224,6 +224,7 @@ public static partial class Diagnostics
             if (n.Opacity != 1f) Num(w, "opacity", n.Opacity);
             if (n.Inert) w.WriteBoolean("inert", true);
             if (n.Sticky) w.WriteBoolean("sticky", true);
+            if (float.IsFinite(n.HitTop)) Num(w, "hitTop", n.HitTop);
             if (n.Fill.A > 0f) w.WriteString("fill", Color(n.Fill));
             if (n.BorderWidth > 0f)
             {
@@ -586,6 +587,7 @@ public static partial class Diagnostics
                 Opacity = r.Finite(e, "opacity", 1f, 0f, 1f),
                 Inert = r.Bool(e, "inert"),
                 Sticky = r.Bool(e, "sticky"),
+                HitTop = e.TryGetProperty("hitTop", out _) ? r.Finite(e, "hitTop", float.NegativeInfinity) : float.NegativeInfinity,
                 Fill = r.Color(e, "fill"),
                 BorderWidth = borderW,
                 BorderColor = borderC,
