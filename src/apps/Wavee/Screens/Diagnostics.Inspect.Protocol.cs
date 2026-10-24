@@ -384,6 +384,7 @@ public static partial class Diagnostics
                 Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri (optional with remote=)"), Arg("fromMs", ArgType.Int, "the start position", "0"),
                              IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
+                             Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
                              Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
