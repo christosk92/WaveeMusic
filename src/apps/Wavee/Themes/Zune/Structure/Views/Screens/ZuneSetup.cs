@@ -6,7 +6,7 @@
 // the window under the title row, the accent column becomes a 120-high strip across the top and the footer stacks.
 //
 //   Setup.Wizard   the plate · Enter / Backspace · Flow.KeepAlive(page; Nav.RecipeFor(Direction.Peek()); no replay on activate)
-//   ├ accent      the step numeral (`session.StepNumber()`), the page's name, the steps' names
+//   ├ accent      the step numeral (`Step`: terms is 1, as the board counts), the page's name, the steps' names
 //   ├ pages       Terms | Sign in | Theme | Local playback: `ZuneSetup.Pages.cs`, `.SignIn.cs`, `.Runtime.cs`
 //   └ footer      step label + progress · back · secondary · primary, from `Setup.Commands.ResolveFor` (`session.Row()`)
 //
@@ -100,11 +100,27 @@ internal static partial class ZuneSetup
         };
     }
 
+    /// <summary>The step as Zune counts it (Z-Setup: "2" and "step 2 of 4" on sign in): the page's place among the pages this session shows, terms
+    /// first, as the accent column names them ("terms · sign in · theme · local playback"). The core's count starts after terms ("pre-setup"); Zune's
+    /// numeral is the step, so terms is 1.</summary>
+    static (int Step, int Total) Step(Setup.WizardModel session)
+    {
+        var page = session.Page.Value;
+        int step = 0, total = 0;
+        for (var p = Setup.WizardPage.Terms; p <= Setup.WizardPage.LocalPlayback; p++)
+        {
+            if ((p == Setup.WizardPage.SignIn && session.SkipSignIn) || (p == Setup.WizardPage.Theme && session.SkipTheme)) continue;
+            total++;
+            if (p <= page) step = total;
+        }
+        return (Math.Max(1, step), Math.Max(1, total));
+    }
+
     /// <summary>The accent column (a strip across the top at Compact): the step as a giant numeral at 35 % of the ink-on-accent, the page's name, the steps' names. ONE node in
     /// every tier; its width, height and the numeral's place are the record's.</summary>
     static Element AccentColumn(Setup.WizardModel session, Setup.WizardPage page, ZuneSetupLayout layout)
     {
-        var step = session.StepNumber();
+        var step = Step(session);
         ColorF ink = Tok.TextOnAccentPrimary;
         var text = new List<Element>(2)
         {
@@ -125,7 +141,7 @@ internal static partial class ZuneSetup
                     Margin = layout.NumeralMargin, HitTestVisible = false,
                     Children =
                     [
-                        R.Type.NowPlayingDisplay(step is { } n ? n.Step.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")
+                        R.Type.NowPlayingDisplay(step.Step.ToString(System.Globalization.CultureInfo.InvariantCulture))
                             with { Color = ink with { A = Z.NumeralAlpha }, MaxLines = 1 },
                     ],
                 },
@@ -186,7 +202,7 @@ internal static partial class ZuneSetup
                 ? k.Cmd(primary, session.Primary, row.PrimaryEnabled, accent: true)
                 : k.Go(primary, session.Primary, row.PrimaryEnabled)) with { Key = "zsetup:footer:primary" });
 
-            var step = session.StepNumber();
+            var step = Step(session);
             Element progress = new BoxEl
             {
                 Direction = 1, Gap = Z.ProgressGap, Shrink = 0f, MinWidth = 0f, AlignItems = FlexAlign.Start,
@@ -194,8 +210,8 @@ internal static partial class ZuneSetup
                 AlignSelf = layout.FooterStacked ? FlexAlign.Stretch : FlexAlign.Center,
                 Children =
                 [
-                    ZuneText.Meta(step is { } n ? Strings.Setup.StepOf(n.Step, n.Total) : Loc.Get(Strings.Setup.PreSetup)),
-                    ProgressBar.Determinate(session.Progress(), layout.ProgressWidth(vp.Width)),
+                    ZuneText.Meta(Strings.Setup.StepOf(step.Step, step.Total)),
+                    ProgressBar.Determinate(step.Step / (float)step.Total, layout.ProgressWidth(vp.Width)),
                 ],
             };
             return new BoxEl
@@ -217,14 +233,15 @@ internal static partial class ZuneSetup
 
     // ── the page frame (title + scrolling body) ─────────────────────────────────────────────────────────────────────
 
-    /// <summary>A page's frame: the 40/300 title over the scrolling body. The outer box claims the parent's Grow / Shrink / Min so the ScrollView is bounded.</summary>
+    /// <summary>A page's frame: the 40/300 title over the scrolling body. The outer box claims the parent's Grow / Shrink / Min so the ScrollView is bounded. A
+    /// body longer than the page (the terms) bleeds behind a fade at the edge it overflows, never a hard cut at the footer.</summary>
     internal static Element WizardFrame(Setup.WizardPage page, string header, Element body) => new BoxEl
     {
         Key = "zsetup:frame:" + (int)page, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Gap = Z.TitleGap,
         Children =
         [
             ZuneText.Title(header) with { MaxLines = 2, Trim = TextTrim.WordEllipsis, Shrink = 0f },
-            ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, EdgeCues = ScrollEdgeCues.None, AlwaysShowScrollbar = true },
+            ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, EdgeCues = ScrollEdgeCues.None, AutoEdgeFade = true, AlwaysShowScrollbar = true },
         ],
     };
 

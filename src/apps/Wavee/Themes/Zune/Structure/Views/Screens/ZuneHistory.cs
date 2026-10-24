@@ -147,8 +147,8 @@ internal static class ZuneHistory
                     },
                 ],
             };
-        Element filterRail = Controls.Words.Rail(filters, filterIndex, static () => R.Ink.AccentDecor);
-        Element sortRail = Controls.Words.Rail(sorts, sortIndex, static () => R.Ink.AccentDecor);
+        Element filterRail = Controls.Words.Rail(filters, filterIndex, static () => R.Ink.AccentDecor, restInk: ZuneTokens.WordRestNow);
+        Element sortRail = Controls.Words.Rail(sorts, sortIndex, static () => R.Ink.AccentDecor, restInk: ZuneTokens.WordRestNow);
         return
             new BoxEl
             {

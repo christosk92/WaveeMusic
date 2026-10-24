@@ -234,7 +234,11 @@ public readonly record struct StageTransportFacts(bool Playing, bool PrimaryEnab
     bool Shuffle, bool RepeatOn, bool RepeatOne, bool Saved, Action? Like, string PlayingFrom, string Source);
 
 /// <summary>The output device button's face.</summary>
-public readonly record struct StageDeviceFacts(string Glyph, string Name);
+public readonly record struct StageDeviceFacts(string Glyph, string Name)
+{
+    /// <summary>The name is the core's word ("System default"), not a device's own name: a theme may re-case it. Appended (contract 1.68).</summary>
+    public bool Word { get; init; }
+}
 
 /// <summary>The track up next on the stage (contract 1.57).</summary>
 /// <param name="Title">Its title; empty: nothing is up next.</param>

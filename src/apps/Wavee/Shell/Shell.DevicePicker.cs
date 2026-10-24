@@ -97,10 +97,10 @@ public static partial class Shell
                 {
                     DevicePickerRowKind.Separator => new DevicePickerEntry(DevicePickerEntryKind.Separator, "", "", false, false, null, null),
                     DevicePickerRowKind.LocalDefault => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label, Icons.ThisPc,
-                        row.Enabled, false, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null),
+                        row.Enabled, row.IsChecked, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null) { Word = true },
                     DevicePickerRowKind.LocalDevice => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label,
                         DeviceRoster.LocalGlyph(row.LocalKind),
-                        row.Enabled, false, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null),
+                        row.Enabled, row.IsChecked, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null),
                     DevicePickerRowKind.ConnectDevice => new DevicePickerEntry(DevicePickerEntryKind.Radio, row.Label,
                         DeviceRoster.ConnectGlyph(row.ConnectKind), true, row.IsChecked, null, () => DeviceVerbs.Run(intent)),
                     _ => new DevicePickerEntry(DevicePickerEntryKind.Info, row.Label, "", false, false, null, null),

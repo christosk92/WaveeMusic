@@ -332,7 +332,7 @@ internal static class ZuneSearchPage
             onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),
             cardHeight: s_cardHeight,
             header: K.Heading(Loc.Get(Strings.Search.Playlists), null, K.Link("zune-search-playlists-all", Loc.Get(Strings.Home.SeeAll), select, lay.LinkTarget)) with { Grow = H.HeadFillGrow },
-            pager: ShelfPager.Chevrons,
+            pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             // Standard: the fixed 154 card; elsewhere the shelf FITS up to the tier's columns (live props of ONE shelf).
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : H.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : H.ShelfCardW,
             maxColumns: lay.ShelfCols, gap: H.ShelfGap, headerGap: H.HeadGap,

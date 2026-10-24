@@ -442,12 +442,14 @@ internal sealed class ZuneBand : Component
         {
             // A10 (contract 1.30): the title is the entity's name once the page has published it, the kind ("Album") while it loads. The slot
             // keeps its height and stacks its words (ZStack), each in a layer keyed by its text: the old one fades out as the new one fades in,
-            // in place, so the swap never relayouts; the views and the hairline beside it slide to the new width (the pivot slide).
+            // in place; the slot's WIDTH eases to the new name's (a reflow on the width axis), so the hairline and the views ride the re-solve. A
+            // position slide of theirs was snapped by the engine's reflow-shove rule when the name changed on the frame the page swapped (a revisited
+            // artist's cached name: the views jumped 65 at once, audit B7 / B5b).
             run.Add(new BoxEl
             {
                 Key = ZuneBandRules.Row2TitleKey, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H,
                 MaxWidth = ZuneBandRules.TitleMaxW, Shrink = 1f, MinWidth = 0f, ZStack = true,
-                Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
+                Animate = Design.Reduced ? null : ZuneBandTiers.InsetMotion,
                 Children =
                 [
                     new BoxEl

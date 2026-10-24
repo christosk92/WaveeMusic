@@ -150,6 +150,10 @@ public sealed record ZuneProfileLayout : ITierLayoutRecord
     /// <summary>The stats line's height: a linked word is a 40 target at Compact, the line's own 20 elsewhere.</summary>
     public required float StatH { get; init; }
 
+    /// <summary>The stats stack (Z-Profile-Compact): the people words on one line, "6 public playlists" on its own line under them, so a narrow hero never
+    /// wraps the line after a dangling " ·".</summary>
+    public bool StatsStack { get; init; }
+
     /// <summary>The hero carries "open account" and the share ring itself (the board's Compact, Small and Huge; at Standard the band's row 2 holds them).</summary>
     public required bool OwnVerbsInHero { get; init; }
 
@@ -197,7 +201,7 @@ public static class ZuneProfileTiers
         Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, SectionGap = sectionGap, Avatar = avatar, HeroGap = heroGap, Name = name, NameLine = nameLine,
         Target = target, ActionsH = actionsH, StatH = statH, OwnVerbsInHero = ownVerbs, TopCols = topCols, TopMinCol = topMinCol, TopColGap = topColGap,
         TopRowGap = topRowGap, TopRowH = topRowH, TopArt = topArt, RankW = rankW, ListMinCell = listMinCell, ListShimmerCols = shimmerCols,
-        CardW = cardW, LinkTarget = tier == WidthTier.Compact ? 40f : 0f,
+        CardW = cardW, LinkTarget = tier == WidthTier.Compact ? 40f : 0f, StatsStack = tier == WidthTier.Compact,
     };
 
     private static readonly ZuneProfileLayout[] s_records =

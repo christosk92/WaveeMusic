@@ -34,11 +34,17 @@ public enum DevicePickerEntryKind : byte
 /// <param name="Label">The (capped) label.</param>
 /// <param name="Glyph">The icon glyph, or empty for none.</param>
 /// <param name="Enabled">The row can be chosen.</param>
-/// <param name="IsChecked">A radio's selected state.</param>
+/// <param name="IsChecked">A radio's selected state (the active Connect device); on a this-computer output, that it is the one playing (this computer
+/// is the active output and the output is the chosen one). A menu theme reads it on radios only.</param>
 /// <param name="Accelerator">The right-hand note ("Unavailable" on a local row while local playback is unsupported), or null.</param>
 /// <param name="Invoke">What choosing the row does, or null for a row that does nothing.</param>
 public readonly record struct DevicePickerEntry(
-    DevicePickerEntryKind Kind, string Label, string Glyph, bool Enabled, bool IsChecked, string? Accelerator, Action? Invoke);
+    DevicePickerEntryKind Kind, string Label, string Glyph, bool Enabled, bool IsChecked, string? Accelerator, Action? Invoke)
+{
+    /// <summary>The label is the core's word ("System default"), not a device's own name: a theme may re-case it (a device keeps its casing).
+    /// Appended (contract 1.68).</summary>
+    public bool Word { get; init; }
+}
 
 /// <summary>What one render of the picker draws.</summary>
 /// <param name="Entries">The rows, in menu order.</param>

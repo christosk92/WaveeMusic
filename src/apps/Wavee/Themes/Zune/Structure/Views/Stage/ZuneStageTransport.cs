@@ -614,7 +614,11 @@ internal sealed class ZuneStageDevice : Component
             MaxWidth = ZuneStageGeometry.DeviceMaxW, Shrink = 1f, MinWidth = MathF.Max(ZuneStageGeometry.DeviceMinW, p.Height),
             Children =
             [
-                new TextEl(device.Name) { Size = p.Size, LineHeight = p.Line, Color = Ink.InkSecondary, HoverColor = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                new TextEl(device.Name)
+                {
+                    Size = p.Size, LineHeight = p.Line, Color = Ink.InkSecondary, HoverColor = Ink.Ink, Case = device.Word ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                },
                 new TextEl(Icons.ChevronDown) { Size = ZuneStageGeometry.ChevronGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
             ],
         };
