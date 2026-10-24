@@ -70,7 +70,7 @@ internal static class ZuneStageIdentity
                 gap = G.CardTextGap;
                 bottom = true;
                 kids.Add(new TextEl(Loc.Get(Strings.Stage.NowPlayingEyebrow)) { Size = v.EyebrowSize, LineHeight = v.EyebrowLine, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 });
-                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
+                kids.Add(Scrolling(props, title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
                 if (!a.Display.IsEmpty) display = Display(props, in a, title, set.Text, heroArtist);
                 break;
@@ -94,8 +94,8 @@ internal static class ZuneStageIdentity
                 (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
                 center = a.Form == ZuneStageForm.Centered;
                 gap = 0f;
-                var head = Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking);
-                kids.Add(center ? head with { MaxWidth = titlesW } : head);
+                kids.Add(center ? Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking) with { MaxWidth = titlesW }
+                    : Scrolling(props, title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
                 break;
             }
@@ -180,6 +180,24 @@ internal static class ZuneStageIdentity
         EdgeFade = new EdgeFadeSpec(EdgeMask.Right, band),
         Children = [title with { Shrink = 0f }],
     };
+
+    /// <summary>A one-line, left-aligned title in an arrangement's voice that scrolls under the marquee preference (the play bar's cadence, its
+    /// tracking kept) instead of ellipsising (audit B3, Vr: "Nostalgia 2000s ..." sat still with the marquee on).</summary>
+    static Element Scrolling(StageIdentityProps props, string title, float size, float line, ushort weight, float tracking)
+        => props.Marquee?.Invoke() != true ? Title(title, size, line, weight, tracking) : new BoxEl
+        {
+            Height = line, Direction = 0, MinWidth = 0f,
+            Children =
+            [
+                Marquee.Of(title, new Marquee.Style
+                {
+                    FontSize = size, LineHeight = line, CharSpacing = tracking, Weight = weight, FontFamily = R.Type.DisplayFace, Foreground = Ink.Ink,
+                    Speed = ZunePlayerLayout.MarqueeSpeed, CycleMs = ZunePlayerLayout.MarqueeCycleMs,
+                    EndPauseMs = ZunePlayerLayout.MarqueeEndPauseMs, StartDelayMs = ZunePlayerLayout.MarqueeStartDelayMs,
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                }),
+            ],
+        };
 
     /// <summary>A title in an arrangement's voice: the display face, one line.</summary>
     static TextEl Title(string title, float size, float line, ushort weight, float tracking, bool bleed = false) => new(title)

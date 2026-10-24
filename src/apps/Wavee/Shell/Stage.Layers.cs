@@ -86,6 +86,7 @@ public static partial class Stage
         Chips = () => ChipFacts(ctx),
         NowPlayingMenu = static () => NowPlayingMenu?.Invoke(),
         OpenArtist = OpenPlayingArtist,
+        Marquee = static () => Prefs.Appearance.Marquee(),
     };
 
     // ══ the identity's facts ════════════════════════════════════════════════════════════════════════════════════════
