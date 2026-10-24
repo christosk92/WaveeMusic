@@ -384,7 +384,9 @@ public static class ClassicHomeTiers
         DaylistBeside = true,
         Shelf = new ClassicShelfBand(R.Space.ShelfCardMin, 9999f, 10, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true), ShelfLead = true,
         WideShelf = new ClassicShelfBand(R.Space.WideTileMin, 9999f, 5, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
-        Recents = new ClassicGridBand(400f, 3), RecentsArt = Design.Size.Thumb48, RecentsRowH = ClassicHomeRules.RowH,
+        // Two columns at every Huge width (C-Home-Huge: repeat(2, 1fr), four rows of 64 inside the 400 hero's band). A 400 floor fitted one column
+        // at the tier's narrow end (1920: a 640 band), and its eight stacked rows stood ~270 below the hero.
+        Recents = ClassicGridBand.Fixed(2), RecentsArt = Design.Size.Thumb48, RecentsRowH = ClassicHomeRules.RowH,
         Releases = new ClassicGridBand(ClassicHomeRules.ListMinCol, 3),
         Clusters = new ClassicGridBand(ClassicHomeRules.ClusterMinCol, 4),
         Tiles = new ClassicGridBand(ClassicHomeRules.TilesMinCol, 6),
