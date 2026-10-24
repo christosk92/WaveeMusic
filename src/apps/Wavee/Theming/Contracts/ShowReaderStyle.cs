@@ -169,6 +169,10 @@ internal sealed class ShowToolbarArgs
     /// <summary>The narrow arm (the side gutter).</summary>
     public required bool Compact { get; init; }
 
+    /// <summary>Whether the toolbar pads a trailing gutter: false where a <see cref="ShowReaderStyle.YearsInMargin"/> reader ends on the column edge (its
+    /// rows run to it). Appended (contract 1.70, audit Z-OWNER).</summary>
+    public bool Trailing { get; init; } = true;
+
     /// <summary>The filter chips (their counts are binds over the snapshot).</summary>
     public required Controls.Words.Word[] FilterWords { get; init; }
 
@@ -410,6 +414,12 @@ public sealed class ShowReaderStyle
     /// style draws above <see cref="ShowToolbarLayout.Glyph"/> (Classic: 40, the Compact floor its board draws), which the stage rule then sums in
     /// place of the 30. 0: the stage rule's own <see cref="ShowToolbarLayout.Glyph"/>. Appended (contract 1.55, audit B6).</summary>
     internal float NarrowToolbarGlyph { get; init; }
+
+    /// <summary>The year strip stands in the frame's OUTER MARGIN, not in a column of the reader: the reader reserves no width for it and pads no trailing
+    /// gutter, so its rows (the toolbar, the head, every row) run to the column edge, and <see cref="YearStrip"/> / <see cref="YearReserve"/> place
+    /// themselves past the list's trailing edge (taking no width there, or only the margin's where the reader's own edge is the window's). False: the
+    /// strip's <see cref="ShowReaderRules.YearStripWidth"/> column and both gutters. Appended (contract 1.70, audit Z-OWNER).</summary>
+    internal bool YearsInMargin { get; init; }
 
     /// <summary>The visit head's padded shell around its reveal region, and the head's shimmer source.</summary>
     internal ShowHeadShellTemplate HeadShell { get; }
