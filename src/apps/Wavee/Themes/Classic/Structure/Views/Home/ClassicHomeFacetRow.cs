@@ -38,6 +38,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
@@ -114,9 +115,10 @@ internal static class ClassicHomeFacetRow
         // The band (a column) cross-stretches the Responsive box, so it measures the row's full width and builds the row
         // in the form that width holds (a Compact tier keeps the 20/28 words at every width: `C-Home-Compact`).
         bool compactWords = layout.CompactFacets;
-        // Where the row ends with the Friend activity button (Compact) the words yield to it: their box shrinks and clips, its trailing edge
-        // faded (C-Home-Compact's masked tablist). The box is pulled out by the style's leading inset and padded back, so the first word's
-        // hover plate is inside the clip. Elsewhere the same box just wraps the bar at its own width (the tuned row, unchanged).
+        // Where the row ends with the Friend activity button (Compact) the words yield to it: their line shrinks and SCROLLS, the edge that
+        // runs past fading (C-Home-Compact's masked tablist), and the selected word is brought whole into view, so "Audiobooks" picked at 400 is
+        // never the cut word. The line is pulled out by the style's leading inset and padded back, so the first word's hover plate is inside
+        // it. Elsewhere the same line sizes to the bar (the tuned row, unchanged): one node at every tier.
         bool yieldWords = showFriends;
         Element row = Responsive.Of("home:facet", w =>
         {
@@ -128,16 +130,10 @@ internal static class ClassicHomeFacetRow
                 Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicHomeRules.SelectorH, MinWidth = 0f,
                 Children =
                 [
-                    new BoxEl
-                    {
-                        Key = "home:facet:words",
-                        Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = yieldWords ? 1f : 0f,
-                        Margin = new Edges4(-lead, 0f, 0f, 0f), Padding = new Edges4(lead, 0f, 0f, 0f),
-                        ClipToBounds = yieldWords,
-                        EdgeFade = yieldWords ? new EdgeFadeSpec(EdgeMask.Right, ClassicHomeTiers.WordsFadeBand) : null,
-                        Children = [SelectorBar.Create(labels, p.Index(), onChange: OnWord, style: style)],
-                    },
-                    new BoxEl { Grow = 1f, MinWidth = 0f },
+                    Embed.Comp(new FacetWordsProps(labels, p.Index(), OnWord, style, yieldWords, lead, hasFollowing, w), static () => new FacetWords())
+                        with { Key = "home:facet:words" },
+                    // The spacer pushes the trailing buttons to the row's end; where the words yield, their own line fills that room instead.
+                    new BoxEl { Grow = yieldWords ? 0f : 1f, MinWidth = 0f },
                     Flow.Show(() => hasFollowing, following),
                     Flow.Show(() => showFriends, friends),
                 ],
@@ -180,6 +176,72 @@ internal static class ClassicHomeFacetRow
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Children = [band],
         };
+    }
+
+    /// <param name="Trailing">The Following toggle stands at the row's end (the yielding line is that much narrower).</param>
+    /// <param name="RowWidth">The row's measured width.</param>
+    sealed record FacetWordsProps(string[] Labels, Signal<int> Index, Action<int> OnWord, SelectorBarStyle Style, bool Yield, float Lead,
+                                  bool Trailing, float RowWidth);
+
+    /// <summary>The facet words: the stock SelectorBar on a horizontal line that scrolls only when the row makes it yield (Compact, beside the
+    /// Friend activity button), its overflowing edge fading, the selected word brought whole into view on a selection or a crossing.</summary>
+    sealed class FacetWords : Component
+    {
+        NodeHandle _viewport;
+        NodeHandle[] _items = [];
+        int _reveal;
+        bool _seeded;
+        readonly Action<NodeHandle> _captureViewport;
+        readonly Action _revealSelected;
+
+        public FacetWords()
+        {
+            _captureViewport = h => _viewport = h;
+            _revealSelected = RevealSelected;
+        }
+
+        public override Element Render()
+        {
+            var p = UseProps<FacetWordsProps>();
+            if (_items.Length != p.Labels.Length) _items = new NodeHandle[p.Labels.Length];
+            int selected = p.Index.Value;                       // subscribe: a new selection brings its word into view
+            _reveal = selected;
+            // Re-revealed whenever the line's room moves too: a tier, the Following toggle coming or going (a word with a sub-chip), the row's width.
+            UseLayoutEffect(_revealSelected, DepKey.From(selected, (p.Yield ? 1 : 0) | (p.Trailing ? 2 : 0) | ((int)p.RowWidth << 2)));
+            // The item part runs once per word, in order: each word's box hands its handle to its slot (the bar chains its own capture).
+            int at = 0;
+            var items = _items;
+            var parts = new TemplateParts
+            {
+                [SelectorBar.PartItem] = b =>
+                {
+                    int i = at++;
+                    return (uint)i < (uint)items.Length ? b with { OnRealized = h => items[i] = h } : b;
+                },
+            };
+            return new ScrollEl
+            {
+                // Yielding, the line takes the room the trailing buttons leave (and scrolls within it); elsewhere it is the bar's own width.
+                Horizontal = true, ContentSized = true, MinWidth = 0f, Height = ClassicHomeRules.WordsLineH,
+                Grow = p.Yield ? 1f : 0f, Shrink = p.Yield ? 1f : 0f, Basis = p.Yield ? 0f : float.NaN,
+                SuppressScrollBar = true, AutoEdgeFade = p.Yield, AutoEdgeFadeBand = ClassicHomeTiers.WordsFadeBand, EdgeCues = ScrollEdgeCues.None,
+                Margin = new Edges4(-p.Lead, 0f, 0f, 0f),
+                OnRealized = _captureViewport,
+                Content = new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Padding = new Edges4(p.Lead, 0f, 0f, 0f),
+                    Children = [SelectorBar.Create(p.Labels, p.Index, onChange: p.OnWord, parts: parts, style: p.Style)],
+                },
+            };
+        }
+
+        void RevealSelected()
+        {
+            int i = _reveal;
+            if ((uint)i >= (uint)_items.Length || _items[i].IsNull || _viewport.IsNull || Context.Scene is not { } scene) return;
+            scene.BringIntoView(_viewport, _items[i], float.NaN, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate, Spacing.S);
+            _seeded = true;
+        }
     }
 
     /// <summary>The failure InfoBar's layer (tuning H1): the page stacks it over the top of its content, so the bar has a slot of its own and

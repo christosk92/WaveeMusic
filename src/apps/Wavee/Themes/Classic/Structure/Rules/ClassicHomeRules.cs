@@ -24,6 +24,10 @@ public static class ClassicHomeRules
     /// bar in it, so the constant is authoritative for the sticky clip inset rather than a measured value.</summary>
     public const float SelectorH = 40f;
 
+    /// <summary>The words' line: the selector's height and the stock SelectorBar's own 4-DIP padding above and below (SelectorBarPadding 0,4), the
+    /// height its scrolling viewport is given (a horizontal scroller does not take its content's height), centred on the row as the bar was.</summary>
+    public const float WordsLineH = SelectorH + 2f * 4f;
+
     /// <summary>The busy bar's slot: WinUI's 3-px ProgressBar, part of the pinned band so a switch started deep in the
     /// page still shows its progress.</summary>
     public const float BarH = 3f;
