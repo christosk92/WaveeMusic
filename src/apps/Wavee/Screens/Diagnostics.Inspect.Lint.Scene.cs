@@ -515,7 +515,7 @@ public static partial class Diagnostics
         /// <c>deck:winamp@&lt;side&gt;</c>) is a scale model of the 275 x 116 Winamp 2 window: its title bars, LCD title and status letters are the
         /// skin's pixel type at a fixed fraction of the deck's side (6-7 DIP at the rail's 324), part of the device's look and never reading copy
         /// (the same title and time read at full size in the rail beside it). Enlarging them would break the skin's proportions, so the type floor
-        /// allows them there (B11, audit B8). A key starting <c>deco:</c> is an illustration, allowed by the contrast rule (audit B8).</summary>
+        /// allows them there (B11, audit B8). A key starting <c>deco:</c> is an illustration, allowed by the contrast rule; a title-bar tab's title may ellipsise (audit B8).</summary>
         static readonly IReadOnlyList<LintPolicy> CorePolicies =
         [
             new(LintIntent.Allow, "deck:winamp@", "the Winamp deck's pixel type is the skin's (a scale model of the 275 x 116 window), never reading copy",
@@ -524,6 +524,8 @@ public static partial class Diagnostics
             // browse-all tile's pictogram). It carries no information the page does not say in words beside it, so it is not held to text contrast.
             new(LintIntent.Allow, "deco:", "a decorative illustration (a glyph standing in for art), never information",
                 Rule: InspectLint.Rules.ContrastText),
+            // The shell's title-bar tabs (`Shell.UI.cs`, `tab#<id>`) cap their width and ellipsise the page title, as both title-bar boards draw them.
+            new(LintIntent.TrimOk, "tab#", "a title-bar tab caps its width and ellipsises its title (Shell-Top and C-TitleBar: nowrap + text-overflow: ellipsis)"),
         ];
 
         /// <summary>The visible nodes under <paramref name="roots"/> as a lint snapshot, with the active theme's guide and scale. UI thread, between

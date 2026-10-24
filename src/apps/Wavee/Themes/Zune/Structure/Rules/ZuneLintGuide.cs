@@ -104,6 +104,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// their own boards, and the lint's implicit class still counts a MaxLines + ellipsis caption in a repeated family as designed).</summary>
     private const string HomeRoute = "home";
 
+    /// <summary>A playlist's description block (the key the Zune playlist hero gives it).</summary>
+    private const string PlaylistReadKey = ZunePlaylistRules.EditorReadKey;
+
     /// <summary>The what's-new panorama's key (the literal `ZuneReleaseNotes.Frame` keys it with).</summary>
     private const string ReleaseNotesTitleKey = "zrn:title";
 
@@ -121,6 +124,8 @@ public sealed class ZuneLintGuide : IThemeLintGuide
             policies.Add(new(LintIntent.TrimOk, "zune-cluster-row:", "cluster rows: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-chart:", "chart captions: " + HomeCaptions));
         }
+        policies.Add(new(LintIntent.TrimOk, PlaylistReadKey,
+            "a playlist's description clamps to its lines and ellipsises (Z-Playlist-Followed-Small: -webkit-line-clamp 3; Compact: 2); the reader opens it whole"));
         policies.Add(new(LintIntent.Hang, ZuneDetailRules.PanoramaKey,
             "the panorama title hangs left of the column by the light face's side bearing (PanoramaNudgeX, Z-Album)",
             Value: ZuneDetailTiers.For(context.Window).PanoramaNudgeX));

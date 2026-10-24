@@ -166,12 +166,15 @@ internal static class ClassicArtistSections
             bool wide = latch.TopBandWide = ClassicArtistTiers.TopBandWide(w, latch.TopBandWide);
             Element tracks = Artist.Chart(a, accentSignal);
             if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
+            // The card's column arm: beside the chart (the rail), and at Compact under it too, where the band arm's row (the photograph or the
+            // cover beside the copy) left the copy ~36 DIP ("Out now" one letter a line; audit B8).
+            bool columnArm = wide || layout.Tier == WidthTier.Compact;
             Element featured = pick
-                ? PickColumn(ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface), wide && layout.PickHeading, accent, wide)
-                : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
+                ? PickColumn(ClassicArtistPick.Card(a, accentFn, horizontal: !columnArm, overlay, surface), wide && layout.PickHeading, accent, columnArm)
+                : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, columnArm), accent)
                     with
                     {
-                        Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band",
+                        Key = columnArm ? "featured:upcoming:rail" : "featured:upcoming:band",
                         Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
                     };
             // The featured column keeps the pick as its first child at every tier, so the concert card coming or going on a crossing never remounts it.
@@ -197,11 +200,11 @@ internal static class ClassicArtistSections
     /// "Artist pick" accent header like the chart's beside it, 12 apart. The wrapper is keyed on the arm and the card inside it on its own key at every tier, and the heading
     /// is a keyed child that fades in and out, so a crossing between Standard and Huge neither remounts the card (its photo, its decode) nor snaps the heading in: the
     /// column's height tween (<see cref="ClassicArtistTiers.HeroMotion"/>) eases the card down by the header's height.</summary>
-    static Element PickColumn(Element card, bool heading, ColorF accent, bool wide) => new BoxEl
+    static Element PickColumn(Element card, bool heading, ColorF accent, bool column) => new BoxEl
     {
         // The rail card (the photograph a band under the comment, beside the chart) and the band card (the photograph a column at the card's
         // right, under the chart) are two compositions: the arms swap keyed under the declared tier cross-fade, never as a cut.
-        Key = wide ? "featured:pick:rail" : "featured:pick:band", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
+        Key = column ? "featured:pick:rail" : "featured:pick:band", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
         Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
         Children = heading
             ?

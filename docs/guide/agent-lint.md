@@ -209,7 +209,9 @@ guide `Bleed` makes it intended. Under the headless text model: review.
 ZStack and no scroller: warn. FP classes: an overlay drawn without a ZStack. (A bar collapsed to no height under a clip no
 longer counts: the capture keeps the collapsed clip, so the bar is off screen.)
 
-**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause):
+**`text.trim` (trim).** Text the engine reports trimmed, by class (first match wins; the class is the fingerprint's cause). One unwrapped
+line whose words fit its width is no trim, whatever the engine reports for its height (a display title on its exact line: Zune's 130 line in
+a 122 box draws no ellipsis; its ink is `text.clip`'s; audit B8):
 
 | Class | When | Severity, outcome |
 |---|---|---|
@@ -533,7 +535,12 @@ it in `suppressed.intent`; it never hides it from `outcomes=all`.
 
 The shell adds its own intents under every theme (a guide's follow them; `CorePolicies` in `Diagnostics.Inspect.Lint.Scene.cs`): `Allow`
 for `type.floor` on `deck:winamp@` (the Winamp deck face is a scale model of the 275 x 116 Winamp window: its title bars, LCD title and status
-letters are the skin's 6-8 DIP pixel type, never reading copy; the same title reads at full size beside it. B11, audit B8).
+letters are the skin's 6-8 DIP pixel type, never reading copy; the same title reads at full size beside it. B11, audit B8), and `Allow` for
+`contrast.text` on `deco:` (a key that marks an illustration: a glyph standing in for art, such as an event's calendar where it has no photograph
+or the concerts browse-all pictogram; never information). Key a decorative mark `deco:<what>` rather than baselining it. `TrimOk` on
+`tab#` (the title-bar tabs cap their width and ellipsise the page title: Shell-Top and C-TitleBar draw nowrap + ellipsis).
+`contrast.text` also skips a run passing under its nearest scroller's edge fade (inside the recorded feather, on an edge with content past it):
+it is on its way out of view and is read once scrolled in (snapshot field `fadeBand`).
 
 ## Baselines (accepted findings)
 

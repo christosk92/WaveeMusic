@@ -2174,6 +2174,9 @@ public static partial class Diagnostics
                 if (!n.InScope || n.Text is not { } t || !IsWords(n)) continue;
                 looked++;
                 if (!t.Trimmed) continue;
+                // One unwrapped line whose words fit its width ellipsises nothing: the engine reports its line box taller than its box (a display
+                // title on its exact line, Zune's 130 line in a 122 box; "Episodes 14" at 31.92 in 30). Whether its ink is cut is text.clip's (audit B8).
+                if (!t.Wraps && t.NaturalW <= n.Rect.W + Slack) continue;
                 string how = t.Wraps
                     ? (t.MaxLines > 0 && t.OverflowY ? $"wraps past its {t.MaxLines}-line budget" : "wraps taller than its box")
                     : "is wider than its box";
