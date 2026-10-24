@@ -17,8 +17,9 @@
 // WHAT IT REPORTS.
 //   remounted  a keyed node (unique before) that is a different node after the settle: its subtree and state were thrown away. `family` names
 //              the swap it sits under (owner rule "a tier crossing keeps its parts": a genuinely different tree swaps keyed per family under
-//              the theme's opacity-only cross-fade, SwapFade): the key of the nearest node this step mounted whose registered enter and exit
-//              are that cross-fade; null when none is, a rebuilt part (`counts.remountedOutside`, what the gate fails on).
+//              a cross-fade the theme DECLARED as a swap, `SwapFamilies.Declare`): the key of the nearest node this step mounted whose registered
+//              enter and exit are a declared swap fade; null when none is, a rebuilt part (`counts.remountedOutside`, what the gate fails on).
+//              An undeclared opacity fade (an arm cross-fade, a control's appear) is no family.
 //   vanished   a keyed node that is gone (or no longer shown) after the settle; tiers that drop a part on purpose show up here.
 //   appeared   keys shown after the settle that were not before.
 //   snapped    nodes whose laid-out rect changed ON THE COMMIT FRAME (against the resized frame, so plain window resizing is not counted) with
@@ -26,6 +27,10 @@
 //   jumped     the snapped nodes that only MOVED (same size): the content below something that changed height, shifting at once.
 //   unpainted  changed at once, but neither the node nor anything under it that moved with it draws (a container whose children glide): no
 //              visible move, so neither snapped nor jumped.
+//   weights    `counts.excessOffscreen`: of the excess, the moves wholly off the screen (below the fold, scrolled out of their viewport) on both
+//              frames; `counts.late` / `late`: parts whose laid-out rect changed in the first LateFrames settle frames after the commit with nothing
+//              easing them (a part landing late, which the commit-frame compare misses). Both are reported; `--gate` keeps counting the excess as
+//              before and `--gate-todo` adds the late reflows.
 //   committed  the window or height tier or a rung changed by the commit frame; the CONTENT tier is reported apart, in `contentCommitted`
 //              (where it first left its band: resized / commit / settle / none) and `tierSettled` (the tiers after the settle).
 // The lists hold only the topmost snapped or jumped node of a subtree, with `under` (the flagged nodes under it, itself included) and
@@ -62,9 +67,30 @@ public static partial class Diagnostics
 
             /// <summary>Snapped or jumped: a visible move with no animation.</summary>
             public bool Flagged => Motion is Snapped or Jumped;
+
+            /// <summary>Its move happened wholly off the screen: below the fold or scrolled out of its viewport, on the resized and the commit
+            /// frame both (a crossing weight: nobody saw it move; `counts.excessOffscreen`).</summary>
+            public bool Offscreen;
+
+            /// <summary>A LATE reflow: the settle frame (after the commit) on which its laid-out rect changed with no animation covering it, and by
+            /// how much (-1: none). A part that lands a few frames after the tier did still jumps (`counts.late`).</summary>
+            public int LateFrame = -1;
+            public float LateMag;
         }
 
         const int Glided = 1, Snapped = 2, Jumped = 3, Unpainted = 4;
+
+        /// <summary>The settle frames after the commit that are watched for late reflows (a part landing a few frames after the tier).</summary>
+        public const int LateFrames = 20;
+
+        /// <summary>The rect is wholly outside what the screen shows of it: the window, cut by its ancestors' clips and scroll viewports.</summary>
+        static bool OffScreen(Shell.HeadlessShell shell, NodeHandle node, in RectF rect)
+        {
+            float scale = Math.Max(0.01f, shell.Window.Scale);
+            var window = new RectF(0f, 0f, shell.Window.ClientSizePx.Width / scale, shell.Window.ClientSizePx.Height / scale);
+            InspectVisible.AncestorCut(shell.Host.Scene, node, window, out RectF screen, out _, out bool shown);
+            return !shown || rect.Intersect(screen).Intersect(window).IsEmpty;
+        }
 
         /// <summary>A node under <paramref name="node"/> that draws something of its own changed its rect since <paramref name="resized"/> with no
         /// animation covering it (no track on it or between it and <paramref name="node"/>, its presented rect at its laid-out one): what makes a
@@ -278,6 +304,27 @@ public static partial class Diagnostics
                     if (presenting || TracksUp(shell, t.Node)) { t.Motion = Glided; continue; }
                     bool onlyMoved = MathF.Abs(now.W - t.Resized.W) <= 0.5f && MathF.Abs(now.H - t.Resized.H) <= 0.5f;
                     t.Motion = !PaintsItself(scene, t.Node) && !PaintedMoveUnder(shell, t.Node, resizedAll) ? Unpainted : onlyMoved ? Jumped : Snapped;
+                    if (t.Flagged) t.Offscreen = OffScreen(shell, t.Node, t.Resized) && OffScreen(shell, t.Node, now);
+                }
+
+                // the first settle frames, watched: a part whose laid-out rect changes after the commit with nothing easing it is a late reflow
+                var last = new Dictionary<Tracked, RectF>();
+                foreach (Tracked t in tracked)
+                    if (t.ResizedLive && scene.IsLive(t.Node) && scene.IsShown(t.Node)) last[t] = scene.AbsoluteRect(t.Node);
+                for (int f = 1; f <= LateFrames; f++)
+                {
+                    RunFrames(1);
+                    foreach (Tracked t in tracked)
+                    {
+                        if (!last.TryGetValue(t, out RectF was) || !scene.IsLive(t.Node) || !scene.IsShown(t.Node)) continue;
+                        RectF now = scene.AbsoluteRect(t.Node);
+                        last[t] = now;
+                        if (SameRect(was, now) || t.LateFrame >= 0) continue;
+                        if (!SameRect(scene.PresentedAbsoluteRect(t.Node), now) || TracksUp(shell, t.Node) || !PaintsItself(scene, t.Node)) continue;
+                        if (OffScreen(shell, t.Node, now) && OffScreen(shell, t.Node, was)) continue;
+                        t.LateFrame = f;
+                        t.LateMag = MathF.Max(MathF.Max(MathF.Abs(now.X - was.X), MathF.Abs(now.Y - was.Y)), MathF.Max(MathF.Abs(now.W - was.W), MathF.Abs(now.H - was.H)));
+                    }
                 }
 
                 r.Settle = Settle(max);
@@ -464,14 +511,27 @@ public static partial class Diagnostics
             InspectLint.Snapshot snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels: null, devices: Devices) with { StagedOverlays = StagedOverlays(shell) };
             InspectLint.Report report = InspectLint.Run(snapshot, options);
 
-            int glided = 0, snapped = 0, jumped = 0, excessSnapped = 0, excessJumped = 0, unpainted = 0;
+            int glided = 0, snapped = 0, jumped = 0, excessSnapped = 0, excessJumped = 0, unpainted = 0, excessOffscreen = 0;
             foreach (Tracked t in tracked)
             {
                 if (t.Motion == Glided) glided++;
                 else if (t.Motion == Unpainted) unpainted++;
                 else if (t.Motion == Snapped) { snapped++; if (excess.Contains(t)) excessSnapped++; }
                 else if (t.Motion == Jumped) { jumped++; if (excess.Contains(t)) excessJumped++; }
+                if (t.Flagged && t.Offscreen && excess.Contains(t)) excessOffscreen++;
             }
+            // late reflows: the topmost late node of a subtree speaks for it (a section landing late moves its rows with it)
+            var lateNodes = new HashSet<NodeHandle>();
+            foreach (Tracked t in tracked) if (t.LateFrame >= 0) lateNodes.Add(t.Node);
+            var late = new List<Tracked>();
+            foreach (Tracked t in tracked)
+            {
+                if (t.LateFrame < 0) continue;
+                bool inner = false;
+                for (NodeHandle up = scene.IsLive(t.Node) ? scene.Parent(t.Node) : NodeHandle.Null; !up.IsNull && !inner; up = scene.Parent(up)) inner = lateNodes.Contains(up);
+                if (!inner) late.Add(t);
+            }
+            late.Sort(static (x, y) => y.LateMag.CompareTo(x.LateMag));
             int swapped = remounted.Count(static r => r.Family is not null);
             bool committed = !SameTiers(tiersBefore, tiersCommit);
             bool heldOldTier = SameTiers(tiersBefore, tiersResized);
@@ -520,6 +580,9 @@ public static partial class Diagnostics
                 w.WriteNumber("jumped", jumped);
                 w.WriteNumber("excessSnapped", excessSnapped);
                 w.WriteNumber("excessJumped", excessJumped);
+                w.WriteNumber("excessOffscreen", excessOffscreen);   // weight: of the excess, the moves nobody saw (below the fold, scrolled away)
+                w.WriteNumber("late", late.Count);                   // weight: parts that reflowed after the commit frame with nothing easing them
+                w.WriteNumber("lateNodes", lateNodes.Count);
                 w.WriteNumber("unpainted", unpainted);
                 w.WriteNumber("remounted", remounted.Count);
                 w.WriteNumber("remountedSwap", swapped);
@@ -528,6 +591,18 @@ public static partial class Diagnostics
                 w.WriteNumber("appeared", appeared.Count);
                 w.WriteNumber("recounted", recounted.Count);
                 w.WriteEndObject();
+
+                // late reflows (a weight, not gated by --gate; --gate-todo counts them): the topmost of a subtree, largest first
+                w.WriteStartArray("late");
+                foreach (Tracked t in late.Take(items))
+                {
+                    w.WriteStartObject();
+                    w.WriteString("key", t.Key);
+                    w.WriteNumber("frame", t.LateFrame);
+                    Inspect.Reply.Num(w, "d", t.LateMag);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
 
                 // outside a swap family first: those are what fail the gate
                 w.WriteStartArray("remounted");
@@ -588,14 +663,15 @@ public static partial class Diagnostics
             });
         }
 
-        /// <summary>An enter or exit terminal is a swap cross-fade: opacity only (no offset, scale or blur; a stagger delay aside). Every theme
-        /// declares its tier swap so (`ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`, `WinUiDiscoveryMotion.SwapFade`,
-        /// `WinUiScreenMotion.SwapFade`: `new EnterExit(Opacity: 0f, Active: true)`); core code may not name a theme's types (WVTH001), so the
-        /// inspector reads the swap off the node's registered transition by that shape. A part under it fades, it never pops.</summary>
+        /// <summary>An enter or exit terminal is a DECLARED swap cross-fade: opacity only (no offset, scale or blur; a stagger delay aside) and
+        /// carrying a family a theme declared through <see cref="SwapFamilies.Declare"/> (`ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`,
+        /// `WinUiDiscoveryMotion.SwapFade`, `WinUiScreenMotion.SwapFade`). Core code may not name a theme's types (WVTH001), so the theme declares
+        /// the fade and the inspector reads the id off the node's registered transition. An undeclared opacity fade (an arm cross-fade such as
+        /// Zune's `ArmFade`, a control's appear) is no swap: a part under it that remounts was rebuilt.</summary>
         static bool IsSwapFade(in EnterExit e)
-            => e.Active && e.Opacity < 1f && e.Dx == 0f && e.Dy == 0f && e.Sx == 1f && e.Sy == 1f && e.Blur == 0f;
+            => e.Active && e.Opacity < 1f && e.Dx == 0f && e.Dy == 0f && e.Sx == 1f && e.Sy == 1f && e.Blur == 0f && SwapFamilies.TryName(e.SwapFamily, out _);
 
-        /// <summary>A node the reconciler registered with the swap cross-fade on both its entry and its exit (`Enter = SwapFade, Exit = SwapFade`).</summary>
+        /// <summary>A node the reconciler registered with a declared swap cross-fade on both its entry and its exit (`Enter = SwapFade, Exit = SwapFade`).</summary>
         static bool SwapsOut(Shell.HeadlessShell shell, NodeHandle n)
             => shell.Host.Animation.TryGetTransition(n, out LayoutTransition t) && IsSwapFade(t.Enter) && IsSwapFade(t.Exit);
 

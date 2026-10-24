@@ -88,12 +88,12 @@ public static class ZuneMotion
 
     /// <summary>A part the new tier draws as a different tree (the mini bar ↔ the desktop bar, a panel's sheet ↔ overlay): the same
     /// opacity cross-fade as the grid's.</summary>
-    public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
+    public static readonly EnterExit SwapFade = SwapFamilies.Declare("Zune.SwapFade", new(Opacity: 0f, Active: true));
 
     /// <summary>A part whose two forms lay their words out in different places (the daylist strip ↔ its bled form): a FADE-THROUGH, the old form out
     /// where it stands, then the new one in (its enter waits out the exit), so the two layouts never show at once. A cross-fade superimposed their
-    /// titles over the cover for its whole length.</summary>
-    public static readonly EnterExit SwapThrough = new(Opacity: 0f, Active: true, DelayMs: GridCrossFadeMs);
+    /// titles over the cover for its whole length. A declared swap family: each form is its own keyed tree.</summary>
+    public static readonly EnterExit SwapThrough = SwapFamilies.Declare("Zune.SwapThrough", new(Opacity: 0f, Active: true, DelayMs: GridCrossFadeMs));
 
     /// <summary>Each leg of <see cref="SwapThrough"/>: the grid cross-fade's 160 ms, its fade kept under reduced motion.</summary>
     public static MotionTokenDef SwapThroughMotion => MotionTokenDef.Eased(GridCrossFadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);

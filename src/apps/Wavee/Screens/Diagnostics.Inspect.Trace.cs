@@ -77,6 +77,10 @@ public static partial class Diagnostics
             public int DragFrames = 8, DragStart;
             public float DragDy, DragX = float.NaN, DragY = float.NaN;
             public string DragKey = "";
+            /// <summary>Set by `theme ... trace=N` (never parsed): the traced frames the switch's transaction holds under its freeze are the
+            /// switch's own (<see cref="Row.Switch"/>). A theme switch replaces templates by design (owner decision: it resets page UI state),
+            /// so the remounts and moves those frames carry are reported apart and not gated; the frames around them are gated as usual.</summary>
+            public bool ThemeSwitch;
             public bool WatchesNodes => Keys.Count > 0 || Prefixes.Count > 0;
         }
 
@@ -198,6 +202,9 @@ public static partial class Diagnostics
             public ScrollSample? Scroll;
             /// <summary>The render census of a slow frame (which components made the flush slow), when the host has it on.</summary>
             public string? Census;
+            /// <summary>A theme switch's own frame (<see cref="Options.ThemeSwitch"/>): the host was frozen for the transaction at the frame's
+            /// start or end, so what changed on it changed under the frozen picture (the swap, its remounts, the new theme's layout).</summary>
+            public bool Switch;
 
             /// <summary>Escapes that were not absorbed locally: each one is a full-window solve.</summary>
             public int RootSolves => Math.Max(0, Escapes - LocalResolves);
@@ -481,30 +488,52 @@ public static partial class Diagnostics
                 w.WriteEndArray();
             }
             WriteSummary(w, result.Summary);
-            // the gate's counts: snapped watched keys, and remounts in and outside a swap family
+            // the gate's counts: snapped watched keys, and remounts in and outside a swap family; a theme switch's own frames apart
+            var switchFrames = new HashSet<int>();
+            foreach (Row r in result.Rows) if (r.Switch) switchFrames.Add(r.Frame);
             var snappedKeys = new HashSet<string>(StringComparer.Ordinal);
-            foreach (Move m in result.Summary.Snaps) snappedKeys.Add(m.Key);
-            var movedKeys = new HashSet<string>(snappedKeys, StringComparer.Ordinal);
-            foreach (Move m in result.Summary.Instants) movedKeys.Add(m.Key);
-            int swap = 0;
-            foreach (Remount r in result.Remounts) if (r.Family is not null) swap++;
+            var movedKeys = new HashSet<string>(StringComparer.Ordinal);
+            var switchKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Move m in result.Summary.Snaps)
+                if (switchFrames.Contains(m.Frame)) switchKeys.Add(m.Key);
+                else { snappedKeys.Add(m.Key); movedKeys.Add(m.Key); }
+            foreach (Move m in result.Summary.Instants)
+                if (switchFrames.Contains(m.Frame)) switchKeys.Add(m.Key);
+                else movedKeys.Add(m.Key);
+            int swap = 0, theme = 0;
+            foreach (Remount r in result.Remounts)
+                if (switchFrames.Contains(r.Frame)) theme++;
+                else if (r.Family is not null) swap++;
             w.WriteStartObject("counts");
             w.WriteNumber("watched", result.Watch.Count);
             w.WriteNumber("snaps", result.Summary.Snaps.Count);
             w.WriteNumber("snappedKeys", snappedKeys.Count);
             w.WriteNumber("instants", result.Summary.Instants.Count);
-            w.WriteNumber("movedAtOnce", movedKeys.Count);   // snapped or instant keys: what `inspect.py --gate` counts
+            w.WriteNumber("movedAtOnce", movedKeys.Count);   // snapped or instant keys off a switch's frames: what `inspect.py --gate` counts
             w.WriteNumber("remounted", result.Remounts.Count);
             w.WriteNumber("remountedSwap", swap);
-            w.WriteNumber("remountedOutside", result.Remounts.Count - swap);
+            w.WriteNumber("remountedOutside", result.Remounts.Count - swap - theme);   // what `inspect.py --gate` counts
+            if (o.ThemeSwitch)
+            {
+                w.WriteNumber("switchFrames", switchFrames.Count);
+                w.WriteNumber("remountedSwitch", theme);   // the theme switch's own template swap: reported, never gated
+                w.WriteNumber("movedInSwitch", switchKeys.Count);
+            }
             w.WriteEndObject();
+            if (o.ThemeSwitch)
+            {
+                w.WriteStartArray("switchFrames");
+                foreach (Row r in result.Rows) if (r.Switch) w.WriteNumberValue(r.Frame);
+                w.WriteEndArray();
+            }
             w.WriteStartArray("remounted");
             foreach (Remount r in result.Remounts)
             {
                 w.WriteStartObject();
                 w.WriteString("key", r.Key);
                 w.WriteNumber("frame", r.Frame);
-                if (r.Family is null) w.WriteNull("family");
+                if (switchFrames.Contains(r.Frame)) w.WriteString("family", "theme-switch");
+                else if (r.Family is null) w.WriteNull("family");
                 else w.WriteString("family", r.Family);
                 w.WriteEndObject();
             }
@@ -742,6 +771,7 @@ public static partial class Diagnostics
                     wheel |= down;
                 }
                 if (o.Drag.Length > 0) DragStep(shell, o, f, keyed, ref dragAt);
+                bool frozenBefore = o.ThemeSwitch && shell.Host.FreezeState == FreezePhase.Frozen;
                 long t0 = Stopwatch.GetTimestamp();
                 FrameStats s = shell.Host.RunFrame();
                 double wall = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
@@ -759,6 +789,7 @@ public static partial class Diagnostics
                     LocalResolves = s.LocalRelayoutResolves, Components = s.ComponentsRendered, ReactiveUnits = s.ReactiveUnits,
                     BindingFires = s.BindingFires, BindingWrites = s.BindingWrites, ImageApplied = s.ImageApplyCount,
                     Gc0 = s.Gc0Delta, Gc1 = s.Gc1Delta, Gc2 = s.Gc2Delta, Census = s.Census,
+                    Switch = frozenBefore || (o.ThemeSwitch && shell.Host.FreezeState == FreezePhase.Frozen),
                 };
                 if (o.WatchesNodes)
                 {

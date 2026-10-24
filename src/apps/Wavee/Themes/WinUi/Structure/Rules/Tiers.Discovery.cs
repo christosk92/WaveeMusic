@@ -407,7 +407,7 @@ public static class WinUiDiscoveryMotion
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone (the shared tier cross-fade).</summary>
-    public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
+    public static readonly EnterExit SwapFade = SwapFamilies.Declare("WinUi.Discovery.SwapFade", new(Opacity: 0f, Active: true));
 
     /// <summary>The cross-fade's timing.</summary>
     public static MotionTokenDef SwapFadeMotion => MotionTok.ControlFast;

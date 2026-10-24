@@ -98,7 +98,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ public static partial class Diagnostics
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
             Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, ThemeChoices),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
-            Arg("gpu", ArgType.Enum, "warp/hardware: the offscreen D3D12 surface (render works); none: no pixels", "warp", "warp|hardware|none"),
+            Arg("gpu", ArgType.Enum, "hardware (the default: the hardware adapter, WARP when the machine has none) or warp (WARP forced): the offscreen D3D12 surface (render works); none: no pixels", "hardware", "hardware|warp|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
             Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
@@ -278,6 +278,7 @@ public static partial class Diagnostics
         [
             Arg("save", ArgType.Path, "write the snapshot the rules saw to this JSON file"),
             Arg("replay", ArgType.Path, "lint a saved snapshot instead of the mount (needs no mount)"),
+            Arg("frame", ArgType.Path, "with replay: a PNG render of the same frame, the pixels the contrast and picture rules read"),
         ];
         static readonly ArgSpec[] s_lintArgs =
         [
@@ -294,6 +295,7 @@ public static partial class Diagnostics
             Arg("allowTrim", ArgType.List, "trim: keys or key prefixes whose text may be trimmed"),
             Arg("allowDuplicate", ArgType.List, "duplicate: labels that may appear twice"),
             Arg("ignoreUnder", ArgType.List, "duplicate: key prefixes it does not look inside", "shell.titlebar,shell.playerbar"),
+            Arg("moving", ArgType.Enum, "review: a node in an animating subtree is a review (\"lint again once it settles\"); judge: this frame is the verdict (looping text: lyrics, stage captions)", "review", "review|judge"),
         ];
         // ── end of the lint args ──
 
@@ -475,6 +477,18 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
             },
+            new(Verb.Skeleton, "skeleton", "Compare a page's loading skeleton with the page loaded: the pending fixture (it never loads) against the loaded uri, every shown key's top and height and every Skel.Region's height, in DIP; firstMoved is the jump a person sees when the data lands", "skeleton loaded=spotify:artist:ar3")
+            {
+                NeedsMount = true, Acts = true,
+                Args =
+                [
+                    Arg("loaded", ArgType.String, "the loaded page's spotify uri"),
+                    Arg("pending", ArgType.String, "a uri of the same kind the fake never answers (default: spotify:artist:arzzqx, spotify:show:shzzqx, spotify:episode:epzzqx by kind)"),
+                    Arg("max", ArgType.Int, "each settle's frame cap", "600"),
+                    Arg("items", ArgType.Int, "the most moved keys and regions listed", "20"),
+                    Arg("tolerance", ArgType.Float, "a move or a height change under this (DIP) is none", "1"),
+                ],
+            },
             new(Verb.Views, "views", "Which template draws every view key of a theme (the active one) and which layer registered every view and style key; standins counts the keys a stand-in fills", "views filter=standins")
             {
                 Args =
@@ -548,7 +562,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
