@@ -87,10 +87,12 @@ internal static partial class ZuneLibraryPage
             columns.Add(right);
             inner = new BoxEl
             {
-                Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
+                Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
                 Children =
                 [
                     Head(props, cache),
+                    // The head-to-body air is a spacer (the Short rung tightens it 16 → 8), so it eases where a Gap would snap.
+                    ZuneMotion.Air("lib:body-air", cache.Layout.BodyGap),
                     // The gaps are boxes (K.ColGap, the slot's own), so a tier that changes them eases them.
                     new BoxEl
                     {
@@ -105,8 +107,8 @@ internal static partial class ZuneLibraryPage
         return ZuneFrameRules.PageRow(new BoxEl
         {
             Key = LR.PageKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            Padding = new Edges4(0f, cache.Layout.PageTop, 0f, 0f),
-            OnBoundsChanged = cache.OnBounds, Children = [inner],
+            // The page's top is a spacer (the Short rung tightens it 8 → 4), so it eases where padding would snap.
+            OnBoundsChanged = cache.OnBounds, Children = [ZuneMotion.Air("lib:top-air", cache.Layout.PageTop), inner],
         }, cache.Layout.Gutter);
     }
 
@@ -182,7 +184,8 @@ internal static partial class ZuneLibraryPage
             Key = LR.NavKey, Direction = 1,
             Width = episodes ? l.EpisodesNavW : artists ? l.ReaderNavW : float.NaN, Grow = artists || episodes ? 0f : l.NavGrow, Basis = artists || episodes ? float.NaN : 0f,
             Shrink = artists || episodes ? 0f : 1f,
-            MinWidth = episodes ? l.EpisodesNavW : artists ? l.ReaderNavW : l.NavMinW, MaxWidth = cap, Animate = LR.ColumnResize,
+            // A declared width carries no MinWidth (Shrink 0 holds it): a floor at the NEW width would clamp the eased one and land a widening crossing at once.
+            MinWidth = artists || episodes ? float.NaN : l.NavMinW, MaxWidth = cap, Animate = LR.ColumnResize,
             Children = episodes
                 ? [EpisodesRow(p, l), ShowsLabel(), new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [ListBody(p, c)] }]
                 : HasGroups(p)

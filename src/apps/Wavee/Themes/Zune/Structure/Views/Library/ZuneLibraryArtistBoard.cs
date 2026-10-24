@@ -115,7 +115,8 @@ internal static partial class ZuneLibraryArtistReader
         };
         return new BoxEl
         {
-            Key = "board:hero", ZStack = true, Height = l.HeroH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+            // The plate's height is the tier's (180 / 196 / 380): it eases on a crossing and the albums under it ride it.
+            Key = "board:hero", ZStack = true, Height = l.HeroH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = ZuneMotion.HeightResize,
             Children =
             [
                 new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,

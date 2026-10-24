@@ -78,10 +78,11 @@ internal static partial class ZuneLibraryPage
         kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
         if (find is not null) kids.Add(find);
         if (count is not null) kids.Add(count);
+        // The head's height is the tier's (Small 32, Standard 28): it eases on a crossing, so the columns under it ride it.
         return new BoxEl
         {
             Key = LR.HeadKey, Direction = 0, Height = l.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = LR.GroupGap, MinWidth = 0f,
-            Children = kids.ToArray(),
+            Animate = ZuneMotion.HeightResize, Children = kids.ToArray(),
         };
     }
 
