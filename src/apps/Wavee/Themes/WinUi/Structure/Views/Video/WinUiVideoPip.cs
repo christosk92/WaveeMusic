@@ -12,9 +12,9 @@
 //   docked     a hover strip (mini player, full screen, turn off video), right-aligned over the top scrim; at rest on a Compact window.
 //   floating   the top strip: the drag surface, then the window's placement button ("Dock in rail" where the rail fits, W-Video; else "Play in a
 //              separate window", W-Video-Small), full screen and close, each keyed, 32 square (40 at Compact, at rest: W-Video-Compact). Then the
-//              resize zones, topmost so a zone always wins over the chrome: the core's eight above Compact (12 x 14 corners, 6 bands; the south-
-//              east one carries the grip, an L of two strokes revealed with the chrome); at Compact the card's four edges, full length, a press
-//              near a bar's end gripping the corner too (no corner cell under the 40 touch floor, nothing over the transport's ends).
+//              resize zones, topmost so a zone always wins over the chrome, ONE skeleton at every tier (12 x 14 corners, 6 bands; the south-east
+//              corner carries the grip, an L of two strokes revealed with the chrome). At Compact the corners go inert (under the 40 touch floor) and
+//              a press near a band's end grips the corner too, so no gesture is lost and the crossing keeps every node.
 //
 // Hover chrome costs no signal and no re-render: `Opacity 0 / HoverOpacity 1` under a container that earns hover with a no-op `OnPointerExit`.
 // The strips are siblings of the picture, never ancestors (the hole rule). The on-media transport over the picture is its own key.
@@ -48,7 +48,7 @@ internal static class WinUiVideoPip
         if (floating)
         {
             kids.Add(Chrome(props, tier));
-            kids.Add(tier.EdgeZones ? EdgeZones(props.Gestures, tier) : ResizeZones(props.Gestures, tier));
+            kids.Add(ResizeZones(props.Gestures, tier));
         }
 
         return new BoxEl
@@ -140,7 +140,7 @@ internal static class WinUiVideoPip
         kids.Add(Glyph("fullscreen", Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier));
         kids.Add(Glyph("close", Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.ClosePip, tier));
 
-        float side = tier.EdgeZones ? Video.Pip.EdgeBand : Video.Pip.CornerW;
+        float side = Video.Pip.CornerW;
         var top = new CornerRadius4(Radii.Overlay, Radii.Overlay, 0f, 0f);
         return new BoxEl
         {
@@ -163,115 +163,95 @@ internal static class WinUiVideoPip
         ],
     };
 
-    /// <summary>One resize zone: its slot's node, press and drag (the edges it grips are fixed).</summary>
-    static BoxEl Zone(IVideoPipGestures gestures, int slot, Video.PipEdge edge, CursorId cursor) => new()
+    /// <summary>The resize zones, ONE skeleton at every tier (a crossing keeps every node and every rect): a 3-row grid whose every non-zone cell is
+    /// pass-through, topmost so a zone always wins over the chrome. Corner rows are 12 tall, corners 14 wide, edge bands 6 thin; the south-east corner
+    /// carries the grip. Above Compact the corners grip their two edges and each band its own. At Compact (<see cref="WinUiVideoPipLayout.EdgeZones"/>)
+    /// the corners go inert (a 14 x 12 cell is under the 40 touch floor) and a press on a band within <see cref="WinUiVideoRules.CornerReach"/> of
+    /// either end grips that corner's other edge too, so every gesture stays and every target is a band.</summary>
+    static Element ResizeZones(IVideoPipGestures gestures, WinUiVideoPipLayout tier)
     {
-        Key = Key + ".zone:" + slot.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        Cursor = cursor,
-        OnRealized = h => gestures.ZoneRealized(slot, h),
-        OnPointerDown = p => gestures.ZoneDown(slot, p),
-        OnDrag = p => gestures.ZoneMove(slot, edge, p),
-        OnClick = gestures.Commit,
-        OnDragCanceled = gestures.Commit,
-    };
-
-    /// <summary>The core's eight zones (above Compact): a 3-row skeleton whose every non-zone cell is pass-through, topmost so a zone always wins over
-    /// the chrome. Corner rows are 12 tall, corners 14 wide, edge bands 6 thin; the south-east corner carries the grip.</summary>
-    static Element ResizeZones(IVideoPipGestures gestures, WinUiVideoPipLayout tier) => new BoxEl
-    {
-        Grow = 1f, Direction = 1, HitTestPassThrough = true,
-        Children =
-        [
-            new BoxEl
-            {
-                Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
-                Children =
-                [
-                    Zone(gestures, 0, Video.PipEdge.Left | Video.PipEdge.Top, CursorId.SizeNWSE) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
-                    Zone(gestures, 1, Video.PipEdge.Top, CursorId.SizeNS) with { Grow = 1f, Height = Video.Pip.EdgeBand },
-                    Zone(gestures, 2, Video.PipEdge.Right | Video.PipEdge.Top, CursorId.SizeNESW) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
-                ],
-            },
-            new BoxEl
-            {
-                Grow = 1f, MinHeight = 0f, Direction = 0, HitTestPassThrough = true,
-                Children =
-                [
-                    Zone(gestures, 3, Video.PipEdge.Left, CursorId.SizeWE) with { Width = Video.Pip.EdgeBand },
-                    new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                    Zone(gestures, 4, Video.PipEdge.Right, CursorId.SizeWE) with { Width = Video.Pip.EdgeBand },
-                ],
-            },
-            new BoxEl
-            {
-                Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, HitTestPassThrough = true,
-                Children =
-                [
-                    Zone(gestures, 5, Video.PipEdge.Left | Video.PipEdge.Bottom, CursorId.SizeNESW) with { Width = Video.Pip.CornerW, Height = Video.Pip.CornerH },
-                    Zone(gestures, 6, Video.PipEdge.Bottom, CursorId.SizeNS) with { Grow = 1f, Height = Video.Pip.EdgeBand },
-                    Zone(gestures, 7, Video.PipEdge.Right | Video.PipEdge.Bottom, CursorId.SizeNWSE) with
-                    {
-                        Width = Video.Pip.CornerW, Height = Video.Pip.CornerH,
-                        Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.End,
-                        Children = [Grip(tier)],
-                    },
-                ],
-            },
-        ],
-    };
-
-    /// <summary>The Compact zones: the card's four edges as full-length bars (the top and bottom ones span the card, the side ones the rows between),
-    /// each gripping its own edge, and a press within <see cref="WinUiVideoRules.CornerReach"/> of a bar's end gripping that corner's other edge
-    /// too. The grip mark sits in the south-east corner, painted only.</summary>
-    static Element EdgeZones(IVideoPipGestures gestures, WinUiVideoPipLayout tier)
-    {
-        BoxEl Bar(int slot, Video.PipEdge edge, CursorId cursor, bool horizontal)
-        {
-            var reach = new EdgeReach(edge, horizontal);
-            return new BoxEl
-            {
-                Key = Key + ".zone:" + slot.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                Cursor = cursor,
-                OnBoundsChanged = reach.Measure,
-                OnRealized = h => gestures.ZoneRealized(slot, h),
-                OnPointerDown = p => { reach.Press(p); gestures.ZoneDown(slot, p); },
-                OnDrag = p => gestures.ZoneMove(slot, reach.Edge, p),
-                OnClick = gestures.Commit,
-                OnDragCanceled = gestures.Commit,
-            };
-        }
-
+        bool corners = !tier.EdgeZones;
+        float reach = tier.EdgeZones ? VR.CornerReach : 0f;
         return new BoxEl
         {
-            Grow = 1f, ZStack = true, HitTestPassThrough = true,
+            Grow = 1f, Direction = 1, HitTestPassThrough = true,
             Children =
             [
                 new BoxEl
                 {
-                    Grow = 1f, Direction = 1, HitTestPassThrough = true,
+                    Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
                     Children =
                     [
-                        Bar(1, Video.PipEdge.Top, CursorId.SizeNS, horizontal: true) with { Height = Video.Pip.EdgeBand, Shrink = 0f },
-                        new BoxEl
-                        {
-                            Grow = 1f, MinHeight = 0f, Direction = 0, HitTestPassThrough = true,
-                            Children =
-                            [
-                                Bar(3, Video.PipEdge.Left, CursorId.SizeWE, horizontal: false) with { Width = Video.Pip.EdgeBand },
-                                new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
-                                Bar(4, Video.PipEdge.Right, CursorId.SizeWE, horizontal: false) with { Width = Video.Pip.EdgeBand },
-                            ],
-                        },
-                        Bar(6, Video.PipEdge.Bottom, CursorId.SizeNS, horizontal: true) with { Height = Video.Pip.EdgeBand, Shrink = 0f },
+                        Corner(gestures, 0, Video.PipEdge.Left | Video.PipEdge.Top, CursorId.SizeNWSE, corners),
+                        Band(gestures, 1, Video.PipEdge.Top, CursorId.SizeNS, horizontal: true, reach) with { Grow = 1f, Height = Video.Pip.EdgeBand },
+                        Corner(gestures, 2, Video.PipEdge.Right | Video.PipEdge.Top, CursorId.SizeNESW, corners),
                     ],
                 },
-                Grip(tier) with { AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End },
+                new BoxEl
+                {
+                    Grow = 1f, MinHeight = 0f, Direction = 0, HitTestPassThrough = true,
+                    Children =
+                    [
+                        Band(gestures, 3, Video.PipEdge.Left, CursorId.SizeWE, horizontal: false, reach) with { Width = Video.Pip.EdgeBand },
+                        new BoxEl { Grow = 1f, MinWidth = 0f, HitTestPassThrough = true },
+                        Band(gestures, 4, Video.PipEdge.Right, CursorId.SizeWE, horizontal: false, reach) with { Width = Video.Pip.EdgeBand },
+                    ],
+                },
+                new BoxEl
+                {
+                    Height = Video.Pip.CornerH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, HitTestPassThrough = true,
+                    Children =
+                    [
+                        Corner(gestures, 5, Video.PipEdge.Left | Video.PipEdge.Bottom, CursorId.SizeNESW, corners),
+                        Band(gestures, 6, Video.PipEdge.Bottom, CursorId.SizeNS, horizontal: true, reach) with { Grow = 1f, Height = Video.Pip.EdgeBand },
+                        Corner(gestures, 7, Video.PipEdge.Right | Video.PipEdge.Bottom, CursorId.SizeNWSE, corners) with
+                        {
+                            Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.End,
+                            Children = [Grip(tier)],
+                        },
+                    ],
+                },
             ],
         };
     }
 
+    static string ZoneKey(int slot) => Key + ".zone:" + slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>A corner cell (14 x 12): it grips its two edges, or (<paramref name="active"/> false, Compact) is an inert pass-through cell of the same
+    /// size and key, so the crossing keeps it.</summary>
+    static BoxEl Corner(IVideoPipGestures gestures, int slot, Video.PipEdge edge, CursorId cursor, bool active) => active
+        ? new BoxEl
+        {
+            Key = ZoneKey(slot), Width = Video.Pip.CornerW, Height = Video.Pip.CornerH, Shrink = 0f,
+            Cursor = cursor,
+            OnRealized = h => gestures.ZoneRealized(slot, h),
+            OnPointerDown = p => gestures.ZoneDown(slot, p),
+            OnDrag = p => gestures.ZoneMove(slot, edge, p),
+            OnClick = gestures.Commit,
+            OnDragCanceled = gestures.Commit,
+        }
+        : new BoxEl { Key = ZoneKey(slot), Width = Video.Pip.CornerW, Height = Video.Pip.CornerH, Shrink = 0f, HitTestPassThrough = true };
+
+    /// <summary>An edge band: it grips its own edge, and (<paramref name="reach"/> above 0) the corner's other edge when a press lands that close to
+    /// either of its ends.</summary>
+    static BoxEl Band(IVideoPipGestures gestures, int slot, Video.PipEdge edge, CursorId cursor, bool horizontal, float reach)
+    {
+        var grip = new EdgeReach(edge, horizontal, reach);
+        return new BoxEl
+        {
+            Key = ZoneKey(slot),
+            Cursor = cursor,
+            OnBoundsChanged = grip.Measure,
+            OnRealized = h => gestures.ZoneRealized(slot, h),
+            OnPointerDown = p => { grip.Press(p); gestures.ZoneDown(slot, p); },
+            OnDrag = p => gestures.ZoneMove(slot, grip.Edge, p),
+            OnClick = gestures.Commit,
+            OnDragCanceled = gestures.Commit,
+        };
+    }
+
     /// <summary>A full-length edge bar's grip: its own edge, plus the corner's other edge when the press lands within reach of either end.</summary>
-    sealed class EdgeReach(Video.PipEdge own, bool horizontal)
+    sealed class EdgeReach(Video.PipEdge own, bool horizontal, float reach)
     {
         float _length;
         Video.PipEdge _near;
@@ -284,8 +264,9 @@ internal static class WinUiVideoPip
         public void Press(Point2 local)
         {
             float at = horizontal ? local.X : local.Y;
-            _near = at <= VR.CornerReach ? (horizontal ? Video.PipEdge.Left : Video.PipEdge.Top)
-                : at >= _length - VR.CornerReach ? (horizontal ? Video.PipEdge.Right : Video.PipEdge.Bottom)
+            _near = reach <= 0f ? Video.PipEdge.None
+                : at <= reach ? (horizontal ? Video.PipEdge.Left : Video.PipEdge.Top)
+                : at >= _length - reach ? (horizontal ? Video.PipEdge.Right : Video.PipEdge.Bottom)
                 : Video.PipEdge.None;
         }
     }

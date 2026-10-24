@@ -14,8 +14,8 @@ namespace Wavee.Themes.WinUi;
 /// <param name="GlyphBox">A chrome button's square target (W-Video 32; W-Video-Compact 40, the touch floor).</param>
 /// <param name="Glyph">Its icon's size (W-Video 14; 16 in the 40 box).</param>
 /// <param name="ChromeAtRest">The chrome shows at rest (a Compact window has no hover to reveal it).</param>
-/// <param name="EdgeZones">The resize zones are the four card edges, full length, and a press near a bar's end grips the corner too: no corner
-/// cell under the 40 touch floor and nothing over the transport's ends (Compact). Otherwise the core's eight zones (12 x 14 corners, 6 bands).</param>
+/// <param name="EdgeZones">The corner cells go inert and a press on an edge band near either end grips that corner too: no corner cell under the
+/// 40 touch floor (Compact). Otherwise each of the eight zones grips its own edges (12 x 14 corners, 6 bands). Same cells either way.</param>
 public sealed record WinUiVideoPipLayout(WidthTier Tier, float GlyphBox, float Glyph, bool ChromeAtRest, bool EdgeZones);
 
 /// <summary>The constants of WinUI's mini player and its per-window-tier records.</summary>
@@ -36,12 +36,12 @@ public static class WinUiVideoRules
     /// <summary>The resize grip at the south-east corner (W-Video: an L of two 10-DIP strokes, 4 in from the corner).</summary>
     public const float GripLength = 10f, GripStroke = 1.5f, GripInset = 4f;
 
-    /// <summary>How far from a full-length edge bar's end a press also grips the corner (the Compact edge zones).</summary>
+    /// <summary>How far from an edge band's end a press also grips the corner (the Compact edge zones).</summary>
     public const float CornerReach = 40f;
 
     private static readonly WinUiVideoPipLayout[] s_tiers =
     [
-        // W-Video-Compact: 40 targets at rest, the card's edges as the resize zones
+        // W-Video-Compact: 40 targets at rest, the edge bands as the resize zones
         new(WidthTier.Compact, GlyphBox: 40f, Glyph: 16f, ChromeAtRest: true, EdgeZones: true),
         // W-Video-Small: the hover chrome, 32 targets
         new(WidthTier.Small, GlyphBox: 32f, Glyph: 14f, ChromeAtRest: false, EdgeZones: false),
