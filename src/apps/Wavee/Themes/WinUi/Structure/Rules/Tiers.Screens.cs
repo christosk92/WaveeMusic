@@ -77,7 +77,7 @@ public static class WinUiScreenMotion
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 
     /// <summary>A part the new tier draws as a different tree enters and leaves on its opacity alone.</summary>
-    public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
+    public static readonly EnterExit SwapFade = SwapFamilies.Declare("WinUi.Screens.SwapFade", new(Opacity: 0f, Active: true));
 
     /// <summary>The cross-fade's timing.</summary>
     public static MotionTokenDef SwapFadeMotion => MotionTok.ControlFast;

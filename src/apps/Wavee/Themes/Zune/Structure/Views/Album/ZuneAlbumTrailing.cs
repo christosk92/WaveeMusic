@@ -361,7 +361,7 @@ internal static class ZuneAlbumTrailing
         body = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Animate = Z.SlotReveal,
-            Children = [body with { Enter = enter, Exit = ZuneMotion.GridCrossFade }],
+            Children = [body with { Enter = enter, Exit = ZuneMotion.SwapFade }],
         };
         // In the aside the heading carries a name in a narrow column: the 22/28 step over at most two lines, the row a floor of the heading height (audit B).
         Element heading = aside

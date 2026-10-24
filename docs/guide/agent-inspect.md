@@ -209,7 +209,7 @@ without `theme` or `kind` keeps the active ones.
 | `theme` | `classic`, `zune` or `winui` (default: the active theme; a fresh server is on Classic). Zune turns Developer mode on; the others turn it off. |
 | `kind` | `dark` or `light`. |
 | `grade` | Cover grading: `hue` (a hue per uri), `grey`/`gray` (every cover grey) or `greynow` (only the playing one grey). |
-| `gpu` | `warp` (default) or `hardware`: the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels). |
+| `gpu` | `hardware` (default: the machine's hardware adapter, WARP when it has none; `devices` reads `offscreen (D3D12)`, or `offscreen (D3D12 (WARP))` on the fallback) or `warp` (WARP forced): the offscreen D3D12 surface, so `render` works. `none`: DirectWrite over the recording device (no pixels; motion checks that render nothing). Same lint and crossing counts on either surface, pixels within anti-aliasing, hardware 1.5-5x faster (10-24: Zune album 1440 3.4 s against 8.0 s). |
 | `images` | `fake` (default): the engine's deterministic decoder paints every image as a per-image gradient. `real`: the app's own pipeline (WIC behind the disk-first fetcher) decodes the bundled photographs as they are, so text over a photograph renders, and lints, over the real picture. The fake artist `ar9` (The Longtime) carries a bright header photograph (`assets/covers/header-bright.jpg`, a white sky over a pale ground): the worst case for text on a photograph. |
 | `keepRoute=true` | Keeps the current navigation and tabs. Without it, the mount starts from a fresh Home on the first tab. |
 | `setup=true` or `signin` | (`1`, `on` and `yes` are `true`.) Mounts a first run: the setup wizard's plate opens over the shell (give `frames` ~120 before `render`). `signin` asks for the sign-in page; today the plate still opens on its first page, so click `next` to reach it. |
@@ -226,7 +226,7 @@ The navigation args are the ones `goto` takes.
 ```json
 {"cmd":"mount","args":{"w":400,"h":860,"theme":"zune","kind":"dark","route":"home"},"id":1}
 → {"id":1,"ok":true,"cmd":"mount","frames":41,"settled":true,"size":{"w":400,"h":860,"scale":1},"route":"home",
-   "text":"dwrite","devices":"offscreen (D3D12 (WARP))","render":true,
+   "text":"dwrite","devices":"offscreen (D3D12)","render":true,
    "tiers":{"window":"Compact","height":"Regular","content":"Compact","contentWidth":400,"viewportWidth":400,
             "viewportHeight":860,"rungs":[]},"theme":"zune","kind":"dark"}
 ```
@@ -452,6 +452,12 @@ skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons
 (otherwise that settle's 600). **`trace=N` measures the switch itself**: the traced frames are the ones that run the transaction,
 from the frame after the request (watch with `prefix=`), and `transactionFrames` counts to the frame it completed on (`theme zune
 trace=120 prefix=shell.`: `measureTotal` 2376 over the swap, where it read 0 when the trace began after the switch).
+**A switch's own frames are not gated.** A theme switch replaces templates by design (owner decision: it resets page UI state):
+the traced frames the transaction holds under its freeze are listed in `trace.switchFrames`, and the remounts there (family
+`theme-switch`, `counts.remountedSwitch`) and the keys that moved there (`counts.movedInSwitch`) are reported, never counted by
+`--gate`. Every other traced frame is gated as any trace is: a move on the frames around the switch still fails
+(`mount ... theme=zune route=albums`, `theme classic trace=60 prefix=lib:,shell. max=300 drag=6 dragFrames=8 dragStart=20
+dragKey=lib:grip`: switch frames 0-3 exempt, the drag's snaps on frames 21-27 fail the gate).
 
 ### `option {themeId?, id?, value?}`
 
@@ -645,6 +651,25 @@ filter. `filter=standins` lists only the stand-ins, `filter=own` only the theme'
 Classic reports `standins: 0` (it has no stand-in); WinUI 54 on 2026-10-24 (52 view keys, `Detail.Facts`, `Show.Reader`). To see
 which keys on a page are a stand-in's, `find prefix=<p>` prints each node's `template`.
 
+### `skeleton {loaded, pending?, max?, items?, tolerance?}`
+
+Compares a page's loading skeleton with the page loaded, in DIP. It goes to `pending` (a fixture the fake catalogue never answers,
+so the page stays on its skeleton: by default `spotify:artist:arzzqx`, `spotify:show:shzzqx` or `spotify:episode:epzzqx` for the
+kind of `loaded`), settles with `loops=skeletons`, then goes to `loaded` and settles. Every shown key of the content card (unique
+keys, the pending id read as the loaded one) and every `Skel.Region` is compared: `moved[{key, skeleton, loaded, dy, dh}]` (top
+first), `regions[{key, skeleton, loaded, dh}]`, `counts{skeletonKeys, loadedKeys, matched, moved, regions}` and `firstMoved{key,
+dy}`: the first key on screen that moved down, the jump a person sees when the data lands (null when nothing did). Report-only:
+no gate reads it. `inspect.py --findings` prints it as lines.
+
+```text
+mount w=400 h=860 theme=zune route=home
+skeleton loaded=spotify:artist:ar3
+→ skeleton spotify:artist:arzzqx -> spotify:artist:ar3: 19 of 26 keys moved or resized; the first on screen to move down: zune-artist-hero by 40 DIP
+    moved   zune-band  dy=0 dh=40        moved   zune-artist-hero  dy=40 dh=26.25     (40 + 26: the audit's 67 DIP jump at Compact)
+```
+
+At 1440 the same command reports nothing on screen moving down (`zune-artist-popular` dy 0, dh +103: its rows grow below it).
+
 ### `lint {rules?, scope?, root?, nth?, min?, limit?, outcomes?, baseline?, save?, replay?, ...}`
 
 Checks the mounted scene (or a saved snapshot) for the flaws a visual audit looks for, and returns findings an agent can act
@@ -665,7 +690,10 @@ snapshots. In short:
 - **"lint min=error clean"** means `summary.error` is 0: `summary` counts the fail findings (and report lines) of the gate
   rules at or above `min`, listed or not. A review or a todo finding never breaks it.
 - `save=<file>` writes the snapshot the rules saw; `replay=<file>` lints a saved snapshot instead of the mount and **needs no
-  mount** (the server routes it before its mount check).
+  mount** (the server routes it before its mount check). `frame=<png>` with `replay` gives it the pixels of a `render` of the same
+  frame, so contrast and the picture rules judge an older exe's capture too.
+- `moving=judge` judges the frame as it is, animating subtrees included (lyrics and the stage's captions loop forever and
+  otherwise only ever read `review: still animating`).
 
 | Arg | Meaning |
 |---|---|
@@ -676,7 +704,8 @@ snapshots. In short:
 | `limit` | The most findings listed per rule name, 100 by default; cut names are in `truncated`. |
 | `outcomes` | The outcomes LISTED: any of `fail`, `review`, `suppressed`, `report`, or `all` (default `fail,review,report`). Every outcome is counted either way. |
 | `baseline` | A JSON-lines file of accepted findings (`{fp, rule, reason, by, date}`); a match is `suppressed`. |
-| `save`, `replay` | Write the snapshot the rules saw / lint a saved snapshot. `lint` only: `crossing` refuses both as unknown args. |
+| `save`, `replay`, `frame` | Write the snapshot the rules saw / lint a saved snapshot / with `replay`, a PNG render of that frame (its pixels). `lint` only: `crossing` refuses them as unknown args. |
+| `moving` | `review` (default: a node mid-animation is a review) or `judge` (this frame is the verdict: looping text). |
 | `typeFloor` | `type.floor`: text under this size in DIP is an error. 11 by default. |
 | `targetFloor`, `targetFloorCompact` | `target.size`: the smallest hit target outside Compact (32) and at Compact (40). |
 | `gapMin` | `space.stack`: stacked text blocks closer than this touch (a report). 2 DIP by default. |
@@ -729,7 +758,7 @@ excess); `control=false` skips it.
 
 Reading a crossing:
 
-- The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
+- The result does not depend on `gpu`: the default hardware surface, WARP and `gpu=none` report the same hold, tier states, counts and
   lists (the offscreen window reports the window flags the crossing sets, engine `9476a4bbe`). Only `settle.frames` varies:
   it changes with the machine's load, on either device. (A settle's `loops` can differ between servers on either device: the
   playing-row race under Settling.) `gpu=none` is faster; under the default, `render` works in the same
@@ -772,7 +801,8 @@ Reading a crossing:
 | `contentCommitted` | Where the content tier first differed from `tierBefore.content`: `resized`, `commit`, `settle` or `none`. |
 | `control` | `{from{w,h}, snapped, jumped}`: the control step (above), or null (`controlNote` says why), or `"off"`. |
 | `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `excessSnapped`, `excessJumped` (past the control: what `--gate` counts), `unpainted` (changed at once but draws nothing, nor does anything under it that moved with it: a container whose children glide), `remounted`, `remountedSwap`, `remountedOutside` (what `--gate` fails on), `vanished`, `appeared`, `recounted`. Read the counts, not the length of a list. |
-| `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. Each has `family`: the key of the swap it sits under (the nearest node this step mounted whose registered enter AND exit are an opacity-only cross-fade, every theme's `SwapFade`: owner rule "a tier crossing keeps its parts" lets only such a genuinely different tree remount), or null: a rebuilt part. Listed outside a family first. |
+| `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. Each has `family`: the key of the swap it sits under (the nearest node this step mounted whose registered enter AND exit are a DECLARED swap cross-fade: opacity only, and carrying the family id `SwapFamilies.Declare` gave it; the four theme helpers `ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`, `WinUiDiscoveryMotion.SwapFade` and `WinUiScreenMotion.SwapFade` declare theirs; owner rule "a tier crossing keeps its parts" lets only such a genuinely different tree remount), or null: a rebuilt part. An undeclared opacity fade (an arm cross-fade such as Zune's `ArmFade`, a control's appear) is no family: Zune album W640's 76 arm parts count outside. Listed outside a family first. |
+| `late` | Weights (report-only): `counts.excessOffscreen` is how many of the excess moves happened wholly off the screen (below the fold, scrolled out of their viewport: nobody saw them; Classic home H680 narrowing: 142 of 167), and `late[{key, frame, d}]` / `counts.late` the parts whose laid-out rect changed in the 20 settle frames after the commit with nothing easing them (a part landing late, which the commit-frame compare misses). `--gate` reads neither; `--gate-todo` fails on late reflows. A container that changes at once while its children glide is `unpainted` already. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
 | `appeared` | Keys shown after that were not before. |
 | `recounted` | Keys that repeat (rows) whose count changed: `{key, before, after}`. |
