@@ -111,7 +111,7 @@ internal static class ClassicHomeRecents
                 new BoxEl
                 {
                     Shrink = 0f, Visible = Prop.Of(() => Controls.RelatesNow(uri)),
-                    Children = [Controls.Equalizer(p.Playing, Tok.AccentDefault, ClassicHomeRules.EqualizerH)],
+                    Children = [Controls.Equalizer(Controls.PlayingWhenRelates(p.Playing, uri), Tok.AccentDefault, ClassicHomeRules.EqualizerH)],
                 }.Skeletonized(false),
                 ClassicHomeZones.Meta(cell.Detail) with { Shrink = 1f },
                 ClassicHomeZones.Meta("") with

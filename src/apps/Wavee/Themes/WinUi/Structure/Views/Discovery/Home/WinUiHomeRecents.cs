@@ -103,7 +103,7 @@ internal static class WinUiHomeRecents
                 new BoxEl
                 {
                     Shrink = 0f, Visible = Prop.Of(() => Controls.RelatesNow(uri)),
-                    Children = [Controls.Equalizer(p.Playing, Tok.AccentDefault, WinUiHomeRules.EqualizerH)],
+                    Children = [Controls.Equalizer(Controls.PlayingWhenRelates(p.Playing, uri), Tok.AccentDefault, WinUiHomeRules.EqualizerH)],
                 }.Skeletonized(false),
                 WinUiHomeZones.Meta(cell.Detail) with { Shrink = 1f },
             ],
