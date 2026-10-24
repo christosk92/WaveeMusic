@@ -99,6 +99,10 @@ internal static partial class ClassicPlayerBar
         // keeps its node and glides into its new place, and the bar's own height eases between the mini's 56 and the 72 through real layout. The
         // two forms were two trees: the cover, the title, the play disc and the text block remounted on every crossing.
         bool mini = barTier.Form == ClassicBarForm.Mini;
+        // What the form adds on a crossing fades in; the bar's first frame (a mount) does not replay it.
+        var shown = rc.UseRef(false);
+        LayoutTransition formMotion = shown.Value ? ClassicPlayerBarLayout.FormMotion : ClassicPlayerBarLayout.MoveMotion;
+        shown.Value = true;
 
         // ── LEFT — the now-playing identity ──────────────────────────────────────────────────────────────────────
         Prop<ColorF> titleInk = Prop.Of(() => titleLinkHover.Value && props.TitleHasRoute()
@@ -369,7 +373,7 @@ internal static partial class ClassicPlayerBar
             {
                 Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(m.ClusterGap, 0f, 0f, 0f),
-                Gap = m.SeekGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = seekKids.ToArray(),
+                Gap = m.SeekGap, Animate = formMotion, Children = seekKids.ToArray(),
             };
             var kids = new List<Element>(5);
             if (huge)
@@ -496,14 +500,14 @@ internal static partial class ClassicPlayerBar
             {
                 Key = "right", MinWidth = ClassicPlayerTiers.HugeZoneW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                 Margin = new Edges4(rowGap, 0f, 0f, 0f),
-                Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
+                Gap = m.RightGap, Animate = formMotion, Children = rightKids.ToArray(),
             }
             : new BoxEl
             {
                 // With shuffle and repeat in the centre column the slack went with them: the box is its slots' width, one cluster gap after them.
                 Key = "right", Width = flanksRight ? float.NaN : v.RightWidth, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                 Margin = new Edges4(flanksRight ? m.RightGap : rowGap, 0f, 0f, 0f),
-                Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
+                Gap = m.RightGap, Animate = formMotion, Children = rightKids.ToArray(),
             };
 
         // ── assemble: the top edge (the activity edge, or the mini bar's progress hairline) + the single centred row ─────────────────
