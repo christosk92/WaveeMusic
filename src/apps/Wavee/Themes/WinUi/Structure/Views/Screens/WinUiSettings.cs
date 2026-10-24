@@ -177,10 +177,15 @@ internal static partial class WinUiSettings
     {
         var grouping = props.Grouping;
         var labels = new string[grouping.Count];
-        for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(grouping.Tabs[i].TitleKey);
+        var keys = new string?[grouping.Count];   // `settings:tabitem:<slug>`: a driver finds and clicks a tab by its slug
+        for (int i = 0; i < labels.Length; i++)
+        {
+            labels[i] = Loc.Get(grouping.Tabs[i].TitleKey);
+            keys[i] = "settings:tabitem:" + grouping.Tabs[i].Slug;
+        }
         int group = Math.Clamp(props.Group, 0, Math.Max(0, labels.Length - 1));
         var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight } : null;
-        Element bar = SelectorBar.Create(labels, new Signal<int>(group), onChange: props.OpenGroup, style: style);
+        Element bar = SelectorBar.Create(labels, new Signal<int>(group), onChange: props.OpenGroup, style: style, itemKeys: keys);
         return new BoxEl
         {
             Key = "settings:tabs", Direction = 1, Shrink = 0f, MinWidth = 0f,

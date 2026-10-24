@@ -217,7 +217,9 @@ without `theme` or `kind` keeps the active ones.
 | `marquee=on` or `off` | Sets the app's marquee setting (Settings > Appearance) before the mount. |
 | `remote=<name>` | The play bar says it is playing on a remote output of that name (`--fake` has no Connect cluster). To turn the output remote on a live mount, use `play remote=<name>`. |
 | `panelW=<dip>` | The side panel's stored width (clamped to the theme's drag range when it opens), e.g. `panelW=280` for WinUI's narrowest pane. |
-| `video=fullscreen`, `docked`, `floating` or `pip` | Puts the video surface up (`pip` is `floating`) with a fake track playing (no frames decode offline: the chrome and menu draw over an empty picture; the fullscreen chrome is a hover band: add `chrome=shown` to draw it at rest at every tier). Beside it, `fromMs` sets the track's position (74000) and `player=fake` binds an idle engine player; without `video` both are refused. |
+| `video=fullscreen`, `docked`, `floating` or `pip` | Puts the video surface up (`pip` is `floating`) with `spotify:track:tr26` playing: the rich album's first row, which has a music video (`HasVideo`), so the play bar shows its video split and the placement menu opens from it (WinUI: the split's chevron is unkeyed, `click x=1324 y=924` at 1440x960 opens "Where to play the video"). No frames decode offline: the inspector's video resolver never answers while the mount lives, so the join stays in flight (the poster, then the ring and "Loading...") instead of failing to audio; the next mount lets it go. Beside it, `fromMs` sets the track's position (74000), `player=fake` binds an idle engine player, and `join=` picks the join poster's state; without `video` all three are refused. |
+| `join=poster`, `working` or `failed` | The join poster as the host's switch events would leave it (`Playback.Video.Phase`, folded into `Video.JoinNow`): `working` the ring and "Loading..." (the default offline), `failed` the fault line ("Can't play this track"), `poster` the artwork alone (a player bound, nothing in flight; it binds the fake player). |
+| `chrome=shown` | The chrome at rest with no auto-hide: Zune's hover-revealed video band, the video presenter's transport (`AutoHideTransportControls` off; the transport mounts only with a player: add `player=fake`) and the fullscreen stage's controls (its idle machine is off, so the card, Huge and 4K stage keep their chrome however long you wait: `mount ... stage=lyrics layout=card chrome=shown`, `play ...`, `key f11`). |
 
 The navigation args are the ones `goto` takes.
 
@@ -374,6 +376,19 @@ is checked and picked as `click` does (`nth`, `force`), except that nothing need
 the scroller under the pointer either way. The settle waits for the scroller to stop, so the reply's
 `scroll {offset, max}` (with `key`: the first scroll viewport under that node) is where the glide ended.
 
+### `drag {key | x,y, dx?, dy?, steps?, button?, mods?}`
+
+A mouse drag as one command, the way a hand makes it: the pointer moves onto the press point (`key`'s visible centre, checked
+and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button goes down, the pointer travels `dx`,`dy` DIP in
+`steps` equal moves (8), one per frame, and the button comes up at the end point; then the settle. The reply has `at` (the press),
+`to` (the release) and `steps`. `trace=N` traces N frames from the release (a drop's settle); to trace the frames of the drag
+itself use `trace`'s own `drag=` args (`drag`, `dragFrames`, `dragStart`, `dragKey`/`dragX`/`dragY`, `dragDy`: DIP per frame,
+cycled).
+
+```text
+drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
+```
+
 ### `play {uri?, fromMs?, next?, ago?, remote?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
@@ -385,7 +400,7 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 `uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
-### `state {kind}` and `dialog {kind}`
+### `state {kind, page?}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
@@ -399,15 +414,32 @@ The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune C
 `lint` fails them as `overlay.open` until `key esc` closes them.
 `mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
-photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. Lint the lightbox with `root=` its key,
+photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
+`mount ... images=real`**: under the default fake decoder its photographs are flat gradients and it cannot be reviewed. Lint the lightbox with `root=` its key,
 so the page under the modal is not judged. `key esc` closes it.
+
+**A page's own loading and empty state: `page=`.** `state kind=loading|empty page=<p>` shows the page's OWN state instead of the
+shared vacancy: `page=albums|artists|podcasts|audiobooks` (`library` is albums) writes the account's relations behind that Library tab
+back to Unknown (`loading`: the navigator's skeleton, as on a cold start; the fake never answers the ask again) or to Complete with no
+rows (`empty`: the tab's empty state), then opens the tab (`Entities.Fake.Shelves.cs`; Artists stages followed artists, saved albums and
+likes, Podcasts and Audiobooks share saved shows). `page=show` opens the pending show `spotify:show:shzzqx` (loading: header and rows on
+their skeleton) or the show with no episodes `sh8` (empty); `page=episode kind=loading` opens the pending episode `epzzqx` (an episode has
+no empty state). `loading` settles on the skeleton (`loops=skeletons`). The next `mount` (or `reset`) puts the account's rows back.
+
+```text
+state kind=loading page=library      # W-SkeletonList: the Albums navigator's skeleton
+state kind=empty page=podcasts       # W-EmptyLibrary: Library, Podcasts with no followed show
+state kind=loading page=show
+```
 
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:
 the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, then either `state cold-rows` (the membership lands, rows 1
 and 4 know their face, the rest in flight) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
 credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). Pass `trace=N` on a `state` command to trace its
-frames. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
+frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
+skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
+`settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
 `goto uri=spotify:playlist:pl2` from another playlist with `trace=200` catches the hold's release (the frame its rows land) inside the trace.
 
 ### `theme {id}`
@@ -417,7 +449,9 @@ frames. A real stale list also HOLDS its rows on the open's revalidation for up 
 - Not mounted: selects the theme for the next mount.
 
 `max` caps the transaction at 900 frames by default (`option`: the apply), and, when given, the settle after it too
-(otherwise that settle's 600).
+(otherwise that settle's 600). **`trace=N` measures the switch itself**: the traced frames are the ones that run the transaction,
+from the frame after the request (watch with `prefix=`), and `transactionFrames` counts to the frame it completed on (`theme zune
+trace=120 prefix=shell.`: `measureTotal` 2376 over the swap, where it read 0 when the trace began after the switch).
 
 ### `option {themeId?, id?, value?}`
 
@@ -434,10 +468,33 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
-### `find {key | prefix}`
+### `setting {tab?, id?, value?}`
+
+The app's own settings (a theme's options are `option`). `setting` lists every Settings row as data (`SettingsDoc`): `{tab, section,
+id, kind, value, writer, readOnly?, enabled?, reason?}`; `tab=appearance` lists one tab's. `setting id=<row>` reads one row;
+`setting id=<row> value=<v>` sets it through the row's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a
+slider's number, a choice's, a segmented row's or a picker's index; an action runs with no value), and bumps the page epoch when the
+writer asks the page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a
+click. A value set on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the row's writer (toggles,
+sliders, choices). One set with nothing mounted is for the next mount, which keeps it. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
+
+```text
+setting id=lyricsBlur value=0        # the lyrics blur off (0..100)
+setting id=marquee value=false
+setting tab=appearance               # the tab's rows with their values
+```
+
+The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's areas, WinUI's tabs; Zune's section list is
+`zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
+arg=appearance` opens it directly).
+
+### `find {key | prefix, visibleOnly?, depth?}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is
-in reading order (top, then left). `find` used to be a prefix search, so an exact miss that `prefix=` would answer says so:
+in reading order (top, then left). Two args cut a broad prefix down (`find prefix=stage:` alone lists 30 full-window layers):
+`visibleOnly=true` keeps only nodes that are shown and at least partly on screen, and `depth=N` leaves out a match nested inside
+more than N other matches (`depth=0`: the outermost matches only, so `find prefix=stage: depth=0 visibleOnly=true` lists the
+stage's top layers and not every part inside them). When they leave some out, `matched` is the count before they did. `find` used to be a prefix search, so an exact miss that `prefix=` would answer says so:
 `"hint":"0 nodes keyed exactly 'zune-band-pivot:'; 4 keys start with it: find prefix=zune-band-pivot:"`. Each entry has:
 
 | Field | Meaning |
@@ -447,6 +504,7 @@ in reading order (top, then left). `find` used to be a prefix search, so an exac
 | `onScreen` | The share of the rect that can be seen, 0..1, after the window and every clipping ancestor (0 when not shown). |
 | `actionable` | What `click` and `hover` check (see `click`; `scroll` needs no handler at the centre). An actionable entry has `nth`, the index a pointer verb's `nth` takes for this key, and sometimes a `note`; any other has `why`. |
 | `kind`, `text?` | The element type and the first text under it (a button's label; an icon glyph prints as `glyph:<name>`, alone or inside words, see `dump`). |
+| `template?` | The template that drew the node: the id of the nearest view slot at or above it (`winui.shell.frame`, `classic.lyrics.view`). A `classic.*` template under WinUI or Zune is a stand-in (`views` lists them all). |
 
 ```json
 {"cmd":"find","args":{"prefix":"zune-band-pivot:"},"id":5}
@@ -456,7 +514,7 @@ in reading order (top, then left). `find` used to be a prefix search, so an exac
    "actionable":true,"nth":0,"kind":"Box","text":"Recents"}],"count":4,"order":"reading order (top, then left); ..."}
 ```
 
-### `dump {root?, nth?, depth?, keysOnly?, visibleOnly?, text?, max?}`
+### `dump {root?, nth?, depth?, keyDepth?, keysOnly?, visibleOnly?, text?, max?}`
 
 Dumps the scene as one flat array in depth-first child order. `parent` is an index into that array.
 
@@ -465,7 +523,8 @@ Dumps the scene as one flat array in depth-first child order. `parent` is an ind
 | `root` | Starts at the node with that key (every match; `nth` picks one). Without it, the dump covers the whole tree plus the overlays that do not hang under the root. |
 | `visibleOnly` | `true` by default: skips hidden, parked and transparent subtrees, and nodes with an empty box. |
 | `keysOnly=true` | Lists keyed nodes only. |
-| `depth` | Limits how deep the walk goes. |
+| `depth` | Limits how deep the walk goes, counting every listed node (each unkeyed wrapper box is a level). |
+| `keyDepth` | Limits the walk to this many KEYED levels below the root, whatever the boxes between: `dump root=lyrics:stage keyDepth=2` reaches the lyric lines (`ll1:0:N`, 14 boxes down), where `depth=12` lists none. |
 | `text=false` | Leaves out the text blocks. |
 | `max` | The most nodes to list; 4000 by default. The reply says `"truncated":true` when the limit cuts the list. |
 
@@ -491,6 +550,7 @@ Each node has these fields. Fields marked with `?` appear only when they apply (
 | `key?` | The node key (`Element.Key`, from `SceneStore.DebugKeyOf`). |
 | `path` | The nearest keyed ancestor and the child-index path below it (`NodeDescriber`). |
 | `kind` | The element type. |
+| `template?`, `view?` | On the first node of a view slot (its anchor, or the first node listed under it when the anchor has no box): the template id the theme's registry gave the slot and the view key id (`"template":"classic.lyrics.view","view":"Lyrics.View"`). |
 | `visual?` | The visual kind. |
 | `rect` | The presented absolute rect. |
 | `opacity?` | The node's own opacity, when below 1. |
@@ -530,9 +590,9 @@ and then restores the mount's; `max` caps the settle after that rescale (600).
 `render` is unavailable with `gpu=none`, under `--text headless`, and when the surface could not be created. In those
 cases it answers `{"ok":false,"error":...,"why":...}`.
 
-### `tiers`
+### `tiers {theme?}`
 
-Returns the window's current `TierFacts`:
+Returns the window's current `TierFacts` (when a mount is up) and the theme's tier `policy` (always):
 
 - `window`, `height` and `content` tiers
 - `contentWidth`, `viewportWidth` and `viewportHeight`: the sizes the ladders read now, the window's layout viewport and the
@@ -543,8 +603,47 @@ Returns the window's current `TierFacts`:
   mount or a tier change). The app republishes the facts only when a tier or a rung changes or a modal resize ends at a new size, never
   per resized frame nor for a window move, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
 
-It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
-mounted window.
+It also returns the active `theme` and `kind`. The facts belong to a mounted window: with nothing mounted, or with `theme=`
+naming another theme, the reply holds the policy alone.
+
+`policy {theme, window[], content[], height[], rungs[], ladders[], crossings[]}` reads the theme's `Rules/Tiers.cs` through its
+structure (the published policy of the live mount, else the structure's at its default options), so nobody has to read the source:
+
+- `window`, `content`, `height`: every edge `{at, narrowHold, widenHold, below, above}` (the tiers either side). An edge is crossed
+  upward at `at + widenHold` and downward below `at - narrowHold`; a fresh resolve uses `at`.
+- `rungs`: `{id, axis, at, narrowHold, widenHold}`; `ladders`: the named sub-ladders `{id, edges[]}`.
+- `crossings`: per window and height edge (`W1008`, `H720`), the sizes `crossings` uses each way: `narrow {mount, old, new}` and
+  `widen {mount, old, new}` (see `crossings`).
+
+```json
+{"cmd":"tiers","args":{"theme":"winui"},"id":3}
+→ {"id":3,"ok":true,"cmd":"tiers","policy":{"theme":"winui",
+   "window":[{"at":641,"narrowHold":24,"widenHold":0,"below":"Compact","above":"Small"},
+             {"at":1008,"narrowHold":24,"widenHold":0,"below":"Small","above":"Standard"},
+             {"at":1920,"narrowHold":24,"widenHold":0,"below":"Standard","above":"Huge"}],
+   "content":[...],"height":[{"at":720,"narrowHold":24,"widenHold":0,"below":"Short","above":"Regular"}],
+   "rungs":[{"id":"winui.discovery.search.beside","axis":"content","at":900,...}, ...],"ladders":[{"id":"detail.table","edges":[...]}, ...],
+   "crossings":[{"edge":"W641","axis":"w","narrow":{"mount":705,"old":625,"new":609},"widen":{"mount":577,"old":633,"new":649}}, ...]}}
+```
+
+### `views {theme?, filter?, prefix?}`
+
+Which template draws every view key of a theme (the active one, or `theme=`; nothing needs to be mounted) and which structure
+layer registered every view and style key. A theme still being built (WinUI) fills the keys it does not draw yet from a stand-in
+(Classic's structure): such a key is `"standin":true` and its `layer` is the stand-in's. Style keys (`AddStyle`) carry no
+template id, so a style lists its key and layer only. `standins` counts both kinds; the counts cover every key whatever the
+filter. `filter=standins` lists only the stand-ins, `filter=own` only the theme's own; `prefix=` only keys starting with it.
+
+```json
+{"cmd":"views","args":{"theme":"winui","filter":"standins"},"id":9}
+→ {"id":9,"ok":true,"cmd":"views","theme":"winui","layer":"WinUi.Structure","standins":54,
+   "counts":{"views":193,"styles":11,"standinViews":52,"standinStyles":2},
+   "views":[{"key":"Concert.PlacePicker","templateId":"classic.concerts.place-picker","layer":"Classic.Structure","standin":true}, ...],
+   "styles":[{"key":"Detail.Facts","layer":"Classic.Structure","standin":true},{"key":"Show.Reader","layer":"Classic.Structure","standin":true}]}
+```
+
+Classic reports `standins: 0` (it has no stand-in); WinUI 54 on 2026-10-24 (52 view keys, `Detail.Facts`, `Show.Reader`). To see
+which keys on a page are a stand-in's, `find prefix=<p>` prints each node's `template`.
 
 ### `lint {rules?, scope?, root?, nth?, min?, limit?, outcomes?, baseline?, save?, replay?, ...}`
 
@@ -726,6 +825,41 @@ gate error: 0 lint replies, 0 error, 0 warn, 0 info failed (0 at or above error)
 
 Without `--gate` the client exits 0 whatever the replies say (`--fail-fast` stops at the first `ok:false` with exit 2).
 
+### `crossings {routes?, edges?, dirs?, control?, w?, h?, theme?, kind?, items?, max?, ...}`
+
+Every window and height edge of the theme (`tiers` lists them), both ways, over each route, in ONE server: 32 crossings for WinUI
+over home, album, artist and playlist take about 2.5 minutes, against a fresh server per crossing before (75 minutes for the motion
+audit's 104). Per row it mounts afresh inside the old tier (`mount` sizes from `tiers`: `at + 64` narrowing, `at - 64` widening; a
+height edge at width `w` 1440, a width edge at height `h` 960), then runs one `crossing` from the old side to the new side with
+`frames=1`: narrowing from `at - narrowHold + 8` to `at - narrowHold - 8`, widening from `at + widenHold - 8` to `at + widenHold + 8`
+(the motion audit's sizes). Each crossing runs its own control step (`crossing`'s `control`, on unless you pass `control=false`), so its
+`counts.excessSnapped`/`excessJumped` are what the edge adds over a plain resize of the same distance.
+
+| Arg | Effect |
+|---|---|
+| `routes` | The pages, a list: a route key (`home`), a `spotify:` uri, or a fixture word: `album` (al2), `artist` (ar3), `playlist` (pl0), `show` (sh0), `episode` (ep0). Default `home,album,artist,playlist`. |
+| `edges` | Only these edges by name (`edges=[W1008,H720]`). |
+| `dirs` | `both` (default), `narrow` or `widen`. |
+| `theme`, `kind`, `gpu`, `scale`, `images`, `grade` | Each row's mount (the active theme by default). `gpu` is `none` by default: a crossing reads rects and the scene, never a frame's pixels, and WARP rendering is what loads the machine; pass `gpu=hardware` to keep pixels for a `render` after. |
+| `items` | Entries per list in each crossing reply (8). The lint options (`min` defaults to `error` here, `rules`, ...) pass on to every crossing. |
+
+The reply: `rows`, `failed` (crossings that answered ok:false), `ms`, `table[]` (one line per row: `route, edge, dir, ok, before,
+after` as window/height/content tiers, `contentCommitted`, `glided, snapped, jumped, excessSnapped, excessJumped, remounted,
+remountedOutside, vanished, appeared, unpainted, ms`) and
+`crossings[]`: every crossing reply exactly as `crossing` writes it, with a `row {theme, route, edge, axis, dir, mount, old, new,
+ms}` member first, so whatever reads a `crossing` reply reads these the same way: `inspect.py --gate` judges every row as a crossing
+(its lint, its excess moves, its remounts outside a swap family, an ok:false row), and `--findings` prints each row's crossing headed
+`== theme route edge dir ==`.
+
+```json
+{"cmd":"crossings","args":{"theme":"winui","routes":["home","album","artist","playlist"]},"id":4}
+→ {"id":4,"ok":true,"cmd":"crossings","theme":"winui","rows":32,"failed":0,"ms":145948,
+   "table":[{"route":"album","edge":"W1920","dir":"narrow","ok":true,"before":"Huge/Regular/Standard","after":"Standard/Regular/Standard",
+             "contentCommitted":"none","glided":48,"snapped":129,"jumped":7,"remounted":41,"vanished":9,"appeared":4,"ms":4151}, ...],
+   "crossings":[{"row":{"theme":"winui","route":"home","edge":"W641","axis":"w","dir":"narrow","mount":"705x960","old":"625x960",
+                 "new":"609x960","ms":6205},"id":4,"ok":true,"cmd":"crossing","from":{...},"to":{...}, ...}, ...]}
+```
+
 ### `trace {frames, keys?, prefix?, scroll?, every?, ...}`
 
 Runs `frames` frames on the host and returns one row per frame plus a summary. **The inspect host runs on a fixed 16 ms fake
@@ -734,7 +868,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 
 | Arg | Meaning |
 |---|---|
-| `frames` | Frames to run (1 to 5000; positional: `trace 90`). |
+| `frames` | Frames to run (1 to 5000; positional: `trace 90`). A trace that watched no node (no `keys`/`prefix`, or none matched) says so in `warning`: its snaps and jumps read 0 because nothing was watched. |
 | `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`. |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
@@ -840,6 +974,28 @@ Read the results this way:
   animation. Step through with `frames 1` to tell which.
 - A content rect that moves by the band's height change, with no `anim`, is a layout jump.
 
+### Boards beside the app: `tools/themes/gallery.py`
+
+`python -I tools/themes/gallery.py --theme zune|winui --exe <run copy> --out <your folder>` mounts every board the map knows
+(`tools/themes/gallery-map.<theme>.json`, generated by `gen-gallery-maps.py`: edit the generator, then run it) and renders it beside
+the board. It prints an estimate up front and each entry's time; `--only` takes board names or exact entry ids (`Z-Artist.2`);
+`--gpu hardware` is the default (WARP only with `--gpu warp`); and it writes contact sheets you can open with an image reader,
+`<out>/sheets/<theme>-<family>-<n>.png` (board and renders at one scale, at most 1960 px a side). Hero and photo boards get a
+second `images=real` render (`.2`); `ar9` (The Longtime) is the bright-header worst case.
+
+Recipes the map uses, for doing the same by hand:
+- Zune volume flyout: it exists only at the medium bar tier (760-1239 wide): mount 800 wide, `click key=volume` (at the full tier
+  the glyph mutes). The overflow `click key=more` items have no keys (Queue sits at `(w-80, h-158)` at 800 wide).
+- Zune queue panel: `click key=queue` docks it; at Huge the second pane starts on lyrics, `click key=zune-panel-pivot:Friends`
+  switches it; Huge 4K shows three panes. Compact panel sheet: `click key=zune-bar-left`, then
+  `click key=zune-panel-pivot:Friends force=true` (the pivots scroll).
+- Home's podcasts facet at every tier, Small included: `mount route=home arg=podcasts-chip`.
+- The video placement menu: right-click the bar's video slot: Zune `click key=video button=right`, WinUI
+  `click key=winui-bar-video button=right` (with a `video=` mount, whose track has a video).
+- Concerts: `spotify:concert:cc3n0` (`cc0n0` stays on its skeleton). The empty own playlist: `plx0`.
+- `dialog kind=hang` is the crash prompt with the hang wording; the "couldn't start" recovery screen is a Win32 TaskDialog shown
+  before the engine boots, which no verb draws.
+
 ### Click through and inspect
 
 ```text
@@ -870,3 +1026,12 @@ dump root=<the page's root key> depth=3
   findings with no engine and no host; [`agent-lint.md`](agent-lint.md) is its reference.
   `Diagnostics.InspectLintScene` reads the mounted scene into that snapshot and writes the report.
 - **No reflection.** JSON is parsed with `JsonDocument` and written with `Utf8JsonWriter`, so the server is AOT-safe.
+- **Fixtures for the pages agents ask about** (`Entities.Fake*.cs`; the full list is the skill's `reference/fixtures.md`):
+  - the own profile: `goto uri=spotify:user:wavee-listener` (`Entities.FakeProfileUri`, the own account's profile address with
+    its CurrentUser flag: "Open account", "Only visible to you"); the account chip's Profile row still finds no route under
+    `--fake`, because the fake's "me" row is keyed by the bare account name;
+  - the longest album title, `spotify:album:2x6LWti2bjYS6AllSomoV7` (`LongTitleAlbumUri`), carries 12 rows (it read "Couldn't
+    load these songs" before);
+  - `spotify:track:tr26` (al2's first row) and al3's first row have a music video (`HasVideo`): the `video=` mounts play tr26;
+  - fake covers paint the same in every process: the fake decoder's hue follows the image source, not the order images were
+    requested in, so two servers render one page pixel for pixel alike.

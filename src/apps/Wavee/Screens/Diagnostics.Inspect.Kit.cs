@@ -614,6 +614,25 @@ public static partial class Diagnostics
 
         static Video.PlacementState s_bootVideo = Video.PlacementState.Music;
         static Playback.Video.Binding s_bootPlayer;
+        static Playback.Video.SwitchPhase s_bootPhase;
+
+        /// <summary>The track `mount video=` plays: the rich album al2's first row, one of the two fake tracks with a music video
+        /// (`TrackFlags.HasVideo`), so the play bar offers the video split and its placement menu.</summary>
+        public const string VideoTrackUri = "spotify:track:tr26";
+
+        static ManualResetEventSlim s_videoJoin = new(false);
+
+        /// <summary>Offline there is no video manifest: the app's resolver would answer "no video" at once, the reducer would demote the
+        /// placement to audio ("Couldn't play the video") and close the surface a `video=` mount opened. The inspector's resolver answers
+        /// nothing while the mount lives instead: the video join stays in flight (the poster, then the ring past its budget), as a slow
+        /// manifest leaves it, and the next mount (<see cref="EndVideoJoins"/>) lets it answer "no video" once its playback is reset.
+        /// Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        public static void InstallVideoJoinHold()
+            => Playback.VideoResolver = static (_, _, _) => { Volatile.Read(ref s_videoJoin).Wait(); return null; };
+
+        /// <summary>Let every video resolve the last mount parked answer "no video" (after <see cref="ResetPlayback"/>: the reducer the
+        /// answer reaches plays no video any more, so it changes nothing).</summary>
+        public static void EndVideoJoins() => Interlocked.Exchange(ref s_videoJoin, new ManualResetEventSlim(false)).Set();
 
         /// <summary>Remember the video surface's placement (the boot loaded the preferred home and committed it) and the player
         /// binding as the boot left them. Once, right after <c>Shell.Headless.Boot</c>.</summary>
@@ -621,6 +640,7 @@ public static partial class Diagnostics
         {
             s_bootVideo = Video.State.Surface.Peek();
             s_bootPlayer = Playback.Video.Player.Peek();
+            s_bootPhase = Playback.Video.Phase.Peek();
         }
 
         /// <summary>The video surface as the boot left it (between mounts): `mount video=...` opened it through <c>Video.State.OpenAt</c>,
@@ -632,6 +652,7 @@ public static partial class Diagnostics
         public static void ResetVideo(FluentGpu.Media.MediaPlayer? fakePlayer)
         {
             if (!Video.State.Surface.Peek().Equals(s_bootVideo)) Video.State.Commit(in s_bootVideo);
+            if (Playback.Video.Phase.Peek() != s_bootPhase) Playback.Video.Phase.Value = s_bootPhase;   // a `join=` mount's phase
             if (fakePlayer is null) return;
             if (ReferenceEquals(Playback.Video.Player.Peek().Player, fakePlayer)) Playback.Video.Player.Value = s_bootPlayer;
             _ = fakePlayer.DisposeAsync().AsTask();

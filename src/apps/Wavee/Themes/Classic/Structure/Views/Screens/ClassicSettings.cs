@@ -164,7 +164,7 @@ internal static partial class ClassicSettings
     static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
     {
         var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight, LeadingInset = ClassicSettingsRules.TabLeadingInset } : null;
-        Element bar = SelectorBar.Create(AreaLabels(), props.AreaCell(), style: style);
+        Element bar = SelectorBar.Create(AreaLabels(), props.AreaCell(), style: style, itemKeys: s_areaTabKeys);
         return new BoxEl
         {
             Key = "settings:tabs", Direction = 1, Shrink = 0f,

@@ -113,6 +113,7 @@ public static partial class Diagnostics
             {
                 Shell.Headless.Boot(new Shell.ShellHostOptions(profileDir));
                 InspectKit.InstallFixtureGrader();
+                InspectKit.InstallVideoJoinHold();
                 InspectKit.RememberBootQueue();   // what a mount after the first puts back (ClearLeaks)
                 InspectKit.RememberBootVideo();
                 InspectKit.RememberColdPlaylist();
@@ -275,7 +276,11 @@ public static partial class Diagnostics
             _realText = realText;
         }
 
-        public void Dispose() => Unmount();
+        public void Dispose()
+        {
+            Unmount();
+            InspectKit.EndVideoJoins();   // no resolve stays parked past the session (the api threads it holds would outlive it)
+        }
 
         void Unmount()
         {
@@ -402,14 +407,20 @@ public static partial class Diagnostics
                     return Option(id, name, a);
                 case Inspect.Verb.Crossing:
                     return Crossing(id, name, a);   // mounts by itself when nothing is
+                case Inspect.Verb.Views:
+                    return Views(id, name, a);
+                case Inspect.Verb.Setting:
+                    return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
+                case Inspect.Verb.Tiers:
+                    return Tiers(id, name, a);   // the policy needs no mount; the facts do
+                case Inspect.Verb.Crossings:
+                    return Crossings(id, name, a);   // mounts a row at a time
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
-                case Inspect.Verb.Tiers:
-                    return Inspect.Reply.Ok(id, name, InspectDump.WriteTiers);
                 case Inspect.Verb.GoTo:
                     {
                         if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error);
@@ -570,6 +581,7 @@ public static partial class Diagnostics
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
                         BeforeState(shell);
+                        if (a.Has("page")) return PageState(id, name, a, kind, shell);
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
@@ -583,7 +595,9 @@ public static partial class Diagnostics
                         // `find <key>` is exact; a prefix says so (`find prefix=zune-band-`).
                         string key = a.Str("key"), prefix = a.Str("prefix");
                         if (key.Length == 0 && !a.Has("prefix")) return Inspect.Reply.Fail(id, name, "find wants a key (exact) or prefix=");
-                        return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix));
+                        bool visibleOnly = a.Bool("visibleOnly", false);
+                        int depth = a.Int("depth", int.MaxValue);
+                        return Inspect.Reply.Ok(id, name, w => InspectDump.WriteFind(w, shell, key, prefix, visibleOnly, depth));
                     }
                 case Inspect.Verb.Dump:
                     return Dump(id, name, a, shell);
@@ -593,8 +607,44 @@ public static partial class Diagnostics
                     return Lint(id, name, a, shell);
                 case Inspect.Verb.Trace:
                     return Trace(id, name, a, shell);
+                case Inspect.Verb.Drag:
+                    return Drag(id, name, a);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
+        }
+
+        /// <summary>`state kind=loading|empty page=<p>`: a page's OWN loading or empty state, not the shared vacancy. A library tab (`library` is
+        /// albums) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
+        /// and `episode` open a fixture in that state: the pending show and episode (`shzzqx`, `epzzqx`: the fake never answers them) and the show
+        /// with no episodes (`sh8`). The next mount puts the shelves back.</summary>
+        string PageState(int id, string name, Inspect.Args a, string kind, Shell.HeadlessShell shell)
+        {
+            if (kind is not ("loading" or "empty")) return Inspect.Reply.Fail(id, name, "page= takes kind=loading or kind=empty, not '" + kind + "'");
+            bool loading = kind == "loading";
+            string page = a.Str("page").ToLowerInvariant();
+            if (page == "library") page = "albums";
+            Shell.SetInspectState("none");   // the shared vacancy off: the page draws its own state
+            Shell.Route route;
+            switch (page)
+            {
+                case "albums" or "artists" or "podcasts" or "audiobooks":
+                    if (!Entities.StageLibraryShelf(page, loading)) return Inspect.Reply.Fail(id, name, "the account has no library rows to stage");
+                    route = Wavee.Shell.Parse(page);
+                    break;
+                case "show":
+                    route = Wavee.Shell.For(EntityUri.Parse(loading ? "spotify:show:shzzqx" : "spotify:show:sh8"));
+                    break;
+                case "episode":
+                    if (!loading) return Inspect.Reply.Fail(id, name, "an episode page has no empty state (kind=loading, or the shared kind=error)");
+                    route = Wavee.Shell.For(EntityUri.Parse("spotify:episode:epzzqx"));
+                    break;
+                default:
+                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|show|episode, not '" + page + "'");
+            }
+            Wavee.Shell.GoTo(route);
+            RunFrames(30);
+            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("page", page); AfterState(w, shell, kind); },
+                loops: loading ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
         }
 
         /// <summary>`help` (the verbs and their summaries), `help verb=<name>` (one verb's args, defaults, choices and example) or
@@ -739,7 +789,8 @@ public static partial class Diagnostics
             Wavee.Theming.InspectSwitches.HoverChromeAtRest = string.Equals(a.Str("chrome"), "shown", StringComparison.OrdinalIgnoreCase);
             if (a.Has("video"))
             {
-                InspectKit.Play("spotify:track:tr0", a.Int("fromMs", 74_000));
+                // The rich album's first row (tr26) has a music video (`TrackFlags.HasVideo`), so the play bar offers its video split and placement menu.
+                InspectKit.Play(InspectKit.VideoTrackUri, a.Int("fromMs", 74_000));
                 RunFrames(30);
                 Wavee.Video.State.FoldAvailability(true);
                 Wavee.Video.State.OpenAt(a.Str("video").ToLowerInvariant() switch
@@ -749,11 +800,21 @@ public static partial class Diagnostics
                     _ => Wavee.Video.SurfacePlacement.Fullscreen,
                 });
                 // `player=fake` binds an idle engine player (no source, no frames) so the presenter and its transport mount as they do while a video plays.
-                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase))
+                string join = a.Str("join").ToLowerInvariant();
+                if (string.Equals(a.Str("player"), "fake", StringComparison.OrdinalIgnoreCase) || join == "poster")
                 {
                     _fakePlayer = FluentGpu.Media.MediaPlayer.Create();
                     Playback.Video.Player.Value = new Playback.Video.Binding(_fakePlayer, 1);
                 }
+                // `join=`: the host's switch phase as its events would leave it (`Video.JoinNow` folds it): poster = a player bound and no join in
+                // flight (the artwork alone), working = a join still in flight past the budget (the ring), failed = the join failed (the fault line).
+                if (join.Length > 0)
+                    Playback.Video.Phase.Value = join switch
+                    {
+                        "failed" => Playback.Video.SwitchPhase.Failed,
+                        "working" => Playback.Video.SwitchPhase.Resolving,
+                        _ => Playback.Video.SwitchPhase.Idle,
+                    };
             }
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
@@ -772,14 +833,17 @@ public static partial class Diagnostics
         {
             bool optionsForNext = _optionsForNext && keepOptions;
             _optionsForNext = false;
+            RestoreSettings();   // the app settings `setting` wrote on the last mount (kept when written for this one)
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();
+            Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
             InspectKit.ResetVideo(_fakePlayer);
             _fakePlayer = null;
             InspectKit.ResetPlayback();
+            InspectKit.EndVideoJoins();   // after the reset: the parked resolves answer a reducer that plays no video any more
             if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
@@ -890,8 +954,11 @@ public static partial class Diagnostics
         static string RouteText()
         {
             var r = Wavee.Shell.Current.Peek();
+            string name = Wavee.Shell.NameOf(r);
             string? arg = Wavee.Shell.ArgOf(r);
-            return Wavee.Shell.NameOf(r) + (arg is null ? "" : " " + arg);
+            // A prefix route whose arg rides its key (`disco:0:spotify:artist:ar3`, `people:...`) names it once.
+            if (arg is not null && name.EndsWith(arg, StringComparison.Ordinal)) arg = null;
+            return name + (arg is null ? "" : " " + arg);
         }
 
         string Theme(int id, string name, Inspect.Args a)
@@ -907,6 +974,19 @@ public static partial class Diagnostics
             if (ThemeInspection.IsDeveloperOnly(theme)) Platform.Developer.Enabled.Value = true;
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;
+            if (Tracing(a))
+            {
+                // `trace=N` measures the switch itself: the traced frames are the ones that run the transaction (prewarm, freeze, swap,
+                // remount, thaw), from the frame after the request. `transactionFrames` counts to the frame it completed on.
+                long start = _frames, doneAt = -1;
+                _ = t.ContinueWith(_ => doneAt = _frames, TaskContinuationOptions.ExecuteSynchronously);
+                return Settled(id, name, a, w =>
+                {
+                    w.WriteString("theme", InspectKit.ActiveThemeId);
+                    w.WriteString("outcome", !t.IsCompleted ? "incomplete" : t.IsFaulted ? "faulted" : t.Result.Outcome.ToString());
+                    w.WriteNumber("transactionFrames", doneAt < 0 ? -1 : doneAt - start + 1);
+                }, afterTrace: () => { while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; } });
+            }
             while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; }
             if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames", WriteAfter);
             string outcome = t.IsFaulted ? "faulted" : t.Result.Outcome.ToString();
@@ -1087,7 +1167,8 @@ public static partial class Diagnostics
                 KeysOnly: a.Bool("keysOnly", false),
                 VisibleOnly: a.Bool("visibleOnly", true),
                 MaxNodes: Math.Clamp(a.Int("max", 4000), 1, 200_000),
-                Text: a.Bool("text", true));
+                Text: a.Bool("text", true),
+                MaxKeyDepth: a.Int("keyDepth", int.MaxValue));
             return Inspect.Reply.Ok(id, name, w => InspectDump.Write(w, shell, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(roots), in request));
         }
 
@@ -1382,7 +1463,7 @@ public static partial class Diagnostics
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
         /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
         string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "",
-            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
+            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore, Action? afterTrace = null)
         {
             InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
@@ -1391,6 +1472,7 @@ public static partial class Diagnostics
                 // `trace=N` on any settling verb: no settle, N traced frames from the frame after the action (docs: agent-inspect.md)
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 trace = RunTrace(shell, o);
+                afterTrace?.Invoke();   // what the verb still owes once the traced frames ran (`theme`: the transaction's end)
             }
             else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600), InspectKit.LoopsArg(a, loops));
             bool acts = _acts;

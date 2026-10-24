@@ -62,6 +62,9 @@ internal static partial class ClassicSettings
         _ => FeedbackTab(),
     };
 
+    /// <summary>The tab strip's item keys, one per area (`settings:tabitem:appearance`): a driver finds and clicks a tab by its slug.</summary>
+    static readonly string?[] s_areaTabKeys = Array.ConvertAll(Settings.AreaSlugs, static slug => (string?)("settings:tabitem:" + slug));
+
     static string[] AreaLabels()
     {
         var labels = new string[Settings.AreaTitleKeys.Length];

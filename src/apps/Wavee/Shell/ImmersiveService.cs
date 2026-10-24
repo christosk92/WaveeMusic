@@ -74,6 +74,7 @@ public sealed class ChromeIdle
     {
         if (_machine is not null) return;
         _machine = new PlayerChromeVisibility(PlayerChromeTiming.Default, nowMs);
+        if (Wavee.Theming.InspectSwitches.HoverChromeAtRest) _machine.SetEnabled(false, nowMs);   // `mount chrome=shown`: an agent has no pointer, so no auto-hide
         if (_menus > 0) _machine.SetMenuOpen(true, nowMs);     // a menu opened before the machine existed still holds it
     }
 

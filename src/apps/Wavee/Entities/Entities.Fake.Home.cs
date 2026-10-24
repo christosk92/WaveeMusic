@@ -198,6 +198,9 @@ public static partial class Entities
     // Charlie Puth/Rich Brian/ROSE/Henry Moodie each get a minted `spotify:album:hm...` id, real artist name,
     // invented date.
 
+    /// <summary>The longest album title of the fixtures (Jump back in's Arcane soundtrack): the long-text album an agent opens.</summary>
+    public const string LongTitleAlbumUri = "spotify:album:2x6LWti2bjYS6AllSomoV7";
+
     static void SeedHomeMockupAll(long now0)
     {
         var s = Staging.Rent();
@@ -352,7 +355,7 @@ public static partial class Entities
                 "https://i.scdn.co/image/ab6761610000517473a7c008c663a8177c9f6af4");
 
             // -- Jump back in (the first mixed-kind Generic section, per ZonePlanner's own rule) --
-            var arcane = MockAlbum(s, "spotify:album:2x6LWti2bjYS6AllSomoV7",
+            var arcane = MockAlbum(s, LongTitleAlbumUri,
                 "Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)",
                 "https://i.scdn.co/image/ab67616d00001e024aaf2413384c1efcc38353c6", (int)(now0 - 40 * 86_400));
             var chillMix = MockPlaylist(s, "spotify:playlist:37i9dQZF1EVHGWrwldPRtj", "Chill Mix",
@@ -431,6 +434,22 @@ public static partial class Entities
             }
             int slot = ResolveSeedSlot(EntityKind.Playlist, longUris[p]);
             if (slot != Table.None) Current.Edges.PlaylistTracks.ReplaceRun(slot, longTargets, longPayload);
+        }
+
+        // The longest-titled album (Jump back in's "Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)", the long-text
+        // fixture) carries rows too: a mock album has no provider, so without a run its page read "Couldn't load these songs" under the very
+        // title an agent opens it for.
+        int arcaneSlot = ResolveSeedSlot(EntityKind.Album, LongTitleAlbumUri);
+        if (arcaneSlot != Table.None)
+        {
+            Span<int> arcaneTargets = stackalloc int[12];
+            Span<AlbumTrackEdge> arcaneNumbers = stackalloc AlbumTrackEdge[12];
+            for (int k = 0; k < arcaneTargets.Length; k++)
+            {
+                arcaneTargets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(90 + k));
+                arcaneNumbers[k] = new AlbumTrackEdge(1, (ushort)(k + 1));
+            }
+            Current.Edges.AlbumTracks.ReplaceRun(arcaneSlot, arcaneTargets, arcaneNumbers);
         }
 
         // Prepend every mockup band ahead of the bundled capture's own sections (canvas order: Daylist, Made for you,
