@@ -25,6 +25,7 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
+using K = Wavee.Themes.Zune.ZuneLibraryKit;
 using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
@@ -60,10 +61,10 @@ internal static partial class ZuneLibraryArtistReader
             for (int i = 0; i < releases.Count; i++) if (releases[i].AlbumSlot == picked) has = true;
             if (!has) picked = releases.Count > 0 ? releases[0].AlbumSlot : -1;
 
-            // The middle column eases its width when the pane steps in or aside (its covers and the hero ride every tick).
+            // The flexible middle column: the pane's slot beside it carries the width motion (ZuneLibraryKit.PaneSlot), so it widens or narrows with it on every tick.
             var mid = new BoxEl
             {
-                Key = "board:mid", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Animate = LR.ColumnResize,
+                Key = "board:mid", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
                 Children =
                 [
                     new ScrollEl
@@ -76,23 +77,21 @@ internal static partial class ZuneLibraryArtistReader
                             [
                                 Hero(host, in band, l), AlbumsHeading(),
                                 // The boards' three covers a row, two where three would go under the cover's floor (a narrow Small window).
-                                Responsive.Of("board:grid", LR.BoardColumns, cols => Grid(releases, picked, _picked, beside, cols), fallback: LR.BoardCols * LR.BoardCellMin),
+                                // Standard and Huge hold the board's three covers outright (the pane rung keeps the middle column wide enough once a crossing settles,
+                                // so the count never flips while the column glides); Small measures its lane.
+                                Responsive.Of("board:grid", w => l.BoardFull ? LR.BoardCols : LR.BoardColumns(w), cols => Grid(releases, picked, _picked, beside, cols),
+                                    fallback: LR.BoardCols * LR.BoardCellMin),
                             ],
                         },
                     },
                 ],
             };
-            var kids = new List<Element>(2) { mid };
-            if (beside && picked > 0)
-                kids.Add(new BoxEl
-                {
-                    Key = LR.PaneKey, Direction = 1, Width = l.PaneW, MinWidth = l.PaneW, Shrink = 0f, ClipToBounds = true,
-                    // The pane steps in and aside on the shared cross-fade, once the board has drawn (the page's own entrance brings the first one).
-                    Enter = ZuneMotion.SwapEnter(_drawn), Exit = ZuneMotion.SwapFade,
-                    Children = [host.AlbumPane(picked) with { Key = "board:pane:" + picked }],
-                });
+            // The picked album's pane in its slot: the pane's width and the gap while it stands beside (reserved before the first release lands, so the middle column
+            // never jumps when it does), 0 while it steps aside; the album cross-fades in and out of it, and a pick cross-fades one album into the next.
+            Element pane = K.PaneSlot("board:pane-slot", l.PaneW, l.ColGap, beside, _drawn, "board:pane:" + picked,
+                beside && picked > 0 ? host.AlbumPane(picked) : null);
             _drawn = true;
-            return new BoxEl { Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Gap = l.ColGap, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
+            return new BoxEl { Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [mid, pane] };
         }
     }
 
@@ -141,8 +140,9 @@ internal static partial class ZuneLibraryArtistReader
                                     Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
                                     MinSize = l.HeroNameSize * LR.HeroNameFloorShare, FitMode = TextFitMode.OneLineFirst,
                                 },
-                                // The verbs measure their lane: the words where they fit, else play all's word and the other rings named by their tooltips.
-                                Responsive.Of("board:verbs", LR.HeroVerbWords, words => HeroVerbs(host, uri, name, words), fallback: LR.HeroVerbsWordsW),
+                                // The verbs as words (Standard and Huge hold them outright, as the grid holds its count); Small measures its lane: the words where they
+                                // fit, else play all's word and the other rings named by their tooltips.
+                                Responsive.Of("board:verbs", w => l.BoardFull || LR.HeroVerbWords(w), words => HeroVerbs(host, uri, name, words), fallback: LR.HeroVerbsWordsW),
                             ],
                         },
                     ],

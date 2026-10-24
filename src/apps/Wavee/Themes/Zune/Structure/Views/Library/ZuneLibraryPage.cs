@@ -35,6 +35,7 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
+using K = Wavee.Themes.Zune.ZuneLibraryKit;
 using LR = Wavee.Themes.Zune.ZuneLibraryRules;
 using static FluentGpu.Dsl.Ui;
 
@@ -69,26 +70,31 @@ internal static partial class ZuneLibraryPage
         {
             bool artists = props.Entity == EntityKind.Artist;
             bool groups = HasGroups(props);
-            // The albums' "all artists" column (the host's grouping): Small's board has no songs pane beside the covers.
-            Element? right = props.FullSearch
+            var l = cache.Layout;
+            // The right column. The album's songs pane is a SLOT that carries the gap before it (one node at every width: it steps aside to 0 under the pane rung, as
+            // Small's board draws the grouped albums, and back); every other right column stands after a gap box.
+            bool slot = !props.FullSearch && !artists && !HasEpisodes(props);
+            Element right = props.FullSearch
                 ? (artists ? SearchArtistColumns(props, cache) : SearchAlbumDetail(props, cache))
-                : (artists ? ReaderColumn(props, cache.Layout)
-                    : HasEpisodes(props) && props.SavedEpisodesMode ? EpisodesFeed(props, cache.Layout)
-                    : (groups && !props.PaneBeside ? null : DetailColumn(props, cache)));
-            var columns = new List<Element>(3);
-            if (groups) columns.Add(GroupColumn(props, cache.Layout));
-            if (groups && cache.Layout.HeroColW > 0f) columns.Add(GroupHeroColumn(props, cache.Layout));
+                : artists ? ReaderColumn(props, l)
+                : HasEpisodes(props) ? (props.SavedEpisodesMode ? EpisodesFeed(props, l) : ShowColumn(props))
+                : DetailSlot(props, cache, beside: !groups || props.PaneBeside);
+            var columns = new List<Element>(6);
+            if (groups) { columns.Add(GroupColumn(props, l)); columns.Add(K.ColGap("lib:gap:groups", l.ColGap)); }
+            if (groups && l.HeroColW > 0f) { columns.Add(GroupHeroColumn(props, l)); columns.Add(K.ColGap("lib:gap:hero", l.ColGap)); }
             columns.Add(NavColumn(props, cache));
-            if (right is not null) columns.Add(right);
+            if (!slot) columns.Add(K.ColGap("lib:gap:right", l.ColGap));
+            columns.Add(right);
             inner = new BoxEl
             {
                 Key = LR.WideKey, Animate = s_arm, Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.BodyGap,
                 Children =
                 [
                     Head(props, cache),
+                    // The gaps are boxes (K.ColGap, the slot's own), so a tier that changes them eases them.
                     new BoxEl
                     {
-                        Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = cache.Layout.ColGap,
+                        Direction = 0, Grow = 1f, MinHeight = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                         Children = columns.ToArray(),
                     },
                 ],
@@ -186,32 +192,28 @@ internal static partial class ZuneLibraryPage
         };
     }
 
-    /// <summary>The pane's column: a width of its own beside the navigator (the album's songs), the 380 of Standard. It steps in and aside on the shared cross-fade (the
-    /// navigator beside it eases its width, <see cref="LR.ColumnResize"/>), and so does a selection that fills or empties it.</summary>
-    static BoxEl PaneSection(string key, PageCache c)
+    /// <summary>The search pane's column (the hit album's songs): a width of its own beside the hits, the 380 of Standard.</summary>
+    static BoxEl PaneSection(string key, ZuneLibraryLayout l) => l.PaneGrow > 0f
+        // The growing form (Huge): rests at PaneW, takes its share of what the navigator leaves, up to PaneMaxW.
+        ? Section with { Key = key, Basis = l.PaneW, Grow = l.PaneGrow, Shrink = 0f, MinWidth = l.PaneW, MaxWidth = l.PaneMaxW, Animate = Design.Reveal.Resize }
+        : Section with { Key = key, Width = l.PaneW, Shrink = 0f, MinWidth = l.PaneW, Animate = Design.Reveal.Resize };
+
+    /// <summary>The album's songs pane in its slot (<see cref="ZuneLibraryKit.PaneSlot"/>): 380 at Standard beside the navigator, the growing form at Huge, 0 while it steps
+    /// <paramref name="beside"/> no more (the grouped albums under the pane rung). The empty pane asks for a pick.</summary>
+    static Element DetailSlot(LibraryPageProps p, PageCache c, bool beside)
     {
         var l = c.Layout;
-        var box = l.PaneGrow > 0f
-            // The growing form (Huge): rests at PaneW, takes its share of what the navigator leaves, up to PaneMaxW.
-            ? Section with { Key = key, Basis = l.PaneW, Grow = l.PaneGrow, Shrink = 0f, MinWidth = l.PaneW, MaxWidth = l.PaneMaxW, Animate = LR.ColumnResize }
-            : Section with { Key = key, Width = l.PaneW, Shrink = 0f, MinWidth = l.PaneW, Animate = LR.ColumnResize };
-        return box with { Enter = ZuneMotion.SwapEnter(c.Rendered), Exit = ZuneMotion.SwapFade };
+        Element? content = !beside ? null : p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(PickKey(p)));
+        // NO `Key` on the pane itself: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
+        return K.PaneSlot("lib:pane-slot", l.PaneW, l.ColGap, beside, c.Rendered, p.HasSelection ? LR.PaneKey : LR.EmptyKey, content, l.PaneGrow, l.PaneMaxW);
     }
 
-    static Element DetailColumn(LibraryPageProps p, PageCache c)
+    /// <summary>Beside the pinned "your episodes" row the show pane takes all the width the shows list leaves.</summary>
+    static Element ShowColumn(LibraryPageProps p) => Section with
     {
-        var l = c.Layout;
-        // Beside the pinned "your episodes" row the show pane takes all the width the shows list leaves.
-        if (HasEpisodes(p))
-            return Section with
-            {
-                Key = p.HasSelection ? LR.PaneKey : LR.EmptyKey, Grow = 1f, Basis = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
-                Children = [p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(PickKey(p)))],
-            };
-        if (!p.HasSelection) return PaneSection(LR.EmptyKey, c) with { Children = [EmptyCompact(Loc.Get(PickKey(p)))] };
-        // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
-        return PaneSection(LR.PaneKey, c) with { Children = [p.Pane()] };
-    }
+        Key = p.HasSelection ? LR.PaneKey : LR.EmptyKey, Grow = 1f, Basis = 0f, MinWidth = 0f, Animate = Design.Reveal.Resize,
+        Children = [p.HasSelection ? p.Pane() : EmptyCompact(Loc.Get(PickKey(p)))],
+    };
 
     /// <summary>What the empty pane asks for: a show (Podcasts), an audiobook (Audiobooks, the show entity's other library page), an album.</summary>
     static string PickKey(LibraryPageProps p) => p.Entity != EntityKind.Show ? Strings.Library.SelectAlbum

@@ -127,9 +127,9 @@ public static class ZuneLibraryRules
     /// <summary>The hero's eyebrow ("artist · in your library: …") wraps to this many lines before it trims: the plate's air above the name takes the second.</summary>
     public const int HeroEyebrowLines = 2;
 
-    /// <summary>A column whose box a rung or a tier changes (the pane stepping aside or back, the list's 220 / 280, the head's height): it eases through real layout, so its
-    /// neighbours and its own cards follow it on every tick (a size channel: the reflow-shove rule snaps a position slide that commits beside a live reflow). The pane itself
-    /// steps in and aside on <see cref="ZuneMotion.SwapFade"/>.</summary>
+    /// <summary>A column whose DECLARED width changes (the artists' list 220 ↔ 280, the gaps 40 ↔ 48, the third column's slot stepping in or aside): it eases through
+    /// real layout, so the flexible column beside it widens or narrows on every tick (a size channel: the reflow-shove rule snaps a position slide that commits beside a
+    /// live reflow). A flexible (grow) column cannot carry it: its width is the free space, so the declared neighbour does.</summary>
     public static readonly LayoutTransition ColumnResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow);
 
@@ -340,6 +340,11 @@ public sealed record ZuneLibraryLayout : ITierLayoutRecord
     /// <summary>The count says the artists too ("312 albums · 184 artists"): Huge's head.</summary>
     public bool CountArtists { get; init; }
 
+    /// <summary>The artists board holds its full form at every width of the tier: the hero's verbs as words and three covers a row (Standard and Huge, where the pane rung
+    /// keeps the middle column at <see cref="ZuneLibraryRules.BoardMidMin"/> or wider once a crossing settles, so the form never flips mid-glide). False (Small): the board
+    /// measures its lane and folds the verbs' words and the covers' count where they would not fit.</summary>
+    public bool BoardFull { get; init; } = true;
+
     /// <summary>The artists board's hero: its height and its name's size (Z-Library-Artists 196 / 72; Small 160 / 72; Huge 380 / 144).</summary>
     public float HeroH { get; init; } = 196f;
 
@@ -414,8 +419,9 @@ public static class ZuneLibraryLadders
     /// <see cref="ZuneLibraryRules.BoardMidMin"/> + 40 + the 380 pane. Small's pages are all under it (Small's boards draw no pane); Huge's all over it.</summary>
     public const float PaneFrom = 1280f;
 
-    /// <summary>The pane rung's hold: it commits at the line on widening and holds 24 on narrowing, as the window's edges do.</summary>
-    public const float PaneHold = 24f;
+    /// <summary>The pane rung's hold: it commits at the line on widening and holds 16 on narrowing, so the middle column under the held pane never goes under the hero's
+    /// verbs as words (<see cref="ZuneLibraryRules.BoardMidMin"/> 504 less 16 = 488 = <see cref="ZuneLibraryRules.HeroVerbsWordsW"/> + its two 24 insets).</summary>
+    public const float PaneHold = 16f;
 
     /// <summary>The layout index from which the pane stands beside the middle column (<see cref="LibraryTierPolicy.PaneFromLayout"/>).</summary>
     public const int PaneLayout = 2;
@@ -458,7 +464,7 @@ public static class ZuneLibraryTiers
         // Small (Z-Library-*-Small): split, the pane 300, the artists' list 200, the sort a button, the grid starts at 96. The find field is 144 wide: the
         // longest kind's placeholder ("find in audiobooks") stands whole in it (the field draws its placeholder uncut, never ellipsised).
         Make(WidthTier.Small, headH: 32f, headGap: 8f, colGap: 24f, paneW: 300f, readerNavW: 200f, navMin: 200f, sortMenu: true, rightMin: 300f,
-            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = ZuneLibraryRules.FindWSmall, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, HeroH = 180f, EpisodesNavW = 220f },
+            new LibraryGridGaps(Column: 16f, Row: 12f), cardCellMin: 96f) with { OpenWord = false, FindW = ZuneLibraryRules.FindWSmall, GroupW = 200f, GroupHeadH = 34f, GroupCountLane = 28f, BoardFull = false, HeroH = 180f, EpisodesNavW = 220f },
         // Standard (Z-Library-*): the tuned page, 220 / grid / 380, 40 apart.
         Make(WidthTier.Standard, headH: 28f, headGap: 8f, colGap: 40f, paneW: 380f, readerNavW: 220f, navMin: 240f, sortMenu: false, rightMin: 380f,
             new LibraryGridGaps(Column: 16f, Row: 16f), cardCellMin: float.NaN),
