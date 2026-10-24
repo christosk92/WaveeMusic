@@ -548,13 +548,16 @@ internal static partial class ClassicDetailFrame
                         Margin = new Edges4(0f, railForm ? railRec.Gap : VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f),
                     }],
         };
-        // The rail's loading state at the columns form: the header shimmers the rail whole until it has answered, cross-dissolving once (the hero form's
-        // table shimmers the whole hero band instead). One boundary in every form, so the column never re-parents.
-        Func<bool> pending = railForm && rail is not null ? rail.Pending : s_false;
+        // The identity's loading state: the header shimmers it whole until it has answered, cross-dissolving once (the rail's rows at the columns form, the
+        // hero's at the hero form; before the rows have answered too the table shimmers the whole band instead). One boundary in every form, so the
+        // column never re-parents.
+        Func<bool> pending = rail?.Pending ?? s_false;
         Element region = new SkelRegionEl(
             Pending: pending, Failed: s_false,
             Content: () => column,
-            ShimmerSource: () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines),
+            ShimmerSource: railForm
+                ? () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines)
+                : () => HeroIdentitySkeleton(spec, availW, rowFlow, tiers),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
 
         // The rail's own scroller (the last resort once its text has given): as tall as the list's viewport at the columns form, so what the rail holds past
@@ -687,14 +690,43 @@ internal static partial class ClassicDetailFrame
         bool rowFlow = VerticalLayout.RowFlow(w);
         float bw = VerticalLayout.BucketW(w);
         var f = Detail.FlagsOf(spec);
+        // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
+        // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
+        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, spec.Identity.Title,
+            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
+        return new BoxEl
+        {
+            Key = "detail-skeleton:hero",
+            Direction = 1,
+            // A FLOOR (never a cap): the SAME number the loaded hero's collapse binds assume before their first measure.
+            MinHeight = VerticalLayout.HeroBandHeight(bw, rowFlow, plan,
+                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart),
+            Children =
+            [
+                HeroIdentitySkeleton(spec, w, rowFlow, tiers),
+                new BoxEl
+                {
+                    Direction = 1,
+                    Padding = new Edges4(compactLeft, VerticalLayout.ExpandedToolbarTopPad,
+                                         compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+                    Children = [SkeletonToolbarRow(spec, w - 2f * compactLeft)],
+                },
+            ],
+        };
+    }
+
+    /// <summary>The hero form's identity, loading: the padded [artwork | rows] block and the description's lines, the loaded identity's own boxes at its
+    /// sizes (the band's top half, and the hero's own pending region's shimmer source while the page's header has not answered).</summary>
+    static Element HeroIdentitySkeleton(VerticalSpec spec, float w, bool rowFlow, global::Wavee.Theming.TierFacts tiers)
+    {
+        float bw = VerticalLayout.BucketW(w);
+        var f = Detail.FlagsOf(spec);
         var id = spec.Identity;
         float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
         float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
         float art = VerticalLayout.ArtworkFor(bw, rowFlow);
         float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
         float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
-        // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
-        // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
         var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
             eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
         float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
@@ -731,33 +763,14 @@ internal static partial class ClassicDetailFrame
             Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
             Children = [SkeletonCover(id.CoverUrl, art), identity],
         };
-
         return new BoxEl
         {
-            Key = "detail-skeleton:hero",
-            Direction = 1,
-            // A FLOOR (never a cap): the SAME number the loaded hero's collapse binds assume before their first measure.
-            MinHeight = VerticalLayout.HeroBandHeight(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart),
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
-                    Children = f.Description
-                        ? [hero, Lines(descW, VerticalLayout.DescriptionLineHeight,
-                              VerticalLayout.DescriptionMaxLines(rowFlow), Skeleton.DescriptionLastLineFraction) with
-                              { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }]
-                        : [hero],
-                },
-                new BoxEl
-                {
-                    Direction = 1,
-                    Padding = new Edges4(compactLeft, VerticalLayout.ExpandedToolbarTopPad,
-                                         compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                    Children = [SkeletonToolbarRow(spec, w - 2f * compactLeft)],
-                },
-            ],
+            Direction = 1, Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
+            Children = f.Description
+                ? [hero, Lines(descW, VerticalLayout.DescriptionLineHeight,
+                      VerticalLayout.DescriptionMaxLines(rowFlow), Skeleton.DescriptionLastLineFraction) with
+                      { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }]
+                : [hero],
         };
     }
 
