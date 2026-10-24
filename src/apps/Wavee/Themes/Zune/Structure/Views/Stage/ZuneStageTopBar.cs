@@ -12,8 +12,8 @@
 //            an edge fade, so a pivot never clips at 300 wide.
 //
 // Every target is the tier's `TargetH` tall (40 at Compact). The options word / glyph is the TeachingTip's anchor (`GalleryButton`). ONE
-// bar at every tier (audit B2z r3): the label, the pivots' scroller and the actions are keyed children the tier re-orders, never re-parents
-// (Compact wraps the scroller onto the second line), so a crossing slides the pivots and the options, never remounts them. The forms a tier
+// bar at every tier (audit B2z r3): the label, the pivots' run and the actions are keyed children the tier re-orders, never re-parents
+// (Compact wraps the run onto the second line), so a crossing slides the pivots and the options, never remounts them. The forms a tier
 // swaps (the exit's chevron, glyph and word; the options' glyph and word) cross-fade on the declared swap family.
 //
 // The face chip under a Compact window's identity card (Visualizer mode) is chrome too: `ZuneStageFaceChip`, placed by the root.

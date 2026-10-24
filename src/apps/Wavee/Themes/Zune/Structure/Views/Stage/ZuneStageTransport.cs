@@ -8,6 +8,7 @@
 //               HeartLead  (Small) heart left, the centred cluster, device · "…" right
 //               Stack      (Compact) the cluster spread across, then heart · device · "…" under it
 //               Stacked    where the kind does not fit: heart · previous · disc · next · "…" spread across
+//             The kinds share ONE row of keyed parts in two layers (the cluster, the sides), so a change of kind slides them (audit B2z r3).
 //   CARD      (Z-NowPlaying-Card, -Huge) inside the card, in its tier's voice; mute · volume · device at the bottom-right gutter.
 //   COLUMN    (Z-NowPlaying-LargeArt, -Small) in the column: "playing from …" at its top; at its foot the seek row, the row (… heart) and
 //             the volume row (Small: the aside under the block).
