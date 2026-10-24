@@ -62,6 +62,18 @@ internal static class ClassicArtistSections
         Children = [Controls.AccentHeader(title, accent), body],
     };
 
+    /// <summary>The Upcoming section's card: the band (cover · copy · date · actions in one row) from Small up, the column arm at Compact, where the
+    /// band's row left the copy ~37 DIP and "Upcoming · Album" ran out of it (audit B8). The arms swap on a declared fade across the 528 edge.</summary>
+    static Element UpcomingSection(Artist a, Func<ColorF> accent, WidthTier tier)
+    {
+        bool column = tier == WidthTier.Compact;
+        return ClassicArtistBanners.UpcomingCard(a, accent, wide: column) with
+        {
+            Key = column ? "upcoming:column" : "upcoming:band",
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+        };
+    }
+
     /// <summary>One section's body, in the plan's order (ArtistPage.cs:234-269).</summary>
     public static Element Body(ArtistSection s, ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface, ClassicArtistLayout layout)
     {
@@ -71,7 +83,7 @@ internal static class ClassicArtistSections
         return s switch
         {
             ArtistSection.Popular => TopBand(p, latch, surface, layout),
-            ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, p.AccentFn, wide: false), accent),
+            ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingSection(a, p.AccentFn, layout.Tier), accent),
             ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), ClassicArtistBanners.LatestBanner(a.Latest, accent), accent),
             ArtistSection.Albums => Discography(a, DiscoFacet.Albums, p, layout),
             ArtistSection.Singles => Discography(a, DiscoFacet.Singles, p, layout),
