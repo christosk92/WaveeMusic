@@ -69,8 +69,8 @@ public static class ZuneDetailRules
     public const string FrameKey = "zune.detail.frame", PanoramaKey = "zune.detail.panorama", RailKey = "zune.detail.rail",
         CompactRailKey = "zune.detail.compact-rail", SongsHeadingKey = "zune.detail.songs", AsideKey = "zune.detail.aside",
         AsideColumnKey = "zune.detail.aside-column", HeroKey = "zune.detail.hero", HeroBandKey = "zune.detail.hero-band",
-        ShowHeaderKey = "zune.detail.show-header", NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
-        HeadKey = "zune.detail.head", ColumnGapKey = "zune.detail.column-gap";
+        NoticeKey = "zune.detail.notice", ActionsKey = "zune.detail.actions",
+        ColumnGapKey = "zune.detail.column-gap";
 
     /// <summary>The album's pieces: the artist line, the release facts, the countdown, the trailing band's sections, one list stack, the aside.</summary>
     public const string ArtistLineKey = "zune.album.artist", ReleaseKey = "zune.album.release", CountdownKey = "zune.album.countdown",

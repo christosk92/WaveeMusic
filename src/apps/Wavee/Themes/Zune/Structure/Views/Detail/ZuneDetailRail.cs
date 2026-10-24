@@ -14,7 +14,8 @@
 // THE COLLAPSED STRIP. Zune draws no grip (the column is the tier's width), so it never collapses the column itself; a collapse stored by another
 // theme reaches it, and the strip (`Detail.CompactRail`) is the cover and a 40 expand target, so the stored state is one click from undone.
 //
-// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18).
+// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18). Since audit
+// B9 it IS the rail drawn stacked (`DetailRailProps.Stacked`): one identity at every width, so a crossing glides the cover, the facts and the rings.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

@@ -1,7 +1,12 @@
 // ── Themes/Zune/Structure/Views/Detail/ZuneDetailFrame.cs — Zune's detail frame (themes plan 6.3; P5 Z6a1) ─────────────────────────────────────
 //
 // Boards Z-Album / -Small / -Huge / -Huge4K (Standard, Small, Huge, Huge 4K: the two-column arm), Z-Album-Compact (the vertical arm, whose
-// picture is the hero, `ZuneDetailHero.cs`). The scaffold of every album / playlist / Liked / show / episode page under Zune:
+// picture is the hero, `ZuneDetailHero.cs`). The scaffold of every album / playlist / Liked / show / episode page under Zune.
+//
+// ONE TREE (audit B9): no page swaps arms any more. A track page's frame is `OneTree` (the table hosts the hero, which arranges the panorama, the
+// identity, the list head and the aside for the form); a show's or an episode's is `ShowTree` (the panorama band over [identity | episodes], a row at
+// the two-column form, stacked below the mode edge, the identity drawn by the rail view in both forms). The arms described below are the two
+// ARRANGEMENTS those trees take:
 //
 //   · the VERTICAL arm (the page column below 640): [tint, tone, page] where the page is the notice over the content column (a show's fixed
 //     header over its episodes, or the table that hosts the hero). A TRACK page's vertical arm is ALWAYS wrapped in the insights sheet, open or
