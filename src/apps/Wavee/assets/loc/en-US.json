@@ -2645,6 +2645,7 @@
     "errorTitle": "Something went wrong.",
     "errorSubtitle": "Check your connection and try again.",
     "offlineBanner": "You're offline. Cached content still works; playback and edits resume when you're back.",
+    "offlineSubtitle": "Cached content still works; playback and edits resume when you're back.",
     "controlledByDevice": "Controlled by {device}",
     "restartNow": "Restart now",
     "restartToApply": "Applies after restart",
