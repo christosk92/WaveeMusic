@@ -75,7 +75,9 @@ internal static class ZunePanelWash
                 Key = ZunePanelWashRules.CardWashKey + ":" + wash.Tint.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
                 Height = part.Height, AlignSelf = FlexAlign.Start, HitTestVisible = false,
                 Gradient = GradientDown(part.Stops),
-                Enter = ZuneBandRules.MaterialFade, Exit = ZuneBandRules.MaterialFade,
+                // The card's top moves on a crossing (floating under the band, docked from the window's top: the 1008 edge) while its spacer eases;
+                // the wash's height eases with it, its cover cross-fade unchanged.
+                Animate = ZunePanelWashRules.CardWashMotion,
             });
         kids.Add(Scrim());
         if (glow is not null) kids.Add(glow);

@@ -325,28 +325,42 @@ public static class ZuneFrameRules
     /// <summary>The widest a page's content grows (P5 decision 2): 2400, centred in the content column once the window passes it.</summary>
     public const float PageCap = 2400f;
 
-    /// <summary>The page column (lane T2's member, kept identical): <paramref name="page"/> capped at <see cref="PageCap"/> + 2 x
-    /// <paramref name="gutter"/>, centred, padded by the gutter either side (its own top and bottom padding kept). ON ITS OWN IT COLLAPSES in
-    /// this engine (a centred cross-axis child takes its MEASURED width, so the page shrinks to its content): a page stands in it through a
-    /// centring row, <see cref="PageRow"/> (or the detail kit's `CentredPage`).</summary>
-    public static BoxEl PageColumn(BoxEl page, float gutter) => page with
+    /// <summary>The page column: <paramref name="page"/> capped at <see cref="PageCap"/>, grown from basis 0 up to its cap and stretched across its row
+    /// (its own top and bottom padding kept; its left and right padding are the row's gutter spacers, <see cref="Gutter"/>). ON ITS OWN IT COLLAPSES in
+    /// this engine (a centred cross-axis child takes its MEASURED width, so the page shrinks to its content): a page stands in it through a centring row,
+    /// <see cref="PageRow"/> (or the detail kit's `CentredPage`).</summary>
+    public static BoxEl PageColumn(BoxEl page) => page with
     {
-        MaxWidth = PageCap + 2f * gutter, AlignSelf = FlexAlign.Center, Padding = page.Padding with { Left = gutter, Right = gutter },
+        MaxWidth = PageCap, AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+        Padding = page.Padding with { Left = 0f, Right = 0f }, DropTarget = null,
     };
 
-    /// <summary>A page in the page column: <see cref="PageColumn"/> inside a centring row, so its content runs from x = max(gutter,
-    /// (W - 2400) / 2) to the mirror of it in a content column W wide, the x the band's lead inset and every page title share (the band's rows
-    /// sit in the same column). The row (<see cref="FlexJustify.Center"/>) takes the page's place in its parent (its grow, shrink, basis, min
-    /// height and margin; stretched across a column parent); the page keeps its key, its motion and every handler, grows from basis 0 up to its
-    /// cap (never to its content's width: a short page, a skeleton or a vacancy keeps the column's width) and is stretched to the row's height.</summary>
+    /// <summary>The page column's gutter, either side: a spacer, never padding (padding cannot ease, the engine has no padding channel). A crossing
+    /// that changes the gutter (16 / 24 / 48 / 48 / 64: 640, 1008, 3200) eases its WIDTH through real layout (<see cref="GutterMotion"/>), so the page
+    /// rides the re-solve instead of jumping by the difference on the commit frame.</summary>
+    public static BoxEl Gutter(float width) => new()
+    {
+        Width = width, Shrink = 0f, HitTestVisible = false, Animate = Design.Reduced ? null : GutterMotion,
+    };
+
+    /// <summary>The gutter spacers' ease: the pivot slide's 250 ms on the smooth-out curve, a reflow on the width axis (a size channel: the engine's
+    /// reflow-shove rule snaps a position slide beside a reflowing page, never this) — the band's inset and the play bar's row insets move with it.</summary>
+    public static readonly LayoutTransition GutterMotion = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>A page in the page column: [gutter · <see cref="PageColumn"/> · gutter] in a centring row, so its content runs from x = max(gutter,
+    /// (W - 2400) / 2) to the mirror of it in a content column W wide, the x the band's lead inset and every page title share (the band's rows sit in the
+    /// same column). The row (<see cref="FlexJustify.Center"/>) takes the page's place in its parent (its grow, shrink, basis, min height and margin;
+    /// stretched across a column parent) and its drop target (so a drop on the gutter still lands); the page keeps its key, its motion and every other
+    /// handler, grows from basis 0 up to its cap (never to its content's width: a short page, a skeleton or a vacancy keeps the column's width) and is
+    /// stretched to the row's height.</summary>
     public static BoxEl PageRow(BoxEl page, float gutter) => new()
     {
         Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch,
         Grow = page.Grow, Shrink = page.Shrink, Basis = page.Basis, MinWidth = 0f, MinHeight = page.MinHeight, Margin = page.Margin,
-        Children =
-        [
-            PageColumn(page, gutter) with { AlignSelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Margin = default },
-        ],
+        DropTarget = page.DropTarget,
+        Children = [Gutter(gutter), PageColumn(page) with { Margin = default }, Gutter(gutter)],
     };
 
     /// <summary>Where content starts in the page column of a content column <paramref name="width"/> wide: max(gutter, (W - 2400) / 2), the

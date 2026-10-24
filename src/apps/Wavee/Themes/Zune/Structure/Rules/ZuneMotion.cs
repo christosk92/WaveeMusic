@@ -79,4 +79,18 @@ public static class ZuneMotion
     /// <summary>A part the new tier draws as a different tree (the mini bar ↔ the desktop bar, a panel's sheet ↔ overlay): the same
     /// opacity cross-fade as the grid's.</summary>
     public static readonly EnterExit SwapFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>A swap host's Enter: <see cref="SwapFade"/> once its view has rendered before (a crossing mounts the other tree, which fades in over
+    /// the leaving one), none on the view's first render (a part that arrives with its page arrives with the page's own entrance, as before). Its
+    /// Exit is always <see cref="SwapFade"/>. <paramref name="rendered"/> is <see cref="Rendered"/>'s answer.</summary>
+    public static EnterExit? SwapEnter(bool rendered) => rendered ? SwapFade : null;
+
+    /// <summary>Has this view rendered before (false on its first render, true after)? Call it once per template, unconditionally, before any branch.</summary>
+    public static bool Rendered(FluentGpu.Hooks.RenderContext hooks)
+    {
+        var seen = hooks.UseRef(false);
+        bool was = seen.Value;
+        seen.Value = true;
+        return was;
+    }
 }
