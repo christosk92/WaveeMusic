@@ -31,6 +31,16 @@ public static class ZuneMotion
     /// <summary>A pivot word or pane that survives a reorder (the rotating pivot at Compact, a pane change): the position-only slide.</summary>
     public static readonly LayoutTransition PivotSlide = new(TransitionChannels.Position, TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut));
 
+    /// <summary>A quickplay group whose tiles a crossing resizes or re-breaks (the page narrowing beside a docking panel): it slides to its new place
+    /// on the pivot slide's clock and its box follows its tiles (<see cref="TileResize"/>).</summary>
+    public static readonly LayoutTransition GroupResize = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut), SizeMode.Reveal);
+
+    /// <summary>A quickplay tile whose edge a crossing changes (the pins' 180 ↔ 132 when a docking panel narrows the content tier): it scales from its
+    /// old box to its new one from its top-left corner and slides to its new place on the pivot slide's clock, so the tiles after it never jump.</summary>
+    public static readonly LayoutTransition TileResize = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PivotSlideMs, Easing.SmoothOut), SizeMode.ScaleCorrect);
+
     /// <summary>The panorama title's scale duration.</summary>
     public const float TitleScaleMs = 200f;
 

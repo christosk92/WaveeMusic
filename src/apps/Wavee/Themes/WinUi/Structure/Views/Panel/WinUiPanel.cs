@@ -402,7 +402,7 @@ internal sealed class WinUiPanelFrame : Component
             : default;
         var surface = new BoxEl
         {
-            Key = sheet ? F.SheetKey : null,
+            Key = F.SurfaceKey,
             Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
             Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
             // A docked pane beside the primary that is closed (its tier docks none, or it slid out and let its body go) leaves the tree: its head
@@ -439,12 +439,13 @@ internal sealed class WinUiPanelFrame : Component
                 new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column.ToArray() },
             ],
         };
-        if (!sheet) return surface;
-        // The sheet: 85 % of the body's height from the bottom; the room above it lets taps through to the frame's scrim.
+        // One wrapper in every placement, so a pane that turns into the Compact sheet at the 641 crossing keeps its parts (the surface was the
+        // root docked and a child of the sheet's wrapper, so every part under it mounted again). The sheet: 85 % of the body's height from the
+        // bottom, the room above it letting taps through to the frame's scrim; docked or floating, no room.
         return new BoxEl
         {
             Direction = 1, Grow = 1f, HitTestPassThrough = true,
-            Children = [new BoxEl { Grow = 1f - F.SheetShare, Basis = 0f, HitTestVisible = false }, surface],
+            Children = [new BoxEl { Grow = 1f - F.SheetShare, Basis = 0f, HitTestVisible = false, Visible = sheet }, surface],
         };
     }
 

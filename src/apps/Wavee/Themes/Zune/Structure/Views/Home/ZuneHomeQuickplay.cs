@@ -74,8 +74,8 @@ internal static class ZuneHomeQuickplay
     {
         var kids = new List<Element>(3);
         if (pins is not null) kids.Add(pins);
-        // The history group stands in its view's anchor, so the anchor is what moves in the strip: it slides when the strip re-breaks, as the groups do.
-        if (history is not null) kids.Add(history with { Layout = Design.Reduced ? null : ZuneMotion.PivotSlide });
+        // The history group stands in its view's anchor, so the anchor is what moves in the strip: it slides and follows its tiles, as the groups do.
+        if (history is not null) kids.Add(history with { Layout = Design.Reduced ? null : ZuneMotion.GroupResize });
         if (fresh is not null) kids.Add(fresh);
         bool stacked = lay.QuickStacked;
         return new BoxEl
@@ -90,8 +90,8 @@ internal static class ZuneHomeQuickplay
     static Element Group(string id, string head, Element? link, Element body) => new BoxEl
     {
         Key = H.QuickGroupPrefix + id, Direction = 1, Gap = H.QuickHeadGap, Shrink = 0f, MinWidth = 0f,
-        // A group that wraps to the next line or back (the page narrowing beside a docking panel, a crossing) slides there.
-        Layout = Design.Reduced ? null : ZuneMotion.PivotSlide,
+        // A group that wraps to the next line or back (the page narrowing beside a docking panel, a crossing) slides there; its box follows its tiles.
+        Layout = Design.Reduced ? null : ZuneMotion.GroupResize,
         Children =
         [
             new BoxEl
@@ -118,6 +118,9 @@ internal static class ZuneHomeQuickplay
         Children = sub is null ? [art, name] : [art, name, sub],
     };
 
+    /// <summary>A tile: a crossing that changes its edge scales it there and slides it to its new place (<see cref="ZuneMotion.TileResize"/>).</summary>
+    static Element Resizes(Element tile) => Design.Reduced ? tile : tile with { Layout = ZuneMotion.TileResize };
+
     // ── pins ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static Element PinsGroup(IReadOnlyList<BandPin> pins, Action? edit, ZuneHomeLayout lay)
@@ -132,8 +135,10 @@ internal static class ZuneHomeQuickplay
             {
                 Color = Prop.Of(() => pin.Playing() ? Tok.AccentTextPrimary : Tok.TextPrimary),   // bound: a track change re-renders nothing
             };
-            tiles[i] = Controls.Named(Tile(H.PinTilePrefix + pin.Id, lay.PinTileW,
-                Controls.Artwork(pin.Image, lay.PinTileW, lay.PinTileW, corners), name, null, pin.Go), pin.Label);
+            // The name's wrapper is what stands in the row: it slides; the tile inside it scales (its anchor mirrors the new edge at once).
+            var named = Controls.Named(Resizes(Tile(H.PinTilePrefix + pin.Id, lay.PinTileW,
+                Controls.Artwork(pin.Image, lay.PinTileW, lay.PinTileW, corners), name, null, pin.Go)), pin.Label);
+            tiles[i] = Design.Reduced ? named : named with { Layout = ZuneMotion.PivotSlide };
         }
         Element? link = edit is null ? null : K.Link("zune-home-pins-edit", Loc.Get(Strings.Theme.Zune.Discovery.Edit), edit, lay.LinkTarget);
         return Group(H.PinsGroup, Loc.Get(Strings.Theme.Zune.Discovery.Pins), link, Tiles(tiles, lay));
@@ -167,8 +172,8 @@ internal static class ZuneHomeQuickplay
             // The playing one speaks in the accent: two bound props (the name's ink, the line's words and ink), so a track change re-renders nothing.
             var name = K.Name(cell.Title) with { Color = Prop.Of(() => Controls.RelatesNow(uri) ? Tok.AccentTextPrimary : Tok.TextPrimary) };
             Element? sub = lay.QuickSubs ? PlayingLine(line, uri, remoteDevice) : null;
-            tiles[i] = Tile(c.IsBlank ? "zune-history-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-history:" + uri, edge, art, name, sub,
-                () => HomeCardNav.Open(in c));
+            tiles[i] = Resizes(Tile(c.IsBlank ? "zune-history-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-history:" + uri, edge, art, name, sub,
+                () => HomeCardNav.Open(in c)));
         }
         return Tiles(tiles, lay) with { Key = "zune-history-tiles", Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade };
     }
@@ -220,9 +225,9 @@ internal static class ZuneHomeQuickplay
         {
             var c = zone.Items[i];
             string sub = HomeCards.PlainText(c.Subtitle);
-            tiles[i] = Tile(c.IsBlank ? "zune-new-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-new:" + c.Uri, edge,
+            tiles[i] = Resizes(Tile(c.IsBlank ? "zune-new-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-new:" + c.Uri, edge,
                 Controls.Artwork(c.ImageUrl, edge, edge, R.Shape.For(ShapeRole.Cover)), K.Name(c.Title), lay.QuickSubs && sub.Length > 0 ? K.Sub(sub) : null,
-                () => HomeCardNav.Open(in c));
+                () => HomeCardNav.Open(in c)));
         }
         var seeAll = HomeVerbs.SeeAll(zone);
         Element? link = seeAll is null ? null

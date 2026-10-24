@@ -27,10 +27,10 @@ namespace Wavee.Themes.WinUi;
 /// <summary>The constants of WinUI's pane frame.</summary>
 public static class WinUiPanelLayout
 {
-    /// <summary>The node keys the mounted tests and `find` read: the tab row, a tab (its prefix and the body's name), the close, the grabber,
-    /// the body.</summary>
+    /// <summary>The node keys `find` reads: the tab row, a tab (its prefix and the body's name), the close, the grabber, the body, and the pane's
+    /// surface (one key in every placement: a pane that turns into the Compact sheet at the 641 crossing keeps its parts).</summary>
     public const string TabsKey = "winui-pane-tabs", TabKeyPrefix = "winui-pane-tab:", CloseKey = "winui-pane-close", GrabberKey = "winui-pane-grabber",
-        BodyKey = "winui-pane-body", SheetKey = "winui-pane-sheet";
+        BodyKey = "winui-pane-body", SurfaceKey = "winui-pane-surface";
 
     /// <summary>The tab row: 48 tall (the tab's hit box: it clears the touch floor at every tier), 16 in, the tabs 18 apart (Body 14/20).</summary>
     public const float TabRowH = 48f, TabGap = 18f, TabSize = 14f, TabLine = 20f;
