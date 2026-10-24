@@ -7,7 +7,7 @@ index.html. Every app render also carries its `lint min=warn` findings.
     python -I tools/themes/gallery.py --theme zune
     python -I tools/themes/gallery.py --theme zune --only Z-Home Z-Album          # board-name substrings
     python -I tools/themes/gallery.py --theme zune --exe C:\\path\\Wavee.exe --jobs 4 --out C:\\WAVEE\\scratch\\gallery\\zune
-    python -I tools/themes/gallery.py --theme zune --html-only                    # rebuild the pages from results.json
+    python -I tools/themes/gallery.py --theme zune --html-only                    # rebuild the pages and sheets from results.json
     python -I tools/themes/gallery.py --theme winui --map tools/themes/gallery-map.winui.json
 
 Inputs
@@ -15,9 +15,21 @@ Inputs
   the map       tools/themes/gallery-map.<theme>.json (see its "_doc" entry): board -> [{tier, w, h, route|uri|..., verbs}].
   board PNGs    <board-png-dir> (default C:\\WAVEE\\scratch\\board-png-<theme>); a missing one is rendered with board_shots.py
                 (headless Edge) from a staged copy of the boards plus support.js.
-Outputs (default C:\\WAVEE\\scratch\\gallery\\<theme>): index.html, <family>.html, boards/*.png, app/*.png, results.json.
+Outputs (default C:\\WAVEE\\scratch\\gallery\\<theme>): index.html, <family>.html, boards/*.png, app/*.png, results.json (per
+entry: ok, lint, warnings, seconds), sheets/<theme>-<family>-<n>.png.
 
-Standard library only. The server client is tools/inspect.py, loaded by path.
+GPU: every mount passes `gpu=hardware` (the offscreen D3D12 surface on the real adapter) unless --gpu warp says otherwise or
+an entry sets its own `gpu`: WARP software rendering pegs the CPU, and hardware gives the same lint counts and pixels within
+anti-aliasing, 1.5-5x faster.
+
+Timing: before the run it prints an estimate (an entry's own time from the last results.json in --out when that run used the
+same gpu, else a per-tier guess: EST_SECONDS); each entry's line carries its own time and the time left; the end prints the
+total. results.json keeps each entry's seconds, its estimate and the gpu it ran on.
+
+Contact sheets: per family, every board beside its app renders at one common scale, labelled (board, tier, render label, lint,
+seconds, verb warnings), packed into PNGs at most SHEET_MAX px on a side, so an agent's image reader can open them whole.
+They need PIL (Pillow); without it the run still writes the pages and says so. Everything else is the standard library.
+The server client is tools/inspect.py, loaded by path.
 """
 
 import argparse
@@ -42,8 +54,19 @@ SUPPORT_JS_CANDIDATES = [
     r"C:\Users\ChristosKarapasias\Downloads\Polaris dashboard redesign\support.js",
     r"C:\WAVEE\scratch\boards-zune\support.js",
 ]
-ENTRY_TIMEOUT = 240      # seconds one entry (mount + verbs + render + lint) may take before its server is killed
+ENTRY_TIMEOUT = 240      # seconds one command may take before the watchdog kills its server
 FINDINGS_KEPT = 120      # findings stored per render
+# The per-entry guess when results.json has no time of the entry's own (from a run on the same gpu): one server, a fresh
+# process per entry (start, mount, verbs, render, lint), measured on the owner's machine beside other lanes' work (2026-10-24).
+# EST_STAGE is added for a stage (`key f11`) entry. With gpu=hardware the tiers hardly differ; WARP draws 2560 and 3840 wide
+# frames, and the stage's layers, on the CPU.
+EST_SECONDS = {"hardware": {"Compact": 5, "Small": 5, "Standard": 6, "Huge": 7, "Huge4K": 8},
+               "warp": {"Compact": 12, "Small": 12, "Standard": 14, "Huge": 26, "Huge4K": 48}}
+EST_STAGE = {"hardware": {"Compact": 1, "Small": 1, "Standard": 1, "Huge": 1, "Huge4K": 2},
+             "warp": {"Compact": 25, "Small": 25, "Standard": 30, "Huge": 70, "Huge4K": 120}}
+SHEET_MAX = 1960         # a contact sheet's longest side, px
+SHEET_ROW_H = 540        # the height a sheet group's images aim at, px (less when the group is wide)
+SHEET_MIN_SCALE = 0.4    # below this a board and its renders stop sitting side by side and wrap into a grid
 
 
 # ───────────────────────────── helpers ─────────────────────────────
@@ -107,6 +130,7 @@ class Plan:
         self.canvas = {k[:-8] if k.endswith(".dc.html") else k: v for k, v in boards.items()}
         self.map = gmap.get("boards", {})
         self.unmapped = gmap.get("unmapped", {})
+        self.gaps = gmap.get("gaps", {})
         self.defaults = gmap.get("defaults", {})
         self.entries = []        # one dict per app render
         self.board_rows = []     # one dict per board that appears in the gallery (mapped or not)
@@ -129,7 +153,7 @@ class Plan:
                 family0 = reason.get("family", family0)
                 reason = reason.get("reason", "")
             row = {"board": name, "family": family0, "tier": tier0, "title": spec.get("title", ""),
-                   "bw": spec.get("w"), "bh": spec.get("h"), "unmapped": reason, "renders": []}
+                   "bw": spec.get("w"), "bh": spec.get("h"), "unmapped": reason, "gap": self.gaps.get(name), "renders": []}
             self.board_rows.append(row)
             for i, r in enumerate(renders or []):
                 entry = self.make_entry(name, i, len(renders), r, spec, tier0, family0)
@@ -178,12 +202,45 @@ def ensure_board_pngs(plan, boards_dir, png_dir, support_js, work_dir, log):
 
 # ───────────────────────────── the app renders ─────────────────────────────
 
+def entry_gpu(entry, gpu):
+    return entry["mount"].get("gpu", gpu)
+
+
+def estimate_seconds(entry, old, gpu="hardware"):
+    """One entry's expected wall time: its own time in the last results.json when that run used the same gpu, else the per-tier
+    guess for that gpu."""
+    g = entry_gpu(entry, gpu)
+    prev = (old or {}).get(entry["id"])
+    if prev and prev.get("ok") and prev.get("seconds") and prev.get("gpu", "warp") == g:
+        return float(prev["seconds"]), True
+    table = EST_SECONDS.get(g, EST_SECONDS["warp"])
+    tier = entry["tier"] if entry["tier"] in table else "Standard"
+    secs = table[tier]
+    if any(v.startswith("key f11") for v in entry["verbs"]):
+        secs += EST_STAGE.get(g, EST_STAGE["warp"])[tier]
+    return float(secs), False
+
+
+def fmt_dur(secs):
+    secs = int(round(secs))
+    return "%dm%02ds" % (secs // 60, secs % 60) if secs >= 60 else "%ds" % secs
+
+
+class Progress:
+    """The shared run counter: entries done, seconds spent, the estimate left."""
+
+    def __init__(self, todo, est_left, jobs):
+        self.todo, self.done, self.est_left, self.jobs = todo, 0, est_left, max(1, jobs)
+        self.t0 = time.time()
+
+
 class Worker(threading.Thread):
-    def __init__(self, inspect_mod, exe, theme, work_q, results, app_dir, log, lock, reuse, old):
+    def __init__(self, inspect_mod, exe, theme, work_q, results, app_dir, log, lock, progress, gpu):
         super().__init__(daemon=True)
+        self.gpu = gpu
         self.m, self.exe, self.theme, self.q = inspect_mod, exe, theme, work_q
         self.results, self.app_dir, self.log, self.lock = results, app_dir, log, lock
-        self.reuse, self.old = reuse, old
+        self.progress = progress
         self.server = None
 
     def start_server(self):
@@ -221,12 +278,19 @@ class Worker(threading.Thread):
             except queue.Empty:
                 break
             res = self.do_entry(entry)
+            res["estimate"] = entry["est"]
+            res["gpu"] = entry_gpu(entry, self.gpu)
+            p = self.progress
             with self.lock:
                 self.results[entry["id"]] = res
-                done = len(self.results)
-            self.log("[%3d] %-44s %s%s" % (done, entry["id"], "ok " if res["ok"] else "FAILED ",
-                                           ("%dE %dW" % (res["lint"]["error"], res["lint"]["warn"])) if res.get("lint") and res["ok"]
-                                           else res.get("error", "")[:90]))
+                p.done += 1
+                p.est_left = max(0.0, p.est_left - entry["est"])
+                done, left = p.done, p.est_left / p.jobs
+            outcome = ("%dE %dW" % (res["lint"]["error"], res["lint"]["warn"])) if res.get("lint") and res["ok"] else res.get("error", "")[:90]
+            if res["ok"] and res.get("warnings"):
+                outcome += "  (%d verb warning%s)" % (len(res["warnings"]), "" if len(res["warnings"]) == 1 else "s")
+            self.log("[%3d/%d] %-44s %s%-10s %6.1fs   ~%s left" % (done, p.todo, entry["id"], "ok " if res["ok"] else "FAILED ",
+                                                                  outcome, res.get("seconds", 0.0), fmt_dur(left)))
         self.stop_server()
 
     def do_entry(self, e):
@@ -240,7 +304,7 @@ class Worker(threading.Thread):
             if self.server is None or self.server.proc.poll() is not None:
                 self.stop_server(kill=True)
                 self.start_server()
-            args = {"w": e["w"], "h": e["h"], "theme": self.theme}
+            args = {"w": e["w"], "h": e["h"], "theme": self.theme, "gpu": self.gpu}     # an entry's own gpu (in mount) wins
             if e["kind"]:
                 args["kind"] = e["kind"]
             if e["scale"]:
@@ -295,23 +359,35 @@ class Worker(threading.Thread):
         return res
 
 
-def render_app(plan, exe, theme, out_dir, jobs, results, log, reuse, only):
+def render_app(plan, exe, theme, out_dir, jobs, results, log, reuse, only, gpu="hardware"):
+    """Renders the entries (all, or those whose board matches --only); returns (entries run, wall seconds, estimate seconds)."""
     inspect_mod = load_inspect()
     app_dir = os.path.join(out_dir, "app")
     os.makedirs(app_dir, exist_ok=True)
     work_q = queue.Queue()
-    todo = 0
+    todo, est_total, known = [], 0.0, 0
     for e in plan.entries:
-        if only and not any(o in e["board"] for o in only):
+        if only and not any(o in e["board"] or o == e["id"] for o in only):
             continue
         old = results.get(e["id"])
         if reuse and old and old.get("ok") and os.path.exists(os.path.join(out_dir, old["png"])):
             continue
+        e["est"], own = estimate_seconds(e, results, gpu)
+        est_total += e["est"]
+        known += own
+        todo.append(e)
+    jobs = max(1, min(jobs, len(todo) or 1))
+    for e in todo:
         work_q.put(e)
-        todo += 1
-    log("rendering %d of %d app entries with %d servers" % (todo, len(plan.entries), jobs))
+    log("rendering %d of %d app entries with %d server%s" % (len(todo), len(plan.entries), jobs, "" if jobs == 1 else "s"))
+    table, stage = EST_SECONDS.get(gpu, EST_SECONDS["warp"]), EST_STAGE.get(gpu, EST_STAGE["warp"])
+    log("estimate: ~%s wall for %d entries on %d server%s (%d timed by their own last run on this gpu in results.json, the rest "
+        "guessed per tier for gpu=%s: %s; a stage entry +%s)" % (
+            fmt_dur(est_total / jobs), len(todo), jobs, "" if jobs == 1 else "s", known, gpu,
+            ", ".join("%s %ds" % (t, s) for t, s in table.items()), "/".join("%d" % s for s in stage.values()) + "s"))
     lock = threading.Lock()
-    workers = [Worker(inspect_mod, exe, theme, work_q, results, app_dir, log, lock, reuse, results) for _ in range(max(1, min(jobs, todo or 1)))]
+    progress = Progress(len(todo), est_total, jobs)
+    workers = [Worker(inspect_mod, exe, theme, work_q, results, app_dir, log, lock, progress, gpu) for _ in range(jobs)]
     for w in workers:
         w.start()
     try:
@@ -323,6 +399,7 @@ def render_app(plan, exe, theme, out_dir, jobs, results, log, reuse, only):
         for w in workers:
             w.stop_server(kill=True)
         raise
+    return todo, time.time() - progress.t0, est_total / jobs
 
 
 # ───────────────────────────── html ─────────────────────────────
@@ -398,8 +475,9 @@ def fig_app(res, out_dir, scale, entry):
         return ('<figure><div class="missing">app render failed<br><small>%s</small></div><figcaption>%s<br>%s</figcaption></figure>'
                 % (err, head, chips(res)))
     size = png_size(os.path.join(out_dir, res["png"])) or (res["w"], res["h"])
-    parts = ['<figure style="--w:%d;--s:%.4f"><a href="%s" target=_blank><img loading=lazy src="%s"></a><figcaption>%s<br>%dx%d (%s) %s'
-             % (size[0], scale, esc(res["png"]), esc(res["png"]), head, size[0], size[1], esc(res.get("mountTier") or ""), chips(res))]
+    parts = ['<figure style="--w:%d;--s:%.4f"><a href="%s" target=_blank><img loading=lazy src="%s"></a><figcaption>%s<br>%dx%d (%s) %.1fs %s'
+             % (size[0], scale, esc(res["png"]), esc(res["png"]), head, size[0], size[1], esc(res.get("mountTier") or ""),
+                res.get("seconds", 0.0), chips(res))]
     for w in res.get("warnings", []):
         parts.append('<br><span class="sev-warn">verb: %s</span>' % esc(w))
     fl = res.get("findings", [])
@@ -441,6 +519,8 @@ def build_html(plan, results, out_dir, theme):
             body.append(fig_board(row, out_dir, scale))
             if row["unmapped"]:
                 body.append('<figure><div class="missing">not mapped to an app render<br><small>%s</small></div></figure>' % esc(row["unmapped"]))
+            if row.get("gap"):
+                body.append('<figure><div class="missing">part of this board no render covers<br><small>%s</small></div></figure>' % esc(row["gap"]))
             for i, r in zip(ids, ress):
                 body.append(fig_app(r, out_dir, scale, entries[i]))
             body.append("</div>")
@@ -499,9 +579,184 @@ def build_index(plan, results, families, fam_pages, theme):
         body.append("<tr><td><a href='%s#%s'>%s</a></td><td>%s / %s</td><td>%s</td></tr>" % (
             fam_pages[r["family"]], esc(r["board"]), esc(r["board"]), esc(r["family"]), esc(r["tier"]), esc(r["unmapped"])))
     body.append("</table>")
+    gapped = [r for r in plan.board_rows if r.get("gap")]
+    if gapped:
+        body.append("<h2>Parts of mapped boards no render covers (%d)</h2><table><tr><th>board</th><th>what is missing</th></tr>" % len(gapped))
+        for r in gapped:
+            body.append("<tr><td><a href='%s#%s'>%s</a></td><td>%s</td></tr>" % (fam_pages[r["family"]], esc(r["board"]), esc(r["board"]), esc(r["gap"])))
+        body.append("</table>")
     if plan.unlisted:
         body.append("<h2>On the canvas but in neither list (%d)</h2><p>%s</p>" % (len(plan.unlisted), esc(", ".join(plan.unlisted))))
     return page("%s: boards vs app" % theme, "".join(body))
+
+
+# ───────────────────────────── contact sheets ─────────────────────────────
+
+def sheet_font(size):
+    from PIL import ImageFont
+    for name in ("segoeui.ttf", "arial.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def fit_text(draw, text, font, width):
+    """`text` cut with an ellipsis to fit `width` px."""
+    if draw.textlength(text, font=font) <= width:
+        return text
+    while text and draw.textlength(text + "...", font=font) > width:
+        text = text[:-1]
+    return text + "..."
+
+
+def sheet_group(row, results, entries, out_dir):
+    """A board row -> its group: [(caption, png path or None, (w, h), is_board)], the board first, then each render."""
+    bpng = os.path.join(out_dir, "boards", row["board"] + ".png")
+    bsize = png_size(bpng) or (row["bw"] or 1440, row["bh"] or 960)
+    group = [("board %s  %dx%d" % (row["board"], bsize[0], bsize[1]), bpng if os.path.exists(bpng) else None, bsize, True)]
+    for i in row["renders"]:
+        e, res = entries[i], results.get(i)
+        suffix = i[len(row["board"]):]                     # "" or ".2"
+        label = "app%s %s" % (suffix, e["label"])
+        if not res:
+            group.append((label + "  [not rendered]", None, (e["w"], e["h"]), False))
+            continue
+        if not res["ok"]:
+            group.append((label + "  [FAILED: %s]" % res.get("error", ""), None, (e["w"], e["h"]), False))
+            continue
+        lint = res.get("lint") or {}
+        tail = "  %dx%d  %dE %dW  %.0fs" % (res["w"], res["h"], lint.get("error", 0), lint.get("warn", 0), res.get("seconds", 0.0))
+        if res.get("warnings"):
+            tail += "  VERB WARNING: " + "; ".join(res["warnings"])
+        png = os.path.join(out_dir, res["png"])
+        group.append((label + tail, png if os.path.exists(png) else None, png_size(png) or (e["w"], e["h"]), False))
+    return group
+
+
+def group_layout(group, head_h, pad, cap_h):
+    """(columns, scale) for a group drawn as a grid of equal cells (the largest image's size) at one scale: side by side when
+    that keeps the scale at SHEET_MIN_SCALE or above, else the column count with the largest scale (ties: more columns). A row
+    of cells is at most SHEET_ROW_H tall and the group at most SHEET_MAX on either side."""
+    cw = max(g[2][0] for g in group)
+    ch = max(g[2][1] for g in group)
+    n = len(group)
+    best = None
+    for c in range(n, 0, -1):
+        rows = -(-n // c)
+        s = min(1.0, SHEET_ROW_H / ch, (SHEET_MAX - pad * (c + 1)) / (c * cw),
+                (SHEET_MAX - head_h - rows * (cap_h + pad)) / (rows * ch))
+        if s >= SHEET_MIN_SCALE:
+            return c, s
+        if best is None or s > best[1] + 1e-9:
+            best = (c, s)
+    return best
+
+
+def draw_group(group, header, gap_note, fonts):
+    """One group -> an RGB image: a header line (and the board's uncovered part), then the board and its renders in a grid of
+    equal cells at one scale, each with its caption above."""
+    from PIL import Image, ImageDraw
+    f_head, f_cap = fonts
+    pad, cap_h, head_h = 10, 22, 26 + (20 if gap_note else 0)
+    cols, s = group_layout(group, head_h, pad, cap_h)
+    cw = max(1, int(max(g[2][0] for g in group) * s))
+    ch = max(1, int(max(g[2][1] for g in group) * s))
+    rows = -(-len(group) // cols)
+    used_w = max(int(g[2][0] * s) for g in group) if cols == 1 else cw
+    W = cols * used_w + pad * (cols + 1)
+    H = head_h + rows * (cap_h + ch + pad)
+    img = Image.new("RGB", (W, H), (34, 34, 34))
+    d = ImageDraw.Draw(img)
+    d.text((pad, 4), fit_text(d, header, f_head, W - 2 * pad), font=f_head, fill=(255, 255, 255))
+    if gap_note:
+        d.text((pad, 26), fit_text(d, "not covered: " + gap_note, f_cap, W - 2 * pad), font=f_cap, fill=(255, 190, 90))
+    for k, (cap, png, size, is_board) in enumerate(group):
+        x = pad + (k % cols) * (used_w + pad)
+        y = head_h + (k // cols) * (cap_h + ch + pad)
+        w, h = max(1, int(size[0] * s)), max(1, int(size[1] * s))
+        warn = "FAILED" in cap or "VERB WARNING" in cap or "not rendered" in cap
+        color = (255, 120, 120) if warn else ((150, 200, 255) if is_board else (200, 255, 170))
+        d.text((x, y + 2), fit_text(d, cap, f_cap, max(used_w, 120)), font=f_cap, fill=color)
+        y += cap_h
+        if png:
+            try:
+                with Image.open(png) as im:
+                    img.paste(im.convert("RGB").resize((w, h), Image.LANCZOS), (x, y))
+            except OSError:
+                png = None
+        if not png:
+            d.rectangle([x, y, x + w - 1, y + h - 1], outline=(255, 120, 120), fill=(60, 30, 30))
+            d.text((x + 6, y + 6), "no image", font=f_cap, fill=(255, 120, 120))
+    return img
+
+
+def build_sheets(plan, results, out_dir, theme, families_wanted, log):
+    """Per family: every board row with renders, its groups packed left to right and top to bottom into PNGs at most SHEET_MAX
+    on a side. Returns the paths written."""
+    try:
+        from PIL import Image
+    except ImportError:
+        log("contact sheets skipped: PIL (Pillow) is not installed for this python")
+        return []
+    fonts = (sheet_font(17), sheet_font(14))
+    entries = {e["id"]: e for e in plan.entries}
+    sheet_dir = os.path.join(out_dir, "sheets")
+    os.makedirs(sheet_dir, exist_ok=True)
+    families = {}
+    for row in plan.board_rows:
+        if row["renders"] and row["family"] in families_wanted:
+            families.setdefault(row["family"], []).append(row)
+    written = []
+    for fam, rows in families.items():
+        if not any(results.get(i) for r in rows for i in r["renders"]):
+            continue
+        prefix = "%s-%s-" % (theme, slug(fam))
+        mine = re.compile(re.escape(prefix) + r"\d+\.png$")     # this family's sheets only ("nowplaying-" vs "nowplaying-card-")
+        for old in os.listdir(sheet_dir):
+            if mine.match(old):
+                os.remove(os.path.join(sheet_dir, old))
+        rows = sorted(rows, key=lambda r: (tier_rank(r["tier"]), plan.canvas_order.index(r["board"])))
+        tiles = []
+        for row in rows:
+            if not any(results.get(i) for i in row["renders"]):
+                continue                                    # nothing of this board rendered yet (a --only run elsewhere)
+            header = "%s  %s  %s" % (row["tier"], row["board"], row["title"] or "")
+            tiles.append(draw_group(sheet_group(row, results, entries, out_dir), header, row.get("gap"), fonts))
+        # shelf packing: left to right while a row fits SHEET_MAX, a new sheet when the next shelf would pass it
+        sheets, shelf, shelves, height = [], [], [], 0
+        def flush_shelf():
+            nonlocal shelf, height
+            if shelf:
+                shelves.append(shelf)
+                height += max(t.height for t in shelf) + 6
+                shelf = []
+        for t in tiles:
+            if shelf and sum(x.width + 6 for x in shelf) + t.width > SHEET_MAX:
+                flush_shelf()
+            if not shelf and shelves and height + t.height > SHEET_MAX:
+                sheets.append(shelves)
+                shelves, height = [], 0
+            shelf.append(t)
+        flush_shelf()
+        if shelves:
+            sheets.append(shelves)
+        for n, sh in enumerate(sheets, 1):
+            W = min(SHEET_MAX, max(sum(t.width + 6 for t in s) for s in sh))
+            H = min(SHEET_MAX, sum(max(t.height for t in s) + 6 for s in sh))
+            img = Image.new("RGB", (W, H), (12, 12, 12))
+            y = 0
+            for s in sh:
+                x = 0
+                for t in s:
+                    img.paste(t, (x, y))
+                    x += t.width + 6
+                y += max(t.height for t in s) + 6
+            path = os.path.normpath(os.path.join(sheet_dir, "%s%d.png" % (prefix, n)))
+            img.save(path, optimize=True)
+            written.append(path)
+    return written
 
 
 # ───────────────────────────── main ─────────────────────────────
@@ -516,9 +771,13 @@ def main():
     ap.add_argument("--exe", help="Wavee.exe (default: the newest build under src/apps/Wavee/bin)")
     ap.add_argument("--out", help=r"default C:\WAVEE\scratch\gallery\<theme>")
     ap.add_argument("--jobs", type=int, default=3, help="parallel --inspect servers (max 4)")
-    ap.add_argument("--only", nargs="*", default=[], help="render only boards whose name contains one of these (the pages still cover everything)")
+    ap.add_argument("--gpu", choices=["hardware", "warp"], default="hardware",
+                    help="the mount's gpu= (default hardware: same lint and pixels as warp, a fraction of the CPU); an entry's own gpu wins")
+    ap.add_argument("--only", nargs="*", default=[], help="render only boards whose name contains one of these, or the entries with exactly these ids (Z-Artist.2: the "
+                         "second render of Z-Artist); the pages still cover everything")
     ap.add_argument("--reuse", action="store_true", help="skip entries whose render is already in results.json")
-    ap.add_argument("--html-only", action="store_true", help="rebuild the pages from results.json, render nothing")
+    ap.add_argument("--html-only", action="store_true", help="rebuild the pages and the contact sheets from results.json, render nothing")
+    ap.add_argument("--no-sheets", action="store_true", help="write no contact sheets")
     ap.add_argument("--no-board-png", action="store_true", help="do not render missing board PNGs")
     args = ap.parse_args()
 
@@ -550,8 +809,15 @@ def main():
         if not exe:
             exe = load_inspect().find_exe(None)
         log("exe: " + exe)
-        render_app(plan, exe, theme, out, jobs, results, log, args.reuse, args.only)
+        log("gpu: %s on every mount (--gpu %s overrides; an entry's own gpu wins)" % (args.gpu, "warp" if args.gpu == "hardware" else "hardware"))
+        ran, wall, est = render_app(plan, exe, theme, out, jobs, results, log, args.reuse, args.only, args.gpu)
+        ids = {e["id"] for e in plan.entries}
+        for stale in [k for k in results if k not in ids]:      # an id the map no longer has (a renamed or removed render)
+            del results[stale]
         write_text(results_path, json.dumps(results, indent=1))
+        if ran:
+            log("rendered %d entries in %s wall (estimate was ~%s; mean %.1fs per entry)" % (
+                len(ran), fmt_dur(wall), fmt_dur(est), sum(results[e["id"]].get("seconds", 0.0) for e in ran) / len(ran)))
 
     os.makedirs(os.path.join(out, "boards"), exist_ok=True)
     for r in plan.board_rows:
@@ -570,8 +836,19 @@ def main():
             log("  FAILED %s: %s" % (r["id"], r["error"][:160]))
     um = [r["board"] for r in plan.board_rows if r["unmapped"]]
     log("unmapped boards (%d): %s" % (len(um), ", ".join(um)))
+    gaps = [r["board"] for r in plan.board_rows if r.get("gap")]
+    if gaps:
+        log("boards with a part no render covers (%d): %s" % (len(gaps), ", ".join(gaps)))
     if plan.unlisted:
         log("on canvas but in neither list (%d): %s" % (len(plan.unlisted), ", ".join(plan.unlisted)))
+    if not args.no_sheets:
+        wanted = {r["family"] for r in plan.board_rows
+                  if not args.only or any(o in r["board"] or o in r["renders"] for o in args.only)}
+        sheets = build_sheets(plan, results, out, theme, wanted, log)
+        if sheets:
+            log("contact sheets (%d, board | app at one scale, at most %d px a side):" % (len(sheets), SHEET_MAX))
+            for path in sheets:
+                log("  " + path)
 
 
 if __name__ == "__main__":

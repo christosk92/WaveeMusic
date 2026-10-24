@@ -97,7 +97,8 @@ public static partial class Diagnostics
         public enum Verb : byte
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
-            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog, Quit,
+            Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
+            Views, Crossings, Setting, Drag, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -238,7 +239,8 @@ public static partial class Diagnostics
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
             Arg("player", ArgType.Enum, "bind an idle engine player to the video surface", null, "fake", requires: "video"),
-            Arg("chrome", ArgType.Enum, "Zune's video stage: the hover chrome at rest", null, "shown|hidden"),
+            Arg("chrome", ArgType.Enum, "shown: the chrome at rest with no auto-hide (Zune's hover band, the video presenter's transport, the fullscreen stage's controls)", null, "shown|hidden"),
+            Arg("join", ArgType.Enum, "the video join poster's state: poster (the artwork alone: a player bound, no picture yet), working (the ring and Loading..., the default offline), failed (the fault line)", null, "poster|working|failed", requires: "video"),
             Arg("fromMs", ArgType.Int, "the fake video track's position", "74000", requires: "video"),
             Arg("stage", ArgType.Enum, "the fullscreen stage's mode (key f11 opens it)", null, "lyrics|visualizer|queue|artist"),
             Arg("layout", ArgType.Enum, "the fullscreen stage's layout", null, "card|large|centered|artist"),
@@ -252,6 +254,14 @@ public static partial class Diagnostics
 
         /// <summary>The mount's args: its own and the navigation.</summary>
         static readonly ArgSpec[] s_mountArgs = Join(s_mountOwnArgs, s_navArgs);
+
+        /// <summary>True for a lint option `crossing` takes (`s_lintArgs`): `crossings` passes them on to each of its crossings.</summary>
+        public static bool IsCrossingLintArg(string name)
+        {
+            foreach (ArgSpec a in s_lintArgs)
+                if (string.Equals(a.Name, name, StringComparison.Ordinal)) return true;
+            return false;
+        }
 
         /// <summary>True for an arg only a mount reads (not the navigation): a `crossing` over a mount that is already up refuses them.</summary>
         public static bool IsMountOnly(string name)
@@ -391,7 +401,9 @@ public static partial class Diagnostics
             new(Verb.Find, "find", "Nodes keyed exactly key (or starting with prefix=), in reading order, with shown, onScreen and actionable", "find see-all:home:made-for-you")
             {
                 Positional = ["key"], NeedsMount = true,
-                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead", excludes: "key")],
+                Args = [Arg("key", ArgType.Key, "an exact key"), Arg("prefix", ArgType.String, "a key prefix instead", excludes: "key"),
+                        Arg("visibleOnly", ArgType.Bool, "only nodes that are shown and at least partly on screen", "false"),
+                        Arg("depth", ArgType.Int, "leave out a match nested inside more than this many other matches (0: the outermost only)") with { Min = 0 }],
             },
             new(Verb.Dump, "dump", "The scene (or the subtree root names) as a flat node array: rects, paint, text metrics, flags", "dump root=zune-daylist-play depth=2")
             {
@@ -401,6 +413,7 @@ public static partial class Diagnostics
                     Arg("root", ArgType.Key, "start at every node with this exact key (default: the whole tree and the overlays)"),
                     Arg("nth", ArgType.Int, "pick one of the root's matches (0 first, in slot order)", requires: "root") with { Min = 0 },
                     Arg("depth", ArgType.Int, "how deep the walk goes (0: the root only)") with { Min = 0 },
+                    Arg("keyDepth", ArgType.Int, "how many KEYED levels below the root the walk goes, whatever the unkeyed boxes between (lyric lines sit 16 boxes under lyrics:stage, 2 keyed levels)") with { Min = 0 },
                     Arg("keysOnly", ArgType.Bool, "keyed nodes only", "false"),
                     Arg("visibleOnly", ArgType.Bool, "skip hidden, parked, transparent and empty-box nodes", "true"),
                     Arg("text", ArgType.Bool, "write the text blocks", "true"),
@@ -418,7 +431,10 @@ public static partial class Diagnostics
                     Arg("max", ArgType.Int, "the settle cap after a rescale", "600"),
                 ],
             },
-            new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, rung ids, the live sizes and the published ones the page reads", "tiers") { NeedsMount = true },
+            new(Verb.Tiers, "tiers", "The mounted window's tier facts (window, height and content tiers, rung ids, the live sizes and the published ones the page reads) and the theme's policy: every edge with its holds, the rungs, the named ladders and the sizes crossings uses per edge", "tiers")
+            {
+                Args = [Arg("theme", ArgType.Enum, "the theme whose policy to list (default: the active one; another theme lists its policy alone)", null, ThemeChoices)],
+            },
             new(Verb.Lint, "lint", "Check the mounted scene (or a saved snapshot: replay=) for design flaws: gate rules (clip, trim, type, target, duplicate, rhythm, contrast, theme edges) and todo rules (align, space, placeholder, keys)", "lint min=warn allowDuplicate=\"See all\"")
             {
                 Positional = ["rules"], NeedsMount = true, MountUnless = "replay",
@@ -451,12 +467,61 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
+                    Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|show|episode"),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
+            },
+            new(Verb.Views, "views", "Which template draws every view key of a theme (the active one) and which layer registered every view and style key; standins counts the keys a stand-in fills", "views filter=standins")
+            {
+                Args =
+                [
+                    Arg("theme", ArgType.Enum, "the theme to report (default: the active one)", null, ThemeChoices),
+                    Arg("filter", ArgType.Enum, "list every key, only the stand-ins, or only the theme's own (the counts cover every key)", "all", "all|standins|own"),
+                    Arg("prefix", ArgType.String, "list only keys starting with this"),
+                ],
+            },
+            new(Verb.Crossings, "crossings", "Cross every window and height edge of the theme both ways over each route, in this one server: a fresh mount inside the old tier per row, then one crossing (old side to new side, frames 1); every crossing reply kept whole, with a row and a table line", "crossings theme=winui routes=[home,album,artist,playlist]")
+            {
+                Args = Join(
+                [
+                    Arg("routes", ArgType.List, "the pages: a route key, a spotify: uri, or album|artist|playlist|show|episode (the fixtures al2, ar3, pl0, sh0, ep0)", "home,album,artist,playlist"),
+                    Arg("edges", ArgType.List, "only these edges, by name (W1008, H720; tiers lists them)"),
+                    Arg("dirs", ArgType.Enum, "narrowing, widening or both", "both", "both|narrow|widen"),
+                    Arg("control", ArgType.Bool, "each crossing's own control step (crossing's control: the excess counts what the edge adds over a plain resize)", "true"),
+                    Arg("w", ArgType.Float, "the width a height edge is crossed at", "1440"),
+                    Arg("h", ArgType.Float, "the height a width edge is crossed at", "960"),
+                    Arg("theme", ArgType.Enum, "the theme (default: the active one)", null, ThemeChoices),
+                    Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
+                    Arg("gpu", ArgType.Enum, "each row's mount devices: none by default (a crossing reads rects and the scene, never a frame's pixels), hardware or warp to keep pixels for a render after", "none", "warp|hardware|none"),
+                    Arg("scale", ArgType.Float, "DPI scale of each row's mount", "1"),
+                    Arg("images", ArgType.Enum, "fake or real images", "fake", "fake|real"),
+                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow"),
+                    Arg("items", ArgType.Int, "entries per list in each crossing reply", "8"),
+                    Arg("max", ArgType.Int, "the settle cap", "600"),
+                ], s_lintArgs),
+            },
+            new(Verb.Drag, "drag", "A mouse drag: press on a node's visible centre (refused unless actionable and still; force=true skips) or a point, move dx,dy over steps frames with the button down, release; then settle", "drag key=zune-panel-edge dx=-120 steps=12")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs,
+                [
+                    Arg("dx", ArgType.Float, "DIP the pointer travels along x (negative: left)", "0"),
+                    Arg("dy", ArgType.Float, "DIP the pointer travels along y (negative: up)", "0"),
+                    IntArg("steps", "frames the pointer moves over, one equal move per frame", "8", 1, 600),
+                    Arg("button", ArgType.Enum, "the button", "left", "left|right"),
+                    Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
+                ], s_settleArgs),
+            },
+            new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
+            {
+                Positional = ["id", "value"],
+                Args = Join([Arg("tab", ArgType.String, "only this tab's rows (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); needed when an id is on several tabs"),
+                             Arg("id", ArgType.String, "the row (any case)"),
+                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
@@ -483,6 +548,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
+            "views" => Verb.Views, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

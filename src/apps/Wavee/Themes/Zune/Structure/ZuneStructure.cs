@@ -35,7 +35,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.Zune;
 
 /// <summary>The structure of Zune.</summary>
-public sealed partial class ZuneStructure : IStructureLayer
+public sealed partial class ZuneStructure : IStandInStructure
 {
     /// <summary>The structure id.</summary>
     public const string LayerId = "Zune.Structure";
@@ -54,6 +54,9 @@ public sealed partial class ZuneStructure : IStructureLayer
 
     /// <summary>True when this instance registers the stand-in in place of Zune's own views.</summary>
     public bool UsesStandIn => _standIn is not null;
+
+    /// <inheritdoc />
+    void IStandInStructure.RegisterOwnViews(ViewRegistryBuilder views) => RegisterOwn(views);
 
     /// <inheritdoc />
     public void Register(ViewRegistryBuilder views)
