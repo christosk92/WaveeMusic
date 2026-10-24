@@ -275,6 +275,10 @@ def trace_text(reply):
             c.get("movedAtOnce", "?"), "" if c.get("movedAtOnce") == 1 else "s", len(s.get("snaps", [])), "" if len(s.get("snaps", [])) == 1 else "s",
             len(s.get("instants", [])), c.get("remountedOutside", "?"), c.get("remountedSwap", "?"),
             len(s.get("jumps", [])), "" if len(s.get("jumps", [])) == 1 else "s"))
+        if "remountedSwitch" in c:
+            lines.append("  theme switch: frames %s held under its freeze; there %s remount%s and %s moved key%s are the switch's own (reported, not gated)" % (
+                t.get("switchFrames"), c.get("remountedSwitch"), "" if c.get("remountedSwitch") == 1 else "s",
+                c.get("movedInSwitch"), "" if c.get("movedInSwitch") == 1 else "s"))
     lines.append("  relayout: rootSolveFrames=%s escapeFrames=%s fullLayoutInferred=%s" % (
         s.get("rootSolveFrames"), s.get("escapeFrames"), s.get("fullLayoutFramesInferred")))
     lines.append("  measure: total=%s max=%s@%s framesWithMeasure=%s components=%s (frames %s)" % (
@@ -284,7 +288,8 @@ def trace_text(reply):
                  + "   cpu>8.3ms: %s frames, cpu>16.7ms: %s frames" % (s.get("cpuOver8ms"), s.get("cpuOver16ms")))
     for r in t.get("remounted", []):
         fam = r.get("family")
-        lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
+        lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(the theme switch's own template swap)" if fam == "theme-switch"
+                                                         else "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
     for kind in ("snaps", "instants", "jumps"):
         moves = s.get(kind, [])
         for m in moves[:TRACE_LIST_CAP]:
