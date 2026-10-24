@@ -471,10 +471,12 @@ public readonly partial struct Track
         };
 
         /// <summary><paramref name="e"/> in the list column: between the lead and trail spacers (always the same three children, whatever the insets, so an
-        /// inset that comes or goes moves the item instead of re-parenting it).</summary>
+        /// inset that comes or goes moves the item instead of re-parenting it). The box yields the pointer where its own children take none
+        /// (`HitTestPassThrough`): in the columns form the hero's identity column hangs over the lead, and a wheel there scrolls that column's own scroller,
+        /// never the list behind it.</summary>
         internal Element InsetList(Element e, string? key = null) => new BoxEl
         {
-            Key = key, Direction = 0, MinWidth = 0f,
+            Key = key, Direction = 0, MinWidth = 0f, HitTestPassThrough = true,
             Children = [InsetSpacer(true), new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [e] }, InsetSpacer(false)],
         };
         Detail.Config Cfg => ConfigOf(_latest);
@@ -1205,7 +1207,8 @@ public readonly partial struct Track
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
             // The unavailable-songs bar rides the pinned chrome while it is on (contract 1.22): the rows clip under it too.
-            float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
+            // What the pinned chrome holds: the chips ride the page bar instead where the page has one (the hero list's columns form of a page with no rail).
+            float extent = (chips is not null && !PageBar ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), StickLine());
             _placeBand = vertical ? stickyInset : 0f;
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
@@ -1413,7 +1416,7 @@ public readonly partial struct Track
         /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
         /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
         static Element FocusRoot(Element slot, Action<bool> focusEdge)
-            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, Children = [slot] };
+            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, FocusVisualMargin = s_rowFocusRing, HitTestPassThrough = true, Children = [slot] };
 
         /// <summary>The keyboard-focus ring of a row, drawn INSIDE the slot's bounds. The slot root (this box) is the focus node (the roving tab stop), not
         /// the row's skin; the engine's default margin (WinUI's -3) pushed the ring 3 DIP outside it, where the list's viewport clipped its left and

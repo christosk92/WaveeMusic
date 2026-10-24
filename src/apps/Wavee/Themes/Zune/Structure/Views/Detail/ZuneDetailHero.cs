@@ -179,7 +179,7 @@ internal static class ZuneDetailHero
             float infoW = columns ? lay.RailW : MathF.Max(0f, inner - g.Cover - Z.HeroCoverGap);
 
             // ── the identity column (one tree: the cover beside the artist and the meta at the hero form, over them at the columns form) ──
-            Element identity = Identity(p, lay, columns, coverEdge, infoW, g, enter, hasRail);
+            Element identity = Identity(p, lay, columns, coverEdge, infoW, g, enter, hasRail, ColumnHeight(parts.ViewportHeight, columns && hasRail));
             bool dock = columns && Docks(cols?.Aside, lay);
 
             // ── the body: [identity | gap | list head | aside], a row at the columns form, stacked at the hero form ──
@@ -209,7 +209,8 @@ internal static class ZuneDetailHero
             Element body = new BoxEl
             {
                 // Its height eases (the list head moves beside the identity column or under it: the body's height steps on the commit otherwise).
-                Key = "hero:body", Direction = (byte)(columns ? 0 : 1), AlignItems = columns ? FlexAlign.Start : FlexAlign.Stretch, MinWidth = 0f,
+                // A page with no rail (Liked Songs) stacks its head over the list head in both forms.
+                Key = "hero:body", Direction = (byte)(columns && hasRail ? 0 : 1), AlignItems = columns && hasRail ? FlexAlign.Start : FlexAlign.Stretch, MinWidth = 0f,
                 Animate = ZuneMotion.HeightResize,
                 Children =
                 [
@@ -310,6 +311,14 @@ internal static class ZuneDetailHero
             return ZStack(presentation, compact) with { Direction = 1 };
         }
 
+        /// <summary>The identity column's scroll height at the columns form (the list's viewport below the panorama band, tracked), none at the hero form.</summary>
+        Prop<float> ColumnHeight(IReadSignal<double>? viewportH, bool hangs)
+        {
+            if (!hangs || viewportH is null) return float.NaN;
+            var band = _bandH;
+            return Prop.Of(() => MathF.Max(0f, (float)viewportH.Value - band.Value));
+        }
+
         /// <summary>The aside column's height: the list's viewport below the panorama band (it hangs from the band's foot), tracked.</summary>
         Func<float>? AsideHeight(IReadSignal<double>? viewportH)
         {
@@ -358,7 +367,8 @@ internal static class ZuneDetailHero
 
     /// <summary>The identity's slot in the body: the columns form's column (the record's width, laid out 0 tall: the column hangs below the hero beside the
     /// rows) or the hero form's full-width block on the gutter. One tree; its rows are keyed, so a row that only one form draws enters or leaves alone.</summary>
-    static Element Identity(DetailHeroProps p, ZuneDetailLayout lay, bool columns, float coverEdge, float infoW, Geometry g, EnterExit? enter, bool hasRail)
+    static Element Identity(DetailHeroProps p, ZuneDetailLayout lay, bool columns, float coverEdge, float infoW, Geometry g, EnterExit? enter, bool hasRail,
+        Prop<float> scrollHeight)
     {
         var spec = p.Spec;
         var parts = p.Parts;
@@ -394,7 +404,8 @@ internal static class ZuneDetailHero
             }));
         if (columns && hasRail && slots.Badges is { } badges) info.Add(K.LateRow("rail:badges", badges()) with { Exit = ZuneMotion.SwapFade });
         if (columns && hasRail && slots.Rating is { } rating) info.Add(K.LateRow("rail:rating", rating(infoW)) with { Exit = ZuneMotion.SwapFade });
-        int metaLines = columns ? Math.Max(1, lay.MetaLines) : 2;
+        // The meta's reserved lines: the record's in the identity column, one under a page head (Liked Songs), two beside the hero form's cover.
+        int metaLines = head ? 1 : columns ? Math.Max(1, lay.MetaLines) : 2;
         float metaW = columns ? lay.RailW : float.NaN;
         if (head) metaW = float.NaN;
         // The meta line: the page's, or, while a find or a filter narrows the list, the shown count (one component in both forms, so it keeps its node).
@@ -482,15 +493,16 @@ internal static class ZuneDetailHero
                 Direction = 1, MinWidth = 0f, ClipToBounds = true,
                 Height = columns ? float.NaN : Z.DescriptionLines * Z.DescriptionLine,
                 Children = description is null ? [] : [description],
-            }) with { Layout = K.GrowShove });
+            }) with { Layout = K.GrowShove, Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
         }
         if (!columns) kids.Add(ZuneMotion.Air("hero:bottom", Z.HeroBottom));
 
         Element column = new BoxEl
         {
             // Its width eases (a tier that changes the record's column, 160 / 240 / 320 / 400, and the hero form's full width); the slot around it lands at once.
-            Key = Z.RailKey + ":column", Direction = 1, Gap = gap, MinWidth = 0f, Width = columns ? lay.RailW : float.NaN, Layout = Z.ColumnReflow,
-            Padding = new Edges4(0f, 0f, 0f, columns ? Z.SectionBottom : 0f),
+            Key = Z.RailKey + ":column", Direction = 1, Gap = gap, MinWidth = 0f, Width = columns && !head ? lay.RailW : float.NaN, Layout = Z.ColumnReflow,
+            // The column's foot (the rail's section air); a page head's (Liked Songs) is the record's row gap before the list head.
+            Padding = new Edges4(0f, 0f, 0f, !columns ? 0f : head ? lay.RailGap : Z.SectionBottom),
             Children = kids.ToArray(),
         };
         // The column's loading state at the columns form: the header shimmers the column whole until it has answered (the hero form's table shimmers the
@@ -508,12 +520,25 @@ internal static class ZuneDetailHero
             // re-fitting through every frame of an ease, and no sibling reflows beside the list head's slide); the body around it eases its height, and
             // its rows glide inside it.
             Key = Z.RailKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Layout = ZuneMotion.PivotSlide,
-            Width = columns ? (head ? 0f : lay.RailW) : float.NaN, Height = columns && !head ? 0f : float.NaN,
+            Width = columns && !head ? lay.RailW : float.NaN, Height = columns && !head ? 0f : float.NaN,
             Opacity = columns && tc is not null ? tc.RailOpacity : 1f,
             Children =
             [
                 ZuneFrameRules.Gutter(columns ? 0f : g.Gutter),
-                new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [region] },
+                // The column's own scroller (a long description, a Short window): at the columns form as tall as the list's viewport below the panorama, so
+                // what the column holds past the fold stays reachable; at the hero form it sizes to the column (never scrolls: the list carries the hero).
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Height = scrollHeight,
+                    Children =
+                    [
+                        Ui.ScrollView(region) with
+                        {
+                            Key = "hero:identity-scroll", ContentSized = true, Shrink = 1f, MinHeight = 0f,
+                            ScrollKey = "hero:identity:" + p.Spec.Identity.Subject.Text,
+                        },
+                    ],
+                },
                 ZuneFrameRules.Gutter(columns ? 0f : g.Gutter),
             ],
         };

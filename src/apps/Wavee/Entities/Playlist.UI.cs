@@ -100,9 +100,6 @@ public readonly partial struct Playlist
     /// <summary>How many collaborators the owner block's pile draws (its "+N" counts the rest).</summary>
     const int PileFaces = 4;
 
-    /// <summary>The 8-DIP geometry bucket every editor key folds (a sub-pixel resize must not remount an editor).</summary>
-    static int Bucket(float w) => float.IsFinite(w) ? (int)Detail.VerticalLayout.BucketW(w) : -1;
-
     /// <summary>Device-pixel decode for the playlist header cover: the larger of the laid-out DIP × scale and
     /// the detail artwork ladder, so a ~232 DIP header is never stuck at a 256-px thumbnail.</summary>
     public static int HeaderCoverDecodePx(float size, float scale)
@@ -244,10 +241,12 @@ public readonly partial struct Playlist
         => Embed.Comp(new EditorProps(p.Slot, size, lineHeight, Description: false), static () => new InlineEditor())
             with { Key = "pl-title" };
 
-    /// <summary>The frame's Description slot (the frame invokes it only while <c>Identity.EditableMetadata</c>).</summary>
+    /// <summary>The frame's Description slot (the frame invokes it only while <c>Identity.EditableMetadata</c>). NOT keyed on the width: the props are
+    /// re-pushed (the editor reads its measure every render), and a key built from a width bucket rebuilt the editor whenever a crossing moved its column
+    /// (audit B9; the owner rule "a tier crossing keeps its parts").</summary>
     public static Element DescriptionSlot(Playlist p, float width)
         => Embed.Comp(new EditorProps(p.Slot, width, float.NaN, Description: true), static () => new InlineEditor())
-            with { Key = "pl-desc:" + Bucket(width) };
+            with { Key = "pl-desc" };
 
     sealed record EditorProps(int Slot, float Size, float LineHeight, bool Description);
 
