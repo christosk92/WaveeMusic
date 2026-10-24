@@ -36,7 +36,7 @@ public sealed record LibraryPageProps
     public required bool Collapsed { get; init; }
 
     /// <summary>The split page draws its third column, the pane beside the middle one: the layout tier is at or above <see cref="Wavee.Theming.LibraryTierPolicy.PaneFromLayout"/>.
-    /// False: the pane steps aside (the middle column takes its width) and a picked album opens its page. Contract 1.76 (audit Z-LIB).</summary>
+    /// False: the pane steps aside (the middle column takes its width) and a picked album opens its page. Contract 1.79 (audit Z-LIB).</summary>
     public bool PaneBeside { get; init; } = true;
 
     /// <summary>Podcasts with the Your Episodes word selected: the whole body is the saved-episodes page under the toolbar.</summary>
