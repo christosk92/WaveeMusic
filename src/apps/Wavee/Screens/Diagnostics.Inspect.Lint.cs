@@ -57,6 +57,8 @@ public static partial class Diagnostics
             public const string AlignInset = "align.inset", AlignBaseline = "align.baseline", SpaceScale = "space.scale",
                 TextPlaceholder = "text.placeholder", KeyHygiene = "key.hygiene", TextDuplicate = "text.duplicate", TargetInk = "target.ink",
                 SpaceDead = "space.dead";
+
+            public const string PictureBlank = "picture.blank", PictureUnpainted = "picture.unpainted", OverlayOpen = "overlay.open";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -84,10 +86,13 @@ public static partial class Diagnostics
             new(Rules.TextTrim, Rules.Trim, Level.Gate, "trimmed text, by class: near-miss, never, overflow, designed, single"),
             new(Rules.TypeFloor, Rules.Type, Level.Gate, "text under the type floor"),
             new(Rules.TypeScale, Rules.Type, Level.Gate, "the type styles in use (a report)"),
-            new(Rules.TargetSize, Rules.Target, Level.Gate, "click targets under the tier's floor, by their effective area"),
+            new(Rules.TargetSize, Rules.Target, Level.Gate, "click targets under the tier's floor, by their effective area (Compact's 40 DIP floor gates; the 32 DIP floor above it is todo)"),
             new(Rules.DuplicateAction, Rules.Duplicate, Level.Gate, "the same verb on the same subject in two homes"),
             new(Rules.SpaceStack, Rules.Rhythm, Level.Gate, "stacked text blocks that overlap (touching ones are a report)"),
             new(Rules.ContrastText, Rules.Contrast, Level.Gate, "text contrast against its rendered ground, by ink and ground"),
+            new(Rules.PictureBlank, "", Level.Gate, "a rendered frame that is one colour: nothing painted"),
+            new(Rules.PictureUnpainted, "", Level.Gate, "a page that stops painting short of its frame: a cut-short scroller over a band of one colour"),
+            new(Rules.OverlayOpen, "", Level.Gate, "an overlay the verb that staged a state left open over it"),
             new(Rules.AlignInset, "", Level.Todo, "a section's ink lead 4-16 DIP off its region's column line"),
             new(Rules.AlignBaseline, "", Level.Todo, "a repeated family's text drifting against its row top"),
             new(Rules.SpaceScale, "", Level.Todo, "declared gap, padding and margin off the theme's spacing scale"),
@@ -491,6 +496,9 @@ public static partial class Diagnostics
             /// <summary>The rendered frame the grounds under the text are read from; null when nothing was rendered.</summary>
             public Pixels? Backdrop { get; init; }
 
+            /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
+            public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
+
             /// <summary>The scope <see cref="Prepare"/> derived the node fields for (null: not prepared).</summary>
             public InspectVisible.Scope? PreparedFor { get; init; }
 
@@ -541,7 +549,7 @@ public static partial class Diagnostics
         // ── the rendered frame ──────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>A rendered frame as tightly packed, top-down BGRA8 (premultiplied, as the offscreen surface captures it), with the pixels per DIP.</summary>
-        public sealed class Pixels
+        public sealed partial class Pixels
         {
             readonly byte[] _bgra;
 
@@ -863,6 +871,10 @@ public static partial class Diagnostics
             /// <summary>The fingerprint: rule|theme|route|pattern|cause.</summary>
             public string Fp { get; init; } = "";
 
+            /// <summary>The flaw belongs to its pattern wherever it shows (a shared component's hit area): the fingerprint's route part is
+            /// <see cref="AnyRoute"/>, not the page's.</summary>
+            public bool AnyRoute { get; init; }
+
             /// <summary>One line on what to do (never: shrink Zune display type, touch motion, remove a feature; Classic: report only).</summary>
             public string Fix { get; init; } = "";
 
@@ -882,6 +894,19 @@ public static partial class Diagnostics
 
             /// <summary>Every finding at or above `min`, whatever its outcome (the listed ones are a subset).</summary>
             public IReadOnlyList<Finding> All { get; init; } = [];
+
+            /// <summary>Every finding the rules that ran made, whatever `min` says: what a gate counts, so no listing option can silence it.</summary>
+            public IReadOnlyList<Finding> Every { get; init; } = [];
+
+            /// <summary>Fail findings of <paramref name="level"/> at <paramref name="severity"/> over <see cref="Every"/> (`min`, `outcomes` and
+            /// `limit` choose what is listed, never this): the reply's <c>fails</c>, what `inspect.py --gate` counts.</summary>
+            public int Fails(Level level, Severity severity)
+            {
+                int n = 0;
+                foreach (Finding f in Every)
+                    if (f.Outcome == Outcome.Fail && f.Level == level && f.Severity == severity) n++;
+                return n;
+            }
 
             /// <summary>The guide's edges that matched an in-scope node.</summary>
             public int EdgesMatched { get; init; }
@@ -958,6 +983,7 @@ public static partial class Diagnostics
             Options o = options ?? new Options();
             Snapshot s = Prepare(snapshot, o.Scope);
             var all = new List<Finding>();
+            var every = new List<Finding>();
             var checks = new Dictionary<string, int>(StringComparer.Ordinal);
             var baseline = new Dictionary<string, BaselineEntry>(StringComparer.Ordinal);
             int duplicates = 0, considered = 0;
@@ -986,6 +1012,9 @@ public static partial class Diagnostics
                     Rules.DuplicateAction => DuplicateRule(s, o, found),
                     Rules.SpaceStack => RhythmRule(s, o, found),
                     Rules.ContrastText => ContrastRule(s, o, found),
+                    Rules.PictureBlank => BlankRule(s, found),
+                    Rules.PictureUnpainted => UnpaintedRule(s, found),
+                    Rules.OverlayOpen => OverlayOpenRule(s, found),
                     Rules.AlignInset => AlignInsetRule(s, found),
                     Rules.AlignBaseline => AlignBaselineRule(s, found),
                     Rules.SpaceScale => SpaceScaleRule(s, found),
@@ -1020,6 +1049,7 @@ public static partial class Diagnostics
                 }
                 foreach (Finding f in Collapse(finished))
                 {
+                    every.Add(f);
                     if (f.Severity < o.Min) continue;
                     all.Add(f);
                     if (o.Lists(f.Outcome)) bucket.Add(f);
@@ -1046,6 +1076,7 @@ public static partial class Diagnostics
             {
                 Prepared = s,
                 All = all,
+                Every = every,
                 EdgesMatched = edgesMatched,
                 InScope = inScope,
                 BaselineMatched = baselineHit.Count,
@@ -1103,12 +1134,21 @@ public static partial class Diagnostics
             return result;
         }
 
-        /// <summary>The run's half of a finding: id and alias, level, fingerprint, fix.</summary>
+        /// <summary>The fingerprint's route part for chrome: a finding whose every member sits outside every page slot (the title bar, the
+        /// band, the play bar, the nav pane, an overlay) is the same flaw on every route, so it fingerprints once, not once per route.</summary>
+        public const string ShellRoute = "shell";
+
+        /// <summary>The fingerprint's route part for a finding about a shared component (<see cref="Finding.AnyRoute"/>: a small target is its
+        /// family's, the list header's sort column or the heart column on every page that shows the list): one fix, one fingerprint.</summary>
+        public const string AnyRoute = "*";
+
+        /// <summary>The run's half of a finding: id and alias, level (the spec's, or todo when the rule demoted this finding: target.size above
+        /// Compact), fingerprint (chrome without the route: <see cref="ShellRoute"/>), fix.</summary>
         static Finding Finish(Snapshot s, RuleSpec spec, Finding f)
         {
             string pattern = f.Pattern.Length > 0 ? f.Pattern : PatternOfRefs(f.Keys);
             string cause = f.Cause;
-            string fp = string.Join("|", spec.Id, s.Theme, s.RouteName, pattern, cause);
+            string fp = string.Join("|", spec.Id, s.Theme, InChrome(s, f) ? ShellRoute : f.AnyRoute ? AnyRoute : s.RouteName, pattern, cause);
             string fix = string.Equals(s.Theme, "classic", StringComparison.OrdinalIgnoreCase)
                 ? "report; do not fix unless asked (Classic)"
                 : f.Fix.Length > 0 ? f.Fix : FixFor(spec.Id, cause);
@@ -1116,11 +1156,25 @@ public static partial class Diagnostics
             {
                 Id = spec.Id,
                 Rule = spec.Alias.Length > 0 ? spec.Alias : spec.Id,
-                Level = spec.Level,
+                Level = f.Level == Level.Todo ? Level.Todo : spec.Level,
                 Pattern = pattern,
                 Fp = fp,
                 Fix = fix,
             };
+        }
+
+        /// <summary>Every member of <paramref name="f"/> sits outside every page slot of a snapshot that holds one (<see cref="PageOf"/>): window
+        /// chrome around the page. False for a finding without member nodes, and for a capture with no page slot (a `root=` lint).</summary>
+        static bool InChrome(Snapshot s, Finding f)
+        {
+            if (f.Nodes.Count == 0) return false;
+            bool anyPage = false;
+            foreach (Node n in s.Nodes)
+                if (n.Key is { } key && TrySlotRoute(key, out _, out _)) { anyPage = true; break; }
+            if (!anyPage) return false;
+            foreach (int i in f.Nodes)
+                if (i < 0 || i >= s.Nodes.Count || PageOf(s, s.Nodes[i]) >= 0) return false;
+            return true;
         }
 
         /// <summary>A guide <see cref="LintIntent.Allow"/> for the finding's rule covering EVERY member (the member's key or an ancestor's starts
@@ -1211,6 +1265,9 @@ public static partial class Diagnostics
             Rules.AlignBaseline => "anchor the cell's first line at one offset in every row (AlignItems=Start, or reserve the optional line in every row)",
             Rules.SpaceScale => "take the value from Spacing.* or the theme's R.Space/tier record (or declare OffScaleOk with a reason)",
             Rules.TextPlaceholder => "a missing string or argument: add the loc key or pass the argument; never blank the text",
+            Rules.PictureBlank => "look at the render: nothing painted (a surface with no picture, a page that never drew); find what should draw there, never call a blank frame done",
+            Rules.PictureUnpainted => "look at the render: the region's nodes are laid out but never reach the screen (a layer or clip covers them, or a pass stops painting); fix the paint, never move the text",
+            Rules.OverlayOpen => "close the overlay before judging the state (key esc), or stage the state a way that opens none; the page under it is not what the frame shows",
             Rules.KeyHygiene => "key the node by its entity or slot id, without tier, form, count or run-id parts (keys must be stable selectors)",
             Rules.TextDuplicate => "say it once: keep the heading and drop the repeat inside the section (or give the repeat its own words); the section stays",
             Rules.TargetInk => "give the target ink at rest (its label or glyph), or hand its click to a control a person can see; never remove the feature",
@@ -2460,7 +2517,8 @@ public static partial class Diagnostics
         /// the largest ancestor running the same click) or its HIT rect (<see cref="HitRect"/>: the box grown by its slop, cut as the hit test cuts
         /// it), whichever is larger; one that meets the floor either way passes. A role with no press handler is no target, a target its clipping
         /// ancestors hide whole is not on screen, and drag bars are exempt. Grouped by <see cref="TargetFamily"/>: one finding per family, its
-        /// fingerprint the family and narrow/low.</summary>
+        /// fingerprint the family and narrow/low. Only Compact's floor is an owner rule (2026-10, Compact targets >= 40 DIP): above Compact a
+        /// finding is todo (report-only, decision D5 of the 10-23 audit), so it never fails `lint min=error` or `--gate`.</summary>
         static int TargetRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -2508,6 +2566,8 @@ public static partial class Diagnostics
                     Expected = [M("w", floor), M("h", floor)],
                     Pattern = pattern,
                     Cause = (narrow ? "narrow" : "") + (narrow && low ? "+" : "") + (low ? "low" : ""),
+                    Level = compact ? Level.Gate : Level.Todo,
+                    AnyRoute = true,   // the family's own hit area: the same fix on every page that shows it
                     Count = list.Count,
                     Rects = rects,
                     Nodes = Ids(list.Select(static e => e.Node)),

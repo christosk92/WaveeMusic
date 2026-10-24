@@ -654,7 +654,7 @@ public static partial class Diagnostics
         /// them, scrollers still moving in the frame read), <c>summary</c> (fail findings and report lines of the gate rules at or above `min`, listed or not: what
         /// "lint min=error clean" means), <c>outcomes</c>, <c>levels</c>, <c>suppressed</c>, <c>baseline</c>?, <c>rules</c> (per rule:
         /// <c>checked</c>, its counts, level and ids), <c>truncated</c>? and <c>findings</c>.</summary>
-        public static void WriteReport(Utf8JsonWriter w, InspectLint.Snapshot snapshot, InspectLint.Report report, InspectLint.Options options)
+        public static void WriteReport(Utf8JsonWriter w, InspectLint.Snapshot snapshot, InspectLint.Report report, InspectLint.Options options, string root = "")
         {
             if (snapshot.GuideId.Length > 0 || snapshot.Edges.Count > 0)
             {
@@ -706,6 +706,21 @@ public static partial class Diagnostics
             w.WriteNumber("gate", report.CountAll(InspectLint.Level.Gate));
             w.WriteNumber("todo", report.CountAll(InspectLint.Level.Todo));
             w.WriteEndObject();
+            // What a gate counts: every fail of the rules that ran, per level and severity, whatever `min`, `outcomes` and `limit` list.
+            w.WriteStartObject("fails");
+            foreach (InspectLint.Level level in (ReadOnlySpan<InspectLint.Level>)[InspectLint.Level.Gate, InspectLint.Level.Todo])
+            {
+                w.WriteStartObject(InspectLint.Name(level));
+                foreach (InspectLint.Severity sev in (ReadOnlySpan<InspectLint.Severity>)[InspectLint.Severity.Error, InspectLint.Severity.Warn, InspectLint.Severity.Info])
+                    w.WriteNumber(InspectLint.Name(sev), report.Fails(level, sev));
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+            // What narrowed this lint: a listing option (min, outcomes, limit: the counts above still hold every fail) or the judgement
+            // itself (rules: only those ran; root: only that subtree). Empty when nothing did.
+            w.WriteStartArray("narrowed");
+            foreach (string why in Narrowed(options, report, root)) w.WriteStringValue(why);
+            w.WriteEndArray();
             w.WriteStartObject("suppressed");
             w.WriteNumber("intent", report.CountSuppressed("intent"));
             w.WriteNumber("baseline", report.CountSuppressed("baseline"));
@@ -767,6 +782,22 @@ public static partial class Diagnostics
             w.WriteEndArray();
         }
 
+        /// <summary>What narrowed a lint, one word each: what it judged (<c>rules=text.clip,overlap.sibling</c>, <c>root=zune-band</c>) or which
+        /// fails it lists (<c>outcomes=review</c>, <c>limit=5 (cut: target)</c>). Read by `inspect.py --gate`, which warns on each. `min` is not
+        /// here: the reply's <c>fails</c> count every fail whatever `min` lists, and the gate compares them with what is listed.</summary>
+        public static List<string> Narrowed(InspectLint.Options options, InspectLint.Report report, string root)
+        {
+            var why = new List<string>();
+            if (options.Rules.Count < InspectLint.RuleIds.Length) why.Add("rules=" + string.Join(",", options.Rules));
+            bool listsAll = true;
+            foreach (InspectLint.Outcome o in InspectLint.DefaultOutcomes)
+                if (!options.Outcomes.Contains(o)) listsAll = false;
+            if (!listsAll) why.Add("outcomes=" + string.Join(",", options.Outcomes.Select(static o => InspectLint.Name(o))));
+            if (report.Truncated.Count > 0) why.Add("limit=" + options.MaxPerRule.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (cut: " + string.Join(",", report.Truncated) + ")");
+            if (root.Length > 0) why.Add(root);
+            return why;
+        }
+
         /// <summary>Into the open object: the window the lint ran in (<c>theme</c>, <c>tier</c>, <c>size</c>), the route of the page it saw
         /// (<c>navigating</c>: the route the shell is going to, when that page is not on screen yet), where trims come from (<c>trimSource</c>),
         /// the devices, and the saved snapshot a replay read (<c>replay</c>).</summary>
@@ -820,9 +851,11 @@ public static partial class Diagnostics
             {
                 if (shell is null) return Inspect.Reply.Fail(id, name, "nothing is mounted (mount first, or lint replay=<file>)");
                 if (!TryRoots(a, shell, out List<NodeHandle> roots, out error)) return Inspect.Reply.Fail(id, name, error);
-                bool wantPixels = options.Enabled(InspectLint.Rules.Contrast) || save.Length > 0;
+                // the rules that read the rendered frame: contrast (the ground under the text) and the picture rules (Diagnostics.Inspect.Picture.cs)
+                bool wantPixels = options.Enabled(InspectLint.Rules.Contrast) || options.Enabled(InspectLint.Rules.PictureBlank)
+                    || options.Enabled(InspectLint.Rules.PictureUnpainted) || save.Length > 0;
                 InspectLint.Pixels? pixels = wantPixels ? RenderedFrame(shell) : null;
-                snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels, Devices);
+                snapshot = InspectLintScene.Capture(shell, CollectionsMarshal.AsSpan(roots), pixels, Devices) with { StagedOverlays = StagedOverlays(shell) };
             }
             InspectLint.Report report = InspectLint.Run(snapshot, options);
             string saved = "";
@@ -838,7 +871,8 @@ public static partial class Diagnostics
             {
                 InspectLintScene.WriteHead(w, snapshot);
                 if (saved.Length > 0) w.WriteString("saved", saved);
-                InspectLintScene.WriteReport(w, report.Prepared ?? snapshot, report, options);
+                InspectLintScene.WriteReport(w, report.Prepared ?? snapshot, report, options,
+                    a.Has("root") ? "root=" + a.Str("root") + (a.Has("nth") ? " nth=" + a.Str("nth") : "") : "");
             });
         }
     }
