@@ -81,7 +81,7 @@ internal static class ZuneHomeZones
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_coverHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
-            pager: ShelfPager.Chevrons,
+            pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             // Standard: the fixed 154 card. Elsewhere the shelf FITS: up to the tier's columns share the width, none narrower than the tier's floor
             // (one node at every tier: these are live props of the shelf).
             minCardW: lay.ShelfMinW, maxCardW: lay.ShelfCols > 0 ? H.WideMaxW : lay.ShelfCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
@@ -111,7 +111,7 @@ internal static class ZuneHomeZones
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),
             cardHeight: s_wideHeight,
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
-            pager: ShelfPager.Chevrons,
+            pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             minCardW: lay.WideMinW, maxCardW: H.WideMaxW, maxColumns: lay.WideCols, gap: H.WideGap, headerGap: H.HeadGap,
             edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
