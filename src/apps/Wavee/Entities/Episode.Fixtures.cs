@@ -12,4 +12,22 @@ internal static class PodcastReaderFixtures
     internal static readonly Spotify.Podcasts.Page<Spotify.Podcasts.Comment> Comments = new(
         [new("fake:comment:reader", "A thoughtful conversation. Thank you for sharing it.", "Listener", "", "2026-09-19T10:00:00Z",
             false, false, true, 0, 0, "", true)], "", 1, "", 200);
+
+    /// <summary>The reader fixture for an episode the fake catalogue HOLDS (its row knows its title); for one it does not (the pending probe
+    /// `epzzqx`, whose own read never answers) the ask never answers either, so the pending page stays on its skeleton instead of drawing the
+    /// fixture's chapters, transcript and comments under a loading head (audit B7, A2's finding).</summary>
+    internal static Task<T> Answer<T>(string episodeUri, T fixture, CancellationToken ct)
+        => Holds(episodeUri) ? Task.FromResult(fixture) : Never<T>(ct);
+
+    static bool Holds(string episodeUri)
+    {
+        if (!EntityId.TryParse(episodeUri, out var id)) return false;
+        return Entities.Current.Episodes.TryGetSlot(id, out int slot) && new Episode(slot).Knows(EpisodeFields.Title);
+    }
+
+    static async Task<T> Never<T>(CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+        throw new OperationCanceledException(ct);
+    }
 }

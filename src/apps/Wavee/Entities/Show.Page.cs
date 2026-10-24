@@ -251,7 +251,8 @@ public readonly partial struct Show
             var actions = new List<PageAction>(1);
             if (lib is not null)
                 actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
-                    () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : "")));
+                    () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : ""),
+                    Reserve: Loc.Get(following ? Strings.Artist.Follow : Strings.Artist.Following)));
             _sink.Publish(new PageChromeRow(views, actions, Title: name));
         }
 

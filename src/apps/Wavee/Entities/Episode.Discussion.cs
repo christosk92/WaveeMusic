@@ -24,7 +24,8 @@ internal static partial class PodcastReaderUI
     static Contracts.DiscussionComment Map(Spotify.Podcasts.Comment c) => new(c.Uri, c.Text, c.Author, c.Avatar, c.Created,
         c.Pending, c.Sensitive, c.Pinned, c.Replies, c.ReplyAvatars, c.ReplyLimit);
 
-    static Element CommentSeedView(bool replies) => ViewSlots.View(Contracts.ViewKeys.EpisodeCommentSeed, new Contracts.CommentSeedProps(replies));
+    // Derivable: the theme's placeholder comments shimmer at their size, not as one default bar (audit B7).
+    internal static Element CommentSeedView(bool replies) => ViewSlots.DerivableView(Contracts.ViewKeys.EpisodeCommentSeed, new Contracts.CommentSeedProps(replies));
 
     internal sealed class Discussion : Component
     {
@@ -39,7 +40,9 @@ internal static partial class PodcastReaderUI
             var post = UsePost(); uint epoch = Entities.ScopeEpoch.Value;
             var consentKey = new SettingKey<bool>("podcast.commentConsent." + Entities.Current.Key.Account, false);
             UseEffect(() => _consent.Value = Platform.Settings.Get(consentKey), DepKey.From((int)epoch));
-            var resource = UseResource(ct => Platform.Args.Fake ? Task.FromResult(PodcastReaderFixtures.Comments) : Spotify.Podcasts.CommentsAsync(epoch, p.Uri, "", p.Replies, ct),
+            var resource = UseResource(ct => Platform.Args.Fake
+                    ? p.Replies ? Task.FromResult(PodcastReaderFixtures.Comments) : PodcastReaderFixtures.Answer(p.Uri, PodcastReaderFixtures.Comments, ct)
+                    : Spotify.Podcasts.CommentsAsync(epoch, p.Uri, "", p.Replies, ct),
                 new Spotify.Podcasts.Page<Spotify.Podcasts.Comment>([], "", 0, "", 0), epoch + ":" + p.Uri);
             return Skel.Region(resource.Loadable, () => CommentSeedView(p.Replies), Build,
                 onFailed: () => Failed(Refresh));

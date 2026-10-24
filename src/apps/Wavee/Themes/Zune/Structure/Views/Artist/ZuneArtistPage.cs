@@ -202,7 +202,17 @@ internal static class ZuneArtistPage
             : chart.Skeleton(ArtistChartSkeletonArgs.For(0, classic: false, showArtwork: true, lay.ChartColumns, lay.ChartRows,
                 new ArtistChartRowShape(lay.ChartRowH, lay.ChartArt, lay.ChartLead, lay.ChartColumns > 1 ? lay.ChartColumnGap : 0f)));
         var column = new List<Element>(3) { hero };
-        if (lay.Actions == ZuneArtistActions.BelowHero) column.Add(new BoxEl { Height = lay.Target + Rules.BelowRowTop });
+        // Compact's actions row (Z-State-Loading-Compact): the row's own rings in the gutter, drawn as is at the band's pending opacity (the band's
+        // row-2 actions wait the same way), never a derived bar: a childless spacer derived to one page-wide bar out of the gutter (audit B7, V11).
+        if (lay.Actions == ZuneArtistActions.BelowHero)
+        {
+            Element pending = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Opacity = ZuneBandRules.DisabledOpacity, HitTestVisible = false, IsEnabled = false,
+                Children = [ZuneArtistHero.BelowRow(known, "", lay, in none)],
+            };
+            column.Add(pending.Skel(pending));
+        }
         column.Add(BodyAir(lay));
         column.Add(Magazine([ZuneArtistSections.PopularSkeleton(chartShape, lay)], lay));
         return new BoxEl { Direction = 1, Children = column.ToArray() };
