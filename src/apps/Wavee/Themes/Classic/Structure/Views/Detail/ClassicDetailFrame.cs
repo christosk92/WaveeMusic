@@ -165,6 +165,7 @@ internal static partial class ClassicDetailFrame
     /// inset before the hairline.</summary>
     static Element OneTree(DetailFrameProps p, in ViewContext ctx, float gutter, ClassicDetailTier detailTier, IReadSignal<Design.PageAccent>? accent)
     {
+        var swapIn = ClassicTierMotion.SwapEnter(ClassicTierMotion.Rendered(ctx.Hooks));
         bool columns = p.Form == DetailForm.Columns;
         var tc = columns ? p.TwoColumn : null;
         bool collapsed = tc is { Collapsed: true };
@@ -248,7 +249,7 @@ internal static partial class ClassicDetailFrame
             Children =
             [
                 ground,
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 0f, Children = [right, AsideSlot(p, detailTier)] },
+                new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 0f, Children = [right, AsideSlot(p, detailTier, swapIn)] },
                 seam,
             ],
         };
@@ -295,7 +296,7 @@ internal static partial class ClassicDetailFrame
     /// <para>The slot's Width is BOUND in every form (none, the full slot, the toggle's): the slot is one reused node across the forms, and the engine
     /// wires a bind at mount only, so a static-to-bound flip keeps the mounted form (FluentGpu `Reconciler.Rewire.cs`). A playlist whose facts landed
     /// after its first Huge frame kept the "none" slot's static 0 with the insights column inside it and its toggle open.</para></summary>
-    static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier)
+    static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier, EnterExit? swapIn = null)
     {
         if (p.Aside is not { } aside || tier.Aside is not { } g)
             return new BoxEl { Key = "detail:aside", Width = NoSlot, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
@@ -320,12 +321,22 @@ internal static partial class ClassicDetailFrame
             Width = width, Animate = ClassicDetailLayout.DockReveal,
             Children =
             [
-                new BoxEl { Key = "aside:hairline", Width = 1f, Shrink = 0f, Margin = g.HairlineMargin, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
-                Ui.ScrollView(new BoxEl
+                // What docks here (About this release, "More by") stands in the rail and the band under the list below Huge: two places, so a crossing
+                // cross-fades the column on the declared swap while the slot eases its width (audit B9).
+                new BoxEl
                 {
-                    Direction = 1, Width = columnW, Gap = aside.Kind == DetailKind.Album ? g.AlbumGap : g.PlaylistGap, Padding = pad,
-                    Children = kids.ToArray(),
-                }) with { Key = "aside:scroll:" + aside.RouteKey, Width = columnW, Shrink = 0f, MinHeight = 0f },
+                    Key = "aside:swap", Direction = 0, Shrink = 0f, MinHeight = 0f,
+                    Enter = swapIn, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    Children =
+                    [
+                        new BoxEl { Key = "aside:hairline", Width = 1f, Shrink = 0f, Margin = g.HairlineMargin, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                        Ui.ScrollView(new BoxEl
+                        {
+                            Direction = 1, Width = columnW, Gap = aside.Kind == DetailKind.Album ? g.AlbumGap : g.PlaylistGap, Padding = pad,
+                            Children = kids.ToArray(),
+                        }) with { Key = "aside:scroll:" + aside.RouteKey, Width = columnW, Shrink = 0f, MinHeight = 0f },
+                    ],
+                },
             ],
         };
     }

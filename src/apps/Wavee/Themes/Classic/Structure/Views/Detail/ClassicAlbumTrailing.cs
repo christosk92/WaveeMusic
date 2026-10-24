@@ -106,15 +106,27 @@ internal static class ClassicAlbumTrailing
     /// <summary>The registered template of <see cref="ViewKeys.AlbumSections"/>: the sections the host decided are present, each in its place.</summary>
     public static Element SectionsTemplate(AlbumSectionsProps p, in ViewContext ctx)
     {
+        var enter = ClassicTierMotion.SwapEnter(ClassicTierMotion.Rendered(ctx.Hooks));
         if (!p.Any) return new BoxEl();   // nothing to show: the region eases to zero
 
+        // Each section KEYED (audit B9): what the Huge aside holds leaves the band while it docks, and the sections after it must keep their nodes
+        // (positional wrappers re-dealt every later section to its neighbour's box). What moves to the aside cross-fades on the declared swap.
         var sections = new List<Element>(7);
-        if (p.Videos.Count > 0) sections.Add(VideosSection(p.Videos, p.CustomVideo, p.Overlay));
-        if (p.About is { } lead) sections.Add(AboutSection(lead));
-        if (p.Fans.Count > 0) sections.Add(Section(Loc.Get(Strings.Detail.FansAlsoLike), FansRow(p.Fans)));
-        for (int i = 0; i < p.Lists.Count; i++) sections.Add(ListSection(p.Lists[i]));
+        if (p.Videos.Count > 0) sections.Add(Keyed("section:videos", VideosSection(p.Videos, p.CustomVideo, p.Overlay), enter));
+        if (p.About is { } lead) sections.Add(Keyed("section:about", AboutSection(lead), enter));
+        if (p.Fans.Count > 0) sections.Add(Keyed("section:fans", Section(Loc.Get(Strings.Detail.FansAlsoLike), FansRow(p.Fans)), enter));
+        for (int i = 0; i < p.Lists.Count; i++)
+            sections.Add(Keyed("section:" + (p.Lists[i].Key ?? i.ToString(CultureInfo.InvariantCulture)), ListSection(p.Lists[i]), enter));
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Children = sections.ToArray() };
     }
+
+    /// <summary>A section under its own key, its place FLIPping when a section before it comes or goes; it enters and leaves on the declared swap.</summary>
+    static Element Keyed(string key, Element section, EnterExit? enter) => new BoxEl
+    {
+        Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, Layout = ClassicTierMotion.Shove,
+        Enter = enter, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+        Children = [section],
+    };
 
     /// <summary>The list section wrapper: the page's trailing padding around a capped, expandable stack.</summary>
     static Element ListSection(Element stack) => new BoxEl
