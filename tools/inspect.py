@@ -157,6 +157,12 @@ def crossing_lines(obj):
                  obj.get("contentCommitted"), c.get("excessSnapped", c.get("snapped")), c.get("excessJumped", c.get("jumped")), control,
                  c.get("remountedOutside", c.get("remounted")), c.get("remountedSwap", 0), c.get("snapped"), c.get("jumped"), c.get("glided"),
                  c.get("unpainted", 0), c.get("vanished"), c.get("appeared"))]
+    if "late" in c or "excessOffscreen" in c:
+        lines.append("  weights: %s of the excess moved wholly off the screen (below the fold, scrolled away); %s part%s reflowed late "
+                     "(after the commit frame, nothing easing it; --gate-todo counts them)" % (
+                         c.get("excessOffscreen", 0), c.get("late", 0), "" if c.get("late") == 1 else "s"))
+        for item in obj.get("late", [])[:8]:
+            lines.append("  late      %s  frame %s after the commit, d=%s" % (item["key"], item.get("frame"), item.get("d")))
     if obj.get("controlNote"):
         lines.append("  note: " + obj["controlNote"])
     if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):
@@ -227,6 +233,8 @@ def findings_text(reply):
             if text:
                 parts.append(text)
         return "\n".join(parts)
+    if obj.get("cmd") == "skeleton" and obj.get("ok"):
+        return skeleton_lines(obj)
     lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
     if not isinstance(lint.get("findings"), list):
         return None
@@ -239,6 +247,20 @@ def findings_text(reply):
         name = f["rule"] if f.get("id", f["rule"]) == f["rule"] else "%s/%s" % (f["rule"], f["id"])
         lines.append("[%-5s] %s%s: %s%s" % (f["severity"], name, " (" + ", ".join(tags) + ")" if tags else "",
                                             glyphs_named(f["message"]), "  <" + keys + ">" if keys else ""))
+    return "\n".join(lines)
+
+
+def skeleton_lines(obj):
+    """A `skeleton` reply: the jump a person sees when the data lands (firstMoved), then the regions' height changes and the moved keys."""
+    c = obj.get("counts", {})
+    first = obj.get("firstMoved")
+    lines = ["skeleton %s -> %s: %s of %s keys moved or resized; %s" % (
+        obj.get("pending"), obj.get("loaded"), c.get("moved"), c.get("matched"),
+        "the first on screen to move down: %s by %s DIP (the jump on load)" % (first["key"], first["dy"]) if first else "nothing on screen moved down")]
+    for r in obj.get("regions", []):
+        lines.append("  region  %s  dh=%s" % (r["key"], r["dh"]))
+    for m in obj.get("moved", [])[:12]:
+        lines.append("  moved   %s  dy=%s dh=%s" % (m["key"], m["dy"], m["dh"]))
     return "\n".join(lines)
 
 
@@ -275,6 +297,10 @@ def trace_text(reply):
             c.get("movedAtOnce", "?"), "" if c.get("movedAtOnce") == 1 else "s", len(s.get("snaps", [])), "" if len(s.get("snaps", [])) == 1 else "s",
             len(s.get("instants", [])), c.get("remountedOutside", "?"), c.get("remountedSwap", "?"),
             len(s.get("jumps", [])), "" if len(s.get("jumps", [])) == 1 else "s"))
+        if "remountedSwitch" in c:
+            lines.append("  theme switch: frames %s held under its freeze; there %s remount%s and %s moved key%s are the switch's own (reported, not gated)" % (
+                t.get("switchFrames"), c.get("remountedSwitch"), "" if c.get("remountedSwitch") == 1 else "s",
+                c.get("movedInSwitch"), "" if c.get("movedInSwitch") == 1 else "s"))
     lines.append("  relayout: rootSolveFrames=%s escapeFrames=%s fullLayoutInferred=%s" % (
         s.get("rootSolveFrames"), s.get("escapeFrames"), s.get("fullLayoutFramesInferred")))
     lines.append("  measure: total=%s max=%s@%s framesWithMeasure=%s components=%s (frames %s)" % (
@@ -284,7 +310,8 @@ def trace_text(reply):
                  + "   cpu>8.3ms: %s frames, cpu>16.7ms: %s frames" % (s.get("cpuOver8ms"), s.get("cpuOver16ms")))
     for r in t.get("remounted", []):
         fam = r.get("family")
-        lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
+        lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(the theme switch's own template swap)" if fam == "theme-switch"
+                                                         else "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
     for kind in ("snaps", "instants", "jumps"):
         moves = s.get(kind, [])
         for m in moves[:TRACE_LIST_CAP]:
@@ -382,6 +409,10 @@ class Gate:
         if outside > 0:
             keys = [r["key"] for r in obj.get("remounted", []) if r.get("family") is None][:4]
             self.motion.append("%s remounted %d key%s outside a swap family (%s)" % (where, outside, "" if outside == 1 else "s", ", ".join(keys)))
+        late = c.get("late", 0)
+        if self.todo and late > self.max_moved:   # a weight: report-only until promoted, so only --gate-todo counts it
+            keys = [r["key"] for r in obj.get("late", [])][:4]
+            self.motion.append("%s reflowed %d part%s late, after the commit frame (todo: %s)" % (where, late, "" if late == 1 else "s", ", ".join(keys)))
         if not isinstance(obj.get("control"), dict):
             self.warnings.append("%s ran without a control step (%s): its excess is every move" % (where, obj.get("controlNote") or "control=false"))
         if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):

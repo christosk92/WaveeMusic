@@ -19,7 +19,8 @@
 // Diagnostics.Inspect.Lint.Scene.cs) and `crossing` (Diagnostics.Inspect.Crossing.cs); both are partial members of this class.
 //
 // DEVICES (per mount, `Shell.HeadlessDevices`). Unless `--text headless`, a mount runs over lane A1's `OffscreenSurface`: the
-// real D3D12 device (WARP by default) presenting into a hidden, never-activated off-monitor tool window, with a DirectWrite
+// real D3D12 device (`gpu=hardware` by default: the machine's hardware adapter, WARP when it has none; `gpu=warp` forces WARP) presenting
+// into a hidden, never-activated off-monitor tool window, with a DirectWrite
 // font system, so text metrics are true and `render` writes a PNG. When the surface cannot be created (no D3D12/WARP) the
 // mount falls back to the recording `HeadlessGpuDevice` with DirectWrite: the dump stays truthful, `render` answers ok:false
 // with the reason. `--text headless` mounts the shell tests' devices (the 0.55 x size font model). Trimming is the engine's
@@ -421,6 +422,8 @@ public static partial class Diagnostics
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
+                case Inspect.Verb.Skeleton:
+                    return Skeleton(id, name, a, shell);
                 case Inspect.Verb.GoTo:
                     {
                         if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error);
@@ -759,7 +762,7 @@ public static partial class Diagnostics
                 if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
-            string gpu = a.Str("gpu", "warp").ToLowerInvariant();
+            string gpu = a.Str("gpu", "hardware").ToLowerInvariant();   // hardware falls back to WARP on a machine without an adapter (D3D12Device.InitDevice)
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
             if (!BarPrefs(a, out error)) return false;
@@ -989,7 +992,7 @@ public static partial class Diagnostics
                     w.WriteString("theme", InspectKit.ActiveThemeId);
                     w.WriteString("outcome", !t.IsCompleted ? "incomplete" : t.IsFaulted ? "faulted" : t.Result.Outcome.ToString());
                     w.WriteNumber("transactionFrames", doneAt < 0 ? -1 : doneAt - start + 1);
-                }, afterTrace: () => { while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; } });
+                }, afterTrace: () => { while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; } }, themeSwitch: true);
             }
             while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; }
             if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames", WriteAfter);
@@ -1467,7 +1470,7 @@ public static partial class Diagnostics
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
         /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
         string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "",
-            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore, Action? afterTrace = null)
+            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore, Action? afterTrace = null, bool themeSwitch = false)
         {
             InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
@@ -1475,6 +1478,7 @@ public static partial class Diagnostics
             {
                 // `trace=N` on any settling verb: no settle, N traced frames from the frame after the action (docs: agent-inspect.md)
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
+                o.ThemeSwitch = themeSwitch;   // `theme`: the frames its transaction freezes are the switch's own (not gated)
                 trace = RunTrace(shell, o);
                 afterTrace?.Invoke();   // what the verb still owes once the traced frames ran (`theme`: the transaction's end)
             }
