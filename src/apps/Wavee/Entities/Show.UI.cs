@@ -197,10 +197,12 @@ public readonly partial struct Show
 
     /// <summary>A month header (the prototype's <c>.group</c>), bound to its slot's item: the air above it (none right under the "episodes"
     /// head) and the culture's month word; the structure draws it (<see cref="ShowReaderStyle.Group"/>).</summary>
-    static Element GroupLabel(ShowReaderStyle style, BoundItemScope<ReaderItem> item) => style.Group(new ShowGroupArgs
+    static Element GroupLabel(ReaderHost host, BoundItemScope<ReaderItem> item) => host.Style!.Group(new ShowGroupArgs
     {
         Air = item.Value(static it => (it.Row.Marks & Episode.RowMarks.NoRule) != 0 ? 0f : ShowReaderRules.GroupAir),
         Month = item.Text(static it => it.GroupKey, s_monthWords, s_monthWord),
+        MonthKey = item.Value(static it => it.GroupKey),
+        Jump = host.JumpList,
     });
 
     readonly record struct FootStamp(bool CanLoadMore, bool Paging);
