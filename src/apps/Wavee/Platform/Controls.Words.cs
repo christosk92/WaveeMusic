@@ -224,13 +224,19 @@ public static partial class Controls
         /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
         /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para>
         /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInk"/>): a theme whose ground needs a heavier rest
-        /// for the words' contrast states its own.</para></summary>
+        /// for the words' contrast states its own.</para>
+        /// <para><paramref name="countRest"/> is a count badge's ink while its word rests, read live (null: the secondary text ink, as when its word is
+        /// selected). A badge sits inside its word, so at rest it takes the word's rest opacity too: a theme whose badges must hold 4.5 : 1 at rest states
+        /// the ink that does under that opacity.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
-                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
+                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null,
+                                   Func<ColorF>? countRest = null)
             => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
-                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk));
+                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk, countRest ?? s_countInk));
+
+        static readonly Func<ColorF> s_countInk = static () => Tok.TextSecondary;
 
         static readonly Func<float> s_restInk = static () => RestInk;
 
@@ -274,12 +280,14 @@ public static partial class Controls
             OverlayHandle? _menu;
             IOverlayService? _overlay;
             readonly Func<float> _rest;
+            readonly Func<ColorF> _countRest;
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
                             AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured,
-                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
+                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null, Func<ColorF>? countRest = null)
             {
                 _rest = restInk ?? s_restInk;
+                _countRest = countRest ?? s_countInk;
                 _fit = fit;
                 _more = more ?? (Prop<string>)"";
                 if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
@@ -379,7 +387,7 @@ public static partial class Controls
                         Ink(w.Label, big ? BigHeavyWeight : HeavyWeight, Prop.Of(() => isOn() ? Tok.TextPrimary : ColorF.Transparent), big),
                     ],
                 };
-                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron);
+                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron, isOn, _countRest);
                 return new BoxEl
                 {
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
@@ -409,14 +417,15 @@ public static partial class Controls
                 };
             }
 
-            /// <summary>The word plus its count badge and/or its chevron, on one centred row.</summary>
-            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron)
+            /// <summary>The word plus its count badge and/or its chevron, on one centred row. The badge is the secondary ink while its word is
+            /// selected and <paramref name="countRest"/> while it rests.</summary>
+            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron, Func<bool> isOn, Func<ColorF> countRest)
             {
                 var kids = new List<Element>(3) { ink };
                 if (count is { } c)
                     kids.Add(new TextEl(c)
                     {
-                        Size = CountSize, LineHeight = CountLine, Color = Tok.TextSecondary, MaxLines = 1,
+                        Size = CountSize, LineHeight = CountLine, Color = Prop.Of(() => isOn() ? Tok.TextSecondary : countRest()), MaxLines = 1,
                         Visible = Prop.Of(() => c.Current() is { Length: > 0 }),
                     });
                 if (chevron is not null)

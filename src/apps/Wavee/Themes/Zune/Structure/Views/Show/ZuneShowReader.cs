@@ -215,7 +215,8 @@ internal static partial class ZuneShow
     /// <summary>The filter words at their NATURAL width — a rail that never shrinks and never scrolls (the toolbar picks a stage only when they fit;
     /// the last stage folds them into <see cref="FilterMenu"/>). It reports its measure to the toolbar's stage rule.</summary>
     static Element FilterWords(ShowToolbarArgs a)
-        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured, restInk: ZuneTokens.WordRestNow);
+        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured, restInk: ZuneTokens.WordRestNow,
+                                  countRest: ZuneTokens.WordCountRestNow);
 
     /// <summary>The last stage's words: ONE button saying the selected filter ("unplayed 320 ▾") whose menu holds the four as radio rows. The label
     /// and its count are binds over the model — the toolbar re-renders on stages, never on a selection or a count — and the accessible name is the
