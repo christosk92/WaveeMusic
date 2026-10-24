@@ -372,8 +372,6 @@ public readonly partial struct Track
         public float WidthSeed { get; init; }
         /// <summary>Route identity for ScrollMemory / list keys.</summary>
         public string ScrollKey { get; init; } = "";
-        /// <summary>The page's place hand-over across an arm swap (Track.Table.Place.cs): the frame host's, outliving its arms. Null: none.</summary>
-        public ListPlace? Place { get; init; }
         /// <summary>The ONE-TREE page's arrangement (audit B9): the hero list hosts the structure's hero at every width, and this live value says
         /// whether it is the collapsing hero or the columns beside the rows. Never part of a key.</summary>
         public global::Wavee.Theming.Contracts.DetailForm Form { get; init; }
@@ -388,7 +386,7 @@ public readonly partial struct Track
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
-                   && ReferenceEquals(Place, other.Place) && Form == other.Form && ReferenceEquals(Columns, other.Columns)));
+                   && Form == other.Form && ReferenceEquals(Columns, other.Columns)));
 
         public override int GetHashCode()
             => HashCode.Combine(Source, Profile, Vertical is null, ShowToolbar, Embedded, WidthSeed, ScrollKey, Form);
@@ -426,7 +424,6 @@ public readonly partial struct Track
         {
             bool mount = _latest is null;
             _latest = (TableArgs)props;
-            if (mount) TakePlace(_latest);   // the leaving arm's place, before the first render (Track.Table.Place.cs)
             _args.SetIfChanged(_latest);
         }
 
@@ -1122,14 +1119,11 @@ public readonly partial struct Track
         /// multi-select. From a layout effect keyed on the context — never from Render.</summary>
         void LoadView(EntityUri context)
         {
-            // An arm swap's arriving table keeps the leaving one's view (Track.Table.Place.cs); a context change starts fresh.
-            var keep = _pendingPlace is { } place && place.Context.Equals(context.Id) ? place : null;
-            if (keep is null) _pendingPlace = null;
-            _viewLoaded = true;
-            _query.Value = keep?.Query ?? "";
-            _filters.Value = keep?.Filters ?? default;
-            _multi.Value = keep?.Multi ?? false;
-            _searchExpanded.Value = keep?.SearchOpen ?? false;
+            // A context change starts fresh (the one-tree page keeps one table across every crossing, audit B9: nothing to hand over).
+            _query.Value = "";
+            _filters.Value = default;
+            _multi.Value = false;
+            _searchExpanded.Value = false;
             _searchFocused.Value = false;
             _restoreSearchFocus = false;
             _compactInteractive.Value = false;
@@ -1205,9 +1199,6 @@ public readonly partial struct Track
 
             var context = args.Source.Context;
             UseLayoutEffect(() => LoadView(context), DepKey.From(context.Id.GetHashCode()));
-            // The place across an arm swap (Track.Table.Place.cs): this table answers the frame host's capture, and an arriving one lands it.
-            UseEffect(OwnPlace, DepKey.FromRef(args.Place));
-            UseLayoutEffect(ApplyPlace);
 
             var snap = _snapshot.Value;
             var shape = _shape.Value;
@@ -1230,8 +1221,6 @@ public readonly partial struct Track
                 _rampDecided = false;
                 _sawUnknown = false;
             }
-            // An arm swap's arriving table shows rows the user already sees: no warm reveal ramp over them.
-            if (_pendingPlace is not null) _rampDecided = true;
             // "This context shimmered": the edge was unanswered, or it answered before its first page knew its face (the
             // hot-row half of TableRules.RowsPending). Either way the release is a cold reveal and the ramp must run.
             if (snap.State == EdgeState.Unknown || !_hotSettled!.Value) _sawUnknown = true;
@@ -1275,7 +1264,6 @@ public readonly partial struct Track
             // What the pinned chrome holds: the chips ride the page bar instead where the page has one (the hero list's columns form of a page with no rail).
             float extent = (chips is not null && !PageBar ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), StickLine());
-            _placeBand = vertical ? stickyInset : 0f;
             // The hero list's item band is LIVE (`ItemClipTopInsetSource`): the list re-reads it on its every render, so the band a later measure moves (the
             // columns form's pinned head, audit B9; the Liked chips arriving) is never overwritten by the inset the list froze at mount.
             _itemBandSig ??= new Signal<float>(stickyInset);

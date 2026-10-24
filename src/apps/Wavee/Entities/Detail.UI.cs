@@ -548,11 +548,6 @@ public static partial class Detail
         readonly Signal<ColorF> _accent = new(ColorF.Transparent);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(Tok.AccentTextPrimary, Tok.AccentDefault, ""));
         readonly Action?[] _playAllCell = new Action?[1];
-        // The list's place across an arm swap (Track.Table.Place.cs): the table is keyed by its arm, so the leaving table hands the arriving one
-        // its first visible row, selection, focus and view state. Captured on the render that flips the arm, for the same route only.
-        readonly Track.ListPlace _listPlace = new();
-        int _placeArm = -1;
-        string _placeRoute = "";
         readonly object _tintOwner = new();
         IReadSignal<Size2>? _viewport;
         /// <summary>The facts this frame is drawn in (`TierContext.DrawnIn`): its root's, never the process's last window where a root provides others.
@@ -774,12 +769,6 @@ public static partial class Detail
             _columnsForm = oneTree && !heroForm;
             bool vertical = oneTree || heroForm;
             bool verticalTracks = vertical && tracks;
-            // The table's arm flips with `verticalTracks` (its key): ask the live table where the user is before this render swaps it (a plain
-            // field write, Track.Table.Place.cs).
-            int placeArm = verticalTracks ? 1 : 0;
-            if (_placeArm >= 0 && _placeArm != placeArm && string.Equals(_placeRoute, routeKey, StringComparison.Ordinal)) _listPlace.Capture();
-            _placeArm = placeArm;
-            _placeRoute = routeKey;
 
             // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── tuned Classic I1: the facts bento is a sheet over the list on every
             //    facts page, in every arm, toggled from the list bar — never a rail row, never appended to the page body.
@@ -1028,7 +1017,6 @@ public static partial class Detail
                 HeroHeight = _heroHeight,
                 WidthSeed = widthSeed,
                 ScrollKey = routeKey,
-                Place = oneTree ? null : _listPlace,
                 Form = form,
                 Columns = columns,
             };
