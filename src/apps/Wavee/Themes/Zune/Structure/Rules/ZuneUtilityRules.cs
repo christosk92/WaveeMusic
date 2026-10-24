@@ -36,9 +36,6 @@ public static class ZuneUtilityRules
     /// <summary>The remove glyph and its box (Standard; the Compact target is the record's 40).</summary>
     public const float RemoveGlyph = 12f, RemoveBox = 32f;
 
-    /// <summary>The remove glyph's ink at rest (it answers hover with the full tertiary ink).</summary>
-    public const float RemoveRestOpacity = 0.6f;
-
     /// <summary>An unreachable visit (a page this build does not have) stays in the log at this opacity, inert.</summary>
     public const float InertRowOpacity = 0.6f;
 

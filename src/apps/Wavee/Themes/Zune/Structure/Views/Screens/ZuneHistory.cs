@@ -261,8 +261,7 @@ internal static class ZuneHistory
         {
             Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = e.Remove,
-            Opacity = U.RemoveRestOpacity, HoverOpacity = 1f,
-            Children = [Icon(Icons.Cancel, U.RemoveGlyph, Tok.TextTertiary)],
+            Children = [Icon(Icons.Cancel, U.RemoveGlyph, Tok.TextTertiary) with { HoverColor = Tok.TextPrimary }],
         }.Interactive(Interaction.Subtle));
 
         bool reachable = e.Reachable;
