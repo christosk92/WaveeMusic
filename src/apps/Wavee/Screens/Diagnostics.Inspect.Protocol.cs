@@ -180,6 +180,7 @@ public static partial class Diagnostics
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
+            Arg("instant", ArgType.Float, "a run of tracked moves whose largest frame moves this many DIP and most of the run landed at once", "4"),
             Arg("wheel", ArgType.List, "wheel notches per event, cycled (3 or 3,3,-6)"),
             Arg("wheelEvery", ArgType.Int, "one wheel event every N frames", "1"),
             Arg("wheelCount", ArgType.Int, "how many wheel events", "1"),
@@ -453,6 +454,7 @@ public static partial class Diagnostics
                     Arg("items", ArgType.Int, "entries per reply list", "40"),
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                     Arg("remount", ArgType.Bool, "mount afresh even when a mount is up (the mount args apply)", "false"),
+                    Arg("control", ArgType.Bool, "first step the same distance toward `from` inside the old tier and count what that moves: the crossing's excess counts what the edge adds", "true"),
                 ], s_mountArgs, s_lintArgs),
             },
             new(Verb.Trace, "trace", "Run N frames; per-frame engine timings, watched nodes and one scroller, plus a summary of snaps, jumps and scroll faults", "trace 90 prefix=zune- scroll=main")

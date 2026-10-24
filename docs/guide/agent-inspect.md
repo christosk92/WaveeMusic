@@ -279,8 +279,11 @@ Home, and makes Classic dark the active theme.
 - `status` reports whether something is mounted, the frames run so far, `mounts` (how many mounts this server has done:
   above 1 means state that a mount does not clear may carry over), `video{resolved, requested, preferred, transport,
   player}` (the video surface's placement and whether a player is bound; a fresh server reads `None`, `None`, `Docked`,
-  `GlobalBar`, `false`), the theme and kind, the route, the text backend and the network leaks. When something is mounted,
-  it adds the mount facts, `animating` and `trimSource`.
+  `GlobalBar`, `false`), `memory{managedBytes, heapBytes, workingSetBytes, allocatedBytes, gen0, gen1, gen2, pauseMs}` (the
+  managed heap now, the GC heap at its last collection, the working set, the bytes allocated since start, the collections per
+  generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
+  mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
+  `animating` and `trimSource`.
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
@@ -407,6 +410,8 @@ rows; it replies `loops:["facet-body:0"]`), and `loading` and the `cold-*` state
 single and "Easy On Saturday"); a facet with no match is that facet's empty, a query with none "No results found". The search box's suggestions
 come from the same catalogue (`--fake` installs that source; a live build asks Spotify), and `zzqx` keeps them on their progress row.
 `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
+The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune Compact's `loading` leaves the omni flyout up):
+`lint` fails them as `overlay.open` until `key esc` closes them.
 `mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
 photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
@@ -713,6 +718,15 @@ sizes one number at a time instead.
    tier lands earlier (see below).
 3. It settles, lints the settled scene (the same options as `lint`) and replies.
 
+Before step 1's tracking, the **control** (`control=true`, the default) measures what a plain resize of the same step moves
+inside the old tier: from `from` it steps the crossing's distance away from the edge (16 DIP when that leaves the old tier),
+settles, and steps back to `from` the same way the crossing will step on (narrowing through the modal loop, widening not).
+Every node that step snaps or jumps is recorded by key with how far it moved. At the edge, a move of a key the control moved
+as far (within 1 DIP; each control move explains one edge move, largest with largest) is the plain resize's own; every other
+is **excess** (`counts.excessSnapped`, `excessJumped`), what the edge adds: `inspect.py --gate` fails a crossing whose excess
+is above `--max-moved` (default 0). `control:null` with `controlNote` when no same-tier step exists (every move is then
+excess); `control=false` skips it.
+
 Reading a crossing:
 
 - The result does not depend on `gpu`: the default WARP surface and `gpu=none` report the same hold, tier states, counts and
@@ -756,12 +770,13 @@ Reading a crossing:
 | `tierBefore`, `tierResized`, `tierAfter`, `tierSettled` | `{window, height, content, rungs}` at the start, after the resized frames, after the commit and after the settle; `rungs` lists the crossed rung ids, as `tiers` does. |
 | `committed` | The window or height tier or a rung changed (the content tier is not compared). `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
 | `contentCommitted` | Where the content tier first differed from `tierBefore.content`: `resized`, `commit`, `settle` or `none`. |
-| `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `remounted`, `vanished`, `appeared`, `recounted`. |
-| `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. |
+| `control` | `{from{w,h}, snapped, jumped}`: the control step (above), or null (`controlNote` says why), or `"off"`. |
+| `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `excessSnapped`, `excessJumped` (past the control: what `--gate` counts), `unpainted` (changed at once but draws nothing, nor does anything under it that moved with it: a container whose children glide), `remounted`, `remountedSwap`, `remountedOutside` (what `--gate` fails on), `vanished`, `appeared`, `recounted`. Read the counts, not the length of a list. |
+| `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. Each has `family`: the key of the swap it sits under (the nearest node this step mounted whose registered enter AND exit are an opacity-only cross-fade, every theme's `SwapFade`: owner rule "a tier crossing keeps its parts" lets only such a genuinely different tree remount), or null: a rebuilt part. Listed outside a family first. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
 | `appeared` | Keys shown after that were not before. |
 | `recounted` | Keys that repeat (rows) whose count changed: `{key, before, after}`. |
-| `snapped` | Nodes whose laid-out rect changed **on the commit frame** (compared with the resized frame, so plain window resizing does not count) with nothing animating it: no track on the node or an ancestor, and the presented rect already equal to the laid-out one. Each has `from`, `to` and `dx`, `dy`, `dw`, `dh`. Only the topmost of a subtree is listed. |
+| `snapped` | Nodes whose laid-out rect changed **on the commit frame** (compared with the resized frame, so plain window resizing does not count) with nothing animating it: no track on the node or an ancestor, and the presented rect already equal to the laid-out one, that draw (or have something drawn under them that moved with them). Each has `from`, `to`, `dx`, `dy`, `dw`, `dh`, `excess` (false: the control moved it too), `under` and `underExcess` (the flagged nodes under it, itself included). Only the topmost of a subtree is listed. |
 | `jumped` | The snapped nodes that only moved (same size): the content below something that changed height, shifting at once. |
 | `settle` | `{frames, settled, busy?, ambient?}` for the final settle (`busy` and `ambient` as in Settling). `frames` varies from run to run with the machine's load. |
 | `lint` | The settled scene's lint: `theme`, `tier`, `size`, `guide`, `summary`, `rules`, `findings` as in `lint`. |
@@ -782,27 +797,30 @@ Reading a crossing:
    "lint":{"theme":"zune","tier":"Standard","size":{"w":1440,"h":400},"guide":true,"summary":{...},"rules":{...},"findings":[...]}}
 ```
 
-`python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"` prints a lint (or the lint of a
-crossing) as a head line (the summary, then the `outcomes` and `levels` counts) and one line per finding:
+`python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"` prints a crossing's counts first
+(EXCESS over the control, remounts outside and inside a swap family, every move), a line per remount (with its family),
+vanished key and topmost move (`N nodes under it`), then a lint as a head line (`[route]`, the gate's counts of every fail,
+then exactly what the lines below print: `3 warn, 11 warn todo, 1 warn review`) and one line per finding:
 `[warn ] target/target.size: ...` (the alias, then the id when they differ). A finding that is not a fail of a gate rule
 says what it is: `[warn ] align.baseline (review, todo): ...`, `[error] clip/text.clip (suppressed): ...`. An icon glyph in
 a message prints by name as `dump` names it (`glyph:PlaySolid`), or as `glyph:U+XXXX` when nothing names it.
 
-**A verdict: `--gate`.** `python -I tools/inspect.py --gate error -f lint.txt` runs the file as usual, then prints one
-summary line and exits **1** when any lint (or crossing's lint) listed a **failure of a gate-level rule** at or above the
-gate's severity (`info`, `warn` or `error`), **2** when any reply was `ok:false` (that wins), else **0**. A finding counts
-only with `outcome` `fail` and `level` `gate`: a review (the rule could not decide), a suppressed finding (an intent or a
-baseline matched) and a report line never count, and the summary line says how many of each it passed over. Add
-`--gate-todo` to count the todo rules' failures too (`align.inset`, `align.baseline`, `space.scale`, `text.placeholder`,
-`key.hygiene`). The counts come from the LISTED findings, so the lint's own `min`, `limit` and `outcomes` apply first. A
-server that never comes up (no exe at `--exe`, a boot fault, a closed stream), dies mid-run, or writes a line that is not
-JSON counts as an `ok:false` (`server: ...`): exit 2 with the summary line, never 1.
+**A verdict: `--gate`.** `python -I tools/inspect.py --gate error -f lint.txt` runs the file as usual, then prints its
+warnings, its motion failures and one summary line, and exits **2** when any reply was `ok:false` or **no lint ran** (that
+wins; a crossing carries its own lint), **1** when a lint's `fails` (every fail of the rules that ran, listed or not) hold a
+**failure of a gate-level rule** at or above the gate's severity (`info`, `warn` or `error`), when a crossing's excess over
+its control is above `--max-moved` (default 0) or it remounted a key outside a swap family, or when a trace moved more than
+`--max-moved` watched keys at once (`counts.movedAtOnce`: a snap, or an instant run) or remounted one outside a family; else
+**0**. A review, a suppressed finding and a report line never count. Add `--gate-todo` to count the todo rules' failures too.
+`gate WARNING` lines: a lint narrowed by `rules`, `root`, `outcomes` or `limit`, fails it counted but did not list, a crossing
+that crossed no edge or ran without its control, a trace that watched nothing. A server that never comes up, dies mid-run, or
+writes a line that is not JSON counts as an `ok:false` (`server: ...`): exit 2 with the summary line, never 1.
 
 ```text
-gate warn: 1 lint reply, 0 error, 0 warn, 0 info failed (0 at or above warn; not counted: 1 todo); 0 ok:false replies -> exit 0
-gate warn +todo: 1 lint reply, 0 error, 1 warn, 0 info failed (1 at or above warn); 0 ok:false replies -> exit 1
-gate error: 1 lint reply, 0 error, 9 warn, 0 info failed (0 at or above error; not counted: 1 review, 1 suppressed); 0 ok:false replies -> exit 0
-gate error: 0 lint replies, 0 error, 0 warn, 0 info failed (0 at or above error); 1 ok:false reply -> exit 2 (first: lint: unknown arg 'rule' for lint (did you mean 'rules'?))
+gate warn: 1 lint reply, 0 error, 3 warn, 0 info failed (3 at or above warn); 0 motion failures; 0 ok:false replies -> exit 1
+gate MOTION: crossing 1904x960->1888x960 moved 2 nodes at once past its control (max 0)
+gate error: 1 lint reply, 0 error, 0 warn, 0 info failed (0 at or above error); 1 motion failure; 0 ok:false replies -> exit 1
+gate error: 0 lint replies, 0 error, 0 warn, 0 info failed (0 at or above error); 0 motion failures; 0 ok:false replies -> exit 2 (no lint ran: ...)
 ```
 
 Without `--gate` the client exits 0 whatever the replies say (`--fail-fast` stops at the first `ok:false` with exit 2).
@@ -870,9 +888,16 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
-`jumps` (presented rect moved over `jump` DIP in a frame under a track; `prevMag` tells a discontinuity from steady motion), and `scroll`:
+`jumps` (presented rect moved over `jump` DIP in a frame under a track; every eased glide has some), `instants` (a run of jumps on
+consecutive frames whose largest frame moves at least `instant`=4 DIP and carries 60 % of the run: the change landed at once
+while something above it animated, a page reflowing in one frame beside a sliding pane), and `scroll`:
 `reversals`, `overshoots` (runs outside [0, max], with the deepest point), `stalls`, `uneven` deltas, `layoutDuringScroll` and `deltas`
-statistics. `python -I tools/inspect.py --trace ...` prints the summary as text.
+statistics. Beside the summary, `counts{watched, snaps, snappedKeys, instants, movedAtOnce, remounted, remountedSwap,
+remountedOutside}` and `remounted[{key, frame, family}]`: a lone watched key that is a different node from one frame to the
+next, with the swap family fading it in (as `crossing` names it) or null. `inspect.py --gate` fails a trace whose
+`movedAtOnce` (snapped or instant keys) is above `--max-moved` or that remounted a key outside a family, and warns on a trace
+that watched nothing (pass `prefix=`/`keys=`, and `max=` above 20 for a page). `python -I tools/inspect.py --trace ...`
+prints the summary as text: the motion counts, the remounts, the snaps, instants and jumps (30 each), `after`.
 
 ## Typical workflows
 

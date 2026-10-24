@@ -580,13 +580,14 @@ public static partial class Diagnostics
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (a.Has("page")) return PageState(id, name, a, kind);
+                        BeforeState(shell);
+                        if (a.Has("page")) return PageState(id, name, a, kind, shell);
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
                         // A loading or cold state's skeleton IS the picture: its settle stops on the shimmer unless `loops` says otherwise.
                         bool skeleton = kind == "loading" || kind.StartsWith("cold-", StringComparison.Ordinal);
-                        return Settled(id, name, a, w => w.WriteString("kind", kind),
+                        return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); },
                             loops: skeleton ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
                     }
                 case Inspect.Verb.Find:
@@ -616,7 +617,7 @@ public static partial class Diagnostics
         /// albums) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
         /// and `episode` open a fixture in that state: the pending show and episode (`shzzqx`, `epzzqx`: the fake never answers them) and the show
         /// with no episodes (`sh8`). The next mount puts the shelves back.</summary>
-        string PageState(int id, string name, Inspect.Args a, string kind)
+        string PageState(int id, string name, Inspect.Args a, string kind, Shell.HeadlessShell shell)
         {
             if (kind is not ("loading" or "empty")) return Inspect.Reply.Fail(id, name, "page= takes kind=loading or kind=empty, not '" + kind + "'");
             bool loading = kind == "loading";
@@ -642,7 +643,7 @@ public static partial class Diagnostics
             }
             Wavee.Shell.GoTo(route);
             RunFrames(30);
-            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("page", page); },
+            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("page", page); AfterState(w, shell, kind); },
                 loops: loading ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
         }
 
@@ -1114,6 +1115,17 @@ public static partial class Diagnostics
 
         // ── dump ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+        /// <summary>The refusal for a key no mounted node carries. A finding's PATH key (<c>zune-search-pill/0/1</c>: a keyless node under its
+        /// nearest key) is no key: the hint names the key before the first <c>/</c> (and the finding's rects for x and y); any other key gets
+        /// the <c>find prefix=</c> hint.</summary>
+        static string NoNodeKeyed(string key)
+        {
+            int slash = key.IndexOf('/');
+            return slash > 0
+                ? "no mounted node keyed '" + key + "': a finding's path key names a keyless node under '" + key[..slash] + "'; use the key before the first '/' (" + key[..slash] + "), or x and y from the finding's rects"
+                : "no mounted node keyed '" + key + "' (find prefix=" + Inspect.Quote(key) + " lists near keys)";
+        }
+
         /// <summary>The nodes a `dump` or `lint` covers: `root` (every node keyed so; `nth` picks one), else the whole tree plus the overlays that do
         /// not hang under the root (flyouts, dialogs), dumped after it.</summary>
         bool TryRoots(Inspect.Args a, Shell.HeadlessShell shell, out List<NodeHandle> roots, out string error)
@@ -1126,7 +1138,7 @@ public static partial class Diagnostics
                 string key = a.Str("root");
                 foreach (var (node, k) in shell.FindPrefix(key))
                     if (string.Equals(k, key, StringComparison.Ordinal)) roots.Add(node);
-                if (roots.Count == 0) { error = "no mounted node keyed '" + key + "'"; return false; }
+                if (roots.Count == 0) { error = NoNodeKeyed(key); return false; }
                 int nth = a.Int("nth", -1);
                 if (nth >= 0)
                 {
@@ -1227,7 +1239,7 @@ public static partial class Diagnostics
             List<(NodeHandle Node, string Key)> found = InspectDump.Exact(shell, key);
             if (found.Count == 0)
             {
-                refusal = Inspect.Reply.Fail(id, name, "no mounted node keyed '" + key + "' (find prefix=" + Inspect.Quote(key) + " lists near keys)");
+                refusal = Inspect.Reply.Fail(id, name, NoNodeKeyed(key));
                 return false;
             }
             bool force = a.Bool("force", false);
@@ -1382,19 +1394,7 @@ public static partial class Diagnostics
             NodeHandle focused = shell.Host.Input.Focused;
             if (!focused.IsNull && scene.IsLive(focused)) w.WriteString("focused", InspectKit.KeyOf(scene, focused));
             else w.WriteNull("focused");
-            w.WriteStartArray("overlays");
-            List<(NodeHandle Node, string Key)> layers = shell.FindPrefix("overlay:");
-            layers.Sort(static (x, y) => LayerId(y.Key).CompareTo(LayerId(x.Key)));   // the overlay host's ids grow with each open: top first
-            foreach (var (node, key) in layers)
-            {
-                if (!scene.IsShown(node)) continue;
-                w.WriteStartObject();
-                w.WriteString("key", key);
-                foreach (NodeHandle n in InspectKit.Subtree(scene, node))
-                    if (n != node && scene.DebugKeyOf(n) is { Length: > 0 } inner) { w.WriteString("first", inner); break; }
-                w.WriteEndObject();
-            }
-            w.WriteEndArray();
+            WriteOverlays(w, shell);   // Diagnostics.Inspect.Picture.cs
             string? hit = _hit ?? (_pointer is { } p ? HitKey(p) : null);
             if (hit is not null) w.WriteString("hit", hit);
             else w.WriteNull("hit");
@@ -1505,6 +1505,7 @@ public static partial class Diagnostics
             w.WriteBoolean("mounted", _shell is not null);
             w.WriteNumber("frames", _frames);
             w.WriteNumber("mounts", _mounts);   // above 1: a reused server, so state a mount does not clear may carry over
+            WriteHealth(w);   // overlays, memory and GC (Diagnostics.Inspect.Picture.cs)
             WriteVideoFacts(w);
             if (_shell is { } shell)
             {
