@@ -236,10 +236,6 @@ public static class WinUiArtistMotion
     /// <summary>The fade-in's start: the fade-out, then most of Popular's resize.</summary>
     public const float FadeInDelayMs = FadeOutMs + RestackMs * FadeInLead;
 
-    /// <summary>The longest a restack lays the overview out at the page's landing width while the page eases toward it (a docked pane's slide): the
-    /// whole fade-through. The page has landed long before; this only backs the release up should the measured width never meet the landing one.</summary>
-    public const float LandingHoldMs = FadeInDelayMs + FadeInMs;
-
     /// <summary>A layout change of the side column outside a restack (a pane docking a frame before the column count follows it) holds this long before
     /// it glides, so the frames between the width change and the restack show the column where it stood, not a step toward a slot it never takes.</summary>
     public const float HoldMs = 64f;
