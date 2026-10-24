@@ -11,11 +11,11 @@
 //   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case), 44-tall hit boxes, on ONE line
 //             (the owner, 2026-10-24: never wrapped, never shrunk): queue · lyrics · now playing · friends (where the capabilities offer the friends
 //             panel) and video while the video body is up, as a CAROUSEL: the current word leads on the gutter in the primary ink, the rest follow
-//             round the cycle in the tertiary ink and run off under a soft right fade (`ZunePanelPivots`). A word shows its body in the same panel
+//             round the cycle in the tertiary ink and run off under a soft right fade (`ZunePivotCarousel`). A word shows its body in the same panel
 //             (`PanelProps.ShowMode`); a pane that offers none (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word.
 //             The close glyph (40 x 40) ends the row.
 //   pivoting  a change slides the words like a Zune / Windows Phone pivot (the strip moves the new lead to the gutter; the words that pass it wrap
-//             round) and the new pane slides in from the side of travel while the old one slides out the other way (`ZunePanelPivots`).
+//             round) and the new pane slides in from the side of travel while the old one slides out the other way (`SlidePanes`).
 //   docked    (ZT2, Z-Part-Panel "docked2" / "docked3") where panes dock beside the primary, the primary's head leaves out the bodies they
 //             show (`PanelView.Beside`: lyrics · now playing · friends at Huge, lyrics · now playing at Huge 4K), and a LINKED pane draws no
 //             close (it closes with the panel; the board draws none on the docked columns, the primary keeps its one, as inline).
@@ -37,6 +37,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
+using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -93,7 +94,7 @@ internal static class ZunePanel
     /// on a linked pane). Every word keeps its size: the ones that do not fit the strip of a panel <paramref name="paneWidth"/> wide run off under its
     /// right edge fade, never wrapped, shrunk or cut mid-word (the owner, 2026-10-24). The strip reaches the panel's left edge and carries the gutter
     /// as its own inset, so a word that slides out to the left fades over the empty gutter while the lead never stands under the fade.</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePanelPivots pivots, ZunePanelInk? ink, float paneWidth, bool sheet)
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePivotCarousel<PanelMode> pivots, ZunePanelInk? ink, float paneWidth, bool sheet)
     {
         var order = pivots.Order;
         var words = new Element[order.Length];
@@ -157,7 +158,7 @@ internal static class ZunePanel
     /// selection to the front), the head's whole height (the
     /// touch floor of 40 holds at every tier). A click on a trailing word brings it to the front. One element shape for every state, so a word
     /// keeps its node as the carousel moves it.</summary>
-    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePanelPivots carousel, ZunePanelInk? ink, bool sheet) => new BoxEl
+    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePivotCarousel<PanelMode> carousel, ZunePanelInk? ink, bool sheet) => new BoxEl
     {
         Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
         Role = AutomationRole.Tab, Focusable = pivots && open, TabStop = pivots && open && current, AllowFocusOnInteraction = false,
@@ -268,8 +269,33 @@ internal sealed class ZunePanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     bool _escapes;
-    readonly ZunePanelPivots _pivots = new();
+    readonly ZunePivotCarousel<PanelMode> _pivots = new() { Gap = ZuneFrameRules.PanelPivotGap, Gutter = ZuneFrameRules.PanelGutter };
     readonly Dictionary<PanelMode, NodeHandle> _panes = new();
+
+    /// <summary>The panes' slide (PANES: the owner's pivot, 2026-10-24): <paramref name="enter"/> comes in from the side of <paramref name="travel"/>,
+    /// fading in, while <paramref name="leave"/> (still mounted) goes the other way, fading out, from where it is drawn; the frame drops it when the
+    /// slide has run. Reduced motion: a plain cross-fade.</summary>
+    static void SlidePanes(SceneStore scene, AnimEngine anim, NodeHandle enter, NodeHandle leave, int travel, bool reduced)
+    {
+        float ms = ZuneMotion.PivotSlideMs, shift = reduced ? 0f : ZuneFrameRules.PanelPaneShift * (travel < 0 ? -1f : 1f);
+        if (!enter.IsNull && scene.IsLive(enter))
+        {
+            ref var paint = ref scene.Paint(enter);
+            float dx = paint.LocalTransform.Dx, alpha = paint.Opacity;
+            // A pane coming back mid-slide continues from where it is drawn.
+            bool fresh = alpha >= 1f && dx == 0f;
+            anim.Animate(enter, AnimChannel.TranslateX, fresh ? shift : dx, 0f, ms, Easing.SmoothOut);
+            anim.Animate(enter, AnimChannel.Opacity, fresh ? 0f : alpha, 1f, ms, Easing.SmoothOut);
+        }
+        if (!leave.IsNull && scene.IsLive(leave))
+        {
+            ref var paint = ref scene.Paint(leave);
+            float dx = paint.LocalTransform.Dx, alpha = paint.Opacity;
+            anim.Animate(leave, AnimChannel.TranslateX, dx, dx - shift, ms, Easing.SmoothOut);
+            anim.Animate(leave, AnimChannel.Opacity, alpha, 0f, ZuneFrameRules.PanelPaneFadeMs, Easing.SmoothOut);
+        }
+    }
+
     readonly Dictionary<PanelMode, Action<NodeHandle>> _paneRealized = new();
     PanelMode? _shown;     // the body last drawn on the open panel
     PanelMode? _leaving;   // the pane a pivot change replaced, sliding out
@@ -340,7 +366,7 @@ internal sealed class ZunePanelFrame : Component
             anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : ZuneFrameRules.PanelSlideMs, ZuneFrameRules.PanelSlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
-        // THE PIVOTS (ZunePanelPivots): the selected word leads, the rest follow round the cycle; after the commit's layout the words slide from where
+        // THE PIVOTS (ZunePivotCarousel): the selected word leads, the rest follow round the cycle; after the commit's layout the words slide from where
         // they were drawn and, on a change of body, the new pane slides in from the side of travel while the old one slides out the other way. The
         // old pane is dropped once its slide has run.
         _pivots.Show = props.ShowMode;
@@ -368,7 +394,7 @@ internal sealed class ZunePanelFrame : Component
                 (input?.MoveFocusVisual ?? input?.RestoreFocus)?.Invoke(lead);
             if (_paneSeeded == _paneGen) return;
             _paneSeeded = _paneGen;
-            if (_leaving is { } gone) ZunePanelPivots.SlidePanes(scene, anim, PaneOf(body), PaneOf(gone), travel, Design.Reduced);
+            if (_leaving is { } gone) SlidePanes(scene, anim, PaneOf(body), PaneOf(gone), travel, Design.Reduced);
         }, DepKey.From(orderKey, open ? 1 : 0, _paneGen, 0));
 
         _onBounds ??= r => props.BodyHeightChanged(r.H);

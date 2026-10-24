@@ -159,6 +159,9 @@ public static class ZuneBandRules
         return order;
     }
 
+    /// <summary>The radix row 1's order is folded into one layout-effect dep with (more than the destinations a band holds).</summary>
+    public const int OrderRadix = 16;
+
     /// <summary>The roving tab stop of row 1: the lit pivot, else the first.</summary>
     public static int TabStop(int count, int current) => current >= 0 && current < count ? current : 0;
 

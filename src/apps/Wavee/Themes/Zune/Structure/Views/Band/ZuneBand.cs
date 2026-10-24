@@ -9,8 +9,9 @@
 //          in the primary ink, the rest tertiary), then, at Standard and Huge with the `bandPins` option on, "pinned" and up to six pins
 //          (art; a click opens, the play disc that shows on hover plays, a 4-dip dot under the art is lit while the pin plays).
 //          OVERFLOW (`pivotOverflow`): EdgeFadeScroll scrolls the run under an edge fade (Compact and Small fade; Compact rotates the lit
-//          word to the front, the words sliding); MoreMenu, at Compact and Small, keeps the lit word and folds the others (and the hub's
-//          profile and settings) into a "more" menu.
+//          word to the front: the panel's pivot carousel, `ZunePivotCarousel`, slides the words round the cycle as the panel's head does, and
+//          Left / Right there step to the previous / next destination, the focus following the lead); MoreMenu, at Compact and Small, keeps the
+//          lit word and folds the others (and the hub's profile and settings) into a "more" menu.
 //          On a detail page row 1 lights the destination the page lives under (`BandProps.Section`: "library" over an album).
 //   ROW 2  the page's views (Library's kinds, Browse's bands, a page's in-page tabs), the current one lit (the weight; on a detail page,
 //          the page's title and a hairline lead and the current view takes the accent underline), then the page's
@@ -24,7 +25,8 @@
 //          from the bottom. SCROLL-TIED (`collapseBand`, Compact): row 2 scrolls away with the page, its height given back as
 //          clamp(offset, 0, row 2) and its opacity following, then returns as the page reaches the top: no direction, no timed fade. Small,
 //          Standard and Huge keep it pinned; a Short window rests with it folded, static.
-//   KEYS   each row is a tab list: one tab stop (the lit word), Left / Right / Home / End move the focus along it, Enter opens.
+//   KEYS   each row is a tab list: one tab stop (the lit word), Left / Right / Home / End move the focus along it, Enter opens (row 1 at
+//          Compact: Left / Right select, as the panel's head does).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -61,6 +63,11 @@ internal sealed class ZuneBand : Component
 
     readonly BandTabRow _pivots = new();
     readonly BandTabRow _views = new();
+    /// <summary>Row 1's carousel (the panel's, over the destination ids): it drives the words where the run rotates (Compact) and records where they
+    /// stand everywhere else, so a crossing into Compact slides from the places on screen.</summary>
+    readonly ZunePivotCarousel<string> _carousel = new(StringComparer.Ordinal);
+    IReadOnlyList<BandDestination> _destinations = [];
+    Action<string>? _goTo;
     IReadSignal<PageScroll>? _scroll;
     NodeHandle _moreAnchor;
     OverlayHandle? _moreMenu;
@@ -148,6 +155,17 @@ internal sealed class ZuneBand : Component
         // ── row 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────
         var order = ZuneBandRules.PivotOrder(destinations.Count, lit, rec.Rotate);
         bool more = overflow == PivotOverflow.MoreMenu && rec.Narrow && destinations.Count > 1;
+        // The carousel drives the words where the run rotates (one mechanism: their layout slide is off there); it re-reads the destinations on a
+        // selection, so its verb is made once.
+        bool carousel = rec.Rotate && !more;
+        _destinations = destinations;
+        _goTo ??= GoTo;
+        var ids = new string[more ? 0 : order.Length];
+        int orderKey = 0;
+        for (int i = 0; i < ids.Length; i++) { ids[i] = destinations[order[i]].Id; orderKey = orderKey * ZuneBandRules.OrderRadix + order[i] + 1; }
+        _carousel.Order = ids;
+        _carousel.Show = carousel ? _goTo : null;
+        _carousel.Gap = rec.PivotGap;
         var words = new List<Element>(order.Length + 1);
         _pivots.Begin();
         if (more)
@@ -165,7 +183,7 @@ internal sealed class ZuneBand : Component
             for (int i = 0; i < order.Length; i++)
             {
                 int index = order[i];
-                words.Add(Pivot(destinations[index], lit: index == lit, tabStop: index == stop, slot: i, rec, type, OnTabKey));
+                words.Add(Pivot(destinations[index], lit: index == lit, tabStop: index == stop, slot: i, rec, type, OnTabKey, carousel));
             }
         }
 
@@ -181,8 +199,17 @@ internal sealed class ZuneBand : Component
             Key = ZuneBandRules.PivotRunKey, Horizontal = true, Content = run, Height = rec.Row1H,
             Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
             AutoEdgeFade = overflow == PivotOverflow.EdgeFadeScroll || rec.Fade, AutoEdgeFadeBand = edgeFade,
-            SuppressScrollBar = true,
+            SuppressScrollBar = true, OnRealized = _carousel.OnStrip,
         };
+        // After the commit's layout: the carousel slides the words from where they were drawn (Compact), or records where they stand (elsewhere: their
+        // own layout slide moves them); a change made from the keyboard moves the focus to the new lead. Every crossing re-records (the tier is a dep).
+        UseLayoutEffect(() =>
+        {
+            if (Context.Scene is not { } scene || Context.Anim is not { } anim) return;
+            _carousel.Slide(scene, anim, carousel, Design.Reduced);
+            if (_carousel.TakeRefocus() && _carousel.Order.Length > 0 && _carousel.WordOf(_carousel.Order[0]) is { IsNull: false } lead && scene.IsLive(lead))
+                (hooks.MoveFocusVisual ?? hooks.RestoreFocus)?.Invoke(lead);
+        }, DepKey.From(orderKey, carousel ? 1 : 0, (int)tiers.Window, 0));
 
         var row1Kids = new List<Element>(2) { pivotRun };
         if (pins.Count > 0) row1Kids.Add(PinsCached(pins, rec));
@@ -256,9 +283,17 @@ internal sealed class ZuneBand : Component
 
     // ── row 1's parts ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One pivot word: a tab (the lit one is the row's tab stop), a click goes to its destination.</summary>
+    /// <summary>The carousel's verb: the destination with <paramref name="id"/> opens (a navigation; the band re-renders with it lit and leading).</summary>
+    void GoTo(string id)
+    {
+        foreach (var d in _destinations)
+            if (string.Equals(d.Id, id, StringComparison.Ordinal)) { d.Go(); return; }
+    }
+
+    /// <summary>One pivot word: a tab (the lit one is the row's tab stop), a click goes to its destination. In a rotating run (<paramref name="carousel"/>)
+    /// the carousel moves it (a trailing word's click comes to the front, forward; Left / Right select) and it has no layout slide of its own.</summary>
     Element Pivot(BandDestination d, bool lit, bool tabStop, int slot, ZuneBandLayout rec, ZuneBandType type,
-        Action<BandTabRow, int, KeyEventArgs> key)
+        Action<BandTabRow, int, KeyEventArgs> key, bool carousel = false)
     {
         // The library pivot says "library" (Z-Part-Band), not the core's "Your Library"; the other words are the core's.
         var text = PivotText(R.Type.Pivot(string.Equals(d.Id, LibraryId, StringComparison.Ordinal) ? Loc.Get(Strings.Theme.Zune.Band.Library) : d.Label), type);
@@ -277,16 +312,18 @@ internal sealed class ZuneBand : Component
         var nodes = _pivots;
         string id = d.Id;
         nodes.Add(id);
+        var wheel = _carousel;
+        var realized = wheel.RealizedOf(id);
         return new BoxEl
         {
             Key = ZuneBandRules.PivotKeyPrefix + d.Id, Shrink = 0f, Height = rec.Row1H, Direction = 0, AlignItems = FlexAlign.Center,
             Role = AutomationRole.Tab, Focusable = true, TabStop = tabStop, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            // The lit pivot moves to the front at Compact, and a crossing changes the gap and (at Huge 4K) the size: the words slide to their
-            // new places (the pivot slide, parent-relative), never jump.
-            Animate = Design.Reduced ? null : ZuneMotion.PivotSlide,
-            OnClick = d.Go,
-            OnKeyDown = e => key(nodes, slot, e),
-            OnRealized = h => nodes.Realized(id, h),
+            // A crossing changes the gap and (at Huge 4K) the size: the words slide to their new places (the pivot slide, parent-relative), never
+            // jump. A rotating run (Compact) is the carousel's alone: two slides on one word would count its drawn offset twice.
+            Animate = carousel || Design.Reduced ? null : ZuneMotion.PivotSlide,
+            OnClick = carousel && !lit ? wheel.ClickOf(id) : d.Go,
+            OnKeyDown = carousel ? e => { wheel.OnKey(e); key(nodes, slot, e); } : e => key(nodes, slot, e),
+            OnRealized = h => { nodes.Realized(id, h); realized(h); },
             Children = [word],
         };
     }
