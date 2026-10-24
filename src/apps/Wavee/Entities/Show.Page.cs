@@ -79,7 +79,7 @@ public readonly partial struct Show
     readonly record struct PageFacts(
         ShowReaderRules.Head Head, ShowReaderRules.Primary Primary, ShowReaderRules.Primary Ghost,
         int ResumeLeft, int FirstNumber, bool Publisher, ShowFlags Flags,
-        int RatingX100, int RatingCount, int MyRating, bool HasTrailer, uint ToneArgb, string Meta, bool Topics)
+        int RatingX100, int RatingCount, int MyRating, bool HasTrailer, uint ToneArgb, string Meta, bool Topics, bool Empty = false)
     {
         public bool Badges => (Flags & (ShowFlags.Exclusive | ShowFlags.Explicit | ShowFlags.Video)) != 0;
         public bool Rating => RatingX100 > 0;
@@ -231,7 +231,8 @@ public readonly partial struct Show
                 HasTrailer: known && show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty,
                 ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
                 Meta: MetaOf(s.Total, s.Cadence, s.OldestYear),
-                Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty);
+                Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty,
+                Empty: s.EmptyShow);
         }
 
         /// <summary>Publishes row 2 (an auto-tracked effect: it reads the saved set, so a follow elsewhere re-words the action without re-rendering
@@ -1223,7 +1224,7 @@ public readonly partial struct Show
             return style.Primary(new ShowPrimaryArgs
             {
                 Primary = f.Primary, Ghost = f.Ghost, ResumeLeft = f.ResumeLeft, FirstNumber = f.FirstNumber,
-                Follow = _follow, Resume = _resume, First = _first, Latest = _latest, Size = p.Size,
+                Follow = _follow, Resume = _resume, First = _first, Latest = _latest, Size = p.Size, Empty = f.Empty,
             });
         }
     }

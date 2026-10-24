@@ -45,15 +45,21 @@ internal static partial class WinUiDetailKit
     /// <summary>The detail header's Play split for <paramref name="subject"/>: <paramref name="play"/> on the left half (Play, or Pause while this subject plays),
     /// the "More ways to play" menu on the chevron half; <paramref name="height"/> is the tier's target (32, 40 at Compact). The accent is the system's. Keyed on
     /// the subject and the height: the props freeze at mount.</summary>
-    public static Element PlaySplit(EntityUri subject, Action play, float height)
-        => Embed.Comp(() => new PlaySplitHost { Subject = subject, Play = play, Height = height })
+    public static Element PlaySplit(EntityUri subject, Action play, float height, bool enabled = true)
+        => Embed.Comp(new PlaySplitProps(subject, play, height, enabled), static () => new PlaySplitHost())
             with { Key = "ctxplay:" + subject.Text + ":" + height.ToString(CultureInfo.InvariantCulture) };
+
+    /// <summary>The split's inputs: <see cref="Enabled"/> false (a list known to hold nothing) greys both halves, never hides them. Equality is the
+    /// values a render reads (the verb is the page's latest).</summary>
+    sealed record PlaySplitProps(EntityUri Subject, Action Play, float Height, bool Enabled)
+    {
+        public bool Equals(PlaySplitProps? o) => o is not null && Subject.Equals(o.Subject) && Height == o.Height && Enabled == o.Enabled;
+        public override int GetHashCode() => HashCode.Combine(Subject, Height, Enabled);
+    }
 
     sealed class PlaySplitHost : Component
     {
-        public required EntityUri Subject { get; init; }
-        public required Action Play { get; init; }
-        public required float Height { get; init; }
+        PlaySplitProps _p = null!;
 
         readonly Signal<bool> _open = new(false);
         IOverlayService? _overlay;
@@ -65,22 +71,25 @@ internal static partial class WinUiDetailKit
 
         public override Element Render()
         {
+            _p = UseProps<PlaySplitProps>();
             _overlay = UseContext(Overlay.Service);
             _toggle ??= ToggleMenu;
             _capture ??= h => _anchor = h;
             _keys ??= OnKey;
 
-            ColorF fill = Tok.AccentDefault;
-            ColorF ink = ColorContrast.PickContrast(fill);
-            bool pause = PlayRelation.ShowsPause(Subject.Text);
+            // A list known to hold nothing keeps the split in place, greyed (the palette's disabled fill and ink), both halves inert.
+            bool enabled = _p.Enabled;
+            ColorF fill = enabled ? Tok.AccentDefault : Tok.AccentDisabled;
+            ColorF ink = enabled ? ColorContrast.PickContrast(fill) : Tok.TextOnAccentDisabled;
+            bool pause = enabled && PlayRelation.ShowsPause(_p.Subject.Text);
             bool open = _open.Value;
-            var palette = Controls.AccentFillPalette(fill);
-            float r = Radii.Control, h = Height;
+            var palette = Controls.AccentFillPalette(Tok.AccentDefault);
+            float r = Radii.Control, h = _p.Height;
             bool wide = h > Controls.ButtonHeight;
             float pad = wide ? WinUiDetailRules.PlayPadCompact : WinUiDetailRules.PlayPad;
 
-            BoxEl playHalf = Controls.PrimaryButton(Loc.Get(pause ? Strings.Home.Pause : Strings.Detail.Play), Play, fill,
-                pause ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with
+            BoxEl playHalf = Controls.PrimaryButton(Loc.Get(pause ? Strings.Home.Pause : Strings.Detail.Play), _p.Play, Tok.AccentDefault,
+                pause ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid, isEnabled: enabled) with
             {
                 Key = "split:play", MinWidth = 0f, Height = h, Shrink = 0f, Padding = new Edges4(pad, 0f, pad, 0f), Gap = WinUiDetailRules.PlayGap,
                 Corners = new CornerRadius4(r, 0f, 0f, r),
@@ -88,7 +97,7 @@ internal static partial class WinUiDetailKit
             };
 
             BoxEl menuHalf = Button.Create("", _toggle, ButtonAppearance.Accent,
-                style: Button.DefaultStyle(ButtonAppearance.Accent, palette: palette) with { MinHeight = h }) with
+                style: Button.DefaultStyle(ButtonAppearance.Accent, palette: palette) with { MinHeight = h }, isEnabled: enabled) with
             {
                 Key = "split:menu", Width = h, Height = h, MinWidth = 0f, Shrink = 0f, Padding = default, Gap = 0f,
                 Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
@@ -123,7 +132,7 @@ internal static partial class WinUiDetailKit
                     new BoxEl
                     {
                         Key = "split:border", HitTestVisible = false, Corners = Radii.ControlAll,
-                        BorderWidth = 1f, BorderBrush = Tok.AccentControlElevationBorder,
+                        BorderWidth = enabled ? 1f : 0f, BorderBrush = Tok.AccentControlElevationBorder,
                     },
                 ],
             };
@@ -140,7 +149,8 @@ internal static partial class WinUiDetailKit
         {
             if (_menu is { IsOpen: true } shown) { shown.Close(); return; }
             if (Controls.IsNullOverlay(_overlay)) return;
-            var items = DetailVerbs.PlayMenu(Subject);
+            if (!_p.Enabled) return;
+            var items = DetailVerbs.PlayMenu(_p.Subject);
             OverlayHandle? opened = null;
             opened = _overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => opened?.Close(), size: OverlayFit.MenuSize), FlyoutPlacement.BottomLeft,
                 new PopupOptions(FocusTrap: true) { ConstrainToRootBounds = false });
@@ -167,8 +177,9 @@ internal static partial class WinUiDetailKit
         bool shuffleGlyph = true, Action? invite = null, Action? tune = null)
     {
         var actions = new List<Element>(6);
+        // A list known to hold nothing keeps Shuffle in place, greyed, as it does Play.
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Controls.Named(BorderedAction(words && !shuffleGlyph ? null : Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, target, words)
+            actions.Add(Controls.Named(BorderedAction(words && !shuffleGlyph ? null : Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, target, words, enabled: !id.Empty)
                 with { Key = keyPrefix + "shuffle:button" }, Loc.Get(Strings.Detail.Shuffle)) with { Key = keyPrefix + "shuffle" });
         if (heart)
         {
@@ -213,15 +224,15 @@ internal static partial class WinUiDetailKit
     }
 
     /// <summary>A bordered standard action (W-Album: the control fill, the elevation stroke, r4, 32 / 40 tall): the glyph and its word, or the glyph alone.</summary>
-    static BoxEl BorderedAction(string? glyph, string label, Action onClick, float target, bool word)
+    static BoxEl BorderedAction(string? glyph, string label, Action onClick, float target, bool word, bool enabled = true)
     {
         if (!word)
-            return Controls.IconAction(glyph ?? Icons.More, onClick, size: target) with
+            return Controls.IconAction(glyph ?? Icons.More, onClick, size: target, isEnabled: enabled) with
             {
-                Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+                Fill = enabled ? Tok.FillControlDefault : Tok.FillControlDisabled, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
                 BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
             };
-        return Button.Create(label, onClick, ButtonAppearance.Standard, glyph: glyph) with { Height = target, MinWidth = 0f, Shrink = 0f };
+        return Button.Create(label, onClick, ButtonAppearance.Standard, glyph: glyph, isEnabled: enabled) with { Height = target, MinWidth = 0f, Shrink = 0f };
     }
 
     /// <summary>The save toggle: the heart and "Save" (W-Album), "Saved" with the filled heart once it is; the glyph alone at Compact. A stock ToggleButton tinted

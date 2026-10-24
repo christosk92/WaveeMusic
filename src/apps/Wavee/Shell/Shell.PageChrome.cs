@@ -151,6 +151,11 @@ public static partial class Shell
             return true;
         }
 
+        /// <summary>The name a page published under <paramref name="route"/> (a detail page's entity: "Late Night", "Coffee & Code"), or null.
+        /// UNTRACKED: a reader that must follow it folds <see cref="Version"/> itself (the tab strip's items version does).</summary>
+        public static string? PublishedTitle(in Route route)
+            => s_rows.TryGetValue(KeyOf(route), out var row) && row.Title is { Length: > 0 } title ? title : null;
+
         /// <summary>Subscribing read of a page's publication.</summary>
         public static PageChromeRow? RowFor(in Route route)
         {

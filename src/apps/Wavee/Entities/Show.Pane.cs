@@ -192,7 +192,8 @@ public readonly partial struct Show
                 HasTrailer: false,
                 ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
                 Meta: show.IsAudiobook ? Strings.Podcast.Reader.ChaptersCount(s.Total) : MetaOf(s.Total, s.Cadence, s.OldestYear),
-                Topics: false);
+                Topics: false,
+                Empty: s.EmptyShow);
         }
 
         ContextMenuModel? MoreMenu()

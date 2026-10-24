@@ -130,6 +130,8 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-attribution", Reserved(filled ? WinUiDetailKit.AttributionLine(faces, id.Meta, avatar, measure) : null,
                     WinUiDetailRules.AttributionRow(avatar), center)));
             }
+            // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
+            if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
             rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
@@ -229,6 +231,17 @@ internal static partial class WinUiDetailFrame
                 Key = "hero-title:text",
             };
 
+    /// <summary>Does the hero draw a daylist strip: a list with a daylist window and the page's pulse slot (the core's presence flag, <c>HeroFlags.Pulse</c>).</summary>
+    static bool Pulses(VerticalSpec spec) => spec.Identity.DaylistExpiresAtMs > 0 && spec.Slots.Pulse is not null;
+
+    /// <summary>The daylist strip's row: at least the flip cells' height whatever face it shows, so the loading band reserves it to the DIP.</summary>
+    static BoxEl PulseRow(Element strip, bool center) => new()
+    {
+        Direction = 0, MinHeight = Controls.FlipCompactRowHeight, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto,
+        Children = [strip],
+    };
+
     /// <summary>The stacked hero's meta line: Caption in Text 3, centred.</summary>
     static Element MetaRun(string meta, WinUiHeroForm form) => new TextEl(meta)
     {
@@ -263,7 +276,7 @@ internal static partial class WinUiDetailFrame
         float target = tier.Target;
         Element primary = slots.Primary is { } primaryOf
             ? primaryOf(() => Tok.AccentDefault)
-            : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target);
+            : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
         IReadOnlyList<Element> fixedGroup = slots.Satellites is { } satellites
             ? satellites()
             : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
@@ -341,7 +354,7 @@ internal static partial class WinUiDetailFrame
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };
         if (spec.Insights is { } insights) kids.Add(Detail.InsightsBandAction(insights));
-        kids.Add(Button.Create(Loc.Get(Strings.Detail.Play), play, ButtonAppearance.Accent) with
+        kids.Add(Button.Create(Loc.Get(Strings.Detail.Play), play, ButtonAppearance.Accent, isEnabled: !id.Empty) with
         {
             Key = "bar:play", Shrink = 0f, Padding = new Edges4(WinUiDetailRules.BandPlayPad, 0f, WinUiDetailRules.BandPlayPad, 0f),
         });
@@ -405,6 +418,7 @@ internal static partial class WinUiDetailFrame
                 new BoxEl { Width = WinUiDetailRules.SkelNameW, Height = WinUiDetailRules.AttributionLine, Corners = CornerRadius4.All(WinUiDetailRules.BoneRadius) },
             ],
         });
+        if (Pulses(spec)) rows.Add(PulseRow(Bone(WinUiDetailRules.SkelNameW, WinUiDetailRules.AttributionLine, center), center));
         rows.Add(SkeletonActions(spec, tier, form, center));
         Element cover = new BoxEl
         {

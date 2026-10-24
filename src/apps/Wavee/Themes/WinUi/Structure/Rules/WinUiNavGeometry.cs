@@ -70,6 +70,9 @@ public static class WinUiNavGeometry
     public const float HeaderTextX = LeadInset;
     /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
     public const float HeaderButton = 24f;
+    /// <summary>The section head's "+" (create) above Compact: a 32 target (the hit floor above Compact; the 24 plate was under it), hanging
+    /// <see cref="HeaderCreateSink"/> into the foot inset so its glyph stays on the line the 24 plate held, level with the title.</summary>
+    public const float HeaderCreateTarget = 32f, HeaderCreateSink = 4f;
     /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
     public const float SeparatorHeight = 17f;
     public const float SeparatorLineTop = 8f;
@@ -270,9 +273,11 @@ public static class WinUiNavGeometry
 
 /// <summary>The row height and vertical margin of one pane: <see cref="Standard"/> 36 + 2 (the board), <see cref="Touch"/> 40 + 0 (the Compact tier). The
 /// pitch is 40 either way, so the planner's extents and the reorder bands do not care which a pane draws.</summary>
-public readonly record struct WinUiNavMetrics(float RowHeight, float MarginY, float HeaderButton, float FolderPlus)
+/// <param name="HeaderSink">How far the head's "+" hangs below the head's foot line (Standard's 32 target keeps its glyph where the 24 plate had it).</param>
+public readonly record struct WinUiNavMetrics(float RowHeight, float MarginY, float HeaderButton, float FolderPlus, float HeaderSink = 0f)
 {
-    public static WinUiNavMetrics Standard { get; } = new(WinUiNavGeometry.RowHeight, WinUiNavGeometry.RowMarginY, WinUiNavGeometry.HeaderButton, WinUiNavGeometry.FolderPlusBox);
+    public static WinUiNavMetrics Standard { get; } = new(WinUiNavGeometry.RowHeight, WinUiNavGeometry.RowMarginY, WinUiNavGeometry.HeaderCreateTarget,
+        WinUiNavGeometry.FolderPlusBox, WinUiNavGeometry.HeaderCreateSink);
 
     public static WinUiNavMetrics Touch { get; } = new(WinUiNavGeometry.TouchRowHeight, WinUiNavGeometry.TouchMarginY, WinUiNavGeometry.TouchHeaderButton, WinUiNavGeometry.TouchRowHeight);
 

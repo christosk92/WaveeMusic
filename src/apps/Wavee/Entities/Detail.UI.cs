@@ -118,6 +118,9 @@ public static partial class Detail
         public string? ShareUrl { get; init; }
         public DetailNotice Notice { get; init; }
         public bool EditableMetadata { get; init; }
+        /// <summary>The list is KNOWN to hold nothing (a playlist whose membership answered with no rows; false while loading): its play verbs have nothing to
+        /// start, so a hero draws Play and Shuffle disabled (never hidden). Appended (audit C0).</summary>
+        public bool Empty { get; init; }
 
         public bool Equals(Identity? o)
         {
@@ -142,7 +145,7 @@ public static partial class Detail
                 && UpcomingAtUnixSeconds == o.UpcomingAtUnixSeconds
                 && SaveTarget.Equals(o.SaveTarget)
                 && string.Equals(ShareUrl, o.ShareUrl, StringComparison.Ordinal)
-                && Notice == o.Notice && EditableMetadata == o.EditableMetadata;
+                && Notice == o.Notice && EditableMetadata == o.EditableMetadata && Empty == o.Empty;
         }
 
         public override int GetHashCode() => HashCode.Combine(Subject, Kind, Title, CoverUrl, Meta, Notice);
@@ -583,7 +586,7 @@ public static partial class Detail
         readonly Func<bool> _railPending;
 
         // trampolines into _latest
-        readonly Action _tShuffle, _tCoverClick, _tGoLibrary;
+        readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tInvite, _tTune;
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
@@ -629,6 +632,8 @@ public static partial class Detail
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
             _tCoverClick = () => _latest?.Actions.CoverClick?.Invoke();
             _tGoLibrary = () => _latest?.Actions.GoLibrary?.Invoke();
+            _tInvite = () => _latest?.Actions.Invite?.Invoke();
+            _tTune = () => _latest?.Actions.Tune?.Invoke();
             _tMore = () => _latest?.Actions.More?.Invoke();
             _tCoverDrag = () => _latest?.Actions.CoverDrag?.Invoke();
             _tDeposit = (p, i) => _latest?.Actions.DepositOnPage?.Invoke(p, i) ?? false;
@@ -1024,6 +1029,9 @@ public static partial class Detail
                     CoverDrag = a.CoverDrag is null ? null : _tCoverDrag,
                     DepositOnPage = a.DepositOnPage is null ? null : _tDeposit,
                     GoLibrary = a.GoLibrary is null ? null : _tGoLibrary,
+                    // The hero's optional pair (a structure that draws them there, WinUI's W-Playlist): dropping them here lost Tune and Invite.
+                    Invite = a.Invite is null ? null : _tInvite,
+                    Tune = a.Tune is null ? null : _tTune,
                 };
             }
             return _trampActions;

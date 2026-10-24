@@ -84,9 +84,10 @@ public static partial class Controls
     /// <summary>The ONE primary call-to-action on a surface (Play/Resume) — a stock <c>Button</c> Accent-appearance,
     /// filled with <paramref name="accent"/> (<see cref="AccentFillPalette"/>), 32 tall/r4, 14 semibold
     /// label, floored at <see cref="PrimaryMinWidth"/> so a short label ("Play") never reads as an icon button.
-    /// <paramref name="wrap"/> lets a narrow CTA row take a two-line label (the show page's) instead of the default single trimmed line.</summary>
+    /// <paramref name="wrap"/> lets a narrow CTA row take a two-line label (the show page's) instead of the default single trimmed line.
+    /// <paramref name="isEnabled"/> false draws it disabled (the palette's disabled fill and ink): a list with nothing to play keeps its Play, greyed.</summary>
     public static BoxEl PrimaryButton(string label, Action onClick, ColorF accent, string? glyph = null, bool wrap = false,
-                                      ControlSize size = ControlSize.Medium)
+                                      ControlSize size = ControlSize.Medium, bool isEnabled = true)
     {
         var parts = new TemplateParts();
         parts.Set<TextEl>(Button.PartLabel, t => t with
@@ -100,7 +101,7 @@ public static partial class Controls
             {
                 MinHeight = size == ControlSize.Medium ? ButtonHeight : ControlMetrics.For(size).MinHeight,
             },
-            parts: parts) with { MinWidth = PrimaryMinWidth };
+            isEnabled: isEnabled, parts: parts) with { MinWidth = PrimaryMinWidth };
     }
 
     /// <summary>The PLAY primary — <see cref="PrimaryButton"/> pre-glyphed and pre-labeled. <paramref name="accent"/>
@@ -222,12 +223,12 @@ public static partial class Controls
     // ══ 3. THE STANDARD ICON BUTTON ══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The DEFAULT: the standard 32 × 32, 4-radius icon button. Toolbars, panels, rows, flyouts, dialogs. If a
-    /// new icon affordance is not obviously a FAB on media, it is this one.</summary>
+    /// new icon affordance is not obviously a FAB on media, it is this one. <paramref name="isEnabled"/> false greys it in place.</summary>
     public static BoxEl IconAction(string glyph, Action? onClick, bool requestsContext = false,
-                                   float size = IconButtonSize)
+                                   float size = IconButtonSize, bool isEnabled = true)
     {
         var box = IconButton.Create(glyph, onClick ?? NoOp,
-            style: IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control }) with
+            style: IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control }, isEnabled: isEnabled) with
         {
             HoverScale = R.Motion.ScaleSubtle.Hover,
             PressScale = R.Motion.ScaleSubtle.Press,

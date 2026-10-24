@@ -52,6 +52,10 @@ internal sealed class ShowPrimaryArgs
     /// <summary>The pill's (and the ghost's) control size: the stock Medium, or Large where the host's surface wants 40-DIP targets (the library show pane at
     /// Compact; contract 1.22).</summary>
     public ControlSize Size { get; init; } = ControlSize.Medium;
+
+    /// <summary>The show is known to hold no episodes: its play verbs (Latest, Episode 1, Resume) have nothing to start, so a style draws them disabled, in
+    /// place, never hidden (Follow stays live). Appended (contract 1.54).</summary>
+    public bool Empty { get; init; }
 }
 
 /// <summary>The played ledger: the bar and its counts line, or the "progress unavailable" line.</summary>

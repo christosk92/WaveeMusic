@@ -271,6 +271,11 @@ public static partial class Diagnostics
             if (t.Trimmed) w.WriteBoolean("trimmed", true);
             Num(w, "nw", t.NaturalW);
             Num(w, "nh", t.NaturalH);
+            if (t.HasInk)
+            {
+                Num(w, "inkTop", t.InkTop);
+                Num(w, "inkBottom", t.InkBottom);
+            }
             if (t.OverflowX) w.WriteBoolean("ox", true);
             if (t.OverflowY) w.WriteBoolean("oy", true);
             if (t.Glyph) w.WriteBoolean("glyph", true);
@@ -606,6 +611,8 @@ public static partial class Diagnostics
                 Trimmed = r.Bool(e, "trimmed"),
                 NaturalW = r.Finite(e, "nw", 0f),
                 NaturalH = r.Finite(e, "nh", 0f),
+                InkTop = r.Finite(e, "inkTop", float.NaN),
+                InkBottom = r.Finite(e, "inkBottom", float.NaN),
                 OverflowX = r.Bool(e, "ox"),
                 OverflowY = r.Bool(e, "oy"),
                 Glyph = r.Bool(e, "glyph"),

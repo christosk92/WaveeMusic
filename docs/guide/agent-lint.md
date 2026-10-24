@@ -6,7 +6,8 @@ with a rule id, an outcome, a level, a fingerprint, its members collapsed into o
 
 Code: `src/apps/Wavee/Screens/Diagnostics.Inspect.Lint*.cs` (the pure rules: `.Lint.cs` the gate rules, `.Lint.Layout.cs`,
 `.Lint.Content.cs` and `.Lint.Ink.cs` the todo rules; `.Lint.Scene.cs` the capture and the reply, `.Lint.Store.cs` saved
-snapshots and baselines) and `Diagnostics.Inspect.Visible.cs` (visible rects). Theme intents:
+snapshots and baselines), `Diagnostics.Inspect.Picture.cs` (the picture rules) and `Diagnostics.Inspect.Visible.cs` (visible
+rects). Theme intents:
 `src/apps/Wavee/Theming/Composition/ThemeLintGuide.cs`; the Zune and WinUI guides in their themes' `Structure/Rules`.
 
 ## Running it
@@ -20,15 +21,21 @@ frames 90
 ```
 
 `python -I tools/inspect.py --exe <your run copy>/Wavee.exe --findings -f home.txt` prints a head line and one line per
-finding (`[warn ] align.baseline (review, todo): ...`: a finding that is not a fail of a gate rule says what it is). Add
-`--gate error` for an exit code: 1 when a gate rule's fail finding at or above the severity was listed (reviews, suppressed
-findings and report lines never count; `--gate-todo` counts the todo rules' fails too), 2 on any `ok:false`. The raw reply (without `--findings`) carries everything below. Lint reads the scene as it is: settle first (after a
-`scroll`, `frames 60`); `animating.scrolling` above 0 in the head says a scroller was still moving in the frame it read. With
-`contrast` on (the default) it presents one frame and reads it back.
+finding (`[warn ] align.baseline (review, todo): ...`: a finding that is not a fail of a gate rule says what it is). The head
+line names the route and gives the gate's own counts, then counts exactly the lines it prints: `lint zune Compact 400x860
+[home]: gate 0 error, 0 warn, 0 info; 5 lines below: 5 warn todo; 443 nodes`. Add `--gate error` for an exit code: 1 when the
+reply's `fails` (every fail of the rules that ran, listed or not: `min`, `outcomes` and `limit` choose only what is listed)
+holds a gate rule's fail at or above the severity (reviews, suppressed findings and report lines never count; `--gate-todo`
+counts the todo rules' fails too), or a crossing or trace in the same run moved a part at once or rebuilt one
+(agent-inspect.md); 2 on any `ok:false` and when no lint ran at all. It warns (`gate WARNING`) when a lint was narrowed
+(`rules`, `root`, `outcomes`, `limit`: the reply's `narrowed`) or counted fails it did not list. The raw reply (without
+`--findings`) carries everything below. Lint reads the scene as it is: settle first (after a `scroll`, `frames 60`);
+`animating.scrolling` above 0 in the head says a scroller was still moving in the frame it read. With `contrast` or a picture
+rule on (the default) it presents one frame and reads it back.
 
-**What "lint min=error clean" means.** `summary.error` is 0. `summary` counts the **fail** findings (and the report lines) of
-the **gate** rules (today's nine) at or above `min`, listed or not: `outcomes=` and `limit=` choose what is listed, never what
-is counted. A report-only (`todo`) rule or a finding under review never breaks it. Read the rest anyway: `outcomes.review`
+**What "lint min=error clean" means.** `summary.error` is 0, and `fails.gate.error` with it. `summary` counts the **fail**
+findings (and the report lines) of the **gate** rules at or above `min`, listed or not: `outcomes=` and `limit=` choose what is
+listed, never what is counted; `fails` counts every fail whatever `min` says. A report-only (`todo`) rule or a finding under review never breaks it. Read the rest anyway: `outcomes.review`
 names what the lint could not decide, and the `todo` rules report the spacing and alignment class.
 
 ## Args
@@ -38,7 +45,7 @@ names what the lint could not decide, and the `todo` rules report the spacing an
 | `rules` | all | Comma list or JSON array of strings. Takes ids (`text.trim`), today's names (`trim`; `clip` = text.clip + overlap.sibling, `type` = type.floor + type.scale), families (`align`, `align.*`) and `all`. Any case. An unknown word, a non-string entry or an empty list fails and lists the names. |
 | `scope` | `screen` | `screen`: what is on screen (below). `content`: what scrolling reaches (below a scroller nothing cuts along its axis; the window still cuts across it, so a panel parked past the edge stays out). `all`: everything captured (the lint before scopes). |
 | `root`, `nth` | tree + overlays | Lint only the subtree of the node keyed exactly so (`nth` picks among copies). The subtree starts from the cut its live ancestors put on it, so it is judged as the page shows it. Not with `replay`. |
-| `min` | `info` | `info`, `warn` (`warning`), `error`: findings below it are neither listed nor counted. |
+| `min` | `info` | `info`, `warn` (`warning`), `error`: findings below it are neither listed nor counted in `summary` (`fails` still counts them). |
 | `outcomes` | `fail,review,report` | Which outcomes are LISTED: any of `fail`, `review`, `suppressed`, `report`, or `all`. Every outcome is counted either way. An empty list fails. |
 | `limit` | 100 | Findings listed per reported rule name (`clip` holds two ids; the cap applies once); a name cut is in `truncated`. A whole number, clamped to 1..10000 as it always was (`limit=0` lists one); `1.5` or `abc` fails. |
 | `baseline` | none | A JSON-lines file of accepted findings (below). A path string; a missing file or an entry without `fp` or `reason` fails the command. |
@@ -76,6 +83,8 @@ moving in the frame read), `textRules` (only under the headless text model: the 
 | `summary{error,warn,info,nodes,edges,inScope}` | Fail findings and report lines of the gate rules at or above `min`, by severity, listed or not; `nodes` captured, `inScope` judged. |
 | `outcomes{fail,review,suppressed,report}` | Every finding at or above `min`, listed or not. |
 | `levels{gate,todo}` | Fail findings at or above `min`, per level (report lines are not verdicts and are not counted here). |
+| `fails{gate,todo}{error,warn,info}` | Every fail finding of the rules that ran, by level and severity, whatever `min`, `outcomes` and `limit` list: what `inspect.py --gate` counts. |
+| `narrowed[]` | What narrowed the lint: `rules=...` and `root=...` (what it judged), `outcomes=...` and `limit=N (cut: ...)` (what it listed). Empty when nothing did; `--gate` warns on each. |
 | `suppressed{intent,baseline}` | What suppressed them: a guide intent (or an implicit one, a designed ellipsis), or the baseline. |
 | `baseline{file,entries,considered,matched,duplicates?}` | With `baseline=`: entries read; `considered`: entries whose rule ran (only those can match); `matched`; `duplicates`: entries whose `fp` an earlier entry already holds. `matched` under `considered` means an accepted finding no longer occurs (fixed, or off screen at this size). |
 | `rules{<name>{checked,error,warn,info,review,suppressed,report?,level,ids}}` | Per rule, by the name a finding reports: `checked` is how many things it looked at (0 = nothing to judge, not "clean"); the severity counts are fail findings and report lines. |
@@ -105,7 +114,7 @@ moving in the frame read), `textRules` (only under the headless text model: the 
 | `keys` | Up to six member refs: a key, else the dump path of a keyless node (`<nearest key>/0/2`). |
 | `rects` | The members' VISIBLE rects `[x, y, w, h]` (window DIP), in the order of `keys`: where to look, and what to box on a render. A member with nothing on screen (`scope=content`, `all`) gives its whole rect. |
 | `measured`, `expected` | Named numbers where they mean something. |
-| `fp` | The fingerprint `id|theme|route|pattern|cause`: no sizes and no positions. The pattern is the members' own nearest keyed node's (`zune-chart:*` for the chart caption), never a family counted over what is in scope, so one flaw keeps ONE fingerprint at `scope=screen`, `scope=content`, under `root=`, at every scroll position and in a replay, and one baseline line covers it at every window size where its cause is the same. A cause that names a size class (`narrow`/`low` of a target, the type size of `type.floor`) can differ between sizes. Two fingerprints are broad on purpose: `type.floor` is `type|size:N` (every run of that size on the route: the fix is one type role), and `contrast.text` is ink and plate (every run of that ink on that ground: the fix is one colour role). A verdict can still change with the frame (a run on art reads busy at one scroll position and measurable at another): that is another cause, not an unstable fingerprint. |
+| `fp` | The fingerprint `id|theme|route|pattern|cause`: no sizes and no positions. The route part is `shell` when every member sits outside every page slot (title bar, band, play bar, nav pane, an overlay: the same flaw on every route), and `*` for `target.size` (a small target is its family's on every page that shows it: the list header's sort column, the heart column). The pattern is the members' own nearest keyed node's (`zune-chart:*` for the chart caption), never a family counted over what is in scope, so one flaw keeps ONE fingerprint at `scope=screen`, `scope=content`, under `root=`, at every scroll position and in a replay, and one baseline line covers it at every window size where its cause is the same. A cause that names a size class (`narrow`/`low` of a target, the type size of `type.floor`) can differ between sizes. Two fingerprints are broad on purpose: `type.floor` is `type|size:N` (every run of that size on the route: the fix is one type role), and `contrast.text` is ink and plate (every run of that ink on that ground: the fix is one colour role). A verdict can still change with the frame (a run on art reads busy at one scroll position and measurable at another): that is another cause, not an unstable fingerprint. |
 | `group` | `count`: how many members the finding collapses (rows, runs, cells); `pattern`: the family (`zune-history:*`, `c.title`, an ink colour). |
 | `fix` | One line. It never says to shrink Zune display type, to add, remove or retime motion, or to remove or disable a feature. On Classic it is always "report; do not fix unless asked (Classic)". |
 | `reason`, `suppressedBy` | Why it is under review or suppressed. |
@@ -165,7 +174,7 @@ in `occluded`); under half, its runs may read the overlay as their ground, and `
 
 Severities below are the rule's own; `level` decides whether a fail counts in `summary`.
 
-### Gate rules (today's nine, by id; the alias is what `rule` says)
+### Gate rules (by id; today's nine carry the alias `rule` says, the picture rules their id)
 
 **`edge.left` (gutter), `edge.right` (right-edge).** For each `LintEdge` of the active guide, the leftmost (rightmost)
 matching node whose measured EDGE is in scope (on screen and not cut: a page column taller than the screen still shows its
@@ -177,11 +186,14 @@ the edge is not checked either: the next match is another node, not the edge (th
 pivots at Compact made the old rule measure the next visible pivot, +313.6 in the gallery's `Z-Overlays-Compact.1`/`.2`). Cause: right-of / left-of. FP classes: an edge whose key a view keyed on
 something else. Suppression: `Allow` policy, baseline.
 
-**`text.clip` (clip).** Word text whose ink runs past a clipping ancestor: vertical error, horizontal warn. The ink is the
-box, a no-wrap run's natural height, and (1.2 x size - line height) / 2 above and below under a tighter explicit line height
-(the **ink guess**). When the laid-out box fits the clip and only the ink guess runs past it, the finding is a `review`
-(cause `top:ink-guess`, reason "ink guess, not glyph metrics"): display type whose real ascenders sit inside (the Zune album
-and settings panoramas). A cut at the TOP of text under a key the theme's guide lists in `DesignedTopBleeds` (Zune: the detail
+**`text.clip` (clip).** Word text whose ink runs past a clipping ancestor: vertical error, horizontal warn. Vertically the
+ink is the **glyphs' own ink**: the union of the laid glyphs' black boxes from their design metrics (the engine's
+`AppHost.TryQueryTextInk`, read at capture and saved as `inkTop`/`inkBottom`), so a cut through the line box's leading above
+the caps or its descent under a baseline with no descenders is no cut (Zune what's new and the albums heading were errors on
+the line box; the Huge stage title's cut "g" still fails). Without glyph ink (a snapshot saved before, the headless model) the
+ink is the box, a no-wrap run's natural height and (1.2 x size - line height) / 2 above and below under a tighter explicit
+line height (the **ink guess**): a cut only the guess makes is a `review` (cause `:ink-guess`), and so is one no deeper than
+0.25 em past it, inside the line box's leading or descent (cause `:line-box`). A cut at the TOP of text under a key the theme's guide lists in `DesignedTopBleeds` (Zune: the detail
 panorama `zune.detail.panorama` and the settings title `zs:title`, display type set on its exact line flush with the edge above
 it, ascenders inside) is intended: `suppressed` by intent, cause `top:designed-bleed`, counted in `suppressed.intent`; a cut at
 the bottom (descenders) still fails. A **scroller judges its own axis by its edges**: no finding where scrolling still reveals the cut text
@@ -210,8 +222,9 @@ fingerprint is the size alone (pattern `type`). Glyphs are not type; symbols cou
 **`type.scale` (type).** One report line per (size, line height, weight) in use. Never a verdict.
 
 **`target.size` (target).** Interactive, enabled, in-scope targets with a press handler (a role alone takes no press and is
-no target) that reach under the floor: under 40 x 40 at window tier Compact is an error, under 32 x 32 above it a warn
-(`targetFloorCompact`, `targetFloor`). A target reaches as far as the larger of two rects. Its **effective area** is the
+no target) that reach under the floor: under 40 x 40 at window tier Compact is an error at level `gate` (the owner's rule),
+under 32 x 32 above it a warn at level `todo` (report-only, decision D5 of the 10-23 audit) (`targetFloorCompact`,
+`targetFloor`). A target reaches as far as the larger of two rects. Its **effective area** is the
 largest interactive ancestor that runs the SAME click and contains the node; a target filling its interactive parent is the
 parent's. Its **hit rect** is what the engine's hit test takes: the box grown by its hit slop (`BoxEl.HitSlop` plus the host's
 touch floor, 40 at a Compact window: `TouchTargetPolicy`), cut by every clipping ancestor (a scroller only across its axis
@@ -264,6 +277,16 @@ silence, never a verdict from a frame that is not the page's. No frame (`gpu=non
 distance-faded lyric lines), and a fainter glow copy of the same words at the same box (a karaoke line's bloom: the strongest
 copy is judged). FP class: under `root=`, a plate outside the subtree is not seen, so a run on it reads as "on the page"; a hover highlight
 that is not a node of its own reads as the page.
+
+**The picture rules** (gate, error; they read the rendered frame, so `gpu=none`, `crossing` and a replay check nothing).
+`picture.blank`: every pixel of the frame is one colour (within 2 of 255 a channel): nothing painted (`video=fullscreen`
+headless). `picture.unpainted`: a vertical scroller that shows, with more to show, ends at least 40 DIP above the bottom of
+the box that holds its width, and the band between (less what paints over it after the page, with a 24 DIP shadow ring: a
+mini player, a pane) is one colour (98 % within 8 of 255): the page stops painting where its frame goes on (WinUI
+`video=floating` cut the page at the mini player's top). Text a node says is there but the frame does not show is not judged:
+an edge fade, a sticky header's plate or a translucent cover hides text on purpose in ways the snapshot cannot tell from a
+fault. `overlay.open`: an overlay layer the `state` verb opened (its reply's `leftOpen`) is still open (Zune Compact's
+`state kind=loading` leaves the omni flyout up): close it (`key esc`) before judging the state.
 
 ### Report-only rules (level `todo`)
 
@@ -580,9 +603,30 @@ and the report dialog's "Report preview" fold button, both padded on no rest fil
 "Show all 2 albums" +7 (true against W-Search and W-Artist), Classic's album avatar stack +6 and its video card +8 under the
 track rows (true). Files: `fix/` (`diff4.txt`, `labels-gallery-content.txt`, `labels-probes.txt`, `live4/`, `crops/`).
 
+## Validation A1 (2026-10-24, lane A1: glyph ink, the gate, picture rules, fingerprints)
+
+The six reference mounts again, from a reduced sweep on fix/audit-a1-gate (`goto`, `frames 30`, `lint min=warn`, one server per
+theme x size x kind; the artist is ar3, the sweep's): counts from `fails` (every fail, whatever is listed).
+
+| Mount | gate warn+ | every level warn+ | review | suppressed.intent |
+|---|---|---|---|---|
+| Zune Home 400 | 0 | 5 | 0 | 2 |
+| Zune Home 1440 | 3 | 10 | 0 | 4 |
+| Zune album al2 1440 | 3 | 14 | 1 | 0 |
+| Zune artist ar3 1440 | 4 | 9 | 0 | 0 |
+| Classic Home 1440 | 1 | 9 | 1 | 2 |
+| WinUI Home 1440 | 0 | 7 | 0 | 2 |
+
+The gate warns fell with D5 (the above-Compact target floor is `todo`): over the sweep's 198 lints (3 themes x {400x860,
+1440x960} dark, 1440x960 light, every route) the gate warn fails went from 890 to 242, and `target.size`'s 665 findings from 331
+fingerprints to 83 (chrome as `shell`, a target family as `*`). The errors left are the same as before, bar three line-box clips
+glyph ink clears (Zune What's new at every size, Zune Albums "Alex Rivers" at 1440 and 4K, Classic and WinUI Recents "Jul"), and
+the picture rules report nothing on it. They fire where they should: `video=fullscreen` (blank), WinUI `video=floating` (the
+unpainted band under the mini player, dark and light), `state kind=loading` at Zune 400 (the omni flyout left open).
+
 ## Known limits
 
-- The text ink is a 1.2 em guess, not glyph ink metrics: a clip only the guess makes is a review until the engine reports ink.
+- A snapshot saved before glyph ink was captured (and the headless model) falls back to the 1.2 em ink guess: reviews only.
 - `align.baseline` compares line-box tops (review only) until the engine reports first baselines.
 - `space.scale` knows the token scale and the steps a guide declares (`BoardScale`: Zune's 6, 10, 14, 18, 22); WinUI and Classic
   declare none, so a board value of theirs reports as info.
@@ -600,5 +644,7 @@ track rows (true). Files: `fix/` (`diff4.txt`, `labels-gallery-content.txt`, `la
   not seen.
 - Occlusion knows opaque FILLS painted later (a menu's plate, a dialog's card); an image or a translucent overlay painted over
   a node does not take it off the screen.
-- `crossing` lints the settled scene without reading a frame: its `contrast.text` checks nothing (`checked` 0); its head names
-  the devices it ran on.
+- `crossing` lints the settled scene without reading a frame: its `contrast.text` and picture rules check nothing (`checked`
+  0); its head names the devices it ran on.
+- `picture.unpainted` judges bands under scrollers only; a region the page leaves unpainted elsewhere, or text that never reached
+  the screen, is for the eyes.

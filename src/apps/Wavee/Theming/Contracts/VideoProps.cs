@@ -132,6 +132,14 @@ public sealed record VideoPipProps
 
     /// <summary>The mini player's close button: close the floating host.</summary>
     public required Action ClosePip { get; init; }
+
+    /// <summary>The mini player's "Dock in rail" button: announce and dock the video. Null while the window cannot dock it (the rail does not
+    /// fit), so a template offers <see cref="ToSeparateWindow"/> in its place. Appended (contract 1.54).</summary>
+    public Action? ToDocked { get; init; }
+
+    /// <summary>The mini player's "Play in a separate window" button: announce and pop the video out. Null where the host cannot open a
+    /// second window. Appended (contract 1.54).</summary>
+    public Action? ToSeparateWindow { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.VideoPopOut"/>. Built per render of the core's pop-out content (the join, the fullscreen mode and

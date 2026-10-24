@@ -695,6 +695,7 @@ public readonly partial struct Playlist
                          : spotify ? "https://open.spotify.com/playlist/" + new string(EntityUri.IdOf(pl.Uri.Text.AsSpan())) : null,
                 Notice = pl.Notice,
                 EditableMetadata = editableMeta,
+                Empty = pl.RowsState(0) == PlaylistRowsState.Empty,
             };
         }
 
