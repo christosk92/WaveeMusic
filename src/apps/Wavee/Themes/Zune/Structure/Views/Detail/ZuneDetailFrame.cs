@@ -49,9 +49,10 @@ internal static class ZuneDetailFrame
     /// rather than the band's.</summary>
     public static readonly Context<bool> InAside = new(false);
 
-    /// <summary>Provided around the vertical arm's content: the frame's gutter, the inset a body that draws its own words full width (the episode
-    /// reader) puts them on, as the hero and the show header pad theirs. 0 in the two-column arm, whose page column already pads the gutter.</summary>
-    public static readonly Context<float> VerticalGutter = new(0f);
+    /// <summary>Provided (true) around the vertical arm's content: a body that draws its own words full width there (the episode reader) puts them on
+    /// the frame's gutter, as the hero and the show header pad theirs; the two-column arm's page column already pads it. A constant per arm, so a
+    /// crossing re-renders nothing through it.</summary>
+    public static readonly Context<bool> InVerticalArm = new(false);
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailFrame"/>.</summary>
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
@@ -73,7 +74,7 @@ internal static class ZuneDetailFrame
             Element verticalPage = new BoxEl
             {
                 Key = "detail:vertical", Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
-                Children = [p.Notice, Ctx.Provide(VerticalGutter, gutter, content)],
+                Children = [p.Notice, Ctx.Provide(InVerticalArm, true, content)],
             };
             Element verticalRoot = p.VerticalTracks && p.Sheet is { } sheet
                 ? ctx.View(ViewKeys.DetailInsights, sheet with { Page = verticalPage })

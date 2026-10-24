@@ -37,7 +37,7 @@ internal static class ZuneEpisodeReader
     public static Element ReaderTemplate(EpisodeReaderProps p, in ViewContext ctx)
     {
         // The vertical arm (Z-Episode-Compact) gives the reader the full width: its words go on the frame's gutter, as the hero's and the header's do.
-        float gutter = ctx.Hooks.UseContext(ZuneDetailFrame.VerticalGutter);
+        float gutter = ctx.Hooks.UseContext(ZuneDetailFrame.InVerticalArm) ? ZuneTiers.FrameOf(ctx.Tier()).Gutter : 0f;
         Element sections = new BoxEl
         {
             Key = ReaderKey, Direction = 1, MinWidth = 0, Gap = R.Space.SectionGap,

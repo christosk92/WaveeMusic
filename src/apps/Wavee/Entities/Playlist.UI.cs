@@ -339,7 +339,9 @@ public readonly partial struct Playlist
     /// <summary>The frame's Attribution slot: the collaborator pile (the frame's own predicate) or the owner row, each with
     /// the self-gating invite affordance. ONE composition for both arms (a decision: the report, W29).</summary>
     public static Element AttributionSlot(Playlist p, float width)
-        => Embed.Comp(new OwnerProps(p.Slot, width), static () => new OwnerBlock()) with { Key = "pl-owner:" + Bucket(width) };
+        // One key at every width: the width is a re-pushed prop (the block re-renders at the new one), not an identity: a key from the width bucket
+        // rebuilt the owner row on every tier crossing that resized the column (1008, 1920, 3200).
+        => Embed.Comp(new OwnerProps(p.Slot, width), static () => new OwnerBlock()) with { Key = "pl-owner" };
 
     sealed record OwnerProps(int Slot, float Width);
 

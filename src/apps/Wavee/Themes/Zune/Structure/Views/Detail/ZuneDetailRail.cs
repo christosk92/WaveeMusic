@@ -97,7 +97,8 @@ internal static class ZuneDetailRail
         if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
         if (id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
         if (!shortWindow) kids.AddRange(status);
-        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: false)));
+        // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide.
+        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: false)) with { Layout = K.GrowShove });
         if (shortWindow) kids.AddRange(status);
         if (slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(w)));
         if (slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)));
