@@ -227,9 +227,15 @@ public static partial class Diagnostics
         }
 
         /// <summary>Everything a trace measured.</summary>
+        /// <summary>A watched key that is a different node from one frame to the next (shown on both, one node of that key each time): its
+        /// subtree and state were thrown away. <see cref="Family"/> names the swap cross-fade it sits under (a node at or above it fading in
+        /// under the theme's opacity-only swap), null when none does: a rebuild.</summary>
+        public readonly record struct Remount(string Key, int Frame, string? Family);
+
         public sealed class Result
         {
             public List<string> Watch = [];
+            public List<Remount> Remounts = [];
             public List<Row> Rows = [];
             public Options Options = new();
             public Summary Summary = new();
@@ -400,6 +406,30 @@ public static partial class Diagnostics
                 w.WriteEndArray();
             }
             WriteSummary(w, result.Summary);
+            // the gate's counts: snapped watched keys, and remounts in and outside a swap family
+            var snappedKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Move m in result.Summary.Snaps) snappedKeys.Add(m.Key);
+            int swap = 0;
+            foreach (Remount r in result.Remounts) if (r.Family is not null) swap++;
+            w.WriteStartObject("counts");
+            w.WriteNumber("watched", result.Watch.Count);
+            w.WriteNumber("snaps", result.Summary.Snaps.Count);
+            w.WriteNumber("snappedKeys", snappedKeys.Count);
+            w.WriteNumber("remounted", result.Remounts.Count);
+            w.WriteNumber("remountedSwap", swap);
+            w.WriteNumber("remountedOutside", result.Remounts.Count - swap);
+            w.WriteEndObject();
+            w.WriteStartArray("remounted");
+            foreach (Remount r in result.Remounts)
+            {
+                w.WriteStartObject();
+                w.WriteString("key", r.Key);
+                w.WriteNumber("frame", r.Frame);
+                if (r.Family is null) w.WriteNull("family");
+                else w.WriteString("family", r.Family);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
 
         static void WriteRow(Utf8JsonWriter w, Row r)
@@ -598,6 +628,8 @@ public static partial class Diagnostics
             var watchIndex = new Dictionary<string, int>(StringComparer.Ordinal);
             var seen = new HashSet<uint>();
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
+            var lastNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);   // the node of each lone watched key on the frame before
+            var nowNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);
             int sent = 0;
             bool moved = false;
             Point2 dragAt = default;
@@ -649,6 +681,7 @@ public static partial class Diagnostics
                     keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
                     seen.Clear();
                     dup.Clear();
+                    nowNode.Clear();
                     foreach (var (node, key) in keyed)
                     {
                         if (!Matches(o, key) || !seen.Add(node.Raw.Index)) continue;
@@ -670,7 +703,13 @@ public static partial class Diagnostics
                             if (!track && anim.HasTracks(up)) track = true;
                         }
                         row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), scene.PresentedAbsoluteRect(node), track, opacity));
+                        if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
                     }
+                    foreach (var (key, node) in nowNode)
+                        if (!node.IsNull && lastNode.TryGetValue(key, out NodeHandle was) && !was.IsNull && was != node)
+                            result.Remounts.Add(new InspectTrace.Remount(key, f, FadingSwapFamily(shell, node)));
+                    lastNode.Clear();
+                    foreach (var (key, node) in nowNode) lastNode[key] = node;
                 }
                 if (o.Scroll.Length > 0)
                 {
@@ -686,6 +725,16 @@ public static partial class Diagnostics
             }
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
             return result;
+        }
+
+        /// <summary>The swap family a node remounted mid-trace belongs to: the key of the nearest node at or above it that swaps under the theme's
+        /// opacity-only cross-fade (<see cref="SwapsOut"/>) and is fading right now (live tracks); null when none is (a rebuild).</summary>
+        static string? FadingSwapFamily(Shell.HeadlessShell shell, NodeHandle node)
+        {
+            SceneStore scene = shell.Host.Scene;
+            for (NodeHandle n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
+                if (SwapsOut(shell, n) && shell.Host.Animation.HasTracks(n)) return InspectKit.KeyOf(scene, n);
+            return null;
         }
 
         static bool Matches(InspectTrace.Options o, string key)

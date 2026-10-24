@@ -437,6 +437,7 @@ public static partial class Diagnostics
                     Arg("items", ArgType.Int, "entries per reply list", "40"),
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                     Arg("remount", ArgType.Bool, "mount afresh even when a mount is up (the mount args apply)", "false"),
+                    Arg("control", ArgType.Bool, "first step the same distance toward `from` inside the old tier and count what that moves: the crossing's excess counts what the edge adds", "true"),
                 ], s_mountArgs, s_lintArgs),
             },
             new(Verb.Trace, "trace", "Run N frames; per-frame engine timings, watched nodes and one scroller, plus a summary of snaps, jumps and scroll faults", "trace 90 prefix=zune- scroll=main")
