@@ -6,8 +6,9 @@
 // Spec: handoff/audit-2026-10-23/FIX-PLAN.md lane A3 item 3; the source cases are visual.md (findings 1, 2, 4, 5, 6, 8, 9, 10, 12, 16, 19,
 // 20, 24), winui.md section 5 (8 and 11) and their PNGs.
 //
-// EVERY RULE HERE IS TODO (report-only) until its sweep hits are all confirmed real by eye (scratch/a3/PROGRESS.md keeps the counts): a
-// finding never fails `--gate` (only `--gate-todo`). Each rule names the case it was built from in its summary.
+// A RULE HERE STARTS TODO (report-only: only `--gate-todo` counts it) and is promoted once every hit of the sweep (22 routes x 3 themes x
+// 400x860, 1440x960, 2560x1440, 3840x2160, dark) is confirmed real by eye (scratch/a3/PROGRESS.md keeps the counts). Promoted 10-24:
+// text.ruled and type.voice (warn: `--gate warn` counts them, `--gate error` does not). Each rule names the case it was built from.
 
 using System.Globalization;
 using FluentGpu.Foundation;

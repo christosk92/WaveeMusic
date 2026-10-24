@@ -233,6 +233,8 @@ def findings_text(reply):
             if text:
                 parts.append(text)
         return "\n".join(parts)
+    if obj.get("cmd") == "skeleton" and obj.get("ok"):
+        return skeleton_lines(obj)
     lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
     if not isinstance(lint.get("findings"), list):
         return None
@@ -245,6 +247,20 @@ def findings_text(reply):
         name = f["rule"] if f.get("id", f["rule"]) == f["rule"] else "%s/%s" % (f["rule"], f["id"])
         lines.append("[%-5s] %s%s: %s%s" % (f["severity"], name, " (" + ", ".join(tags) + ")" if tags else "",
                                             glyphs_named(f["message"]), "  <" + keys + ">" if keys else ""))
+    return "\n".join(lines)
+
+
+def skeleton_lines(obj):
+    """A `skeleton` reply: the jump a person sees when the data lands (firstMoved), then the regions' height changes and the moved keys."""
+    c = obj.get("counts", {})
+    first = obj.get("firstMoved")
+    lines = ["skeleton %s -> %s: %s of %s keys moved or resized; %s" % (
+        obj.get("pending"), obj.get("loaded"), c.get("moved"), c.get("matched"),
+        "the first on screen to move down: %s by %s DIP (the jump on load)" % (first["key"], first["dy"]) if first else "nothing on screen moved down")]
+    for r in obj.get("regions", []):
+        lines.append("  region  %s  dh=%s" % (r["key"], r["dh"]))
+    for m in obj.get("moved", [])[:12]:
+        lines.append("  moved   %s  dy=%s dh=%s" % (m["key"], m["dy"], m["dh"]))
     return "\n".join(lines)
 
 

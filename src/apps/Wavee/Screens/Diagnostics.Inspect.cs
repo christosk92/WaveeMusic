@@ -422,6 +422,8 @@ public static partial class Diagnostics
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
+                case Inspect.Verb.Skeleton:
+                    return Skeleton(id, name, a, shell);
                 case Inspect.Verb.GoTo:
                     {
                         if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error);

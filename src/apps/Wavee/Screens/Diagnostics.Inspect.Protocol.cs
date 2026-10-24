@@ -98,7 +98,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -477,6 +477,18 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
             },
+            new(Verb.Skeleton, "skeleton", "Compare a page's loading skeleton with the page loaded: the pending fixture (it never loads) against the loaded uri, every shown key's top and height and every Skel.Region's height, in DIP; firstMoved is the jump a person sees when the data lands", "skeleton loaded=spotify:artist:ar3")
+            {
+                NeedsMount = true, Acts = true,
+                Args =
+                [
+                    Arg("loaded", ArgType.String, "the loaded page's spotify uri"),
+                    Arg("pending", ArgType.String, "a uri of the same kind the fake never answers (default: spotify:artist:arzzqx, spotify:show:shzzqx, spotify:episode:epzzqx by kind)"),
+                    Arg("max", ArgType.Int, "each settle's frame cap", "600"),
+                    Arg("items", ArgType.Int, "the most moved keys and regions listed", "20"),
+                    Arg("tolerance", ArgType.Float, "a move or a height change under this (DIP) is none", "1"),
+                ],
+            },
             new(Verb.Views, "views", "Which template draws every view key of a theme (the active one) and which layer registered every view and style key; standins counts the keys a stand-in fills", "views filter=standins")
             {
                 Args =
@@ -550,7 +562,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
