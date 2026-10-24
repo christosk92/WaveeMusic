@@ -595,7 +595,10 @@ public readonly partial struct User
             string sel = SelectedKey.Value, albumKey = AlbumKey.Value;
             int selectedSlot = SelectedSlot.Value;
             bool railOpen = Shell.Ui.RailOpen.Value;
-            bool collapsed = Theming.LibraryLadders.IsSingleColumn(_layoutTier.Value);
+            int layoutIndex = _layoutTier.Value;
+            bool collapsed = Theming.LibraryLadders.IsSingleColumn(layoutIndex);
+            // The third column (the pane beside the middle one) stands from the structure's own rung of the same ladder; under it the pane steps aside.
+            bool paneBeside = layoutIndex >= ShellPolicy.Tracked.LibraryTiers.PaneFromLayout;
             // The arm swap: read where the navigator is before this render replaces its list (a plain field write; see `_navArm`).
             int navArm = collapsed ? 1 : 0;
             if (_navArm >= 0 && _navArm != navArm)
@@ -648,7 +651,7 @@ public readonly partial struct User
             return Slots.View(ViewKeys.LibraryPage, new LibraryPageProps
             {
                 Title = Shell.Dest(new Shell.Route(_route)).Title, Entity = _entity, IsPodcasts = IsPodcasts,
-                Collapsed = collapsed, SavedEpisodesMode = savedMode, FullSearch = fullSearch, Shimmer = shimmer, Awaiting = awaiting,
+                Collapsed = collapsed, PaneBeside = paneBeside, SavedEpisodesMode = savedMode, FullSearch = fullSearch, Shimmer = shimmer, Awaiting = awaiting,
                 RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
                 SetPageWidth = _setPageWidth, Kinds = _kinds, PickDepth = _pickDepth,
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
@@ -977,7 +980,7 @@ public readonly partial struct User
             if (Collapsed) _depth.Value = 1;
             else if (GroupPaneHidden)
             {
-                // The grouped albums page without a songs pane (Small): a picked album opens its own page.
+                // The grouped albums page without a songs pane (Small, or a split page under the pane's rung): a picked album opens its own page.
                 var album = new Album(_sorted[row]);
                 if (album.IsValid) Shell.GoTo(Shell.For(album.Uri, album.Title));
             }
