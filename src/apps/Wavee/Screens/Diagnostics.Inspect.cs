@@ -580,6 +580,7 @@ public static partial class Diagnostics
                         // `state {kind}`: the page region shows a state of its own in place of the page (empty, nomatch, error, offline; `none` puts the page back; `loading` opens a
                         // search for a query the fake catalogue never answers, so its skeleton stays). The states are the shared vacancy, so a theme's picture of it can be rendered.
                         string kind = a.Str("kind").ToLowerInvariant();
+                        if (a.Has("page")) return PageState(id, name, a, kind);
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         RunFrames(30);
@@ -609,6 +610,40 @@ public static partial class Diagnostics
                     return Drag(id, name, a);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
+        }
+
+        /// <summary>`state kind=loading|empty page=<p>`: a page's OWN loading or empty state, not the shared vacancy. A library tab (`library` is
+        /// albums) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
+        /// and `episode` open a fixture in that state: the pending show and episode (`shzzqx`, `epzzqx`: the fake never answers them) and the show
+        /// with no episodes (`sh8`). The next mount puts the shelves back.</summary>
+        string PageState(int id, string name, Inspect.Args a, string kind)
+        {
+            if (kind is not ("loading" or "empty")) return Inspect.Reply.Fail(id, name, "page= takes kind=loading or kind=empty, not '" + kind + "'");
+            bool loading = kind == "loading";
+            string page = a.Str("page").ToLowerInvariant();
+            if (page == "library") page = "albums";
+            Shell.SetInspectState("none");   // the shared vacancy off: the page draws its own state
+            Shell.Route route;
+            switch (page)
+            {
+                case "albums" or "artists" or "podcasts" or "audiobooks":
+                    if (!Entities.StageLibraryShelf(page, loading)) return Inspect.Reply.Fail(id, name, "the account has no library rows to stage");
+                    route = Wavee.Shell.Parse(page);
+                    break;
+                case "show":
+                    route = Wavee.Shell.For(EntityUri.Parse(loading ? "spotify:show:shzzqx" : "spotify:show:sh8"));
+                    break;
+                case "episode":
+                    if (!loading) return Inspect.Reply.Fail(id, name, "an episode page has no empty state (kind=loading, or the shared kind=error)");
+                    route = Wavee.Shell.For(EntityUri.Parse("spotify:episode:epzzqx"));
+                    break;
+                default:
+                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|show|episode, not '" + page + "'");
+            }
+            Wavee.Shell.GoTo(route);
+            RunFrames(30);
+            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("page", page); },
+                loops: loading ? InspectKit.LoopMode.Skeletons : InspectKit.LoopMode.Ignore);
         }
 
         /// <summary>`help` (the verbs and their summaries), `help verb=<name>` (one verb's args, defaults, choices and example) or
@@ -800,6 +835,7 @@ public static partial class Diagnostics
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();
+            Entities.RestoreStagedShelves();   // a `state page=<library tab>` staged the account's relations
             Stage.Close(null, "inspect-mount");
             if (!keepRoute) InspectKit.ResetTabs();
             InspectKit.ResetVideo(_fakePlayer);

@@ -397,7 +397,7 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 `uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
-### `state {kind}` and `dialog {kind}`
+### `state {kind, page?}` and `dialog {kind}`
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
@@ -412,6 +412,20 @@ overlay host), Report a problem, or the artist gallery's lightbox over the bundl
 photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
 `mount ... images=real`**: under the default fake decoder its photographs are flat gradients and it cannot be reviewed. Lint the lightbox with `root=` its key,
 so the page under the modal is not judged. `key esc` closes it.
+
+**A page's own loading and empty state: `page=`.** `state kind=loading|empty page=<p>` shows the page's OWN state instead of the
+shared vacancy: `page=albums|artists|podcasts|audiobooks` (`library` is albums) writes the account's relations behind that Library tab
+back to Unknown (`loading`: the navigator's skeleton, as on a cold start; the fake never answers the ask again) or to Complete with no
+rows (`empty`: the tab's empty state), then opens the tab (`Entities.Fake.Shelves.cs`; Artists stages followed artists, saved albums and
+likes, Podcasts and Audiobooks share saved shows). `page=show` opens the pending show `spotify:show:shzzqx` (loading: header and rows on
+their skeleton) or the show with no episodes `sh8` (empty); `page=episode kind=loading` opens the pending episode `epzzqx` (an episode has
+no empty state). `loading` settles on the skeleton (`loops=skeletons`). The next `mount` (or `reset`) puts the account's rows back.
+
+```text
+state kind=loading page=library      # W-SkeletonList: the Albums navigator's skeleton
+state kind=empty page=podcasts       # W-EmptyLibrary: Library, Podcasts with no followed show
+state kind=loading page=show
+```
 
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:

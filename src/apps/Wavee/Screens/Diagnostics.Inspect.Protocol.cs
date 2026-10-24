@@ -465,6 +465,7 @@ public static partial class Diagnostics
                 Positional = ["kind"], NeedsMount = true, Acts = true,
                 // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
+                    Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|show|episode"),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
