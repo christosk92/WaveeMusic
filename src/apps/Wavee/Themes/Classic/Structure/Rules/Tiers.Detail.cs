@@ -180,7 +180,8 @@ public static class ClassicDetailTiers
     public static ClassicDetailTier Small { get; } = new()
     {
         Core = new DetailTierLayout(
-            new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false),
+            // C-Album-Small, C-Playlist-Small: ONE Shuffle, the hero's under Play; the bar offers none (audit B8 r3).
+            new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false, HeroShuffle: true),
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f),
         Tier = WidthTier.Small, Target = Target, SortLeadsBar = false, SelectionTinted = false, SortGlyph = true, Rail = ClassicDetailRail.Small,
     };
@@ -188,7 +189,8 @@ public static class ClassicDetailTiers
     /// <summary>Standard: the tuned design.</summary>
     public static ClassicDetailTier Standard { get; } = new()
     {
-        Core = DetailTierLayout.Standard,
+        // C-Album, C-Playlist: ONE Shuffle, the hero's under Play (audit B8 r3).
+        Core = DetailTierLayout.Standard with { Table = DetailTierLayout.Standard.Table with { HeroShuffle = true } },
         Tier = WidthTier.Standard, Target = Target, SortLeadsBar = false, SelectionTinted = false,
     };
 
@@ -196,7 +198,7 @@ public static class ClassicDetailTiers
     public static ClassicDetailTier Huge { get; } = new()
     {
         Core = new DetailTierLayout(
-            new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true, RowModern, RowClassic, RowArt),
+            new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true, RowModern, RowClassic, RowArt, HeroShuffle: true),
             InsightsDocked: true, RailRest: HugeRailRest, HeroActionExtra: 0f, AsideDocked: true, InsightsRestOpen: true),
         Tier = WidthTier.Huge, Target = Target, SortLeadsBar = false, SelectionTinted = false, Aside = ClassicDetailAside.Huge,
     };
