@@ -82,7 +82,9 @@ internal static class ZuneStageIdentity
                 gap = 0f;
                 bottom = true;
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, false, heroArtist));
-                kids.Add(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking, bleed: true));   // the big column title bleeds off the stage's edge, never "…"
+                // the big column title bleeds off the stage's edge, never "…" and never a hard cut: it runs to the window's edge and fades out
+                // over the gutter (Z-NowPlaying-LargeArt; owner rule: Zune type bleeds with a fade)
+                kids.Add(Bleed(Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking, bleed: true), MathF.Max(0f, L.W - titlesX), t.Gutter));
                 break;
             }
             case ZuneStageForm.Centered or ZuneStageForm.Stack when v is not null:
@@ -169,6 +171,16 @@ internal static class ZuneStageIdentity
         };
     }
 
+    /// <summary>A title that bleeds: a box from its column's edge to the window's (<paramref name="width"/>, where the window cuts it), its ink fading out over
+    /// the last <paramref name="band"/> (the tier's gutter, where only a title running past its column ever reaches). A row, so the title keeps
+    /// its natural width (the whole title is laid out and the window's edge cuts it under the fade, never the text's own box).</summary>
+    static Element Bleed(TextEl title, float width, float band) => new BoxEl
+    {
+        Width = width, AlignSelf = FlexAlign.Start, Direction = 0, HitTestPassThrough = true,
+        EdgeFade = new EdgeFadeSpec(EdgeMask.Right, band),
+        Children = [title with { Shrink = 0f }],
+    };
+
     /// <summary>A title in an arrangement's voice: the display face, one line.</summary>
     static TextEl Title(string title, float size, float line, ushort weight, float tracking, bool bleed = false) => new(title)
     {
@@ -190,7 +202,10 @@ internal static class ZuneStageIdentity
             [
                 new TextEl(title)
                 {
-                    Size = a.DisplaySize, LineHeight = a.DisplayLine, Weight = G.ColumnTitleWeight, FontFamily = R.Type.DisplayFace, CharSpacing = G.DisplayTracking,
+                    // the board's tight line (150/160, 200/212): a block line height, so the light face's natural line box (1.33 em) does not
+                    // push the artist line out of the block, and the descenders hang over the artist line as Z-NowPlaying-Huge draws them
+                    Size = a.DisplaySize, LineHeight = a.DisplayLine, LineStacking = LineStacking.BlockLineHeight, Weight = G.ColumnTitleWeight,
+                    FontFamily = R.Type.DisplayFace, CharSpacing = G.DisplayTracking,
                     Color = Ink.Ink with { A = G.DisplayInkA }, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 Meta(props, a.DisplayMetaSize, a.DisplayMetaLine, G.ColumnMetaWeight, R.Type.DisplayFace, accent, Ink.Ink, false, heroArtist),
