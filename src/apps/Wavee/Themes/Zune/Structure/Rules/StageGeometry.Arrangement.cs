@@ -85,6 +85,10 @@ public readonly record struct ZuneStageArrangement(ZuneStageForm Form, ZuneRect 
 
     /// <summary>Centered: the caption's bottom margin from the stage's foot (under the controls); 0: the allocator's.</summary>
     public float CaptionBottom { get; init; }
+
+    /// <summary>The track up next: Column, the row under the "playing from …" line; Stack, the "up next" bar across the foot. Empty: drawn
+    /// elsewhere (the Card's card, the Centered foot's line) or not at all.</summary>
+    public ZuneRect Next { get; init; }
 }
 
 public static partial class ZuneStageGeometry
@@ -193,7 +197,9 @@ public static partial class ZuneStageGeometry
         float g = tier.Gutter;
         float top = MathF.Max(r.Top, tier.HeadH + ColumnHeadGap);
         float regionH = layout.H - top - g;
-        if (regionH < r.BlockH + r.FootH + v.SourceLine + r.PaneTop + r.PaneMinH + r.PaneGap) return ZuneStageArrangement.Plate;
+        // the "next" row under the source line (Z-NowPlaying-LargeArt), reserved whatever the queue holds
+        float nextH = NextThumb * NextScale(v.SourceSize), nextBlock = NextRowGap + nextH;
+        if (regionH < r.BlockH + r.FootH + v.SourceLine + nextBlock + r.PaneTop + r.PaneMinH + r.PaneGap) return ZuneStageArrangement.Plate;
         float slot = Stage.Layout.Q4(MathF.Min(regionH, layout.W - 2f * g - r.Gap - r.MinW));
         float cover = slot;
         float stripH = 0f;
@@ -211,7 +217,7 @@ public static partial class ZuneStageGeometry
         float inset = ring ? (slot - cover) * 0.5f : 0f;
         // the block of titles and controls ends on the cover's foot (Z-NowPlaying-Small: the controls end 8 under the 360 cover, the aside sits at the stage's own foot), and never lower than the foot's gutter
         float blockTop = MathF.Min(layout.H - g - r.FootH, top + used) - r.BlockH;
-        float paneTop = top + v.SourceLine + r.PaneTop;
+        float paneTop = top + v.SourceLine + nextBlock + r.PaneTop;
         float title = Math.Clamp(Stage.Layout.Q4(w * r.TitleMax / r.ControlsMaxW), r.TitleMin, r.TitleMax);
         float cw = MathF.Min(w, r.ControlsMaxW);
         ZuneRect spectrum = ring ? new ZuneRect(g, top, slot, slot)
@@ -227,7 +233,7 @@ public static partial class ZuneStageGeometry
             Pane: new ZuneRect(x, paneTop, w, MathF.Max(0f, blockTop - r.PaneGap - paneTop)),
             Spectrum: spectrum,
             TitleSize: title,
-            TitleLine: title) { Voice = v, SeekTop = r.SeekTop, VolumeTop = r.VolumeTop };
+            TitleLine: title) { Voice = v, SeekTop = r.SeekTop, VolumeTop = r.VolumeTop, Next = new ZuneRect(x, top + v.SourceLine + NextRowGap, w, nextH) };
     }
 
     // ── Centered (Z-NowPlaying-Centered) ─────────────────────────────────────────────────────────────────────────────────
@@ -281,22 +287,27 @@ public static partial class ZuneStageGeometry
         float textH = r.TitleTop + v.TitleLine + v.MetaLine + v.SourceLine;
         float controlsH = r.ControlsH;
         float w = MathF.Max(0f, layout.W - 2f * g);
-        float room = layout.H - top - textH - r.SeekTop - controlsH - r.BottomPad;
+        // the "up next" bar across the foot (Z-NowPlaying-Compact); the controls follow the text, as the board stacks them, and never end
+        // closer than BottomPad over the bar
+        float bar = NextBarH;
+        float room = layout.H - top - textH - r.SeekTop - controlsH - r.BottomPad - bar;
         float cover = Stage.Layout.Q4(MathF.Min(MathF.Min(r.CoverFrac * layout.W, w), room));
         if (cover < r.CoverMin) return ZuneStageArrangement.Plate;
         var titles = new ZuneRect(g, top + cover + r.TitleTop, w, v.TitleLine + v.MetaLine);
+        var source = new ZuneRect(g, titles.Bottom, w, v.SourceLine);
+        float controlsY = MathF.Min(source.Bottom + r.SeekTop, layout.H - bar - r.BottomPad - controlsH);
         return new ZuneStageArrangement(
             ZuneStageForm.Stack,
             Card: default,
             Cover: new ZuneRect(g, top, cover, cover),
             Titles: titles,
-            Source: new ZuneRect(g, titles.Bottom, w, v.SourceLine),
-            Controls: new ZuneRect(g, layout.H - r.BottomPad - controlsH, w, controlsH),
+            Source: source,
+            Controls: new ZuneRect(g, controlsY, w, controlsH),
             Aside: default,
             Pane: default,
             Spectrum: default,
             TitleSize: v.TitleSize,
-            TitleLine: v.TitleLine) { Voice = v };
+            TitleLine: v.TitleLine) { Voice = v, Next = new ZuneRect(0f, layout.H - bar, layout.W, bar) };
     }
 
     // ── what the arrangement means for the face and the caption ──────────────────────────────────────────────────────────
