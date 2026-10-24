@@ -33,6 +33,9 @@ public static class ButtonRules
     /// metric) can reference the SAME number instead of copying 120.</summary>
     public const float PrimaryWidthNominal = 120f;
 
+    /// <summary>The ratio the Follow toggle's "Following" label needs on its tinted on-fill (body text, WCAG AA).</summary>
+    public const float FollowLabelRatio = 4.5f;
+
     /// <summary>The six colours the Follow/Pre-save toggle's ON state needs, derived from the page accent
     /// <paramref name="a"/> and the theme (<paramref name="light"/> — a value, never a global read, so this stays
     /// testable both ways in the same process). Mirrors the plan's state table exactly:
@@ -88,6 +91,11 @@ public static class ButtonRules
     public static ToggleButton.Style FollowStyle(ColorF a, bool light)
     {
         var t = FollowTint(a, light);
+        // The "Following" label is the theme's accent text where that reads at 4.5 : 1 on the composited on-fill (the heart ink's rule above, at
+        // the body-text ratio); otherwise the primary ink: a theme whose accent text is mid-bright (Zune's pink, 3.46 : 1 on its own 14 % tint)
+        // keeps the accent in the plate, the stroke and the glyph, and the word reads (V32).
+        ColorF onFill = ColorContrast.Flatten(t.RestFill, light ? MicaRef.LightDefault : MicaRef.DarkDefault);
+        ColorF labelInk = ColorContrast.Ratio(Tok.AccentTextPrimary, onFill) >= FollowLabelRatio ? Tok.AccentTextPrimary : Tok.TextPrimary;
         return ToggleButton.DefaultStyle with
         {
             CornerRadius = Radii.Control,
@@ -103,7 +111,7 @@ public static class ButtonRules
             OnDisabledBorder = GradientSpec.Solid(Tok.StrokeControlDefault), // not a washed-out accent — a disabled
             OnDisabledForeground = Tok.TextDisabled,          // Follow toggle reads as the neutral disabled control.
 
-            OnForeground = Tok.AccentTextPrimary,             // "Following" label ink, rest + hover (WinUI pins hover
+            OnForeground = labelInk,                          // "Following" label ink, rest + hover (WinUI pins hover
                                                                 // to rest — ToggleButton.Build never re-reads it)
             OnPressedForeground = Tok.TextSecondary,          // the table's pressed-label pull-back to neutral ink
 
