@@ -44,6 +44,11 @@ public readonly record struct DevicePickerEntry(
     /// <summary>The label is the core's word ("System default"), not a device's own name: a theme may re-case it (a device keeps its casing).
     /// Appended (contract 1.68).</summary>
     public bool Word { get; init; }
+
+    /// <summary>A this-computer output that is the CHOSEN one, whether or not this computer plays (<see cref="IsChecked"/> adds that it does): a
+    /// theme may mark it while playback is elsewhere (Z-Overlays: a filled dim dot, the unused outputs hollow rings). False on every other row.
+    /// Appended (contract 1.73, audit B8).</summary>
+    public bool Chosen { get; init; }
 }
 
 /// <summary>What one render of the picker draws.</summary>

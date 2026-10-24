@@ -1371,7 +1371,8 @@ public static partial class Shell
         string DeviceId = "",
         string? Accelerator = null,
         byte LocalKind = 0,
-        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer);
+        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer,
+        bool Chosen = false);
 
     /// <summary>Hard cap on device labels — endpoint names are short (DeviceDesc-first) but Connect names and
     /// duplicate-name fallbacks can be arbitrarily long, and the flyout sizes to its widest row.</summary>
@@ -1406,14 +1407,14 @@ public static partial class Shell
         rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.ThisComputer), Enabled: false));
         rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDefault, Loc.Get(Strings.Player.SystemDefault),
             IsChecked: localSupported && weAreActiveOutput && string.IsNullOrEmpty(selectedLocalId),
-            Enabled: localSupported, DeviceId: "", Accelerator: acc));
+            Enabled: localSupported, DeviceId: "", Accelerator: acc, Chosen: localSupported && string.IsNullOrEmpty(selectedLocalId)));
         for (int i = 0; i < local.Length; i++)
         {
             ref readonly var d = ref local[i];
+            bool chosen = localSupported && !string.IsNullOrEmpty(selectedLocalId) && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase);
             rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDevice, CapLabel(d.Name),
-                IsChecked: localSupported && weAreActiveOutput && !string.IsNullOrEmpty(selectedLocalId)
-                           && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase),
-                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind));
+                IsChecked: chosen && weAreActiveOutput,
+                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind, Chosen: chosen));
         }
 
         rows.Add(QualityRow(observed, askedQuality));
