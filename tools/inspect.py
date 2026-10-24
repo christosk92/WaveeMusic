@@ -260,10 +260,11 @@ def trace_text(reply):
         lines.append("  WARNING: this trace watched no nodes, so its snaps, jumps and remounts are not measured (0 is no verdict): "
                      "pass prefix=<key family> or keys=[...] (and max=N above 20 for a page)")
     else:
-        lines.append("  motion: %s snap%s on %s watched key%s, %s jump%s (tracked moves over the jump DIP), remounted %s outside a swap family, %s inside" % (
-            len(s.get("snaps", [])), "" if len(s.get("snaps", [])) == 1 else "s", c.get("snappedKeys", "?"),
-            "" if c.get("snappedKeys") == 1 else "s", len(s.get("jumps", [])), "" if len(s.get("jumps", [])) == 1 else "s",
-            c.get("remountedOutside", "?"), c.get("remountedSwap", "?")))
+        lines.append("  motion: %s watched key%s moved at once (%s snap%s with no track, %s instant: one frame carried a tracked run), "
+                     "remounted %s outside a swap family, %s inside; %s jump%s listed (every eased frame over the jump DIP: no verdict)" % (
+            c.get("movedAtOnce", "?"), "" if c.get("movedAtOnce") == 1 else "s", len(s.get("snaps", [])), "" if len(s.get("snaps", [])) == 1 else "s",
+            len(s.get("instants", [])), c.get("remountedOutside", "?"), c.get("remountedSwap", "?"),
+            len(s.get("jumps", [])), "" if len(s.get("jumps", [])) == 1 else "s"))
     lines.append("  relayout: rootSolveFrames=%s escapeFrames=%s fullLayoutInferred=%s" % (
         s.get("rootSolveFrames"), s.get("escapeFrames"), s.get("fullLayoutFramesInferred")))
     lines.append("  measure: total=%s max=%s@%s framesWithMeasure=%s components=%s (frames %s)" % (
@@ -274,7 +275,7 @@ def trace_text(reply):
     for r in t.get("remounted", []):
         fam = r.get("family")
         lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
-    for kind in ("snaps", "jumps"):
+    for kind in ("snaps", "instants", "jumps"):
         moves = s.get(kind, [])
         for m in moves[:TRACE_LIST_CAP]:
             lines.append("  %-5s f%-3s %s  d=(%s, %s, %s, %s) prev=%s%s" % (
@@ -381,9 +382,10 @@ class Gate:
             self.warnings.append("%s watched no nodes: its motion is not judged (pass prefix= or keys=)" % where)
             return
         c = t.get("counts", {})
-        keys = c.get("snappedKeys", len({m["key"] for m in t.get("summary", {}).get("snaps", [])}))
+        keys = c.get("movedAtOnce", c.get("snappedKeys", len({m["key"] for m in t.get("summary", {}).get("snaps", [])})))
         if keys > self.max_moved:
-            self.motion.append("%s snapped %d watched key%s with no animation (max %d)" % (where, keys, "" if keys == 1 else "s", self.max_moved))
+            self.motion.append("%s moved %d watched key%s at once (a snap, or a tracked run one frame carried; max %d)" % (
+                where, keys, "" if keys == 1 else "s", self.max_moved))
         outside = c.get("remountedOutside", 0)
         if outside > 0:
             names = [r["key"] for r in t.get("remounted", []) if r.get("family") is None][:4]

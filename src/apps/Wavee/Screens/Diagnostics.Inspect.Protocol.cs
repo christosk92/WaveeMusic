@@ -179,6 +179,7 @@ public static partial class Diagnostics
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
+            Arg("instant", ArgType.Float, "a run of tracked moves whose largest frame moves this many DIP and most of the run landed at once", "4"),
             Arg("wheel", ArgType.List, "wheel notches per event, cycled (3 or 3,3,-6)"),
             Arg("wheelEvery", ArgType.Int, "one wheel event every N frames", "1"),
             Arg("wheelCount", ArgType.Int, "how many wheel events", "1"),
