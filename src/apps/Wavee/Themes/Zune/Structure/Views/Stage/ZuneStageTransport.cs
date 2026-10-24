@@ -296,10 +296,14 @@ internal static class ZuneStageTransport
         };
     }
 
+    /// <summary>A part's move when its arrangement re-places it (a tier crossing, a gallery's yield): the cover's spring, so the parts travel with the
+    /// cover and the card instead of snapping (audit B3: the no-jump rule).</summary>
+    static readonly LayoutTransition s_place = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.Relayout);
+
     /// <summary>A part placed at an arrangement's rect (top-left in the layer, its rect's size); it holds the chrome while the pointer is on it.</summary>
     static BoxEl Placed(Kit kit, in ZuneRect r, Element child, string key) => new()
     {
-        Key = key, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
+        Key = key, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f), Layout = s_place,
         Direction = 1, MinWidth = 0f, ClipToBounds = true, Justify = FlexJustify.Center,
         OnHoverMove = _ => kit.Over(true), OnPointerExit = () => kit.Over(false),
         Children = [child],
