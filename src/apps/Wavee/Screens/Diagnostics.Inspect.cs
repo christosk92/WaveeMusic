@@ -603,6 +603,8 @@ public static partial class Diagnostics
                     return Lint(id, name, a, shell);
                 case Inspect.Verb.Trace:
                     return Trace(id, name, a, shell);
+                case Inspect.Verb.Drag:
+                    return Drag(id, name, a);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -912,8 +914,11 @@ public static partial class Diagnostics
         static string RouteText()
         {
             var r = Wavee.Shell.Current.Peek();
+            string name = Wavee.Shell.NameOf(r);
             string? arg = Wavee.Shell.ArgOf(r);
-            return Wavee.Shell.NameOf(r) + (arg is null ? "" : " " + arg);
+            // A prefix route whose arg rides its key (`disco:0:spotify:artist:ar3`, `people:...`) names it once.
+            if (arg is not null && name.EndsWith(arg, StringComparison.Ordinal)) arg = null;
+            return name + (arg is null ? "" : " " + arg);
         }
 
         string Theme(int id, string name, Inspect.Args a)
@@ -929,6 +934,19 @@ public static partial class Diagnostics
             if (ThemeInspection.IsDeveloperOnly(theme)) Platform.Developer.Enabled.Value = true;
             Task<FluentGpu.Hosting.ThemeTransactionResult> t = ThemeHost.Switch(theme);
             int max = a.Int("max", 900), ran = 0;
+            if (Tracing(a))
+            {
+                // `trace=N` measures the switch itself: the traced frames are the ones that run the transaction (prewarm, freeze, swap,
+                // remount, thaw), from the frame after the request. `transactionFrames` counts to the frame it completed on.
+                long start = _frames, doneAt = -1;
+                _ = t.ContinueWith(_ => doneAt = _frames, TaskContinuationOptions.ExecuteSynchronously);
+                return Settled(id, name, a, w =>
+                {
+                    w.WriteString("theme", InspectKit.ActiveThemeId);
+                    w.WriteString("outcome", !t.IsCompleted ? "incomplete" : t.IsFaulted ? "faulted" : t.Result.Outcome.ToString());
+                    w.WriteNumber("transactionFrames", doneAt < 0 ? -1 : doneAt - start + 1);
+                }, afterTrace: () => { while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; } });
+            }
             while (!t.IsCompleted && ran < max) { RunFrames(1); ran++; }
             if (!t.IsCompleted) return Inspect.Reply.Fail(id, name, "the theme transaction did not complete within " + max + " frames", WriteAfter);
             string outcome = t.IsFaulted ? "faulted" : t.Result.Outcome.ToString();
@@ -1406,7 +1424,7 @@ public static partial class Diagnostics
         /// <summary>The reply of a verb that settles after itself (unless `settle=false`): its frames and whether it settled (with
         /// `busy` when the cap stopped it), the verb's own <paramref name="body"/>, and `after` when the verb acts.</summary>
         string Settled(int id, string name, Inspect.Args a, Action<Utf8JsonWriter>? body = null, string traceScroll = "",
-            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore)
+            InspectKit.LoopMode loops = InspectKit.LoopMode.Ignore, Action? afterTrace = null)
         {
             InspectKit.SettleResult settle = default;
             InspectTrace.Result? trace = null;
@@ -1415,6 +1433,7 @@ public static partial class Diagnostics
                 // `trace=N` on any settling verb: no settle, N traced frames from the frame after the action (docs: agent-inspect.md)
                 if (!InspectTrace.TryParse(a, a.Int("trace", 0), traceScroll, out InspectTrace.Options o, out string error)) return Inspect.Reply.Fail(id, name, error);
                 trace = RunTrace(shell, o);
+                afterTrace?.Invoke();   // what the verb still owes once the traced frames ran (`theme`: the transaction's end)
             }
             else if (a.Bool("settle", true)) settle = Settle(a.Int("max", 600), InspectKit.LoopsArg(a, loops));
             bool acts = _acts;

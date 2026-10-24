@@ -389,6 +389,10 @@ public static partial class Diagnostics
             Options o = result.Options;
             w.WriteString("note", "ms are the CPU cost of each frame while the motion plays on the inspect host's fixed 16 ms fake frame clock; frames are not real time");
             w.WriteNumber("traced", result.Rows.Count);
+            if (result.Watch.Count == 0)   // the move detectors read the watched nodes only: say why snaps and jumps are 0
+                w.WriteString("warning", o.WatchesNodes
+                    ? "no node matched keys/prefix: nothing was watched, so snaps and jumps read 0"
+                    : "no keys or prefix given: nothing was watched, so snaps and jumps read 0 (add prefix= or keys=)");
             w.WriteStartArray("watch");
             foreach (string k in result.Watch) w.WriteStringValue(k);
             w.WriteEndArray();

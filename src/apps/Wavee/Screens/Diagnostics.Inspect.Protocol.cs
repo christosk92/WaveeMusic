@@ -501,6 +501,18 @@ public static partial class Diagnostics
                     Arg("max", ArgType.Int, "the settle cap", "600"),
                 ], s_lintArgs),
             },
+            new(Verb.Drag, "drag", "A mouse drag: press on a node's visible centre (refused unless actionable and still; force=true skips) or a point, move dx,dy over steps frames with the button down, release; then settle", "drag key=zune-panel-edge dx=-120 steps=12")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs,
+                [
+                    Arg("dx", ArgType.Float, "DIP the pointer travels along x (negative: left)", "0"),
+                    Arg("dy", ArgType.Float, "DIP the pointer travels along y (negative: up)", "0"),
+                    IntArg("steps", "frames the pointer moves over, one equal move per frame", "8", 1, 600),
+                    Arg("button", ArgType.Enum, "the button", "left", "left|right"),
+                    Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
+                ], s_settleArgs),
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 

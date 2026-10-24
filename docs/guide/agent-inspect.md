@@ -373,6 +373,19 @@ is checked and picked as `click` does (`nth`, `force`), except that nothing need
 the scroller under the pointer either way. The settle waits for the scroller to stop, so the reply's
 `scroll {offset, max}` (with `key`: the first scroll viewport under that node) is where the glide ended.
 
+### `drag {key | x,y, dx?, dy?, steps?, button?, mods?}`
+
+A mouse drag as one command, the way a hand makes it: the pointer moves onto the press point (`key`'s visible centre, checked
+and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button goes down, the pointer travels `dx`,`dy` DIP in
+`steps` equal moves (8), one per frame, and the button comes up at the end point; then the settle. The reply has `at` (the press),
+`to` (the release) and `steps`. `trace=N` traces N frames from the release (a drop's settle); to trace the frames of the drag
+itself use `trace`'s own `drag=` args (`drag`, `dragFrames`, `dragStart`, `dragKey`/`dragX`/`dragY`, `dragDy`: DIP per frame,
+cycled).
+
+```text
+drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
+```
+
 ### `play {uri?, fromMs?, next?, ago?, remote?}`
 
 Plays one fake track or episode as its own context. This is the headless probe's recipe: `BuildContextQueue`, then
@@ -396,7 +409,8 @@ come from the same catalogue (`--fake` installs that source; a live build asks S
 `goto uri=spotify:artist:arzzqx` is the pending artist. `offline-rows` keeps the page and reads the session as down in its rows.
 `mount` and `reset` clear the vacancy. `dialog kind=crash|hang|report|lightbox` opens the crash prompt (over a made-up bundle, through the shell's own
 overlay host), Report a problem, or the artist gallery's lightbox over the bundled photographs (the bright one first: text and chrome over a
-photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. Lint the lightbox with `root=` its key,
+photograph) over the **current** page: it never navigates, and the reply's `over` names the page underneath. **The lightbox needs a
+`mount ... images=real`**: under the default fake decoder its photographs are flat gradients and it cannot be reviewed. Lint the lightbox with `root=` its key,
 so the page under the modal is not judged. `key esc` closes it.
 
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
@@ -404,7 +418,9 @@ so the page under the modal is not judged. `key esc` closes it.
 the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, then either `state cold-rows` (the membership lands, rows 1
 and 4 know their face, the rest in flight) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
 credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). Pass `trace=N` on a `state` command to trace its
-frames. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
+frames. **To catch the meta-loading step** (the header known, the meta line and the rows on their shimmer), let the goto settle on the
+skeleton: `state cold-list`, then `goto uri=spotify:playlist:pl6 loops=skeletons` (it replies `loops:["rail:meta", "list:pl:..."]`);
+`settle=false` plus `frames 4` instead catches the OUTGOING page mid-exit, not pl6. A real stale list also HOLDS its rows on the open's revalidation for up to `ListFreshness.BlockingBudgetMs` (1.5 s wall time):
 `goto uri=spotify:playlist:pl2` from another playlist with `trace=200` catches the hold's release (the frame its rows land) inside the trace.
 
 ### `theme {id}`
@@ -414,7 +430,9 @@ frames. A real stale list also HOLDS its rows on the open's revalidation for up 
 - Not mounted: selects the theme for the next mount.
 
 `max` caps the transaction at 900 frames by default (`option`: the apply), and, when given, the settle after it too
-(otherwise that settle's 600).
+(otherwise that settle's 600). **`trace=N` measures the switch itself**: the traced frames are the ones that run the transaction,
+from the frame after the request (watch with `prefix=`), and `transactionFrames` counts to the frame it completed on (`theme zune
+trace=120 prefix=shell.`: `measureTotal` 2376 over the swap, where it read 0 when the trace began after the switch).
 
 ### `option {themeId?, id?, value?}`
 
@@ -794,7 +812,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 
 | Arg | Meaning |
 |---|---|
-| `frames` | Frames to run (1 to 5000; positional: `trace 90`). |
+| `frames` | Frames to run (1 to 5000; positional: `trace 90`). A trace that watched no node (no `keys`/`prefix`, or none matched) says so in `warning`: its snaps and jumps read 0 because nothing was watched. |
 | `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`. |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
