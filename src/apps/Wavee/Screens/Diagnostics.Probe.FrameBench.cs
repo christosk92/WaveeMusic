@@ -296,6 +296,7 @@ public static partial class Diagnostics
                 }
                 case FrameBenchScenarios.PlaylistPlaying:
                 case FrameBenchScenarios.PlaylistLyrics:
+                case FrameBenchScenarios.PlaylistMinimized:
                 {
                     // A track playing, the first bench playlist's page on screen: the playing row's equalizer (where the list holds
                     // the track) and the seek bar move.
@@ -306,10 +307,20 @@ public static partial class Diagnostics
                     long nav0 = NavigationFrameWatch.NavigationId;
                     Nav(Shell.For(EntityUri.Parse(pl), "Bench playlist"));
                     PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
-                    bool rail = name == FrameBenchScenarios.PlaylistLyrics;
+                    bool rail = name != FrameBenchScenarios.PlaylistPlaying;
+                    bool minimized = name == FrameBenchScenarios.PlaylistMinimized;
                     if (rail) { Shell.Ui.Mode.Value = Shell.RailMode.Lyrics; Shell.Ui.RailOpen.Value = true; }
                     Settle(1.5);
-                    var r = Measure(null, "playlist=" + pl + (rail ? " rail=lyrics" : ""));
+                    // Minimized for the whole window (the warmup lets the park edge and its flush pass): nothing can present, so every
+                    // UI wake and render turn the window measures is work for pixels nobody sees.
+                    if (minimized) ShowWindow(w.Handle.Value, 6 /*SW_MINIMIZE*/);
+                    var r = Measure(null, "playlist=" + pl + (rail ? " rail=lyrics" : "") + (minimized ? " minimized" : ""));
+                    if (minimized)
+                    {
+                        if (!host.IsParked) r = r with { Note = r.Note + " NOT PARKED" };   // the window measured nothing hidden
+                        ShowWindow(w.Handle.Value, 9 /*SW_RESTORE*/);
+                        Settle(1.0);
+                    }
                     if (rail) Shell.Ui.RailOpen.Value = false;
                     return r;
                 }
@@ -521,9 +532,11 @@ public static partial class Diagnostics
         {
             Pump(host, w, o.WarmupSec, d);
             scroll?.Restart();
+            long walks0 = host.WalkLedger?.Count ?? 0, rasters0 = host.RasterLedger?.Count ?? 0;
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
+            WriteRecordLedgers(name, host, walks0, rasters0);
             if (scroll is not null)
             {
                 scroll.Observe();
@@ -533,6 +546,31 @@ public static partial class Diagnostics
                 note = (note is null ? "" : note + " ") + "scrolled " + scroll.DistanceViewports.ToString("0.0", CultureInfo.InvariantCulture) + " viewports in " + scroll.Steps + " steps";
             }
             return new Pending(name, Snap: snap, Note: note, Extra: extra);
+        }
+
+        /// <summary>The window's slice re-records and tile rasters (the evidence ledgers' tails, newest <see cref="FluentGpu.Render.Evidence.WalkLedger.WalkLedgerCapacity"/> /
+        /// <see cref="FluentGpu.Render.Evidence.RasterLedger.RasterLedgerCapacity"/>) as <c>&lt;scenario&gt;-walks.tsv</c> / <c>-rasters.tsv</c>: which slice re-recorded
+        /// and why, which tile rastered and why. Written after the window, so the formatting costs the measurement nothing.</summary>
+        static void WriteRecordLedgers(string name, AppHost host, long walks0, long rasters0)
+        {
+            var names = new Dictionary<(int, uint), string>();
+            string Name(int index, uint gen)
+            {
+                if (!names.TryGetValue((index, gen), out string? s)) names[(index, gen)] = s = host.DescribeNode(index, gen);
+                return s;
+            }
+            if (host.WalkLedger is { } wl)
+            {
+                var walks = new FluentGpu.Render.Evidence.WalkEntry[FluentGpu.Render.Evidence.WalkLedger.WalkLedgerCapacity];
+                int n = wl.Read(walks0, walks, out _);
+                WriteArtifact(OutDir(), name + "-walks.tsv", EvidenceReport.WalksTsv(walks.AsSpan(0, n), Name));
+            }
+            if (host.RasterLedger is { } rl)
+            {
+                var rasters = new FluentGpu.Render.Evidence.RasterEntry[FluentGpu.Render.Evidence.RasterLedger.RasterLedgerCapacity];
+                int n = rl.Read(rasters0, rasters, out _);
+                WriteArtifact(OutDir(), name + "-rasters.tsv", EvidenceReport.LedgerTsv(rasters.AsSpan(0, n), Name));
+            }
         }
 
         /// <summary>Pump until the loop has gone quiet — two consecutive seconds with at most 2 presents each — or <paramref name="maxSec"/>.
