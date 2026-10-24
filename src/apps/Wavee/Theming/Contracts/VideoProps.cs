@@ -198,7 +198,7 @@ public sealed record VideoFullscreenProps
 
     /// <summary>The transport the fullscreen surface owns (<c>Video.TransportOwner.Fullscreen</c>: the bar is unmounted and the presenter's own strip
     /// stands down): the on-media strip's props over the main window's idle machine and chrome feed, for the theme to draw (Z-Video's seek line,
-    /// previous · play · next, the volume and the "..." menu). Null: a core with no transport to hand. Appended (contract 1.55).</summary>
+    /// previous · play · next, the volume and the "..." menu). Null: a core with no transport to hand. Appended (contract 1.56).</summary>
     public OnMediaTransportProps? Transport { get; init; }
 }
 
