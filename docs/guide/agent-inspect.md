@@ -840,7 +840,7 @@ height edge at width `w` 1440, a width edge at height `h` 960), then runs one `c
 | `routes` | The pages, a list: a route key (`home`), a `spotify:` uri, or a fixture word: `album` (al2), `artist` (ar3), `playlist` (pl0), `show` (sh0), `episode` (ep0). Default `home,album,artist,playlist`. |
 | `edges` | Only these edges by name (`edges=[W1008,H720]`). |
 | `dirs` | `both` (default), `narrow` or `widen`. |
-| `theme`, `kind`, `gpu`, `scale`, `images`, `grade` | Each row's mount (the active theme by default). |
+| `theme`, `kind`, `gpu`, `scale`, `images`, `grade` | Each row's mount (the active theme by default). `gpu` is `none` by default: a crossing reads rects and the scene, never a frame's pixels, and WARP rendering is what loads the machine; pass `gpu=hardware` to keep pixels for a `render` after. |
 | `items` | Entries per list in each crossing reply (8). The lint options (`min` defaults to `error` here, `rules`, ...) pass on to every crossing. |
 
 The reply: `rows`, `failed` (crossings that answered ok:false), `ms`, `table[]` (one line per row: `route, edge, dir, ok, before,

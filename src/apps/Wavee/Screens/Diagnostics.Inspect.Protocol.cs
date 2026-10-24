@@ -496,7 +496,7 @@ public static partial class Diagnostics
                     Arg("h", ArgType.Float, "the height a width edge is crossed at", "960"),
                     Arg("theme", ArgType.Enum, "the theme (default: the active one)", null, ThemeChoices),
                     Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
-                    Arg("gpu", ArgType.Enum, "each row's mount devices", "warp", "warp|hardware|none"),
+                    Arg("gpu", ArgType.Enum, "each row's mount devices: none by default (a crossing reads rects and the scene, never a frame's pixels), hardware or warp to keep pixels for a render after", "none", "warp|hardware|none"),
                     Arg("scale", ArgType.Float, "DPI scale of each row's mount", "1"),
                     Arg("images", ArgType.Enum, "fake or real images", "fake", "fake|real"),
                     Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow"),

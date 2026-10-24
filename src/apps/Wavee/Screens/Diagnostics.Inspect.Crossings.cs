@@ -202,7 +202,8 @@ public static partial class Diagnostics
                         var mountArgs = new Inspect.Args();
                         mountArgs.Set("theme", new Inspect.Value(Inspect.ValueKind.String, theme));
                         mountArgs.Set(navArg, new Inspect.Value(Inspect.ValueKind.String, navValue));
-                        foreach (string pass in (ReadOnlySpan<string>)["kind", "gpu", "scale", "images", "grade"])
+                        mountArgs.Set("gpu", new Inspect.Value(Inspect.ValueKind.String, a.Str("gpu", "none")));   // no pixels: a crossing reads rects
+                        foreach (string pass in (ReadOnlySpan<string>)["kind", "scale", "images", "grade"])
                             if (a.TryGet(pass, out Inspect.Value v)) mountArgs.Set(pass, v);
                         var (mw, mh) = Size(mount);
                         string row(long ms) => RowJson(theme, route, edge, narrow, Size(mount), Size(old), Size(@new), ms);
