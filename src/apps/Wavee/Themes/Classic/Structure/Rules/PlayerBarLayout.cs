@@ -59,6 +59,11 @@ internal static class ClassicPlayerBarLayout
     public static readonly LayoutTransition FaceMotion = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
 
+    /// <summary>Shuffle's and repeat's slots: the face fade plus a position FLIP (still never Bounds/Reflow, so lighting cannot reflow the row),
+    /// so the 1920 crossing glides them between the right cluster's lead and the Huge transport's flanks, both in the centre column.</summary>
+    public static readonly LayoutTransition FlankMotion = new(
+        TransitionChannels.Opacity | TransitionChannels.Position, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
+
     // ── the now-playing text ─────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on

@@ -278,10 +278,8 @@ internal static partial class ClassicPlayerBar
         if (!mini) left = left.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
 
         // ── CENTRE — transport + seek (empty while a full-bleed surface owns the transport) ─────────────────────
-        // At Huge shuffle and repeat flank the transport (C-PlayerBar huge) instead of riding the right zone. The mini bar keeps the play disc
-        // alone, 40 x 40.
+        // The mini bar keeps the play disc alone, 40 x 40.
         var transportKids = new List<Element>(5);
-        if (!mini && huge && v.OwnsTransport && (v.Slots & RightSlot.Shuffle) != 0) transportKids.Add(RightSlotOf(RightSlot.Shuffle));
         if (!mini && v.OwnsTransport && v.ShowPrevNext)
             transportKids.Add(BarButton(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, box, glyph)
                 with { Key = "prev" });
@@ -295,7 +293,6 @@ internal static partial class ClassicPlayerBar
         if (!mini && v.OwnsTransport && v.ShowPrevNext)
             transportKids.Add(BarButton(Icons.Next, () => verbs.Next(), v.NextEnabled, false, box, glyph)
                 with { Key = "next" });
-        if (!mini && huge && v.OwnsTransport && (v.Slots & RightSlot.Repeat) != 0) transportKids.Add(RightSlotOf(RightSlot.Repeat));
 
         if (!mini && v.OwnsTransport && v.Episode)
         {
@@ -316,6 +313,26 @@ internal static partial class ClassicPlayerBar
         if (!mini && v.OwnsTransport && v.ShowTimesRemaining)
             seekKids.Add(new BoxEl { Key = "remaining", Animate = ClassicPlayerBarLayout.ItemMotion, Children = [props.TimeText(true)] });
 
+        // SHUFFLE AND REPEAT. At Huge they flank the transport (C-PlayerBar huge); below it they lead the right cluster. Both places are in the
+        // CENTRE COLUMN, so the 1920 crossing moves them inside one parent: they keep their nodes and glide (two parents remounted them). Below
+        // Huge they follow the seek row, set off by the row gap plus the slack the right cluster reserves for the video split (where the right
+        // box used to start, so nothing moves from where it was); the right box then starts one cluster gap after them.
+        bool shuffle = !mini && (v.Slots & RightSlot.Shuffle) != 0 && (!huge || v.OwnsTransport);
+        bool repeat = !mini && (v.Slots & RightSlot.Repeat) != 0 && (!huge || v.OwnsTransport);
+        bool flanksRight = !mini && !huge && (shuffle || repeat);
+        float rowGap = mini ? ClassicPlayerTiers.MiniGap : huge ? ClassicPlayerTiers.HugeRowGap : m.RowGap;
+        float slack = 0f;
+        if (flanksRight)
+        {
+            float content = 0f;
+            int count = 0;
+            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+                if ((v.Slots & (RightSlot)bit) != 0) { content += v.SlotWidth((RightSlot)bit); count++; }
+            slack = MathF.Max(0f, v.RightWidth - content - m.RightGap * MathF.Max(0, count - 1));
+        }
+        Element? shuffleSlot = shuffle ? RightSlotOf(RightSlot.Shuffle) : null;
+        Element? repeatSlot = repeat ? RightSlotOf(RightSlot.Repeat) : null;
+
         var transport = new BoxEl
         {
             Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -324,7 +341,7 @@ internal static partial class ClassicPlayerBar
         var centre = new BoxEl
         {
             Key = "centre", Grow = mini ? 0f : 1f, Shrink = mini ? 0f : 1f, MinWidth = 0f, Animate = ClassicPlayerBarLayout.MoveMotion,
-            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Margin = new Edges4(rowGap, 0f, 0f, 0f),
             // A drop on the transport is PLAY NEXT — a front-insert, never an immediate playback change. (Not on the mini bar's play disc.)
             DropTarget = mini ? null : Drop.Target<DragPayload>(Drag.Resource,
                 accepts: static p => p.CanCopyTracks,
@@ -339,19 +356,37 @@ internal static partial class ClassicPlayerBar
                 {
                     Key = "centre-column", Grow = mini ? 0f : 1f, Shrink = mini ? 0f : 1f, MinWidth = 0f,
                     MaxWidth = huge ? ClassicPlayerTiers.HugeCentreMaxW : float.NaN,
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = m.ClusterGap,
-                    Children = mini ? [transport] :
-                    [
-                        transport,
-                        new BoxEl
-                        {
-                            Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
-                            Gap = m.SeekGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = seekKids.ToArray(),
-                        },
-                    ],
+                    Direction = 0, AlignItems = FlexAlign.Center,
+                    Children = CentreColumn(),
                 },
             ],
         };
+
+        Element[] CentreColumn()
+        {
+            if (mini) return [transport];
+            var seekRow = new BoxEl
+            {
+                Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                Margin = new Edges4(m.ClusterGap, 0f, 0f, 0f),
+                Gap = m.SeekGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = seekKids.ToArray(),
+            };
+            var kids = new List<Element>(5);
+            if (huge)
+            {
+                if (shuffleSlot is not null) kids.Add(shuffleSlot);
+                kids.Add(transport);
+                if (repeatSlot is not null) kids.Add(repeatSlot);
+                kids.Add(seekRow);
+                return kids.ToArray();
+            }
+            kids.Add(transport);
+            kids.Add(seekRow);
+            float lead = rowGap + slack;
+            if (shuffleSlot is BoxEl s) { kids.Add(s with { Margin = new Edges4(lead, 0f, 0f, 0f) }); lead = m.RightGap; }
+            if (repeatSlot is BoxEl r) kids.Add(r with { Margin = new Edges4(lead, 0f, 0f, 0f) });
+            return kids.ToArray();
+        }
 
         // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · expand · ⋯ ──────────────────────
         // Every slot the LEVEL has is in the row at its fixed width (the core's `RightSlots`, in bit order) EXCEPT the
@@ -384,10 +419,10 @@ internal static partial class ClassicPlayerBar
             {
                 case RightSlot.Shuffle:
                     return Slot("shuffle", w, box, lit,
-                        BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, box, glyph));
+                        BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, box, glyph), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Repeat:
                     return Slot("repeat", w, box, lit,
-                        BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, box, glyph));
+                        BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, box, glyph), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Volume:
                 {
                     bool popup = v.VolumePopup;
@@ -451,7 +486,7 @@ internal static partial class ClassicPlayerBar
         for (int bit = 1; !mini && bit <= (int)RightSlot.More; bit <<= 1)
         {
             var slot = (RightSlot)bit;
-            if (huge && slot is RightSlot.Shuffle or RightSlot.Repeat) continue;   // the Huge transport carries them
+            if (slot is RightSlot.Shuffle or RightSlot.Repeat) continue;   // the centre column carries them (above)
             if ((v.Slots & slot) != 0) rightKids.Add(RightSlotOf(slot));
         }
 
@@ -460,11 +495,14 @@ internal static partial class ClassicPlayerBar
             ? new BoxEl
             {
                 Key = "right", MinWidth = ClassicPlayerTiers.HugeZoneW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Margin = new Edges4(rowGap, 0f, 0f, 0f),
                 Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
             }
             : new BoxEl
             {
-                Key = "right", Width = v.RightWidth, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                // With shuffle and repeat in the centre column the slack went with them: the box is its slots' width, one cluster gap after them.
+                Key = "right", Width = flanksRight ? float.NaN : v.RightWidth, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Margin = new Edges4(flanksRight ? m.RightGap : rowGap, 0f, 0f, 0f),
                 Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
             };
 
@@ -512,7 +550,7 @@ internal static partial class ClassicPlayerBar
                                 new BoxEl
                                 {
                                     Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center,
-                                    Gap = mini ? ClassicPlayerTiers.MiniGap : huge ? ClassicPlayerTiers.HugeRowGap : m.RowGap,
+                                    // The clusters' gaps are their own leading margins (the right box's depends on what precedes it).
                                     Padding = mini ? ClassicPlayerTiers.MiniPadding
                                         : huge ? new Edges4(ClassicPlayerTiers.HugeRowPad, 0f, ClassicPlayerTiers.HugeRowPad, 0f) : new Edges4(m.RowPad, 0f, m.RowPad, 0f),
                                     Animate = ClassicPlayerBarLayout.MoveMotion,
@@ -627,7 +665,7 @@ internal static partial class ClassicPlayerBar
     /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
     /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
     /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
-    private static BoxEl Slot(string key, float w, float h, bool lit, Element face) => new()
+    private static BoxEl Slot(string key, float w, float h, bool lit, Element face, LayoutTransition? motion = null) => new()
     {
         Key = key, Width = w, Height = h, Shrink = 0f,
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -635,7 +673,7 @@ internal static partial class ClassicPlayerBar
         // Opacity-only layout transition: a face lights or dims over the control-normal beat with NO bounds channel,
         // so the slot's rect (and every neighbour's) never moves. Element.Transition alone would snap here — the
         // reconciler routes it only through Enter/Exit synthesis, not a live static Opacity change.
-        Animate = ClassicPlayerBarLayout.FaceMotion,
+        Animate = motion ?? ClassicPlayerBarLayout.FaceMotion,
         Children = [face],
     };
 
