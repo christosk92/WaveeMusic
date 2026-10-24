@@ -10,6 +10,8 @@
 //     figure never shares a row it would have to shrink in).
 //   · FLAT, QUIET CHARTS. Square bars, the accent on the bar that matters (the peak, the newest week, the lit lens) and a neutral tint on the
 //     rest; the tempo a thin accent line with a whisper of fill over a hairline baseline, the median a hairline, the axis in the micro type.
+//   · ONE SCRUB TARGET. A bar strip (the weeks, the years) is one target the full strip wide and tall: hover, a press or a drag picks the bar
+//     under the pointer and its value reads over the strip at once; Left/Right move the pick; a tap runs the bar's lens (`SparkBars` Scrub).
 //   · EVERYTHING FITS. A head's trailing fact wraps under its label when the two do not fit one line; names, legend entries and pills trim.
 //
 // The core keeps the hooks, the settle, the lens verbs, the tooltips, the face pile and the all-artists flyout. Numbers: `ZuneFactsRules`.
@@ -47,6 +49,9 @@ internal static class ZuneFacts
             RestInk = Tok.TextPrimary with { A = F.SparkRestAlpha },
             BarCorners = CornerRadius4.All(0f), ColumnCorners = CornerRadius4.All(0f),
             HoverWash = R.Layer.ChromeHover, PressedWash = R.Layer.ChromePressed,
+            // One scrub target (the owner's call, V23): twelve weeks in a Compact sheet are 27-DIP columns, under the 40 a touch needs. The whole
+            // 56-DIP strip takes the finger, the bar under it is picked and its week reads over the strip, as Apple's Health charts do.
+            Scrub = true,
         },
         Density = static () => DensityPlot.DefaultStyle with
         {
