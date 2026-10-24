@@ -59,13 +59,22 @@ internal static class WinUiPanel
         _ => Loc.Get(Strings.Theme.Winui.Player.NowPlaying),
     };
 
-    /// <summary>The head: the tabs, then (when they do not all fit the pane's <paramref name="width"/>) the "⋯" that lists the rest, then the
-    /// close. The current tab always shows; the others keep their order and the first that does not fit moves, with the ones after it, into
-    /// the "⋯" (W-Queue-Small: "More pane tabs: Friends").</summary>
+    /// <summary>The head: the tabs, then (when they do not all fit the pane's width) the "⋯" that lists the rest, then the close. The current tab
+    /// always shows; the others keep their order and the first that does not fit moves, with the ones after it, into the "⋯" (W-Queue-Small:
+    /// "More pane tabs: Friends"). Its own component (<see cref="WinUiPaneHead"/>): it fits the width it is LAID OUT at, so a seam drag re-fits
+    /// the tabs under the pointer (the committed <paramref name="width"/> moves only on release), and only the head re-renders, only when the fit
+    /// changes.</summary>
     internal static Element Head(PanelProps props, PanelView view, PanelMode body, bool friends, bool compact, float width)
+        => Embed.Comp(new PaneHeadProps(props, view, body, friends, compact, width), static () => new WinUiPaneHead());
+
+    /// <summary>The head's inputs: the panel's props and view, the body on show, whether Friends is offered, Compact, the committed width.</summary>
+    internal sealed record PaneHeadProps(PanelProps Props, PanelView View, PanelMode Body, bool Friends, bool Compact, float Width);
+
+    /// <summary>The head's tabs in order and the verb that shows one (the pane's own tab group, the primary's modes, or none).</summary>
+    internal static List<PanelMode> HeadModesOf(PaneHeadProps p, out Action<PanelMode>? show)
     {
+        var (props, view, body, friends) = (p.Props, p.View, p.Body, p.Friends);
         var modes = new List<PanelMode>(5);
-        Action<PanelMode>? show;
         if (!view.Tabs.IsEmpty && props.ShowPaneTab is { } showPane)
         {
             // A pane of Huge's arrangement: its own tab group.
@@ -89,20 +98,39 @@ internal static class WinUiPanel
             show = null;
             modes.Add(body);
         }
+        return modes;
+    }
 
-        float close = compact ? F.CloseTouchBox : F.CloseBox;
-        // What fits: each tab's measured word (at least the touch floor) against the lane the close leaves; no text seam, every tab.
-        Span<float> widths = stackalloc float[modes.Count];
-        Span<bool> shown = stackalloc bool[modes.Count];
+    /// <summary>Each tab's word as drawn, measured (NaN where a word has no measure yet). Once per head render: a drag re-fits against these.</summary>
+    internal static float[] TabWidths(List<PanelMode> modes, PanelMode body)
+    {
+        var widths = new float[modes.Count];
         int current = Math.Max(0, modes.IndexOf(body));
-        bool measured = true;
-        for (int i = 0; i < modes.Count && measured; i++)
-        {
-            float w = Controls.NaturalWidth(Word(modes[i]), Label(modes[i], i == current));
-            measured = !float.IsNaN(w);
-            widths[i] = w;
-        }
-        if (!measured || !F.FitTabs(widths, current, F.TabLane(width, close), close, shown)) shown.Fill(true);
+        for (int i = 0; i < widths.Length; i++) widths[i] = Controls.NaturalWidth(Word(modes[i]), Label(modes[i], i == current));
+        return widths;
+    }
+
+    /// <summary>Which tabs the head shows in a pane <paramref name="width"/> wide, as bits (bit i: tab i shows): each tab's measured word (at least
+    /// the touch floor) against the lane the close leaves; every tab where they fit or a word has no measure. Allocates nothing.</summary>
+    internal static int FitMask(float[] widths, int current, bool compact, float width)
+    {
+        float close = compact ? F.CloseTouchBox : F.CloseBox;
+        int all = (1 << widths.Length) - 1;
+        for (int i = 0; i < widths.Length; i++) if (float.IsNaN(widths[i])) return all;
+        Span<bool> shown = stackalloc bool[widths.Length];
+        if (!F.FitTabs(widths, current, F.TabLane(width, close), close, shown)) return all;
+        int mask = 0;
+        for (int i = 0; i < shown.Length; i++) if (shown[i]) mask |= 1 << i;
+        return mask;
+    }
+
+    /// <summary>The head's tree for the fit <paramref name="mask"/> (<see cref="FitMask"/>); <paramref name="onBounds"/> reports the width it is
+    /// laid out at.</summary>
+    internal static Element HeadTree(PaneHeadProps p, List<PanelMode> modes, Action<PanelMode>? show, int mask, Action<RectF> onBounds)
+    {
+        var (props, body, compact) = (p.Props, p.Body, p.Compact);
+        float close = compact ? F.CloseTouchBox : F.CloseBox;
+        int current = Math.Max(0, modes.IndexOf(body));
 
         // Each tab stands in its own keyed slot (the 18 before it and the tab), so one that moves into or out of the "⋯" fades and eases its width
         // and the ones after it slide (F.TabMotion): a pane drag across the fit reads as motion, never a snap.
@@ -111,7 +139,7 @@ internal static class WinUiPanel
         LayoutTransition? motion = Design.Reduced ? null : F.TabMotion;
         for (int i = 0; i < modes.Count; i++)
         {
-            if (!shown[i]) { rest.Add(modes[i]); continue; }
+            if ((mask & (1 << i)) == 0) { rest.Add(modes[i]); continue; }
             tabs.Add(new BoxEl
             {
                 Key = F.TabSlotKeyPrefix + modes[i], Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, ClipToBounds = true, Animate = motion,
@@ -139,7 +167,7 @@ internal static class WinUiPanel
             Loc.Get(Strings.Theme.Winui.Player.ClosePane)));
         return new BoxEl
         {
-            Key = F.TabsKey, Direction = 1, Shrink = 0f,
+            Key = F.TabsKey, Direction = 1, Shrink = 0f, OnBoundsChanged = onBounds,
             Children =
             [
                 new BoxEl { Height = F.TabRowH, Direction = 0, AlignItems = FlexAlign.Center, Padding = F.TabRowPadding, Children = row.ToArray() },
@@ -246,6 +274,39 @@ internal static class WinUiPanel
     ];
 }
 
+/// <summary>The pane's head (<see cref="WinUiPanel.Head"/>): it re-fits its tabs to the width it is laid out at. The fit is a bit mask derived from
+/// that width (a memo over the words measured at render), so a seam drag re-renders the head only on the frames a tab crosses the fit, never per
+/// pointer move, and allocates nothing in between; the committed width fits until the first layout reports one.</summary>
+internal sealed class WinUiPaneHead : Component
+{
+    float[] _widths = [];
+    int _current;
+    bool _compact;
+    float _committed;
+    FloatSignal? _laid;
+    Action<RectF>? _onBounds;
+
+    public override Element Render()
+    {
+        var p = UseProps<WinUiPanel.PaneHeadProps>();
+        var modes = WinUiPanel.HeadModesOf(p, out var show);
+        _widths = WinUiPanel.TabWidths(modes, p.Body);
+        _current = Math.Max(0, modes.IndexOf(p.Body));
+        _compact = p.Compact;
+        _committed = p.Width;
+        var laid = _laid = UseFloatSignal(float.NaN);
+        _onBounds ??= r => { if (_laid is { } l && !(MathF.Abs(l.Peek() - r.W) <= 0.25f)) l.Value = r.W; };   // NaN until the first layout
+        // Subscribes the live width through the fit alone: a drag that crosses no tab's edge leaves the memo's value, and this head, alone.
+        var fit = UseComputed(() => WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(_laid!.Value)));
+        _ = fit.Value;
+        int mask = WinUiPanel.FitMask(_widths, _current, _compact, WidthOf(laid.Peek()));
+        return WinUiPanel.HeadTree(p, modes, show, mask, _onBounds);
+    }
+
+    /// <summary>The width the head fits: where it is laid out, else (before its first layout) the committed width.</summary>
+    float WidthOf(float laid) => float.IsFinite(laid) && laid > 0f ? laid : _committed;
+}
+
 /// <summary>The pane's frame: the surface, the slide, the crossfade, the head and the body on show. A component because the slide targets the
 /// rendered root and keeps its seeded-once flag across renders.</summary>
 internal sealed class WinUiPanelFrame : Component
@@ -344,6 +405,9 @@ internal sealed class WinUiPanelFrame : Component
             Key = sheet ? F.SheetKey : null,
             Direction = 1, Grow = sheet ? F.SheetShare : 1f, Basis = sheet ? 0f : float.NaN, MinHeight = 0f, ClipToBounds = true, ZStack = true,
             Corners = corners, HitTestVisible = open,                       // a closed pane is laid out off-canvas and unhittable
+            // A docked pane beside the primary that is closed (its tier docks none, or it slid out and let its body go) leaves the tree: its head
+            // was a second tab strip laid out under the primary's, clipped by its host, that `find` listed as shown.
+            Visible = bodyLive,
             BlocksBackgroundScroll = open && floating,
             // An overlay or a sheet swallows a click on its own empty room (the current tab, the gaps between rows): it must never fall through
             // to the frame's scrim underneath and close the pane.
