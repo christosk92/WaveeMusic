@@ -157,7 +157,8 @@ internal static class ZuneTrackChrome
         var sort = a.Sort;
         bool vertical = a.Vertical;
         var cells = new List<Element>(a.Tracks.Length);
-        void Add(string key, Element cell) => cells.Add(cell with { Key = key });
+        // The header's cells glide between lanes with the rows' (ZuneListRules.CellArrange: a crossing that changes the lanes re-lays the same cells).
+        void Add(string key, Element cell) => cells.Add(cell with { Key = key, Layout = ZuneListRules.CellArrange });
 
         if (!set.IndexHidden) Add(CellKey.Num, IndexSortCell(a, sort));
         if (set.Heart) Add(CellKey.Heart, new BoxEl());
@@ -412,41 +413,34 @@ internal static class ZuneTrackChrome
                 left = lead.ToArray();
                 view = rest.ToArray();
             }
+            // ONE row of keyed commands (audit B9): a command that changes group across a tier (the sort word leads the Compact bar) is reordered in place,
+            // never re-parented into another group's box (which rebuilt it). The groups are the order: [left] [gap or chips] [view] [find] [tail].
+            float leadShift = ZuneListRules.BarLeadShift(left.Length > 0 && left[0].Key is { } k0 && k0.StartsWith(ZuneListRules.PageLeadKeyPrefix, StringComparison.Ordinal),
+                RowMetrics.RowInset - DetailLayout.ToolbarSurfacePadX);
+            var kids = new List<Element>(left.Length + view.Length + tail.Length + 3);
+            // The first command's own left pad (and the page bar's inset) are drawn outside the list's x, so its glyph lands on it; an empty left group
+            // keeps its slot (and the gap after it) as an empty box.
+            if (left.Length == 0) kids.Add(new BoxEl { Key = "bar:left", Shrink = 0f, Margin = new Edges4(leadShift, 0f, 0f, 0f) });
+            for (int i = 0; i < left.Length; i++)
+                kids.Add(i == 0 && left[0] is BoxEl first ? first with { Margin = new Edges4(leadShift, 0f, 0f, 0f) } : left[i]);
+            kids.Add(middle is null
+                ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                : new BoxEl
+                {
+                    Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                    Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                });
+            kids.AddRange(view);
+            kids.Add(new BoxEl
+            {
+                Key = "bar:find", Direction = 1, Shrink = 0f,
+                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+            });
+            kids.AddRange(tail);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        // The first command's own left pad (and the page bar's inset) are drawn outside the list's x, so its glyph lands on it.
-                        Margin = new Edges4(ZuneListRules.BarLeadShift(left.Length > 0 && left[0].Key is { } k0 && k0.StartsWith(ZuneListRules.PageLeadKeyPrefix, StringComparison.Ordinal),
-                                                                         RowMetrics.RowInset - DetailLayout.ToolbarSurfacePadX), 0f, 0f, 0f),
-                        Children = left,
-                    },
-                    middle is null
-                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                        : new BoxEl
-                        {
-                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                        },
-                    new BoxEl
-                    {
-                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                        Children =
-                        [
-                            .. view,
-                            new BoxEl
-                            {
-                                Key = "bar:find", Direction = 1, Shrink = 0f,
-                                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
-                            },
-                            .. tail,
-                        ],
-                    },
-                ],
+                Children = kids.ToArray(),
             };
         }
 
