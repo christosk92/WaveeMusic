@@ -333,10 +333,10 @@ internal static partial class WinUiPlayerBar
             if (v.ShowTimesRemaining) seekKids.Add(new BoxEl { Key = "remaining", Shrink = 0f, Animate = PL.ItemMotion, Children = [props.TimeText(true)] });
             if (v.TopEdgeSweeps) seekKids.Add(new BoxEl { Key = "sweep", Grow = 1f, HitTestVisible = false });
         }
-        return v.TopEdgeSweeps
+        Element row = v.TopEdgeSweeps
             ? new BoxEl
             {
-                Key = PL.SeekRowKey, Height = PL.SeekRowH, Shrink = 0f, ZStack = true, Animate = PL.SeekRowMotion,
+                Height = PL.SeekRowH, Shrink = 0f, ZStack = true,
                 Children =
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.SeekGap, Children = seekKids.ToArray() },
@@ -349,9 +349,11 @@ internal static partial class WinUiPlayerBar
             }
             : new BoxEl
             {
-                Key = PL.SeekRowKey, Height = PL.SeekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.SeekGap,
-                Animate = PL.SeekRowMotion, Children = seekKids.ToArray(),
+                Height = PL.SeekRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.SeekGap, Children = seekKids.ToArray(),
             };
+        // The keyed box that comes and goes carries no size of its own (its row inside sets the 24): a leaving box with an authored size keeps its
+        // room while it fades, which held the Mini bar's centre column at the full bar's seek width until the fade ended, then snapped it.
+        return new BoxEl { Key = PL.SeekRowKey, Direction = 1, Shrink = 0f, Animate = PL.SeekRowMotion, Children = [row] };
     }
 
     /// <summary>The tools in the board's order (the core's slot bits are the presence; shuffle and repeat ride the transport).</summary>
