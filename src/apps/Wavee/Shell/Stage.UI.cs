@@ -96,7 +96,15 @@ public static partial class Stage
     /// SurfaceCore's constructor.</summary>
     public sealed class StageCtx
     {
-        public readonly Signal<Layout> Layout = new(Stage.Layout.Seed(1920f, 1080f));
+        /// <summary>The stage's layout: resolved from the window's size and the tiers the stage is drawn in by a MEMO SurfaceCore binds on its first
+        /// render (<see cref="BindLayout"/>), so a view that reads it beside the tier reads the layout OF that tier. An effect wrote it after the
+        /// views had already rendered against a new tier, and the plate drew one render of a form for the old tier's layout (audit B2z r3: the W640
+        /// crossing rebuilt the parts that form drops).</summary>
+        public IReadSignal<Layout> Layout => _layout;
+        IReadSignal<Layout> _layout = new Signal<Layout>(Stage.Layout.Seed(1920f, 1080f));
+
+        /// <summary>SurfaceCore's resolved layout (its first render, before any view reads it).</summary>
+        internal void BindLayout(IReadSignal<Layout> source) => _layout = source;
         public readonly Signal<Mode> Mode = new(Stage.Mode.Lyrics);
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
@@ -205,6 +213,7 @@ public static partial class Stage
     sealed class SurfaceCore : Component
     {
         readonly StageCtx _ctx = new();
+        Layout? _resolved;   // the stage layout last resolved (the classifier's hysteresis)
         readonly FloatSignal _frac = new(0f);
         readonly Action _onWake;
         // The idle machine + the counted menu hold (the device flyout, the "…" menu, the options popover and the TeachingTip each count
@@ -323,16 +332,19 @@ public static partial class Stage
                 _options = opened;
             };
 
-            // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
+            // ── the ONE layout, a memo (equality-gated, pulled glitch-free by whoever reads it) ──
             // The classifier's edges are the stage policy's, read tracked so another structure re-classifies the open stage in place; the
-            // budget's metrics are the window tier's (the stage fills the window), read tracked so a tier crossing re-allocates it.
-            UseSignalEffect(() =>
+            // budget's metrics are the window tier's (the stage fills the window), read tracked so a tier crossing re-allocates it. The
+            // classifier's hysteresis reads the last layout resolved.
+            ctx.BindLayout(UseComputed<Layout>(() =>
             {
                 var size = vp.Value;
                 var stage = ShellPolicy.Tracked.Stage;
                 var metrics = stage.MetricsFor(facts.Value.Tiers);
-                ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek(), stage.Aspect, metrics));
-            });
+                var next = Layout.Resolve(size.Width, size.Height, _resolved, stage.Aspect, metrics);
+                _resolved = next;
+                return next;
+            }));
             // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room
             //    for it, and a layout that has a gallery (only Card does) ──
             UseSignalEffect(() => ctx.ArtBars.SetIfChanged(ctx.Layout.Value.ArtBarsShown(ctx.Mode.Value)));
