@@ -4,12 +4,11 @@ using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>The panel glow's numbers: its colour at the peak per kind (the cover's hue at this saturation, value and alpha), how far down the panel it reaches,
-/// the shape of its fall, the edge.</summary>
+/// <summary>The FLOATING panel's (and the sheet's) plate numbers: the glow's colour at the peak per kind (the cover's hue at this saturation, value and alpha),
+/// how far down the panel it reaches, the shape of its fall, the scrim, the edge. A docked panel paints none of them (variant B).</summary>
 public static class ZunePanelWashRules
 {
-    public const string WashKey = "zune-panel-wash", EdgeKey = "zune-panel-edge", ScrimKey = "zune-panel-scrim", CardWashKey = "zune-panel-card-wash",
-        SurfaceKey = "zune-panel-surface";
+    public const string WashKey = "zune-panel-wash", EdgeKey = "zune-panel-edge", ScrimKey = "zune-panel-scrim", CardWashKey = "zune-panel-card-wash";
 
     public const float EdgeW = 1f;
 

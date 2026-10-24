@@ -63,7 +63,7 @@ public static class ZuneFrameContext
     public static readonly Context<Func<float>?> PanelTop = new(null);
 
     /// <summary>The docked panels' width now (the primary's reservation and every docked pane's; 0 while closed, floating or a sheet), read
-    /// live: their full-height surface runs up under the title bar's end, so the title bar keeps its pill off it.</summary>
+    /// live: the docked column lies under the title bar's end (the panels' head starts below it), so the title bar keeps its pill off it.</summary>
     public static readonly Context<Func<float>?> DockedWidth = new(null);
 }
 
@@ -89,21 +89,12 @@ internal static class ZuneFrame
             Children =
             [
                 .. props.Chords,
-                // The title bar and the body over the docked panels' full-height surface (design B): the scrim, the glow and the edge run from the
-                // window's top edge to the play bar, so the title bar's end sits on the panel's surface with no seam.
+                // The title bar and the body. A docked panel draws no plate (design B, variant B: the owner, 2026-10-24): the page's ground and wash run
+                // on under it from the window's top edge to the play bar, so nothing marks where the panel starts.
                 new BoxEl
                 {
-                    ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
-                    Children =
-                    [
-                        Embed.Comp(new ZunePanelSurfaceProps(props.Panel, docked), static () => new ZunePanelSurface())
-                            with { Visible = Prop.Of(props.ChromeMounted) },
-                        new BoxEl
-                        {
-                            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
-                            Children = [TitleBarSlot(props, in ctx, tiers, reduced), Body(props, in ctx, tiers, bandH)],
-                        },
-                    ],
+                    Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+                    Children = [TitleBarSlot(props, in ctx, tiers, reduced), Body(props, in ctx, tiers, bandH)],
                 },
                 // Between the page row and the play bar: its height is the reservation under the page while a selection shows it (Z-State-Rows).
                 ZuneSelectionDock.Slot(dockHost),
@@ -242,10 +233,9 @@ internal static class ZuneFrame
         }
     }
 
-    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating). Unpainted: the panels' full-height surface
-    /// under the column (<see cref="ZunePanelSurface"/>, as wide as every reservation) shows through it. Its width eases through real layout on the
-    /// panel's slide (the dock's 300 ms on the smooth-out curve, the surface's own motion), so the page column beside it gives up its width frame by
-    /// frame with the sliding panel instead of taking its final width at once and leaving the surface's ground bare beside it.</summary>
+    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide (0 while closed or floating). Unpainted: the page's ground and wash show
+    /// through it (a docked panel has no plate). Its width eases through real layout on the panel's slide (the dock's 300 ms on the smooth-out curve), so
+    /// the page column beside it gives up its width frame by frame with the sliding panel instead of taking its final width at once.</summary>
     private static Element Reservation(Func<float> width, bool reduced) => new BoxEl
     {
         Shrink = 0f, HitTestPassThrough = true,
@@ -253,7 +243,7 @@ internal static class ZuneFrame
         Animate = reduced ? null : ZunePanelTiers.ShiftMotion,
     };
 
-    /// <summary>The docked reservations' width now: the primary's and every docked pane's (the panels' full-height surface spans them).</summary>
+    /// <summary>The docked reservations' width now: the primary's and every docked pane's.</summary>
     private static float DockedWidth(ShellFrameProps props)
     {
         float w = props.RailReservedWidth();
