@@ -113,7 +113,7 @@ internal static partial class ZuneLibraryPage
     static Element SearchAlbumDetail(LibraryPageProps p, PageCache c)
     {
         var rows = TrackRows(p.Search!);
-        return PaneSection("s:detail", c.Layout) with
+        return PaneSection("s:detail", c) with
         {
             Children = [FacetHeader(Loc.Get(Strings.Search.Songs), p.Shimmer ? -1 : rows.Length, p.Awaiting),
                         SearchSkel(p, s_skelTrackRow, () => SearchScroll(rows))],

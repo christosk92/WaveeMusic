@@ -189,6 +189,8 @@
 // hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
 // A show's or an episode's vertical arm also carries `DetailFrameProps.TwoColumn` (the rail's props) and `DetailRailProps.Stacked`, so a structure can draw
 // one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
+// 1.76 (audit Z-LIB): the library's third column steps aside on the page's own width. `LibraryTierPolicy.PaneFromLayout` (the layout ladder's index from which the
+// pane stands beside the middle column; default 1, every split) and `LibraryPageProps.PaneBeside`; under it the host opens a picked grouped album's page.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -204,7 +206,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 69;
+    public const int Minor = 76;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

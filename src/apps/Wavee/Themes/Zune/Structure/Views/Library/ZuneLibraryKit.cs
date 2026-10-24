@@ -23,6 +23,10 @@ namespace Wavee.Themes.Zune;
 /// <summary>The words and parts Zune's library shares.</summary>
 internal static class ZuneLibraryKit
 {
+    /// <summary>The page's pane rung (<see cref="LibraryPageProps.PaneBeside"/>), provided around the artists' reader so its board draws the picked album's pane beside its middle
+    /// column, or lets it step aside, on the same ladder as the grouped albums. Outside a provider (the drill-in) it reads true.</summary>
+    public static readonly Context<bool> PaneBeside = new(true);
+
     /// <summary>The selection swap: the leaving pane fades out as an exit orphan (drawn UNDER the live tree) while the entering one rises 6 DIP into place. Opacity only
     /// (a page-sized subtree is the blur-group perf cliff); faster out than in, so the new album never waits for the old one.</summary>
     public static readonly LayoutTransition PaneSwap = new(

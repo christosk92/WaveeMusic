@@ -6,6 +6,14 @@
 //
 // It draws from the reader host's seam (`IArtistReaderHost`: the band, the releases, the verbs, the album pane); the block list, the spine and the sub-rail stay the Compact
 // drill-in's (the old reader arm), where the board draws a list only.
+//
+// THE PANE'S RUNG. The page's layout ladder says whether the third column stands beside the middle one (`ZuneLibraryKit.PaneBeside`, the page's `PaneBeside`): under the
+// rung the pane steps aside as Small's board draws it (the middle column eases to its width, the pane cross-fades out) and a cover opens its album's page instead of
+// filling a pane nobody sees; at and over it the middle column never goes under `BoardMidMin`, so the hero's verbs stand as words and the covers stay board-sized.
+//
+// THE HERO. Its plate is the record's height for every artist (a selection never moves the grid). The name is a detail hero (owner exception 2026-10-21): the record's
+// step on one line, else smaller on one line down to half the step, else two lines at that floor (the one-line block), then an ellipsis. The verbs are play all, shuffle,
+// go to artist and the Follow toggle: a lane too narrow for their words keeps play all's word and names shuffle and go-to by their tooltips (the rings keep their nodes).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -37,10 +45,12 @@ internal static partial class ZuneLibraryArtistReader
     sealed class BoardView : Component
     {
         readonly Signal<int> _picked = new(-1);
+        bool _drawn;
 
         public override Element Render()
         {
             var bp = UseProps<BoardProps>();
+            bool beside = UseContext(ZuneLibraryKit.PaneBeside);
             var host = bp.Reader.Host;
             var l = bp.Layout;
             var band = host.ReadBand();
@@ -50,9 +60,10 @@ internal static partial class ZuneLibraryArtistReader
             for (int i = 0; i < releases.Count; i++) if (releases[i].AlbumSlot == picked) has = true;
             if (!has) picked = releases.Count > 0 ? releases[0].AlbumSlot : -1;
 
+            // The middle column eases its width when the pane steps in or aside (its covers and the hero ride every tick).
             var mid = new BoxEl
             {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                Key = "board:mid", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Animate = LR.ColumnResize,
                 Children =
                 [
                     new ScrollEl
@@ -61,18 +72,21 @@ internal static partial class ZuneLibraryArtistReader
                         Content = new BoxEl
                         {
                             Direction = 1, Gap = LR.BoardGap, MinWidth = 0f,
-                            Children = [Hero(host, in band, l), AlbumsHeading(), Grid(releases, picked, _picked, l)],
+                            Children = [Hero(host, in band, l), AlbumsHeading(), Grid(releases, picked, _picked, beside)],
                         },
                     },
                 ],
             };
             var kids = new List<Element>(2) { mid };
-            if (l.GroupPane && picked > 0)
+            if (beside && picked > 0)
                 kids.Add(new BoxEl
                 {
                     Key = LR.PaneKey, Direction = 1, Width = l.PaneW, MinWidth = l.PaneW, Shrink = 0f, ClipToBounds = true,
+                    // The pane steps in and aside on the shared cross-fade, once the board has drawn (the page's own entrance brings the first one).
+                    Enter = ZuneMotion.SwapEnter(_drawn), Exit = ZuneMotion.SwapFade,
                     Children = [host.AlbumPane(picked) with { Key = "board:pane:" + picked }],
                 });
+            _drawn = true;
             return new BoxEl { Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Gap = l.ColGap, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
         }
     }
@@ -114,12 +128,16 @@ internal static partial class ZuneLibraryArtistReader
                             Direction = 1, Gap = LR.HeroNameGap, MinWidth = 0f,
                             Children =
                             [
+                                // The detail hero's fit (owner exception 2026-10-21): the step on one line, else smaller on one line down to the floor, else two
+                                // lines at the floor, whose block is the one full-size line's (the line scales with the size), then an ellipsis.
                                 new TextEl(named ? a.Name : "…")
                                 {
                                     Size = l.HeroNameSize, LineHeight = l.HeroNameSize * LR.HeroNameLine, Weight = LR.HeroNameWeight, FontFamily = R.Type.DisplayFace,
-                                    Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                    Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                                    MinSize = l.HeroNameSize * LR.HeroNameFloorShare, FitMode = TextFitMode.OneLineFirst,
                                 },
-                                HeroVerbs(host, uri, name),
+                                // The verbs measure their lane: the words where they fit, else play all's word and the other rings named by their tooltips.
+                                Responsive.Of("board:verbs", LR.HeroVerbWords, words => HeroVerbs(host, uri, name, words), fallback: LR.HeroVerbsWordsW),
                             ],
                         },
                     ],
@@ -136,14 +154,16 @@ internal static partial class ZuneLibraryArtistReader
         return library.Length > 0 ? kind + " · " + library : kind;
     }
 
-    static Element HeroVerbs(IArtistReaderHost host, string uri, string? name) => new BoxEl
+    /// <summary>Play all · shuffle · go to artist · the Follow toggle. <paramref name="words"/> false (a lane under <see cref="LR.HeroVerbsWordsW"/>): play all keeps its word and
+    /// shuffle and go-to are rings named by their tooltips. Their wrapper is the same either way (<c>stableName</c>), so the lane crossing its width keeps every node.</summary>
+    static Element HeroVerbs(IArtistReaderHost host, string uri, string? name, bool words) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Artist.ReaderShape.ActionGap, MinWidth = 0f, Shrink = 0f, Height = Artist.ReaderShape.ActionH,
         Children =
         [
             ZuneDiscoveryKit.Ring("reader-play-all", Icons.Play, Loc.Get(Strings.Library.PlayAll), showLabel: true, primary: true, host.PlayAll),
-            ZuneDiscoveryKit.Ring("reader-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: true, primary: false, host.ShuffleAll),
-            ZuneDiscoveryKit.Ring("reader-go-artist", Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), showLabel: true, primary: false, host.GoArtist),
+            ZuneDiscoveryKit.Ring("reader-shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), showLabel: words, primary: false, host.ShuffleAll, stableName: true),
+            ZuneDiscoveryKit.Ring("reader-go-artist", Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), showLabel: words, primary: false, host.GoArtist, stableName: true),
             Follow(uri, name),
         ],
     };
@@ -166,16 +186,28 @@ internal static partial class ZuneLibraryArtistReader
         ],
     };
 
-    static Element Grid(IReadOnlyList<ArtistReaderRelease> releases, int picked, Signal<int> pick, ZuneLibraryLayout l)
+    /// <summary>The releases, three covers a row. A cover picks its album for the pane while the pane stands <paramref name="beside"/>; with the pane aside it opens the album's
+    /// page.</summary>
+    static Element Grid(IReadOnlyList<ArtistReaderRelease> releases, int picked, Signal<int> pick, bool beside)
     {
         var cards = new Element[releases.Count];
-        for (int i = 0; i < cards.Length; i++) cards[i] = Card(releases[i].AlbumSlot, releases[i].AlbumSlot == picked, pick);
+        for (int i = 0; i < cards.Length; i++) cards[i] = Card(releases[i].AlbumSlot, releases[i].AlbumSlot == picked, pick, beside);
         var cols = new TrackSize[LR.BoardCols];
         for (int i = 0; i < cols.Length; i++) cols[i] = TrackSize.Star(1f);
         return new GridEl { Columns = cols, ColGap = LR.BoardGridGap, RowGap = LR.BoardGridGap, Shrink = 0f, Children = cards };
     }
 
-    static Element Card(int slot, bool selected, Signal<int> pick)
+    /// <summary>The cover's title on one line (the boards'); a name the cover's width trims names itself in a tooltip.</summary>
+    static Element CardTitle(string title, bool selected)
+    {
+        TextEl text = R.Type.DenseMeta(title) with
+        {
+            Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+        };
+        return Controls.TrimTip(new BoxEl { Direction = 1, MinWidth = 0f, Children = [text] }, title, text);
+    }
+
+    static Element Card(int slot, bool selected, Signal<int> pick, bool beside)
     {
         var album = new Album(slot);
         bool known = album.IsValid && album.Knows(AlbumFields.Title);
@@ -203,7 +235,8 @@ internal static partial class ZuneLibraryArtistReader
         return new BoxEl
         {
             Key = "board:card:" + slot, Direction = 1, Gap = LR.CardNameGap, MinWidth = 0f,
-            Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => pick.Value = slot,
+            Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
+            OnClick = beside ? () => pick.Value = slot : () => Track.GoToAlbum(album),
             Children =
             [
                 art,
@@ -212,7 +245,7 @@ internal static partial class ZuneLibraryArtistReader
                     Direction = 1, Gap = 1f, MinWidth = 0f,
                     Children =
                     [
-                        R.Type.DenseMeta(title) with { Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        CardTitle(title, selected),
                         R.Type.MicroMeta(line) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                     ],
                 },

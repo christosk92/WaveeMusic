@@ -56,6 +56,11 @@ public sealed record LibraryTierPolicy
     /// an album's page when it is picked (default Compact: the pane is drawn at every split tier). Contract addition after 1.33.</summary>
     public WidthTier GroupPaneFrom { get; init; } = WidthTier.Compact;
 
+    /// <summary>The index of the layout ladder (<see cref="LibraryLadders.Layout"/>, measured on the page's own width) from which the split page draws its THIRD column: the pane beside
+    /// the middle one (the grouped albums' songs, the artist board's picked album). Under it the pane steps aside and the middle column takes its width; the host then opens a picked
+    /// album's page (<see cref="LibraryPageProps.PaneBeside"/> says which). Default 1: every split layout draws the pane. Contract 1.76 (audit Z-LIB).</summary>
+    public int PaneFromLayout { get; init; } = 1;
+
     /// <summary>The structure draws the PODCASTS library as the board does: "your episodes" as a pinned first row of the shows list, the episodes feed (or the picked show) beside it, and no
     /// mode words in the head. The host then opens on Your Episodes until a show has been picked, and a show picked in the list switches back to its pane; false (the default,
     /// Classic's) leaves the two mode words and their swap as they were. Contract addition after 1.34.</summary>

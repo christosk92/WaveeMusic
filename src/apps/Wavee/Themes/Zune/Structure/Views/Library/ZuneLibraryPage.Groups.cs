@@ -30,7 +30,7 @@ internal static partial class ZuneLibraryPage
     static Element GroupColumn(LibraryPageProps p, ZuneLibraryLayout l)
         => new BoxEl
         {
-            Key = LR.GroupsKey, Direction = 1, Width = l.GroupW, MinWidth = l.GroupW, Shrink = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize,
+            Key = LR.GroupsKey, Direction = 1, Width = l.GroupW, MinWidth = l.GroupW, Shrink = 0f, ClipToBounds = true, Animate = LR.ColumnResize,
             Children = [Embed.Comp(l, () => new GroupsView(p.Groups!)) with { Key = "lib:groups:list" }],
         };
 

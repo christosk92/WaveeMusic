@@ -25,8 +25,10 @@ public readonly partial struct User
         bool GroupingOn => _entity == EntityKind.Album && ShellPolicy.Tracked.LibraryTiers.GroupAlbumsByArtist
                            && !(_layoutTier is { } tier && Theming.LibraryLadders.IsSingleColumn(tier.Value));
 
-        /// <summary>The grouping is live but this content tier draws no songs pane (`LibraryTierPolicy.GroupPaneFrom`).</summary>
-        bool GroupPaneHidden => GroupingOn && (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.Content < ShellPolicy.Now.LibraryTiers.GroupPaneFrom;
+        /// <summary>The grouping is live but the page draws no songs pane: this content tier is under `LibraryTierPolicy.GroupPaneFrom`, or the page's layout tier under
+        /// `LibraryTierPolicy.PaneFromLayout` (the pane stepped aside).</summary>
+        bool GroupPaneHidden => GroupingOn && ((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.Content < ShellPolicy.Now.LibraryTiers.GroupPaneFrom
+                                               || (_layoutTier is { } tier && tier.Peek() < ShellPolicy.Now.LibraryTiers.PaneFromLayout));
 
         LibraryGroupsProps GroupsProps() => _groupsProps ??= new LibraryGroupsProps(ReadGroups, PickGroup)
         {
