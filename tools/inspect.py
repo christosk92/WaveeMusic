@@ -215,8 +215,18 @@ def lint_head(lint):
 
 
 def findings_text(reply):
-    """A `lint` reply, or the lint inside a `crossing` reply, as text lines (None when the reply carries no findings)."""
+    """A `lint` reply, or the lint inside a `crossing` reply, as text lines (None when the reply carries no findings). A `crossings`
+    batch prints each row's crossing, headed by the row (theme route edge dir)."""
     obj = json.loads(reply)
+    if obj.get("cmd") == "crossings" and isinstance(obj.get("crossings"), list):
+        parts = []
+        for row in obj["crossings"]:
+            r = row.get("row", {})
+            parts.append("== %s %s %s %s ==" % (r.get("theme", ""), r.get("route", ""), r.get("edge", ""), r.get("dir", "")))
+            text = findings_text(json.dumps(row)) if row.get("ok", False) else "ok:false: " + row.get("error", "")
+            if text:
+                parts.append(text)
+        return "\n".join(parts)
     lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
     if not isinstance(lint.get("findings"), list):
         return None
@@ -402,6 +412,11 @@ class Gate:
             self.failed.append((obj.get("cmd", ""), obj.get("error", "")))
             return
         cmd = obj.get("cmd", "")
+        if cmd == "crossings" and isinstance(obj.get("crossings"), list):
+            # the batch: every row is a whole `crossing` reply, judged as one (its lint, its motion, an ok:false row)
+            for row in obj["crossings"]:
+                self.see(json.dumps(row))
+            return
         lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
         n = self.lints + 1
         if isinstance(lint.get("findings"), list):

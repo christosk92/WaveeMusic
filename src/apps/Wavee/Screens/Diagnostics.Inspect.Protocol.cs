@@ -491,7 +491,7 @@ public static partial class Diagnostics
                     Arg("routes", ArgType.List, "the pages: a route key, a spotify: uri, or album|artist|playlist|show|episode (the fixtures al2, ar3, pl0, sh0, ep0)", "home,album,artist,playlist"),
                     Arg("edges", ArgType.List, "only these edges, by name (W1008, H720; tiers lists them)"),
                     Arg("dirs", ArgType.Enum, "narrowing, widening or both", "both", "both|narrow|widen"),
-                    Arg("control", ArgType.Bool, "first cross 16 DIP inside the old tier (the baseline of the edge's counts)", "false"),
+                    Arg("control", ArgType.Bool, "each crossing's own control step (crossing's control: the excess counts what the edge adds over a plain resize)", "true"),
                     Arg("w", ArgType.Float, "the width a height edge is crossed at", "1440"),
                     Arg("h", ArgType.Float, "the height a width edge is crossed at", "960"),
                     Arg("theme", ArgType.Enum, "the theme (default: the active one)", null, ThemeChoices),

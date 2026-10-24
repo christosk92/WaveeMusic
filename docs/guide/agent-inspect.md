@@ -832,7 +832,8 @@ over home, album, artist and playlist take about 2.5 minutes, against a fresh se
 audit's 104). Per row it mounts afresh inside the old tier (`mount` sizes from `tiers`: `at + 64` narrowing, `at - 64` widening; a
 height edge at width `w` 1440, a width edge at height `h` 960), then runs one `crossing` from the old side to the new side with
 `frames=1`: narrowing from `at - narrowHold + 8` to `at - narrowHold - 8`, widening from `at + widenHold - 8` to `at + widenHold + 8`
-(the motion audit's sizes). `control=true` first crosses 16 DIP inside the old tier, the baseline an edge's counts compare with.
+(the motion audit's sizes). Each crossing runs its own control step (`crossing`'s `control`, on unless you pass `control=false`), so its
+`counts.excessSnapped`/`excessJumped` are what the edge adds over a plain resize of the same distance.
 
 | Arg | Effect |
 |---|---|
@@ -843,9 +844,12 @@ height edge at width `w` 1440, a width edge at height `h` 960), then runs one `c
 | `items` | Entries per list in each crossing reply (8). The lint options (`min` defaults to `error` here, `rules`, ...) pass on to every crossing. |
 
 The reply: `rows`, `failed` (crossings that answered ok:false), `ms`, `table[]` (one line per row: `route, edge, dir, ok, before,
-after` as window/height/content tiers, `contentCommitted`, `glided, snapped, jumped, remounted, vanished, appeared, ms`) and
+after` as window/height/content tiers, `contentCommitted`, `glided, snapped, jumped, excessSnapped, excessJumped, remounted,
+remountedOutside, vanished, appeared, unpainted, ms`) and
 `crossings[]`: every crossing reply exactly as `crossing` writes it, with a `row {theme, route, edge, axis, dir, mount, old, new,
-control?, ms}` member first, so whatever reads a `crossing` reply (the gate) reads these the same way.
+ms}` member first, so whatever reads a `crossing` reply reads these the same way: `inspect.py --gate` judges every row as a crossing
+(its lint, its excess moves, its remounts outside a swap family, an ok:false row), and `--findings` prints each row's crossing headed
+`== theme route edge dir ==`.
 
 ```json
 {"cmd":"crossings","args":{"theme":"winui","routes":["home","album","artist","playlist"]},"id":4}

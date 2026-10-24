@@ -9,11 +9,11 @@
 // narrowing and `WidenHold` above it on widening (`TierEdge`). A narrowing row mounts at `At + 64` (well inside the upper tier),
 // resizes to the OLD side `At - NarrowHold + 8` (still held) and crosses to the NEW side `At - NarrowHold - 8`; a widening row
 // mounts at `At - 64`, walks to `At + WidenHold - 8` and crosses to `At + WidenHold + 8`. A height edge does the same on the height
-// at the fixed width `w`, a width edge at the fixed height `h`. `control=true` first crosses 16 DIP inside the old tier (old side
-// + 16 to the old side, narrowing; - 16 widening), the baseline motion.md's "control s/j" column reads.
+// at the fixed width `w`, a width edge at the fixed height `h`. Each crossing runs its own control step (`crossing`'s `control`, on unless
+// `control=false` is passed on): its `counts.excess*` are what the edge adds over a plain resize of the same distance.
 //
 // THE REPLY. `crossings[]` holds every crossing's reply exactly as `crossing` writes it (the gate reads that shape), with a `row`
-// object spliced in front: {theme, route, edge, axis, dir, mount, old, new, control?, ms}. `table[]` is one line per row (the tiers
+// object spliced in front: {theme, route, edge, axis, dir, mount, old, new, ms}. `table[]` is one line per row (the tiers
 // before and after, contentCommitted and the counts), `failed` counts the rows whose crossing answered ok:false.
 
 using System.Buffers;
@@ -178,7 +178,6 @@ public static partial class Diagnostics
             if (routes.Count == 0) routes = ["home", "album", "artist", "playlist"];
             List<string> only = a.List("edges");
             string dirs = a.Str("dirs", "both");
-            bool control = a.Bool("control", false);
             float fixedW = a.Float("w", 1440f), fixedH = a.Float("h", 960f);
             var edges = EdgesOf(policy);
             if (only.Count > 0) edges.RemoveAll(e => !only.Contains(e.Name, StringComparer.OrdinalIgnoreCase));
@@ -206,26 +205,19 @@ public static partial class Diagnostics
                         foreach (string pass in (ReadOnlySpan<string>)["kind", "gpu", "scale", "images", "grade"])
                             if (a.TryGet(pass, out Inspect.Value v)) mountArgs.Set(pass, v);
                         var (mw, mh) = Size(mount);
-                        string row(string? controlOf, long ms) => RowJson(theme, route, edge, narrow, Size(mount), Size(old), Size(@new), controlOf, ms);
+                        string row(long ms) => RowJson(theme, route, edge, narrow, Size(mount), Size(old), Size(@new), ms);
                         if (!MountShell(mountArgs, mw, mh, out string error, out _))
                         {
                             failed++;
-                            replies.Add(Splice(Inspect.Reply.Fail(id, "crossing", "the row's mount failed: " + error), row(null, clock.ElapsedMilliseconds - t0)));
+                            replies.Add(Splice(Inspect.Reply.Fail(id, "crossing", "the row's mount failed: " + error), row(clock.ElapsedMilliseconds - t0)));
                             continue;
                         }
                         Settle(a.Int("max", 600));
-                        if (control)
-                        {
-                            var (cw, ch) = Size(narrow ? old + 16f : old - 16f);
-                            string controlReply = Crossing(id, "crossing", CrossingArgs(a, cw, ch, Size(old).W, Size(old).H));
-                            replies.Add(Splice(controlReply, row("control", clock.ElapsedMilliseconds - t0)));
-                            if (controlReply.Contains("\"ok\":false", StringComparison.Ordinal)) failed++;
-                        }
                         var (ow, oh) = Size(old);
                         var (nw, nh) = Size(@new);
                         string reply = Crossing(id, "crossing", CrossingArgs(a, ow, oh, nw, nh));
                         long elapsed = clock.ElapsedMilliseconds - t0;
-                        replies.Add(Splice(reply, row(null, elapsed)));
+                        replies.Add(Splice(reply, row(elapsed)));
                         if (reply.Contains("\"ok\":false", StringComparison.Ordinal)) failed++;
                         table.Add(TableRow(reply, route, edge.Name, narrow, elapsed));
                     }
@@ -258,6 +250,7 @@ public static partial class Diagnostics
             args.Set("max", new Inspect.Value(Inspect.ValueKind.Number, Num: batch.Int("max", 600)));
             foreach (string n in batch.Names)
                 if (Inspect.IsCrossingLintArg(n) && batch.TryGet(n, out Inspect.Value v)) args.Set(n, v);
+            if (batch.TryGet("control", out Inspect.Value control)) args.Set("control", control);   // the crossing's own control step (on by default)
             if (!batch.Has("min")) args.Set("min", new Inspect.Value(Inspect.ValueKind.String, "error"));
             return args;
         }
@@ -265,9 +258,9 @@ public static partial class Diagnostics
         /// <summary>`reply` with `"row":{...}` spliced in as its first member (the reply's own shape is kept whole).</summary>
         static string Splice(string reply, string rowMember) => reply.Length > 1 && reply[0] == '{' ? "{" + rowMember + "," + reply[1..] : reply;
 
-        /// <summary>`"row":{theme, route, edge, axis, dir, mount, old, new, control?, ms}`.</summary>
+        /// <summary>`"row":{theme, route, edge, axis, dir, mount, old, new, ms}`.</summary>
         static string RowJson(string theme, string route, EdgeRow edge, bool narrow, (float W, float H) mount, (float W, float H) old, (float W, float H) @new,
-            string? control, long ms)
+            long ms)
             => Fragment(w =>
             {
                 w.WriteStartObject("row");
@@ -279,13 +272,12 @@ public static partial class Diagnostics
                 w.WriteString("mount", Dip(mount.W) + "x" + Dip(mount.H));
                 w.WriteString("old", Dip(old.W) + "x" + Dip(old.H));
                 w.WriteString("new", Dip(@new.W) + "x" + Dip(@new.H));
-                if (control is not null) w.WriteString("control", control);
                 w.WriteNumber("ms", ms);
                 w.WriteEndObject();
             });
 
         /// <summary>One `table` line read back from a crossing reply: route, edge, dir, the tiers before and after (window/height/content),
-        /// contentCommitted, and the counts.</summary>
+        /// contentCommitted, and the counts (the excess ones: what the edge adds over the crossing's control step; remounts outside a swap family).</summary>
         static string TableRow(string reply, string route, string edge, bool narrow, long ms)
         {
             using JsonDocument doc = JsonDocument.Parse(reply);
@@ -306,7 +298,8 @@ public static partial class Diagnostics
                 if (r.TryGetProperty("contentCommitted", out JsonElement cc)) w.WriteString("contentCommitted", cc.GetString());
                 if (r.TryGetProperty("counts", out JsonElement counts))
                     foreach (JsonProperty p in counts.EnumerateObject())
-                        if (p.Name is "snapped" or "jumped" or "glided" or "remounted" or "vanished" or "appeared") w.WriteNumber(p.Name, p.Value.GetInt32());
+                        if (p.Name is "snapped" or "jumped" or "excessSnapped" or "excessJumped" or "glided" or "remounted" or "remountedOutside" or "vanished" or "appeared" or "unpainted")
+                            w.WriteNumber(p.Name, p.Value.GetInt32());
                 if (r.TryGetProperty("error", out JsonElement err)) w.WriteString("error", err.GetString());
                 w.WriteNumber("ms", ms);
                 w.WriteEndObject();
