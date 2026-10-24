@@ -83,8 +83,10 @@ internal static class ClassicRowCells
             cells[i++] = NumberCell(displayIndex, in st, withheld ? null : o.OnPlay, o.HoverPaused, o.ChartStatus, classic,
                                     o.Accent, CellKey.Num);
 
+        // The control cell (no clip), like the trailing heart's: the 28 heart fills its 28 lane, so a clipping cell cut the host's Compact hit
+        // slop to 28 wide (a 28 x 40 target under the 40 floor: Recents' rows at 520, audit B6b).
         if (set.Heart)
-            cells[i++] = Track.RowCenterCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);
+            cells[i++] = Track.RowControlCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);
 
         if (set.Thumb)
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, Radii.Control,

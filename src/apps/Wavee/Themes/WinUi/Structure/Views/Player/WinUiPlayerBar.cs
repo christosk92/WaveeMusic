@@ -71,6 +71,8 @@ internal static partial class WinUiPlayerBar
         var begin = rc.UseContext(SharedTransition.Begin);
         var barNode = rc.UseRef<NodeHandle>(default);
         float artScale = rc.UseContext(Viewport.Scale);
+        var marquees = rc.UseRef<Marquee.Group?>(null);   // the title and the artists: one line moves at a time, the title first
+        marquees.Value ??= new Marquee.Group();
 
         // The heart pops on the same playable's save edge only, on the captured node.
         int playingSlot = v.Face.IsNone ? 0 : v.Face.Slot;
@@ -95,7 +97,7 @@ internal static partial class WinUiPlayerBar
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
         // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
-        var meta = MetaColumn(props, v, mini, titleLinkHover, metaNode);
+        var meta = MetaColumn(props, v, mini, titleLinkHover, metaNode, marquees.Value);
         var art = new BoxEl
         {
             Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, ZStack = true, Animate = PL.MoveMotion,
@@ -364,8 +366,10 @@ internal static partial class WinUiPlayerBar
 
     /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).
     /// Each line is one slot of the column's width: a line that does not fit ends in an ellipsis with its full text in a tooltip, or, with
-    /// the app's marquee setting on, the title and the artists scroll (Classic's trigger: always, ping-pong, the two lines on one cycle).</summary>
-    private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
+    /// the app's marquee setting on, the title and the artists are marquees of one group (the start at rest, a pass now and then, one line moving
+    /// at a time).</summary>
+    private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
+                                    Marquee.Group marquees)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
         Prop<ColorF> titleInk = Prop.Of(() => !mini && titleLinkHover.Value && props.TitleHasRoute() ? Tok.AccentTextPrimary : InkOf(props.TitleInk()));
@@ -374,12 +378,13 @@ internal static partial class WinUiPlayerBar
             Size = PL.TitleSize, LineHeight = PL.TitleLine, Weight = PL.TitleWeight, Color = titleInk,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
+        long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
         // A column of the slot's width (never wider: Shrink), so the run is cut by its own ellipsis, not by the column's clip.
         BoxEl title = v.Marquee
             ? new BoxEl
             {
                 Key = titleKey, Height = PL.TitleLine, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f,
-                Children = [Marquee.Of(Prop.Of<string>(props.TitleText), MarqueeStyle(PL.TitleSize, PL.TitleWeight, titleInk))],
+                Children = [Marquee.Of(Prop.Of<string>(props.TitleText), MarqueeStyle(PL.TitleSize, PL.TitleWeight, titleInk), marquees, order: 0, identity: face)],
             }
             : new BoxEl { Key = titleKey, Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [titleRun] };
         if (v.TitleNav && !mini)
@@ -407,7 +412,11 @@ internal static partial class WinUiPlayerBar
                 ? new BoxEl
                 {
                     Key = artistsKey, Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Children = [Marquee.Content(() => new WinUiCreditsRun(credits), MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)))],
+                    Children =
+                    [
+                        Marquee.Content(Embed.Comp(credits, static () => new WinUiCreditsRun()), Prop.Of(() => props.Credits().Line(PL.CreditSeparator)),
+                                        MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)), marquees, order: 1, identity: face),
+                    ],
                 }
                 : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] };
             // The swap rides an outer box of no set height: the marquee's line has one, and the layout reads an exit with a set height as one that
@@ -435,13 +444,10 @@ internal static partial class WinUiPlayerBar
         };
     }
 
-    /// <summary>The bar's marquee: Classic's trigger and park rules (always on, ping-pong, the title and the artists on one cycle; the
-    /// engine parks it while the window is covered) at WinUI's type.</summary>
+    /// <summary>The bar's marquee look at WinUI's type: its pace and its cut edge's fade (the behaviour is the engine control's).</summary>
     static Marquee.Style MarqueeStyle(float size, ushort weight, Prop<ColorF> ink) => new()
     {
-        FontSize = size, Weight = weight, Foreground = ink,
-        Speed = PL.MarqueeSpeed, CycleMs = PL.MarqueeCycleMs, EndPauseMs = PL.MarqueeEndPauseMs, StartDelayMs = PL.MarqueeStartDelayMs,
-        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
+        FontSize = size, Weight = weight, Foreground = ink, Speed = PL.MarqueeSpeed, FadeBand = PL.MarqueeFade,
     };
 
     static ColorF InkOf(NowPlayingInk ink) => ink switch

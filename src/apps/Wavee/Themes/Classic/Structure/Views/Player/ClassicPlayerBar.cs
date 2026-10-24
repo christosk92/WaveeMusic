@@ -58,7 +58,7 @@ internal static partial class ClassicPlayerBar
         float artSize = huge ? ClassicPlayerTiers.HugeArt : m.ArtSize;
 
         // ── hooks (positional, stable order) ──
-        var titleLinkHover = rc.UseSignal(false);      // the title's link ink (the marquees scroll unattended)
+        var titleLinkHover = rc.UseSignal(false);      // the title's link ink
         var likeNode = rc.UseRef<NodeHandle>(default);
         var likePrevious = rc.UseRef((0, false));
         var metaNode = rc.UseRef<NodeHandle>(default);            // the text block the face swap cross-fades
@@ -70,13 +70,11 @@ internal static partial class ClassicPlayerBar
         var begin = rc.UseContext(SharedTransition.Begin);   // the Expand door opens the fullscreen stage with the art's flight captured first (null headless)
         var barNode = rc.UseRef<NodeHandle>(default);
         float artScale = rc.UseContext(Viewport.Scale);
+        // The title and the artists are marquees of one group (the engine control: the start at rest, two passes after a track change,
+        // a pass on hover, one line moving at a time, the title first; nothing moves while the window is covered).
+        var marquees = rc.UseRef<Marquee.Group?>(null);
+        marquees.Value ??= new Marquee.Group();
 
-        // F239: an unattended title is a perpetual compositor loop. It stays ALWAYS on every GPU tier and beside a playing
-        // video (motion policy, 2026-10-03: a visible title is not throttled for the hardware it runs on or for what
-        // plays next to it); what the engine does instead is pose it in whole device pixels at the display rate, so a
-        // frame in which the text has not crossed a pixel edge is byte-identical and elided, and park it only while the
-        // window is covered or cloaked (Marquee.Style.ParkWhenOccluded, default on).
-        const Marquee.TriggerMode barTrigger = Marquee.TriggerMode.Always;
         const string titleKey = "np-title";
         const string artistsKey = "np-artists";
 
@@ -102,6 +100,7 @@ internal static partial class ClassicPlayerBar
         // What the form adds on a crossing fades in; the bar's first frame (a mount) does not replay it.
         var shown = rc.UseRef(false);
         LayoutTransition formMotion = shown.Value ? ClassicPlayerBarLayout.FormMotion : ClassicPlayerBarLayout.MoveMotion;
+        LayoutTransition seekFormMotion = shown.Value ? ClassicPlayerBarLayout.SeekFormMotion : ClassicPlayerBarLayout.MoveMotion;
         shown.Value = true;
 
         // ── LEFT — the now-playing identity ──────────────────────────────────────────────────────────────────────
@@ -118,21 +117,13 @@ internal static partial class ClassicPlayerBar
         };
         if (mini) titleRun = titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine };
         // The mini bar's title never scrolls and is no link: the whole identity is ONE door there.
+        long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
         BoxEl titleEl = v.Marquee && !mini
-            ? (BoxEl)Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
+            ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
             {
                 FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
-                Speed = ClassicPlayerBarLayout.MarqueeSpeed, CycleMs = ClassicPlayerBarLayout.MarqueeCycleMs,
-                EndPauseMs = ClassicPlayerBarLayout.MarqueeEndPauseMs, StartDelayMs = ClassicPlayerBarLayout.MarqueeStartDelayMs,
-                // ALWAYS, at the slower cadence: a title exists to be read without aiming a pointer at it, and the
-                // hover gate left a long title permanently cut off for anyone who never hovered. The 0.2.9 worry
-                // (a 27-second idle scroll parked mid-word, S2 #12) is gone — the engine now glides the text home
-                // on deactivation instead of freezing it wherever it was. `titleLinkHover` still drives the link ink.
-                // SyncCycle: the title and the artist line
-                // share one cycle length, so they start, travel and rest together and the window changes pixels in one
-                // span (and, rows sharing the render thread's per-period sampling clock, on the same ticks).
-                Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
-            })
+                Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
+            }, marquees.Value, order: 0, identity: face)
             : new BoxEl
             {
                 ClipToBounds = true, MinWidth = 0f,
@@ -147,9 +138,10 @@ internal static partial class ClassicPlayerBar
                 OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
                 OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
             };
-        // A scrolling title shows itself in full; a plain one is cut at the slot, so its full text rides a tooltip that exists only while it
-        // is cut (the same host in both forms, so the title keeps its node across the 528 crossing).
-        Element titleSlot = v.Marquee ? titleEl : Controls.TrimTip(titleEl, props.TitleText(), titleRun) with { Key = titleKey };
+        // A scrolling title shows itself in full (no tip: an empty text never measures cut); a plain one, the mini bar's always (it never
+        // scrolls), is cut at the slot, so its full text rides a tooltip that exists only while it is cut. The same host in both forms and with
+        // the marquee on or off, so the title keeps its node across the 528 crossing (the mini bar's title had no tip with the marquee on; B11).
+        Element titleSlot = Controls.TrimTip(titleEl, v.Marquee && !mini ? "" : props.TitleText(), titleRun) with { Key = titleKey };
 
         var metaKids = new List<Element>(3);
         if (mini)
@@ -183,12 +175,11 @@ internal static partial class ClassicPlayerBar
             metaKids.Add(titleSlot);
             if (v.ShowArtistLine)
                 metaKids.Add(v.Marquee
-                    ? Marquee.Content(() => new Credits(props, compact: false), new Marquee.Style
-                    {
-                        Speed = ClassicPlayerBarLayout.MarqueeSpeed, CycleMs = ClassicPlayerBarLayout.MarqueeCycleMs,
-                        EndPauseMs = ClassicPlayerBarLayout.MarqueeEndPauseMs, StartDelayMs = ClassicPlayerBarLayout.MarqueeStartDelayMs,
-                        Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
-                    }) with { Key = artistsKey }
+                    ? Marquee.Content(Embed.Comp(() => new Credits(props, compact: false)), Prop.Of(() => props.Credits().Line(ClassicTransportLayout.CreditSeparator)),
+                        new Marquee.Style
+                        {
+                            FontSize = ClassicTransportLayout.CreditSize, Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
+                        }, marquees.Value, order: 1, identity: face) with { Key = artistsKey }
                     : new BoxEl
                     {
                         Key = artistsKey, ClipToBounds = true, MinWidth = 0f,
@@ -373,7 +364,7 @@ internal static partial class ClassicPlayerBar
             {
                 Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(m.ClusterGap, 0f, 0f, 0f),
-                Gap = m.SeekGap, Animate = formMotion, Children = seekKids.ToArray(),
+                Gap = m.SeekGap, Animate = seekFormMotion, Children = seekKids.ToArray(),
             };
             var kids = new List<Element>(5);
             if (huge)

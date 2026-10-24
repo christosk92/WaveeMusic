@@ -92,6 +92,9 @@ internal static class ClassicTransportLayout
     /// <summary>A credit link and its ", " separator.</summary>
     public const float CreditSize = 12f;
 
+    /// <summary>Between two credited names (and in the line's plain words: the credits marquee's restart key and tooltip).</summary>
+    public const string CreditSeparator = ", ";
+
     /// <summary>The "+N" chip's weight.</summary>
     public const int CreditChipWeight = 600;
 }

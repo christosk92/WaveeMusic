@@ -2,7 +2,7 @@
 //
 // What `Shell.PlayerBar.UI.cs` held as file-level constants beside the bar, moved verbatim with the bar's picture: the motion
 // specs (a level crossing FLIPs every structural node over 167 ms, a line enters or leaves with a fade, a slot lights over the
-// control-normal beat, the face cross-fades), the marquee's cadence, the title and meta type, the remote-device line, the volume
+// control-normal beat, the face cross-fades), the marquee's look, the title and meta type, the remote-device line, the volume
 // popup's size and the podcast speed panel's. They are data, not decisions: `Views\Player\ClassicPlayerBar.cs` and
 // `ClassicPlayerBarPodcast.cs` read them (WVTH003 allows literals only here, in `Rules\**`).
 //
@@ -32,6 +32,11 @@ internal static class ClassicPlayerBarLayout
         Channels = TransitionChannels.Bounds | TransitionChannels.Opacity,
         Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
     };
+
+    /// <summary>The seek row the full form adds on the 528 widen: <see cref="FormMotion"/>, its fade-in held until the centre column has glided
+    /// in from the mini bar's right end. The row is laid out in that column at its final width, so while the column still travelled it rode the
+    /// glide and its tail (the rail and the remaining time) overlapped the right cluster fading in beside it for two or three frames (audit B6b).</summary>
+    public static readonly LayoutTransition SeekFormMotion = FormMotion with { Enter = new EnterExit(Opacity: 0f, Active: true, DelayMs: Design.Motion.Fast) };
 
     /// <summary>A line entering/leaving a column: fade + size 0 → natural, so neighbours SLIDE over (Reflow is not
     /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out. ONLY the remote-device line and the
@@ -74,10 +79,13 @@ internal static class ClassicPlayerBarLayout
 
     // ── the now-playing text ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on
-    /// the start before the first pass — slower than the 10 s / 2.5 s hover cadence it replaces, because this one runs
-    /// unattended.</summary>
-    public const float MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f, MarqueeSpeed = 18f;
+    /// <summary>The now-playing marquee's look: its pace (DIP per second) and the cut edge's fade. The behaviour (the start at rest, two
+    /// passes after a track change, a pass on hover, one line moving at a time) is the engine control's, the same in every theme.</summary>
+    public const float MarqueeSpeed = 30f, MarqueeFade = 12f;
+
+    /// <summary>The stage's display title passes at the bar's reading rate in ems, a little calmer for the large face: 1.8 em per second of the
+    /// title's own size (the bar's 30 DIP/s over its 13-14 DIP type is about 2.2 em/s).</summary>
+    public const float StageMarqueeEmRate = 1.8f;
 
     /// <summary>The title line's size.</summary>
     public const float TitleSize = 14f;

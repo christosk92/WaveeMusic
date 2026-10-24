@@ -201,7 +201,7 @@ internal static partial class ClassicShow
     /// <summary>The prototype's <c>color-mix(tone N%, transparent)</c>.</summary>
     static ColorF ToneAt(in ColorF c, float alpha) => c with { A = c.A * alpha };
 
-    /// <summary>The continue hero's card: 96 art · the title · "17 min" Display 30/300 in the tone over "left of 31 min"
+    /// <summary>The continue hero's card: 96 art · the title · "17 min" Display 30 in the tone and Classic's <see cref="VoiceWeight"/>, then "left of 31 min"
     /// · a 4-DIP track ≤ 420 · Resume. The card opens the episode (the row rule); the pill resumes it.</summary>
     static Element HeroCard(Episode e, ShowHeadArgs a)
     {
@@ -238,7 +238,7 @@ internal static partial class ClassicShow
                 },
                 new SpanTextEl(spans)
                 {
-                    FontFamily = DisplayFace, Size = HeroLeftDisplay, LineHeight = HeroLeftDisplayLine, Weight = 300, CharSpacing = -20f, Color = t,
+                    FontFamily = DisplayFace, Size = HeroLeftDisplay, LineHeight = HeroLeftDisplayLine, Weight = VoiceWeight, CharSpacing = -20f, Color = t,
                     MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 new BoxEl { Direction = 1, MaxWidth = HeroTrackMax, MinWidth = 0f, Children = [HeroRule(e, tone)] },
@@ -343,7 +343,7 @@ internal static partial class ClassicShow
             kids.Add(new BoxEl
             {
                 Width = MiniNumeral, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
-                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = MiniNumeralSize, LineHeight = MiniNumeralLine, Weight = 300, Color = Tok.TextTertiary, MaxLines = 1 }],
+                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = MiniNumeralSize, LineHeight = MiniNumeralLine, Weight = VoiceWeight, Color = Tok.TextTertiary, MaxLines = 1 }],
             });
         else if (lead == ShowReaderRules.MiniLeadKind.Art)
             kids.Add(new BoxEl
@@ -382,7 +382,7 @@ internal static partial class ClassicShow
         return head is null ? link : WithMenu(head, episode, link);
     }
 
-    /// <summary>"new since you were here  2" · mark all played — then the fresh episodes as reader rows (the SAME
+    /// <summary>"New since you were here  2" · Mark all played — then the fresh episodes as reader rows (the SAME
     /// template over a fixed scope, so they are the list's pixels).</summary>
     static Element NewSince(ShowHeadArgs a)
     {
@@ -405,7 +405,7 @@ internal static partial class ClassicShow
         return Column(kids, 0f);
     }
 
-    /// <summary>"you're all caught up" and, when the cadence names one, the day new episodes usually land.</summary>
+    /// <summary>"You're all caught up" and, when the cadence names one, the day new episodes usually land.</summary>
     static Element CaughtUpHead(ShowHeadArgs a)
     {
         var kids = new List<Element>(2) { Pivot(Loc.Get(Strings.Podcast.CaughtUp)) };

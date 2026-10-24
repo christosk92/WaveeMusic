@@ -55,9 +55,10 @@ public static class WinUiPlayerLayout
     /// <summary>The "playing on" line's device glyph and its gap.</summary>
     public const float RemoteGlyph = 12f, RemoteGap = 4f;
 
-    /// <summary>The app's marquee setting on: an overflowing title and credits line scroll unattended, ping-pong, at Classic's slow cadence
-    /// (18 DIP/s at least, a 14 s cycle, 2 s before the first move, 3 s at each end), the two lines on one cycle.</summary>
-    public const float MarqueeSpeed = 18f, MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f;
+    /// <summary>The app's marquee setting on: an overflowing title and credits line pass now and then (the engine control's behaviour: the
+    /// start at rest, two passes after a track change, a pass on hover, one line moving at a time). WinUI picks the pace (DIP per second) and
+    /// the cut edge's fade.</summary>
+    public const float MarqueeSpeed = 30f, MarqueeFade = 12f;
 
     /// <summary>The separator between two credited names.</summary>
     public const string CreditSeparator = ", ";

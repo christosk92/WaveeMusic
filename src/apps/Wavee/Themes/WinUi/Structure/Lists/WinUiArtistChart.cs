@@ -213,7 +213,9 @@ internal static class WinUiArtistChart
             ? new BoxEl { Direction = 0, Gap = WinUiArtistChartLayout.SubGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = sub }
             : new BoxEl();
         Element[] mid = stacked
-            ? [title, subLine, Ui.Caption(c.PlaysExact) with { Color = Tok.TextSecondary, MaxLines = 1, Shrink = 0f }]
+            // The stacked line is the same ONE format as the sub line's: compact, the exact count in its tooltip (the exact count trimmed at a narrow
+            // row; Zune's B2z fix, audit B6b).
+            ? [title, subLine, ToolTip.Wrap(Ui.Caption(c.PlaysCompact) with { Color = Tok.TextSecondary, MaxLines = 1, Shrink = 0f }, c.PlaysExact)]
             : [title, subLine];
 
         var trail = new Element[tier.ShowDuration ? 2 : 1];
