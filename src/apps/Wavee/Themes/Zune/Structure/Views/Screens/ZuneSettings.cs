@@ -124,18 +124,23 @@ internal static partial class ZuneSettings
     /// <summary>The panorama title: the largest voice at the light weight, bled to the left of the gutter by its optical inset; its box reserves the larger
     /// size's line (the title scales from its left edge when the tier steps, so nothing under it moves).</summary>
     static Element PanoramaTitle(ZuneSettingsLayout lay, string? section = null)
+        => ScreenTitle(lay, section ?? Loc.Get(Strings.Settings.Title), TitleKey, wraps: section is not null);
+
+    /// <summary>A utility screen's panorama title (settings, history, customize home): the largest voice at the light weight, lowercase, bled to the
+    /// left of the gutter by its optical inset. One line in the title zone's height (<paramref name="wraps"/> false), or wrapping whole words over
+    /// two lines and hugging them: a long word never shrinks (owner rule), it takes the next line.</summary>
+    internal static Element ScreenTitle(ZuneSettingsLayout lay, string text, string key, bool wraps)
     {
-        string text = section ?? Loc.Get(Strings.Settings.Title);
         TextEl title = lay.CompactTitle ? R.Type.PanoramaCompact(text) : R.Type.Panorama(text);
         if (lay.TitleSize > 0f) title = title with { Size = lay.TitleSize, LineHeight = lay.TitleLineH };   // Huge: the board's 150 over its 160 line
         // The line box is exactly the stated line height (the board's CSS line), set `TitleTop` over the body's start; the descenders hang below it.
         title = title with { LineStacking = LineStacking.BlockLineHeight };
         return new BoxEl
         {
-            Key = TitleKey, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = section is null ? lay.TitleH : float.NaN, Animate = ZuneMotion.TitleScale,
+            Key = key, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = wraps ? float.NaN : lay.TitleH, Animate = ZuneMotion.TitleScale,
             // The page column pads the gutter; the panorama bleeds left of it by its optical inset (never past the column's edge).
             Margin = new Edges4(-MathF.Min(lay.Gutter, Z.PanoramaBleed), 0f, 0f, 0f),
-            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = section is null ? 1 : Z.SectionTitleLines, Wrap = section is null ? TextWrap.NoWrap : TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, lay.TitleTop, 0f, 0f) }],
+            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = wraps ? Z.SectionTitleLines : 1, Wrap = wraps ? TextWrap.WrapWholeWords : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, lay.TitleTop, 0f, 0f) }],
         };
     }
 
