@@ -624,7 +624,7 @@ public static partial class Diagnostics
         }
 
         /// <summary>`state kind=loading|empty page=<p>`: a page's OWN loading or empty state, not the shared vacancy. A library tab (`library` is
-        /// albums) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
+        /// albums) or Liked Songs (`liked`) stages the account's relations behind it (Entities.Fake.Shelves.cs: Unknown, or Complete with no rows) and opens the tab; `show`
         /// and `episode` open a fixture in that state: the pending show and episode (`shzzqx`, `epzzqx`: the fake never answers them) and the show
         /// with no episodes (`sh8`). The next mount puts the shelves back.</summary>
         string PageState(int id, string name, Inspect.Args a, string kind, Shell.HeadlessShell shell)
@@ -637,7 +637,7 @@ public static partial class Diagnostics
             Shell.Route route;
             switch (page)
             {
-                case "albums" or "artists" or "podcasts" or "audiobooks":
+                case "albums" or "artists" or "podcasts" or "audiobooks" or "liked":
                     if (!Entities.StageLibraryShelf(page, loading)) return Inspect.Reply.Fail(id, name, "the account has no library rows to stage");
                     route = Wavee.Shell.Parse(page);
                     break;
@@ -649,7 +649,7 @@ public static partial class Diagnostics
                     route = Wavee.Shell.For(EntityUri.Parse("spotify:episode:epzzqx"));
                     break;
                 default:
-                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|show|episode, not '" + page + "'");
+                    return Inspect.Reply.Fail(id, name, "page is library|albums|artists|podcasts|audiobooks|liked|show|episode, not '" + page + "'");
             }
             Wavee.Shell.GoTo(route);
             RunFrames(30);

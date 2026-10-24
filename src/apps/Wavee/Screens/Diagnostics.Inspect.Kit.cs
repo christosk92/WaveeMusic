@@ -603,6 +603,7 @@ public static partial class Diagnostics
             if (!ColdStaged) return;
             ColdStaged = false;
             if (s_coldSlot == Table.None) return;
+            Entities.RestoreColdHead();
             Scope s = Entities.Current;
             s.Edges.PlaylistTracks.Replace(s_coldSlot, s_coldTargets, s_coldPayload, s_coldState, s_coldTotal);
             s.Playlists.Known[s_coldSlot] = s_coldKnown;

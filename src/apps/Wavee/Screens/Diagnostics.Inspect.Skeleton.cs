@@ -5,10 +5,10 @@
 // Spec: handoff/audit-2026-10-23/FIX-PLAN.md lane A3 item 3 ("a skeleton-vs-loaded compare verb"); the case is visual.md 11: Zune's artist
 // skeleton at Compact is 67 DIP shorter than the loaded page ("popular" at y395 in the skeleton, y462 loaded), so the page jumps on load.
 //
-// THE SEQUENCE. Go to the PENDING page (a fixture the fake catalogue never answers, so it stays on its skeleton: `arzzqx`, `shzzqx`,
-// `epzzqx`, the default per kind of `loaded`) and settle with `loops=skeletons` (the shimmer does not hold the settle); remember every shown
+// THE SEQUENCE. Go to the PENDING page (a fixture the fake catalogue never answers, so it stays on its skeleton: `arzzqx`, `alzzqx`,
+// `plzzqx`, `cczzqx`, `shzzqx`, `epzzqx`, the default per kind of `loaded`; Liked Songs: the same page with the likes staged Unknown) and settle with `loops=skeletons` (the shimmer does not hold the settle); remember every shown
 // keyed node of the content card and every `Skel.Region` (a SkeletonRegion node), keys with the pending id read as the loaded one. Go to the
-// LOADED page and settle; take the same. A key both show is compared: its top moved (dy) and its height changed (dh). The regions' own height
+// LOADED page (Liked: put the likes back, in place) and settle; take the same. A key both show is compared: its top moved (dy) and its height changed (dh). The regions' own height
 // change is the skeleton's error; the first key that moved down (and how far) is the jump a person sees when the data lands.
 // Report-only: no gate reads it.
 
@@ -22,14 +22,22 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>The pending fixture per kind: what the fake catalogue never answers (Entities.Fake.Home.cs).</summary>
-        static string PendingFor(string loaded) => loaded.Split(':') is [_, string kind, _] ? kind switch
+        /// <summary>The pending fixture per kind: what the fake catalogue never answers (Entities.Fake.Home.cs; any `zzqx` id of a kind). Liked Songs has
+        /// no other uri: its pending page is the same page with the account's likes staged Unknown (<see cref="LikedStaged"/>).</summary>
+        static string PendingFor(string loaded) => EntityUri.IsLikedCollection(loaded) ? LikedStaged : loaded.Split(':') is [_, string kind, _] ? kind switch
         {
             "artist" => "spotify:artist:arzzqx",
+            "album" => "spotify:album:alzzqx",
+            "playlist" => "spotify:playlist:plzzqx",
+            "concert" => "spotify:concert:cczzqx",
             "show" => "spotify:show:shzzqx",
             "episode" => "spotify:episode:epzzqx",
             _ => "",
         } : "";
+
+        /// <summary>`pending=staged` (Liked Songs' default): the loaded page itself with the account's likes written back to Unknown
+        /// (Entities.StageLibraryShelf), so the page draws its loading band; the likes are put back on the same page, and the band lands IN PLACE.</summary>
+        const string LikedStaged = "staged";
 
         /// <summary>Every shown keyed node under the content card (repeated keys left out: rows compare by count, not by place), and every
         /// skeleton region by its key or path; keys read with <paramref name="from"/> replaced by <paramref name="to"/>.</summary>
@@ -63,18 +71,26 @@ public static partial class Diagnostics
             string loaded = a.Str("loaded");
             string pending = a.Str("pending", PendingFor(loaded));
             if (loaded.Length == 0 || pending.Length == 0)
-                return Inspect.Reply.Fail(id, name, "skeleton wants loaded=<spotify uri> and pending=<a uri the fake never answers> (artist, show and episode have a default)");
+                return Inspect.Reply.Fail(id, name, "skeleton wants loaded=<spotify uri> and pending=<a uri the fake never answers> (every detail kind and Liked Songs have a default)");
             int max = Math.Clamp(a.Int("max", 600), 1, 100_000), items = Math.Clamp(a.Int("items", 20), 1, 500);
             float tolerance = a.Float("tolerance", 1f);
-            Shell.Route pendingRoute = Wavee.Shell.For(EntityUri.Parse(pending)), loadedRoute = Wavee.Shell.For(EntityUri.Parse(loaded));
+            bool staged = pending == LikedStaged;
+            if (staged && !EntityUri.IsLikedCollection(loaded))
+                return Inspect.Reply.Fail(id, name, "pending=staged is Liked Songs' (loaded=" + EntityUri.LikedCollection + ")");
+            Shell.Route loadedRoute = Wavee.Shell.For(EntityUri.Parse(loaded));
+            Shell.Route pendingRoute = staged ? loadedRoute : Wavee.Shell.For(EntityUri.Parse(pending));
             if (pendingRoute.Kind == Wavee.Shell.RouteKind.NotFound || loadedRoute.Kind == Wavee.Shell.RouteKind.NotFound)
                 return Inspect.Reply.Fail(id, name, "no page for '" + (pendingRoute.Kind == Wavee.Shell.RouteKind.NotFound ? pending : loaded) + "'");
-            string pendingId = pending[(pending.LastIndexOf(':') + 1)..], loadedId = loaded[(loaded.LastIndexOf(':') + 1)..];
+            string pendingId = staged ? "" : pending[(pending.LastIndexOf(':') + 1)..], loadedId = staged ? "" : loaded[(loaded.LastIndexOf(':') + 1)..];
 
+            if (staged && !Entities.StageLibraryShelf("liked", loading: true))
+                return Inspect.Reply.Fail(id, name, "the account has no likes to stage");
             Wavee.Shell.GoTo(pendingRoute);
             InspectKit.SettleResult s1 = Settle(max, InspectKit.LoopMode.Skeletons);
             var (skelKeyed, skelRegions) = SkeletonRects(shell, pendingId, loadedId);
-            Wavee.Shell.GoTo(loadedRoute);
+            // Staged: the likes land on the page that shows the band (no navigation); else the loaded uri opens.
+            if (staged) Entities.RestoreStagedShelves();
+            else Wavee.Shell.GoTo(loadedRoute);
             InspectKit.SettleResult s2 = Settle(max);
             var (loadKeyed, loadRegions) = SkeletonRects(shell, "", "");
 

@@ -1020,6 +1020,7 @@ public static partial class Shell
                 return true;
             // The cold playlist (Entities.Fake.Cold.cs): stage a real list's load one step per command (`goto uri=` it after cold-list).
             case "cold-list": s_inspectState.Value = ""; Entities.StageColdList(); return true;
+            case "cold-head": s_inspectState.Value = ""; Entities.StageColdHead(); return true;
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;

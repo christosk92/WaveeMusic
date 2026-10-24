@@ -21,7 +21,8 @@ public static partial class Entities
 
     static readonly List<StagedShelf> s_stagedShelves = [];
 
-    /// <summary>The account relations behind a library tab (`albums`, `artists`, `podcasts`, `audiobooks`), or empty for any other word.</summary>
+    /// <summary>The account relations behind a library tab (`albums`, `artists`, `podcasts`, `audiobooks`) or Liked Songs (`liked`), or empty for any
+    /// other word.</summary>
     static EdgeTable<LibraryEdge>[] ShelvesOf(string tab)
     {
         Edges e = Current.Edges;
@@ -30,6 +31,8 @@ public static partial class Entities
             "albums" => [e.SavedAlbums],
             "artists" => [e.FollowedArtists, e.SavedAlbums, e.Liked],
             "podcasts" or "audiobooks" => [e.SavedShows],
+            // Liked Songs: the account's likes alone (its page's loading band, or its empty state).
+            "liked" => [e.Liked],
             _ => [],
         };
     }
