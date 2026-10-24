@@ -56,6 +56,23 @@ public readonly partial struct User
     {
         readonly List<SidebarLibraryEntry> _rows = new(64);
         int _playlists, _folders;
+        /// <summary>The page's own measured width (value-gated) and the seed its layout tier reads before the first measure: the viewport less the frame's chrome.</summary>
+        readonly Signal<float> _pageW = new(0f);
+        readonly Action<RectF> _measurePage;
+        readonly Func<float> _pageSeed;
+        IReadSignal<ThemeFacts>? _seedFacts;
+        IReadSignal<Size2>? _seedViewport;
+
+        public LibraryPlaylistsPage()
+        {
+            _measurePage = r => { if (r.W > 0f && r.W != _pageW.Peek()) _pageW.Value = r.W; };
+            _measureFind = MeasureFind;
+            _pageSeed = () =>
+            {
+                float seed = Detail.Breakpoints.EstimatePageWidth((_seedFacts ?? ThemeHost.Facts).Peek().Tiers, _seedViewport?.Peek().Width ?? 0f);
+                return seed > 0f ? seed : float.PositiveInfinity;
+            };
+        }
 
         public override Element Render()
         {
@@ -80,6 +97,13 @@ public readonly partial struct User
                 WidthTier.Small => 24f,
                 _ => ThemeHost.Metrics.Value.Gutter,
             };
+
+            // The library's LAYOUT ladder over this page's own measured width (the albums page's, `LibraryLadders`): under the structure's pane rung the master head
+            // folds its sort words into one button, as the grouped albums' head does there (their words, the create words, the find field and the count run past a
+            // narrow Standard page; Small's board draws the button).
+            _seedFacts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
+            _seedViewport = UseContextSignal(Viewport.Size);
+            var layout = UseTier(LibraryLadders.Of(ShellPolicy.Now.Tiers), TierSource.Measured(_pageW, _pageSeed));
 
             bool wantMaster = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail;
             Collect(model.Rootlist, wantMaster ? _find.Value.Trim() : "");
@@ -120,8 +144,14 @@ public readonly partial struct User
             {
                 Key = LibraryPlaylistsRules.ColumnKey, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
                 MaxWidth = master ? float.NaN : LibraryPlaylistsRules.ColumnMax + 2f * gutter, AlignItems = FlexAlign.Stretch,
-                Padding = new Edges4(gutter, LibraryPlaylistsRules.PageTop, gutter, LibraryPlaylistsRules.PageBottom),
-                Children = [master ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders)) : Head(model, null), body],
+                Padding = new Edges4(gutter, LibraryPlaylistsRules.PageTop, gutter, LibraryPlaylistsRules.PageBottom), OnBoundsChanged = _measurePage,
+                Children =
+                [
+                    master
+                        ? MasterHead(model, Strings.Library.PlaylistsCount(_playlists, _folders), sortMenu: layout.Value < ShellPolicy.Tracked.LibraryTiers.PaneFromLayout)
+                        : Head(model, null),
+                    body,
+                ],
             };
         }
 

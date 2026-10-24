@@ -9,6 +9,7 @@
 // for the rows it shows, and hands the embedded table a plain playlist source. It owns no editing: "open playlist" goes to the page, where the whole model lives.
 
 using System.Runtime.InteropServices;
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -36,6 +37,9 @@ public readonly partial struct User
         /// <summary>The pane's cover edge, its gap to the words, the verb row's top, the title slot.</summary>
         public const float HeadH = 28f, BodyGap = 16f, Cover = 150f, CoverGap = 20f, VerbsTop = 12f, HeaderBottom = 12f;
 
+        /// <summary>The head's find field: its rest width, the floor it narrows to on a narrow page (its placeholder still whole), the magnifier and its gap.</summary>
+        public const float FindW = 160f, FindMinW = 112f, FindGlyph = 14f, FindGap = 8f;
+
         /// <summary>The selected row's plate corner is the cover role's; a group label's slot is a row high so the list keeps one pitch.</summary>
         public const int Groups = 3;
     }
@@ -48,6 +52,15 @@ public readonly partial struct User
     {
         readonly Signal<string> _picked = new("");
         readonly Signal<string> _find = new("");
+        /// <summary>The find field's width: its rest, or what its slot leaves it on a narrow page (value-gated, from the slot's measure).</summary>
+        readonly Signal<float> _findW = new(LibraryPlaylistsMasterRules.FindW);
+        readonly Action<RectF> _measureFind;
+
+        void MeasureFind(RectF r)
+        {
+            float w = MathF.Max(LibraryPlaylistsMasterRules.FindMinW, r.W - LibraryPlaylistsMasterRules.FindGlyph - LibraryPlaylistsMasterRules.FindGap);
+            if (MathF.Abs(w - _findW.Peek()) > 0.5f) _findW.Value = w;
+        }
         /// <summary>Huge's group labels are the 22 light heading (the board), narrower tiers' the small tertiary word.</summary>
         bool _bigGroups;
         /// <summary>The page's sort word (a <see cref="SidebarLibrarySort"/> code: recents, recently added, alphabetical, custom order), persisted like every library sort.</summary>
@@ -97,11 +110,81 @@ public readonly partial struct User
         static readonly SidebarLibrarySort[] s_sortWords =
             [SidebarLibrarySort.Recents, SidebarLibrarySort.RecentlyAdded, SidebarLibrarySort.Alphabetical, SidebarLibrarySort.CustomOrder];
 
-        /// <summary>The board's head: "sort" and its four words (the lit one primary), the two create words, then the find field and the count at the end.</summary>
-        Element MasterHead(NavModel model, string count)
+        /// <summary>The sort's two forms (the words, the button) cross-fade as one declared swap while their slot eases its width, so what follows slides.</summary>
+        static readonly EnterExit s_sortSwap = SwapFamilies.Declare("Library.Playlists.SortSwap", new EnterExit(Opacity: 0f, Active: true));
+
+        static readonly LayoutTransition s_sortSlotResize = new(TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(), Size: SizeMode.Reflow);
+
+        /// <summary>Picks a sort word and persists it like every library sort.</summary>
+        static void PickSort(Signal<int> sort, SidebarLibrarySort word)
+        {
+            sort.Value = (int)word;
+            Platform.Settings.Set(Platform.Keys.LibrarySort("playlists"), (int)word);
+        }
+
+        /// <summary>The board's head: "sort" and its four words (the lit one primary), or under the layout ladder's pane rung the sort as ONE button (Z-Library-Playlists-Small:
+        /// the lit word and a chevron opening the words as a radio menu), then the two create words, then the find field and the count at the end.</summary>
+        Element MasterHead(NavModel model, string count, bool sortMenu)
+        {
+            // The slot's ONE child is an unkeyed column holding the keyed form: a slot's lone child reconciles in place (its key ignored), a children list matches by
+            // key, so the leaving form exits and the entering one enters.
+            Element form = sortMenu
+                ? Embed.Comp(new SortButtonProps(_sort), static () => new SortButton()) with { Key = "library-playlists-sort-button" }
+                : SortWords();
+            var kids = new List<Element>(6)
+            {
+                new BoxEl
+                {
+                    Key = "library-playlists-sort-slot", Direction = 1, MinWidth = 0f, Shrink = 0f, MinHeight = LibraryPlaylistsMasterRules.HeadH, Animate = s_sortSlotResize,
+                    Children = [new BoxEl { Direction = 1, MinWidth = 0f, Children = [form with { Enter = s_sortSwap, Exit = s_sortSwap }] }],
+                },
+                Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)),
+                Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)),
+                new BoxEl { Grow = 1f, MinWidth = 0f },
+                // The find field is the head's give: it rests at its width and narrows toward its floor where the head would run past a narrow Small page (the
+                // magnifier and the field follow the slot the row leaves it).
+                new BoxEl
+                {
+                    Key = "library-playlists-find", Direction = 0, AlignItems = FlexAlign.Center, Gap = LibraryPlaylistsMasterRules.FindGap, Height = LibraryPlaylistsMasterRules.HeadH,
+                    Basis = LibraryPlaylistsMasterRules.FindGlyph + LibraryPlaylistsMasterRules.FindGap + LibraryPlaylistsMasterRules.FindW, Shrink = 1f,
+                    MinWidth = LibraryPlaylistsMasterRules.FindGlyph + LibraryPlaylistsMasterRules.FindGap + LibraryPlaylistsMasterRules.FindMinW,
+                    OnBoundsChanged = _measureFind,
+                    Children =
+                    [
+                        Icon(Icons.Search, LibraryPlaylistsMasterRules.FindGlyph, Tok.TextTertiary),
+                        Embed.Comp(new FindFieldProps(_find, _findW), static () => new FindField()),
+                    ],
+                },
+                R.Type.DenseMeta(count) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
+            };
+            return new BoxEl
+            {
+                Direction = 0, Height = LibraryPlaylistsMasterRules.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 24f, MinWidth = 0f, Children = kids.ToArray(),
+            };
+        }
+
+        /// <summary>The find field at the width its slot leaves it (the slot's measured width less the magnifier).</summary>
+        sealed record FindFieldProps(Signal<string> Find, IReadSignal<float> Width);
+
+        sealed class FindField : Component
+        {
+            public override Element Render()
+            {
+                var (find, width) = UseProps<FindFieldProps>();
+                return TextBox.Create(find, options: new TextBox.TextBoxOptions
+                {
+                    Placeholder = Strings.Theme.Zune.Collection.Library.FindIn(Loc.Get(Strings.Sidebar.Playlists).ToLower(System.Globalization.CultureInfo.CurrentCulture)),
+                    Width = width.Value, Height = LibraryPlaylistsMasterRules.HeadH,
+                });
+            }
+        }
+
+        /// <summary>"sort by" and the four words, the lit one primary.</summary>
+        BoxEl SortWords()
         {
             int current = _sort.Value;
-            var kids = new List<Element>(10)
+            var sort = _sort;
+            var kids = new List<Element>(5)
             {
                 R.Type.DenseMeta(Loc.Get(Strings.Library.SortBy)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
             };
@@ -113,7 +196,7 @@ public readonly partial struct User
                 {
                     Key = "library-playlists-sort:" + (int)w, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Height = LibraryPlaylistsMasterRules.HeadH,
                     Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-                    OnClick = () => { _sort.Value = (int)w; Platform.Settings.Set(Platform.Keys.LibrarySort("playlists"), (int)w); },
+                    OnClick = () => PickSort(sort, w),
                     Children =
                     [
                         R.Type.DenseMeta(Loc.Get(SidebarLibraryHeadRules.SortKey(w))) with
@@ -123,27 +206,66 @@ public readonly partial struct User
                     ],
                 });
             }
-            kids.Add(Word(LibraryPlaylistsRules.NewPlaylistKey, Loc.Get(Strings.Sidebar.CreatePlaylistTooltip), () => model.CreatePlaylist(null, true)));
-            kids.Add(Word(LibraryPlaylistsRules.NewFolderKey, Loc.Get(Strings.Sidebar.CreateFolder), () => model.CreateFolder(null)));
-            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-            kids.Add(new BoxEl
-            {
-                Key = "library-playlists-find", Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Shrink = 0f, Height = LibraryPlaylistsMasterRules.HeadH,
-                Children =
-                [
-                    Icon(Icons.Search, 14f, Tok.TextTertiary),
-                    TextBox.Create(_find, options: new TextBox.TextBoxOptions
-                    {
-                        Placeholder = Strings.Theme.Zune.Collection.Library.FindIn(Loc.Get(Strings.Sidebar.Playlists).ToLower(System.Globalization.CultureInfo.CurrentCulture)),
-                        Width = 160f, Height = LibraryPlaylistsMasterRules.HeadH,
-                    }),
-                ],
-            });
-            kids.Add(R.Type.DenseMeta(count) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f });
             return new BoxEl
             {
-                Direction = 0, Height = LibraryPlaylistsMasterRules.HeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 24f, MinWidth = 0f, Children = kids.ToArray(),
+                Key = "library-playlists-sort-words", Direction = 0, AlignItems = FlexAlign.Center, Gap = 24f, MinWidth = 0f, Shrink = 0f, Height = LibraryPlaylistsMasterRules.HeadH,
+                Children = kids.ToArray(),
             };
+        }
+
+        /// <summary>The page's sort signal (the button reads it, so the lit word follows it).</summary>
+        sealed record SortButtonProps(Signal<int> Sort);
+
+        /// <summary>The sort as ONE button (the board's "recently played ▾"): the lit word and a chevron, opening the four words as a radio menu.</summary>
+        sealed class SortButton : Component
+        {
+            NodeHandle _anchor;
+            OverlayHandle? _handle;
+
+            public override Element Render()
+            {
+                var sort = UseProps<SortButtonProps>().Sort;
+                var overlay = UseContext(Overlay.Service);
+                var current = (SidebarLibrarySort)Math.Clamp(sort.Value, 0, (int)SidebarLibrarySort.CustomOrder);
+
+                void Flyout()
+                {
+                    if (Controls.IsNullOverlay(overlay)) return;
+                    if (_handle is { IsOpen: true } open) { open.Close(); return; }
+                    _handle = overlay.Open(
+                        () => _anchor,
+                        () => MenuFlyout.Create(Items(sort), () => _handle?.Close(), size: OverlayFit.MenuSize),
+                        FlyoutPlacement.BottomEdgeAlignedLeft,
+                        new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
+                    _handle.ClosedAction = () => _handle = null;
+                }
+
+                return new BoxEl
+                {
+                    Key = "library-playlists-sort", Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, Shrink = 0f, Height = LibraryPlaylistsMasterRules.HeadH,
+                    Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = Flyout, OnRealized = h => _anchor = h,
+                    Children =
+                    [
+                        R.Type.DenseMeta(Loc.Get(SidebarLibraryHeadRules.SortKey(current))) with
+                        {
+                            Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        },
+                        Icon(Icons.ChevronDown, 10f, Tok.TextTertiary),
+                    ],
+                };
+            }
+
+            static IReadOnlyList<MenuFlyoutItem> Items(Signal<int> sort)
+            {
+                var items = new MenuFlyoutItem[s_sortWords.Length];
+                int active = sort.Peek();
+                for (int i = 0; i < items.Length; i++)
+                {
+                    var w = s_sortWords[i];
+                    items[i] = MenuFlyoutItem.RadioItem(Loc.Get(SidebarLibraryHeadRules.SortKey(w)), (int)w == active, () => PickSort(sort, w));
+                }
+                return items;
+            }
         }
 
         string PickedKey()
