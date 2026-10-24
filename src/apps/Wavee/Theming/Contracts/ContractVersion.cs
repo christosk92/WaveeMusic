@@ -194,6 +194,10 @@
 // 1.73 (audit B8): `DevicePickerEntry.Chosen` (the this-computer output the user chose, also while playback is elsewhere: Z-Overlays draws it as a
 // filled dim dot and the unused outputs as hollow rings); `StyleMetrics.RowPadXFloor` (the least gutter a track row pads to at any relief tier:
 // Zune's Compact rows keep the board's 16).
+// 1.75 (audit Z-OWNER): `ShowReaderStyle.YearsInMargin` (the show reader's year strip stands in the frame's outer margin: the reader reserves no strip
+// column and, where it ends on the column edge, pads no trailing gutter, so its rows run to that edge; `ShowReaderRules.HeadColumns` and `ShowToolbarLayout.For`
+// take the flag); `ShowToolbarArgs.Trailing` (whether the toolbar pads that gutter); `Show.ReaderOwnsEdge` (the reader's trailing edge is the window's or its
+// pane's, the vertical arm's and a Compact drill-in's: a margin strip then stands inside the reader's own gutter).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -209,7 +213,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 73;
+    public const int Minor = 75;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

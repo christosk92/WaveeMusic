@@ -48,6 +48,10 @@ public static class ZuneShowRules
     /// <summary>The pinned month's plate and one year's row in the strip.</summary>
     public const float StickyMonthPlateH = 20f, YearRowHeight = 15f;
 
+    /// <summary>Whether the year strip reads the short year ("’24"): it stands in the frame's outer margin (V19), and under Standard that margin (Compact's
+    /// 16, Small's 24) is narrower than four digits of the micro voice; Standard's 48 and up hold the full year.</summary>
+    public static bool ShortYears(WidthTier window) => window < WidthTier.Standard;
+
     /// <summary>The cold skeleton's seed rows.</summary>
     public const int SeedRows = 8;
 

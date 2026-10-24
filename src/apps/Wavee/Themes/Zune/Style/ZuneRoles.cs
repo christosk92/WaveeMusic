@@ -92,6 +92,11 @@ public static class ZuneTokens
 
     /// <summary><see cref="WordRest"/> for the active kind, as a rail reads it (a live read: a kind switch re-reads it).</summary>
     public static readonly Func<float> WordRestNow = static () => WordRest.Now;
+
+    /// <summary>A rail word's count badge while its word rests ("unplayed 5"): the ink itself, not the secondary. The badge takes its word's rest
+    /// opacity, and under it only the ink holds 4.5 : 1 (the secondary read 2.8 : 1 on dark, 3.5 : 1 on light; the ink reads 5.2 : 1 and 6.3 : 1). A
+    /// selected word's badge stays the secondary at full opacity, the lighter voice the boards draw.</summary>
+    public static readonly Func<ColorF> WordCountRestNow = static () => Tok.TextPrimary;
     /// <summary>The hairline, one per surface at most: 8 % white on dark, 10 % black on light (Z-Tokens).</summary>
     public const float HairlineDarkA = 0.08f, HairlineLightA = 0.10f;
     /// <summary>A rest chip and a quiet plate: 6 % of the ink (Z-Tokens' "pop" chip).</summary>

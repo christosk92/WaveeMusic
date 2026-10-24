@@ -81,11 +81,12 @@ public readonly partial struct Show
             var stage = host.Toolbar?.Value ?? ToolbarStage.Full;
             bool finding = host.FindOpen.Value;
             bool compact = host.Narrow?.Value ?? false;
+            bool trailing = host.Trailing?.Value ?? true;
             if (host.Style is not { } style) return new BoxEl();
             var m = host.Model;
             return style.Toolbar(new ShowToolbarArgs
             {
-                Stage = stage, Finding = finding, Compact = compact,
+                Stage = stage, Finding = finding, Compact = compact, Trailing = trailing,
                 FilterWords = host.FilterWords!, SortWords = host.SortWords!,
                 Status = m.Status, Order = m.Order, Find = m.Find, StatusCount = host.StatusCountOf,
                 Tone = host.Tone, IsSelecting = host.IsSelecting,
@@ -122,7 +123,7 @@ public readonly partial struct Show
             _stamp = () =>
             {
                 var s = host.Model.Read();
-                var (doors, minis) = ShowReaderRules.HeadColumns(host.MeasuredWidth(subscribe: true));
+                var (doors, minis) = ShowReaderRules.HeadColumns(host.MeasuredWidth(subscribe: true), !(host.Trailing?.Value ?? true));
                 return new HeadStamp(s.Head, host.Narrow?.Value ?? false, s.HeadFold, host.Tone(), s.HeadShown, doors, minis);
             };
             _pending = () => host.Model.Read().Head == ShowReaderRules.Head.Pending;
@@ -142,7 +143,7 @@ public readonly partial struct Show
         {
             var h = _host;
             var s = h.Model.Peek();
-            var (doors, minis) = ShowReaderRules.HeadColumns(h.MeasuredWidth(subscribe: false));
+            var (doors, minis) = ShowReaderRules.HeadColumns(h.MeasuredWidth(subscribe: false), !(h.Trailing?.Peek() ?? true));
             var show = s.Show;
             // The full about is the NEW head's (W2): a returning listener's rail already carries it.
             string? about = s.Head == ShowReaderRules.Head.New && show.IsValid && show.Knows(ShowFields.About)

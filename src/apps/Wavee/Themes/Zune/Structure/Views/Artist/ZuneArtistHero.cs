@@ -43,14 +43,15 @@ internal static class ZuneArtistHero
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
     /// <summary>The hero (<paramref name="nameKnown"/>: the skeleton arm draws the real name): eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
-    /// ride a layer over it.</summary>
-    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts, bool nameKnown = false)
+    /// ride a layer over it. <paramref name="eyebrowInk"/>: the eyebrow's live ink (the page's: brighter over a photo bleed; null: the secondary).</summary>
+    public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts, bool nameKnown = false,
+        Func<ColorF>? eyebrowInk = null)
     {
         float gutter = lay.Gutter;
         bool shimmer = acts.Play is null;
 
         BoxEl eyebrow = text.Verified
-            ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [Lines(Run(Loc.Get(Strings.Artist.Verified), Tok.TextSecondary), shimmer)] }
+            ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [Lines(Run(Loc.Get(Strings.Artist.Verified), eyebrowInk is null ? Tok.TextSecondary : Prop.Of(eyebrowInk)), shimmer)] }
             : new BoxEl();
         eyebrow = eyebrow with { Key = Rules.EyebrowKey };
 

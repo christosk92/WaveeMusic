@@ -133,7 +133,9 @@ public readonly partial struct Show
             // Hero/vertical show layout plugs in HERE (`v => v ? VerticalReader(...) : Reader(...)`) and nowhere else;
             // nothing below hard-codes a two-column shape, and the rail/grip/splitter are Detail.UI.cs's, not this
             // page's, so the two-column arm needs no change to make room for it.
-            _episodes = _ => Embed.Comp(new ReaderProps(_m, _routeKey), static () => new ReaderHost());
+            // The arm reaches the reader as its OWN EDGE (contract 1.73): the vertical arm's reader runs to the window edge and pads its trailing
+            // gutter itself; the two-column arm's ends on the column edge, past which a margin-standing year strip stands.
+            _episodes = v => Embed.Comp(new ReaderProps(_m, _routeKey, OwnsEdge: v), static () => new ReaderHost());
             _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };
             _satellitesOf = () => _satellites ??= BuildSatellites();
             _attribution = PublisherOf;
@@ -706,7 +708,12 @@ public readonly partial struct Show
 
     // ══ 3. THE READER ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record ReaderProps(ReaderModel Model, string RouteKey);
+    /// <param name="OwnsEdge">Whether the reader's trailing edge is the window's (or its pane's, a Compact drill-in): it then pads its trailing gutter
+    /// itself, a <c>YearsInMargin</c> strip standing inside it. False: the reader ends on the page column's edge, and such a strip stands past it.</param>
+    sealed record ReaderProps(ReaderModel Model, string RouteKey, bool OwnsEdge = true);
+
+    /// <summary>The reader's <see cref="ReaderProps.OwnsEdge"/>, provided to everything under it (the year strip a structure draws reads it).</summary>
+    internal static readonly Context<bool> ReaderOwnsEdge = new(true);
 
     /// <summary>The right column (§5.6): one bound list behind the membership's skeleton. Owns the width arms, the
     /// tone, the rows' context and the rail's words — everything built once.
@@ -736,6 +743,10 @@ public readonly partial struct Show
         readonly Func<int, float> _extentOf;
 
         internal Memo<bool>? Narrow;
+        /// <summary>Whether the reader pads a TRAILING gutter: always, unless the style's year strip stands in the frame's margin
+        /// (<c>ShowReaderStyle.YearsInMargin</c>) and the reader ends on the column edge (<see cref="ReaderProps.OwnsEdge"/> false).</summary>
+        internal Memo<bool>? Trailing;
+        readonly Func<bool> _trailingOf;
         /// <summary>Which rung of the toolbar's collapse ladder the toolbar's OWN measured width is on
         /// (<see cref="ShowToolbarLayout.For"/>) — the rail is ONE row at every one of them.</summary>
         internal Memo<ToolbarStage>? Toolbar;
@@ -809,6 +820,7 @@ public readonly partial struct Show
         public ReaderHost()
         {
             _narrowOf = () => ShowReaderRules.Narrow(_width?.Value ?? 0f);
+            _trailingOf = () => Style?.YearsInMargin != true || (_props.Value?.OwnsEdge ?? true);
             _toolbarStageOf = ToolbarStageOf;
             _syncSelectedWord = SyncSelectedWord;
             OnFiltersMeasured = FiltersMeasured;
@@ -850,7 +862,7 @@ public readonly partial struct Show
             // Slot 0 — the persistent prefix — is the RAW sticky rail; every other slot a component (file header).
             _template = scope => scope.Row.Index.Peek() == 0 ? (_rail ??= RailElement()) : Embed.Comp(() => new ReaderSlot(this, scope));
             _content = () => ItemsView.CreateBound(_items!, _template, _layout, OptionsFor(_latest?.RouteKey ?? ""));
-            _shimmer = () => Style!.Seed(EpisodeStyle, Narrow?.Peek() ?? false);
+            _shimmer = Shimmer;
             _retry = () =>
             {
                 if (_m?.Peek().Show is { IsValid: true } show) Entities.RefreshEdge(FetchEdge.ShowEpisodes, show.Slot);
@@ -874,7 +886,7 @@ public readonly partial struct Show
         ToolbarStage ToolbarStageOf()
         {
             var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown,
-                                              Style?.NarrowToolbarGlyph ?? 0f);
+                                              Style?.NarrowToolbarGlyph ?? 0f, trailing: Trailing?.Value ?? true);
             _stageShown = stage;
             return stage;
         }
@@ -998,6 +1010,20 @@ public readonly partial struct Show
             return (uint)i < (uint)s.ItemCount ? s.Items[i].GroupKey : -1;
         }
 
+        /// <summary>The cold skeleton's source: the style's seed, given the trailing gutter a <c>YearsInMargin</c> seed leaves out where the reader
+        /// pads one (<see cref="Trailing"/>), so the shimmer rows end where the rows will.</summary>
+        Element Shimmer()
+        {
+            bool narrow = Narrow?.Peek() ?? false;
+            var seed = Style!.Seed(EpisodeStyle, narrow);
+            if (Style.YearsInMargin && (Trailing?.Peek() ?? true))
+                seed = new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, narrow ? ShowReaderRules.PadNarrow : ShowReaderRules.Pad, 0f), Children = [seed],
+                };
+            return seed;
+        }
+
         public void ApplyProps(object props)
         {
             var p = (ReaderProps)props;
@@ -1017,6 +1043,7 @@ public readonly partial struct Show
             _scrollScope = UseContext(Shell.PageScrollScope);
             _width = UseMeasuredWidth("show:body", 4f);           // keyed (E17c): a remount starts at the remembered width
             Narrow = UseComputed(_narrowOf);
+            Trailing = UseComputed(_trailingOf);
             Toolbar = UseComputed(_toolbarStageOf);
             _tone = UseComputed(_toneOf);
             _selected = UseComputed(_selectedOf);
@@ -1073,12 +1100,16 @@ public readonly partial struct Show
             };
             // The strip's 30 DIP are ALWAYS reserved: a filter that leaves one year takes the strip's rows away, and a list
             // that widened by 30 for it (then narrowed again on the way back) reflowed every row sideways — and every
-            // width-derived thing in the head with it.
-            return new BoxEl
+            // width-derived thing in the head with it. A style whose strip stands in the frame's margin (`YearsInMargin`)
+            // reserves nothing here: its strip and its reserve place themselves past the list's edge, in a column that hands them the
+            // reader's height (a component's root fills its anchor only along a column: the template may be one).
+            Element strip = years.Length > 1 ? style.YearStrip(years, _stickyMonth, _jumpYear) : style.YearReserve();
+            if (style.YearsInMargin) strip = new BoxEl { Direction = 1, Shrink = 0f, MinWidth = 0f, Children = [strip] };
+            return Ctx.Provide(ReaderOwnsEdge, _latest?.OwnsEdge ?? true, new BoxEl
             {
                 Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [list, years.Length > 1 ? style.YearStrip(years, _stickyMonth, _jumpYear) : style.YearReserve()],
-            };
+                Children = [list, strip],
+            });
         }
 
         ListOptions<ReaderItem> OptionsFor(string routeKey)
@@ -1168,9 +1199,11 @@ public readonly partial struct Show
                 _ => new BoxEl(),
             };
             float pad = narrow ? ReaderPadNarrow : ReaderPad;
+            // A style whose year strip stands in the frame's margin pads no trailing gutter where the reader ends on the column edge: the rows run to it.
+            float trail = _host.Trailing?.Value ?? true ? pad : 0f;
             return new BoxEl
             {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, 0f),
+                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(pad, 0f, trail, 0f),
                 OnBoundsChanged = _onBounds,
                 Children = [body],
             };
@@ -1511,14 +1544,20 @@ public static class ShowReaderRules
     }
 
     /// <summary>The head's CONTENT width inside a reader <paramref name="readerWidth"/> wide: both gutters and the date
-    /// strip's reserve (always there, see the strip) taken off. 0 = not measured.</summary>
-    public static float HeadWidth(float readerWidth)
-        => readerWidth > 0f ? MathF.Max(0f, readerWidth - YearStripWidth - 2f * (Narrow(readerWidth) ? PadNarrow : Pad)) : 0f;
+    /// strip's reserve (always there, see the strip) taken off. 0 = not measured. <paramref name="yearsInMargin"/>: the reader pads no
+    /// trailing gutter (a <c>ShowReaderStyle.YearsInMargin</c> reader on the column edge); the strip's width still comes off, so the count never
+    /// assumes a width the head lacks.</summary>
+    public static float HeadWidth(float readerWidth, bool yearsInMargin = false)
+    {
+        if (!(readerWidth > 0f)) return 0f;
+        float pad = Narrow(readerWidth) ? PadNarrow : Pad;
+        return MathF.Max(0f, readerWidth - YearStripWidth - (yearsInMargin ? pad : 2f * pad));
+    }
 
     /// <summary>The door and up-next column counts for a reader <paramref name="readerWidth"/> wide.</summary>
-    public static (int Doors, int Minis) HeadColumns(float readerWidth)
+    public static (int Doors, int Minis) HeadColumns(float readerWidth, bool yearsInMargin = false)
     {
-        float w = HeadWidth(readerWidth);
+        float w = HeadWidth(readerWidth, yearsInMargin);
         return (Columns(w, DoorMin, TileGap, TileColumns), Columns(w, MiniMin, TileGap, TileColumns));
     }
 

@@ -38,6 +38,8 @@ internal static partial class ZuneShow
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
     {
         NarrowToolbarGlyph = NarrowControlEdge,
+        // V19 (the owner's call): the year strip stands in the frame's outer margin, so the rows run to the column edge and nothing reserves a column.
+        YearsInMargin = true,
     };
 
     /// <summary>Registers the show page's style.</summary>
@@ -208,14 +210,15 @@ internal static partial class ZuneShow
         {
             Direction = 0, Height = ToolbarHeight, Gap = ShowToolbarLayout.Gap, AlignItems = FlexAlign.Center,
             Justify = FlexJustify.SpaceBetween, MinWidth = 0f, OnBoundsChanged = a.OnToolbarBounds,
-            Padding = new Edges4(pad, 0f, pad, 0f), Children = [left, group],
+            Padding = new Edges4(pad, 0f, a.Trailing ? pad : 0f, 0f), Children = [left, group],
         };
     }
 
     /// <summary>The filter words at their NATURAL width — a rail that never shrinks and never scrolls (the toolbar picks a stage only when they fit;
     /// the last stage folds them into <see cref="FilterMenu"/>). It reports its measure to the toolbar's stage rule.</summary>
     static Element FilterWords(ShowToolbarArgs a)
-        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured, restInk: ZuneTokens.WordRestNow);
+        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured, restInk: ZuneTokens.WordRestNow,
+                                  countRest: ZuneTokens.WordCountRestNow);
 
     /// <summary>The last stage's words: ONE button saying the selected filter ("unplayed 320 ▾") whose menu holds the four as radio rows. The label
     /// and its count are binds over the model — the toolbar re-renders on stages, never on a selection or a count — and the accessible name is the
@@ -381,8 +384,11 @@ internal static partial class ZuneShow
 
     // ── the date rail: the sticky month and the year strip (the Albums list's A–Z navigation, for dates) ──
 
-    static readonly FormatCache<int> s_years = new();
+    static readonly FormatCache<int> s_years = new(), s_shortYears = new();
     static readonly Func<int, string> s_yearFormat = static y => y <= 0 ? "" : y.ToString(CultureInfo.InvariantCulture);
+    /// <summary>The year in a margin too narrow for four digits: the apostrophe and its last two ("’24").</summary>
+    static readonly Func<int, string> s_shortYearFormat = static y => y <= 0 ? "" : "\u2019" + (y % 100).ToString("00", CultureInfo.InvariantCulture);
+    static readonly int[] s_noYears = [];
 
     /// <summary>The month pinned at the list's top — always mounted, transparent until a month is actually under the top edge (a presence flip would
     /// relayout the overlay), and inset by the rail's own height so it sits UNDER the sticky toolbar, never behind it. On the page's ground, so the
@@ -417,41 +423,74 @@ internal static partial class ZuneShow
         };
     }
 
-    /// <summary>The year strip on the reader's right edge: one row per year the view holds, the year under the viewport top in the accent and 700
-    /// (two stacked runs: <c>Weight</c> is not bindable), a tap = <c>StartBringItemIntoView</c> on that year's first month. Not a tab stop (twenty
-    /// years must not become twenty stops) — a pointer affordance beside a list that already has keyboard nav.
+    /// <summary>The year strip, in the frame's OUTER MARGIN past the reader's trailing edge (V19, the owner's call: the rows run to the column edge and
+    /// the strip overlaps nothing): one row per year the view holds, the year under the viewport top in the accent and 700 (two stacked runs:
+    /// <c>Weight</c> is not bindable), a tap = <c>StartBringItemIntoView</c> on that year's first month. Not a tab stop (twenty years must not become
+    /// twenty stops): a pointer affordance beside a list that already has keyboard nav. <see cref="MarginYears"/> places it.
     /// <para><paramref name="currentMonth"/> is the SAME <see cref="DateKeys"/> month key <see cref="StickyMonth"/> reads.</para></summary>
     static Element YearStrip(int[] years, IReadSignal<int> currentMonth, Action<int> jump)
+        => Embed.Comp(new MarginYearsProps(years, currentMonth, jump), static () => new MarginYears()) with { Key = "rd:years" };
+
+    /// <summary>The strip when the view holds no more than one year (nothing to jump between): the SAME component with no rows, so the two reconcile
+    /// in place and the list never changes width with the filter.</summary>
+    static Element YearReserve() => Embed.Comp(new MarginYearsProps(s_noYears, null, null), static () => new MarginYears()) with { Key = "rd:years" };
+
+    sealed record MarginYearsProps(int[] Years, IReadSignal<int>? CurrentMonth, Action<int>? Jump);
+
+    /// <summary>The strip's place: the outer margin on the reader's trailing side, on an anchor that takes no width (the list keeps the reader's whole
+    /// width, so its clip, and the hit slop of a control on its edge, reach the margin). A reader that ends on the column edge
+    /// (<see cref="global::Wavee.Show.ReaderOwnsEdge"/> false: the two-column form, the library's pane) has the strip stand PAST it, the gutter's width
+    /// (<see cref="ZuneTiers.GutterOf"/>); one that runs to the window edge and pads its own trailing gutter (the stacked form, a Compact drill-in) has
+    /// it stand INSIDE that gutter, from the edge in, the narrow gutter's width. The strip eases its width with the frame's gutters
+    /// (<see cref="ZuneFrameRules.GutterMotion"/>), so a crossing slides it with the column edge instead of stepping it. A margin under four digits' width
+    /// (Compact's 16, Small's 24) reads the short year (<see cref="ZuneShowRules.ShortYears"/>).</summary>
+    sealed class MarginYears : Component
     {
-        var rows = new Element[years.Length];
-        for (int i = 0; i < rows.Length; i++)
+        public override Element Render()
         {
-            int year = years[i];
-            Func<bool> now = () => DateKeys.YearOfMonth(currentMonth.Value) == year;
-            string text = s_years.Get(year, s_yearFormat);
-            rows[i] = new BoxEl
+            var p = UseProps<MarginYearsProps>();
+            bool inside = UseContext(global::Wavee.Show.ReaderOwnsEdge);
+            var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+            float margin = inside ? ShowReaderRules.PadNarrow : ZuneTiers.GutterOf(in tiers);
+            bool shortYears = inside || ZuneShowRules.ShortYears(tiers.Window);
+            float rowW = MathF.Min(ShowReaderRules.YearStripWidth, margin);
+            LayoutTransition? motion = Design.Reduced ? null : ZuneFrameRules.GutterMotion;
+            var years = p.Years;
+            var rows = new Element[years.Length];
+            for (int i = 0; i < rows.Length; i++)
             {
-                Width = ShowReaderRules.YearStripWidth, Height = YearRowHeight, ZStack = true, Corners = R.Shape.All(ShapeRole.Control),
-                Role = AutomationRole.Button, TabStop = false, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary,
-                OnClick = () => jump(year),
+                int year = years[i];
+                var month = p.CurrentMonth;
+                var jump = p.Jump;
+                Func<bool> now = () => month is not null && DateKeys.YearOfMonth(month.Value) == year;
+                string text = shortYears ? s_shortYears.Get(year, s_shortYearFormat) : s_years.Get(year, s_yearFormat);
+                rows[i] = new BoxEl
+                {
+                    Width = rowW, Height = YearRowHeight, ZStack = true, Corners = R.Shape.All(ShapeRole.Control), Shrink = 0f,
+                    Role = AutomationRole.Button, TabStop = false, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary,
+                    OnClick = () => jump?.Invoke(year),
+                    Children =
+                    [
+                        YearInk(text, 400, Prop.Of(() => now() ? ColorF.Transparent : Tok.TextTertiary)),
+                        YearInk(text, 700, Prop.Of(() => now() ? R.Ink.AccentDecor : ColorF.Transparent)),
+                    ],
+                };
+            }
+            return new BoxEl
+            {
+                Direction = 1, Width = 0f, Grow = 1f, Shrink = 0f, MinWidth = 0f, AlignItems = inside ? FlexAlign.End : FlexAlign.Start,
                 Children =
                 [
-                    YearInk(text, 400, Prop.Of(() => now() ? ColorF.Transparent : Tok.TextTertiary)),
-                    YearInk(text, 700, Prop.Of(() => now() ? R.Ink.AccentDecor : ColorF.Transparent)),
+                    new BoxEl
+                    {
+                        Key = "rd:years:strip", Direction = 1, Width = margin, Grow = 1f, Basis = 0f, Shrink = 0f, Animate = motion,
+                        Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+                        Padding = new Edges4(0f, ShowReaderRules.RailExtent, 0f, global::Wavee.Show.BottomReserve), Children = rows,
+                    },
                 ],
             };
         }
-        return new BoxEl
-        {
-            Key = "rd:years",
-            Direction = 1, Width = ShowReaderRules.YearStripWidth, Shrink = 0f, Justify = FlexJustify.Center,
-            Padding = new Edges4(0f, ShowReaderRules.RailExtent, Spacing.XS, global::Wavee.Show.BottomReserve), Children = rows,
-        };
     }
-
-    /// <summary>The strip's column when the view holds no more than one year (nothing to jump between): the SAME width, empty. Same key as the
-    /// strip, so the two reconcile in place and the list never changes width with the filter.</summary>
-    static Element YearReserve() => new BoxEl { Key = "rd:years", Direction = 1, Width = ShowReaderRules.YearStripWidth, Shrink = 0f };
 
     static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => R.Type.MicroMeta(text) with
     {
@@ -496,7 +535,7 @@ internal static partial class ZuneShow
         };
         kids[1] = new BoxEl { Direction = 1, Padding = new Edges4(0f, HeadTop, 0f, Spacing.M), Children = [Pivot(Loc.Get(Strings.Podcast.Episodes))] };
         for (int i = 0; i < SeedRows; i++) kids[i + 2] = Episode.SeedReaderRow(style, narrow);
-        return new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, global::Wavee.Show.BottomReserve), Children = kids };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, 0f, 0f, global::Wavee.Show.BottomReserve), Children = kids };
     }
 
     static TextEl SeedWord(string key) => new(Loc.Get(key))

@@ -120,6 +120,8 @@ public readonly partial struct Show
 
         public override Element Render()
         {
+            // The reader owns its trailing edge only as a Compact drill-in (the pane is the window); beside the library's list it ends on the column edge.
+            bool ownsEdge = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers.Content == WidthTier.Compact;
             uint epoch = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
             _ = scope.Shows.Changed.Value;
@@ -149,7 +151,7 @@ public readonly partial struct Show
                 Publisher = Entities.Strings.Resolve(show.PublisherId), Meta = id.Meta ?? "", Uri = _uri,
                 Open = _open, HeartShown = _heartShown, More = _more,
                 Primary = (accent, size) => Embed.Comp(new SlotProps(m, accent, Size: size), static () => new PrimarySlot()) with { Key = "showpane:primary" },
-                Reader = Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey },
+                Reader = Embed.Comp(new ReaderProps(m, _scrollKey, ownsEdge), static () => new ReaderHost()) with { Key = _readerKey },
             });
         }
 

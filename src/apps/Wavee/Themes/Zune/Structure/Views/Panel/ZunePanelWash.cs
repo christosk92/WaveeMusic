@@ -1,19 +1,19 @@
 ﻿// ── Themes/Zune/Structure/Views/Panel/ZunePanelWash.cs — the side panel's surface: design "B, one surface" (owner decision over Z-Part-Panel's flat plate) ──
 //
-// The panel draws no plate of its own. The PAGE's wash (the material layer's cover tint from the window's top, `ZunePageWash`) runs on under it and a soft
-// scrim dims it (`ZunePanelWashRules.ScrimOf`), so the page and the panel read as one sheet with a slightly darker panel zone and a 1-DIP divider down the
-// panel's left edge. A hued cover adds its glow at the head (the cover's HUE at the rules' saturation and value, over the scrim, easing out by
-// `ZunePanelWashRules.GlowReach` of the panel's height); a hueless cover, nothing playing or no grading shows the page's colour through the scrim alone.
-// The background option at "none" leaves the ground under the scrim (never the old flat plate).
+// The panel draws no plate of its own where it docks. The PAGE's ground and wash (the material layer's cover tint from the window's top, `ZunePageWash`) run
+// on under it, so the page and the panel read as one sheet: the panel's words float on the page as the library reader's do (the owner's variant B,
+// 2026-10-24: no scrim, no cover glow, no divider).
 //
-//   DOCKED    a FULL-HEIGHT column: `ZunePanelSurface` (the frame mounts it under the title bar and the body) paints the scrim, the glow and the edge from
-//             the window's top edge down to the play bar, as wide as the docked reservations, so the title bar's bell, window buttons and the end of the
-//             search pill sit on the panel's surface and no horizontal seam runs under the title bar. The panel itself is transparent while docked and open.
-//   CARD      floating, the sheet, or a docked panel sliding out: the panel is a card over the page, so it paints its own surface, opaque: the ground, the
-//             part of the page wash below its own top edge (so the colour lines up with the page beside it), the scrim, the glow from its top, the edge.
+//   DOCKED    open: the panel is transparent and nothing is painted for it (no full-height surface): the title bar's bell, window buttons and the end of
+//             the search pill sit on the page's ground as everywhere. Sliding in or out it paints the SAME picture as a card (the ground, and the page
+//             wash below its top edge, so the colour lines up with the page beside it), so a slide never flashes another look.
+//   CARD      floating or the Compact sheet: the panel floats over content, so it keeps a card's surface, opaque: the ground, the page wash below its own
+//             top edge, a soft scrim (`ZunePanelWashRules.ScrimOf`), the playing cover's glow at the head (the cover's HUE at the rules' saturation and
+//             value, easing out by `ZunePanelWashRules.GlowReach` of the panel's height; a hueless cover, nothing playing or no grading: none) and a
+//             1-DIP divider down its left edge. The background option at "none" leaves the ground under the scrim.
 //
 // The glow is ONE layer per surface, so switching pivots never flashes; a new track mounts a fresh keyed layer that FADES IN over the old one (a gradient
-// cannot brush-fade: the same recipe as the window's wash).
+// cannot brush-fade: the same recipe as the window's wash). The head's inks are judged against what lies under the head (`HeadColour`).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -62,8 +62,9 @@ internal static class ZunePanelWash
     };
 
     /// <summary>A card's own opaque surface whose top edge lies <paramref name="top"/> DIP below the window's top: the ground, the page wash below that line,
-    /// the scrim, the glow, the edge.</summary>
-    public static Element[] Card(ZunePageWash? wash, float top, Element? glow)
+    /// and where it floats (<paramref name="plate"/>: floating, the sheet) the scrim, the glow and the edge; a docked panel sliding in or out paints the ground
+    /// and the wash alone, the page it is part of.</summary>
+    public static Element[] Card(ZunePageWash? wash, float top, Element? glow, bool plate)
     {
         var kids = new List<Element>(5)
         {
@@ -88,6 +89,7 @@ internal static class ZunePanelWash
                     },
                 ],
             });
+        if (!plate) return kids.ToArray();
         kids.Add(Scrim());
         if (glow is not null) kids.Add(glow);
         kids.Add(Edge());
@@ -95,11 +97,13 @@ internal static class ZunePanelWash
     }
 
     /// <summary>The surface's colour where the panel's head lies (its strongest tint: the worst case for the inks): the page wash at <paramref name="y"/> DIP
-    /// below the window's top over the ground, the scrim, then the glow's peak.</summary>
-    public static ColorF HeadColour(ZunePageWash? wash, float y, ColorF? glow)
+    /// below the window's top over the ground, then, on a floating card's plate (<paramref name="plate"/>), the scrim and the glow's peak. Docked, the head
+    /// lies on the page itself.</summary>
+    public static ColorF HeadColour(ZunePageWash? wash, float y, ColorF? glow, bool plate)
     {
         var c = R.Layer.ShellGround;
         if (wash is not null) c = ColorContrast.Flatten(wash.At(y), c);
+        if (!plate) return c;
         c = ColorContrast.Flatten(ZunePanelWashRules.ScrimOf(R.IsLight), c);
         if (glow is { } g) c = ColorContrast.Flatten(g, c);
         return c;
@@ -130,43 +134,6 @@ internal static class ZunePanelWash
         { RadialCenter = ZunePanelWashRules.GlowCentre, RadialRadius = new(ZunePanelWashRules.GlowWidth, reach) };
     }
 }
-
-/// <summary>The docked panels' full-height surface (design B): mounted by the frame UNDER the title bar and the body, flush right, as wide as the docked
-/// reservations (0 while closed or floating), from the window's top edge down to the play bar: the scrim over the page wash, the playing cover's glow, the
-/// left edge. Re-renders on a track change (the glow cross-fades) and the theme; the width is a bound channel that eases with the dock.</summary>
-internal sealed class ZunePanelSurface : Component
-{
-    public override Element Render()
-    {
-        var p = UseProps<ZunePanelSurfaceProps>();
-        var glow = ZunePanelWash.Glow(p.Panel.CoverUrl?.Invoke(), out _);
-        var kids = new List<Element>(3) { ZunePanelWash.Scrim() };
-        if (glow is not null) kids.Add(glow);
-        kids.Add(ZunePanelWash.Edge());
-        var width = p.Width;
-        return new BoxEl
-        {
-            Direction = 0, Grow = 1f, HitTestVisible = false, Justify = FlexJustify.End,
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = ZunePanelWashRules.SurfaceKey, Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
-                    Width = Prop.Of(width),
-                    // The reservations' width changes at once (docking, undocking, a pane added at 1920 / 3200) while the page column and the hosts
-                    // glide over the dock's 300 ms: the surface eases its width the same way, so its edge rides with them instead of jumping.
-                    Animate = Design.Reduced ? null : ZunePanelTiers.ShiftMotion,
-                    Children = kids.ToArray(),
-                },
-            ],
-        };
-    }
-}
-
-/// <summary>The props of <see cref="ZunePanelSurface"/>.</summary>
-/// <param name="Panel">The primary panel's props (its playing cover).</param>
-/// <param name="Width">The docked reservations' width now (the primary's and every docked pane's).</param>
-internal sealed record ZunePanelSurfaceProps(PanelProps Panel, Func<float> Width);
 
 /// <summary>The ink of the panel's text on its surface (provided to the panel's bodies by the frame). The head's words and the queue's first rows (the
 /// transport options, "playing from", the playing row) sit where the surface is most tinted (the page wash's top, the glow's peak), so the words that read

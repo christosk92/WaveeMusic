@@ -4,18 +4,22 @@
 // width, docked, floating or a sheet; the rail <-> docked-video coupling) and hands this template one decided `PanelView` per render. The
 // frame places the host (`ZuneFrame`); this template draws the panel itself:
 //
-//   surface   design B (`ZunePanelWash.cs`): no plate. Docked and open the frame's full-height surface (the page wash under a scrim, the cover
-//             glow, the edge) lies under the transparent panel; a card (floating, the sheet, sliding out) paints the same picture itself, opaque.
+//   surface   design B (`ZunePanelWash.cs`): no plate. Docked and open the panel is transparent and the page's ground and wash run on under it
+//             (variant B: no scrim, no glow, no edge); docked and sliding it paints that same picture itself (the ground, the wash below its top);
+//             floating or as the sheet it is a card: the scrim, the cover glow and the edge over the ground and the wash, opaque.
 //             Floating it carries the flyout shadow and no ring, docked no shadow. Square everywhere.
-//   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show.
+//   column    the docked video card (mounted unconditionally; its own gate hides it) · the PIVOT HEAD · the body of the mode on show. Now
+//             playing pins the card under the head instead (in the hero's place): the column reorders the two and both glide, so the card keeps
+//             ONE parent, its node and its video surface across a mode switch (audit Z-OWNER, B10; the surface re-places its DComp child from the
+//             card's transformed rect every frame it moves, so a FLIP of the card is no tear).
 //   head      the pivots as words in the heading voice (26/32/300), 18 apart, lowercase (the style's navigation case), 44-tall hit boxes, on ONE line
 //             (the owner, 2026-10-24: never wrapped, never shrunk): queue · lyrics · now playing · friends (where the capabilities offer the friends
 //             panel) and video while the video body is up, as a CAROUSEL: the current word leads on the gutter in the primary ink, the rest follow
-//             round the cycle in the tertiary ink and run off under a soft right fade (`ZunePanelPivots`). A word shows its body in the same panel
+//             round the cycle in the tertiary ink and run off under a soft right fade (`ZunePivotCarousel`). A word shows its body in the same panel
 //             (`PanelProps.ShowMode`); a pane that offers none (a docked pane beside the primary: the queue, friends at Huge 4K) draws its one word.
 //             The close glyph (40 x 40) ends the row.
 //   pivoting  a change slides the words like a Zune / Windows Phone pivot (the strip moves the new lead to the gutter; the words that pass it wrap
-//             round) and the new pane slides in from the side of travel while the old one slides out the other way (`ZunePanelPivots`).
+//             round) and the new pane slides in from the side of travel while the old one slides out the other way (`SlidePanes`).
 //   docked    (ZT2, Z-Part-Panel "docked2" / "docked3") where panes dock beside the primary, the primary's head leaves out the bodies they
 //             show (`PanelView.Beside`: lyrics · now playing · friends at Huge, lyrics · now playing at Huge 4K), and a LINKED pane draws no
 //             close (it closes with the panel; the board draws none on the docked columns, the primary keeps its one, as inline).
@@ -37,6 +41,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
+using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -93,7 +98,7 @@ internal static class ZunePanel
     /// on a linked pane). Every word keeps its size: the ones that do not fit the strip of a panel <paramref name="paneWidth"/> wide run off under its
     /// right edge fade, never wrapped, shrunk or cut mid-word (the owner, 2026-10-24). The strip reaches the panel's left edge and carries the gutter
     /// as its own inset, so a word that slides out to the left fades over the empty gutter while the lead never stands under the fade.</summary>
-    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePanelPivots pivots, ZunePanelInk? ink, float paneWidth, bool sheet)
+    internal static Element Head(PanelProps props, PanelView view, PanelMode body, ZunePivotCarousel<PanelMode> pivots, ZunePanelInk? ink, float paneWidth, bool sheet)
     {
         var order = pivots.Order;
         var words = new Element[order.Length];
@@ -157,7 +162,7 @@ internal static class ZunePanel
     /// selection to the front), the head's whole height (the
     /// touch floor of 40 holds at every tier). A click on a trailing word brings it to the front. One element shape for every state, so a word
     /// keeps its node as the carousel moves it.</summary>
-    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePanelPivots carousel, ZunePanelInk? ink, bool sheet) => new BoxEl
+    private static Element Pivot(PanelMode mode, bool current, bool pivots, bool open, ZunePivotCarousel<PanelMode> carousel, ZunePanelInk? ink, bool sheet) => new BoxEl
     {
         Key = ZuneFrameRules.PanelPivotKeyPrefix + mode, Shrink = 0f, MinHeight = ZuneFrameRules.PanelHeadH, Direction = 0, AlignItems = FlexAlign.Center,
         Role = AutomationRole.Tab, Focusable = pivots && open, TabStop = pivots && open && current, AllowFocusOnInteraction = false,
@@ -185,9 +190,8 @@ internal static class ZunePanel
         ],
     }, Loc.Get(Strings.Theme.Zune.Frame.ClosePanel));
 
-    /// <summary>The body of <paramref name="body"/>; <paramref name="leaving"/>: the pane a pivot change replaced, sliding out (it never mounts a
-    /// second docked video card: the column holds the one card again).</summary>
-    internal static Element Body(PanelProps props, PanelView view, PanelMode body, bool leaving = false) => body switch
+    /// <summary>The body of <paramref name="body"/> (never the docked video card: the column holds the one card in every mode).</summary>
+    internal static Element Body(PanelProps props, PanelView view, PanelMode body) => body switch
     {
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Lyrics => new BoxEl
@@ -197,24 +201,20 @@ internal static class ZunePanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ZunePanelVideoArm()),
-        _ => NowPlaying(props, view, leaving),
+        _ => NowPlaying(props, view),
     };
 
     private static BoxEl GrowSlot(Element body) => new() { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
-    /// <summary>The now-playing arm: the pinned slot (the hero, or the docked video in its place: its height alone while the pane slides out) over
-    /// "up next".</summary>
-    private static Element NowPlaying(PanelProps props, PanelView view, bool leaving)
+    /// <summary>The now-playing arm: the pinned hero over "up next"; where the docked video takes the hero's place, the column pins the card over
+    /// this arm (under the head), so the arm is "up next" alone.</summary>
+    private static Element NowPlaying(PanelProps props, PanelView view)
     {
-        Element pinned = view.Pinned != PanelPinned.DockedVideo
-            ? Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying)
-            : leaving
-                ? new BoxEl { Shrink = 0f, Height = props.DockedVideoHeight, HitTestVisible = false }
-                : DockedCap(props, docked: true, view.Width);
+        var arm = Embed.Comp(props.NowPlaying, static () => new ZuneNowPlayingArm());
         return ScrollView(new BoxEl
         {
             Direction = 1,
-            Children = [pinned, Embed.Comp(props.NowPlaying, static () => new ZuneNowPlayingArm())],
+            Children = view.Pinned != PanelPinned.DockedVideo ? [Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying), arm] : [arm],
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
     }
 
@@ -268,8 +268,33 @@ internal sealed class ZunePanelFrame : Component
     Action<KeyEventArgs>? _onKey;
     Action? _close;
     bool _escapes;
-    readonly ZunePanelPivots _pivots = new();
+    readonly ZunePivotCarousel<PanelMode> _pivots = new() { Gap = ZuneFrameRules.PanelPivotGap, Gutter = ZuneFrameRules.PanelGutter };
     readonly Dictionary<PanelMode, NodeHandle> _panes = new();
+
+    /// <summary>The panes' slide (PANES: the owner's pivot, 2026-10-24): <paramref name="enter"/> comes in from the side of <paramref name="travel"/>,
+    /// fading in, while <paramref name="leave"/> (still mounted) goes the other way, fading out, from where it is drawn; the frame drops it when the
+    /// slide has run. Reduced motion: a plain cross-fade.</summary>
+    static void SlidePanes(SceneStore scene, AnimEngine anim, NodeHandle enter, NodeHandle leave, int travel, bool reduced)
+    {
+        float ms = ZuneMotion.PivotSlideMs, shift = reduced ? 0f : ZuneFrameRules.PanelPaneShift * (travel < 0 ? -1f : 1f);
+        if (!enter.IsNull && scene.IsLive(enter))
+        {
+            ref var paint = ref scene.Paint(enter);
+            float dx = paint.LocalTransform.Dx, alpha = paint.Opacity;
+            // A pane coming back mid-slide continues from where it is drawn.
+            bool fresh = alpha >= 1f && dx == 0f;
+            anim.Animate(enter, AnimChannel.TranslateX, fresh ? shift : dx, 0f, ms, Easing.SmoothOut);
+            anim.Animate(enter, AnimChannel.Opacity, fresh ? 0f : alpha, 1f, ms, Easing.SmoothOut);
+        }
+        if (!leave.IsNull && scene.IsLive(leave))
+        {
+            ref var paint = ref scene.Paint(leave);
+            float dx = paint.LocalTransform.Dx, alpha = paint.Opacity;
+            anim.Animate(leave, AnimChannel.TranslateX, dx, dx - shift, ms, Easing.SmoothOut);
+            anim.Animate(leave, AnimChannel.Opacity, alpha, 0f, ZuneFrameRules.PanelPaneFadeMs, Easing.SmoothOut);
+        }
+    }
+
     readonly Dictionary<PanelMode, Action<NodeHandle>> _paneRealized = new();
     PanelMode? _shown;     // the body last drawn on the open panel
     PanelMode? _leaving;   // the pane a pivot change replaced, sliding out
@@ -288,7 +313,7 @@ internal sealed class ZunePanelFrame : Component
     {
         Key = ZuneFrameRules.PanelPaneKeyPrefix + mode, Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, HitTestVisible = !leaving,
         OnRealized = PaneRealized(mode),
-        Children = [ZunePanel.Body(props, view, mode, leaving)],
+        Children = [ZunePanel.Body(props, view, mode)],
     };
 
     public override Element Render()
@@ -340,7 +365,7 @@ internal sealed class ZunePanelFrame : Component
             anim.Animate(Context.HostNode, channel, from, target, Design.Reduced ? 1f : ZuneFrameRules.PanelSlideMs, ZuneFrameRules.PanelSlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
-        // THE PIVOTS (ZunePanelPivots): the selected word leads, the rest follow round the cycle; after the commit's layout the words slide from where
+        // THE PIVOTS (ZunePivotCarousel): the selected word leads, the rest follow round the cycle; after the commit's layout the words slide from where
         // they were drawn and, on a change of body, the new pane slides in from the side of travel while the old one slides out the other way. The
         // old pane is dropped once its slide has run.
         _pivots.Show = props.ShowMode;
@@ -368,36 +393,44 @@ internal sealed class ZunePanelFrame : Component
                 (input?.MoveFocusVisual ?? input?.RestoreFocus)?.Invoke(lead);
             if (_paneSeeded == _paneGen) return;
             _paneSeeded = _paneGen;
-            if (_leaving is { } gone) ZunePanelPivots.SlidePanes(scene, anim, PaneOf(body), PaneOf(gone), travel, Design.Reduced);
+            if (_leaving is { } gone) SlidePanes(scene, anim, PaneOf(body), PaneOf(gone), travel, Design.Reduced);
         }, DepKey.From(orderKey, open ? 1 : 0, _paneGen, 0));
 
         _onBounds ??= r => props.BodyHeightChanged(r.H);
-        // Design B: docked and open, the frame's full-height surface lies under the panel (it stays transparent); a card (floating, the sheet, a docked
-        // panel sliding out) paints its own: the page wash below its top edge, the scrim, the glow, the edge.
+        // Design B: docked and open the panel is transparent over the page; docked and sliding it paints the ground and the page wash below its top
+        // edge; a card (floating, the sheet) paints its own plate: the page wash below its top edge, the scrim, the glow, the edge.
         bool inline = open && placement == PanelPlacement.Dock;
         var pageWash = UseContext(ZuneFrameContext.Material) is { } material
             ? ZunePageWash.Of(material.Value, UseContext(ZuneFrameContext.PageChrome)?.Value?.Backdrop ?? PageBackdrop.None, facts.Value.Tiers.Window)
             : null;
         var panelTop = UseContext(ZuneFrameContext.PanelTop);
         float top = inline ? 0f : panelTop?.Invoke() ?? 0f;
-        var glow = ZunePanelWash.Glow(props.CoverUrl?.Invoke(), out var peak);
-        var surface = inline ? s_noLayers : ZunePanelWash.Card(pageWash, top, glow);
-        // The inks are judged where the head lies: docked, the full-height surface's top (the window's top: the strongest wash, the glow's peak).
-        var ink = ZunePanelInk.For(ZunePanelWash.HeadColour(pageWash, top, peak));
+        // Docked, the panel is the page (variant B): no plate, no glow; only a floating card or the sheet paints its own.
+        bool plate = placement != PanelPlacement.Dock;
+        ColorF? peak = null;
+        var glow = plate ? ZunePanelWash.Glow(props.CoverUrl?.Invoke(), out peak) : null;
+        var surface = inline ? s_noLayers : ZunePanelWash.Card(pageWash, top, glow, plate);
+        // The inks are judged where the head lies: docked, on the page itself at the window's top (the strongest wash); floating, on the card's plate (the glow's peak).
+        var ink = ZunePanelInk.For(ZunePanelWash.HeadColour(pageWash, top, peak, plate));
 
         // The panes overlay each other while a pivot change slides them (a z-stack), and the slot clips them to the panel.
         Element bodySlot = new BoxEl
         {
+            Key = ZuneFrameRules.PanelBodyKey,
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Padding = ZuneFrameRules.PanelBodyPadding,
             Children = !bodyLive ? [new BoxEl { Grow = 1f, HitTestVisible = false }]
                 : _leaving is { } leaving ? [Pane(props, view, leaving, leaving: true), Pane(props, view, body, leaving: false)]
                 : [Pane(props, view, body, leaving: false)],
         };
+        // ONE parent for the docked card (B10): it mounts unconditionally in the column (its own gate hides it), over the head, or under it where now
+        // playing pins it in the hero's place. A mode switch only reorders the card and the head (the body's top is their sum either way): both keep
+        // their nodes and glide to their new places on the pivot slide.
+        LayoutTransition? slide = Design.Reduced ? null : ZuneMotion.PivotSlide;
+        Element card = ZunePanel.DockedCap(props, view.DockedHere, width) with { Key = ZuneFrameRules.PanelCardKey, Layout = slide };
+        Element head = ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet) with { Layout = slide };
         var column = new List<Element>(3);
-        // The docked card mounts unconditionally outside the now-playing arm (its own gate hides it); the now-playing arm pins it in place
-        // of the hero instead.
-        if (body != PanelMode.NowPlaying) column.Add(ZunePanel.DockedCap(props, view.DockedHere, width));
-        column.Add(ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet));
+        if (body == PanelMode.NowPlaying) { column.Add(head); column.Add(card); }
+        else { column.Add(card); column.Add(head); }
         column.Add(bodySlot);
 
         return Ctx.Provide(ZunePanelInk.Current, ink, new BoxEl

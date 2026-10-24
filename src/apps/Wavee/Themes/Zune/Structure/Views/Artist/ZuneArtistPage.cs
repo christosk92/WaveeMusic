@@ -47,6 +47,10 @@ internal static class ZuneArtistPage
     sealed class Latch
     {
         public ArtistChartStyle? Chart;
+        /// <summary>The page's chrome (the frame's), and the eyebrow's live ink over it: one step brighter over a photo bleed, as the band strip's words
+        /// (the eyebrow stands in the bleed's scrim fade, which variant D lightened: the secondary read 4.0 : 1 over ar9's photo).</summary>
+        public IReadSignal<PageChrome?>? Chrome;
+        public Func<ColorF>? EyebrowInk;
         Artist _menuArtist;
         Func<ContextMenuModel?>? _menu;
 
@@ -72,6 +76,8 @@ internal static class ZuneArtistPage
         var latch = latchCell.Value ??= new Latch();
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         var chart = latch.Chart ??= ListStyleLookup.Of(registry, StyleKeys.ArtistChart);
+        latch.Chrome = ctx.Hooks.UseContext(ZuneFrameContext.PageChrome);
+        latch.EyebrowInk ??= () => ZuneMaterial.PhotoBleed(latch.Chrome?.Value) ? Tok.TextPrimary : Tok.TextSecondary;
 
         // ONE visual swap: overview + measured width + chart settled. Snap, not FadeOnly (the hero must not fade from 0 over a held photograph).
         Element? body = p.BodyReady ? Compose(p, latch, lay) : null;
@@ -139,7 +145,7 @@ internal static class ZuneArtistPage
             });
         }
 
-        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, p.Accent, in acts);
+        Element hero = ZuneArtistHero.Build(Artist.HeroText.For(a), uri, lay, p.Accent, in acts, eyebrowInk: latch.EyebrowInk);
         float washH = lay.HeroH + Rules.WashTail;
         // The blend wash, from the cover's grading (a cover-keyed leaf: a grading re-renders only the wash). Under artwork wash only; the leaf reads
         // the option itself.

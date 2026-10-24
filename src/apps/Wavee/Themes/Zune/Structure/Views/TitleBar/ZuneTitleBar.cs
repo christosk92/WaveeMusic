@@ -191,7 +191,7 @@ internal static class ZuneTitleBar
             });
         // The tabs version subscribed the bar to the chrome: a peek here.
         else if (rec.Crumbs && chrome?.Peek() is { } page && page.Crumbs.Count >= ZuneFrameRules.CrumbMinDepth)
-            kids.Add(Trail(page.Crumbs, rec) with { Margin = new Edges4(rec.Gap, 0f, 0f, 0f) });
+            kids.Add(Trail(page.Crumbs, rec, () => ZuneMaterial.StripInk(chrome.Value)) with { Margin = new Edges4(rec.Gap, 0f, 0f, 0f) });
         return new BoxEl
         {
             // The island hugs its parts (the rest of the elastic lane stays the window's drag band), and fills the lane while it holds the field. Its
@@ -203,10 +203,11 @@ internal static class ZuneTitleBar
     }
 
     /// <summary>The trail: every crumb, a tertiary <c>›</c> between two; the ancestors are links in the tertiary ink, the current page (the
-    /// last crumb) in the secondary one. The core's words are lowercase, as every Zune label (Z-Part-TitleBar: "library › playlists › late night
+    /// last crumb) in the secondary one (over a photo bleed the separators and the ancestors read the secondary too, <paramref name="ink"/>: a bound
+    /// read of <see cref="ZuneMaterial.StripInk"/>, so a bleed that lands after the trail relights it in place). The core's words are lowercase, as every Zune label (Z-Part-TitleBar: "library › playlists › late night
     /// drive"; the library's says "library", as its pivot does); names keep their own casing. The trail gives way (ellipsised, last crumb first)
     /// before Back.</summary>
-    private static BoxEl Trail(IReadOnlyList<PageCrumb> crumbs, ZuneTitleBarLayout rec)
+    private static BoxEl Trail(IReadOnlyList<PageCrumb> crumbs, ZuneTitleBarLayout rec, Func<ColorF> ink)
     {
         var kids = new Element[crumbs.Count * 2 - 1];
         int signature = 0;
@@ -215,11 +216,11 @@ internal static class ZuneTitleBar
             var crumb = crumbs[i];
             signature = HashCode.Combine(signature, StringComparer.Ordinal.GetHashCode(crumb.Label));
             bool current = i == crumbs.Count - 1;
-            if (i > 0) kids[i * 2 - 1] = Words(rec, "›") with { Color = Tok.TextTertiary, Shrink = 0f };
+            if (i > 0) kids[i * 2 - 1] = Words(rec, "›") with { Color = Prop.Of(ink), Shrink = 0f };
             var words = Words(rec, CrumbText(crumb)) with
             {
                 Case = crumb.Word ? R.Case.For(LabelKind.Navigation) : TextCase.AsWritten,
-                Color = current ? Tok.TextSecondary : Tok.TextTertiary, HoverColor = current ? Tok.TextSecondary : Tok.TextPrimary,
+                Color = current ? Tok.TextSecondary : Prop.Of(ink), HoverColor = current ? Tok.TextSecondary : Tok.TextPrimary,
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
             };
             kids[i * 2] = current || crumb.Go is not { } go
