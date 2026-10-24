@@ -188,7 +188,8 @@ internal static class ZuneHomeZones
 
     static Element Cluster(ZoneCluster cluster, int index, ZuneHomeLayout lay, SurfaceShape rowShape)
     {
-        string title = cluster.Over is { Length: > 0 } over ? over + " " + cluster.Name : cluster.Name;
+        // The lead words are the cluster's own ("More like", "For fans of") and take Zune's case (Z-Home: "more like The Midnight"); the name keeps its own.
+        string title = cluster.Over is { Length: > 0 } over ? ZuneText.Word(over) + " " + cluster.Name : cluster.Name;
         BoxEl head = new BoxEl
         {
             Height = lay.ClusterTitleH, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
