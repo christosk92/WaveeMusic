@@ -1453,10 +1453,32 @@ public static partial class Shell
 
         int observedRung = Spotify.Audio.Rung(observed.Format);
         int askedRung = Spotify.Audio.TargetRung(askedQuality);
+        string quality = ObservedQualityWords(observed);
         string text = observedRung >= 0 && observedRung < askedRung
-            ? Strings.Player.QualityBelowSetting(observed.Label, Loc.Get(AskedQualityLabel(askedQuality)))
-            : Strings.Player.QualityPlaying(observed.Label);
+            ? Strings.Player.QualityBelowSetting(quality, Loc.Get(AskedQualityLabel(askedQuality)))
+            : Strings.Player.QualityPlaying(quality);
         return new DevicePickerRow(DevicePickerRowKind.Quality, text, Enabled: false);
+    }
+
+    /// <summary>The observed format in the setting's own words (the boards' "very high · 320 kbps", audit B8), not the codec
+    /// label the stage badge prints ("ogg 320"): a Spotify Ogg rung names its rung and its nominal rate, a FLAC rung names
+    /// "lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. The rung words are
+    /// mid-sentence forms; each theme still applies its own case role to the line.</summary>
+    static string ObservedQualityWords(Playback.Audio.Opened observed)
+    {
+        var f = observed.Format;
+        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
+            return Strings.Player.QualityFormat(Loc.Get(Strings.Player.QualityRungLossless), observed.Label);
+        string? rung = f switch
+        {
+            Spotify.Audio.Format.OggVorbis96 => Strings.Player.QualityRungNormal,
+            Spotify.Audio.Format.OggVorbis160 => Strings.Player.QualityRungHigh,
+            Spotify.Audio.Format.OggVorbis320 => Strings.Player.QualityRungVeryHigh,
+            _ => null,
+        };
+        return rung is { } k
+            ? Strings.Player.QualityRate(Loc.Get(k), FormatCache.Int(Playback.Audio.BitrateHintKbps(f)))
+            : observed.Label;
     }
 
     /// <summary>The setting's own name for <paramref name="quality"/> — the same four labels the Settings page's
