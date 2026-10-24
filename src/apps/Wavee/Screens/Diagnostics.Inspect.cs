@@ -404,14 +404,16 @@ public static partial class Diagnostics
                     return Crossing(id, name, a);   // mounts by itself when nothing is
                 case Inspect.Verb.Views:
                     return Views(id, name, a);
+                case Inspect.Verb.Tiers:
+                    return Tiers(id, name, a);   // the policy needs no mount; the facts do
+                case Inspect.Verb.Crossings:
+                    return Crossings(id, name, a);   // mounts a row at a time
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
             Shell.HeadlessShell shell = _shell!;
             switch (cmd.Verb)
             {
-                case Inspect.Verb.Tiers:
-                    return Inspect.Reply.Ok(id, name, InspectDump.WriteTiers);
                 case Inspect.Verb.GoTo:
                     {
                         if (!Navigate(a, out string error)) return Inspect.Reply.Fail(id, name, error);

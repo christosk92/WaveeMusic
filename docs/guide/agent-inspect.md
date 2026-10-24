@@ -531,9 +531,9 @@ and then restores the mount's; `max` caps the settle after that rescale (600).
 `render` is unavailable with `gpu=none`, under `--text headless`, and when the surface could not be created. In those
 cases it answers `{"ok":false,"error":...,"why":...}`.
 
-### `tiers`
+### `tiers {theme?}`
 
-Returns the window's current `TierFacts`:
+Returns the window's current `TierFacts` (when a mount is up) and the theme's tier `policy` (always):
 
 - `window`, `height` and `content` tiers
 - `contentWidth`, `viewportWidth` and `viewportHeight`: the sizes the ladders read now, the window's layout viewport and the
@@ -544,8 +544,28 @@ Returns the window's current `TierFacts`:
   mount or a tier change). The app republishes the facts only when a tier or a rung changes or a modal resize ends at a new size, never
   per resized frame nor for a window move, so after a `resize` that stays in one tier these keep the old size while the three above follow the window.
 
-It also returns the active `theme` and `kind`. With nothing mounted it fails (`nothing is mounted`): the facts belong to a
-mounted window.
+It also returns the active `theme` and `kind`. The facts belong to a mounted window: with nothing mounted, or with `theme=`
+naming another theme, the reply holds the policy alone.
+
+`policy {theme, window[], content[], height[], rungs[], ladders[], crossings[]}` reads the theme's `Rules/Tiers.cs` through its
+structure (the published policy of the live mount, else the structure's at its default options), so nobody has to read the source:
+
+- `window`, `content`, `height`: every edge `{at, narrowHold, widenHold, below, above}` (the tiers either side). An edge is crossed
+  upward at `at + widenHold` and downward below `at - narrowHold`; a fresh resolve uses `at`.
+- `rungs`: `{id, axis, at, narrowHold, widenHold}`; `ladders`: the named sub-ladders `{id, edges[]}`.
+- `crossings`: per window and height edge (`W1008`, `H720`), the sizes `crossings` uses each way: `narrow {mount, old, new}` and
+  `widen {mount, old, new}` (see `crossings`).
+
+```json
+{"cmd":"tiers","args":{"theme":"winui"},"id":3}
+→ {"id":3,"ok":true,"cmd":"tiers","policy":{"theme":"winui",
+   "window":[{"at":641,"narrowHold":24,"widenHold":0,"below":"Compact","above":"Small"},
+             {"at":1008,"narrowHold":24,"widenHold":0,"below":"Small","above":"Standard"},
+             {"at":1920,"narrowHold":24,"widenHold":0,"below":"Standard","above":"Huge"}],
+   "content":[...],"height":[{"at":720,"narrowHold":24,"widenHold":0,"below":"Short","above":"Regular"}],
+   "rungs":[{"id":"winui.discovery.search.beside","axis":"content","at":900,...}, ...],"ladders":[{"id":"detail.table","edges":[...]}, ...],
+   "crossings":[{"edge":"W641","axis":"w","narrow":{"mount":705,"old":625,"new":609},"widen":{"mount":577,"old":633,"new":649}}, ...]}}
+```
 
 ### `views {theme?, filter?, prefix?}`
 
@@ -732,6 +752,37 @@ gate error: 0 lint replies, 0 error, 0 warn, 0 info failed (0 at or above error)
 ```
 
 Without `--gate` the client exits 0 whatever the replies say (`--fail-fast` stops at the first `ok:false` with exit 2).
+
+### `crossings {routes?, edges?, dirs?, control?, w?, h?, theme?, kind?, items?, max?, ...}`
+
+Every window and height edge of the theme (`tiers` lists them), both ways, over each route, in ONE server: 32 crossings for WinUI
+over home, album, artist and playlist take about 2.5 minutes, against a fresh server per crossing before (75 minutes for the motion
+audit's 104). Per row it mounts afresh inside the old tier (`mount` sizes from `tiers`: `at + 64` narrowing, `at - 64` widening; a
+height edge at width `w` 1440, a width edge at height `h` 960), then runs one `crossing` from the old side to the new side with
+`frames=1`: narrowing from `at - narrowHold + 8` to `at - narrowHold - 8`, widening from `at + widenHold - 8` to `at + widenHold + 8`
+(the motion audit's sizes). `control=true` first crosses 16 DIP inside the old tier, the baseline an edge's counts compare with.
+
+| Arg | Effect |
+|---|---|
+| `routes` | The pages, a list: a route key (`home`), a `spotify:` uri, or a fixture word: `album` (al2), `artist` (ar3), `playlist` (pl0), `show` (sh0), `episode` (ep0). Default `home,album,artist,playlist`. |
+| `edges` | Only these edges by name (`edges=[W1008,H720]`). |
+| `dirs` | `both` (default), `narrow` or `widen`. |
+| `theme`, `kind`, `gpu`, `scale`, `images`, `grade` | Each row's mount (the active theme by default). |
+| `items` | Entries per list in each crossing reply (8). The lint options (`min` defaults to `error` here, `rules`, ...) pass on to every crossing. |
+
+The reply: `rows`, `failed` (crossings that answered ok:false), `ms`, `table[]` (one line per row: `route, edge, dir, ok, before,
+after` as window/height/content tiers, `contentCommitted`, `glided, snapped, jumped, remounted, vanished, appeared, ms`) and
+`crossings[]`: every crossing reply exactly as `crossing` writes it, with a `row {theme, route, edge, axis, dir, mount, old, new,
+control?, ms}` member first, so whatever reads a `crossing` reply (the gate) reads these the same way.
+
+```json
+{"cmd":"crossings","args":{"theme":"winui","routes":["home","album","artist","playlist"]},"id":4}
+→ {"id":4,"ok":true,"cmd":"crossings","theme":"winui","rows":32,"failed":0,"ms":145948,
+   "table":[{"route":"album","edge":"W1920","dir":"narrow","ok":true,"before":"Huge/Regular/Standard","after":"Standard/Regular/Standard",
+             "contentCommitted":"none","glided":48,"snapped":129,"jumped":7,"remounted":41,"vanished":9,"appeared":4,"ms":4151}, ...],
+   "crossings":[{"row":{"theme":"winui","route":"home","edge":"W641","axis":"w","dir":"narrow","mount":"705x960","old":"625x960",
+                 "new":"609x960","ms":6205},"id":4,"ok":true,"cmd":"crossing","from":{...},"to":{...}, ...}, ...]}
+```
 
 ### `trace {frames, keys?, prefix?, scroll?, every?, ...}`
 

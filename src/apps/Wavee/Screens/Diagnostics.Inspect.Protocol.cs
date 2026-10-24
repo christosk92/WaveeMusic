@@ -253,6 +253,14 @@ public static partial class Diagnostics
         /// <summary>The mount's args: its own and the navigation.</summary>
         static readonly ArgSpec[] s_mountArgs = Join(s_mountOwnArgs, s_navArgs);
 
+        /// <summary>True for a lint option `crossing` takes (`s_lintArgs`): `crossings` passes them on to each of its crossings.</summary>
+        public static bool IsCrossingLintArg(string name)
+        {
+            foreach (ArgSpec a in s_lintArgs)
+                if (string.Equals(a.Name, name, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
         /// <summary>True for an arg only a mount reads (not the navigation): a `crossing` over a mount that is already up refuses them.</summary>
         public static bool IsMountOnly(string name)
         {
@@ -421,7 +429,10 @@ public static partial class Diagnostics
                     Arg("max", ArgType.Int, "the settle cap after a rescale", "600"),
                 ],
             },
-            new(Verb.Tiers, "tiers", "The mounted window's tier facts: window, height and content tiers, rung ids, the live sizes and the published ones the page reads", "tiers") { NeedsMount = true },
+            new(Verb.Tiers, "tiers", "The mounted window's tier facts (window, height and content tiers, rung ids, the live sizes and the published ones the page reads) and the theme's policy: every edge with its holds, the rungs, the named ladders and the sizes crossings uses per edge", "tiers")
+            {
+                Args = [Arg("theme", ArgType.Enum, "the theme whose policy to list (default: the active one; another theme lists its policy alone)", null, ThemeChoices)],
+            },
             new(Verb.Lint, "lint", "Check the mounted scene (or a saved snapshot: replay=) for design flaws: gate rules (clip, trim, type, target, duplicate, rhythm, contrast, theme edges) and todo rules (align, space, placeholder, keys)", "lint min=warn allowDuplicate=\"See all\"")
             {
                 Positional = ["rules"], NeedsMount = true, MountUnless = "replay",
@@ -468,6 +479,26 @@ public static partial class Diagnostics
                     Arg("filter", ArgType.Enum, "list every key, only the stand-ins, or only the theme's own (the counts cover every key)", "all", "all|standins|own"),
                     Arg("prefix", ArgType.String, "list only keys starting with this"),
                 ],
+            },
+            new(Verb.Crossings, "crossings", "Cross every window and height edge of the theme both ways over each route, in this one server: a fresh mount inside the old tier per row, then one crossing (old side to new side, frames 1); every crossing reply kept whole, with a row and a table line", "crossings theme=winui routes=[home,album,artist,playlist]")
+            {
+                Args = Join(
+                [
+                    Arg("routes", ArgType.List, "the pages: a route key, a spotify: uri, or album|artist|playlist|show|episode (the fixtures al2, ar3, pl0, sh0, ep0)", "home,album,artist,playlist"),
+                    Arg("edges", ArgType.List, "only these edges, by name (W1008, H720; tiers lists them)"),
+                    Arg("dirs", ArgType.Enum, "narrowing, widening or both", "both", "both|narrow|widen"),
+                    Arg("control", ArgType.Bool, "first cross 16 DIP inside the old tier (the baseline of the edge's counts)", "false"),
+                    Arg("w", ArgType.Float, "the width a height edge is crossed at", "1440"),
+                    Arg("h", ArgType.Float, "the height a width edge is crossed at", "960"),
+                    Arg("theme", ArgType.Enum, "the theme (default: the active one)", null, ThemeChoices),
+                    Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
+                    Arg("gpu", ArgType.Enum, "each row's mount devices", "warp", "warp|hardware|none"),
+                    Arg("scale", ArgType.Float, "DPI scale of each row's mount", "1"),
+                    Arg("images", ArgType.Enum, "fake or real images", "fake", "fake|real"),
+                    Arg("grade", ArgType.Enum, "cover grading", null, "hue|grey|gray|greynow"),
+                    Arg("items", ArgType.Int, "entries per list in each crossing reply", "8"),
+                    Arg("max", ArgType.Int, "the settle cap", "600"),
+                ], s_lintArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
