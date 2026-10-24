@@ -451,8 +451,9 @@ internal static class ClassicArtistHero
 
             return new BoxEl
             {
-                // The band's height, never a height of its own: the band eases on a crossing and the photograph fills it frame by frame.
-                Width = width, ZStack = true, ScaleX = 1f, ScaleY = 1f,
+                // The band's height, eased with the band on a crossing (the same reflow), so the photograph fills the band frame by frame
+                // whichever way the hero's height goes.
+                Width = width, Height = height, ZStack = true, ScaleX = 1f, ScaleY = 1f, Animate = ClassicTierMotion.HeightReflow,
                 Children =
                 [
                     new BoxEl
