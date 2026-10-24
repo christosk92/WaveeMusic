@@ -828,6 +828,9 @@ internal static class ClassicTrackTable
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Animate = ClassicTrackRowLayout.CheckShift,
+                    // A plain (stacked-flow) row's plate runs full-bleed, but its lanes keep the Modern row's lead: the grid pads
+                    // PadX − RowInset, so the inset the plate no longer has moves inside it (art on the gutter, as the drawer's rail).
+                    Padding = plain ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default,
                     Children = [a.CheckLane, a.Content],
                 },
                 new BoxEl
