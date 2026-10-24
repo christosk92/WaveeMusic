@@ -35,7 +35,10 @@ public static class SurfaceParts
     /// it — exactly <see cref="SurfaceGeometry.ShelfGutterTop"/>/<see cref="SurfaceGeometry.ShelfGutterBottom"/>, which
     /// <see cref="SurfaceGeometry.ShelfHeight(float, float, int, bool)"/> sums. Nothing reserves a halo: the fill-only hover
     /// neither lifts nor casts one.</summary>
-    public static BoxEl Gutter(Element shell, float width) => new()
+    public static BoxEl Gutter(Element shell, float width) => Gutter(shell, (Prop<float>)width);
+
+    /// <summary><see cref="Gutter(Element, float)"/> at a width that may be BOUND (the surface host's live card width).</summary>
+    public static BoxEl Gutter(Element shell, Prop<float> width) => new()
     {
         Padding = new Edges4(0f, SurfaceGeometry.ShelfGutterTop, 0f, SurfaceGeometry.ShelfGutterBottom),
         Width = width, Shrink = 0f,
@@ -59,6 +62,17 @@ public static class SurfaceParts
     /// <summary>A shelf card's inner width for a cover that is <paramref name="flush"/> with its cell (<see cref="SurfaceShape.Flush"/>: the whole width).</summary>
     public static float InnerOf(float width, bool flush)
         => float.IsNaN(width) ? float.NaN : width - 2f * SurfaceGeometry.PlateInsetX(flush);
+
+    /// <summary>A shelf card's cover box, <paramref name="inset"/> DIP narrower than the card on each side, at
+    /// <paramref name="aspect"/>: its width and height as props BOUND to the host's live card width when there is one
+    /// (<paramref name="live"/>, audit B3bc: a width change re-lays the card out and re-renders nothing), else the values at
+    /// <paramref name="width"/>. The numbers are <see cref="SurfaceGeometry.CoverHeight"/>'s either way, so a bound card draws
+    /// exactly what a static one would.</summary>
+    internal static (Prop<float> W, Prop<float> H) ShelfCover(float width, IReadSignal<float>? live, float inset, float aspect)
+    {
+        if (live is null) { float w = width - 2f * inset; return (w, SurfaceGeometry.CoverHeight(w, aspect)); }
+        return (Prop.Of(() => live.Value - 2f * inset), Prop.Of(() => SurfaceGeometry.CoverHeight(live.Value - 2f * inset, aspect)));
+    }
 
     // ══ 3. THE ROW TITLE'S RUNG ════════════════════════════════════════════════════════════════════════════════════════════════
 

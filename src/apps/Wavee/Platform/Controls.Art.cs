@@ -100,15 +100,22 @@ public static partial class Controls
     /// in.</para></summary>
     public static Element CardCover(Element art, float width, float height, bool circular, Element? overlay = null,
                                     Element? corner = null)
+        => CardCover(art, width, height, width / MathF.Max(1f, height), circular, overlay, corner);
+
+    /// <summary><see cref="CardCover(Element, float, float, bool, Element?, Element?)"/> at sizes that may be BOUND (a shelf card's
+    /// live width, audit B3bc): the shape decisions (the clip, the wide tile's hover scale) read <paramref name="aspect"/>, the
+    /// cover's width ÷ height, which a width change keeps. <paramref name="art"/> fills the stack (a ZStack layer of no size).</summary>
+    public static Element CardCover(Element art, Prop<float> width, Prop<float> height, float aspect, bool circular,
+                                    Element? overlay = null, Element? corner = null)
     {
         var kids = new List<Element>(3) { art };
         if (overlay is not null) kids.Add(overlay);
         if (corner is not null) kids.Add(corner);
-        bool wide = width != height;
+        bool wide = MathF.Abs(aspect - 1f) >= 0.001f;
         return new BoxEl
         {
             ZStack = true, Width = width, Height = height,
-            ClipToBounds = !CoverShape.IsCircular(circular, width / MathF.Max(1f, height)),
+            ClipToBounds = !CoverShape.IsCircular(circular, aspect),
             HoverScale = wide ? R.Motion.ScaleSubtle.Hover : 1f,
             HoverDurationMs = Design.Motion.Slow, HoverEasing = Easing.FluentDecelerate,
             Children = kids.ToArray(),
