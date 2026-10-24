@@ -299,6 +299,7 @@ public static partial class Diagnostics
                 OverflowY = overflow.VerticalOverflow,
                 Glyph = glyph,
                 Copy = !glyph && IsCopy(value),
+                Case = style.Case == TextCase.AsWritten ? "" : style.Case.ToString(),
                 GlyphName = glyph ? GlyphNameOf(value, InspectDump.FamilyOf(strings, in style)) : "",
                 Spans = spans,
                 Color = paint.TextColor,
@@ -524,6 +525,7 @@ public static partial class Diagnostics
             var stack = new Stack<(NodeHandle Node, int Parent, int Depth, float Opacity, bool Inert, int Root)>();
             var children = new List<NodeHandle>();
             var blockers = new List<RectF>();
+            var exiting = new List<InspectLint.ExitingRun>();
             Span<char> path = stackalloc char[256];
             // A root under live ancestors (`root=`) starts from the cut they put on it, so the subtree is judged as the page shows it.
             var seeds = new (bool Seeded, RectF Screen, RectF Content, bool Shown)[roots.Length];
@@ -543,7 +545,13 @@ public static partial class Diagnostics
                 if (node.IsNull || !scene.IsLive(node)) continue;
                 NodeFlags flags = scene.Flags(node);
                 ref NodePaint paint = ref scene.Paint(node);
-                if ((flags & NodeFlags.Visible) == 0 || (flags & (NodeFlags.Parked | NodeFlags.Exiting)) != 0) continue;
+                if ((flags & NodeFlags.Visible) == 0 || (flags & NodeFlags.Parked) != 0) continue;
+                if ((flags & NodeFlags.Exiting) != 0)
+                {
+                    // on its way out: not the page, but what it still draws can sit over what replaces it (text.copies)
+                    CollectExiting(scene, strings, node, above, KeyAbove(scene, node), default, exiting);
+                    continue;
+                }
                 if (paint.Opacity <= 0f)
                 {
                     // Paints nothing, but the hit test is box and clip, never paint: its targets (an auto-hidden scroll bar) still take presses.
@@ -640,6 +648,15 @@ public static partial class Diagnostics
                 for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], self, self == parent ? depth : depth + 1, opacity, inert, root));
             }
 
+            // Exit orphans (a crossfade's outgoing line) are detached from the tree while they animate out: their rects are relative to the
+            // parent-world origin the scene froze for them.
+            for (int o = 0; o < scene.OrphanCount; o++)
+            {
+                NodeHandle orphan = scene.OrphanAt(o, out float ox, out float oy);
+                if (!orphan.IsNull && scene.IsLive(orphan))
+                    CollectExiting(scene, strings, orphan, 1f, scene.DebugKeyOf(orphan) ?? "", new Point2(ox, oy), exiting);
+            }
+
             // The words and images under each node: children follow their parent, so one backwards pass.
             var words = new int[nodes.Count];
             var images = new int[nodes.Count];
@@ -714,7 +731,35 @@ public static partial class Diagnostics
                 PlayingTitle = PlayingTitle(),
                 ChromeHeld = InspectSwitches.HoverChromeAtRest,
                 Reserved = Video.FloatingSurfaceReserve.Peek(),
+                ExitingText = exiting,
             };
+        }
+
+        /// <summary>The nearest key at or above <paramref name="node"/> ("" when none).</summary>
+        static string KeyAbove(SceneStore scene, NodeHandle node)
+        {
+            for (NodeHandle n = node; !n.IsNull; n = scene.Parent(n))
+                if (scene.DebugKeyOf(n) is { Length: > 0 } key) return key;
+            return "";
+        }
+
+        /// <summary>The words runs an exiting subtree still draws (visible, opacity above 0, a colour with alpha), with the opacity that reaches
+        /// the screen and the nearest key.</summary>
+        static void CollectExiting(SceneStore scene, StringTable strings, NodeHandle node, float above, string key, Point2 origin, List<InspectLint.ExitingRun> into)
+        {
+            if ((scene.Flags(node) & NodeFlags.Visible) == 0) return;
+            ref NodePaint paint = ref scene.Paint(node);
+            float opacity = above * paint.Opacity;
+            if (opacity <= 0.01f) return;
+            if (scene.DebugKeyOf(node) is { Length: > 0 } own) key = own;
+            if (paint.VisualKind == VisualKind.Text && paint.Text.Value > 0 && paint.TextColor.A > 0.05f)
+            {
+                string text = strings.Resolve(paint.Text);
+                RectF p = scene.PresentedAbsoluteRect(node);
+                var r = new RectF(p.X + origin.X, p.Y + origin.Y, p.W, p.H);
+                if (text.Length > 0 && !IsGlyph(text) && r.W > 0f && r.H > 0f) into.Add(new InspectLint.ExitingRun(key, r, text, Math.Clamp(opacity * paint.TextColor.A, 0f, 1f)));
+            }
+            for (var c = scene.FirstChild(node); !c.IsNull; c = scene.NextSibling(c)) CollectExiting(scene, strings, c, opacity, key, origin, into);
         }
 
         /// <summary>The title of what the player holds ("" when nothing).</summary>

@@ -158,43 +158,65 @@ public static partial class Diagnostics
 
         // ── text.copies ─────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>text.copies (visual.md 2): two DIFFERENT lines of one text family drawn over each other, both readable: a crossfade that
-        /// stacks the outgoing and the incoming lyric line in one slot at full size. The same words twice in one place are a designed layer (a
-        /// karaoke fill over its dim copy, a glow) and are left alone. Judges moving nodes as they stand (a crossfade is motion).</summary>
+        static bool SameBox(in RectF a, in RectF b)
+            => MathF.Abs(a.X - b.X) <= 2f && MathF.Abs(a.Y - b.Y) <= 2f && MathF.Abs(a.W - b.W) <= 2f && MathF.Abs(a.H - b.H) <= 2f;
+
+        /// <summary>text.copies (visual.md 2): two lines of one text family drawn over each other, both readable: a crossfade that stacks the
+        /// outgoing and the incoming lyric line in one slot at full size, or draws the same line at two sizes at once. The same words on the same
+        /// box are a designed layer (a karaoke fill over its dim copy, a glow) and are left alone. Judges moving nodes as they stand.</summary>
+        /// <summary>A key's family for <c>text.copies</c>: its first segment (<c>cap</c> of <c>cap:a:1:0</c>, so the active line and the context
+        /// line it becomes are one family).</summary>
+        static string FirstSegment(string key)
+        {
+            int cut = key.IndexOfAny([':', '/', '.']);
+            return cut > 0 ? key[..cut] : key;
+        }
+
+        /// <summary>A run text.copies compares: a live node (<see cref="Node"/> set) or an exiting one (the outgoing line).</summary>
+        readonly record struct CopyRun(Node? N, string Family, string Text, RectF Box, RectF Rect, float Opacity, bool Exiting, string Ref);
+
         static int TextCopiesRule(Snapshot s, List<Finding> into)
         {
-            var runs = new List<(Node N, RectF Box)>();
+            var runs = new List<CopyRun>();
             foreach (Node n in s.Nodes)
-                if (n.Text is { } t && !n.Covered && IsWords(n) && n.Opacity >= 0.2f && !n.Visible.IsEmpty && t.String.Length > 0)
-                    runs.Add((n, GlyphBox(n, t).Intersect(n.Visible)));
-            var groups = new Dictionary<string, (Node A, Node B, int Count, RectF Box)>(StringComparer.Ordinal);
+                if (n.Text is { } t && !n.Covered && IsWords(n) && n.Opacity >= 0.2f && t.Color.A >= 0.2f && !n.Visible.IsEmpty && t.String.Length > 0 && n.Pattern != "#root")
+                    runs.Add(new CopyRun(n, FirstSegment(n.Pattern), t.String, GlyphBox(n, t).Intersect(n.Visible), n.Rect, n.Opacity * t.Color.A, false, n.Ref));
+            foreach (ExitingRun e in s.ExitingText)
+                if (e.Opacity >= 0.2f && e.Key.Length > 0)
+                    runs.Add(new CopyRun(null, FirstSegment(e.Key), e.Text, e.Rect, e.Rect, e.Opacity, true, e.Key + " (exiting)"));
+            var groups = new Dictionary<string, (CopyRun A, CopyRun B, int Count)>(StringComparer.Ordinal);
             for (int i = 0; i < runs.Count; i++)
                 for (int j = i + 1; j < runs.Count; j++)
                 {
-                    var (a, ba) = runs[i];
-                    var (b, bb) = runs[j];
-                    if (ba.IsEmpty || bb.IsEmpty || a.Pattern != b.Pattern || a.Pattern == "#root") continue;
-                    if (string.Equals(a.Text!.String, b.Text!.String, StringComparison.Ordinal)) continue;
-                    if (Under(s, a.Index, b.Index) || Under(s, b.Index, a.Index)) continue;
-                    float area = Overlap(ba, bb, out _, out float h);
-                    float small = MathF.Min(ba.W * ba.H, bb.W * bb.H);
-                    if (small <= 0f || area < 0.4f * small || h < 0.5f * MathF.Min(ba.H, bb.H)) continue;
-                    string key = a.Pattern + "|" + (a.Animating || b.Animating || a.Moving || b.Moving ? "crossfade" : "stacked");
-                    groups[key] = groups.TryGetValue(key, out var g) ? (g.A, g.B, g.Count + 1, g.Box) : (a, b, 1, ba);
+                    CopyRun a = runs[i], b = runs[j];
+                    if (a.Box.IsEmpty || b.Box.IsEmpty || a.Family != b.Family) continue;
+                    // the same words on the same box are a designed layer (a karaoke fill over its dim copy, a glow); the same words at another
+                    // size or place are one line drawn in two roles at once (a crossfade moving the active line to a context slot)
+                    if (string.Equals(a.Text, b.Text, StringComparison.Ordinal) && SameBox(a.Rect, b.Rect)) continue;
+                    if (a.N is { } na && b.N is { } nb && (Under(s, na.Index, nb.Index) || Under(s, nb.Index, na.Index))) continue;
+                    float area = Overlap(a.Box, b.Box, out _, out float h);
+                    float small = MathF.Min(a.Box.W * a.Box.H, b.Box.W * b.Box.H);
+                    if (small <= 0f || area < 0.4f * small || h < 0.5f * MathF.Min(a.Box.H, b.Box.H)) continue;
+                    bool moving = a.Exiting || b.Exiting || a.N is { Animating: true } or { Moving: true } || b.N is { Animating: true } or { Moving: true };
+                    string key = a.Family + "|" + (moving ? "crossfade" : "stacked");
+                    groups[key] = groups.TryGetValue(key, out var g) ? (g.A, g.B, g.Count + 1) : (a, b, 1);
                 }
-            foreach (var (key, (a, b, count, box)) in groups)
+            foreach (var (key, (a, b, count)) in groups)
             {
                 string cause = key[(key.LastIndexOf('|') + 1)..];
+                var nodes = new List<int>();
+                if (a.N is { } na) nodes.Add(na.Index);
+                if (b.N is { } nb) nodes.Add(nb.Index);
                 into.Add(new Finding(Rules.TextCopies, Severity.Warn,
-                    $"two lines of {a.Pattern} draw over each other: {TextName(a.Text!)} (opacity {F(a.Opacity)}) and {TextName(b.Text!)} (opacity {F(b.Opacity)})" +
+                    $"two lines of {a.Family}:* draw over each other: {Q(a.Text)} ({a.Ref}, opacity {F(a.Opacity)}) and {Q(b.Text)} ({b.Ref}, opacity {F(b.Opacity)})" +
                     (count > 1 ? $", and {count - 1} more pair{(count > 2 ? "s" : "")}" : "") + (cause == "crossfade" ? " mid-crossfade" : ""), [a.Ref, b.Ref])
                 {
                     Measured = [M("pairs", count), M("opacityA", a.Opacity), M("opacityB", b.Opacity)],
-                    Pattern = a.Pattern,
+                    Pattern = a.Family + ":*",
                     Cause = cause,
                     Count = count,
-                    Rects = [a.Visible, b.Visible],
-                    Nodes = [a.Index, b.Index],
+                    Rects = [a.Box, b.Box],
+                    Nodes = nodes,
                     Fix = "let the outgoing line leave its slot as the incoming one arrives (slide or scale it out), or fade one out before the other draws; production motion is the spec: compare with origin/main first",
                 });
             }
@@ -257,14 +279,15 @@ public static partial class Diagnostics
             for (int i = n.Parent; i >= 0; i = s.Nodes[i].Parent)
             {
                 Node up = s.Nodes[i];
-                if (up.Role is "Slider" or "ProgressBar" or "ScrollBar" || up.Drag) return false;
+                if (up.Role is "Slider" or "ProgressBar" or "ScrollBar" || (up.Drag && MathF.Min(up.Rect.W, up.Rect.H) <= 24f)) return false;
             }
             return true;
         }
 
         /// <summary>text.ruled (visual.md 8): a rule or line crossing a text's glyph box. A horizontal line inside the run's ink, from its top to a
         /// hair under its descenders (Zune's playlist title editor draws its underline at rest through the 120 title's p and y tails), or a
-        /// vertical one through its words. Needs the glyph ink (a DirectWrite mount); a line of the run's own ancestor chain counts too.</summary>
+        /// vertical one through its words. The line and the words share a plane: the same scroll region, page and overlay (a fixed bar's edge
+        /// over content scrolling under it is not). Needs the glyph ink (a DirectWrite mount).</summary>
         static int TextRuledRule(Snapshot s, List<Finding> into)
         {
             var lines = new List<(Node N, bool H)>();
@@ -280,6 +303,8 @@ public static partial class Diagnostics
                 looked++;
                 foreach (var (line, horizontal) in lines)
                 {
+                    // one plane: a fixed line (the play bar's top edge) over content that scrolls under it is not drawn through those words
+                    if (line.Region != n.Region || PageOf(s, line) != PageOf(s, n) || OverlayOf(s, line) != OverlayOf(s, n)) continue;
                     RectF l = line.Visible.IsEmpty ? line.Rect : line.Visible;
                     float into1;
                     if (horizontal)
@@ -426,9 +451,23 @@ public static partial class Diagnostics
             return letters;
         }
 
+        /// <summary>A run inside a row or card about another entity than the page's (a track row's title that happens to read like copy):
+        /// data, not the app's voice.</summary>
+        static bool InDataRow(Snapshot s, Node n)
+        {
+            for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
+            {
+                Node m = s.Nodes[i];
+                if (m.Key is not { } key) continue;
+                if (TrySlotRoute(key, out _, out _)) return false;   // the page itself
+                if (EntityIn(key) is { Length: > 0 } entity && !string.Equals(entity, s.PageEntity, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
         /// <summary>type.voice (visual.md 12, 20): the app's own copy (<see cref="TextRun.Copy"/>: a base-culture loc string, not a title or a
-        /// name) in another theme's voice. Zune speaks lowercase and light: Title Case copy, or a capitalised or semibold heading (20 DIP and
-        /// up), is a stand-in's or another theme's voice. Classic heads in semibold sentence case: a light all-lowercase head (18 DIP and up)
+        /// name) as the screen shows it (its case transform applied) in another theme's voice. Zune speaks lowercase: Title Case copy, or a
+        /// capitalised heading (20 DIP and up), is a stand-in's or another theme's voice (a semibold one is not: Zune lights its selected pivot so). Classic heads in semibold sentence case: a light all-lowercase head (18 DIP and up)
         /// is Zune's voice leaking in (the show reader's "continue", "new since you were here"). WinUI is not judged.</summary>
         static int VoiceRule(Snapshot s, List<Finding> into)
         {
@@ -436,19 +475,31 @@ public static partial class Diagnostics
             bool classic = string.Equals(s.Theme, "classic", StringComparison.OrdinalIgnoreCase);
             if (!zune && !classic) return 0;
             int looked = 0;
+            // a repeated cell (a track row's title column) whose instances are mostly not copy is a data column: one title that reads like a
+            // loc string ("Quiet Hours") is still data
+            var cells = new Dictionary<string, (int All, int Copy)>(StringComparer.Ordinal);
+            foreach (Node n in s.Nodes)
+                if (n.Text is { } c && n.CellCount >= 3 && IsWords(n))
+                {
+                    string cell = n.Family + "/" + n.CellPath;
+                    cells.TryGetValue(cell, out var e);
+                    cells[cell] = (e.All + 1, e.Copy + (c.Copy ? 1 : 0));
+                }
             var groups = new Dictionary<string, List<Node>>(StringComparer.Ordinal);
             foreach (Node n in s.Nodes)
             {
-                if (n.Text is not { Copy: true } t || !Reads(n, 0.5f)) continue;
+                if (n.Text is not { Copy: true } t || !Reads(n, 0.5f) || InDataRow(s, n)) continue;
+                if (n.CellCount >= 3 && cells.TryGetValue(n.Family + "/" + n.CellPath, out var col) && col.Copy * 2 < col.All) continue;
                 looked++;
+                string shown = t.Shown.Trim();
+                if (shown.Length == 0) continue;
                 string? cause = null;
                 if (zune)
                 {
-                    if (TitleCase(t.String)) cause = "title-case";
-                    else if (t.Size >= 20f && t.Weight >= 600) cause = "semibold-head";
-                    else if (t.Size >= 20f && !AllLower(t.String) && char.IsUpper(t.String.TrimStart()[0])) cause = "capital-head";
+                    if (TitleCase(shown)) cause = "title-case";
+                    else if (t.Size >= 20f && !AllLower(shown) && char.IsUpper(shown[0])) cause = "capital-head";
                 }
-                else if (t.Size >= 18f && t.Weight <= 300 && AllLower(t.String)) cause = "light-lowercase-head";
+                else if (t.Size >= 18f && t.Weight <= 300 && AllLower(shown)) cause = "light-lowercase-head";
                 if (cause is null) continue;
                 string key = cause + "|" + n.Pattern;
                 if (!groups.TryGetValue(key, out var list)) groups[key] = list = [];
@@ -462,7 +513,6 @@ public static partial class Diagnostics
                 string voice = cause switch
                 {
                     "title-case" => "Title Case",
-                    "semibold-head" => "a semibold head (weight " + n.Text!.Weight.ToString(CultureInfo.InvariantCulture) + ")",
                     "capital-head" => "a capitalised head",
                     _ => "a light lowercase head (Zune's voice)",
                 };
@@ -502,13 +552,13 @@ public static partial class Diagnostics
         static int StateRestRule(Snapshot s, List<Finding> into)
         {
             if (s.RouteName is not ("album" or "artist" or "show") || s.PageEntity.Length == 0) return 0;
-            bool paged = HasPageSlot(s);
+            string[] elsewhere = ["shell.playerbar", "shell.titlebar"];   // the play bar's heart is the playing track's; the title bar is the window's
             foreach (Node n in s.Nodes)
             {
-                if (!n.Interactive || n.Disabled || !n.InScope || Hidden(n)) continue;
+                if (!n.Interactive || n.Disabled || !n.InScope || Hidden(n) || KeyedUnder(s, n, elsewhere)) continue;
                 bool state = StateWords.Contains(n.Label.Trim().ToLowerInvariant()) || StateGlyphs.Contains(n.LabelGlyph);
                 if (!state) continue;
-                if (string.Equals(SubjectOf(s, n, paged), s.PageEntity, StringComparison.Ordinal)) return 1;
+                if (string.Equals(SubjectOf(s, n), s.PageEntity, StringComparison.Ordinal)) return 1;   // a band beside the page acts on it too
             }
             into.Add(new Finding(Rules.StateRest, Severity.Warn,
                 $"the page's subject {s.PageEntity} shows no saved or following state on screen at rest (no toggle that acts on it reads follow/save or draws a heart)", [])
@@ -595,7 +645,7 @@ public static partial class Diagnostics
             foreach (Node n in s.Nodes)
             {
                 if (n.Visible.IsEmpty || n.Visible.W * n.Visible.H < 0.5f * s.Width * s.Height) continue;
-                if (n.Visual == "Video") { surface = "the fullscreen video"; host = n; break; }
+                if (n.Visual == "Video" || n.Key is "video-area" or "media-stage") { surface = "the fullscreen video"; host = n; break; }
                 if (surface.Length == 0 && n.Key is { } key && key.StartsWith("stage:", StringComparison.Ordinal)) { surface = "the now-playing stage"; host = n; }
             }
             if (host is null) return 0;
@@ -607,8 +657,8 @@ public static partial class Diagnostics
                 if ((n.Role is "Slider" || n.Drag) && n.Rect.W >= 100f && n.Rect.W > 3f * n.Rect.H) seek = true;
             }
             if (play && seek) return 1;
-            string missing = !play && !seek ? "a play/pause target and a seek control" : !play ? "a play/pause target" : "a seek control";
-            into.Add(new Finding(Rules.ControlRequired, Severity.Warn, $"{surface} holds its transport shown (chrome=shown) but has no {missing} on screen", [host.Ref])
+            string missing = !play && !seek ? "no play/pause target and no seek control" : !play ? "no play/pause target" : "no seek control";
+            into.Add(new Finding(Rules.ControlRequired, Severity.Warn, $"{surface} holds its transport shown (chrome=shown) but has {missing} on screen", [host.Ref])
             {
                 Pattern = host.Pattern,
                 Cause = (!play ? "play" : "") + (!seek ? "seek" : ""),
@@ -641,7 +691,8 @@ public static partial class Diagnostics
                 for (int a = n.Parent; a >= 0 && !cut; a = nodes[a].Parent)
                 {
                     Node up = nodes[a];
-                    if ((up.Clips || up.ScrollAxis != 0 || !up.ClipRect.IsInfinite) && up.Rect.Right <= s.Width + 0.5f && up.Rect.Right < n.Rect.Right - 1f) cut = true;
+                    // a clip INSIDE the window cuts it (text.clip's); one at the window's own edge (the content card, the frame) is the window
+                    if ((up.Clips || up.ScrollAxis != 0 || !up.ClipRect.IsInfinite) && up.Rect.Right < s.Width - 1f && up.Rect.Right < n.Rect.Right - 1f) cut = true;
                     if (up.ScrollAxis == 1) cut = true;
                 }
                 if (cut) continue;
@@ -668,7 +719,7 @@ public static partial class Diagnostics
         // ── space.huge ──────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>space.huge (visual.md 9, winui.md 5.8): at Huge and Huge4K, a band of the page from top to bottom with nothing in it, as wide
-        /// as a column (320 DIP and 20 % of the page or more): Zune centres a 2400 column at 4K and leaves 650 empty each side; the settings page
+        /// as a column (320 DIP and 15 % of the page or more): Zune centres a 2400 column at 4K and leaves 650 empty each side; the settings page
         /// uses 760 of 2400. The page's own full-width plates and art (90 % of its width or more) are its ground, not content.</summary>
         static int HugeSpaceRule(Snapshot s, List<Finding> into)
         {
@@ -699,13 +750,15 @@ public static partial class Diagnostics
                 if (j - i > bestLen) { bestLen = j - i; bestStart = i; }
                 i = j;
             }
-            float width = bestLen * 4f;
-            if (width < MathF.Max(320f, 0.2f * p.W)) return looked;
+            float width = bestLen * 4f, empty = 0f;
+            foreach (bool c in covered) if (!c) empty += 4f;
+            if (width < MathF.Max(320f, 0.15f * p.W)) return looked;
             float x0 = p.X + bestStart * 4f;
             into.Add(new Finding(Rules.SpaceHuge, Severity.Warn,
-                $"the page leaves x={F(x0)}..{F(x0 + width)} ({F(width)} DIP, {F(100f * width / p.W)} % of its {F(p.W)}) empty from top to bottom at {s.Tier}", [page.Ref])
+                $"the page leaves x={F(x0)}..{F(x0 + width)} ({F(width)} DIP, {F(100f * width / p.W)} % of its {F(p.W)}) empty from top to bottom at {s.Tier}" +
+                (empty > width + 4f ? $"; {F(100f * empty / p.W)} % of its width holds nothing in all" : ""), [page.Ref])
             {
-                Measured = [M("x", x0), M("w", width), M("share", width / p.W)],
+                Measured = [M("x", x0), M("w", width), M("share", width / p.W), M("emptyShare", empty / p.W)],
                 Pattern = page.Pattern,
                 Cause = x0 <= p.X + 1f ? "left" : x0 + width >= p.Right - 4f ? "right" : "middle",
                 Rects = [new RectF(x0, p.Y, width, p.H)],

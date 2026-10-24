@@ -294,6 +294,7 @@ public static partial class Diagnostics
             if (t.Spans) w.WriteBoolean("spans", true);
             if (t.Color.A > 0f) w.WriteString("color", Color(t.Color));
             if (t.Copy) w.WriteBoolean("copy", true);
+            if (t.Case.Length > 0) w.WriteString("case", t.Case);
             if (t.Align != "Start") w.WriteString("align", t.Align);
             if (t.Ground.A > 0f)
             {
@@ -634,6 +635,7 @@ public static partial class Diagnostics
                 OverflowY = r.Bool(e, "oy"),
                 Glyph = r.Bool(e, "glyph"),
                 Copy = r.Bool(e, "copy"),
+                Case = r.Str(e, "case", ""),
                 GlyphName = r.Str(e, "glyphName", ""),
                 Spans = r.Bool(e, "spans"),
                 Color = r.Color(e, "color"),

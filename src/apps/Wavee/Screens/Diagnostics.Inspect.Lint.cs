@@ -261,6 +261,13 @@ public static partial class Diagnostics
             /// title, a name). What <c>type.voice</c> judges.</summary>
             public bool Copy { get; init; }
 
+            /// <summary>The case transform the run is shaped with (<c>TextStyle.Case</c>: <c>Lower</c>, <c>Upper</c>; "" as written): the string
+            /// is stored as written, the screen shows it transformed.</summary>
+            public string Case { get; init; } = "";
+
+            /// <summary>The words as the screen shows them (<see cref="Case"/> applied).</summary>
+            public string Shown => Case switch { "Lower" => String.ToLowerInvariant(), "Upper" => String.ToUpperInvariant(), _ => String };
+
             /// <summary>The glyph's icon name (<c>Icons.TryGetName</c>: <c>Play</c>), "" for words or an unnamed glyph.</summary>
             public string GlyphName { get; init; } = "";
 
@@ -474,6 +481,10 @@ public static partial class Diagnostics
             public string Ref => Key ?? Path;
         }
 
+        /// <summary>A words run an exiting subtree still draws: the nearest key at or above it, its presented rect (window DIP), its words and the
+        /// opacity that reaches the screen.</summary>
+        public readonly record struct ExitingRun(string Key, RectF Rect, string Text, float Opacity);
+
         /// <summary>A named value of the theme's design scale (<c>Spacing.M</c> = 12): what <c>space.scale</c> accepts and names.</summary>
         public readonly record struct ScaleEntry(string Name, float Value);
 
@@ -537,6 +548,10 @@ public static partial class Diagnostics
             /// purpose; <c>picture.unpainted</c> does not call that band a page that stopped painting. 0 when nothing is reserved, and in a
             /// snapshot saved before the field existed.</summary>
             public float Reserved { get; init; }
+
+            /// <summary>The text runs of subtrees on their way out (an exit animation still drawing them: the outgoing lyric line of a crossfade).
+            /// The node list leaves exiting subtrees out (they are not the page); <c>text.copies</c> reads these. Not saved by `save=`.</summary>
+            public IReadOnlyList<ExitingRun> ExitingText { get; init; } = [];
 
             /// <summary>The right edges the guide declares at Standard, moved by how far this tier's left lead sits from Standard's (<c>edge.huge</c>):
             /// filled at Huge and Huge4K only, where the guide declares none.</summary>
@@ -2782,8 +2797,9 @@ public static partial class Diagnostics
 
         /// <summary>What a verb acts on: the first spotify entity in its key or an ancestor's; else the row or card it sits in (an instance of a
         /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else, in
-        /// window chrome around the page (<paramref name="paged"/>: the capture holds a page slot, and the verb sits outside it), the window
-        /// itself: the nav pane's "+" makes a playlist, it never follows the show on screen; else the page's own entity, else the page.</summary>
+        /// window chrome (<paramref name="paged"/>: the capture holds a page slot, and the verb sits outside the content card that hosts the page
+        /// and its band: the nav column, the title bar), the window itself: the nav pane's "+" makes a playlist, it never follows the show on
+        /// screen, while Zune's band (in the card, outside the page slot) acts on the page; else the page's own entity, else the page.</summary>
         static string SubjectOf(Snapshot s, Node n, bool paged = false)
         {
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
@@ -2793,15 +2809,25 @@ public static partial class Diagnostics
                 if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
                     return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
             }
-            if (paged && PageOf(s, n) < 0) return "the window";
+            if (paged && !KeyedUnder(s, n, ContentCard)) return "the window";
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
         }
 
-        /// <summary>The capture holds a page slot (a `root=` lint of one subtree holds none): what tells window chrome from the page.</summary>
+        /// <summary>The content card: the frame that hosts the page and what speaks for it (Zune's band); outside it is window chrome.</summary>
+        static readonly string[] ContentCard = ["shell.content.card"];
+
+        /// <summary>The capture holds a page slot and the content card around it (a `root=` lint of one subtree holds neither): what tells window
+        /// chrome from the page.</summary>
         static bool HasPageSlot(Snapshot s)
         {
+            bool slot = false, card = false;
             foreach (Node n in s.Nodes)
-                if (n.Key is { } key && TrySlotRoute(key, out _, out _)) return true;
+            {
+                if (n.Key is not { } key) continue;
+                if (TrySlotRoute(key, out _, out _)) slot = true;
+                else if (string.Equals(key, ContentCard[0], StringComparison.Ordinal)) card = true;
+                if (slot && card) return true;
+            }
             return false;
         }
 

@@ -157,6 +157,12 @@ def crossing_lines(obj):
                  obj.get("contentCommitted"), c.get("excessSnapped", c.get("snapped")), c.get("excessJumped", c.get("jumped")), control,
                  c.get("remountedOutside", c.get("remounted")), c.get("remountedSwap", 0), c.get("snapped"), c.get("jumped"), c.get("glided"),
                  c.get("unpainted", 0), c.get("vanished"), c.get("appeared"))]
+    if "late" in c or "excessOffscreen" in c:
+        lines.append("  weights: %s of the excess moved wholly off the screen (below the fold, scrolled away); %s part%s reflowed late "
+                     "(after the commit frame, nothing easing it; --gate-todo counts them)" % (
+                         c.get("excessOffscreen", 0), c.get("late", 0), "" if c.get("late") == 1 else "s"))
+        for item in obj.get("late", [])[:8]:
+            lines.append("  late      %s  frame %s after the commit, d=%s" % (item["key"], item.get("frame"), item.get("d")))
     if obj.get("controlNote"):
         lines.append("  note: " + obj["controlNote"])
     if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):
@@ -387,6 +393,10 @@ class Gate:
         if outside > 0:
             keys = [r["key"] for r in obj.get("remounted", []) if r.get("family") is None][:4]
             self.motion.append("%s remounted %d key%s outside a swap family (%s)" % (where, outside, "" if outside == 1 else "s", ", ".join(keys)))
+        late = c.get("late", 0)
+        if self.todo and late > self.max_moved:   # a weight: report-only until promoted, so only --gate-todo counts it
+            keys = [r["key"] for r in obj.get("late", [])][:4]
+            self.motion.append("%s reflowed %d part%s late, after the commit frame (todo: %s)" % (where, late, "" if late == 1 else "s", ", ".join(keys)))
         if not isinstance(obj.get("control"), dict):
             self.warnings.append("%s ran without a control step (%s): its excess is every move" % (where, obj.get("controlNote") or "control=false"))
         if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):
