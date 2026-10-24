@@ -87,6 +87,8 @@ internal static partial class ZunePlayerBar
         var begin = rc.UseContext(SharedTransition.Begin);
         var barNode = rc.UseRef<NodeHandle>(default);
         float artScale = rc.UseContext(Viewport.Scale);
+        var marquees = rc.UseRef<Marquee.Group?>(null);   // the title and the artists: one line moves at a time, the title first
+        marquees.Value ??= new Marquee.Group();
 
         // The heart pops on the same playable's save edge only, on the captured node (a keyed remount would reset its hover mid-toggle).
         int playingSlot = v.Face.IsNone ? 0 : v.Face.Slot;
@@ -111,7 +113,7 @@ internal static partial class ZunePlayerBar
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
         // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
-        var meta = MetaColumn(props, v, look, mini, titleLinkHover, metaNode);
+        var meta = MetaColumn(props, v, look, mini, titleLinkHover, metaNode, marquees.Value);
         var art = new BoxEl
         {
             Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, Animate = L.MoveMotion,
@@ -318,7 +320,8 @@ internal static partial class ZunePlayerBar
     /// <summary>The title's host per tree (the marquee, the trimmed run): the swap's family.</summary>
     const string TitleHostKey = "np-title-host:";
 
-    static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
+    static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
+                           Marquee.Group marquees)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
         Prop<ColorF> titleInk = Prop.Of(() => titleLinkHover.Value && props.TitleHasRoute() ? Tok.AccentTextPrimary : InkOf(props.TitleInk()));
@@ -329,12 +332,10 @@ internal static partial class ZunePlayerBar
         };
         bool marquee = v.Marquee && !mini;
         BoxEl title = marquee
-            ? (BoxEl)Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
+            ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
             {
-                FontSize = look.TitleSize, Weight = L.TitleWeight, Foreground = titleInk,
-                Speed = L.MarqueeSpeed, CycleMs = L.MarqueeCycleMs, EndPauseMs = L.MarqueeEndPauseMs, StartDelayMs = L.MarqueeStartDelayMs,
-                Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
-            })
+                FontSize = look.TitleSize, Weight = L.TitleWeight, Foreground = titleInk, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade,
+            }, marquees, order: 0)
             : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
         title = title with { Key = titleKey };
         if (v.TitleNav && !mini)
@@ -364,11 +365,8 @@ internal static partial class ZunePlayerBar
         {
             var credits = new CreditsProps(props, look.SubSize, look.SubLine, Linked: !mini);
             kids.Add(marquee
-                ? Marquee.Content(() => new ZuneCredits(credits), new Marquee.Style
-                {
-                    Speed = L.MarqueeSpeed, CycleMs = L.MarqueeCycleMs, EndPauseMs = L.MarqueeEndPauseMs, StartDelayMs = L.MarqueeStartDelayMs,
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always, SyncCycle = true,
-                }) with { Key = artistsKey }
+                ? Marquee.Content(Embed.Comp(credits, static () => new ZuneCredits()), Prop.Of(() => props.Credits().Line(L.CreditSeparator)),
+                    new Marquee.Style { FontSize = look.SubSize, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade }, marquees, order: 1) with { Key = artistsKey }
                 : new BoxEl { Key = artistsKey, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new ZuneCredits())] });
         }
 

@@ -181,7 +181,7 @@ internal static class ZuneStageIdentity
         Children = [title with { Shrink = 0f }],
     };
 
-    /// <summary>A one-line, left-aligned title in an arrangement's voice that scrolls under the marquee preference (the play bar's cadence, its
+    /// <summary>A one-line, left-aligned title in an arrangement's voice that is a marquee under the marquee preference (the play bar's look, its
     /// tracking kept) instead of ellipsising (audit B3, Vr: "Nostalgia 2000s ..." sat still with the marquee on).</summary>
     static Element Scrolling(StageIdentityProps props, string title, float size, float line, ushort weight, float tracking)
         => props.Marquee?.Invoke() != true ? Title(title, size, line, weight, tracking) : new BoxEl
@@ -192,9 +192,7 @@ internal static class ZuneStageIdentity
                 Marquee.Of(title, new Marquee.Style
                 {
                     FontSize = size, LineHeight = line, CharSpacing = tracking, Weight = weight, FontFamily = R.Type.DisplayFace, Foreground = Ink.Ink,
-                    Speed = ZunePlayerLayout.MarqueeSpeed, CycleMs = ZunePlayerLayout.MarqueeCycleMs,
-                    EndPauseMs = ZunePlayerLayout.MarqueeEndPauseMs, StartDelayMs = ZunePlayerLayout.MarqueeStartDelayMs,
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                    Speed = ZunePlayerLayout.MarqueeSpeed, FadeBand = ZunePlayerLayout.MarqueeFade,
                 }),
             ],
         };

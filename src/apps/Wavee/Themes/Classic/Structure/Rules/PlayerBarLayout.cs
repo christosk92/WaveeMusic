@@ -2,7 +2,7 @@
 //
 // What `Shell.PlayerBar.UI.cs` held as file-level constants beside the bar, moved verbatim with the bar's picture: the motion
 // specs (a level crossing FLIPs every structural node over 167 ms, a line enters or leaves with a fade, a slot lights over the
-// control-normal beat, the face cross-fades), the marquee's cadence, the title and meta type, the remote-device line, the volume
+// control-normal beat, the face cross-fades), the marquee's look, the title and meta type, the remote-device line, the volume
 // popup's size and the podcast speed panel's. They are data, not decisions: `Views\Player\ClassicPlayerBar.cs` and
 // `ClassicPlayerBarPodcast.cs` read them (WVTH003 allows literals only here, in `Rules\**`).
 //
@@ -74,10 +74,9 @@ internal static class ClassicPlayerBarLayout
 
     // ── the now-playing text ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on
-    /// the start before the first pass — slower than the 10 s / 2.5 s hover cadence it replaces, because this one runs
-    /// unattended.</summary>
-    public const float MarqueeCycleMs = 14_000f, MarqueeEndPauseMs = 3_000f, MarqueeStartDelayMs = 2_000f, MarqueeSpeed = 18f;
+    /// <summary>The now-playing marquee's look: its pace (DIP per second) and the cut edge's fade. The behaviour (the start at rest, two
+    /// passes after a track change, a pass on hover, one line moving at a time) is the engine control's, the same in every theme.</summary>
+    public const float MarqueeSpeed = 30f, MarqueeFade = 12f;
 
     /// <summary>The title line's size.</summary>
     public const float TitleSize = 14f;

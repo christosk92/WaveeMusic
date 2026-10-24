@@ -52,7 +52,7 @@ internal static class ClassicStageIdentity
         int heroArtist = k.Eff == Stage.VizLayout.Artist && !k.HeroLyrics ? sc.HeroArtist.Value : 0;
         string shown = props.Title();
         ushort titleWeight = k.Eff is Stage.VizLayout.LargeArt or Stage.VizLayout.Centered ? (ushort)700 : (ushort)600;
-        // a one-line, left-aligned title scrolls under the marquee preference (the play bar's cadence) instead of ellipsising (audit B3, Vr)
+        // a one-line, left-aligned title is a marquee under the marquee preference (the play bar's look) instead of ellipsising (audit B3, Vr)
         bool marquee = titleLines == 1 && !center && props.Marquee?.Invoke() == true;
         var titleKids = new List<Element>(3)
         {
@@ -65,9 +65,7 @@ internal static class ClassicStageIdentity
                         Marquee.Of(shown, new Marquee.Style
                         {
                             FontSize = ts, LineHeight = tl, Weight = titleWeight, FontFamily = G.DisplayFace, Foreground = Ink.Ink,
-                            Speed = ClassicPlayerBarLayout.MarqueeSpeed, CycleMs = ClassicPlayerBarLayout.MarqueeCycleMs,
-                            EndPauseMs = ClassicPlayerBarLayout.MarqueeEndPauseMs, StartDelayMs = ClassicPlayerBarLayout.MarqueeStartDelayMs,
-                            Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                            Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
                         }),
                     ],
                 }
