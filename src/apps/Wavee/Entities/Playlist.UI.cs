@@ -133,10 +133,11 @@ public readonly partial struct Playlist
     // ══ 1. THE COVER (W16) ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The frame's Cover slot: the editor for an editable Spotify playlist, else the art (item 3: saturation 1.18
-    /// on BOTH arms, so the editable↔read-only flip is structural only).</summary>
+    /// on BOTH arms, so the editable↔read-only flip is structural only). NOT keyed on the size: the size is a re-pushed prop, so a
+    /// tier crossing that resizes the cover keeps the editor's node (owner rule: no tier, form or count in a key).</summary>
     public static Element CoverSlot(Playlist p, float size)
         => p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
-            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover:" + (int)size }
+            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover" }
             : CoverArt(p, size);
 
     /// <summary>The playlist's own cover (the `Playlist.CoverArt` view) — a provider <c>spotify:mosaic:</c> token (a profile card's cover-less public

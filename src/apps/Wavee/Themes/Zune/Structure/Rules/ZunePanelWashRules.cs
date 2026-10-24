@@ -13,6 +13,7 @@ public static class ZunePanelWashRules
 
     public const float EdgeW = 1f;
 
+
     /// <summary>The glow is gone by this fraction of the panel's height (the head, the lyrics' or the queue's option row, the playing row lie inside it).</summary>
     public const float GlowReach = 0.4f;
 

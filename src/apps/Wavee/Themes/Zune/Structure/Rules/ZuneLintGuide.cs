@@ -31,7 +31,8 @@ public sealed class ZuneLintGuide : IThemeLintGuide
     /// <summary>How far an edge may be off: a DIP, the audit's measuring precision.</summary>
     private const float Tolerance = 1f;
 
-    /// <summary>The pages whose keyed root IS the page column (<c>ZuneFrameRules.PageRow</c>): the column's box starts one gutter before its content.</summary>
+    /// <summary>The pages whose keyed root IS the page column (<c>ZuneFrameRules.PageRow</c>): the column's box starts on its content's edge (its gutters
+    /// are the row's spacers).</summary>
     private static readonly string[] s_pageColumns =
     [
         ZuneHomeRules.ColumnKey, ZuneBrowseRules.DirectoryKey, ZuneProfileRules.ColumnKey, ZuneProfileRules.ListBodyKey,
@@ -78,7 +79,7 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         edges.Add(new LintEdge(Gutter, "band.first-pivot", "the band's first pivot", LintSide.Left,
             contentLeft, Tolerance, Prefixes: [ZuneBandRules.PivotKeyPrefix]));
         edges.Add(new LintEdge(Gutter, "page.column", "the page column's content", LintSide.Left,
-            contentLeft - gutter, Tolerance, Keys: s_pageColumns));
+            contentLeft, Tolerance, Keys: s_pageColumns));
         edges.Add(new LintEdge(Gutter, "page.title", "the page title", LintSide.Left,
             contentLeft, Tolerance, Keys: [ZuneFrameRules.PageTitleKey], Column: true));
 
@@ -89,7 +90,7 @@ public sealed class ZuneLintGuide : IThemeLintGuide
             edges.Add(new LintEdge(RightEdge, "band.last-action", "the band's last row-2 action", LintSide.Right,
                 contentRight, Tolerance, Prefixes: [ZuneBandRules.ActionKeyPrefix]));
             edges.Add(new LintEdge(RightEdge, "page.column", "the page column's right content edge", LintSide.Right,
-                contentRight + gutter, Tolerance, Keys: s_pageColumns));
+                contentRight, Tolerance, Keys: s_pageColumns));
             edges.Add(new LintEdge(RightEdge, "playbar.last-glyph", "the play bar's last glyph", LintSide.Right,
                 context.WindowW - gutter, Tolerance, UnderKey: ZuneFrameLayout.PlayerBarKey, GlyphsOnly: true, Advisory: true));
         }

@@ -210,8 +210,10 @@ internal static class ZuneArtistChart
         Element subLine = sub.Count > 0
             ? new BoxEl { Direction = 0, Gap = ZuneListRules.ChartSubGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = sub.ToArray() }
             : new BoxEl();
+        // The stacked third line is the narrow cell's (under 340): the compact count with the exact one in its tip, as on the sub line (the core's rule:
+        // the format is never the tier's). The exact "480,010,000 plays" ran past the cell at 1016.
         Element[] mid = stacked
-            ? [title, subLine, R.Type.TrackMeta(c.PlaysExact) with { Color = tertiary, MaxLines = 1, Shrink = 0f }]
+            ? [title, subLine, ToolTip.Wrap(R.Type.TrackMeta(c.PlaysCompact) with { Color = tertiary, MaxLines = 1, Shrink = 0f }, c.PlaysExact)]
             : [title, subLine];
 
         bool saved = st.Saved;

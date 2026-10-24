@@ -190,6 +190,13 @@ public static class WinUiPlayerLayout
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut));
 
+    /// <summary>The Mini bar's second line swapping between the artists and "Playing on" (the output moves to or from another device): the two
+    /// lines share one slot of one height, so the line leaving fades out where it stands while the other fades in over it; nothing moves.</summary>
+    public static readonly EnterExit LineSwap = SwapFamilies.Declare("WinUi.Player.LineSwap", new(Opacity: 0f, Active: true));
+
+    /// <summary>The line swap's timing (the shared ~160 ms cross-fade).</summary>
+    public static MotionTokenDef LineSwapMotion => MotionTok.ControlFast;
+
     /// <summary>A reserved control lights or dims: opacity only, so nothing around it moves.</summary>
     public static readonly LayoutTransition FaceMotion = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);

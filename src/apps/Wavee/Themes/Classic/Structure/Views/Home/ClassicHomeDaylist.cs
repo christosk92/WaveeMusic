@@ -168,15 +168,18 @@ internal static class ClassicHomeDaylist
     /// <summary>The card: a Fluent card frame (border, 8-DIP corners) with NO padding — the art reaches its edges and
     /// the insets ride on the copy (the tier's <see cref="ClassicDaylistLayout.CopyPad"/>) — that clips its layers to its rounded corners
     /// (the border paints after the children, so it stays on top of the art), around the layers built at the card's
-    /// width (<see cref="Row"/>). The card is the tier's height: a 320 floor for the tuned card, a fixed 216 / 400 / 126, or the stack's own.</summary>
+    /// width (<see cref="Row"/>). The card is the tier's height: a 320 floor for the tuned card, a fixed 216 / 400 / 126, or the stack's own, each
+    /// carried by the layers (the copy's floor, the layered forms' height) and never declared on the card: a crossing between forms (the content tier a
+    /// docked panel or a window resize changes) eases the card's size through real layout (<see cref="ClassicTierMotion.SizeReflow"/>), the layers
+    /// filling it, so its fill shrinks or grows and the zones under it ride it. A declared height would be mirrored by the view's anchor and hold the
+    /// zone at the new height while the card eased inside it.</summary>
     static BoxEl CardShape(Parts parts, ClassicDaylistLayout dl, float firstWidth)
         => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w, dl), fallback: firstWidth, grow: 1f))
             with
             {
                 Padding = default, ClipToBounds = true,
-                MinHeight = dl.Form == ClassicDaylistForm.Card ? ClassicHomeRules.DaylistCardMinHeight : 0f,
-                Height = dl.CardH,
                 MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                Animate = Design.Reduced ? null : ClassicTierMotion.SizeReflow,
             };
 
     /// <summary>The art layer: <see cref="Controls.CoverFill"/> across the whole card, corner 0 (the card's rounded clip
@@ -206,10 +209,11 @@ internal static class ClassicHomeDaylist
         var copy = new BoxEl
         {
             Key = "daylist-copy",
-            Direction = 1, Width = text + pad.Horizontal, MinWidth = 0f,
-            // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card.
+            Direction = 1, Width = text + pad.Horizontal, MinWidth = 0f, MinHeight = ClassicHomeRules.DaylistCardMinHeight,
+            // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card. The card's 320 floor is this
+            // column's (the card's own height eases between forms).
             Justify = FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.XL,
-            Children = [Top(p, text, dl, withActions: true), p.Clock],
+            Children = [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
@@ -229,7 +233,7 @@ internal static class ClassicHomeDaylist
         bool strip = dl.Form == ClassicDaylistForm.Strip;
         Element[] copyKids = strip ? [Top(p, text, dl, withActions: false)]
             : hero ? [Top(p, text, dl, withActions: false), p.Actions]
-            : [Top(p, text, dl, withActions: true), p.Clock];
+            : [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)];
         var copy = new BoxEl
         {
             Key = "daylist-copy",
@@ -242,12 +246,13 @@ internal static class ClassicHomeDaylist
             {
                 AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End,
                 Margin = new Edges4(0f, 0f, ClassicHomeRules.ClockPlateInset, ClassicHomeRules.ClockPlateInset),
-                Children = [p.Clock],
+                Children = [ClockSlot(p.Clock, plate: true)],
             }
             : NoLayer();
         return new BoxEl
         {
-            ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            // The form's fixed height (216 / 400 / 126) is the layers', not the card's (CardShape): they fill the card while its height eases.
+            ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, MinHeight = dl.CardH,
             Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy, plate],
         };
     }
@@ -262,7 +267,7 @@ internal static class ClassicHomeDaylist
             Key = "daylist-copy",
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = dl.CopyPad, Gap = Spacing.S,
             Margin = hasArt ? new Edges4(0f, -ClassicHomeRules.StackedOverlap, 0f, 0f) : default,
-            Children = [Top(p, float.NaN, dl, withActions: true), p.Clock],
+            Children = [Top(p, float.NaN, dl, withActions: true), ClockSlot(p.Clock, plate: false)],
         };
         return new BoxEl
         {
@@ -280,6 +285,16 @@ internal static class ClassicHomeDaylist
             ],
         };
     }
+
+    /// <summary>The clock in its place: in the copy (every form but the hero) or on the hero's corner plate. The two places are two trees (a crossing
+    /// between the hero and another form re-parents the clock), so each is keyed and swaps under the tier cross-fade instead of the clock rebuilding
+    /// with a cut.</summary>
+    static Element ClockSlot(Element clock, bool plate) => new BoxEl
+    {
+        Key = plate ? "daylist-clock:plate" : "daylist-clock:copy", Direction = 1, MinWidth = 0f,
+        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+        Children = [clock],
+    };
 
     /// <summary>An absent layer's slot: empty and hit-test free.</summary>
     static BoxEl NoLayer() => new() { HitTestVisible = false };

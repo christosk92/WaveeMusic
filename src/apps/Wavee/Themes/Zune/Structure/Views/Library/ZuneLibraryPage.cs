@@ -131,10 +131,10 @@ internal static partial class ZuneLibraryPage
         }
 
         /// <summary>The page's measured bounds, reported to the host: its layout ladder over this width decides the drill-in (the host's value gate drops every report that did
-        /// not move).</summary>
+        /// not move). The ladder reads the page column with its gutters (the page's box stands between the column's two gutter spacers).</summary>
         void Measured(RectF r)
         {
-            if (r.W > 0f) Props.SetPageWidth(r.W);
+            if (r.W > 0f) Props.SetPageWidth(r.W + 2f * Layout.Gutter);
         }
 
         /// <summary>The slot template of a mount's template kind: one stable delegate per kind for the page's life.</summary>
