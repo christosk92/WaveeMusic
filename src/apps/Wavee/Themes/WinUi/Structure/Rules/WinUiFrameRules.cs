@@ -98,6 +98,11 @@ public static class WinUiFrameRules
     /// <summary>The ladder strip's "+" above Compact: a 32 square (the hit floor; the engine's Chrome plate is 32 x 24).</summary>
     public const float AddTarget = 32f;
 
+    /// <summary>The strip's "+" and the selected tab's close button between the ladder's sizes and the Compact touch square (the 641 crossing):
+    /// their size eases through real layout and the close button's place (its lead margin goes) slides, beside the plates' own height motion.</summary>
+    public static readonly LayoutTransition TabPartMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Tween(FrameMs, Easing.SmoothOut), Size: SizeMode.Reflow, ReflowUnclipped: true);
+
     /// <summary>The search field's width across a tier crossing (520 -> 640), a maximize or a restore: a reflow of the field's sizer inside
     /// hugging ancestors, so the window-centred field re-centres every tick (its x is layout's, never a FLIP of its own). A live resize snaps
     /// it with every projection.</summary>

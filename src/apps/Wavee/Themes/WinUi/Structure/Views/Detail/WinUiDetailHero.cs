@@ -42,6 +42,11 @@ internal static partial class WinUiDetailFrame
     static readonly LayoutTransition HeroReflowMotion = new(
         TransitionChannels.Position | TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), SizeMode.Reveal);
 
+    /// <summary>The expanded hero's height across a tier crossing (the short form under 720 tall, a wider window's larger cover): it eases through REAL
+    /// layout, so the list rows under the hero (the table hosts it as its item 0) ride it frame by frame instead of stepping the whole change at once.</summary>
+    static readonly LayoutTransition HeroHeightMotion = new(
+        TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
     /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>).</summary>
     public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton };
 
@@ -144,7 +149,7 @@ internal static partial class WinUiDetailFrame
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
             Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center);
 
-            Element expanded = new BoxEl { Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure, Children = [hero] };
+            Element expanded = new BoxEl { Direction = 1, Animate = HeroHeightMotion, OnBoundsChanged = _measure, Children = [hero] };
 
             // ── the STICKY BAR: the title over the byline, Play on the right; NO scrolling of its own (the offset model: the rows are clipped under it) ──
             float heroH = parts.HeroHeight > 1f ? parts.HeroHeight : Detail.HeroBandHeight(spec, availW);
@@ -303,7 +308,9 @@ internal static partial class WinUiDetailFrame
     static Element ToolbarOf(HeroParts parts, WinUiDetailTier tier, WinUiHeroForm form)
         => new BoxEl
         {
-            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f),
+            // It FLIPs with the cover and the words (a form change moves it: the short form's smaller cover and title): laid out at its new place at
+            // once, it sat under the still-shrinking cover on the 720 crossing.
+            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f), Animate = HeroReflowMotion,
             Padding = new Edges4(MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f, MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f),
             Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
@@ -311,9 +318,11 @@ internal static partial class WinUiDetailFrame
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned), or over them, both centred (stacked); then the toolbar.</summary>
     static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center)
     {
+        // The words FLIP with the cover's resize (the same 280 ms): laid out at the new cover's edge at once, they sat on the still-shrinking cover
+        // (W1920 widening and narrowing) until it caught up.
         Element info = new BoxEl
         {
-            Direction = 1, Gap = form.InfoGap, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch,
+            Direction = 1, Gap = form.InfoGap, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Animate = HeroReflowMotion,
             Justify = form.Stacked ? FlexJustify.Start : FlexJustify.End,
             Grow = form.Stacked ? 0f : 1f, Basis = form.Stacked ? float.NaN : 0f, MinWidth = 0f,
             // A stacked list hero's words span the column from the gutter (the cover alone is centred).

@@ -58,36 +58,56 @@ internal static class WinUiHomePage
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge. The facet failure's InfoBar has
         // its own slot: a layer stacked over the content's top edge, so the zones keep their place when a switch fails and when the bar closes.
+        // The insets are spacers either side that ease their width (WinUiDiscoveryMotion.AirH): a tier crossing changes them, and a padding stepped
+        // every zone sideways at once.
         Element content = new BoxEl
         {
-            Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
-            Padding = new Edges4(inset, 0f, inset, 0f),
-            Children = [region, WinUiHomeFacetRow.FailureLayer(props.FacetRow)],
-        }.StickyClip(WinUiHomeRules.BandH);
+            Key = "home:content:row", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                WinUiDiscoveryMotion.AirH("home:content:lead", inset),
+                new BoxEl
+                {
+                    Key = "home:content", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
+                    Children = [region, WinUiHomeFacetRow.FailureLayer(props.FacetRow)],
+                }.StickyClip(WinUiHomeRules.BandH),
+                WinUiDiscoveryMotion.AirH("home:content:end", inset),
+            ],
+        };
 
         // The head: the greeting, and at Small the Following button at its end (W-Home-Small).
         var greeting = Greeting(props, layout);
         Element head = new BoxEl
         {
-            Key = "home:head", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
-            Padding = new Edges4(inset, 0f, inset, layout.GreetingGap),
+            Key = "home:head", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Padding = new Edges4(0f, 0f, 0f, layout.GreetingGap),
             // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes: the head's height eases, the page rides it.
             Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
-            Children = layout.Following == WinUiFollowingPlace.GreetingRow
-                ? [greeting with { Grow = 1f, Shrink = 1f }, WinUiHomeFacetRow.Following(props.FacetRow, layout)]
-                : [greeting with { Grow = 1f, Shrink = 1f }],
+            Children =
+            [
+                WinUiDiscoveryMotion.AirH("home:head:lead", inset),
+                new BoxEl
+                {
+                    Key = "home:head:row", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = layout.Following == WinUiFollowingPlace.GreetingRow
+                        ? [greeting with { Grow = 1f, Shrink = 1f }, WinUiHomeFacetRow.Following(props.FacetRow, layout)]
+                        : [greeting with { Grow = 1f, Shrink = 1f }],
+                },
+                WinUiDiscoveryMotion.AirH("home:head:end", inset),
+            ],
         };
 
         Element column = new BoxEl
         {
             Key = "home:column", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, AlignItems = FlexAlign.Stretch,
             ScrollScope = WinUiHomeRules.PageScope,
-            Padding = new Edges4(0f, frame.InsetTop, 0f, R.Space.DockReserve + Spacing.XXXL),
+            Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
+                WinUiDiscoveryMotion.AirV("home:air:top", frame.InsetTop),   // the frame's top inset: a crossing changes it, so it eases
                 head,
                 ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row" },
-                new BoxEl { Height = layout.HeadGap, HitTestVisible = false },   // the band's foot air to the first zone
+                WinUiDiscoveryMotion.AirV("home:air:band", layout.HeadGap),   // the band's foot air to the first zone (it changes with the tier)
                 content,
             ],
         };

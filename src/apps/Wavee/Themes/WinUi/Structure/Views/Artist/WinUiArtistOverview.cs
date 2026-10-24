@@ -85,7 +85,7 @@ internal static class WinUiArtistOverview
         };
         // Popular's laid-out width in an arrangement (the slot stacked), NaN without a chart: what a restack's hold compares.
         Func<int, float, float> popularWidth = (rung, slot) => popular ? PopularWidth(slot, WinUiArtistTiers.OverviewColumnsOf(rung, tier)) : float.NaN;
-        return Embed.Comp(new GridProps(build, popularWidth, inset, p.Width, WinUiArtistTiers.OverviewRungOf(in facts), facts.ContentWidth),
+        return Embed.Comp(new GridProps(build, popularWidth, inset, p.Width, WinUiArtistTiers.OverviewRungOf(in facts)),
             static () => new GridHost()) with { Key = "artist:overview" };
     }
 
@@ -110,10 +110,14 @@ internal static class WinUiArtistOverview
     }
 
     /// <summary>The overview's grid: a row of columns (two, three at Huge) or, stacked, a column of them. Its height eases through real layout
-    /// (<see cref="WinUiArtistMotion.OverviewHeight"/>) so the sections under it glide when a restack changes it.</summary>
+    /// (<see cref="WinUiArtistMotion.OverviewHeight"/>) so the sections under it glide when a restack changes it. A reflow clips its box for its
+    /// life, so the box reaches past its top and its end by Popular's hit room (padding in, margin out: nothing moves), or that clip cut the room
+    /// Popular's own clip keeps for the chart head's chevrons for the length of every restack, and their hit floor with it.</summary>
     static Element Grid(byte direction, float gap, params Element[] columns) => new BoxEl
     {
         Key = "ov:grid", Direction = direction, Gap = gap, MinWidth = 0f, AlignItems = direction == 0 ? FlexAlign.Start : FlexAlign.Stretch,
+        Padding = new Edges4(0f, WinUiArtistRules.PopularHitRoom, WinUiArtistRules.PopularHitRoom, 0f),
+        Margin = new Edges4(0f, -WinUiArtistRules.PopularHitRoom, -WinUiArtistRules.PopularHitRoom, 0f),
         Layout = WinUiArtistMotion.OverviewHeight, Children = columns,
     };
 
@@ -170,33 +174,29 @@ internal static class WinUiArtistOverview
     // ── the column rung ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The grid host's props: the arrangement for a column rung, the page inset (the page is the slot plus the inset either side), the page
-    /// width the host measured (the slot's seed before the first measure), the committed column rung (<see cref="WinUiArtistTiers.OverviewRung"/>) and
-    /// the content width the rung was resolved at: the width the page LANDS at. The builder is a live closure (a fresh one rebuilds with the page).</summary>
+    /// width the host measured (the slot's seed before the first measure) and the committed column rung (<see cref="WinUiArtistTiers.OverviewRung"/>).
+    /// The builder is a live closure (a fresh one rebuilds with the page).</summary>
     sealed record GridProps(Func<int, float, PreviewState, PopularHold, Element> Build, Func<int, float, float> PopularWidth, float Inset, float Seed,
-        int Rung, float Landing);
+        int Rung);
 
     /// <summary>The overview's arrangement. The column rung is the policy's content-axis mark, which the core resolves from the content width the shell
     /// computes (the width the page lands at) and commits right before FLIP capture: on a docked pane's open or close that is the slide's first frame,
     /// on a window resize the first frame that is not resized.
-    /// <para>A docked pane's slide eases the page's width through real layout, so the measured width only reaches the landing width 250 ms later.
-    /// A restack therefore lays the overview out AT THE LANDING WIDTH until the measured width meets it: every transition of the fade-through (the side
-    /// column out where it stands, Popular's resize, the column in at its slot, the overview's height) runs from a fixed start to its final rect, while
-    /// the page's edge slides over (opening) or uncovers (closing) the overview, which the content card clips. Laid out at the live width instead, the
-    /// restack crossed partway through the slide and every frame after it moved its targets: Popular narrowed ~490 at once and jumped back when its
-    /// delayed resize started (closing), or overshot to the width of the restack's frame and snapped back at its end (opening).</para></summary>
+    /// <para>The overview is laid out at the page's LIVE width. A docked pane's slide eases the page's width through real layout and the restack commits
+    /// on its first frame: the parts' transitions then run against the live layout (the engine re-aims a revealed size and keeps a FLIP's offset over the
+    /// re-solve while a sibling reflow resizes the page), so the grid narrows with the page instead of jumping to the landing width and waiting there
+    /// while the page caught up with it.</para></summary>
     sealed class GridHost : Component
     {
         readonly Signal<float> _slot = new(0f);   // a version: the width a render uses is _slotNow
-        readonly Signal<int> _released = new(0);   // a version: bumped when the landing width below is let go
         readonly PreviewState _state = new();
         readonly Action<RectF> _onBounds;
-        readonly Action _release;
         readonly Signal<int> _held = new(0);   // a version: bumped when Popular's hold below is let go
         readonly Action _releaseHold;
-        float _inset, _measured, _slotNow, _distance, _landing = float.NaN;   // _landing: the width the overview is laid out at while the page eases to it
+        float _inset, _measured, _slotNow;
         float _hold = float.NaN;   // Popular's old width, held through a widening restack's fade-out (NaN: none)
-        bool _holdReleased;
-        int _rung = -1, _restacks, _holds;
+        bool _holdReleased, _following;   // _following: a restack's rung is ahead of the page's width (the overview follows the live width)
+        int _rung = -1, _holds;
 
         public GridHost()
         {
@@ -207,28 +207,17 @@ internal static class WinUiArtistOverview
                 _holdReleased = true;
                 _held.Value++;
             };
-            _release = () =>
-            {
-                if (float.IsNaN(_landing)) return;
-                _landing = float.NaN;
-                _released.Value++;
-            };
             _onBounds = r =>
             {
                 if (!(r.W > 0f)) return;
                 _measured = r.W;
-                if (!float.IsNaN(_landing))
-                {
-                    // The page has met its landing width (the overview's layout no longer changes), or it moves away from it (a slide reversed or
-                    // interrupted): the overview follows the measured width again.
-                    float distance = MathF.Abs(r.W - _landing);
-                    if (distance > 0.5f && distance <= _distance + 0.5f) { _distance = distance; return; }
-                    _release();
-                }
                 // A width across the column edge from the committed rung waits for the restack: re-rendering the preview at it now (an in-frame rebuild with
-                // no FLIP capture) would snap the overview's height a frame or two before the restack animates it.
+                // no FLIP capture) would snap the overview's height a frame or two before the restack animates it. After a restack the rung is the
+                // one the page LANDS in, ahead of the page's width (a docked pane's slide): the overview follows the live width until the width
+                // reaches the rung, so its columns' targets move with the page (the engine re-aims Popular's resize at each).
                 bool crossing = _rung >= 0 && WinUiArtistTiers.OverviewLadder.Resolve(r.W + 2f * _inset, _rung) != _rung;
-                if (!crossing && MathF.Abs(r.W - _slotNow) > 0.5f) { _slotNow = r.W; _slot.Value = r.W; }
+                if (!crossing) _following = false;
+                if ((!crossing || _following) && MathF.Abs(r.W - _slotNow) > 0.5f) { _slotNow = r.W; _slot.Value = r.W; }
             };
         }
 
@@ -241,28 +230,8 @@ internal static class WinUiArtistOverview
             float previousSlot = _slotNow;
             _rung = props.Rung;
             _ = _slot.Value;
-            _ = _released.Value;
             _ = _held.Value;
-            if (restack)
-            {
-                // The page lands at the content width the rung was resolved at: lay the restack out there while the page is still on its way.
-                float landing = props.Landing - 2f * props.Inset;
-                float from = _measured > 0.5f ? _measured : landing;
-                if (landing > 0.5f && MathF.Abs(landing - from) > 0.5f)
-                {
-                    _distance = MathF.Abs(landing - from);
-                    _restacks++;
-                    _landing = landing;
-                }
-                else
-                {
-                    _landing = float.NaN;
-                    if (_measured > 0.5f) _slotNow = _measured;
-                }
-            }
-            UseTimeout(_release, WinUiArtistMotion.LandingHoldMs, DepKey.From(_restacks));
-            float pinned = _landing;
-            if (!float.IsNaN(pinned)) _slotNow = pinned;
+            if (restack && _measured > 0.5f) { _slotNow = _measured; _following = true; }
             else if (_measured > 0.5f && MathF.Abs(_measured - _slotNow) > 0.5f
                 && WinUiArtistTiers.OverviewLadder.Resolve(_measured + 2f * props.Inset, _rung) == _rung) _slotNow = _measured;
             float slot = _slotNow;
@@ -277,13 +246,13 @@ internal static class WinUiArtistOverview
                 if (!float.IsNaN(_hold)) _holds++;
             }
             UseTimeout(_releaseHold, WinUiArtistMotion.FadeOutMs, DepKey.From(_holds));
-            // The measured box follows the page; the overview inside it takes the landing width while one is set (the content card clips what passes its edge).
+            // The measured box follows the page, and the overview inside it with it.
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, OnBoundsChanged = _onBounds,
                 Children = [new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Width = pinned,
+                    Direction = 1, MinWidth = 0f,
                     Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased))],
                 }],
             };
