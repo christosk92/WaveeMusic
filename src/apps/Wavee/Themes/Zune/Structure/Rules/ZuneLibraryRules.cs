@@ -151,6 +151,10 @@ public static class ZuneLibraryRules
     /// <summary>The pane's header: the cover (the board draws none in the pane; the verbs and the words lead), the title/meta gap, the command row's gap and its top.</summary>
     public const float PaneTitleGap = 2f, PaneMetaBottom = 6f, PaneCommandsGap = 20f, PaneCommandsTop = 8f, PaneCommandsBottom = 12f, PaneTitleSlotH = 28f, PaneMetaSlotH = 16f;
 
+    /// <summary>The playlists reader's head (Z-Library-Playlists): the 152 cover, its gap to the words, the gap under the title, the verbs' top and the
+    /// air under the head.</summary>
+    public const float PlaylistHeadCover = 152f, PlaylistHeadGap = 24f, PlaylistTitleGap = 4f, PlaylistVerbsTop = 16f, PlaylistHeadBottom = 16f;
+
     /// <summary>The pane's command targets: the stock edge, and the Compact tier's (a 40 target).</summary>
     public const float CommandBox = 36f, CompactCommandBox = 40f;
 
