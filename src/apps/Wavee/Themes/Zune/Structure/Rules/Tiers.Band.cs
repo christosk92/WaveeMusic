@@ -6,9 +6,9 @@
 //             pivots at 40/48 and row 2 at 15/20 (`ZuneBandType`; NaN keeps the role's own size).
 //   COLLAPSE  the band folds row 2 away on the page's first scroll down where its record collapses (Compact, Small, Standard) AND wherever
 //             the window is very short, whatever the width: a short Huge window has no vertical room either. "Very short" is a window-height RUNG,
-//             `ZuneBandRules.Row2Rung`, not the Short tier (below 700): Z-Frame-Small (800 x 600) and Z-PlayBar (1440 x 680) keep row 2 (the facets) at
-//             rest, while Z-Shell-Short (330) rests with it folded. Crossed from 480 on widening, held 24 on shrinking: the lane assumption between the
-//             boards the daylist's height rung already makes (`ZuneHomeRules.DaylistFullFrom`, audit B5a V28).
+//             `ZuneBandRules.Row2Rung`, not the Short tier (below 700): Z-PlayBar (1440 x 680) keeps row 2 (the facets) at rest, while Z-Home-Small
+//             (800 x 600) and Z-Shell-Short (330) rest with it folded. Crossed from 660 on widening, held 24 on shrinking (where the rule's numbers
+//             come from: `ZuneBandRules.Row2RestsFrom`; audit B5a V28).
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`). Public, so `Wavee.Tests` pins them.
 
@@ -84,7 +84,7 @@ public static class ZuneBandTiers
 
 public static partial class ZuneTiers
 {
-    // The band's height rung (see the file header): row 2 stays at rest from 480 tall. Reads only `ZuneBandRules` constants (this runs inside
+    // The band's height rung (see the file header): row 2 stays at rest from 660 tall. Reads only `ZuneBandRules` constants (this runs inside
     // `ZuneTiers.Policy`'s initializer).
     static partial void RungsBand(ImmutableArray<NamedRung>.Builder rungs)
         => rungs.Add(new NamedRung(ZuneBandRules.Row2Rung, new TierEdge(ZuneBandRules.Row2RestsFrom, NarrowHold: Hold, WidenHold: 0f), RungAxis.Height));
