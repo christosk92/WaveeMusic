@@ -6,7 +6,7 @@
 // what it read, and draws. Elements, keys, motion and bound channels are exactly what the stage built before the move.
 //
 //   Stage.Backdrop         the baked cover (old layer kept under the new), the base Field, the scrim; ONE quarter-scale repaint boundary
-//   Stage.Face             the chosen face, remounted per (kind, 8-DIP width bucket) on a keyed child, inset while the gallery is open
+//   Stage.Face             the chosen face, remounted per (kind, the stored gallery flag) on a keyed child, never per size; inset while the gallery is open
 //   Stage.FaceScrim        the stage veil over a BACKDROP face (Large art, Centered)
 //   Stage.Spectrum         the strip / ring the layouts draw, in its own small RepaintBoundary
 //   Stage.NowPlayingCard   the acrylic card behind the Card layout's thumb
@@ -93,9 +93,9 @@ internal sealed class ClassicStageBackdropArt : Component
     };
 }
 
-/// <summary>Wavee Classic's face layer: the chosen face, remounted per (kind, 8-DIP width bucket) on a KEYED CHILD (a Key on a component's
-/// root is inert in a single-child slot — V-U11; the width is in the key so opening or closing the gallery re-centres the subject under the
-/// same 0.55 s FluentDecelerate instead of jumping), inset on the right while the gallery is open. The face is told its SAFE rect
+/// <summary>Wavee Classic's face layer: the chosen face, remounted per kind and gallery state (never a size: audit B3bc) on a KEYED CHILD (a Key on a component's
+/// root is inert in a single-child slot — V-U11; the gallery state is in the key so opening or closing the gallery re-centres the subject under
+/// the same 0.55 s FluentDecelerate instead of jumping), inset on the right while the gallery is open. The face is told its SAFE rect
 /// (Layout.FaceSafe: clear of the now-playing card, the caption when it shows, the transport). Reads the context's signals only (O8); the
 /// live palette re-renders it once per landed fade, never per tick.</summary>
 internal static class ClassicStageFace
@@ -124,9 +124,9 @@ internal static class ClassicStageFace
             [
                 new BoxEl
                 {
-                    // the width in the key is quantised to 8 DIP: the gallery's open/close still remounts (re-centres)
-                    // the face, a window drag no longer rebuilds it (and its sims) on every pixel
-                    Key = "viz:" + (int)kind + ":" + ((int)w >> 3), Width = w, Height = L.H,
+                    // the gallery's open/close remounts (re-centres) the face under production's cross-fade; a resize or a tier crossing
+                    // re-lays the same face out (no size in the key)
+                    Key = "viz:" + (int)kind + (sc.GalleryOpen.Value ? ":g" : ""), Width = w, Height = L.H,
                     Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(550f, Easing.FluentDecelerate),
                         Enter: new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
                     Children = [Visualizer.Face(kind, sc.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
@@ -169,7 +169,7 @@ internal static class ClassicStageSpectrum
             // the Huge 4K Lyrics stage's bars under the cover's title column (C-Stage-Huge4K): the strip's bars at the cover's width
             (x, y, w, h) = L.ArtBarsRect(k.Mode);
             body = Visualizer.StripBars(slab, w, h);
-            key = "artbars:" + ((int)w >> 3);
+            key = "artbars";
         }
         else if (k.IsLayout)
         {
@@ -181,7 +181,7 @@ internal static class ClassicStageSpectrum
                     (x, y, w, h) = L.StripRect(in k);
                     if (h <= 0f || w <= 0f) break;
                     body = k.Spectrum == Stage.SpectrumStyle.Bars ? Visualizer.StripBars(slab, w, h) : Visualizer.StripLine(slab, w, h, k.HeroLyrics);
-                    key = "strip:" + (int)k.Eff + ":" + (int)k.Spectrum + ":" + (k.HeroLyrics ? "l" : "a") + ":" + ((int)w >> 3);
+                    key = "strip:" + (int)k.Eff + ":" + (int)k.Spectrum + ":" + (k.HeroLyrics ? "l" : "a");
                     break;
                 }
                 case Stage.SpectrumStyle.Ring:
@@ -191,7 +191,7 @@ internal static class ClassicStageSpectrum
                     float cover = box.Size / Stage.Layout.RingBoxRatio;
                     (x, y, w, h) = (box.X, box.Y, box.Size, box.Size);
                     body = Visualizer.RingAround(slab, cover);
-                    key = "ring:" + (int)k.Eff + ":" + ((int)box.Size >> 2);
+                    key = "ring:" + (int)k.Eff;
                     break;
                 }
             }

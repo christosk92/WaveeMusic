@@ -5,7 +5,7 @@
 //
 //   Stage.Backdrop         the flat stage floor (Z-Lyrics / Z-Queue-Page draw a flat ground, no blurred cover) with the palette's base Field
 //                          breathing on it and the core's scrim; ONE quarter-scale repaint boundary
-//   Stage.Face             the face host: the chosen face (core, owner Q21; Bloom by default, NQ3), remounted per (kind, 8-DIP width bucket),
+//   Stage.Face             the face host: the chosen face (core, owner Q21; Bloom by default, NQ3), remounted per (kind, the stored gallery flag): never per size,
 //                          told its safe rect for the arrangement (the Card arrangement keeps the subject above the card)
 //   Stage.FaceScrim        the stage veil over a backdrop face (Large art, Centered)
 //   Stage.Spectrum         the strip / ring the layouts draw: under the Large art column's cover (or ringing it), the allocator's elsewhere
@@ -71,7 +71,9 @@ internal static class ZuneStageBackdrop
     }
 }
 
-/// <summary>Zune's face host: the chosen face (core), remounted per (kind, 8-DIP width bucket) on a keyed child, inset while the gallery is open,
+/// <summary>Zune's face host: the chosen face (core), remounted per kind and gallery state on a keyed child (production's cross-fade that re-centres
+/// the subject when the gallery opens or closes), never per size: a resize or a tier crossing re-lays the same face out (audit B3bc: an 8-DIP width
+/// bucket in the key remounted the bloom clouds at every crossing); inset while the gallery is open,
 /// told its safe rect for the arrangement.</summary>
 internal static class ZuneStageFace
 {
@@ -100,7 +102,7 @@ internal static class ZuneStageFace
             [
                 new BoxEl
                 {
-                    Key = "viz:" + (int)kind + ":" + ((int)w >> 3), Width = w, Height = L.H,
+                    Key = "viz:" + (int)kind + (sc.GalleryOpen.Value ? ":g" : ""), Width = w, Height = L.H,
                     Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(G.GalleryYieldMs, Easing.FluentDecelerate),
                         Enter: new EnterExit(Sx: G.FaceEnterScale, Sy: G.FaceEnterScale, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
                     Children = [Visualizer.Face(kind, sc.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
@@ -120,7 +122,7 @@ internal static class ZuneStageFaceScrim
 }
 
 /// <summary>The layouts' spectrum: under (or around) the Large art column's cover, the allocator's strip / ring elsewhere, the bars under a Huge
-/// 4K Lyrics stage's cover where the core draws them. Keyed by (layout, style, 8-DIP width bucket): a style switch fades the old one out.</summary>
+/// 4K Lyrics stage's cover where the core draws them. Keyed by (layout, style), never a size: a style switch fades the old one out, a resize re-lays it out.</summary>
 internal static class ZuneStageSpectrum
 {
     /// <summary>The registered template of <see cref="ViewKeys.StageSpectrum"/>.</summary>
@@ -140,7 +142,7 @@ internal static class ZuneStageSpectrum
             // the Centered arrangement's ring around its own cover (the strips stay the allocator's: they sit above its plate line)
             (x, y, w, h) = (a.Spectrum.X, a.Spectrum.Y, a.Spectrum.W, a.Spectrum.H);
             body = Visualizer.RingAround(slab, a.Cover.W);
-            key = "zcring:" + ((int)w >> 2);
+            key = "zcring";
         }
         else if (a.Form == ZuneStageForm.Column)
         {
@@ -151,15 +153,15 @@ internal static class ZuneStageSpectrum
                 {
                     case Stage.SpectrumStyle.Ring:
                         body = Visualizer.RingAround(slab, a.Cover.W);
-                        key = "zring:" + ((int)w >> 2);
+                        key = "zring";
                         break;
                     case Stage.SpectrumStyle.Bars:
                         body = Visualizer.StripBars(slab, w, h);
-                        key = "zstrip:b:" + ((int)w >> 3);
+                        key = "zstrip:b";
                         break;
                     case Stage.SpectrumStyle.Line:
                         body = Visualizer.StripLine(slab, w, h, k.HeroLyrics);
-                        key = "zstrip:l:" + ((int)w >> 3);
+                        key = "zstrip:l";
                         break;
                 }
             }
@@ -168,7 +170,7 @@ internal static class ZuneStageSpectrum
         {
             (x, y, w, h) = L.ArtBarsRect(k.Mode);
             body = Visualizer.StripBars(slab, w, h);
-            key = "artbars:" + ((int)w >> 3);
+            key = "artbars";
         }
         else if (k.IsLayout)
         {
@@ -180,7 +182,7 @@ internal static class ZuneStageSpectrum
                     (x, y, w, h) = L.StripRect(in k);
                     if (h <= 0f || w <= 0f) break;
                     body = k.Spectrum == Stage.SpectrumStyle.Bars ? Visualizer.StripBars(slab, w, h) : Visualizer.StripLine(slab, w, h, k.HeroLyrics);
-                    key = "strip:" + (int)k.Eff + ":" + (int)k.Spectrum + ":" + (k.HeroLyrics ? "l" : "a") + ":" + ((int)w >> 3);
+                    key = "strip:" + (int)k.Eff + ":" + (int)k.Spectrum + ":" + (k.HeroLyrics ? "l" : "a");
                     break;
                 }
                 case Stage.SpectrumStyle.Ring:
@@ -189,7 +191,7 @@ internal static class ZuneStageSpectrum
                     if (box.Size <= 0f) break;
                     (x, y, w, h) = (box.X, box.Y, box.Size, box.Size);
                     body = Visualizer.RingAround(slab, box.Size / Stage.Layout.RingBoxRatio);
-                    key = "ring:" + (int)k.Eff + ":" + ((int)box.Size >> 2);
+                    key = "ring:" + (int)k.Eff;
                     break;
                 }
             }

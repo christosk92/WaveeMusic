@@ -102,23 +102,34 @@ public static partial class Visualizer
         var shadow = dark ? new ShadowSpec(60f, 18f, 0f, pal.A with { A = 0.75f })
                           : new ShadowSpec(40f, 14f, 0f, Ink.Ink with { A = 0.25f });
         var kick = slab.Kick; var low = slab.Low;
-        kids.Add(new CanvasChild(x, y, new BoxEl
+        kids.Add(new CanvasChild(0f, 0f, Placed(x, y, new BoxEl
         {
             Width = s, Height = s, Corners = CornerRadius4.All(r), Shadow = shadow, HitTestVisible = false,
             Opacity = Prop.Of(() => Geo.BloomShadowOpacity(low.Value, motion)),
             Transform = Prop.Of(() => { float z = 1f + 0.05f * kick.Value * motion; return Affine2D.Scale(z, z); }),
-        }));
-        kids.Add(new CanvasChild(x, y, new BoxEl
+        })));
+        kids.Add(new CanvasChild(0f, 0f, Placed(x, y, new BoxEl
         {
             Width = s, Height = s, Corners = CornerRadius4.All(r), ClipToBounds = true, HitTestVisible = false,
             Transform = Prop.Of(() => { float z = 1f + 0.018f * kick.Value * motion; return Affine2D.Scale(z, z); }),
             Children = [Controls.Artwork(spec.CoverUrl, s, s, r, decodePx: 512)],
-        }));
+        })));
         return FaceFrame(spec, kids);
     }
 
     /// <summary>One breathing cloud: a radial disc authored at its LARGEST radius and scaled down (a circle, so a uniform
     /// scale is exact), its alpha bound to the band energy, drifting on a 28–36 s keyframe loop (zero ticks).</summary>
+    /// <summary>The subject's move when the stage re-places it (a tier crossing changes the safe rect, a resize re-centres it): a spring
+    /// on a layout-placed box (a canvas offset cannot ease), so the cover travels instead of snapping now that a crossing re-lays the face
+    /// out rather than remounting it (audit B3bc). The kick's bound scale stays on the box inside: two nodes, two writers.</summary>
+    static readonly LayoutTransition s_subjectMove = new(TransitionChannels.Position, TransitionDynamics.Spring(SubjectMoveResponse, SubjectMoveDamping));
+    const float SubjectMoveResponse = 0.45f, SubjectMoveDamping = 0.90f;
+
+    static Element Placed(float x, float y, BoxEl box) => new BoxEl
+    {
+        Margin = new Edges4(x, y, 0f, 0f), HitTestVisible = false, Layout = s_subjectMove, Children = [box],
+    };
+
     static CanvasChild BloomCloud(Slab slab, int i, float w, float h, float m, ColorF c, ColorF to, FloatSignal e,
                                   float a0, float a1, float motion, bool drift)
     {
@@ -148,7 +159,9 @@ public static partial class Visualizer
         {
             var p = UseProps<Props>();
             bool reduced = Design.Reduced;
-            var key = DepKey.From(p.Index, (int)p.Diameter, (int)p.Dx, reduced ? 1 : 0);
+            // The loop is seeded once per cloud (and on a reduced-motion flip): a resize re-lays the cloud out and keeps its drift running,
+            // so a tier crossing never restarts it (audit B3bc). The drift's reach is the one it mounted with.
+            var key = DepKey.From(p.Index, reduced ? 1 : 0);
             UseKeyframes(AnimChannel.TranslateX, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.Dx, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], p.PeriodMs, loop: !reduced, key);
             UseKeyframes(AnimChannel.TranslateY, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.Dy, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], p.PeriodMs, loop: !reduced, key);
             Context.UseAmbientPause(AmbientMotion.Translate, key, loops: !reduced);   // paused playback: the cloud stands still
