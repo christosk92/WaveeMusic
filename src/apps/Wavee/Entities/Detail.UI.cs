@@ -815,7 +815,9 @@ public static partial class Detail
             //    window tier's record docks one (Classic Huge, C-Album-Huge / C-Playlist-Huge) and the page has an aside body or facts to show in it.
             //    Everything it holds leaves the rail, the band and the list's tail under `AsideDocked`. The hero form docks it only where the record
             //    docks it beside the hero too (contract 1.53, `DetailTierLayout.AsideInHero`: WinUI Huge). ──
-            Contracts.DetailTwoColumnProps? twoColumn = cfg.Rail && (oneTree || !heroForm)
+            // A show's or an episode's vertical arm carries them too (audit B9): a structure may draw the rail stacked as its fixed header, one identity at
+            // every width.
+            Contracts.DetailTwoColumnProps? twoColumn = cfg.Rail && (oneTree || !heroForm || episodes)
                 ? TwoColumnFor(spec, cfg, acts, mode, uniform, pageWidthEstimate, tierLayouts, in tierFacts, heroForm)
                 : null;
             bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts)
@@ -863,6 +865,7 @@ public static partial class Detail
                 {
                     Aside = aside,
                     Vertical = true, VerticalTracks = verticalTracks, PageAccent = _pageAccent, OnMeasured = _measure,
+                    TwoColumn = episodes ? twoColumn : null, Form = form,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
                     // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.

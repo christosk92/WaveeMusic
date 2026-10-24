@@ -179,6 +179,10 @@ public static class ZuneDetailRules
     public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
+    /// <summary><see cref="PanoramaFold"/> that also slides (audit B9): a show's band moves between the frame's gutter (the stacked header's) and the page
+    /// column's (the two-column form's) across the mode edge.</summary>
+    public static readonly LayoutTransition PanoramaShift = PanoramaFold with { Channels = TransitionChannels.Position | TransitionChannels.Size };
+
     /// <summary>The list bar's insights toggle when the tier changes its edge (36 ↔ 40 at 3200 and 640): its box eases through real layout on both axes,
     /// so the bar's trailing group keeps its height and its neighbours ride the width.</summary>
     public static readonly LayoutTransition ToggleResize = new(TransitionChannels.Size,
@@ -309,6 +313,9 @@ public static class ZuneDetailRules
     /// row with 8 of air above and 8 between (about 96 tall), so the fixed header leaves the episodes the room a 126-tall page has.</summary>
     public const float ShowCover = 120f, ShowGap = 16f, ShowPadTop = 16f, ShowPadBottom = 8f, ShowRowsGap = 12f,
         ShowPadTopShort = 8f, ShowRowsGapShort = 8f;
+
+    /// <summary>The header's meta line: two lines beside the cover.</summary>
+    public const int ShowMetaLines = 2;
 
     // ── the notice ────────────────────────────────────────────────────────────────────────────────────────────────────
 

@@ -181,6 +181,8 @@
 // by `DetailFrameProps.Form` / `.Columns` and `DetailHeroProps.Parts.Form` / `.Columns` (the hero draws both forms; the form is a live prop, never a key);
 // `DetailHeroStyle.ListInsets` (`DetailInsetQuery` -> `DetailListInsets`: the width the hero's side columns take beside the rows) and `.InsetMotion`; the
 // hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
+// A show's or an episode's vertical arm also carries `DetailFrameProps.TwoColumn` (the rail's props) and `DetailRailProps.Stacked`, so a structure can draw
+// one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

@@ -241,6 +241,10 @@ public sealed record DetailRailProps
     /// reads "3 of 48 songs · 11 min (filtered)" (<c>Detail.Text.FilteredMeta</c>; tuned Classic D4). Null: the page's meta only. Appended (contract 1.5).</summary>
     public IReadSignal<Detail.ListCount>? Shown { get; init; }
 
+    /// <summary>The identity drawn STACKED, full width over the content (audit B9: a show's or an episode's page below the mode edge, where a structure
+    /// that keeps one tree draws its rail as the fixed header instead of the column). False: the column. Appended (contract 1.67).</summary>
+    public bool Stacked { get; init; }
+
     /// <inheritdoc />
     public bool Equals(DetailRailProps? other) => ReferenceEquals(this, other);
 
