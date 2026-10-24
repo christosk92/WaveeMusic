@@ -2001,6 +2001,9 @@ public static partial class Diagnostics
                     }
                     if (vOver > Slack)
                     {
+                        // A box whose cut side feathers dissolves the text there by design, as on the horizontal axis below (audit B3bc: the Zune
+                        // Artist layout's name sinks into the stage's foot under a fade, Z-NowPlaying-Artist); a hard cut still fails.
+                        if (Fades(anc, above ? EdgeMask.Top : EdgeMask.Bottom)) break;
                         string doubt = ClipDoubt(s, t, vOver, guess);
                         // A theme's designed top bleed (IThemeLintGuide.DesignedTopBleeds: Zune's panorama voice on its exact line, flush with the edge
                         // above it) is an intended cut at the top; a cut at the bottom (descenders) still fails.

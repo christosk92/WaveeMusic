@@ -234,8 +234,8 @@ The navigation args are the ones `goto` takes.
 If the offscreen surface cannot be created (no D3D12 or WARP), `devices` reads `headless-gpu+dwrite (<reason>)`. The
 text is still true, but `render` answers `ok:false`.
 
-`mount` also takes the fullscreen stage's preferences: `stage=lyrics|visualizer|queue|artist`, `layout=card|large|centered|artist`
-and `gallery=on|off` (set before the mount, the first-run tip marked seen), so `key f11` opens the stage straight on that look.
+`mount` also takes the fullscreen stage's preferences: `stage=lyrics|visualizer|queue|artist`, `layout=card|large|centered|artist`,
+`gallery=on|off` and `heroLyrics=on|off` (the Artist layout's lyrics over the photo; off draws Z-NowPlaying-Artist's name) (set before the mount, the first-run tip marked seen), so `key f11` opens the stage straight on that look.
 
 ### `goto {route, arg?} | {uri} | {deeplink}`
 

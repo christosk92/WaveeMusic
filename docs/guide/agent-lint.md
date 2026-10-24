@@ -198,7 +198,9 @@ line height (the **ink guess**): a cut only the guess makes is a `review` (cause
 0.25 em past it, inside the line box's leading or descent (cause `:line-box`). A cut at the TOP of text under a key the theme's guide lists in `DesignedTopBleeds` (Zune: the detail
 panorama `zune.detail.panorama` and the settings title `zs:title`, display type set on its exact line flush with the edge above
 it, ascenders inside) is intended: `suppressed` by intent, cause `top:designed-bleed`, counted in `suppressed.intent`; a cut at
-the bottom (descenders) still fails. A **scroller judges its own axis by its edges**: no finding where scrolling still reveals the cut text
+the bottom (descenders) still fails. A box that **feathers its cut side** (an edge fade on that edge: a title bleeding out
+under a fade, the Zune Artist layout's name sinking into the stage's foot) dissolves the text there by design: no finding, on
+either axis. A **scroller judges its own axis by its edges**: no finding where scrolling still reveals the cut text
 (the fold of a vertical list) or the edge fades (an edge fade, a scroller's auto fade); a cut at a hard horizontal scroll edge
 is a warn and a vertical scroll edge scrolling cannot open (the top at offset 0) an error (cause `scroll-edge:<side>`); a
 guide `Bleed` makes it intended. Under the headless text model: review.
