@@ -116,7 +116,7 @@ public static partial class ReleaseNotes
 
     // ══ 2. THE PAGE HOST ═════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element PageFor(string versionArg) => Embed.Comp(() => new PageHost(versionArg)) with { Key = "whatsnew:" + versionArg };
+    static Element PageFor(string versionArg) => Embed.Comp(() => new PageHost(versionArg)) with { Key = versionArg.Length > 0 ? "whatsnew:" + versionArg : "whatsnew" };
 
     /// <summary>Reading the page is what marks the notes seen — and <c>lastSeen</c> is read BEFORE the load starts and
     /// carried into it (ch 28 §0.11): advancing first hands the range (me, me) and the banner + every dot die. The host owns

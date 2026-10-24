@@ -302,7 +302,9 @@ public static partial class Diagnostics
                 bool control = false;
                 foreach (char c in key)
                     if (char.IsControl(c)) { control = true; break; }
-                if (control) Add("control", "a control character", n);
+                // The keep-alive page slot's key separates tab, route and arg with U+001F by design (`Design.Nav.SlotKey`: no route or arg can hold
+                // it, so two slots never collide) and the lint reads it (`TrySlotRoute`): it is the one designed control character (audit B8).
+                if (control && !TrySlotRoute(key, out _, out _)) Add("control", "a control character", n);
                 if (key.EndsWith(':')) Add("trailing-colon", "a trailing ':'", n);
                 if (HasRunId(key)) Add("run-id", "a run id", n);
                 if (TryTierWord(key, out string word)) Add("tier-word", "the tier, form or count word '" + word + "'", n);

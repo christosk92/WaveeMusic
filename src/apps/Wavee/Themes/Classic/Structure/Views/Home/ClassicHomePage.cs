@@ -100,7 +100,7 @@ internal static class ClassicHomePage
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [column] })
             with
             {
-                Key = "home:scroll:" + props.Facet, Grow = 1f, MinWidth = 0f,
+                Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
                 // No viewport edge cue: its 40-DIP top feather would fade the pinned facet band and chapter headers.
@@ -127,7 +127,7 @@ internal static class ClassicHomePage
         props.OnContent(m);
         return new BoxEl
         {
-            Key = "facet:" + m.Facet, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Key = m.Facet.Length > 0 ? "facet:" + m.Facet : "facet", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
             Transition = MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
             Children =
