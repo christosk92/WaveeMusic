@@ -665,7 +665,7 @@ so the page stays on its skeleton: by default the `zzqx` id of the kind of `load
 `playlist:plzzqx`, `concert:cczzqx`, `show:shzzqx`, `episode:epzzqx`), settles with `loops=skeletons`, then goes to `loaded` and settles.
 Liked Songs (`loaded=spotify:collection:tracks`, `pending=staged` by default) has no other uri: the verb stages the account's likes Unknown
 on the page itself and puts them back in place, so its band lands as the real page's does. Every shown key of the content card (unique
-keys, the pending id read as the loaded one) and every `Skel.Region` is compared: `moved[{key, skeleton, loaded, dy, dh}]` (top
+keys, the pending id read as the loaded one) and every `Skel.Region` is compared: `moved[{key, skeleton, loaded, dy, dh, dx, dw}]` (a key that moved down, up or sideways, or resized; top
 first), `regions[{key, skeleton, loaded, dh}]`, `counts{skeletonKeys, loadedKeys, matched, moved, regions}` and `firstMoved{key,
 dy}`: the first key on screen that moved down, the jump a person sees when the data lands (null when nothing did). Report-only:
 no gate reads it. `inspect.py --findings` prints it as lines.

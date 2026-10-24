@@ -8,7 +8,8 @@
 // THE SEQUENCE. Go to the PENDING page (a fixture the fake catalogue never answers, so it stays on its skeleton: `arzzqx`, `alzzqx`,
 // `plzzqx`, `cczzqx`, `shzzqx`, `epzzqx`, the default per kind of `loaded`; Liked Songs: the same page with the likes staged Unknown) and settle with `loops=skeletons` (the shimmer does not hold the settle); remember every shown
 // keyed node of the content card and every `Skel.Region` (a SkeletonRegion node), keys with the pending id read as the loaded one. Go to the
-// LOADED page (Liked: put the likes back, in place) and settle; take the same. A key both show is compared: its top moved (dy) and its height changed (dh). The regions' own height
+// LOADED page (Liked: put the likes back, in place) and settle; take the same. A key both show is compared: its top moved (dy), its height changed (dh),
+// and sideways (dx, dw). The regions' own height
 // change is the skeleton's error; the first key that moved down (and how far) is the jump a person sees when the data lands.
 // Report-only: no gate reads it.
 
@@ -100,7 +101,9 @@ public static partial class Diagnostics
             {
                 if (!loadKeyed.TryGetValue(key, out RectF load)) continue;
                 matched++;
-                if (MathF.Abs(load.Y - skel.Y) > tolerance || MathF.Abs(load.H - skel.H) > tolerance) moved.Add((key, skel, load));
+                // Sideways too (audit B7 r2: the loading band's rows ran under Classic's rail and jumped 240 right on load, with dy 0).
+                if (MathF.Abs(load.Y - skel.Y) > tolerance || MathF.Abs(load.H - skel.H) > tolerance
+                    || MathF.Abs(load.X - skel.X) > tolerance || MathF.Abs(load.W - skel.W) > tolerance) moved.Add((key, skel, load));
             }
             moved.Sort(static (x, y) => x.Skel.Y.CompareTo(y.Skel.Y));
             var regions = new List<(string Key, RectF Skel, RectF Load)>();
@@ -151,6 +154,8 @@ public static partial class Diagnostics
                     Inspect.Reply.Rect(w, "loaded", load);
                     Inspect.Reply.Num(w, "dy", load.Y - skel.Y);
                     Inspect.Reply.Num(w, "dh", load.H - skel.H);
+                    Inspect.Reply.Num(w, "dx", load.X - skel.X);
+                    Inspect.Reply.Num(w, "dw", load.W - skel.W);
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();

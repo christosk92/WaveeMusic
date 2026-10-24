@@ -464,11 +464,17 @@ public readonly partial struct Track
         }
 
         /// <summary>A lead / trail spacer of the list column: its width BOUND to <see cref="InsetsNow"/> (a crossing re-binds it, nothing re-renders) and
-        /// eased with the structure's column motion, so the rows move in step with the hero's identity column.</summary>
-        BoxEl InsetSpacer(bool lead) => new()
+        /// eased with the structure's column motion, so the rows move in step with the hero's identity column. It is its own shimmer (a self-override): the
+        /// deriver never reads a bound Prop and made it a 0-wide box, so the loading band's chrome and rows ran under the rail at the columns form and
+        /// jumped 240 (Classic) / 288 (Zune) to its side when the page landed (audit B7 r2).</summary>
+        BoxEl InsetSpacer(bool lead)
         {
-            Width = Prop.Of(lead ? _leadInset : _trailInset), Shrink = 0f, HitTestVisible = false, Animate = _heroStyle?.InsetMotion,
-        };
+            var spacer = new BoxEl
+            {
+                Width = Prop.Of(lead ? _leadInset : _trailInset), Shrink = 0f, HitTestVisible = false, Animate = _heroStyle?.InsetMotion,
+            };
+            return spacer with { SkeletonOverride = spacer };
+        }
 
         /// <summary><paramref name="e"/> in the list column: between the lead and trail spacers (always the same three children, whatever the insets, so an
         /// inset that comes or goes moves the item instead of re-parenting it). The box yields the pointer where its own children take none
