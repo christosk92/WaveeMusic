@@ -168,8 +168,12 @@ internal static class ClassicFrame
                 new BoxEl
                 {
                     // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter. Square at Compact.
+                    // The CARD is the one projection root: its plate, the page and its hairline FLIP together when the sidebar column changes
+                    // width (the pane toggle, the 528 / 1008 / 1920 crossings). On the page box alone the plate and the stroke landed at the
+                    // new edge at once while the page glided inside them (a 232 DIP plate step over the shrinking pane at 1008).
                     Key = ClassicFrameLayout.ContentCardKey,
                     Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                    Animate = ClassicFrameRules.ContentCardAnim, RelativeTo = ClassicFrameRules.ContentRowMorphId,
                     Children =
                     [
                         new BoxEl { Grow = 1f, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = Prop.Of(() => ClassicTiers.FrameOf(tiers()).CardCorners) },
@@ -177,7 +181,7 @@ internal static class ClassicFrame
                         {
                             Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
                             Fill = ColorF.Transparent, Corners = Prop.Of(() => ClassicTiers.FrameOf(tiers()).CardCorners), ClipToBounds = true,
-                            IsolateLayout = true, Animate = ClassicFrameRules.ContentCardAnim, RelativeTo = ClassicFrameRules.ContentRowMorphId,
+                            IsolateLayout = true,
                             Children = [props.ContentHost()],
                         },
                         ContentRegionStroke(tiers),
