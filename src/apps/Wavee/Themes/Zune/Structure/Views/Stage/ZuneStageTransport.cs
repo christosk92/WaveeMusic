@@ -101,29 +101,29 @@ internal static class ZuneStageTransport
         float side = G.PlateSideW(inner, t, disc);
 
         var cluster = new List<Element>(5);
-        if (!stacked) cluster.Add(kit.Shuffle() with { Key = "plate:shuffle", Layout = slide });
-        cluster.Add(kit.Previous() with { Key = "plate:previous", Layout = slide });
+        if (!stacked) cluster.Add(kit.Shuffle() with { Key = "stage:plate:shuffle", Layout = slide });
+        cluster.Add(kit.Previous() with { Key = "stage:plate:previous", Layout = slide });
         cluster.Add(kit.Play(disc) with { Layout = slide });
-        cluster.Add(kit.Next() with { Key = "plate:next", Layout = slide });
-        if (!stacked) cluster.Add(kit.Repeat() with { Key = "plate:repeat", Layout = slide });
+        cluster.Add(kit.Next() with { Key = "stage:plate:next", Layout = slide });
+        if (!stacked) cluster.Add(kit.Repeat() with { Key = "stage:plate:repeat", Layout = slide });
 
-        var heart = kit.Heart() with { Key = "plate:heart", Layout = slide };
+        var heart = kit.Heart() with { Key = "stage:plate:heart", Layout = slide };
         var sides = new List<Element>(7);
         if (full)
             sides.Add(new BoxEl
             {
-                Key = "plate:source", MaxWidth = side, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Layout = slide,
+                Key = "stage:plate:source", MaxWidth = side, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true, Layout = slide,
                 Children = [kit.Source()],
             });
         else sides.Add(heart);
-        sides.Add(new BoxEl { Key = "plate:air", Grow = 1f, MinWidth = 0f, HitTestVisible = false });
+        sides.Add(new BoxEl { Key = "stage:plate:air", Grow = 1f, MinWidth = 0f, HitTestVisible = false });
         int right = 2;   // the device and the "…"
         if (full)
         {
             sides.Add(heart);
-            sides.Add(kit.Mute() with { Key = "plate:mute", Layout = slide });
+            sides.Add(kit.Mute() with { Key = "stage:plate:mute", Layout = slide });
             right += 2;
-            if (volume) { sides.Add(kit.Volume() with { Key = "plate:volume", Layout = slide }); right++; }
+            if (volume) { sides.Add(kit.Volume() with { Key = "stage:plate:volume", Layout = slide }); right++; }
         }
         if (!stacked)
         {
@@ -133,26 +133,26 @@ internal static class ZuneStageTransport
             float deviceMax = MathF.Max(0f, room - fixedW);
             sides.Add(new BoxEl
             {
-                Key = "plate:device", MaxWidth = deviceMax, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, Layout = slide,
+                Key = "stage:plate:device", MaxWidth = deviceMax, MinWidth = 0f, Shrink = 1f, Direction = 0, AlignItems = FlexAlign.Center, Layout = slide,
                 Children = [kit.Device()],
             });
         }
-        sides.Add(kit.More() with { Key = "plate:more", Layout = slide });
+        sides.Add(kit.More() with { Key = "stage:plate:more", Layout = slide });
 
         var row = new BoxEl
         {
-            Key = "plate:row", ZStack = true, Height = rowH + (stack ? t.PlateFootH : 0f), Shrink = 0f,
+            Key = "stage:plate:row", ZStack = true, Height = rowH + (stack ? t.PlateFootH : 0f), Shrink = 0f,
             Children =
             [
                 new BoxEl
                 {
-                    Key = "plate:sides", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Height = stack ? t.PlateFootH : rowH,
+                    Key = "stage:plate:sides", AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Height = stack ? t.PlateFootH : rowH,
                     Margin = new Edges4(0f, stack ? rowH : 0f, 0f, 0f), Direction = 0, AlignItems = FlexAlign.Center, Gap = s.RightGap, Layout = slide,
                     Children = sides.ToArray(),
                 },
                 new BoxEl
                 {
-                    Key = "plate:cluster", AlignSelf = FlexAlign.Start, Height = rowH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = slide,
+                    Key = "stage:plate:cluster", AlignSelf = FlexAlign.Start, Height = rowH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = slide,
                     JustifySelf = stack || stacked ? FlexAlign.Stretch : FlexAlign.Center,
                     Justify = stack ? FlexJustify.SpaceBetween : stacked ? FlexJustify.SpaceEvenly : FlexJustify.Start,
                     Gap = stack || stacked ? 0f : s.Gap, Margin = stacked ? new Edges4(s.Box, 0f, s.Box, 0f) : default,
