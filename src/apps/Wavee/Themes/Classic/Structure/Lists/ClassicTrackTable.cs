@@ -385,10 +385,11 @@ internal static class ClassicTrackTable
         var titleCol = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
+            // Withheld, or a row the offline session cannot reach (`Track.Dimmed`): the title column steps back, the lane says why.
             Opacity = Prop.Of(() =>
             {
                 var p = r.P;
-                return Track.Withheld(in p, Track.NowUnix) ? Track.RowNotYetOutOpacity : 1f;
+                return Track.Dimmed(in p, Track.NowUnix) ? Track.RowNotYetOutOpacity : 1f;
             }),
             Children = column,
         };
@@ -459,7 +460,7 @@ internal static class ClassicTrackTable
                     var p = r.P;
                     var d = p.Track.ForDisplay;
                     bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
-                    string duration = Track.DurationLabel(p.Track, Track.NowUnix);
+                    string duration = LaneLabel(in p, Track.NowUnix);
                     return lead ? ClassicTrackRowLayout.InlineDurationLead + duration : duration;
                 }))
                 {
@@ -669,17 +670,26 @@ internal static class ClassicTrackTable
         };
     }
 
-    /// <summary>The clock, or for a withheld row its short reason ("Unavailable", the release date) at the reason rung with
-    /// the long reason as its tooltip (tuned Classic L4). The reason arm is a real mount (<c>Flow.Show</c>) on the rare
-    /// withheld flip, so a playable row carries no tooltip host.</summary>
+    /// <summary>The lane's words: the clock, a withheld row's short reason ("Unavailable", the release date), or "Not on PC" for a row
+    /// only the offline session cannot reach (<see cref="Track.OfflineGone(in RowPresentation)"/>; an indicator, no play gate reads it).</summary>
+    static string LaneLabel(in RowPresentation p, long now)
+        => !Track.Withheld(in p, now) && Track.OfflineGone(in p) ? Loc.Get(Strings.Track.NotOnThisPc) : Track.DurationLabel(p.Track, now);
+
+    /// <summary>The clock, or for a withheld or offline-gone row its short reason at the reason rung with the long reason as its
+    /// tooltip (tuned Classic L4). The reason arm is a real mount (<c>Flow.Show</c>) on the rare flip, so a playable row carries
+    /// no tooltip host.</summary>
     static Element BoundDurationCell(BoundRow r, bool classic)
     {
         Func<bool> withheld = () =>
         {
             var p = r.P;
-            return Track.Withheld(in p, Track.NowUnix);
+            return Track.Dimmed(in p, Track.NowUnix);
         };
-        var label = Prop.Of(() => Track.DurationLabel(r.P.Track, Track.NowUnix));
+        var label = Prop.Of(() =>
+        {
+            var p = r.P;
+            return LaneLabel(in p, Track.NowUnix);
+        });
         var clock = Factual(classic, label, LaneInk(r, classic, static () => Tok.TextSecondary), Prop.Of(() => !withheld()));
         var reason = new TextEl(label)
         {
@@ -692,7 +702,8 @@ internal static class ClassicTrackTable
             Children =
             [
                 clock,
-                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix)))),
+                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() =>
+                    Track.WithheldReason(r.P.Track, Track.NowUnix) ?? Loc.Get(Strings.Track.NotOnThisPcReason)))),
             ],
         };
     }
