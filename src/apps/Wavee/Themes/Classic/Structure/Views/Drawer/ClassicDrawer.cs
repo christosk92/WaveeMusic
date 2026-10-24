@@ -141,10 +141,13 @@ internal sealed class ClassicDrawerPane : Component
         };
     }
 
-    /// <summary>The account row over the pane (Compact): the chip's row form (or "Sign in"), the bell and the friends door, a divider under it.</summary>
+    /// <summary>The account row over the pane (Compact): the chip's row form (or "Sign in"), the bell and the friends door, a divider under it.
+    /// The 528 crossing adds or drops it (the title bar carries the account above Compact): it opens and closes its room through real layout,
+    /// the gap under it included, so the pane's list slides instead of stepping 61.</summary>
     static Element AccountRow(DrawerAccountProps account) => new BoxEl
     {
-        Key = "drawer-account", Direction = 1, Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, ClassicFrameBitsRules.AccountRowBelow),
+        Key = "drawer-account", Direction = 1, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, ClassicFrameBitsRules.AccountRowBelow),
+        Animate = ClassicTierMotion.MakeRoom,
         Children =
         [
             new BoxEl

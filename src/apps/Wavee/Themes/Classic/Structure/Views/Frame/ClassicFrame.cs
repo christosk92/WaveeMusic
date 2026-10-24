@@ -317,6 +317,8 @@ internal static class ClassicFrame
             PanelPlacement.Float => CornerRadius4.All(ClassicPanelTiers.Corner),
             _ => ClassicFrameRules.RailBandCorners,
         };
+        // The bar's reservation under a floating or docked panel follows the bar's own height through real layout (the 528 crossing).
+        LayoutTransition? barReserve = ctx.Reduced ? null : ClassicTierMotion.HeightReflow;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, HitTestPassThrough = true,
@@ -355,7 +357,7 @@ internal static class ClassicFrame
                         new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right) },
                     ],
                 },
-                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Bottom) },
+                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Bottom), Animate = barReserve },
             ],
         };
     }
@@ -382,7 +384,11 @@ internal static class ClassicFrame
                     },
                 ],
             },
-            new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => ClassicPlayerTiers.BarOf(tiers()).Height) },
+            new BoxEl
+            {
+                Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => ClassicPlayerTiers.BarOf(tiers()).Height),
+                Animate = ctx.Reduced ? null : ClassicTierMotion.HeightReflow,
+            },
         ],
     };
 
