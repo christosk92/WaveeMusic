@@ -361,6 +361,29 @@ public static class ZuneBandRules
         return hi;
     }
 
+    /// <summary>The ink for a run that stands on the bleed's photo BELOW the band strip's foot (<paramref name="top"/>), where no scrim reaches: <paramref name="ink"/>
+    /// itself where it reads <see cref="BleedScrimNeed"/> over the photo's worst grey there (the same tail as <see cref="BleedScrimAlpha"/>, the photo at
+    /// <paramref name="bleedOpacity"/> over <paramref name="ground"/>, judged from the strip's foot to the bleed's own; its fade only lightens that, so the
+    /// judgement holds wherever a scroll carries the run over it), else the least lift toward <paramref name="toward"/> that does: the hue kept, only
+    /// darker on light or lighter on dark (Z-OWNER follow-up: the artist caption's rank read 4.33 : 1 in the light accent over ar3's photo).</summary>
+    public static ColorF BleedInk(MediaScrim.LumaMap map, float boxW, float boxH, float top, PhotoSubject subject, float frameY, float bleedOpacity,
+        float ground, ColorF ink, ColorF toward)
+    {
+        if (!(boxH > top) || !(boxW > 0f)) return ink;
+        var uv = MediaScrim.CoverUv(map.Aspect, boxW, boxH, 0f, top, boxW, boxH - top, subject.X, subject.Y, MediaScrim.Crop.Centred.FrameX, frameY);
+        bool lightInk = MediaScrim.Contrast(ink, 0f) > MediaScrim.Contrast(ink, 1f);
+        float photo = MediaScrim.GreyAt(map, uv, lightInk ? MediaScrim.Percentile : 1f - MediaScrim.Percentile);
+        float under = bleedOpacity * photo + (1f - bleedOpacity) * ground;
+        if (MediaScrim.Contrast(ink, under) >= BleedScrimNeed) return ink;
+        float lo = 0f, hi = 1f;
+        for (int i = 0; i < 20; i++)
+        {
+            float mid = (lo + hi) / 2f;
+            if (MediaScrim.Contrast(ColorF.Lerp(ink, toward, mid), under) >= BleedScrimNeed) hi = mid; else lo = mid;
+        }
+        return ColorF.Lerp(ink, toward, hi);
+    }
+
     /// <summary>The sRGB grey with <paramref name="c"/>'s relative luminance (what the scrim's grey math reads a tinted ground as).</summary>
     public static float GreyOf(ColorF c)
     {

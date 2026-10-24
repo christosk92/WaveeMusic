@@ -43,9 +43,10 @@ internal static class ZuneArtistHero
     internal readonly record struct Acts(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
 
     /// <summary>The hero (<paramref name="nameKnown"/>: the skeleton arm draws the real name): eyebrow, name, caption and (Huge) the secondary row in the page column, at least the record's height; the Small corner rings
-    /// ride a layer over it. <paramref name="eyebrowInk"/>: the eyebrow's live ink (the page's: brighter over a photo bleed; null: the secondary).</summary>
+    /// ride a layer over it. <paramref name="eyebrowInk"/>: the eyebrow's live ink (the page's: brighter over a photo bleed; null: the secondary);
+    /// <paramref name="rankInk"/>: the caption rank's (the accent, lifted just enough over a photo bleed; null: the accent).</summary>
     public static Element Build(in Artist.HeroText text, string uri, ZuneArtistLayout lay, ColorF accent, in Acts acts, bool nameKnown = false,
-        Func<ColorF>? eyebrowInk = null)
+        Func<ColorF>? eyebrowInk = null, Func<ColorF>? rankInk = null)
     {
         float gutter = lay.Gutter;
         bool shimmer = acts.Play is null;
@@ -90,7 +91,7 @@ internal static class ZuneArtistHero
         // The spring is empty space, never a shimmer block (the deriver would paint a page-wide bar there while the page loads).
         var kids = new List<Element>(7)
         {
-            ZuneMotion.Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, accent, shimmer),
+            ZuneMotion.Air(Rules.AirPrefix + "top", lay.EyebrowTop), eyebrow, (new BoxEl { Grow = 1f, MinHeight = 0f }).Skeletonized(false), nameBox, Caption(in text, rankInk is null ? accent : Prop.Of(rankInk), shimmer),
         };
         // Huge's secondary row stands in a slot that is ALWAYS mounted: its room (the gap above the rings and the rings) opens and closes as an
         // easing height while the row fades, so the name and the caption over it glide when Huge comes or goes (two docked panes take the content
@@ -160,7 +161,7 @@ internal static class ZuneArtistHero
         };
 
     /// <summary>"#N in the world" (accent) · monthly listeners · followers; a zero stat drops its run.</summary>
-    static Element Caption(in Artist.HeroText text, ColorF accent, bool shimmer)
+    static Element Caption(in Artist.HeroText text, Prop<ColorF> accent, bool shimmer)
     {
         int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
         var runs = new Element[count];

@@ -129,6 +129,21 @@ internal static class ZuneMaterial
     /// bleed, whose scrim is solved for it (a shade about half as dark as the tertiary needed: the owner's variant D), Zune's tertiary everywhere else.</summary>
     public static ColorF StripInk(PageChrome? chrome) => PhotoBleed(chrome) ? Tok.TextSecondary : Tok.TextTertiary;
 
+    /// <summary>An accent run on the page that a photo bleed lies under below the band strip (the artist caption's rank): <paramref name="accent"/>
+    /// where it reads over the photo there, else the accent darkened (light) or lightened (dark) just enough (<see cref="ZuneBandRules.BleedInk"/>, the
+    /// hue kept). The accent itself on a page without a photo bleed, and until the photo is measured. Read in a bind: it follows the bleed's measure,
+    /// the tiers and the window's width.</summary>
+    public static ColorF OnBleed(ColorF accent, PageChrome? chrome, in TierFacts tiers, float width)
+    {
+        if (!PhotoBleed(chrome) || chrome!.Backdrop.Bleed is not { Length: > 0 } bleed) return accent;
+        _ = Palette.Watch(bleed).Value;   // the measure may land late: the bind re-runs when it does
+        if (Palette.Tone(bleed) is not { } map || Palette.Subject(bleed) is not { } subject) return accent;
+        bool light = R.IsLight;
+        float bandFoot = BandFoot(tiers);
+        return ZuneBandRules.BleedInk(map, width, ZuneBandRules.BleedH, bandFoot, subject, ZuneBandRules.BleedSubjectAt(bandFoot),
+            ZuneBandRules.BleedOpacityOf(light), ZuneBandRules.GreyOf(R.Layer.ShellGround), accent, ZuneFrameRules.PanelInkLiftToward(light));
+    }
+
     /// <summary>The foot of the band strip (the title bar and the band, row 2 included unless a Short window folds it), from the window's top.</summary>
     static float BandFoot(in TierFacts facts)
         => ZuneTiers.FrameOf(facts).TitleBarH + ZuneBandRules.BandOf(facts).HeightWith(!ZuneBandTiers.FoldsRow2AtRest(in facts));
