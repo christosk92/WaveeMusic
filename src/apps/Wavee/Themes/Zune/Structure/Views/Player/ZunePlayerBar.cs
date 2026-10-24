@@ -316,7 +316,7 @@ internal static partial class ZunePlayerBar
 
     /// <summary>"playing on …" (the accent, above the title), the title (a link to the album or the show) and the artists.</summary>
     /// <summary>The title's host per tree (the marquee, the trimmed run): the swap's family.</summary>
-    const string TitleFormKey = "np-title-form:";
+    const string TitleHostKey = "np-title-host:";
 
     static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode)
     {
@@ -356,7 +356,7 @@ internal static partial class ZunePlayerBar
         // crossing between them cross-fades one keyed host per tree in place, the shared swap fade (never a bare remount of the title).
         kids.Add(new BoxEl
         {
-            Key = marquee ? TitleFormKey + "marquee" : TitleFormKey + "plain", Direction = 1, MinWidth = 0f,
+            Key = marquee ? TitleHostKey + "marquee" : TitleHostKey + "trim", Direction = 1, MinWidth = 0f,
             Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
             Children = [marquee ? title : Controls.TrimTip(title, props.TitleText(), titleRun) with { Key = titleKey }],
         });

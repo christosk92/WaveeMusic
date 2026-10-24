@@ -1,6 +1,5 @@
 // ── Themes/Zune/Structure/Rules/ZunePanelWashRules.cs — the numbers of the side panel's cover glow (Views/Panel/ZunePanelWash.cs) ─────────────────
 
-using FluentGpu.Animation;
 using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Zune;
@@ -14,11 +13,6 @@ public static class ZunePanelWashRules
 
     public const float EdgeW = 1f;
 
-    /// <summary>The card's page-wash part across a move of the card's top (the 1008 crossing docks the panel from under the band to the window's top): its
-    /// height eases through real layout (a reflow, from its top edge) with the host's top spacer instead of jumping, and its cover cross-fade
-    /// (<see cref="ZuneBandRules.MaterialFade"/>, entering and leaving on the default dynamics as before) rides the same transition.</summary>
-    public static readonly LayoutTransition CardWashMotion = new(TransitionChannels.Size | TransitionChannels.Opacity, default,
-        Size: SizeMode.Reflow, Enter: ZuneBandRules.MaterialFade, Exit: ZuneBandRules.MaterialFade, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
     /// <summary>The glow is gone by this fraction of the panel's height (the head, the lyrics' or the queue's option row, the playing row lie inside it).</summary>
     public const float GlowReach = 0.4f;
