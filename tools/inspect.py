@@ -7,8 +7,9 @@ and prints the one reply line it gets back. Standard library only; runs under `p
     python -I tools/inspect.py -f audit.jsonl --pretty
     python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py --trace -c "mount w=1440 h=900 theme=zune" -c "goto album:spotify:album:x settle=false trace=90"
-    python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, 2 on any ok:false, plus a summary line
+    python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, a jump or a rebuild; 2 on any ok:false or no lint
     python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys, duplicate text, inkless targets) count too
+    python -I tools/inspect.py --findings --gate error -c "mount w=1920 h=960 theme=zune route=home" -c "resize 1904 960" -c "crossing from=1904x960 to=1888x960"
     python -I tools/inspect.py                      # interactive: type commands, Ctrl+Z / Ctrl+D to end
 
 Commands are the server's own grammar: a JSON object {"cmd","args","id"} or a text line `verb key=value k="a b" k=[a,b] ...`
@@ -135,32 +136,92 @@ def _object(line):
     return obj if isinstance(obj, dict) else None
 
 
+def _tiers(t):
+    return "%s/%s/%s" % (t.get("window"), t.get("height"), t.get("content")) if isinstance(t, dict) else "?"
+
+
+def crossing_lines(obj):
+    """A crossing reply's head: the counts first (what the gate reads), then the remounts and the topmost moved nodes."""
+    c = obj.get("counts", {})
+    ctl = obj.get("control")
+    if isinstance(ctl, dict):
+        control = "over a control step from %sx%s (%s snapped, %s jumped there)" % (
+            ctl["from"]["w"], ctl["from"]["h"], ctl.get("snapped"), ctl.get("jumped"))
+    elif ctl == "off":
+        control = "control=false: every move counts"
+    else:
+        control = "no control step: every move counts"
+    lines = ["crossing %sx%s -> %sx%s %s -> %s (content committed: %s): EXCESS %s snapped, %s jumped %s; "
+             "remounted %s outside a swap family, %s inside; all %s snapped, %s jumped, %s glided, %s unpainted; vanished %s, appeared %s" % (
+                 obj["from"]["w"], obj["from"]["h"], obj["to"]["w"], obj["to"]["h"], _tiers(obj.get("tierBefore")), _tiers(obj.get("tierSettled")),
+                 obj.get("contentCommitted"), c.get("excessSnapped", c.get("snapped")), c.get("excessJumped", c.get("jumped")), control,
+                 c.get("remountedOutside", c.get("remounted")), c.get("remountedSwap", 0), c.get("snapped"), c.get("jumped"), c.get("glided"),
+                 c.get("unpainted", 0), c.get("vanished"), c.get("appeared"))]
+    if obj.get("controlNote"):
+        lines.append("  note: " + obj["controlNote"])
+    if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):
+        lines.append("  note: the tiers before and after are the same: this crossing crossed no edge")
+    for item in obj.get("remounted", []):
+        fam = item.get("family")
+        lines.append("  remounted %s  %s" % (item["key"], "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
+    for item in obj.get("vanished", []):
+        lines.append("  vanished  %s" % item["key"])
+    for kind in ("snapped", "jumped"):
+        for item in obj.get(kind, []):
+            under = item.get("under")
+            lines.append("  %-9s %s  d=(%s, %s, %s, %s)%s%s" % (
+                kind, item["key"], item["dx"], item["dy"], item["dw"], item["dh"],
+                "  %s node%s under it (%s excess)" % (under, "" if under == 1 else "s", item.get("underExcess")) if under is not None else "",
+                "" if item.get("excess", True) else "  [the control moved it too]"))
+    return lines
+
+
+def _listed_counts(findings):
+    """What --findings prints, per tag: gate fails by severity, then todo fails, reviews, reports and suppressions."""
+    counts = {}
+    for f in findings:
+        outcome, level = f.get("outcome", "fail"), f.get("level", "gate")
+        cat = outcome if outcome != "fail" else level
+        counts[(cat, f.get("severity", "info"))] = counts.get((cat, f.get("severity", "info")), 0) + 1
+    return counts
+
+
+def lint_head(lint):
+    """The lint head line: the gate's own totals (every fail, listed or not), then exactly what the lines below print."""
+    size = lint.get("size", {})
+    fails = lint.get("fails")
+    if isinstance(fails, dict):
+        g = fails.get("gate", {})
+        gate = "gate %s error, %s warn, %s info" % (g.get("error", 0), g.get("warn", 0), g.get("info", 0))
+    else:
+        s = lint.get("summary", {})
+        gate = "gate %s error, %s warn, %s info (an older server: counted at or above min)" % (s.get("error", 0), s.get("warn", 0), s.get("info", 0))
+    listed = _listed_counts(lint.get("findings", []))
+    parts = []
+    for cat in ("gate", "todo", "review", "report", "suppressed"):
+        for sev in ("error", "warn", "info"):
+            n = listed.get((cat, sev), 0)
+            if n:
+                parts.append("%d %s%s" % (n, sev, "" if cat == "gate" else " " + cat))
+    shown = sum(listed.values())
+    route = lint.get("route", "")
+    head = "lint %s %s %sx%s%s: %s; %s line%s below%s; %s nodes%s" % (
+        lint.get("theme", ""), lint.get("tier", ""), size.get("w"), size.get("h"), " [" + route + "]" if route else "",
+        gate, shown, "" if shown == 1 else "s", ": " + ", ".join(parts) if parts else "", lint.get("summary", {}).get("nodes", 0),
+        "" if lint.get("guide", True) else " (no theme guide: gutter and right-edge not checked)")
+    if lint.get("narrowed"):
+        head += "\n  narrowed by " + ", ".join(lint["narrowed"])
+    return head
+
+
 def findings_text(reply):
     """A `lint` reply, or the lint inside a `crossing` reply, as text lines (None when the reply carries no findings)."""
     obj = json.loads(reply)
     lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
     if not isinstance(lint.get("findings"), list):
         return None
-    lines = []
-    if obj.get("cmd") == "crossing":
-        counts = obj.get("counts", {})
-        lines.append("crossing %sx%s -> %sx%s: committed=%s remounted=%s vanished=%s snapped=%s jumped=%s" % (
-            obj["from"]["w"], obj["from"]["h"], obj["to"]["w"], obj["to"]["h"], obj.get("committed"),
-            counts.get("remounted"), counts.get("vanished"), counts.get("snapped"), counts.get("jumped")))
-        for kind in ("remounted", "vanished"):
-            for item in obj.get(kind, []):
-                lines.append("  %-9s %s" % (kind, item["key"]))
-        for kind in ("snapped", "jumped"):
-            for item in obj.get(kind, []):
-                lines.append("  %-9s %s  d=(%s, %s, %s, %s)" % (kind, item["key"], item["dx"], item["dy"], item["dw"], item["dh"]))
-    summary = lint.get("summary", {})
-    outcomes, levels = lint.get("outcomes"), lint.get("levels")
-    lines.append("lint %s %s %sx%s: %s error, %s warn, %s info over %s nodes%s%s" % (
-        lint.get("theme", ""), lint.get("tier", ""), lint.get("size", {}).get("w"), lint.get("size", {}).get("h"),
-        summary.get("error", 0), summary.get("warn", 0), summary.get("info", 0), summary.get("nodes", 0),
-        "" if lint.get("guide", True) else " (no theme guide: gutter and right-edge not checked)",
-        "; %s; %s" % (" ".join("%s=%s" % kv for kv in outcomes.items()), " ".join("%s=%s" % kv for kv in levels.items()))
-        if isinstance(outcomes, dict) and isinstance(levels, dict) else ""))
+    lines = crossing_lines(obj) if obj.get("cmd") == "crossing" else []
+    lines.append(lint_head(lint))
     for f in lint["findings"]:
         keys = ", ".join(f.get("keys", []))
         # a fail of a gate rule prints as it always did; anything else says what it is (review, suppressed, report; todo)
@@ -180,6 +241,9 @@ def _ms(v):
     return "%.2f" % v
 
 
+TRACE_LIST_CAP = 30
+
+
 def trace_text(reply):
     """A `trace` reply (or the `trace` object inside a goto/scroll/click... reply) as a summary: None when the reply carries no trace."""
     obj = json.loads(reply)
@@ -188,8 +252,19 @@ def trace_text(reply):
         return None
     s = t["summary"]
     mx = s.get("max", {})
+    watch = t.get("watch", [])
+    c = t.get("counts", {})
     lines = ["trace %s: %s frames, settled at %s (last animating frame %s)" % (
         obj.get("cmd", ""), s.get("frames"), s.get("settledAt"), s.get("lastAnimatingFrame"))]
+    if not watch:
+        lines.append("  WARNING: this trace watched no nodes, so its snaps, jumps and remounts are not measured (0 is no verdict): "
+                     "pass prefix=<key family> or keys=[...] (and max=N above 20 for a page)")
+    else:
+        lines.append("  motion: %s watched key%s moved at once (%s snap%s with no track, %s instant: one frame carried a tracked run), "
+                     "remounted %s outside a swap family, %s inside; %s jump%s listed (every eased frame over the jump DIP: no verdict)" % (
+            c.get("movedAtOnce", "?"), "" if c.get("movedAtOnce") == 1 else "s", len(s.get("snaps", [])), "" if len(s.get("snaps", [])) == 1 else "s",
+            len(s.get("instants", [])), c.get("remountedOutside", "?"), c.get("remountedSwap", "?"),
+            len(s.get("jumps", [])), "" if len(s.get("jumps", [])) == 1 else "s"))
     lines.append("  relayout: rootSolveFrames=%s escapeFrames=%s fullLayoutInferred=%s" % (
         s.get("rootSolveFrames"), s.get("escapeFrames"), s.get("fullLayoutFramesInferred")))
     lines.append("  measure: total=%s max=%s@%s framesWithMeasure=%s components=%s (frames %s)" % (
@@ -197,11 +272,16 @@ def trace_text(reply):
         s.get("componentsTotal"), s.get("framesWithComponents")))
     lines.append("  max ms: " + "  ".join("%s=%s@%s" % (k, _ms(v["ms"]), v["frame"]) for k, v in mx.items())
                  + "   cpu>8.3ms: %s frames, cpu>16.7ms: %s frames" % (s.get("cpuOver8ms"), s.get("cpuOver16ms")))
-    watch = t.get("watch", [])
-    for kind in ("snaps", "jumps"):
-        for m in s.get(kind, []):
+    for r in t.get("remounted", []):
+        fam = r.get("family")
+        lines.append("  remount f%-3s %s  %s" % (r["frame"], r["key"], "(swap family %s)" % fam if fam else "(outside any swap family: a rebuilt part)"))
+    for kind in ("snaps", "instants", "jumps"):
+        moves = s.get(kind, [])
+        for m in moves[:TRACE_LIST_CAP]:
             lines.append("  %-5s f%-3s %s  d=(%s, %s, %s, %s) prev=%s%s" % (
                 kind[:-1], m["frame"], m["key"], m["dx"], m["dy"], m["dw"], m["dh"], m["prevMag"], " track" if m["track"] else ""))
+        if len(moves) > TRACE_LIST_CAP:
+            lines.append("  ... %d more %s (the reply has them all)" % (len(moves) - TRACE_LIST_CAP, kind))
     sc = s.get("scroll", {})
     d = sc.get("deltas", {})
     if d.get("count"):
@@ -215,6 +295,10 @@ def trace_text(reply):
                 kind, e["frame"], e["on"], e["offset"], e["prev"], e["delta"], e["max"]))
     if watch:
         lines.append("  watched %d nodes: %s" % (len(watch), ", ".join(watch[:8]) + (" ..." if len(watch) > 8 else "")))
+    after = obj.get("after")
+    if isinstance(after, dict):
+        overlays = ", ".join(o.get("key", "") + ("(" + o["first"] + ")" if o.get("first") else "") for o in after.get("overlays", []))
+        lines.append("  after: route=%s focused=%s hit=%s overlays=[%s]" % (after.get("route"), after.get("focused"), after.get("hit"), overlays))
     return chr(10).join(lines)
 
 
@@ -222,19 +306,90 @@ SEVERITY_RANK = {"info": 0, "warn": 1, "error": 2}
 
 
 class Gate:
-    """--gate <info|warn|error>: tallies every reply. Exit 2 when any reply was ok:false, else 1 when a lint (or a crossing's
-    lint) listed a finding at or above the gate severity that is a verdict: outcome "fail" of a gate-level rule (with
-    --gate-todo, of a todo-level rule too). A review (the rule could not decide: look at the render), a suppressed finding (an
-    intent or a baseline matched) and a report line never count; they are tallied in the summary line. A finding without the
-    outcome/level fields (an older server) counts as a gate-level fail. Else 0."""
+    """--gate <info|warn|error>: a verdict over every reply, that no listing option can silence.
+    Exit 2 when any reply was ok:false or no lint ran at all (a gate over nothing is no verdict). Else 1 when:
+    - a lint (or a crossing's lint) has a fail of a gate-level rule at or above the gate severity, counted from the reply's `fails`
+      (every fail of the rules that ran, listed or not: `min`, `outcomes` and `limit` choose only what is listed; with --gate-todo the
+      todo-level rules count too). A review, a suppressed finding and a report never count;
+    - a crossing moved more than --max-moved nodes (default 0) past its control step (`counts.excessSnapped + excessJumped`), or
+      remounted a key outside a swap family (`counts.remountedOutside`);
+    - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
+      with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
+    Warnings (printed, not counted): a lint whose listing or judgement was narrowed (rules, min, outcomes, limit, root), a crossing that
+    crossed no edge or ran without its control, a trace that watched no nodes. Else 0."""
 
-    def __init__(self, level, todo=False):
+    def __init__(self, level, todo=False, max_moved=0):
         self.level = level
         self.todo = todo
+        self.max_moved = max_moved
         self.failed = []          # (cmd, error) of every ok:false reply
         self.lints = 0
         self.counts = {"error": 0, "warn": 0, "info": 0}
-        self.skipped = {}         # why a listed finding did not count -> how many
+        self.listed_only = False  # an older server without `fails`: counted from the listed findings
+        self.skipped = {}         # why a listed finding did not count -> how many (older servers only)
+        self.motion = []          # why a crossing or a trace failed
+        self.warnings = []
+
+    def _lint(self, lint, where):
+        self.lints += 1
+        fails = lint.get("fails")
+        if isinstance(fails, dict):
+            for level in ("gate", "todo") if self.todo else ("gate",):
+                for sev, n in fails.get(level, {}).items():
+                    self.counts[sev] = self.counts.get(sev, 0) + n
+        else:
+            self.listed_only = True
+            for f in lint["findings"]:
+                outcome, level = f.get("outcome", "fail"), f.get("level", "gate")
+                why = outcome if outcome != "fail" else ("todo" if level == "todo" and not self.todo else None)
+                if why is not None:
+                    self.skipped[why] = self.skipped.get(why, 0) + 1
+                    continue
+                sev = f.get("severity", "info")
+                self.counts[sev] = self.counts.get(sev, 0) + 1
+        if lint.get("narrowed"):
+            self.warnings.append("%s was narrowed by %s: the gate counts every fail of the rules that ran, but %s" % (
+                where, ", ".join(lint["narrowed"]),
+                "only those rules ran" if any(n.startswith("rules=") for n in lint["narrowed"])
+                else "only that subtree was judged" if any(n.startswith("root=") for n in lint["narrowed"])
+                else "the lines above do not list them all"))
+        if isinstance(fails, dict):
+            floor = SEVERITY_RANK[self.level]
+            levels = ("gate", "todo") if self.todo else ("gate",)
+            counted = sum(n for level in levels for sev, n in fails.get(level, {}).items() if SEVERITY_RANK.get(sev, 0) >= floor)
+            listed = sum(1 for f in lint["findings"] if f.get("outcome", "fail") == "fail" and f.get("level", "gate") in levels
+                         and SEVERITY_RANK.get(f.get("severity"), 0) >= floor)
+            if counted > listed:
+                self.warnings.append("%s: %d of the %d fails the gate counts are not listed above (the lint's min, outcomes or limit): "
+                                     "lint again with min=%s and no outcomes or limit to read them" % (where, counted - listed, counted, self.level))
+
+    def _crossing(self, obj, where):
+        c = obj.get("counts", {})
+        moved = c.get("excessSnapped", c.get("snapped", 0)) + c.get("excessJumped", c.get("jumped", 0))
+        if moved > self.max_moved:
+            self.motion.append("%s moved %d node%s at once past its control (max %d)" % (where, moved, "" if moved == 1 else "s", self.max_moved))
+        outside = c.get("remountedOutside", c.get("remounted", 0))
+        if outside > 0:
+            keys = [r["key"] for r in obj.get("remounted", []) if r.get("family") is None][:4]
+            self.motion.append("%s remounted %d key%s outside a swap family (%s)" % (where, outside, "" if outside == 1 else "s", ", ".join(keys)))
+        if not isinstance(obj.get("control"), dict):
+            self.warnings.append("%s ran without a control step (%s): its excess is every move" % (where, obj.get("controlNote") or "control=false"))
+        if _tiers(obj.get("tierBefore")) == _tiers(obj.get("tierSettled")):
+            self.warnings.append("%s crossed no edge (the tiers before and after are the same)" % where)
+
+    def _trace(self, t, where):
+        if not t.get("watch"):
+            self.warnings.append("%s watched no nodes: its motion is not judged (pass prefix= or keys=)" % where)
+            return
+        c = t.get("counts", {})
+        keys = c.get("movedAtOnce", c.get("snappedKeys", len({m["key"] for m in t.get("summary", {}).get("snaps", [])})))
+        if keys > self.max_moved:
+            self.motion.append("%s moved %d watched key%s at once (a snap, or a tracked run one frame carried; max %d)" % (
+                where, keys, "" if keys == 1 else "s", self.max_moved))
+        outside = c.get("remountedOutside", 0)
+        if outside > 0:
+            names = [r["key"] for r in t.get("remounted", []) if r.get("family") is None][:4]
+            self.motion.append("%s remounted %d watched key%s outside a swap family (%s)" % (where, outside, "" if outside == 1 else "s", ", ".join(names)))
 
     def see(self, reply):
         if reply is None:
@@ -246,39 +401,43 @@ class Gate:
         if not obj.get("ok", False):
             self.failed.append((obj.get("cmd", ""), obj.get("error", "")))
             return
+        cmd = obj.get("cmd", "")
         lint = obj.get("lint") if isinstance(obj.get("lint"), dict) else obj
-        if not isinstance(lint.get("findings"), list):
-            return
-        self.lints += 1
-        for f in lint["findings"]:
-            outcome, level = f.get("outcome", "fail"), f.get("level", "gate")
-            why = outcome if outcome != "fail" else ("todo" if level == "todo" and not self.todo else None)
-            if why is not None:
-                self.skipped[why] = self.skipped.get(why, 0) + 1
-                continue
-            sev = f.get("severity", "info")
-            self.counts[sev] = self.counts.get(sev, 0) + 1
+        n = self.lints + 1
+        if isinstance(lint.get("findings"), list):
+            self._lint(lint, "lint %d%s" % (n, " [" + lint.get("route", "") + "]" if lint.get("route") else ""))
+        if cmd == "crossing" and isinstance(obj.get("counts"), dict):
+            self._crossing(obj, "crossing %sx%s->%sx%s" % (obj["from"]["w"], obj["from"]["h"], obj["to"]["w"], obj["to"]["h"]))
+        trace = obj.get("trace") if isinstance(obj.get("trace"), dict) else (obj if cmd == "trace" else None)
+        if isinstance(trace, dict) and "traced" in trace:
+            self._trace(trace, "trace on %s" % cmd)
 
     def at_or_above(self):
         floor = SEVERITY_RANK[self.level]
         return sum(n for sev, n in self.counts.items() if SEVERITY_RANK.get(sev, 0) >= floor)
 
     def code(self):
-        if self.failed:
+        if self.failed or self.lints == 0:
             return 2
-        return 1 if self.at_or_above() > 0 else 0
+        return 1 if self.at_or_above() > 0 or self.motion else 0
 
     def summary(self):
         code = self.code()
+        lines = ["gate WARNING: " + w for w in self.warnings]
+        lines += ["gate MOTION: " + m for m in self.motion]
         skipped = ", ".join("%d %s" % (n, why) for why, n in sorted(self.skipped.items()))
-        text = "gate %s%s: %d lint repl%s, %d error, %d warn, %d info failed (%d at or above %s%s); %d ok:false repl%s -> exit %d" % (
+        text = "gate %s%s: %d lint repl%s, %d error, %d warn, %d info failed (%d at or above %s%s%s); %d motion failure%s; %d ok:false repl%s -> exit %d" % (
             self.level, " +todo" if self.todo else "", self.lints, "y" if self.lints == 1 else "ies",
             self.counts["error"], self.counts["warn"], self.counts["info"],
-            self.at_or_above(), self.level, "; not counted: " + skipped if skipped else "",
+            self.at_or_above(), self.level, "; counted from the listed findings (an older server)" if self.listed_only else "",
+            "; not counted: " + skipped if skipped else "", len(self.motion), "" if len(self.motion) == 1 else "s",
             len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
         if self.failed:
             text += " (first: %s: %s)" % self.failed[0]
-        return text
+        elif self.lints == 0:
+            text += " (no lint ran: a gate over nothing is no verdict; add `lint`, a crossing carries its own)"
+        lines.append(text)
+        return "\n".join(lines)
 
 
 def show(reply, pretty, findings=False, trace=False):
@@ -318,16 +477,25 @@ def main():
     ap.add_argument("--trace", action="store_true", help="print a trace reply (or the trace inside a goto/scroll/click reply) as a summary")
     ap.add_argument("--fail-fast", action="store_true", help="stop at the first ok:false reply (exit 2)")
     ap.add_argument("--gate", choices=["info", "warn", "error"],
-                    help="a verdict: exit 1 when any lint finding at or above this severity is a failure of a gate-level rule "
-                         "(outcome 'fail', level 'gate'; review, suppressed and report findings never count), 2 on any ok:false "
-                         "reply, else 0; prints a one-line summary last")
+                    help="a verdict: exit 1 when a lint has a fail of a gate-level rule at or above this severity (counted from the reply's "
+                         "`fails`: every fail, listed or not; review, suppressed and report findings never count), when a crossing moves more "
+                         "than --max-moved nodes past its control or remounts a key outside a swap family, or when a trace moves more than "
+                         "--max-moved watched keys at once or remounts one outside a swap family; 2 on any ok:false reply or when no lint ran; else 0. "
+                         "Warns when a lint was narrowed (rules, root, outcomes, limit) or counted fails it did not list, a crossing crossed "
+                         "nothing, a trace watched nothing")
     ap.add_argument("--gate-todo", action="store_true",
-                    help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets) count too")
+                    help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets, "
+                         "target.size above Compact) count too")
+    ap.add_argument("--max-moved", type=int, default=0, metavar="N",
+                    help="with --gate: the most nodes a crossing may move at once past its control step (counts.excessSnapped + "
+                         "excessJumped), and the most watched keys a trace may move at once (counts.movedAtOnce); default 0")
     args = ap.parse_args()
 
-    if args.gate_todo and not args.gate:
-        ap.error("--gate-todo needs --gate <info|warn|error>")
-    gate = Gate(args.gate, args.gate_todo) if args.gate else None
+    if (args.gate_todo or args.max_moved) and not args.gate:
+        ap.error("--gate-todo and --max-moved need --gate <info|warn|error>")
+    if args.max_moved < 0:
+        ap.error("--max-moved is 0 or more")
+    gate = Gate(args.gate, args.gate_todo, args.max_moved) if args.gate else None
     server = None
     code = 0
     try:
