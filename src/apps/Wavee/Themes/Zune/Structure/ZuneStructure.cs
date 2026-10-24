@@ -92,7 +92,9 @@ public sealed partial class ZuneStructure : IStandInStructure
         RegisterScreens(views);
 
         // The Common blocks every theme shares: history, the Home customizer, the frame-rate overlay, diagnostics, logs, the module page.
-        CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page");
+        CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page",
+            history: ZuneHistory.Template, historyTemplateId: "zune.screens.history",
+            customize: ZuneHomeCustomize.Template, customizeTemplateId: "zune.home.customize");
         // No drawer (the band is the navigation at every tier) and no masthead (a page's title and views are the band's row 2).
         CommonNothing.Register(views, ViewKeys.ShellNarrowDrawer);
         CommonNothing.Register(views, ViewKeys.ShellMasthead);

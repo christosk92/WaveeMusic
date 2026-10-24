@@ -432,8 +432,8 @@ public static class ClassicArtistTiers
     /// <summary>What the hero's height change moves (the magazine under it) glides on the same tween.</summary>
     public static readonly LayoutTransition FollowMotion = new(TransitionChannels.Position, TransitionDynamics.Tween(280f, Easing.SmoothOut));
 
-    /// <summary>An arm swap cross-fades (the shared tier cross-fade, ~160 ms).</summary>
-    public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);
+    /// <summary>An arm swap (the photo arm, the field, the overlay: three different trees) cross-fades: the shared, declared tier cross-fade (~160 ms).</summary>
+    public static EnterExit ArmFade => ClassicTierMotion.SwapFade;
 
     /// <summary>The arm cross-fade's timing.</summary>
     public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;

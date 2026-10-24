@@ -24,6 +24,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using ViewSlots = FluentGpu.Theming.Slots;
@@ -35,9 +36,11 @@ internal static class ClassicSearch
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellSearch"/>.</summary>
     public static Element Template(ShellSearchProps props, in ViewContext ctx)
-        => props.Form == SearchForm.Field
-            ? Embed.Comp(() => new SearchField(props))
-            : Embed.Comp(() => new SearchFlyoutButtonView(props));
+    {
+        if (props.Form != SearchForm.Field) return Embed.Comp(() => new SearchFlyoutButtonView(props));
+        var tiers = ctx.TierReader();
+        return Embed.Comp(() => new SearchField(props, tiers));
+    }
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellSearchSuggestions"/>.</summary>
     public static Element SuggestionsTemplate(SearchSuggestionsProps props, in ViewContext ctx)
@@ -47,7 +50,7 @@ internal static class ClassicSearch
     private static IconButton.Style ChromeButtonStyle
         => IconButton.DefaultStyle with { Size = ClassicChromeLayout.ButtonSize, Height = ClassicChromeLayout.ButtonHeight };
 
-    private sealed class SearchField(ShellSearchProps props) : Component
+    private sealed class SearchField(ShellSearchProps props, Func<TierFacts> tiers) : Component
     {
         public override Element Render()
         {
@@ -90,31 +93,52 @@ internal static class ClassicSearch
             // width (+80, never closer than 12 to the tabs or the avatar). The box EASES between the two widths as one reflow, so its
             // text moves with it. Only the focus flip animates: a rest-width change without one (a resize, a tab added) snaps with its
             // cluster, so the old wider box never overruns the row for the motion's length. A re-render keeps a motion in flight.
+            // A TIER CROSSING is no resize step: the first rest-width change after one (Huge's wider field at the 1920 edge; the allocation
+            // can publish it a render after the tier) eases the same way, so the field never steps 60 DIP on the crossing frame.
             float width = props.FieldWidth();
             bool expanded = model.FieldExpanded;
             var lastExpanded = UseRef(expanded);
             bool flipped = lastExpanded.Value != expanded;
             lastExpanded.Value = expanded;
+            WidthTier window = tiers().Window;
+            var lastWindow = UseRef(window);
+            var crossing = UseRef(false);
+            if (lastWindow.Value != window) crossing.Value = true;
+            lastWindow.Value = window;
             var lastWidth = UseRef(width);
-            var motion = UseRef<LayoutTransition?>(null);
-            if (flipped) motion.Value = Design.Reduced ? null : ClassicChromeLayout.FieldWidthMotion;
-            else if (lastWidth.Value != width) motion.Value = null;
+            // The box always carries a width transition (the eased one or the snap), so the engine holds its rect before every commit: a
+            // transition the same render first set has no "before" to move from, and the change it should have eased landed at once.
+            var motion = UseRef(ClassicChromeLayout.FieldWidthSnap);
+            bool resized = lastWidth.Value != width;
+            if (flipped || (crossing.Value && resized))
+                motion.Value = Design.Reduced ? ClassicChromeLayout.FieldWidthSnap : ClassicChromeLayout.FieldWidthMotion;
+            else if (resized) motion.Value = ClassicChromeLayout.FieldWidthSnap;
+            if (resized) crossing.Value = false;
             lastWidth.Value = width;
             // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
             // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
             // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
             // a "Search" stub overflowing a tiny box that no resize undid. Justify centres it vertically instead.
+            // The box sits under an auto-sized root: the view's anchors mirror their root's DECLARED width, so a field that was the root
+            // left the host (and the regions either side) at the new width at once while the field eased inside it.
             return new BoxEl
             {
-                Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width, Animate = motion.Value,
-                // The settled width re-pushes the title bar's regions (the model counts a settle; the core folds it in).
-                OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
+                Direction = 1, Shrink = 0f,
                 Children =
                 [
-                    // No fill cap (0): the box above sets the width, and the focused width runs past the rest maximum.
-                    Embed.Comp(() => new RichOmnibar(props, parts, 0f,
-                        AutoSuggestBoxSuggestionPresentation.Popup)),
+                    new BoxEl
+                    {
+                        Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
+                        Width = width, Animate = motion.Value,
+                        // The settled width re-pushes the title bar's regions (the model counts a settle; the core folds it in).
+                        OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
+                        Children =
+                        [
+                            // No fill cap (0): the box above sets the width, and the focused width runs past the rest maximum.
+                            Embed.Comp(() => new RichOmnibar(props, parts, 0f,
+                                AutoSuggestBoxSuggestionPresentation.Popup)),
+                        ],
+                    },
                 ],
             };
         }

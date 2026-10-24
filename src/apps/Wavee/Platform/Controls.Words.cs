@@ -60,6 +60,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -429,6 +430,8 @@ public static partial class Controls
                 CharSpacing = big ? BigTracking : Tracking, FontFamily = big ? DisplayFace : null, MaxLines = 1,
                 Color = ink, BrushTransitionMs = Design.Motion.Faster,
                 AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                // The style's casing for a word it navigates by (Zune lowers it: "all · unplayed · in progress"; Classic and WinUI keep it as written).
+                Case = R.Case.For(LabelKind.Navigation),
             };
 
             // ── fit ──

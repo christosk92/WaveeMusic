@@ -239,6 +239,21 @@ public static partial class Sidebar
         }
     }
 
+    // ══ 7b. THE ROW'S TOOLTIP HOST ═══════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The one tooltip host a pane row is built in, the same at every pane form (both structures' rows call it).</summary>
+    internal static class RowTip
+    {
+        /// <summary>Wraps <paramref name="row"/> in the row's tooltip host: in the compact rail (<paramref name="compact"/>) the label is the
+        /// tile's only name, so it always tips; in the expanded tree it tips only while the row cuts its label (<paramref name="tooltip"/>).
+        /// The host is there in EVERY form, its text null where nothing tips (the bound form mounts no hover wiring for it), so the row
+        /// keeps its node when a tier crossing plans the pane compact or expanded: wrapped only where it tipped, the rail tile and the
+        /// tree row were two different parents and every row of the pane remounted at the 1008 crossing (scroll, focus and hover lost).
+        /// An expanded row fills its slot (<c>grow</c> 1); a rail tile keeps its own width.</summary>
+        public static Element Wrap(Element row, bool compact, bool tooltip, string label)
+            => ToolTip.Wrap(row, (Prop<string?>)(compact || tooltip ? label : null), grow: compact ? 0f : 1f);
+    }
+
     // ══ 8. THE PANE'S TEXT, LOC AND GLYPH TABLES ═════════════════════════════════════════════════════════════════════
 
     /// <summary>The renderer's display rules: section titles, per-kind subtitles, icon fallbacks and the

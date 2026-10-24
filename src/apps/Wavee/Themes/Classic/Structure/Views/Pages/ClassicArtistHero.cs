@@ -57,9 +57,12 @@ internal static class ClassicArtistHero
         Element art = photoUrl is { Length: > 0 } src
             ? Embed.Comp(new HeroArtProps(src, w, photoH), static () => new HeroArt()) with { Key = "heroart:" + uri }
             : new BoxEl { Width = w, Height = photoH, Fill = Design.WatchedPlaceholder(photoUrl) };
+        // The photograph's band eases its height through real layout when a crossing changes it (the Short cap at 680, the 1920 edge): it crops the
+        // photograph (laid out at the height it was first decoded for) down or up with the hero's own reveal, so no void opens under a photo that
+        // already stood at its new height while the hero and the magazine under it still eased.
         Element media = new BoxEl
         {
-            Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
+            Width = w, Height = photoH, ZStack = true, ClipToBounds = true, Animate = ClassicTierMotion.HeightReflow,
             TransformOriginX = 0.5f, TransformOriginY = 0f,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
             Children = [art],
@@ -80,7 +83,9 @@ internal static class ClassicArtistHero
                 acts, headerAccent),
             _ => PhotoArm(in text, uri, paletteUrl, w, height, edge, in m, form, media, accent, compactCanHit, collapseEffects, acts, headerAccent),
         };
-        // One arm on screen under its own key: a crossing that swaps the arm cross-fades the two in the pinned z-stack instead of snapping one for the other.
+        // One arm on screen under its COMPOSITION's key: the centred and the bottom arms are one tree (the photo arm, its copy centred or at the foot), so a
+        // crossing between them (1008, 1920, the Short cap at 680) keeps every part and moves the copy; a crossing to the field or the overlay, genuinely
+        // different trees, cross-fades the two in the pinned z-stack under the declared tier swap.
         Element arm = new BoxEl
         {
             Key = s_armKeys[(int)form.Arm], Direction = 1, Width = w, Height = height,
@@ -92,15 +97,18 @@ internal static class ClassicArtistHero
         // shrinks from the banner height to the band, and the Leading collapse cuts the expanded presentation (paint and
         // input) at that edge by itself — the presentation carries its own slide-away (collapseEffects). No ClipToBounds:
         // a box clip here would also cut the photo's overscroll stretch above the root's top (a dark band over the photo).
-        // A tier crossing tweens the hero's height (the detail hero's reflow recipe), so the magazine under it glides instead of jumping.
+        // A tier crossing eases the hero's height on the detail hero's tween (280 ms SmoothOut) THROUGH REAL LAYOUT, so the collapse edge, which
+        // cuts the presentation at the laid-out height, the photograph's band and the magazine under it all move with it. A revealed height (the
+        // presented extent easing over a layout already at its new height) left the collapse cut at the new height at once: a 152 DIP void opened
+        // between the photograph and the magazine still gliding up to it (the Short cap at 680).
         return new BoxEl
         {
-            Direction = 1, Height = height, ZStack = true, Animate = ClassicArtistTiers.HeroMotion,
+            Direction = 1, Height = height, ZStack = true, Animate = ClassicTierMotion.HeightReflow,
             Children = band is null ? [arm] : [arm, band],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 
-    static readonly string[] s_armKeys = ["artist-hero:centred", "artist-hero:bottom", "artist-hero:field", "artist-hero:overlay"];
+    static readonly string[] s_armKeys = ["artist-hero:photo", "artist-hero:photo", "artist-hero:field", "artist-hero:overlay"];
 
     /// <summary>The hero's verbs: Play, Shuffle, Radio and the More button's menu (all null on the skeleton arm).</summary>
     readonly record struct HeroActs(Action? Play, Action? Shuffle, Action? Radio, Func<ContextMenuModel?>? Menu);
@@ -127,11 +135,13 @@ internal static class ClassicArtistHero
             ? new BoxEl()
             : new BoxEl
             {
-                Width = w, Height = height, ZStack = true, HitTestVisible = false,
+                // Eases its height with the photograph's band on a crossing, the veil stretched over it (its stretch arm), so no strip of the
+                // photograph shows unveiled while the hero's height eases.
+                Width = w, Height = height, ZStack = true, HitTestVisible = false, Animate = ClassicTierMotion.HeightReflow,
                 TransformOriginX = 0.5f, TransformOriginY = 0f,
                 Children =
                 [
-                    Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
+                    Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, float.NaN, key: "artist-veil:" + uri,
                                            payloadAccent: headerAccent, hold: ClassicArtistRules.HeroVeilHold(w, in m, form, edge)),
                 ],
             }.StretchFromTop();
@@ -248,7 +258,8 @@ internal static class ClassicArtistHero
 
         return new BoxEl
         {
-            Key = "artist-hero-copy", Direction = 1,
+            // Moves (centred or at the foot) and changes its measure with the form inside the one photo arm: it reflows into its new box.
+            Key = "artist-hero-copy", Direction = 1, Animate = shimmer ? null : ClassicTierMotion.Reflow,
             // D18: on the centred photo arm the copy ends near 56 % of the hero and the veil holds to that edge (ClassicArtistRules).
             Width = ClassicArtistRules.HeroCopyWidth(w, in m, form, edge),
             MaxWidth = m.CopyMaxWidth, MinWidth = 0f, Gap = Spacing.S,
@@ -423,7 +434,12 @@ internal static class ClassicArtistHero
             // reveal and the image fade were two animations over the same pixels (stillwrong.mp4). One owner, one
             // entrance, keyed on the ready EDGE so it plays once per photo and never re-runs on a plain re-render.
             var image = UseImage(p.Url, dw, dh, ImagePriority.Visible, blurHash: null, transition: ImageTransition.None);
-            bool ready = image.State is ImageState.Ready or ImageState.Failed;
+            // The crop waits for the photograph's subject (faces place it; it always settles), so the entrance plays once, at the final crop;
+            // until then the slot draws no bitmap (the decode above runs meanwhile).
+            PhotoSubject? subject = Palette.Subject(p.Url);
+            bool settled = subject is not null;
+            bool faces = subject is { Faces: true };
+            bool ready = settled && image.State is ImageState.Ready or ImageState.Failed;
             var zoom = UseRef(false);
             if (!zoom.Value && ready) zoom.Value = true;
             UseKeyframes(AnimChannel.ScaleX, zoom.Value ? s_enterScale : s_restScale,
@@ -440,7 +456,9 @@ internal static class ClassicArtistHero
 
             return new BoxEl
             {
-                Width = width, Height = height, ZStack = true, ScaleX = 1f, ScaleY = 1f,
+                // The band's height, eased with the band on a crossing (the same reflow), so the photograph fills the band frame by frame
+                // whichever way the hero's height goes.
+                Width = width, Height = height, ZStack = true, ScaleX = 1f, ScaleY = 1f, Animate = ClassicTierMotion.HeightReflow,
                 Children =
                 [
                     new BoxEl
@@ -448,10 +466,17 @@ internal static class ClassicArtistHero
                         ZStack = true, ScaleX = FrameScale, ScaleY = FrameScale, OffsetY = -height * FrameLiftFraction,
                         Children =
                         [
-                            // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design.
-                            Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
+                            // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design. Until the subject settles
+                            // the slot shows that neutral alone (no source), as it does while the bitmap decodes.
+                            Ui.Image(settled ? p.Url : "", ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
                                      placeholder: R.Layer.ArtPlaceholder, blurHash: null, transition: ImageTransition.None)
-                                with { FocusX = 0.62f, FocusY = 0.34f },
+                                with
+                                {
+                                    FocusX = faces ? subject!.Value.X : ClassicArtistRules.PhotoFocusX,
+                                    FocusY = faces ? subject!.Value.Y : ClassicArtistRules.PhotoFocusY,
+                                    FocusFrameX = faces ? ClassicArtistRules.PhotoFacesAtX : 0.5f,
+                                    FocusFrameY = faces ? ClassicArtistRules.PhotoFacesAtY : 0.5f,
+                                },
                         ],
                     },
                 ],

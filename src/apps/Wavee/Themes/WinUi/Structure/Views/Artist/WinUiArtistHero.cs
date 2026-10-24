@@ -40,8 +40,14 @@ internal static class WinUiArtistHero
         bool shimmer = acts.Play is null;
         float w = MathF.Max(1f, cardW);
 
-        Element photo = photoUrl is { Length: > 0 } src
-            ? Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode) with { Key = "heroart:" + uri }
+        // A photograph with faces places them in the band above the copy (lane B10); the photograph waits for its subject (it always settles), so its
+        // crop never changes once it shows. Without faces the centred crop stands.
+        PhotoSubject? subject = shimmer || photoUrl is not { Length: > 0 } measured ? null : Palette.Subject(measured);
+        var crop = subject is { Faces: true } faces
+            ? new MediaScrim.Crop(faces.X, faces.Y, WinUiArtistRules.PhotoFacesAtX, CopyTop(in text, form) * WinUiArtistRules.PhotoFacesAboveCopy / height)
+            : default;
+        Element photo = photoUrl is { Length: > 0 } src && (shimmer || subject is not null)
+            ? Controls.Artwork(src, w, height, WinUiArtistRules.HeroRadius, decodePx: WinUiArtistRules.PhotoDecode, crop: crop) with { Key = "heroart:" + uri }
             : new BoxEl { Width = w, Height = height, Fill = Design.WatchedPlaceholder(photoUrl) };
         Element veil = new BoxEl
         {
@@ -53,7 +59,7 @@ internal static class WinUiArtistHero
         // until every line reads (MediaScrim: the meta and the Verified line at 4.5 : 1, the name at 3 : 1, against the photograph's p90 under each line).
         Element boost = shimmer || photoUrl is not { Length: > 0 } boostSrc
             ? new BoxEl { Width = w, Height = height, HitTestVisible = false }
-            : Controls.ScrimBoost(BoostOf(in text, boostSrc, form, w));
+            : Controls.ScrimBoost(BoostOf(in text, boostSrc, form, w, crop));
         Element copy = Copy(in text, uri, form, shimmer);
         var bottom = new List<Element>(2) { new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [copy] } };
         if (!compact)
@@ -78,7 +84,7 @@ internal static class WinUiArtistHero
 
     /// <summary>The boost's reading of this card: the copy's line bands from the card's foot up (the meta, the name in its natural line box, the Verified
     /// line), the 62 % veil as the floor, the ceiling.</summary>
-    static Controls.ScrimBoostProps BoostOf(in Artist.HeroText text, string photoUrl, WinUiArtistHeroForm form, float w)
+    static Controls.ScrimBoostProps BoostOf(in Artist.HeroText text, string photoUrl, WinUiArtistHeroForm form, float w, MediaScrim.Crop crop)
     {
         float height = form.Height;
         float left = form.InsetX, right = form.InsetX + MathF.Min(WinUiArtistTiers.CopyMax, MathF.Max(1f, w - 2f * form.InsetX));
@@ -93,7 +99,15 @@ internal static class WinUiArtistHero
         };
         if (text.Verified) bands.Add(MediaScrim.Band.Line(left, right, verifiedTop, WinUiArtistRules.VerifiedLine, WinUiArtistRules.VerifiedSize));
         var floor = new MediaScrim.Floor(height - form.Veil, form.Veil, WinUiArtistRules.VeilEdge.A);
-        return new Controls.ScrimBoostProps(photoUrl, w, height, bands.ToArray(), floor, WinUiArtistRules.BoostCeiling, text.Verified ? verifiedTop : nameTop);
+        return new Controls.ScrimBoostProps(photoUrl, w, height, bands.ToArray(), floor, WinUiArtistRules.BoostCeiling, text.Verified ? verifiedTop : nameTop, crop);
+    }
+
+    /// <summary>Where the card's copy starts (its Verified line, else the name), from the card's top: the band above it is the photograph's.</summary>
+    static float CopyTop(in Artist.HeroText text, WinUiArtistHeroForm form)
+    {
+        float metaTop = form.Height - form.Bottom - form.MetaLine;
+        float nameTop = metaTop - WinUiArtistRules.CopyGap - MathF.Max(form.NameLine, form.NameSize * WinUiArtistRules.NameNaturalLine);
+        return text.Verified ? nameTop - WinUiArtistRules.CopyGap - WinUiArtistRules.VerifiedLine : nameTop;
     }
 
     /// <summary>The Compact page's actions row under the card: Play, Follow, Shuffle, radio, then "..." at the row's end, every target 40.</summary>

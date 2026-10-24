@@ -130,6 +130,9 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         policies.Add(new(LintIntent.Hang, ReleaseNotesTitleKey,
             "the what's-new panorama bleeds left of the gutter (ZuneReleaseNotesRules.PanoramaBleed: Z-ReleaseNotes draws it as Z-Settings does)",
             Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneReleaseNotesRules.PanoramaBleed)));
+        if (ZuneOptions.Fit() == PanoramaFit.Bleed)
+            policies.Add(new(LintIntent.Bleed, ZuneSettings.PreviewTitleKey,
+                "the theme options preview bleeds its panorama off the frame's edge, as the panorama option does on the pages (Z-Theme-Options)"));
         policies.Add(new(LintIntent.Hang, ZuneSettings.TitleKey,
             "the settings panorama bleeds left of the gutter (ZuneSettingsRules.PanoramaBleed: Z-Settings draws it at 40 over a 48 gutter)",
             Value: -MathF.Min(ZuneTiers.Frame(context.Window).Gutter, ZuneSettingsRules.PanoramaBleed)));

@@ -39,8 +39,34 @@ internal static class ClassicHomeRecents
     public static Element Template(HomeRecentsProps props, in ViewContext ctx)
     {
         var facts = ctx.Tier();
+        var layout = ClassicHomeTiers.Of(facts);
         // The first frame is seeded from the tier's own region estimate (the Huge tiles share their band with the hero), never a fixed 1100.
-        return Tree(props, ClassicHomeTiers.Of(facts), ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: false));
+        float estimate = ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: false);
+        // A FORM CHANGE (the 1920 crossing turns the tiles beside the hero into a band under it) re-renders this template before the grid's box
+        // is measured again: built at the old measure under the new record, the grid counted the columns of the narrow band beside the hero
+        // (2 at Standard's rule, so 3 tiles) and dropped four tiles for a frame, which remounted them when the measure landed. Until the box
+        // reports a new width the grid builds at the new form's estimate, so the tiles it keeps are the ones it will keep.
+        var hooks = ctx.Hooks;
+        var lastForm = hooks.UseRef((layout.Tier, layout.DaylistBeside));
+        var measured = hooks.UseRef(float.NaN);
+        var stale = hooks.UseRef(float.NaN);
+        var seed = hooks.UseRef(float.NaN);
+        if (lastForm.Value != (layout.Tier, layout.DaylistBeside))
+        {
+            seed.Value = estimate;
+            stale.Value = measured.Value;
+        }
+        lastForm.Value = (layout.Tier, layout.DaylistBeside);
+        return Tree(props, layout, estimate, w =>
+        {
+            if (!float.IsNaN(seed.Value))
+            {
+                if (w == stale.Value) w = seed.Value;
+                else seed.Value = float.NaN;
+            }
+            measured.Value = w;
+            return w;
+        });
     }
 
     /// <summary>The embed's <see cref="ComponentEl.SkeletonProxy"/>: the SAME tree at neutral live facts.</summary>
@@ -51,13 +77,13 @@ internal static class ClassicHomeRecents
         return Tree(new HomeRecentsProps
         {
             Zone = zone, Cells = cells, Week = default, Playing = s_idle, RemoteDeviceName = s_noDevice,
-        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1));
+        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1), width: null);
     }
 
     /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid at its measured width. The ONE builder both the
     /// template and the skeleton call.</summary>
-    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth)
-        => Responsive.Of("home:recents", w => Grid(w, p, layout), fallback: firstWidth);
+    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth, Func<float, float>? width)
+        => Responsive.Of("home:recents", w => Grid(width is null ? w : width(w), p, layout), fallback: firstWidth);
 
     /// <summary>The grid at one measured width: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
     static Element Grid(float w, HomeRecentsProps p, ClassicHomeLayout layout)

@@ -195,7 +195,13 @@ internal sealed class ClassicCoverBlend : Component
         };
         _mounted = true;
         _settled = settled;
-        return new BoxEl { ZStack = true, Height = p.Height, HitTestVisible = false, Children = [tone] };
+        // The wash's height follows the artist hero's (a tier crossing changes both): it eases through real layout with the hero's, inside an
+        // auto-sized root, because the view's anchor mirrors its root's DECLARED height and would land at the new height at once.
+        return new BoxEl
+        {
+            Direction = 1, HitTestVisible = false,
+            Children = [new BoxEl { ZStack = true, Height = p.Height, HitTestVisible = false, Animate = ClassicTierMotion.HeightReflow, Children = [tone] }],
+        };
     }
 }
 

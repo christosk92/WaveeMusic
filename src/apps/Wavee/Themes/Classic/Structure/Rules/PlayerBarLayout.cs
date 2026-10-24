@@ -25,6 +25,14 @@ internal static class ClassicPlayerBarLayout
     public static readonly LayoutTransition MoveMotion = new(
         TransitionChannels.Bounds, TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentPopOpen), SizeMode.Reveal);
 
+    /// <summary>A cluster the bar's FORM adds or drops on a crossing (the seek row and the right cluster across the mini bar's 528 edge): it FLIPs
+    /// like <see cref="MoveMotion"/> and fades in or out as it comes or goes, instead of popping beside the parts that glide.</summary>
+    public static readonly LayoutTransition FormMotion = MoveMotion with
+    {
+        Channels = TransitionChannels.Bounds | TransitionChannels.Opacity,
+        Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+    };
+
     /// <summary>A line entering/leaving a column: fade + size 0 → natural, so neighbours SLIDE over (Reflow is not
     /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out. ONLY the remote-device line and the
     /// two time labels carry it: every command slot is fixed by the level and lights its face instead (<see cref="FaceMotion"/>),
@@ -58,6 +66,11 @@ internal static class ClassicPlayerBarLayout
     /// <summary>The face fade of a reserved slot: opacity only, never Bounds/Reflow, so lighting a button cannot reflow the row.</summary>
     public static readonly LayoutTransition FaceMotion = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
+
+    /// <summary>Shuffle's and repeat's slots: the face fade plus a position FLIP (still never Bounds/Reflow, so lighting cannot reflow the row),
+    /// so the 1920 crossing glides them between the right cluster's lead and the Huge transport's flanks, both in the centre column.</summary>
+    public static readonly LayoutTransition FlankMotion = new(
+        TransitionChannels.Opacity | TransitionChannels.Position, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
 
     // ── the now-playing text ─────────────────────────────────────────────────────────────────────────────────────────
 

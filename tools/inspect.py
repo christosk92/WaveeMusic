@@ -152,11 +152,12 @@ def crossing_lines(obj):
     else:
         control = "no control step: every move counts"
     lines = ["crossing %sx%s -> %sx%s %s -> %s (content committed: %s): EXCESS %s snapped, %s jumped %s; "
-             "remounted %s outside a swap family, %s inside; all %s snapped, %s jumped, %s glided, %s unpainted; vanished %s, appeared %s" % (
+             "remounted %s outside a swap family, %s inside; all %s snapped, %s jumped, %s glided, %s unpainted; vanished %s, appeared %s%s" % (
                  obj["from"]["w"], obj["from"]["h"], obj["to"]["w"], obj["to"]["h"], _tiers(obj.get("tierBefore")), _tiers(obj.get("tierSettled")),
                  obj.get("contentCommitted"), c.get("excessSnapped", c.get("snapped")), c.get("excessJumped", c.get("jumped")), control,
                  c.get("remountedOutside", c.get("remounted")), c.get("remountedSwap", 0), c.get("snapped"), c.get("jumped"), c.get("glided"),
-                 c.get("unpainted", 0), c.get("vanished"), c.get("appeared"))]
+                 c.get("unpainted", 0), c.get("vanished"), c.get("appeared"),
+                 "; recycled %s (list rows another slot of the same virtual list draws: no part rebuilt)" % c["recycled"] if c.get("recycled") else "")]
     if "late" in c or "excessOffscreen" in c:
         lines.append("  weights: %s of the excess moved wholly off the screen (below the fold, scrolled away); %s part%s reflowed late "
                      "(after the commit frame, nothing easing it; --gate-todo counts them)" % (

@@ -309,6 +309,11 @@ public static class ZuneListRules
     /// which a row never reads (it is a stack's reserved meta line).</summary>
     public static SurfaceShape RailRow(float art) => Shape.Row(art) with { MetaLine = true };
 
+    /// <summary>A media row in a page column reaches its shape's <c>PadX</c> past the column on both sides: the plate's wash still pads the row,
+    /// while the art leads on the column's edge (the gutter) and the last word ends on its right edge, as the boards draw every row family
+    /// (Z-Home's "from artists you follow" and "because you like", Z-Home-Podcasts, Z-Library-*, Z-Recents). A margin on the row's wrapper.</summary>
+    public static Edges4 OnColumn(in SurfaceShape s) => new(-s.PadX, 0f, -s.PadX, 0f);
+
     /// <summary>The shape is a <see cref="RailRow"/>.</summary>
     public static bool IsRailRow(in SurfaceShape s) => s.IsRow && s.MetaLine;
 

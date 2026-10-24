@@ -61,7 +61,7 @@ internal static partial class ZuneLibraryPage
         {
             Height = compact ? User.NavRowCompactPlate : User.NavRowPlate,
             Margin = new Edges4(0f, User.NavRowMarginY, 0f, User.NavRowMarginY),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = LR.RowPadding,
             Children = compact
                 ? [text]
                 : [new BoxEl
@@ -144,7 +144,7 @@ internal static partial class ZuneLibraryPage
     static Element LetterHeader(BoundItemScope<LibraryNavItem> scope) => new BoxEl
     {
         Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
-        Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
+        Padding = LR.RowPadding,
         Children = [ZuneProfileLetters.Glyph(scope.Text(static it => ZuneProfileLetters.LetterText(-it.Slot - 1)))],
     };
 
@@ -174,7 +174,7 @@ internal static partial class ZuneLibraryPage
             });
         Element content = new BoxEl
         {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = new Edges4(LR.RowPadX, 0f, LR.RowPadX, 0f),
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = LR.RowGap, Padding = LR.RowPadding,
             Draggable = User.DragOf(scope), Children = kids.ToArray(),
         };
         // The PLATE height, not the row extent: the chrome's own margin is what makes the outer extent the host's seed. Setting the extent here would measure the plate plus the margin.

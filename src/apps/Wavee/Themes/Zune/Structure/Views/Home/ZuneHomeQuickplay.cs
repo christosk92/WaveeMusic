@@ -197,7 +197,7 @@ internal static class ZuneHomeQuickplay
             rows[i] = new BoxEl
             {
                 Key = c.IsBlank ? "zune-history-blank:" + i.ToString(CultureInfo.InvariantCulture) : "zune-history:" + uri,
-                Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)],
+                Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape), Children = [Controls.Surface(data, shape)],
             };
         }
         return new BoxEl

@@ -88,16 +88,29 @@ public static class MediaScrim
         return new LumaMap(width, height, grey);
     }
 
-    /// <summary>The image-space rectangle (0..1) a box region shows when a <paramref name="imageAspect"/> image is cover-fitted, centred, into a
-    /// <paramref name="boxW"/> x <paramref name="boxH"/> box.</summary>
-    public static (float U0, float V0, float U1, float V1) CoverUv(float imageAspect, float boxW, float boxH, float left, float top, float right, float bottom)
+    /// <summary>Where a cover crop puts its focal point (`ImageEl.FocusX/Y` at `FocusFrameX/Y`); <c>default</c> is the centred crop.</summary>
+    public readonly record struct Crop(float FocusX, float FocusY, float FrameX, float FrameY)
+    {
+        /// <summary>The centred crop.</summary>
+        public static Crop Centred => new(0.5f, 0.5f, 0.5f, 0.5f);
+
+        /// <summary>This crop, or the centred one for <c>default</c>.</summary>
+        public Crop OrCentred => this == default ? Centred : this;
+    }
+
+    /// <summary>The image-space rectangle (0..1) a box region shows when a <paramref name="imageAspect"/> image is cover-fitted into a
+    /// <paramref name="boxW"/> x <paramref name="boxH"/> box with its focal point (<paramref name="focusX"/>, <paramref name="focusY"/>) at the box point
+    /// (<paramref name="frameX"/>, <paramref name="frameY"/>), clamped to cover: the engine's `ImageEl` crop (`FocusX/Y`, `FocusFrameX/Y`; the defaults centre it).</summary>
+    public static (float U0, float V0, float U1, float V1) CoverUv(float imageAspect, float boxW, float boxH, float left, float top, float right, float bottom,
+        float focusX = 0.5f, float focusY = 0.5f, float frameX = 0.5f, float frameY = 0.5f)
     {
         float boxAspect = boxW / MathF.Max(1f, boxH);
         float su = 1f, sv = 1f;
         if (imageAspect > boxAspect) su = boxAspect / imageAspect;   // wider photograph: its sides are cut
         else sv = imageAspect / boxAspect;                           // taller photograph: its top and foot are cut
-        float u(float x) => (1f - su) / 2f + su * Math.Clamp(x / MathF.Max(1f, boxW), 0f, 1f);
-        float v(float y) => (1f - sv) / 2f + sv * Math.Clamp(y / MathF.Max(1f, boxH), 0f, 1f);
+        float u0 = Math.Clamp(focusX - su * frameX, 0f, 1f - su), v0 = Math.Clamp(focusY - sv * frameY, 0f, 1f - sv);
+        float u(float x) => u0 + su * Math.Clamp(x / MathF.Max(1f, boxW), 0f, 1f);
+        float v(float y) => v0 + sv * Math.Clamp(y / MathF.Max(1f, boxH), 0f, 1f);
         return (u(left), v(top), u(right), v(bottom));
     }
 
@@ -119,12 +132,13 @@ public static class MediaScrim
     /// <summary>The boost opacity (0..<paramref name="ceiling"/>) that brings <paramref name="ink"/> to every band's ratio over the photograph,
     /// under the surface's <paramref name="floor"/> veil, judged at each band's top (where the veil is lightest) against its
     /// <see cref="Percentile"/> grey. 0: the floor is enough. The ceiling wins over a band no darkening below it can satisfy.</summary>
-    public static float SolveBoost(LumaMap map, float boxW, float boxH, ReadOnlySpan<Band> bands, Floor floor, ColorF ink, float ceiling)
+    public static float SolveBoost(LumaMap map, float boxW, float boxH, ReadOnlySpan<Band> bands, Floor floor, ColorF ink, float ceiling, Crop crop = default)
     {
         float boost = 0f;
+        crop = crop.OrCentred;
         foreach (Band b in bands)
         {
-            float grey = GreyAt(map, CoverUv(map.Aspect, boxW, boxH, b.Left, b.Top, b.Right, b.Bottom), Percentile);
+            float grey = GreyAt(map, CoverUv(map.Aspect, boxW, boxH, b.Left, b.Top, b.Right, b.Bottom, crop.FocusX, crop.FocusY, crop.FrameX, crop.FrameY), Percentile);
             float under = grey * (1f - floor.AlphaAt(b.Top));
             float need = b.Need * Headroom;
             if (Contrast(ink, under) >= need) continue;

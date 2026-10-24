@@ -231,8 +231,10 @@ internal static class ClassicHomeDaylist
         float text = MathF.Max(0f, copyW - pad.Horizontal);
         bool hero = dl.Form == ClassicDaylistForm.Hero;
         bool strip = dl.Form == ClassicDaylistForm.Strip;
+        // The hero pins its actions to the foot inside the same top block every form draws them in, so the action row keeps its parent (and its
+        // buttons their nodes) across the 1920 crossing.
         Element[] copyKids = strip ? [Top(p, text, dl, withActions: false)]
-            : hero ? [Top(p, text, dl, withActions: false), p.Actions]
+            : hero ? [Top(p, text, dl, withActions: true, pinActions: true)]
             : [Top(p, text, dl, withActions: true), ClockSlot(p.Clock, plate: false)];
         var copy = new BoxEl
         {
@@ -301,7 +303,7 @@ internal static class ClassicHomeDaylist
 
     /// <summary>The copy's top block at text width <paramref name="text"/> (NaN: the column's own): eyebrow · title · tags · meta · the ONE
     /// action row (the strip keeps the eyebrow and the title; the hero parts its actions to the foot).</summary>
-    static BoxEl Top(Parts p, float text, ClassicDaylistLayout dl, bool withActions)
+    static BoxEl Top(Parts p, float text, ClassicDaylistLayout dl, bool withActions, bool pinActions = false)
     {
         var kids = new List<Element>(5)
         {
@@ -323,9 +325,11 @@ internal static class ClassicHomeDaylist
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
             });
+            // The hero's actions sit at the copy's foot: a spacer takes the room between, never less than the copy's own gap.
+            if (withActions && pinActions) kids.Add(new BoxEl { Key = "daylist-actions-gap", Grow = 1f, MinHeight = Spacing.S, HitTestVisible = false });
             if (withActions) kids.Add(p.Actions);
         }
-        return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Grow = pinActions ? 1f : 0f, Children = kids.ToArray() };
     }
 
     /// <summary>The title's rung: the tuned card's 40/52 <c>HeroTitle</c> while the copy is at least
@@ -341,6 +345,8 @@ internal static class ClassicHomeDaylist
     /// <summary>The ONE action row: 20 below the meta (12 in the compact forms), 8 apart, never wrapping (the copy's floor fits it).</summary>
     static BoxEl ActionRow(ClassicDaylistLayout dl, params Element[] actions) => new()
     {
+        // Keyed: the hero's foot spacer precedes it in the same block, and a positional match would hand its node to the spacer.
+        Key = "daylist-actions",
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = false, MinWidth = 0f,
         Margin = new Edges4(0f, dl.Form == ClassicDaylistForm.Card ? Spacing.XL : Spacing.M, 0f, 0f),
         Children = actions,

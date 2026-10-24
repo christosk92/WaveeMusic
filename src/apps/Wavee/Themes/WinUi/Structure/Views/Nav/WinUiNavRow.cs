@@ -441,10 +441,7 @@ internal sealed class WinUiNavRow : Component
     /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
     /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
     /// 40-DIP tile shows no text) and never grows: it is 40 wide already.</summary>
-    Element Tipped(Element built, bool tooltip, string label)
-        => _o.CompactPlan ? ToolTip.Wrap(built, label)
-            : tooltip ? ToolTip.Wrap(built, label, grow: 1f)
-            : built;
+    Element Tipped(Element built, bool tooltip, string label) => Sidebar.RowTip.Wrap(built, _o.CompactPlan, tooltip, label);
 
     /// <summary>The depth a row is drawn at in THIS pane: a compact tile is never indented, so its pill sits at PillX(0).</summary>
     int IndentOf(in SidebarRow row) => _o.CompactPlan ? 0 : row.Depth;

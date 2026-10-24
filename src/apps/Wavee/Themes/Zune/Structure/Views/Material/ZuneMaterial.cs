@@ -7,7 +7,10 @@
 //            a band from the top of the window that fades out by the foot of the band (the chrome's part of the wash; the page's own
 //            part is the page-tone and artist-blend leaves, so the two meet instead of doubling under the page).
 //   BLEED    `background` = artwork wash or mix: the page's bleed image (`PageChrome.Backdrop.Bleed`, an artist's header) behind the title
-//            bar, the band and the head, faint and fading out at its foot (Z-Artist).
+//            bar, the band and the head, faint and fading out at its foot (Z-Artist). The photograph is cropped around its SUBJECT (lane B10,
+//            the owner: "the hero image is kinda cut off"): `Palette.Subject` (the faces the OS finds, or Spotify's safe zone) placed midway between
+//            the band's foot and the fade's middle (`ZuneBandRules.BleedSubjectAt`), so the faces stand in the clear band above the hero's title.
+//            The bleed mounts once the subject is measured, so its fade-in plays once, at the final crop.
 //   MIX      `background` = mix: the page's mix covers (`PageChrome.Backdrop.Mix`) faint behind the top of the window, side by side.
 //   NONE     `background` = none: the flat ground alone (every page, the leaves too).
 // Live: the option is read tracked, so a change re-renders the layer and the wash / bleed / mix fade in or out (keyed, Enter / Exit).
@@ -69,16 +72,22 @@ internal static class ZuneMaterial
 
         if (background != ZuneBackground.None && backdrop.Bleed is { Length: > 0 } bleed)
         {
-            kids.Add(new BoxEl
+            float bandFoot = BandFoot(ctx.Tier());
+            float frameY = ZuneBandRules.BleedSubjectAt(bandFoot);
+            // The photograph waits for its subject (it always settles: faces, or the safe zone), so it is never re-cropped after it shows.
+            if (Palette.Subject(bleed) is { } subject)
             {
-                Key = ZuneBandRules.BleedKey + (R.IsLight ? "-light:" : ":") + bleed,
-                Height = ZuneBandRules.BleedH, AlignSelf = FlexAlign.Start, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-                Opacity = ZuneBandRules.BleedOpacityOf(R.IsLight),
-                Enter = Fade, Exit = Fade,
-                Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade, ZuneArtistRules.PhotoFocusY)],
-            });
+                kids.Add(new BoxEl
+                {
+                    Key = ZuneBandRules.BleedKey + (R.IsLight ? "-light:" : ":") + bleed,
+                    Height = ZuneBandRules.BleedH, AlignSelf = FlexAlign.Start, Direction = 1, ClipToBounds = true, HitTestVisible = false,
+                    Opacity = ZuneBandRules.BleedOpacityOf(R.IsLight),
+                    Enter = Fade, Exit = Fade,
+                    Children = [Backdrop(bleed, ZuneBandRules.BleedH, ZuneBandRules.BleedFade, subject.X, subject.Y, frameY)],
+                });
+            }
             // Over the photo, under the chrome: the adaptive scrim that keeps the band's words legible over a bright photograph (V14).
-            kids.Add(Embed.Comp(new BleedScrimProps(bleed, BandFoot(ctx.Tier())), static () => new ZuneBleedScrim())
+            kids.Add(Embed.Comp(new BleedScrimProps(bleed, bandFoot, frameY), static () => new ZuneBleedScrim())
                 with { Key = ZuneBandRules.BleedKey + "-scrim:" + bleed });
         }
 
@@ -111,10 +120,11 @@ internal static class ZuneMaterial
     static float BandFoot(in TierFacts facts)
         => ZuneTiers.FrameOf(facts).TitleBarH + ZuneBandRules.BandOf(facts).HeightWith(!ZuneBandTiers.FoldsRow2AtRest(in facts));
 
-    /// <summary>A backdrop image: cover-fitted, <paramref name="height"/> tall, fading out over its lower <paramref name="fade"/>.</summary>
-    static Element Backdrop(string url, float height, float fade, float focusY = 0.5f) => new ImageEl
+    /// <summary>A backdrop image: cover-fitted, <paramref name="height"/> tall, fading out over its lower <paramref name="fade"/>; its focal point
+    /// (<paramref name="focusX"/>, <paramref name="focusY"/>, centred by default) stands at the box's <paramref name="frameY"/> (centred across).</summary>
+    static Element Backdrop(string url, float height, float fade, float focusX = 0.5f, float focusY = 0.5f, float frameY = 0.5f) => new ImageEl
     {
-        Source = url, Fit = ImageFit.Cover, FocusY = focusY, Height = height, AlignSelf = FlexAlign.Stretch,
+        Source = url, Fit = ImageFit.Cover, FocusX = focusX, FocusY = focusY, FocusFrameY = frameY, Height = height, AlignSelf = FlexAlign.Stretch,
         DecodePx = ZuneBandRules.BackdropDecodePx, Placeholder = ColorF.Transparent,
         Mask = new ImageMaskSpec(EdgeMask.Bottom, 0f, 0f, 0f, fade),
         RevealTransition = Design.Reduced ? null : ImageTransition.Fade(ZuneBandRules.MaterialFadeMs),
@@ -135,8 +145,8 @@ internal static class ZuneMaterial
     public static Element CoverTint(CoverTintProps props, in ViewContext ctx) => Embed.Comp(props, static () => new ZuneCoverTint());
 }
 
-/// <summary>What the bleed's scrim reads: the photograph and the band strip's foot.</summary>
-internal sealed record BleedScrimProps(string Url, float BandFoot);
+/// <summary>What the bleed's scrim reads: the photograph, the band strip's foot and where the bleed places the photograph's subject.</summary>
+internal sealed record BleedScrimProps(string Url, float BandFoot, float SubjectAt);
 
 /// <summary>The bleed's ADAPTIVE scrim (V14): over the photo, under the chrome, in the ground's direction (black on the dark kind, the ground on
 /// the light one), full over the title bar and the band and clear <see cref="ZuneBandRules.BleedScrimFade"/> below their foot. Its opacity is solved
@@ -152,7 +162,8 @@ internal sealed class ZuneBleedScrim : Component
         ColorF ground = R.Layer.ShellGround;
         ColorF scrim = light ? ground : ZuneBandRules.BleedScrimDark;
         MediaScrim.LumaMap? map = Palette.Tone(p.Url);
-        float target = map is null ? 0f : ZuneBandRules.BleedScrimAlpha(map, width, ZuneBandRules.BleedH, p.BandFoot, ZuneArtistRules.PhotoFocusY,
+        PhotoSubject? subject = Palette.Subject(p.Url);
+        float target = map is null || subject is not { } s ? 0f : ZuneBandRules.BleedScrimAlpha(map, width, ZuneBandRules.BleedH, p.BandFoot, s, p.SubjectAt,
             ZuneBandRules.BleedOpacityOf(light), ground.R, scrim.R, Tok.TextTertiary);
         var shown = UseRef(target);
         float from = shown.Value;

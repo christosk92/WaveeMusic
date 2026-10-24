@@ -195,7 +195,7 @@ internal static class ZuneFrame
         Children =
         [
             // The band (Z2b): it hugs what `Shell.NavPane` draws and never shrinks under the page.
-            Embed.Comp(new BandSlotProps(ctx.View(ViewKeys.ShellNavPane, props.NavPane), bandH, props.NavPane.Band?.Scroll), static () => new BandSlot()),
+            Embed.Comp(new BandSlotProps(ctx.View(ViewKeys.ShellNavPane, props.NavPane), bandH, props.NavPane.Band?.Scroll, props.NavPane.Band?.Current), static () => new BandSlot()),
             new BoxEl
             {
                 Key = ZuneFrameRules.PageClipKey,
@@ -205,7 +205,7 @@ internal static class ZuneFrame
         ],
     };
 
-    sealed record BandSlotProps(Element Band, Signal<float> BandH, IReadSignal<PageScroll>? Scroll);
+    sealed record BandSlotProps(Element Band, Signal<float> BandH, IReadSignal<PageScroll>? Scroll, Func<int>? Current);
 
     /// <summary>The band's slot: it eases its own height (a reflow, anchored at the top and clipped at the foot). The band inside changes height at
     /// once; a slot that merely hugged an animating child snapped to the child's target (the page jumped by the row's 32), and the page follows the
@@ -222,12 +222,14 @@ internal static class ZuneFrame
             var hasRow2 = UseComputed(() => chrome?.Value is { } c && (c.Views.Count > 0 || c.Actions.Count > 0));
             var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             bool parameter = ZuneOptions.CollapseBand();
-            bool tiedTier = ZuneBandTiers.ScrollTied(ZuneBandRules.BandOf(tiers), tiers, parameter);
+            // A destination (home, library, recents, browse) folds row 2 by the band's height rung, a detail page by the Short tier: as the band does.
+            bool destination = p.Current?.Invoke() >= 0;
+            bool tiedTier = ZuneBandTiers.ScrollTied(ZuneBandRules.BandOf(tiers), tiers, parameter, destination);
             var scroll = p.Scroll;
             // Compact with the page off its top: the band's height is tied to the scroll, so the slot must not ease it.
             var tiedNow = UseComputed(() => tiedTier && scroll is { } s && s.Value.Offset > 0f);
             // A Short window rests with row 2 folded (Z-Shell-Short): its fold waits for the row's fade-out like a page without one.
-            bool folding = !hasRow2.Value || ZuneBandTiers.FoldsRow2AtRest(tiers);
+            bool folding = !hasRow2.Value || ZuneBandTiers.FoldsRow2AtRest(tiers, destination);
             var bandH = p.BandH;
             return new BoxEl
             {

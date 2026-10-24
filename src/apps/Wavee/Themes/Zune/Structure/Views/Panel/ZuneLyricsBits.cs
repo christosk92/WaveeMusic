@@ -50,7 +50,7 @@ internal static class ZuneLyricsHeader
         kids.Add(Embed.Comp(new SparkleProps(props, h), static () => new ZuneLyricsInspector()) with { Key = "lyrics-inspector" });
         return new BoxEl
         {
-            Key = Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = P.Inset, ClipToBounds = true,
+            Key = Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = P.WordRowPadding, ClipToBounds = true,
             Children = kids.ToArray(),
         };
     }
@@ -131,7 +131,7 @@ internal static class ZuneNextUp
         for (int k = 0; k < rows.Length; k++)
         {
             var row = rows[k];
-            var shape = Shape.Row(TrackRowRules.ArtEdge(P.RowArt, row.Art)) with { MinHeight = P.RowH };
+            var shape = Shape.Row(TrackRowRules.ArtEdge(P.RowArt, row.Art)) with { MinHeight = P.RowH, PadX = P.RowPadX };
             els[k] = Controls.Surface(row.Data, shape) with { Key = row.Key };
         }
         return new BoxEl { Direction = 1, Children = els };

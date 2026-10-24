@@ -157,7 +157,11 @@ internal static class ClassicArtistSections
             Element featured = pick
                 ? PickColumn(ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface), wide && layout.PickHeading, accent, wide)
                 : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
-                    with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
+                    with
+                    {
+                        Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band",
+                        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                    };
             // The featured column keeps the pick as its first child at every tier, so the concert card coming or going on a crossing never remounts it.
             Element[] column = wide && concert > Table.None ? [featured, NextConcert(new Concert(concert))] : [featured];
             return new BoxEl
@@ -183,7 +187,10 @@ internal static class ClassicArtistSections
     /// column's height tween (<see cref="ClassicArtistTiers.HeroMotion"/>) eases the card down by the header's height.</summary>
     static Element PickColumn(Element card, bool heading, ColorF accent, bool wide) => new BoxEl
     {
+        // The rail card (the photograph a band under the comment, beside the chart) and the band card (the photograph a column at the card's
+        // right, under the chart) are two compositions: the arms swap keyed under the declared tier cross-fade, never as a cut.
         Key = wide ? "featured:pick:rail" : "featured:pick:band", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
+        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
         Children = heading
             ?
             [

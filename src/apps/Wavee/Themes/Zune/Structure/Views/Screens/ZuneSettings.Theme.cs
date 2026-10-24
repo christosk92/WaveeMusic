@@ -112,7 +112,7 @@ internal static partial class ZuneSettings
             {
                 Key = "zs:picker:thumb:" + entry.Id, Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = Edges4.All(Z.SelectGap),
                 BorderWidth = Z.SelectRing, BorderColor = on ? Tok.AccentDefault : ColorF.Transparent,
-                Children = [Thumbnail(entry.Preview, lay)],
+                Children = [Thumbnail(entry, lay)],
             },
             new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = name.ToArray() },
         };
@@ -125,11 +125,12 @@ internal static partial class ZuneSettings
         };
     }
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme until it ships one, leaves a thumbnail of the
-    /// same size, and the image fades in over it instead of replacing a blank).</summary>
-    static Element Thumbnail(ThemePreview preview, ZuneSettingsLayout lay)
+    /// <summary>The preview: the theme's preview image over a UI-native miniature of THAT theme's frame (so a missing asset, the state of every theme until it ships
+    /// one, leaves a thumbnail of the same size that still tells the themes apart, and the image fades in over it instead of replacing a blank).</summary>
+    static Element Thumbnail(ThemePickerEntry entry, ZuneSettingsLayout lay)
     {
-        var layers = new List<Element>(2) { Miniature(lay.PickerThumbH) };
+        var layers = new List<Element>(2) { Miniature(Z.MiniatureOf(entry.Id), lay.PickerThumbH) };
+        var preview = entry.Preview;
         string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
         if (PreviewPath(asset) is { } path)
             layers.Add(new ImageEl
@@ -158,32 +159,78 @@ internal static partial class ZuneSettings
         return path;
     }
 
-    /// <summary>A window in miniature drawn from the live tokens: a navigation strip, a content plate with a title line in the accent and two skeleton lines, the bar under
-    /// it. Proportions are flex ratios, so it fills any tile.</summary>
-    static Element Miniature(float height)
+    /// <summary>A window in miniature drawn from the live tokens, in the shape of the theme it stands for (Z-Settings-Appearance: wavee's sidebar beside two
+    /// tiles, winui's slim rail beside a card and an accent pill, zune's pivot words over a big title and two small tiles), the bar under it. Proportions are flex
+    /// ratios, so it fills any tile.</summary>
+    static Element Miniature(ZuneMiniature form, float height)
     {
-        Element Line(float fillGrow, float restGrow, ColorF fill) => new BoxEl
+        ColorF skeleton = Tok.TextTertiary with { A = Z.SkeletonAlpha };
+        ColorF accentTile = R.Ink.AccentAction with { A = Z.MiniTileA };
+        ColorF greyTile = Tok.TextTertiary with { A = Z.MiniTileA };
+        Element Line(float fillGrow, float restGrow, ColorF fill, float h) => new BoxEl
         {
-            Direction = 0, Height = Spacing.S, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
+            Direction = 0, Height = h, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
             Children = [new BoxEl { Grow = fillGrow, Basis = 0f, Fill = fill }, new BoxEl { Grow = restGrow, Basis = 0f }],
+        };
+        Element Square(float edge, ColorF fill) => new BoxEl { Width = edge, Height = edge, Shrink = 0f, Fill = fill };
+        Element body = form switch
+        {
+            // wavee: the sidebar (a darker column with its rows) beside the page's two tiles.
+            ZuneMiniature.Sidebar => new BoxEl
+            {
+                Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = Z.MiniSidebarGrow, Basis = 0f, Direction = 1, Gap = Spacing.XS, Padding = Edges4.All(Spacing.S), Fill = R.Layer.RowHover,
+                        Children = [Line(Z.MiniLineFill, Z.MiniLineRest, skeleton, Spacing.XS), Line(Z.MiniLine2Fill, Z.MiniLine2Rest, skeleton, Spacing.XS)],
+                    },
+                    new BoxEl
+                    {
+                        Grow = Z.MiniPageGrow, Basis = 0f, Direction = 0, Gap = Spacing.S, Padding = Edges4.All(Spacing.M),
+                        Children = [Square(Z.MiniTile, accentTile), Square(Z.MiniTile, greyTile)],
+                    },
+                ],
+            },
+            // winui: the slim navigation rail with its accent mark, a card plate and the accent pill.
+            ZuneMiniature.Rail => new BoxEl
+            {
+                Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = Z.MiniRailGrow, Basis = 0f, Direction = 1, Padding = Edges4.All(Spacing.S),
+                        Children = [new BoxEl { Width = Z.MiniRailMark, Height = Spacing.M, Fill = R.Ink.AccentAction }],
+                    },
+                    new BoxEl
+                    {
+                        Grow = Z.MiniPageGrow, Basis = 0f, Direction = 1, Gap = Spacing.S, Padding = Edges4.All(Spacing.M),
+                        Children =
+                        [
+                            new BoxEl { Height = Z.MiniCardH, AlignSelf = FlexAlign.Stretch, Fill = R.Layer.RowHover, Corners = CornerRadius4.All(Z.MiniRound) },
+                            new BoxEl { Width = Z.MiniPillW, Height = Spacing.S, Fill = R.Ink.AccentAction, Corners = CornerRadius4.All(Z.MiniRound) },
+                        ],
+                    },
+                ],
+            },
+            // zune: the pivot words over the big title, two small tiles under it.
+            _ => new BoxEl
+            {
+                Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, 0f),
+                Children =
+                [
+                    Line(Z.MiniTitleFill, Z.MiniTitleRest, skeleton, Spacing.XS),
+                    Line(Z.MiniLineFill, Z.MiniLineRest, Tok.TextPrimary, Z.MiniBigTitle),
+                    new BoxEl { Direction = 0, Gap = Spacing.XS, Children = [Square(Z.MiniSmallTile, accentTile), Square(Z.MiniSmallTile, greyTile)] },
+                ],
+            },
         };
         return new BoxEl
         {
             Direction = 1, Height = height, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = R.Layer.ShellGround,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, 0f),
-                    Children =
-                    [
-                        Line(Z.MiniTitleFill, Z.MiniTitleRest, R.Ink.AccentDecor),
-                        Line(Z.MiniLineFill, Z.MiniLineRest, Tok.TextTertiary with { A = Z.SkeletonAlpha }),
-                        Line(Z.MiniLine2Fill, Z.MiniLine2Rest, Tok.TextTertiary with { A = Z.SkeletonAlpha }),
-                    ],
-                },
-                new BoxEl { Height = Z.MiniBarHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = R.Layer.PlayerBar },
-            ],
+            Children = [body, new BoxEl { Height = Z.MiniBarHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = R.Layer.PlayerBar }],
         };
     }
 
@@ -394,15 +441,45 @@ internal static partial class ZuneSettings
             Children =
             [
                 new BoxEl { Direction = 0, Gap = Spacing.M, MinWidth = 0f, Children = nav },
-                ZuneText.Cased(R.Type.PageHero(Loc.Get(Strings.Theme.Zune.Screens.PreviewTitle)), LabelKind.Heading) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                new BoxEl { Direction = 1, MinWidth = 0f, Children = rows },
+                // The panorama as the option draws it (Z-Theme-Options): bled off the frame's edge at its own width, cut by the frame's clip and never
+                // ellipsised, or fitted to the frame with an ellipsis. A row, so the bled title keeps its natural width.
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                    Direction = 0, MinWidth = 0f,
                     Children =
                     [
-                        Disc(Icons.Play) with { Width = Z.PreviewDisc, Height = Z.PreviewDisc },
-                        ZuneText.Command(Loc.Get(Strings.Theme.Zune.Screens.PreviewPlay)),
+                        ZuneText.Cased(R.Type.PageHero(Loc.Get(Strings.Theme.Zune.Screens.PreviewTitle)), LabelKind.Heading) with
+                        {
+                            Key = PreviewTitleKey, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                            Trim = ZuneOptions.Fit() == PanoramaFit.Bleed ? TextTrim.None : TextTrim.CharacterEllipsis,
+                            Shrink = ZuneOptions.Fit() == PanoramaFit.Bleed ? 0f : 1f,
+                        },
+                    ],
+                },
+                // The album in miniature as the board lays it (Z-Theme-Options): the cover with "play" under it, the rows beside them.
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.L, MinWidth = 0f, AlignItems = FlexAlign.Start,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = Spacing.M, Shrink = 0f,
+                            Children =
+                            [
+                                new BoxEl { Width = Z.PreviewCover, Height = Z.PreviewCover, Shrink = 0f, Fill = R.Layer.RowHover },
+                                new BoxEl
+                                {
+                                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                                    Children =
+                                    [
+                                        Disc(Icons.Play) with { Width = Z.PreviewDisc, Height = Z.PreviewDisc },
+                                        ZuneText.Command(Loc.Get(Strings.Theme.Zune.Screens.PreviewPlay)),
+                                    ],
+                                },
+                            ],
+                        },
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = rows },
                     ],
                 },
             ],
@@ -430,4 +507,7 @@ internal static partial class ZuneSettings
     }
 
     static BoxEl Disc(string glyph) => ZuneKit.Disc(glyph);
+
+    /// <summary>The preview's panorama title (the lint guide's designed bleed under "bleed off the edge").</summary>
+    internal const string PreviewTitleKey = "zs:preview:title";
 }

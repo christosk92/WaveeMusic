@@ -146,7 +146,7 @@ internal sealed class ZuneQueuePanelView : Component
             : new BoxEl { Width = Q.CloseBox, Shrink = 0f };
         var data = SurfaceData(r, text, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
             menu: () => verbs.RowMenu(itemId, index, r, viewer), trailing: trailing);
-        var shape = Shape.Row(Q.RowArt) with { MinHeight = Q.RowExtent };
+        var shape = Shape.Row(Q.RowArt) with { MinHeight = Q.RowExtent, PadX = ZunePanelBodies.RowPadX };
         return new BoxEl
         {
             Key = props.Lane.RowKey("", itemId, index),

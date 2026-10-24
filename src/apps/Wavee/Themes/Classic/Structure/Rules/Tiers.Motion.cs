@@ -46,6 +46,18 @@ public static class ClassicTierMotion
     /// the 52 list head beside the rows): the box eases its size without clipping them away while it does.</summary>
     public static readonly LayoutTransition HangingReflow = SizeReflow with { ReflowUnclipped = true };
 
+    /// <summary>A surviving part whose HEIGHT changes with the tier while the parts beside it must yield frame by frame (the player bar between
+    /// the mini bar's 56 and the 72 at the 528 crossing, and the frame's reservations of it): the height eases through real layout, so the page
+    /// above shrinks or grows with it every frame instead of stepping by the difference.</summary>
+    public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>A part a tier ADDS to a column or drops from it (the narrow drawer's account row, which the Compact tier moves out of the title
+    /// bar): it opens or closes its height through real layout as it fades, so what follows it slides instead of stepping by its height.</summary>
+    public static readonly LayoutTransition MakeRoom = new(TransitionChannels.Size | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut), Size: SizeMode.Reflow, Axes: SizeAxes.Height,
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
+
     /// <summary>A surviving cell that only moves (a grid cell whose column changed, a card pushed along): the position-only FLIP.</summary>
     public static readonly LayoutTransition Shove = new(TransitionChannels.Position, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut));
 

@@ -128,7 +128,9 @@ internal static class ZuneTrackChrome
         {
             Direction = 0, Height = ZuneListRules.GroupHeadHeight, AlignItems = FlexAlign.End, Gap = ZuneListRules.GroupHeadGap,
             MinWidth = 0f, ClipToBounds = true, Visible = Prop.Of(() => head() is not null),
-            Padding = new Edges4(padX, 0f, padX, ZuneListRules.GroupHeadPadBottom),
+            // The group's name leads on the page's column with the chips, the header and the table (Z-Liked "this week" at the gutter), never on the
+            // rows' inner pad; the end keeps the rows' pad.
+            Padding = new Edges4(0f, 0f, padX, ZuneListRules.GroupHeadPadBottom),
             Children =
             [
                 // The group's name in the heading voice's light face at 22 (Z-Liked "this week 26"), its count beside it in the meta voice.

@@ -24,6 +24,7 @@ public sealed partial class ZuneStructure
     static partial void RegisterCollection(ViewRegistryBuilder views)
     {
         // Library.
+        views.AddStyle(StyleKeys.LibraryPlaylistHead, ZuneLibraryPlaylistHead.Style);
         views.Add(ViewKeys.LibraryPage, ZuneLibraryPage.Template, "zune.library.page");
         views.Add(ViewKeys.LibraryAlbumPane, ZuneLibraryAlbumPane.Template, "zune.library.album-pane");
         views.Add(ViewKeys.LibraryShowPane, ZuneLibraryShowPane.Template, "zune.library.show-pane");
