@@ -170,6 +170,11 @@ public static class ZuneDetailRules
     public static readonly LayoutTransition PanoramaFold = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ZuneMotion.TitleScaleMs, Easing.SmoothOut), Size: SizeMode.FlowReveal);
 
+    /// <summary>The list bar's insights toggle when the tier changes its edge (36 ↔ 40 at 3200 and 640): its box eases through real layout on both axes,
+    /// so the bar's trailing group keeps its height and its neighbours ride the width.</summary>
+    public static readonly LayoutTransition ToggleResize = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(ZuneMotion.ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Both);
+
     /// <summary>A mode crossing's arm cross-fade (the vertical arm ↔ the two-column arm).</summary>
     public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);
 
