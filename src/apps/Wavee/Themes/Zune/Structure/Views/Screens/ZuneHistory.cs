@@ -72,16 +72,26 @@ internal static class ZuneHistory
                 body,
             ],
         };
-        return ZuneFrameRules.PageRow(new BoxEl
+        // The panorama stands over the scroll, as Settings' does: it bleeds left of the gutter, which a scroll's clip would cut. The scroll spans the
+        // window's width with the page column inside it, so its bar's lane runs in the right gutter, never over the column's last target.
+        return new BoxEl
         {
             Key = "zh:page", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            // The panorama stands over the scroll, as Settings' does: it bleeds left of the gutter, which a scroll's clip would cut.
             Children =
             [
-                ZuneSettings.ScreenTitle(lay, Loc.Get(Strings.Nav.History.Title), TitleKey, wraps: false),
-                ScrollView(column) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Key = "zh:scroll" },
+                ZuneFrameRules.PageRow(new BoxEl
+                {
+                    Direction = 1, Shrink = 0f, MinWidth = 0f,
+                    Children = [ZuneSettings.ScreenTitle(lay, Loc.Get(Strings.Nav.History.Title), TitleKey, wraps: false)],
+                }, lay.Gutter),
+                // The title's zone steps on a crossing (54 / 84 / 124 / 160): the list under it eases to its new place, never jumps.
+                new BoxEl
+                {
+                    Key = "zh:list", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Animate = ZuneMotion.ColumnCollapse,
+                    Children = [ScrollView(ZuneFrameRules.PageRow(column, lay.Gutter)) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Key = "zh:scroll" }],
+                },
             ],
-        }, lay.Gutter);
+        };
     }
 
     // ── the head ─────────────────────────────────────────────────────────────────────────────────────────────────────────

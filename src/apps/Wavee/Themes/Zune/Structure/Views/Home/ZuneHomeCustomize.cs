@@ -60,7 +60,8 @@ internal static class ZuneHomeCustomize
             [
                 new BoxEl
                 {
-                    Key = "zc:meta", Direction = 0, AlignItems = FlexAlign.Center, Gap = U.HeadGap, MinWidth = 0f,
+                    // Its height steps with the link's target (40 at Compact): it eases, and the rows under it ride it.
+                    Key = "zc:meta", Direction = 0, AlignItems = FlexAlign.Center, Gap = U.HeadGap, MinWidth = 0f, Animate = ZuneMotion.HeightResize,
                     Margin = new Edges4(0f, ZuneSettingsRules.TitleBodyGap, 0f, U.HeadBottom),
                     Children =
                     [
@@ -72,16 +73,26 @@ internal static class ZuneHomeCustomize
                 reorder.List(new BoxEl { Key = "home-customize-list", Direction = 1, MinWidth = 0f, Children = rows }),
             ],
         };
-        return ZuneFrameRules.PageRow(new BoxEl
+        // The panorama stands over the scroll, as Settings' does: it bleeds left of the gutter, which a scroll's clip would cut. The scroll spans the
+        // window's width with the page column inside it, so its bar's lane runs in the right gutter, never over the rows' switches.
+        return new BoxEl
         {
             Key = "home-customize", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            // The panorama stands over the scroll, as Settings' does: it bleeds left of the gutter, which a scroll's clip would cut.
             Children =
             [
-                ZuneSettings.ScreenTitle(lay, Loc.Get(Strings.Home.Customizer.Title), TitleKey, wraps: true),
-                ScrollView(column) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = "home-customize", Key = "zc:scroll" },
+                ZuneFrameRules.PageRow(new BoxEl
+                {
+                    Direction = 1, Shrink = 0f, MinWidth = 0f,
+                    Children = [ZuneSettings.ScreenTitle(lay, Loc.Get(Strings.Home.Customizer.Title), TitleKey, wraps: true)],
+                }, lay.Gutter),
+                // The title's zone steps on a crossing: the list under it eases to its new place, never jumps.
+                new BoxEl
+                {
+                    Key = "zc:list", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Animate = ZuneMotion.ColumnCollapse,
+                    Children = [ScrollView(ZuneFrameRules.PageRow(column, lay.Gutter)) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = "home-customize", Key = "zc:scroll" }],
+                },
             ],
-        }, lay.Gutter);
+        };
     }
 
     internal sealed record RowProps(LayoutEntry Entry, int Index, int Count, Action<LayoutZone> Toggle, Action<int, int> Move);

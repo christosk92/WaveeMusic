@@ -140,7 +140,9 @@ internal static partial class ZuneSettings
             Key = key, Direction = 0, Shrink = 0f, MinWidth = 0f, Height = wraps ? float.NaN : lay.TitleH, Animate = ZuneMotion.TitleScale,
             // The page column pads the gutter; the panorama bleeds left of it by its optical inset (never past the column's edge).
             Margin = new Edges4(-MathF.Min(lay.Gutter, Z.PanoramaBleed), 0f, 0f, 0f),
-            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = wraps ? Z.SectionTitleLines : 1, Wrap = wraps ? TextWrap.WrapWholeWords : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, lay.TitleTop, 0f, 0f) }],
+            // A one-line title sits `TitleTop` into its fixed zone; a wrapping one hugs its lines from the top (a tier's step of the offset would move
+            // its hugged height at once on a crossing).
+            Children = [ZuneText.Cased(title, LabelKind.Heading) with { MaxLines = wraps ? Z.SectionTitleLines : 1, Wrap = wraps ? TextWrap.WrapWholeWords : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Margin = new Edges4(0f, wraps ? 0f : lay.TitleTop, 0f, 0f) }],
         };
     }
 
