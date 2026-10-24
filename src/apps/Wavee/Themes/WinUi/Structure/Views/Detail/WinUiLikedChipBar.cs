@@ -29,14 +29,16 @@ internal static class WinUiLikedChipBar
         var selectAll = p.SelectAll;
         var select = p.Select;
         string? selected = p.Selected;
+        // A crossing to or from Compact resizes every chip (32 ↔ 40): each keeps its node and reflows to its new box (audit B9).
+        LayoutTransition? arrange = Design.Reduced ? null : WinUiDiscoveryMotion.Reflow;
         var kids = new Element[p.Titles.Length + 1];
-        kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, selectAll, parts) with { Key = "chip:all" };
+        kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, selectAll, parts) with { Key = "chip:all", Layout = arrange };
         for (int i = 0; i < p.Titles.Length; i++)
         {
             string tag = p.Titles[i];
             bool on = string.Equals(tag, selected, StringComparison.OrdinalIgnoreCase);
             bool available = i < p.Evidenced;
-            kids[i + 1] = Controls.Chip(tag, on, available, available ? () => select(on ? null : tag) : null, parts) with { Key = "chip:" + tag };
+            kids[i + 1] = Controls.Chip(tag, on, available, available ? () => select(on ? null : tag) : null, parts) with { Key = "chip:" + tag, Layout = arrange };
         }
         if (!p.Inline) return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
 

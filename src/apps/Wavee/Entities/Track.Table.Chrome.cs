@@ -152,8 +152,14 @@ public readonly partial struct Track
             // and eases its own height, so it never moves the rows by a snap.
             if (HasUnavailableBar)
                 stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable" });
-            if (chips is not null && !pageBar && (vertical || _latest.ShowToolbar))
-                stack.Add(Gutter(chips) with { Key = "chrome:chips" });
+            // The chips stand in the page bar where the columns form draws one, else here: ONE slot in both forms whose height eases through real layout
+            // (audit B9: Liked's crossing moved the rows by the chips' 40 at once), the chips themselves cross-fading between their two places.
+            if (chips is not null && (vertical || _latest.ShowToolbar))
+                stack.Add(new BoxEl
+                {
+                    Key = "chrome:chips-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = ChromeResize,
+                    Children = pageBar ? [] : [Gutter(chips) with { Key = "chrome:chips" }],
+                });
             if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
             stack.Add(header);
             // The air under the header follows the bar above it: the two-column arm's, and the hero list's columns form, which draws the bar in its hero

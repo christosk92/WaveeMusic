@@ -608,6 +608,10 @@ public readonly partial struct Track
 
         /// <summary>The row skin's own transition (<see cref="s_rowResize"/>), none under reduced motion.</summary>
         internal LayoutTransition? RowResize => Design.Reduced ? null : s_rowResize;
+
+        /// <summary>A chrome slot whose height a crossing changes (the chips coming into the pinned chrome from the page bar): it eases through real layout,
+        /// the rows under it riding it (audit B9). None under reduced motion.</summary>
+        internal LayoutTransition? ChromeResize => Design.Reduced ? null : s_listResize;
         Snapshot _orderSeen;
         Track[] _curTracks = [], _prevTracks = [];
         StringId[] _curIds = [], _prevIds = [];
