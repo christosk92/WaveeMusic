@@ -314,8 +314,9 @@ public static class ZuneFrameRules
     /// <summary>The file-drop cue's plate padding (square, the raised plate, Z-Overlays' toast rhythm).</summary>
     public static readonly Edges4 FileDropPadding = new(24f, 14f, 24f, 14f);
 
-    /// <summary>The cover scrim's fade (0 under reduced motion).</summary>
-    public const float CoverScrimFadeMs = 250f;
+    /// <summary>The cover scrim's fade (0 under reduced motion) and its weight: Z-Setup sets the plate on a near-black room (the smoke's hue at 85 %; the
+    /// stock 30 % smoke left Home reading through it).</summary>
+    public const float CoverScrimFadeMs = 250f, CoverScrimA = 0.85f;
 
     // ── the content states and the page head ─────────────────────────────────────────────────────────────────────────────
 

@@ -10,8 +10,8 @@
 // pure builders over their args. The arithmetic the list agrees on row for row (the 48 rail, the 30 + 12 "episodes" header, the 14 + 24 + 4
 // month header, the gutters and the year strip's 30) is the core's `ShowReaderRules`: every picture states those heights on its elements.
 //
-// CASING. The words this file writes are lowered by the style's case roles (`R.Case`); a month word is culture text lowered by the core; a name
-// (a show, an episode) is never re-cased.
+// CASING. The words this file writes are lowered by the style's case roles (`R.Case`), the month word too (the core hands the culture's text as
+// written); a name (a show, an episode) is never re-cased.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -35,7 +35,10 @@ internal static partial class ZuneShow
 {
     /// <summary>The style Zune registers under <c>StyleKeys.ShowReader</c>. Stateless: every host and a test share it.</summary>
     public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
-        HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed);
+        HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
+    {
+        NarrowToolbarGlyph = NarrowControlEdge,
+    };
 
     /// <summary>Registers the show page's style.</summary>
     internal static void Register(ViewRegistryBuilder views) => views.AddStyle(StyleKeys.ShowReader, Style);
@@ -163,9 +166,11 @@ internal static partial class ZuneShow
         var stage = a.Stage;
         bool finding = a.Finding;
         float pad = a.Compact ? ShowReaderRules.PadNarrow : ShowReaderRules.Pad;
+        // The glyph controls' edge: the Compact 40 target under the narrow arm, the 30 glyph elsewhere (the stage rule sums the same number).
+        float edge = ShowToolbarLayout.GlyphEdge(a.Compact, NarrowControlEdge);
         // LEFT: the words at their natural width — or, at the last stage only, the menu that folds them.
         Element left = stage == ToolbarStage.FilterMenu
-            ? FilterMenu(a) with { Key = "tb:left" }
+            ? FilterMenu(a, edge) with { Key = "tb:left" }
             : FilterWords(a) with { Key = "tb:left" };
         // RIGHT: find · divider · sort · select, as far as the stage keeps them. An open find at a collapsed stage takes this very area over.
         var right = new List<Element>(4);
@@ -173,23 +178,23 @@ internal static partial class ZuneShow
         if (takeover)
         {
             right.Add(FindField(a, fill: true));
-            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind));
+            right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, a.CloseFind, edge));
         }
         else
         {
             right.Add(stage == ToolbarStage.Full
                 ? FindField(a, fill: false)
-                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind));
+                : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, a.OpenFind, edge));
             if (stage is ToolbarStage.Full or ToolbarStage.FindIcon)
             {
                 right.Add(RailDivider());
-                right.Add(Controls.Words.Rail(a.SortWords, a.Order, s_accent, onMeasured: a.OnSortMeasured));
+                right.Add(Controls.Words.Rail(a.SortWords, a.Order, s_accent, onMeasured: a.OnSortMeasured, restInk: ZuneTokens.WordRestNow));
             }
             else
             {
-                right.Add(SortMenu(a));
+                right.Add(SortMenu(a, edge));
             }
-            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting));
+            right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), a.IsSelecting, a.ToggleSelecting, edge));
         }
         var group = new BoxEl
         {
@@ -210,17 +215,17 @@ internal static partial class ZuneShow
     /// <summary>The filter words at their NATURAL width — a rail that never shrinks and never scrolls (the toolbar picks a stage only when they fit;
     /// the last stage folds them into <see cref="FilterMenu"/>). It reports its measure to the toolbar's stage rule.</summary>
     static Element FilterWords(ShowToolbarArgs a)
-        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured);
+        => Controls.Words.Rail(a.FilterWords, a.Status, s_accent, onMeasured: a.OnFiltersMeasured, restInk: ZuneTokens.WordRestNow);
 
     /// <summary>The last stage's words: ONE button saying the selected filter ("unplayed 320 ▾") whose menu holds the four as radio rows. The label
     /// and its count are binds over the model — the toolbar re-renders on stages, never on a selection or a count — and the accessible name is the
     /// control's, since the label alone cannot say what it is.</summary>
-    static Element FilterMenu(ShowToolbarArgs a)
+    static Element FilterMenu(ShowToolbarArgs a, float edge)
     {
         var overlay = a.Overlay;
         var box = new BoxEl
         {
-            Direction = 0, Gap = Spacing.XS, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Direction = 0, Gap = Spacing.XS, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             Corners = R.Shape.All(ShapeRole.Control), Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             ClickRequestsContext = true,
@@ -278,14 +283,14 @@ internal static partial class ZuneShow
     /// <summary>The ladder's last rung: the two sort words folded into ONE glyph whose menu holds them as radio rows. A menu is the narrow FALLBACK
     /// here, never the default — at <see cref="ToolbarStage.Full"/> and <see cref="ToolbarStage.FindIcon"/> the words are still words. Its
     /// accessible name is the sort in force, since the glyph alone cannot say it.</summary>
-    static Element SortMenu(ShowToolbarArgs a)
+    static Element SortMenu(ShowToolbarArgs a, float edge)
     {
         var order = a.Order;
         var overlay = a.Overlay;
         int current = order.Value;                                  // subscribe: the button is named after the sort in force
         var box = new BoxEl
         {
-            Width = ControlEdge, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = R.Shape.All(ShapeRole.Control), Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             ClickRequestsContext = true,
             Children = [Icon(Icons.Sort, ToggleGlyph) with { Color = Prop.Of(s_accent) }],
@@ -302,11 +307,12 @@ internal static partial class ZuneShow
 
     static string SortWordOf(int order) => Loc.Get(order == 1 ? Strings.Podcast.Sort.Oldest : Strings.Podcast.Sort.Newest);
 
-    /// <summary>A toolbar glyph toggle (the search collapse, the select arm): the core's stated glyph edge, the accent while ON.</summary>
-    static Element RailToggle(string glyph, string name, Func<bool> on, Action click)
+    /// <summary>A toolbar glyph toggle (the search collapse, the select arm): <paramref name="edge"/> square (the core's glyph edge, the Compact
+    /// target under the narrow arm), the accent while ON.</summary>
+    static Element RailToggle(string glyph, string name, Func<bool> on, Action click, float edge)
         => Controls.Named(new BoxEl
         {
-            Width = ControlEdge, Height = ControlEdge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Width = edge, Height = edge, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = R.Shape.All(ShapeRole.Control), Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = click,
             Children = [Icon(glyph, ToggleGlyph) with { Color = Prop.Of(() => on() ? R.Ink.AccentDecor : Tok.TextSecondary) }],
         }.Interactive(Interaction.Subtle), name);
@@ -355,7 +361,7 @@ internal static partial class ZuneShow
         };
     }
 
-    /// <summary>A month header (Z-Show: "october" 22 light): the culture's month word (lowered by the core) on the core's stated 24 line, 14 of air
+    /// <summary>A month header (Z-Show: "october" 22 light): the culture's month word (lowered by the heading case role) on the core's stated 24 line, 14 of air
     /// above it — none right under the "episodes" head.</summary>
     static Element Group(ShowGroupArgs a) => new BoxEl
     {
@@ -367,7 +373,7 @@ internal static partial class ZuneShow
             {
                 // On its exact 24 line (block stacking): the 22 light face's natural line box is 29, which the core's stated line clipped (text.trim).
                 Text = a.Month, LineHeight = ShowReaderRules.GroupLine, LineStacking = LineStacking.BlockLineHeight, Height = ShowReaderRules.GroupLine,
-                Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
+                Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f,
             },
             new BoxEl { Height = ShowReaderRules.GroupFoot },
         ],
@@ -403,7 +409,7 @@ internal static partial class ZuneShow
                         new TextEl(Prop.Of(() => global::Wavee.Show.MonthWordOf(monthKey.Value)))
                         {
                             Size = R.Type.MicroMeta("").Size, LineHeight = R.Type.MicroMeta("").LineHeight,
-                            Weight = 600, Color = Tok.TextTertiary, MaxLines = 1,
+                            Weight = 600, Case = R.Case.For(LabelKind.Label), Color = Tok.TextTertiary, MaxLines = 1,
                         },
                     ],
                 },

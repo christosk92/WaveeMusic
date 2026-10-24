@@ -86,8 +86,8 @@ internal static class ZuneSurface
 
     /// <summary>The STACK body: the cover stack (art · [overlay] · [corner "..."]) over the label block, at the shelf's inner width or the grid's
     /// fluid fill (the same geometry `SurfaceGeometry` sums for the seed).</summary>
-    static Element StackBody(Controls.CardData d, in SurfaceShape s, float width, bool overlay, bool chrome, bool hasMenu,
-                             Action? onPlay, Element? labels = null)
+    static Element StackBody(Controls.CardData d, in SurfaceShape s, float width, IReadSignal<float>? liveWidth, bool overlay, bool chrome,
+                             bool hasMenu, Action? onPlay, Element? labels = null)
     {
         bool circular = Controls.CoverShape.IsCircular(d.Circular, d.CoverAspect);
         Element? fab = overlay
@@ -117,27 +117,41 @@ internal static class ZuneSurface
         }
 
         // A SHELF card (A5): no plate padding, so the art is the card's whole width and stands at the heading's x; the caption 6 under it, the
-        // hover a wash over the art alone. The host's `labels` were laid for the padded inner width, so the block is built here at the full one;
-        // the slack under it keeps the card exactly as tall as the core's estimate and seed face.
-        float coverH = SurfaceGeometry.CoverHeight(width, d.CoverAspect);
+        // hover a wash over the art alone. The slack under it keeps the card exactly as tall as the core's estimate and seed face.
+        // Every size is BOUND to the host's live card width (audit B3bc): a width change re-lays the card out and re-renders nothing. The art
+        // and its plate fill the cover box (layers of no size), so a circle is the full radius; the label block is width-free (its column sizes it).
+        var (coverW, coverH) = SurfaceParts.ShelfCover(width, liveWidth, 0f, d.CoverAspect);
         bool square = d.CoverAspect == 1f;
+        float radius = circular ? Radii.Full : R.Shape.Cover;
         Element art = d.CoverOverride
-            ?? Controls.Artwork(d.CoverUrl, width, coverH, circular ? width / 2f : R.Shape.Cover,
+            ?? Controls.Artwork(d.CoverUrl, float.NaN, float.NaN, radius,
                                 decodePx: square ? Controls.ShelfDecodePx : Controls.WideDecodePx);
         if (!PlateRules.Of(s.Plate).HasRootFill)
         {
             var plate = PlateOf(s.Plate);
             art = new BoxEl
             {
-                ZStack = true, Width = width, Height = coverH, Shrink = 0f,
-                Children = [art, PlateBox(in plate, CornerRadius4.All(circular ? width / 2f : R.Shape.Cover)) with { Grow = 0f, Width = width, Height = coverH }],
+                ZStack = true, Shrink = 0f,
+                Children = [art, PlateBox(in plate, CornerRadius4.All(radius)) with { Grow = 0f }],
             };
         }
+        float aspect = d.CoverAspect;
+        // A square cover's slack is the same at every width (2): static, so a derived skeleton keeps it. Only a wide cover's rounding moves it.
+        Prop<float> slack = liveWidth is null || aspect == 1f
+            ? ZuneListRules.ShelfSlack(width, aspect)
+            : Prop.Of(() => ZuneListRules.ShelfSlack(liveWidth.Value, aspect));
         return new BoxEl
         {
-            Direction = 1, Gap = ZuneListRules.ShelfCaptionGap, Grow = 1f, Key = ZuneListRules.ShelfBodyKey,
-            Padding = new Edges4(0f, 0f, 0f, ZuneListRules.ShelfSlack(width, d.CoverAspect)),
-            Children = [Controls.CardCover(art, width, coverH, circular, fab, corner), Labels(d, in s, width)],
+            Direction = 1, Grow = 1f, Key = ZuneListRules.ShelfBodyKey,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, Gap = ZuneListRules.ShelfCaptionGap,
+                    Children = [Controls.CardCover(art, coverW, coverH, aspect, circular, fab, corner), labels ?? Labels(d, in s, float.NaN)],
+                },
+                new BoxEl { Height = slack, Shrink = 0f, HitTestVisible = false },
+            ],
         };
     }
 

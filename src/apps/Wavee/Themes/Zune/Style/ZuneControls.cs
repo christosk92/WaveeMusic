@@ -70,11 +70,12 @@ public static class ZuneControls
         .With(ControlStyles.SelectorBarStyle, SubPivots)
         .With(ControlStyles.ToastLaneStyle, Toasts)
         .With(ControlStyles.PersonPictureStyle, Avatar)
-        .With(ControlStyles.AutoSuggestBoxSuggestionsPlate, SuggestionsPlate);
+        .With(ControlStyles.AutoSuggestBoxSuggestionsPlate, PanelPlate)
+        .With(ControlStyles.PopupPlateStyle, PanelPlate);
 
-    /// <summary>The search suggestions' plate (Z-Overlays): the menu's solid square plate, no frost (cards never bleed through), the rows bringing
-    /// their own 4 above and below.</summary>
-    public static PopupPlate SuggestionsPlate() => MenuPlate() with { Padding = default };
+    /// <summary>A popup panel's plate (Z-Overlays: the search suggestions, the notifications, the device picker, the volume): the menu's solid square
+    /// plate, no frost (the page never shows through), the panel or the rows bringing their own padding.</summary>
+    public static PopupPlate PanelPlate() => MenuPlate() with { Padding = default };
 
     /// <summary>The least initials size of an imageless avatar: the type floor (a 24 owner disc's 42 % is 10.08, under it).</summary>
     public const float InitialsFloor = 11f;
@@ -233,7 +234,7 @@ public static class ZuneControls
     {
         PlateFill = Tok.FillLayerAlt, PlateBorderWidth = 0f, Radius = 0f, Shadow = Elevation.Dialog,
         MaxWidth = 548f,
-        ContentPadding = new Edges4(24f, 24f, 24f, 24f), ContentFill = Tok.FillLayerAlt,
+        ContentPadding = new Edges4(24f, 24f, 24f, 24f), ContentFill = Tok.FillLayerAlt, ContentEdgeFade = true,   // a body taller than the card bleeds behind a fade
         TitleSize = 26f, TitleWeight = 300, TitleColor = Tok.TextPrimary, TitleGap = 14f, TitleCase = TextCase.Lower, CommandCase = TextCase.Lower, CommandButton = ZuneOverlayParts.DialogCommand,
         TitleTrailing = OverlayFit.Layout.Dialog.CloseMark ? ZuneOverlayParts.CloseMark : null,   // Z-Dialogs: "report a problem" (a title with a name sets ContentDialog.TitleLiteral)
         MessageSize = 14f, MessageColor = Tok.TextPrimary,

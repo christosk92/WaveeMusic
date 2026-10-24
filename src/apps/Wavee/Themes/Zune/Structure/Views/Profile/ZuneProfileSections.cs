@@ -78,7 +78,7 @@ internal static class ZuneProfileSections
         Children =
         [
             PagedShelf.Create(items, cardAt, onInvoke: s_open, cardHeight: s_cardHeight, header: header, keyOf: s_keyOf,
-                pager: ShelfPager.Chevrons, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: H.ShelfGap,
+                pager: ShelfPager.Chevrons | ShelfPager.WhenPaged, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: H.ShelfGap,
                 headerGap: H.HeadGap, snap: ShelfSnap.Page, edgeFade: HomeModuleLayout.ShelfEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None) with { Key = "zune-profile-shelf" },
         ],

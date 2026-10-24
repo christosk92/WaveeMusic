@@ -230,8 +230,9 @@ public static class ZunePanelBodies
 
     // ── the lyrics peek ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Two 28 rows (the sung line, the next at 0.4) on a 2-px square accent spine 12 from the text.</summary>
-    public const float PeekRowH = 28f, PeekReelH = PeekRowH * 2f, PeekSpineW = 2f, PeekGap = 12f, PeekOpacity = 0.4f, PeekNoteSize = 12f;
+    /// <summary>Two 30 rows (the sung line, the next at 0.4: the 22/28 lyric voice centred with a DIP of room either side, since each row clips its line for
+    /// the flip and a descender's ink runs past the 28 line box) on a 2-px square accent spine 12 from the text.</summary>
+    public const float PeekRowH = 30f, PeekReelH = PeekRowH * 2f, PeekSpineW = 2f, PeekGap = 12f, PeekOpacity = 0.4f, PeekNoteSize = 12f;
 
     // ── friends ───────────────────────────────────────────────────────────────────────────────────────────────────
 

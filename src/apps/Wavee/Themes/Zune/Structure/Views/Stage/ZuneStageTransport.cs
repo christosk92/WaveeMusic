@@ -201,11 +201,12 @@ internal static class ZuneStageTransport
                 Children = [kit.Mute(), kit.Volume(), new BoxEl { Grow = 1f, MinWidth = 0f }, kit.Device(), kit.More()],
             });
         var controls = new BoxEl { Direction = 1, Padding = new Edges4(0f, seekTop, 0f, 0f), Children = rows.ToArray() };
-        // "playing from … · next …" on the column's top line (the column's lyrics take the room of the board's next row)
-        var source = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [kit.Source(), kit.Next(ZuneStageNext.Form.Inline)] };
-        var kids = new List<Element>(3)
+        // "playing from …" on the column's top line and the "next" row under it (Z-NowPlaying-LargeArt: the thumb, "next" over the words); the
+        // arrangement reserves the row, so the lyrics pane starts under it whatever the queue holds
+        var kids = new List<Element>(4)
         {
-            Placed(kit, a.Source, source, "stage:transport:source"),
+            Placed(kit, a.Source, kit.Source(), "stage:transport:source"),
+            Placed(kit, a.Next, kit.Next(ZuneStageNext.Form.Row), "stage:transport:next"),
             Placed(kit, a.Controls, controls, "stage:transport:controls"),
         };
         if (!volumeRow)
@@ -292,6 +293,8 @@ internal static class ZuneStageTransport
             [
                 Placed(kit, a.Source, kit.Source(), "stage:transport:source"),
                 Placed(kit, a.Controls, controls, "stage:transport:controls"),
+                // the Compact board's "up next" bar across the foot: the door to the Up next pivot
+                Placed(kit, a.Next, kit.Next(ZuneStageNext.Form.Bar, () => st.SetMode(Stage.Mode.Queue)), "stage:transport:next"),
             ],
         };
     }
@@ -374,8 +377,8 @@ internal static class ZuneStageTransport
         }
 
         /// <summary>The track up next in <paramref name="form"/>: its own component, so a queue change re-renders it alone. Nothing without a next track.</summary>
-        public Element Next(ZuneStageNext.Form form) => props.Next is { } next
-            ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine), static () => new ZuneStageNext())
+        public Element Next(ZuneStageNext.Form form, Action? open = null) => props.Next is { } next
+            ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine) { Open = open }, static () => new ZuneStageNext())
             : new BoxEl { HitTestVisible = false };
 
         /// <summary>shuffle · previous · the disc · next · repeat, the gap apart.</summary>
@@ -467,14 +470,20 @@ internal static class ZuneStageTransport
     }
 }
 
-/// <summary>The track up next (contract 1.57): its own component, so the queue moving re-renders it alone. Three forms from the boards: the
+/// <summary>The track up next (contract 1.57): its own component, so the queue moving re-renders it alone. The forms from the boards: the
 /// Centered foot's line ("next · Get Lucky · Daft Punk", Z-NowPlaying-Centered), the Card arrangement's card (the thumb flush in a flat plate,
-/// "next" over the line, Z-NowPlaying-Card) and the Large art column's tail to its "playing from …" line. Nothing up next: nothing drawn.</summary>
+/// "next" over the line, Z-NowPlaying-Card), the Large art column's row (the thumb, "next" over the line, no plate, Z-NowPlaying-LargeArt), the
+/// Compact stack's bar across the foot ("up next", a chevron, the door to the Up next pivot, Z-NowPlaying-Compact). Nothing
+/// up next: nothing drawn.</summary>
 internal sealed class ZuneStageNext : Component
 {
-    public enum Form : byte { Line, Card, Inline }
+    public enum Form : byte { Line, Card, Row, Bar }
 
-    public sealed record Props(Func<StageNextFacts> Next, Form Shape, float Size, float Line);
+    public sealed record Props(Func<StageNextFacts> Next, Form Shape, float Size, float Line)
+    {
+        /// <summary>The bar's door (Bar only).</summary>
+        public Action? Open { get; init; }
+    }
 
     public override Element Render()
     {
@@ -504,8 +513,29 @@ internal sealed class ZuneStageNext : Component
                 ],
             };
         }
+        if (p.Shape == Form.Row)
+        {
+            float k = G.NextScale(p.Size), thumb = G.NextThumb * k;
+            return new BoxEl
+            {
+                Height = thumb, Direction = 0, AlignItems = FlexAlign.Center, Gap = G.NextTextGap * k, MinWidth = 0f, Shrink = 1f, HitTestVisible = false,
+                Children =
+                [
+                    Controls.Artwork(n.ArtUrl, thumb, thumb, 0f, decodePx: G.CoverDecodeSmall),
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f, Shrink = 1f,
+                        Children =
+                        [
+                            new TextEl(label) { Size = G.NextEyebrowSize * k, LineHeight = G.NextEyebrowLine * k, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 },
+                            Words(n, p.Size, p.Line),
+                        ],
+                    },
+                ],
+            };
+        }
+        if (p.Shape == Form.Bar) return Bar(n, p);
         var kids = new List<Element>(4);
-        if (p.Shape == Form.Inline) kids.Add(Dot(p));
         kids.Add(new TextEl(label) { Size = p.Size, LineHeight = p.Line, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Shrink = 0f });
         kids.Add(Dot(p));
         kids.Add(Words(n, p.Size, p.Line));
@@ -514,14 +544,42 @@ internal sealed class ZuneStageNext : Component
 
     static TextEl Dot(Props p) => new(" · ") { Size = p.Size, LineHeight = p.Line, Color = Ink.InkTertiary, Shrink = 0f };
 
+    /// <summary>Z-NowPlaying-Compact's foot: the plate across the stage, the thumb at the gutter, "up next" over the words, the chevron at the
+    /// right gutter. The whole bar is the door to the Up next pivot.</summary>
+    static Element Bar(StageNextFacts n, Props p)
+    {
+        var open = p.Open;
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 0, AlignItems = FlexAlign.Center, Gap = G.NextBarGap, Padding = new Edges4(G.NextBarGap, 0f, G.NextBarGap, 0f),
+            Fill = R.Layer.PlayerBar, HoverFill = R.Layer.PlayerBar, PressedFill = R.Layer.PlayerBar,
+            Role = AutomationRole.Button, Focusable = open is not null, AllowFocusOnInteraction = false, OnClick = open,
+            Cursor = open is null ? (CursorId?)null : CursorId.Hand,
+            Children =
+            [
+                Controls.Artwork(n.ArtUrl, G.NextBarThumb, G.NextBarThumb, 0f, decodePx: G.CoverDecodeSmall),
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, MinWidth = 0f, Shrink = 1f,
+                    Children =
+                    [
+                        new TextEl(Loc.Get(Strings.Stage.Mode.Queue)) { Size = G.NextEyebrowSize, LineHeight = G.NextEyebrowLine, Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1 },
+                        Words(n, G.NextBarWordSize, G.NextBarWordLine, semibold: true),
+                    ],
+                },
+                new TextEl(Icons.ChevronRight) { Size = G.NextBarChevron, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary, Shrink = 0f },
+            ],
+        };
+    }
+
     /// <summary>"Get Lucky · Daft Punk": the title in the ink, the artists in the secondary ink, one line that gives way at the artists first.</summary>
-    static Element Words(StageNextFacts n, float size, float line) => new BoxEl
+    static Element Words(StageNextFacts n, float size, float line, bool semibold = false) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
         Children = n.Artists is { Length: > 0 } artists
             ?
             [
-                new TextEl(n.Title!) { Size = size, LineHeight = line, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                new TextEl(n.Title!) { Size = size, LineHeight = line, Color = Ink.Ink, Weight = (ushort)(semibold ? 600 : 400), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
                 new TextEl(" · " + artists) { Size = size, LineHeight = line, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 2f },
             ]
             : [new TextEl(n.Title!) { Size = size, LineHeight = line, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
@@ -614,7 +672,11 @@ internal sealed class ZuneStageDevice : Component
             MaxWidth = ZuneStageGeometry.DeviceMaxW, Shrink = 1f, MinWidth = MathF.Max(ZuneStageGeometry.DeviceMinW, p.Height),
             Children =
             [
-                new TextEl(device.Name) { Size = p.Size, LineHeight = p.Line, Color = Ink.InkSecondary, HoverColor = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                new TextEl(device.Name)
+                {
+                    Size = p.Size, LineHeight = p.Line, Color = Ink.InkSecondary, HoverColor = Ink.Ink, Case = device.Word ? R.Case.For(LabelKind.Label) : TextCase.AsWritten,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                },
                 new TextEl(Icons.ChevronDown) { Size = ZuneStageGeometry.ChevronGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
             ],
         };

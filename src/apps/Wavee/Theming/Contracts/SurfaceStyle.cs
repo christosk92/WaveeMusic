@@ -14,6 +14,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
@@ -26,9 +27,11 @@ internal delegate BoxEl SurfaceShellTemplate(Element content, in SurfaceShape s,
 internal delegate BoxEl SurfaceSelectedTemplate(BoxEl shell, Func<ColorF>? accent);
 
 /// <summary>Draws the STACK body (a shelf or grid card): the cover stack (art, the now-playing overlay, the corner "...") over the label
-/// block. <paramref name="labels"/> is the host's cached label block (built here when null).</summary>
-internal delegate Element SurfaceStackBodyTemplate(Controls.CardData d, in SurfaceShape s, float width, bool overlay, bool chrome,
-                                                   bool hasMenu, Action? onPlay, Element? labels);
+/// block. <paramref name="labels"/> is the host's cached label block (built here when null). <paramref name="liveWidth"/> is the shelf
+/// card's width as the host's signal (null on a grid card): a shelf body BINDS its sizes to it, so a new card width (every tick of a
+/// docking pane's reflow) re-lays the card out and re-renders nothing (audit B3bc). <paramref name="width"/> is its value now.</summary>
+internal delegate Element SurfaceStackBodyTemplate(Controls.CardData d, in SurfaceShape s, float width, IReadSignal<float>? liveWidth,
+                                                   bool overlay, bool chrome, bool hasMenu, Action? onPlay, Element? labels);
 
 /// <summary>Draws the ROW body: the art square, the text column and the trailing cluster, with the "..." as a hover overlay or a
 /// reserved lane. <paramref name="text"/> is the host's cached text column (built here when null).</summary>

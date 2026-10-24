@@ -283,6 +283,15 @@ internal sealed class ZuneStageUpNextColumn : Component
 
     // ── the rows ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The row's number on the page (Z-Queue-Page): its place among the upcoming rows, counted on across the sections ("next in queue" 1, 2,
+    /// "next up" 3...), never its flat index in the queue, which counts the track on the deck.</summary>
+    int Ordinal(in QueueRowProps row) => row.Position + 1 + row.Section switch
+    {
+        QueueSection.Queue => 0,
+        QueueSection.NextUp => _queue.Counts.Queue,
+        _ => _queue.Counts.Queue + _queue.Counts.NextUp,
+    };
+
     Element Row(QueueStagePaneProps props, in QueueRowProps row)
     {
         var lane = props.Lane;
@@ -298,7 +307,7 @@ internal sealed class ZuneStageUpNextColumn : Component
                 Width = Px(_q.NumberW), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(Px(_q.NumberPadL), 0f, 0f, 0f), HitTestVisible = false,
                 Children =
                 [
-                    new TextEl(FormatCache.Int(index + 1))
+                    new TextEl(FormatCache.Int(Ordinal(in row)))
                     {
                         Size = Px(_q.NumberSize), LineHeight = Px(_q.NumberLine), Weight = UR.NumberWeight, FontFamily = R.Type.DisplayFace,
                         Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap,

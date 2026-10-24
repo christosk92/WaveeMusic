@@ -38,6 +38,10 @@ public static class ClassicVideoRules
     /// <summary>The fullscreen band's height and its inset (the title's left edge adds a small step; the exit plate sits at the right).</summary>
     public const float FullscreenBandH = 56f, BandInset = 12f, FullscreenBandTop = 12f;
 
+    /// <summary>The fullscreen band's opacity at rest: hover-revealed (production), drawn at rest when the inspector holds the chrome shown
+    /// (`mount chrome=shown`: an agent has no pointer; Zune's and WinUI's video rules do the same through their tier records).</summary>
+    public static float FullscreenBandRest => Wavee.Theming.InspectSwitches.HoverChromeAtRest ? 1f : 0f;
+
     /// <summary>The title's size (the fullscreen band and the pop-out band).</summary>
     public const float TitleSize = 15f;
 

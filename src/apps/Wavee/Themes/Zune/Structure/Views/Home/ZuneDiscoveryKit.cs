@@ -201,7 +201,8 @@ internal static class ZuneDiscoveryKit
             [
                 (hero ? R.Type.HeroTitle(name) : big ? R.Type.QuickplayHead(name) : R.Type.TrackTitle(name)) with
                 {
-                    Color = labelInk, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    // A category's name is a destination word in Zune's voice (Z-Browse: "charts", "podcast charts", "at home").
+                    Color = labelInk, Case = R.Case.For(LabelKind.Navigation), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
             ],
         });

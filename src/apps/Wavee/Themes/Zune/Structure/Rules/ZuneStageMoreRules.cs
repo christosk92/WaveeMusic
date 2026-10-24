@@ -7,6 +7,7 @@
 // stays as the stage has it. Literal numbers are allowed here (WVTH003 exempts `Rules\**`); the classes are public so `Wavee.Tests` and the
 // mounted tests read them (the assembly has no InternalsVisibleTo).
 
+using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -41,6 +42,111 @@ public static class ZuneStageHeroRules
 
     /// <summary>The name's size for a stage <paramref name="stageH"/> tall.</summary>
     public static float NameSize(float stageH) => Math.Clamp(MathF.Round(NameFrac * stageH), NameMin, NameMax);
+
+    // ── the board's arrangement (wide stages, the lyrics off: `ZuneStageForm.Artist`) ───────────────────────────────────────
+    // Z-NowPlaying-Artist at 1440 x 900: the identity in a flat plate under the head (48, 72, 420 x 120, padding 16, the 88 cover 16 from the
+    // words), "about the artist" at the right gutter (88 from the top, 340 wide), and the name across the foot at 300, its line box 600..900
+    // cut at the plate's top (788): 188 of its 300 show. Every length scales with the core's Artist unit (H / 900, 1 to 1.5).
+
+    /// <summary>The plate: its gap under the head, its width, padding, cover and the cover's gap to the words; the veil it lays (0.6).</summary>
+    public const float PlateTop = 24f, PlateW = 420f, PlatePad = 16f, PlateArt = 88f, PlateArtGap = 16f, PlateShade = 0.6f;
+
+    /// <summary>The plate's words: the title 22/28 at 300 in the display face, the artist line 14/20, 4 apart.</summary>
+    public const float PlateTitleSize = 22f, PlateTitleLine = 28f, PlateMetaSize = 14f, PlateMetaLine = 20f, PlateTextGap = 4f;
+
+    /// <summary>"about the artist": its top under the head, its width, the most bio lines it shows (the board's three), and the room the block
+    /// takes (the heading, the three lines, the actions) that the name must clear.</summary>
+    public const float AboutTop = 40f, AboutW = 340f, AboutRoomH = 168f;
+
+    public const int AboutLines = 3;
+
+    /// <summary>The board's name: a third of the stage's height (300 at 900, never above 300); its line box shows this share of the size above the
+    /// cut (188 / 300); it fades out over this share of the size into the cut, so the cut reads as the board's sink, never as a hard line.</summary>
+    public const float BoardNameFrac = 1f / 3f, BoardNameShowEm = 188f / 300f, BoardNameFadeEm = 0.2f;
+
+    /// <summary>The board name's size for a stage <paramref name="stageH"/> tall.</summary>
+    public static float BoardNameSize(float stageH) => Math.Clamp(MathF.Round(BoardNameFrac * stageH), NameMin, NameMax);
+
+    // ── the lyrics over the photo: the adaptive boost (audit B3bc) ─────────────────────────────────────────────────────────────
+    // The left veil (LyricsLeft*) is tuned for an average photo; over a bright one the sung line in the accent read 2.3:1. A black boost over the
+    // lyrics pane is SOLVED per photograph (MediaScrim, the band's V14 recipe): the least darkening that brings the accent to large text's ratio
+    // against the photo's bright tail under each slice of the pane, after the left veil there. It fades out past the pane, so the photo stays a photo.
+
+    /// <summary>The slices the pane is judged in (the veil thins to the right), the boost's ceiling and its fade past the pane (a share of W).</summary>
+    public const int BoostSlices = 6;
+
+    public const float BoostCeiling = 0.85f, BoostFadeFrac = 0.16f;
+
+    /// <summary>The left veil's alpha at <paramref name="u"/> (0 the left edge, 1 the right), as its gradient draws it.</summary>
+    public static float LyricsLeftAt(float u)
+    {
+        if (u <= LyricsLeftMidStop) return LyricsLeftA + (LyricsLeftMidA - LyricsLeftA) * (u / LyricsLeftMidStop);
+        if (u <= LyricsLeftFarStop) return LyricsLeftMidA + (LyricsLeftFarA - LyricsLeftMidA) * ((u - LyricsLeftMidStop) / (LyricsLeftFarStop - LyricsLeftMidStop));
+        return LyricsLeftFarA * (1f - Math.Clamp((u - LyricsLeftFarStop) / (1f - LyricsLeftFarStop), 0f, 1f));
+    }
+
+    /// <summary>The boost's opacity (0..<see cref="BoostCeiling"/>) over the pane <paramref name="left"/>..<paramref name="right"/> x
+    /// <paramref name="top"/>..<paramref name="bottom"/> of a <paramref name="w"/> x <paramref name="h"/> stage whose photo (measured as
+    /// <paramref name="map"/>) is cover-fitted at <paramref name="focusX"/>, so <paramref name="ink"/> reaches <paramref name="need"/> (with the solve's headroom).</summary>
+    public static float LyricsBoost(MediaScrim.LumaMap map, float w, float h, float focusX, float left, float top, float right, float bottom, ColorF ink, float need)
+        => Boost(map, w, h, focusX, left, top, right, bottom, ink, need, leftVeil: true);
+
+    /// <summary>The darkening a region of words over the photo needs: the same solve over the region's rect for <paramref name="ink"/> at
+    /// <paramref name="need"/>, over a uniform <paramref name="floor"/> veil already under it ("about the artist" and the head: their dimmest words in
+    /// the secondary ink, the follow glyph in the accent, body text at 4.5 : 1, with no veil judged under them (the board's top wash is clear by the
+    /// block, and thin over the head); the name, large text at 3 : 1; the identity's plate, its words over the plate's own veil).</summary>
+    public static float RegionBoost(MediaScrim.LumaMap map, float w, float h, float focusX, float left, float top, float right, float bottom, ColorF ink, float need,
+        float floor = 0f)
+        => Boost(map, w, h, focusX, left, top, right, bottom, ink, need, leftVeil: false, floor);
+
+    /// <summary>How far the hero's Ken Burns can carry the photo under a fixed point of an <paramref name="extent"/>-long axis: half the zoom's growth
+    /// (<see cref="Stage.HeroRules.ScaleTo"/>) plus the pan's travel (<see cref="KenBurnsPan"/>, the core's `HeroRules.Pan`: 2.5 % of the width, at most
+    /// 1 % of the height; the larger is taken on both axes).</summary>
+    public static float KenBurnsReach(float extent) => ((Stage.HeroRules.ScaleTo - 1f) / 2f + KenBurnsPan) * extent;
+
+    public const float KenBurnsPan = 0.025f;
+
+    /// <summary>A region veil feathers over this much on its inner edges (a share of the gutter).</summary>
+    public const float AboutVeilFeather = 3f;
+
+    static float Boost(MediaScrim.LumaMap map, float w, float h, float focusX, float left, float top, float right, float bottom, ColorF ink, float need, bool leftVeil,
+        float floor = 0f)
+    {
+        need *= MediaScrim.Headroom;
+        // the photo drifts under the words (the hero's Ken Burns: up to 10 % zoom about the centre and the pan's travel): judge every part of it
+        // that can pass under them, so the solve holds through the whole loop
+        float reachX = KenBurnsReach(w), reachY = KenBurnsReach(h);
+        left -= reachX; right += reachX; top -= reachY; bottom += reachY;
+        float boost = 0f;
+        for (int i = 0; i < BoostSlices; i++)
+        {
+            float x0 = left + (right - left) * i / BoostSlices, x1 = left + (right - left) * (i + 1) / BoostSlices;
+            float grey = MediaScrim.GreyAt(map, CoverUv(map.Aspect, w, h, focusX, x0, top, x1, bottom), MediaScrim.Percentile);
+            float under = grey * (1f - (leftVeil ? LyricsLeftAt(x1 / MathF.Max(1f, w)) : floor));   // the left veil is thinnest at the slice's right edge
+            if (MediaScrim.Contrast(ink, under) >= need) continue;
+            float lo = 0f, hi = 1f;
+            for (int k = 0; k < 20; k++)
+            {
+                float mid = (lo + hi) / 2f;
+                if (MediaScrim.Contrast(ink, under * (1f - mid)) >= need) hi = mid; else lo = mid;
+            }
+            boost = MathF.Max(boost, hi);
+        }
+        return MathF.Min(boost, BoostCeiling);
+    }
+
+    /// <summary>The image-space rectangle a box region shows of a photo cover-fitted into the stage with its crop at <paramref name="focusX"/>
+    /// (0 left, 1 right) and centred vertically, as the hero's image draws it.</summary>
+    static (float U0, float V0, float U1, float V1) CoverUv(float imageAspect, float w, float h, float focusX, float left, float top, float right, float bottom)
+    {
+        float boxAspect = w / MathF.Max(1f, h);
+        float su = 1f, sv = 1f;
+        if (imageAspect > boxAspect) su = boxAspect / imageAspect;
+        else sv = imageAspect / boxAspect;
+        float u0 = (1f - su) * Math.Clamp(focusX, 0f, 1f), v0 = (1f - sv) / 2f;
+        return (u0 + su * Math.Clamp(left / MathF.Max(1f, w), 0f, 1f), v0 + sv * Math.Clamp(top / MathF.Max(1f, h), 0f, 1f),
+                u0 + su * Math.Clamp(right / MathF.Max(1f, w), 0f, 1f), v0 + sv * Math.Clamp(bottom / MathF.Max(1f, h), 0f, 1f));
+    }
 }
 
 /// <summary>The Artist pane ("about the artist", Z-NowPlaying-Artist, and the sections no board draws, built from Zune's parts).</summary>

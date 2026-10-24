@@ -577,7 +577,8 @@ public static partial class Diagnostics
 
         /// <summary>playing.status (visual.md 2, 6): the now-playing surfaces disagree with the player. While it holds a track (playing or
         /// paused), a run reading "Nothing playing" (the device picker's "nothing playing" while a track plays), or a source line the stage
-        /// keeps empty (`stage:transport:source`: the board's "playing from ..." is blank). Needs the player's phase (a live capture).</summary>
+        /// keeps empty (`stage:transport:source`: the board's "playing from ..." is blank) while the player plays from a context it could name
+        /// (a context-less play has no source to show: audit B3bc). Needs the player's phase (a live capture).</summary>
         static int PlayingStatusRule(Snapshot s, List<Finding> into)
         {
             if (s.Playing is not ("playing" or "paused")) return 0;
@@ -592,7 +593,7 @@ public static partial class Diagnostics
                     looked++;
                     if (string.Equals(t.String.Trim(), "nothing playing", StringComparison.OrdinalIgnoreCase)) idle.Add(n);
                 }
-                else if (n.Key is { } key && key.StartsWith("stage:", StringComparison.Ordinal) && key.EndsWith(":source", StringComparison.Ordinal)
+                else if (s.PlayingFromContext && n.Key is { } key && key.StartsWith("stage:", StringComparison.Ordinal) && key.EndsWith(":source", StringComparison.Ordinal)
                          && n.Rect.W >= 40f && n.TextCount == 0)
                 {
                     looked++;
@@ -674,7 +675,8 @@ public static partial class Diagnostics
 
         /// <summary>edge.window (winui.md 5.8): content laid out past the window's right edge: a node that holds words or a target, starts inside
         /// the window and ends 2 DIP or more past it, outside any rail (a horizontal scroller reveals its overflow) and not cut inside the window by
-        /// a clipping ancestor (that is text.clip's). WinUI's Small artist reader laid `verbs:row` out to x840 in an 800 window. The topmost such
+        /// a clipping ancestor (that is text.clip's), and not dissolved by a fade on its right edge that ends at the window (an intended bleed:
+        /// the Zune Large art title, audit B3bc). WinUI's Small artist reader laid `verbs:row` out to x840 in an 800 window. The topmost such
         /// node speaks for its subtree.</summary>
         static int PastWindowRule(Snapshot s, List<Finding> into)
         {
@@ -688,10 +690,12 @@ public static partial class Diagnostics
                 if (n.TextCount == 0 && !n.Interactive) continue;
                 if (n.Rect.X >= s.Width - 1f || n.Rect.Right <= s.Width + 2f || n.Rect.W > s.Width) continue;
                 looked++;
-                bool cut = false;
+                // a fade on the right edge that ends at the window feathers the overflow out: the bleed is designed
+                bool cut = Fades(n, EdgeMask.Right) && n.Rect.Right <= s.Width + 1f;
                 for (int a = n.Parent; a >= 0 && !cut; a = nodes[a].Parent)
                 {
                     Node up = nodes[a];
+                    if (Fades(up, EdgeMask.Right) && up.Rect.Right <= s.Width + 1f) cut = true;
                     // a clip INSIDE the window cuts it (text.clip's); one at the window's own edge (the content card, the frame) is the window
                     if ((up.Clips || up.ScrollAxis != 0 || !up.ClipRect.IsInfinite) && up.Rect.Right < s.Width - 1f && up.Rect.Right < n.Rect.Right - 1f) cut = true;
                     if (up.ScrollAxis == 1) cut = true;

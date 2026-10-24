@@ -380,6 +380,10 @@ public static class ZuneDetailRules
             ? MathF.Min(pageWidth, Math.Clamp(MathF.Floor(pageWidth * SheetFraction), SheetMinW, SheetMaxW))
             : SheetMinW;
 
+    /// <summary>The Compact sheet's width: the whole <paramref name="windowWidth"/> (NaN: the minimum). The strip a 320 sheet would leave beside it
+    /// (80 at 400) is no page to read, only cut words.</summary>
+    public static float SheetCoverWidth(float windowWidth) => float.IsFinite(windowWidth) && windowWidth > 0f ? windowWidth : SheetMinW;
+
     /// <summary>The docked insights column (the head arm at Huge).</summary>
     public const float DockedInsightsW = 360f;
 

@@ -482,6 +482,12 @@ public sealed record ZuneDialogLayout(WidthTier Tier, ZuneReportPreview Preview,
 
     /// <summary>The body lifts its controls to <see cref="Target"/>.</summary>
     public bool Touch => Target > 0f;
+
+    /// <summary>A free-text box's height (the stock 72; Z-Dialogs' 548 card draws them lower, so the whole form and its preview fit the card).</summary>
+    public float FreeTextHeight { get; init; } = ZuneDialogRules.FieldHeight;
+
+    /// <summary>A bug's "steps to reproduce" and "expected behaviour" share one row (Z-Dialogs), each half the column.</summary>
+    public bool PairFields { get; init; }
 }
 
 /// <summary>What a form dialog's body mounted with: the tier's record and the width the card left it, both frozen at open.</summary>
@@ -506,11 +512,14 @@ public static class ZuneDialogTiers
         // Small (Z-Dialogs-Small): the 752 card, the form beside a 300 preview pane (the board's flexible form column is what the 704 body leaves it, 355).
         new(WidthTier.Small, ZuneReportPreview.Pane, Target: 0f, NominalBodyWidth: ZuneDialogRules.SmallBodyWidth, TextFieldHeight: 32f, PreviewHeight: 300f,
             FormPaneWidth: ZuneDialogRules.SmallBodyWidth - ZuneDialogRules.SmallPaneWidth - 2f * ZuneDialogRules.PaneGap - ZuneDialogRules.DividerWidth),
-        // Standard (Z-Dialogs): the tuned 548 card.
-        new(WidthTier.Standard, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
+        // Standard (Z-Dialogs): the tuned 548 card, the board's form: lower free-text boxes, steps and expected on one row, a 130 preview.
+        new(WidthTier.Standard, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f,
+            PreviewHeight: ZuneDialogRules.CardPreviewHeight, FormPaneWidth: 0f) { FreeTextHeight = ZuneDialogRules.CardFieldHeight, PairFields = true },
         // Huge (Z-Dialogs-Huge) and Huge 4K: the same 548 card; a dialog never stretches.
-        new(WidthTier.Huge, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
-        new(WidthTier.Huge4K, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f, PreviewHeight: 220f, FormPaneWidth: 0f),
+        new(WidthTier.Huge, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f,
+            PreviewHeight: ZuneDialogRules.CardPreviewHeight, FormPaneWidth: 0f) { FreeTextHeight = ZuneDialogRules.CardFieldHeight, PairFields = true },
+        new(WidthTier.Huge4K, ZuneReportPreview.Inline, Target: 0f, NominalBodyWidth: ZuneDialogRules.StockBodyWidth, TextFieldHeight: 32f,
+            PreviewHeight: ZuneDialogRules.CardPreviewHeight, FormPaneWidth: 0f) { FreeTextHeight = ZuneDialogRules.CardFieldHeight, PairFields = true },
     ];
 
     /// <summary>The record of <paramref name="window"/>.</summary>
@@ -567,6 +576,9 @@ public static class ZuneDialogRules
 
     /// <summary>The report form's free-text boxes (the stock and the question / idea body), its combo width, the preview's padding and text inset, and the gap between copy and save.</summary>
     public const float FieldHeight = 72f, BodyFieldHeight = 140f, ComboWidth = 260f, PreviewPadding = 10f, PreviewTextInset = 20f, DoorGap = 20f;
+
+    /// <summary>The 548 card's free-text box, its preview (Z-Dialogs: 130) and the gap between two paired fields.</summary>
+    public const float CardFieldHeight = 48f, CardPreviewHeight = 130f, PairGap = 16f;
 
     /// <summary>The crash prompt: the gap between its links, the bullet glyph and its top nudge, the dump caption's indent and the gap above it.</summary>
     public const float LinkGap = 12f, BulletGlyphSize = 14f, BulletGlyphTop = 2f, DumpCaptionIndent = 28f, DumpGap = 2f;

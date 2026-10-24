@@ -75,6 +75,7 @@ public static partial class Stage
             var artist = slot > 0 ? new Artist(slot) : Rail.NowPlayingArtist(track);
             return artist.IsValid ? artist.Name : "";
         },
+        Pane = ArtistPaneProps(ctx),
     };
 
     /// <summary>The identity's props: the title, the meta line, the chips, the "…" menu and the artist link.</summary>

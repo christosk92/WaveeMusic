@@ -207,7 +207,7 @@ internal static class ZuneArtistSections
             [
                 PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight ?? s_squareHeight,
                     header: K.Heading(title, null, null), measured: false, keyOf: s_shelfKey,
-                    pager: ShelfPager.Chevrons, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: Rules.ShelfGap, headerGap: Rules.HeadGap,
+                    pager: ShelfPager.Chevrons | ShelfPager.WhenPaged, minCardW: cardW, maxCardW: cardW, fixedCardW: cardW, gap: Rules.ShelfGap, headerGap: Rules.HeadGap,
                     edgeFade: Rules.ShelfEdgeFade, prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
                     lift: ShelfLift.None) with { Key = "zune-artist-shelf" },
             ],

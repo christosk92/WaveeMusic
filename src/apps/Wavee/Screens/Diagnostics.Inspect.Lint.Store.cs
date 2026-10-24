@@ -109,6 +109,7 @@ public static partial class Diagnostics
             w.WriteString("devices", s.Devices);
             if (s.Playing.Length > 0) w.WriteString("playing", s.Playing);
             if (s.PlayingTitle.Length > 0) w.WriteString("playingTitle", s.PlayingTitle);
+            if (s.PlayingFromContext) w.WriteBoolean("playingFromContext", true);
             if (s.ChromeHeld) w.WriteBoolean("chromeHeld", true);
             if (s.Reserved > 0f) Num(w, "reserved", s.Reserved);
             w.WriteString("guide", s.GuideId);
@@ -367,6 +368,7 @@ public static partial class Diagnostics
                     Devices = head.Str(root, "devices", ""),
                     Playing = head.Str(root, "playing", ""),
                     PlayingTitle = head.Str(root, "playingTitle", ""),
+                    PlayingFromContext = head.Bool(root, "playingFromContext"),
                     ChromeHeld = head.Bool(root, "chromeHeld"),
                     Reserved = head.Finite(root, "reserved", 0f, 0f),
                     GuideId = head.Str(root, "guide", ""),

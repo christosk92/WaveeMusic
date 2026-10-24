@@ -539,6 +539,10 @@ public static partial class Diagnostics
             public string Playing { get; init; } = "";
             public string PlayingTitle { get; init; } = "";
 
+            /// <summary>The player plays from a context the source line can name (a playlist, an album: <c>Queue.ContextName</c> answers). A
+            /// context-less play (a lone track) has nothing to say there, so an empty source line is then no finding.</summary>
+            public bool PlayingFromContext { get; init; }
+
             /// <summary>The inspector holds the transport chrome shown (`chrome=shown`): a stage or a video's transport must be on screen.</summary>
             public bool ChromeHeld { get; init; }
 
@@ -1997,6 +2001,9 @@ public static partial class Diagnostics
                     }
                     if (vOver > Slack)
                     {
+                        // A box whose cut side feathers dissolves the text there by design, as on the horizontal axis below (audit B3bc: the Zune
+                        // Artist layout's name sinks into the stage's foot under a fade, Z-NowPlaying-Artist); a hard cut still fails.
+                        if (Fades(anc, above ? EdgeMask.Top : EdgeMask.Bottom)) break;
                         string doubt = ClipDoubt(s, t, vOver, guess);
                         // A theme's designed top bleed (IThemeLintGuide.DesignedTopBleeds: Zune's panorama voice on its exact line, flush with the edge
                         // above it) is an intended cut at the top; a cut at the bottom (descenders) still fails.

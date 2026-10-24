@@ -825,8 +825,10 @@ public static partial class Lyrics
         /// or the line's); between, it holds its plateau, and outside held syllables it is 0.</summary>
         public static bool GlowMoving(Line line, long nowMs, long lineEndMs)
         {
-            foreach (var s in line.Syllables)
+            var syl = line.Syllables;   // an index loop: a foreach over the IReadOnlyList boxes its enumerator on every step
+            for (int i = 0; i < syl.Count; i++)
             {
+                var s = syl[i];
                 if (nowMs < s.StartMs) break;
                 if (nowMs >= s.EndMs) continue;
                 long dur = s.EndMs - s.StartMs;
@@ -842,8 +844,10 @@ public static partial class Lyrics
         public static long NextGlowEdgeMs(Line line, long nowMs, long lineEndMs)
         {
             long next = MotionDemand.None;
-            foreach (var s in line.Syllables)
+            var syl = line.Syllables;
+            for (int i = 0; i < syl.Count; i++)
             {
+                var s = syl[i];
                 if (s.EndMs - s.StartMs < HeldGlowMinMs || s.EndMs <= nowMs) continue;
                 if (s.StartMs > nowMs) next = Math.Min(next, s.StartMs);
                 long melt = Math.Min(s.EndMs - (long)GlowOutMs, lineEndMs - (long)GlowOutMs);

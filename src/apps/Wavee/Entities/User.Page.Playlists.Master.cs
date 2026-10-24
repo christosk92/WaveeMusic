@@ -263,7 +263,8 @@ public readonly partial struct User
                 Key = LibraryPlaylistsRules.RowPrefix + id, Direction = 0, Height = LibraryPlaylistsRules.RowH, AlignItems = FlexAlign.Center,
                 Gap = LibraryPlaylistsRules.ArtGap, MinWidth = 0f, Corners = R.Shape.All(ShapeRole.Cover),
                 Fill = selected ? Tok.FillSubtleTertiary : ColorF.Transparent,
-                Padding = new Edges4(e.Depth * LibraryPlaylistsRules.Indent + 8f, 0f, 8f, 0f),
+                // The art leads on the column's line, under the group label (Z-Library-Playlists: both at the gutter); the selected plate starts there too.
+                Padding = new Edges4(e.Depth * LibraryPlaylistsRules.Indent, 0f, 8f, 0f),
                 Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
                 OnClick = folder ? () => model.ToggleFolder(folderId) : pick,
                 Children = kids.ToArray(),

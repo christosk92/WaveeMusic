@@ -222,13 +222,17 @@ public static partial class Controls
         /// to a host that decides, from numbers, how much room the rail needs — the show reader's toolbar. Mount-time, like
         /// every other callback here.</para>
         /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
-        /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para></summary>
+        /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para>
+        /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInk"/>): a theme whose ground needs a heavier rest
+        /// for the words' contrast states its own.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
-                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null)
+                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
             => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
-                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More)));
+                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk));
+
+        static readonly Func<float> s_restInk = static () => RestInk;
 
         sealed class RailHost : Component
         {
@@ -269,11 +273,13 @@ public static partial class Controls
             NodeHandle _moreAnchor;
             OverlayHandle? _menu;
             IOverlayService? _overlay;
+            readonly Func<float> _rest;
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
                             AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured,
-                            bool fit = false, Prop<string>? more = null)
+                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
             {
+                _rest = restInk ?? s_restInk;
                 _fit = fit;
                 _more = more ?? (Prop<string>)"";
                 if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
@@ -354,6 +360,7 @@ public static partial class Controls
                 _codes[i] = code;
                 Signal<int> selected = _selected;
                 Func<ColorF> tone = _tone;
+                Func<float> rest = _rest;
                 bool big = _big;
                 Func<bool> isOn = () => selected.Value == code;
                 Prop<bool> visible = w.Visible ?? true;
@@ -377,7 +384,7 @@ public static partial class Controls
                 {
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
                     Role = _role, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Tap(code),
-                    Opacity = Prop.Of(() => isOn() ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
+                    Opacity = Prop.Of(() => isOn() ? 1f : rest()), HoverOpacity = HoverInk, Transition = s_inkFade,
                     Visible = visible,
                     OnBoundsChanged = r =>
                     {
@@ -473,6 +480,7 @@ public static partial class Controls
                 var shown = _fitShown!;
                 var selected = _selected;
                 Func<ColorF> tone = _tone;
+                Func<float> rest = _rest;
                 bool big = _big;
                 Func<int> foldedActive = () =>
                 {
@@ -484,7 +492,7 @@ public static partial class Controls
                 {
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = OpenMore, OnRealized = h => _moreAnchor = h,
-                    Opacity = Prop.Of(() => foldedActive() >= 0 ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
+                    Opacity = Prop.Of(() => foldedActive() >= 0 ? 1f : rest()), HoverOpacity = HoverInk, Transition = s_inkFade,
                     Visible = Prop.Of(() => shown.Value < _words.Count),
                     Children =
                     [

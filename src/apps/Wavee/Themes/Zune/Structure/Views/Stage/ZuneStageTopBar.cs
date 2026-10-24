@@ -120,7 +120,7 @@ internal static class ZuneStageTopBar
 
         var bar = new BoxEl
         {
-            Key = "stage:bar", Height = t.BarH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Key = "stage:bar", Height = t.BarH, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Layout = ZuneMotion.HeightResize,
             Padding = new Edges4(t.BarPadL, 0f, t.BarPadR, 0f), Gap = t.PivotRowH > 0f ? G.BarGlyphGap : t.BarGap,
             Children = barKids.ToArray(),
         };
@@ -136,7 +136,8 @@ internal static class ZuneStageTopBar
         }
         return new BoxEl
         {
-            Grow = 1f, Height = t.HeadH, Direction = 1,
+            // fills the head slot, whose height eases across a crossing (ZuneStageHead): the veil follows it
+            Grow = 1f, Direction = 1,
             Gradient = mode == Stage.Mode.Visualizer ? GradientDown(new GradientStop(0f, Shade(G.TopBarVeilA)), new GradientStop(1f, Shade(0f))) : null,
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
             Children = head.ToArray(),
@@ -194,7 +195,9 @@ internal static class ZuneStageTopBar
         }
         return new BoxEl
         {
+            // a crossing that moves the run (W1008: centred <-> leading) slides it on the pivot slide instead of snapping (audit B3bc)
             Key = "stage:pivots", Direction = 0, AlignItems = FlexAlign.Center, Gap = t.PivotGap, Shrink = rotate ? 0f : 1f, MinWidth = 0f, ClipToBounds = !rotate,
+            Layout = Design.Reduced ? null : ZuneMotion.PivotSlide,
             Children = words,
         };
     }

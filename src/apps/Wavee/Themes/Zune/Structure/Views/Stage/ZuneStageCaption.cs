@@ -29,6 +29,10 @@ namespace Wavee.Themes.Zune;
 /// <summary>Zune's lyric caption over the stage.</summary>
 internal static class ZuneStageCaption
 {
+    /// <summary>The block's move when its arrangement re-places it (a tier crossing): the cover's spring, so the lines travel with the
+    /// cover and the card instead of snapping 16-200 DIP (audit B3bc, the no-jump rule). The veil rides the same spring.</summary>
+    static readonly LayoutTransition s_place = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.Relayout);
+
     /// <summary>The registered template of <see cref="ViewKeys.StageCaption"/>.</summary>
     public static Element Template(StageCaptionProps props, in ViewContext ctx)
     {
@@ -59,6 +63,7 @@ internal static class ZuneStageCaption
             [
                 new BoxEl
                 {
+                    Key = "cap:veil", Layout = s_place,
                     Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
                     AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                     Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, bottom - Stage.Layout.CaptionVeilPadY)),
@@ -69,6 +74,7 @@ internal static class ZuneStageCaption
                 },
                 new BoxEl
                 {
+                    Key = "cap:block", Layout = s_place,
                     Width = props.Width, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(props.X, 0f, 0f, bottom),
                     Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false,
                     Children = kids.ToArray(),

@@ -200,7 +200,10 @@ internal sealed class ZuneStageHead : Component
         var t = ZuneStageTiers.StageOf(in tiers);
         return new BoxEl
         {
+            // a crossing that changes the head's height (W640: the pivots' own row, W1920: 48 -> 56) eases it through layout instead of
+            // snapping (audit B3bc); the bar inside fills it
             Key = HeadKey, Height = t.HeadH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 0,
+            Layout = ZuneMotion.HeightResize,
             Children = [Slots.View(ViewKeys.StageTopBar, p.TopBar)],
         };
     }

@@ -30,6 +30,11 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's lyric caption over the stage.</summary>
 internal static class ClassicStageCaption
 {
+    /// <summary>The block's move when its arrangement re-places it (a tier crossing): the now-playing card's spring, so the lines travel with the
+    /// card instead of snapping (audit B3bc, the no-jump rule). The veil rides the same spring.</summary>
+    static readonly LayoutTransition s_place = new(TransitionChannels.Bounds,
+        TransitionDynamics.Spring(ClassicStageLayerGeometry.CardMoveResponse, ClassicStageLayerGeometry.CardMoveDamping), SizeMode.Relayout);
+
     /// <summary>The registered template of <see cref="ViewKeys.StageCaption"/>.</summary>
     public static Element Template(StageCaptionProps props, in ViewContext ctx)
     {
@@ -52,6 +57,7 @@ internal static class ClassicStageCaption
                 // bright face without a plate; BOTTOM-anchored around the block (vertical = AlignSelf, horizontal = JustifySelf)
                 new BoxEl
                 {
+                    Key = "cap:veil", Layout = s_place,
                     Width = props.Width + 2f * Stage.Layout.CaptionVeilPadX, Height = props.BlockMaxHeight + 2f * Stage.Layout.CaptionVeilPadY,
                     AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
                     Margin = new Edges4(props.X - Stage.Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, props.Bottom - Stage.Layout.CaptionVeilPadY)),
@@ -63,6 +69,7 @@ internal static class ClassicStageCaption
                 // the block: previous · active (or the dots) · next, centred in its region, bottom-anchored above the transport
                 new BoxEl
                 {
+                    Key = "cap:block", Layout = s_place,
                     Width = props.Width, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(props.X, 0f, 0f, props.Bottom),
                     Direction = 1, AlignItems = FlexAlign.Center, Gap = Stage.Layout.CaptionLineGap, HitTestVisible = false,
                     Children = kids.ToArray(),
