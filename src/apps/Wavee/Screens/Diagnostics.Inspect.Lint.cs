@@ -2718,9 +2718,10 @@ public static partial class Diagnostics
         static bool IsVerb(Node n) => n.Role is "Button" or "ToggleButton" or "MenuItem" or "" && n.ImageCount == 0 && n.TextCount < 2;
 
         /// <summary>What a verb acts on: the first spotify entity in its key or an ancestor's; else the row or card it sits in (an instance of a
-        /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else the
-        /// page's own entity, else the page.</summary>
-        static string SubjectOf(Snapshot s, Node n)
+        /// repeated family that is a click target or carries art: each track row's More acts on its own track, whatever its key says); else, in
+        /// window chrome around the page (<paramref name="paged"/>: the capture holds a page slot, and the verb sits outside it), the window
+        /// itself: the nav pane's "+" makes a playlist, it never follows the show on screen; else the page's own entity, else the page.</summary>
+        static string SubjectOf(Snapshot s, Node n, bool paged = false)
         {
             for (int i = n.Index; i >= 0; i = s.Nodes[i].Parent)
             {
@@ -2729,7 +2730,16 @@ public static partial class Diagnostics
                 if (i != n.Index && m.Instance == i && (m.Interactive || m.ImageCount > 0))
                     return "the row " + m.Ref + " #" + i.ToString(CultureInfo.InvariantCulture);
             }
+            if (paged && PageOf(s, n) < 0) return "the window";
             return s.PageEntity.Length > 0 ? s.PageEntity : "page";
+        }
+
+        /// <summary>The capture holds a page slot (a `root=` lint of one subtree holds none): what tells window chrome from the page.</summary>
+        static bool HasPageSlot(Snapshot s)
+        {
+            foreach (Node n in s.Nodes)
+                if (n.Key is { } key && TrySlotRoute(key, out _, out _)) return true;
+            return false;
         }
 
         /// <summary>The same verb on the same subject offered in two homes on screen (the band's Shuffle and the song list's Shuffle on an album). A
@@ -2738,6 +2748,7 @@ public static partial class Diagnostics
         static int DuplicateRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
+            bool paged = HasPageSlot(s);
             var groups = new Dictionary<string, List<Node>>(StringComparer.Ordinal);
             foreach (Node n in s.Nodes)
             {
@@ -2752,7 +2763,7 @@ public static partial class Diagnostics
                 if (inner) continue;
                 looked++;
                 string verb = n.LabelGlyph.Length > 0 ? "glyph:" + n.LabelGlyph : IsGlyphText(n.Label) ? GlyphRef(n.Label, "") : n.Label.ToLowerInvariant();
-                string group = n.Role + "|" + verb + "|" + SubjectOf(s, n);
+                string group = n.Role + "|" + verb + "|" + SubjectOf(s, n, paged);
                 if (!groups.TryGetValue(group, out List<Node>? list)) groups[group] = list = [];
                 list.Add(n);
             }
