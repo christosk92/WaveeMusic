@@ -3,7 +3,9 @@
 // Boards Z-State-Empty, Z-State-Error and their Compact boards: the shared "nothing to show" page, in the page's own words, LEFT-aligned at the page's gutter (not a centred
 // card): a 40/48 light heading 40 under the top (28 at Compact), the sentence under it (14/20 secondary, at most 440 wide; 15/22 at Compact), then the action as a ring with
 // its word (36 ring at the desktop tiers; at Compact a 56-tall row with a 40 ring, the accent one). The rail scale (a vacancy inside a card or a rail) keeps the group voice
-// (22/28) and no top step. The voice's glyph: a retry arrow for an error or offline vacancy, the forward arrow for an empty one.
+// (22/28) and no top step; inside the right panel (owner, 2026-10-24) it speaks in the panel's body voice, as the panel's rows do: the line a label in the
+// row title's 15/20, the caption in the meta 13/18, lowercase (the panel's body places it on its gutter). The voice's glyph: a retry arrow for an error or offline vacancy, the forward
+// arrow for an empty one.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -31,6 +33,9 @@ internal static class ZuneVacancy
         var layout = ZuneOverlayTiers.Of(facts);
         bool compact = layout.VacancyActionsStack;
         bool rail = props.Scale == Controls.VacancyScale.Compact;
+        // The right panel provides its ink to everything it draws: a rail vacancy there is the panel's body text, not a heading.
+        bool inPanel = ctx.Hooks.UseContext(ZunePanelInk.Current) is not null;
+        bool panel = rail && inPanel;
         (string title, string caption) = props.Voice switch
         {
             Controls.VacancyVoice.Error => (Loc.Get(Strings.Common.ErrorTitle), Loc.Get(Strings.Common.ErrorSubtitle)),
@@ -44,10 +49,10 @@ internal static class ZuneVacancy
 
         var kids = new List<Element>(3)
         {
-            (rail ? ZuneText.Group(title) : ZuneText.Title(title)) with { Wrap = TextWrap.Wrap },
+            (panel ? ZuneText.Label(title) : rail ? ZuneText.Group(title) : ZuneText.Title(title)) with { Wrap = TextWrap.Wrap },
         };
         if (caption.Length > 0)
-            kids.Add((compact ? R.Type.TrackTitle(caption) : R.Type.DenseTitle(caption)) with
+            kids.Add((panel ? ZuneText.Cased(R.Type.TrackMeta(caption), LabelKind.Label) : compact ? R.Type.TrackTitle(caption) : R.Type.DenseTitle(caption)) with
             {
                 Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = R_.VacancyCaptionMaxW, MinWidth = 0f,
                 Margin = new Edges4(0f, compact ? R_.VacancyCaptionGapCompact : R_.VacancyCaptionGap, 0f, 0f),

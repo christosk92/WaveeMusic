@@ -16,6 +16,7 @@
 //   ZuneOnMediaLayout    the strip over a video (built from Zune's parts: no board)
 
 using FluentGpu.Animation;
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -178,8 +179,25 @@ public static class ZuneTransportLayout
 /// <summary>The constants of the panel's bodies (Z-Part-Panel).</summary>
 public static class ZunePanelBodies
 {
-    /// <summary>The bodies' inset: 24 left (under the pivot head's first word), 20 right.</summary>
-    public static readonly Edges4 Inset = new(24f, 0f, 20f, 0f);
+    /// <summary>The bodies' inset: the panel's gutter on the left (under the pivot head's lead word), 20 right.</summary>
+    public static readonly Edges4 Inset = new(ZuneFrameRules.PanelGutter, 0f, 20f, 0f);
+
+    /// <summary>A row of the panel's lists (the queue, "up next"): its art stands on the gutter, so the row's plate is flush with it (no plate inset; the
+    /// board's hovered row, Z-Frame-Panel), as the playing row's art and every heading above it do.</summary>
+    public const float RowPadX = 0f;
+
+    /// <summary>A row of words under the pivots (the queue's shuffle · repeat · autoplay, the lyrics' meta row): each word's own side padding stands
+    /// in the gutter, so its text starts on the gutter.</summary>
+    public static readonly Edges4 WordRowPadding = new(ZuneFrameRules.PanelGutter - ZunePlayerLayout.WordPadX, 0f, 20f - ZunePlayerLayout.WordPadX, 0f);
+
+    /// <summary>A body's vacancy (no friends, offline, nothing playing): on the gutter, 8 under the head.</summary>
+    public static readonly Edges4 VacancyInset = new(ZuneFrameRules.PanelGutter, 8f, 20f, 0f);
+
+    /// <summary><paramref name="vacancy"/> placed as a body's content: on the panel's gutter (<see cref="VacancyInset"/>), the body's whole height.</summary>
+    public static Element OnGutter(Element vacancy) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Padding = VacancyInset, Children = [vacancy],
+    };
 
     // ── the lyrics header: the meta row under the pivots ───────────────────────────────────────────────────────────
 
@@ -261,7 +279,7 @@ public static class ZuneQueueRules
 
     /// <summary>The mode row's inset: the bodies' 24 / 20 less each word's own 8, so the first word's ink starts under the pivots and the words
     /// sit the board's 16 apart.</summary>
-    public static readonly Edges4 ModeRowPadding = new(24f - ZunePlayerLayout.WordPadX, 0f, 20f - ZunePlayerLayout.WordPadX, 0f);
+    public static readonly Edges4 ModeRowPadding = ZunePanelBodies.WordRowPadding;
 
     /// <summary>"playing from …": 28 tall, its text at the foot.</summary>
     public const float PlayingFromH = 28f;
