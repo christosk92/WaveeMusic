@@ -48,6 +48,9 @@ public static partial class Diagnostics
             public float JumpDip = 2f;
             /// <summary>A change over this many DIP in one frame with no track is a snap.</summary>
             public float SnapDip = 0.5f;
+            /// <summary>A tracked move is INSTANT when one frame carries at least this many DIP and most of its run (<see cref="InstantShare"/>):
+            /// the change landed in a frame while something above it animated (a page reflowing at once beside a sliding pane).</summary>
+            public float InstantDip = 4f;
             public bool Rows = true;
             /// <summary>Turn the host's render census on: a slow frame's row then names the components that made it slow (`census`). Off by default (it costs frame time).</summary>
             public bool Census;
@@ -91,6 +94,7 @@ public static partial class Diagnostics
             o.MaxNodes = Math.Clamp(a.Int("max", 20), 1, MaxWatch);
             o.JumpDip = a.Float("jump", 2f);
             o.SnapDip = a.Float("snap", 0.5f);
+            o.InstantDip = a.Float("instant", 4f);
             o.Rows = a.Bool("rows", true);
             o.Census = a.Bool("census", false);
             if (a.Has("wheel"))
@@ -220,6 +224,8 @@ public static partial class Diagnostics
             public int MaxMeasure;
             public int CpuOver8, CpuOver16;
             public List<Move> Snaps = [], Jumps = [];
+            /// <summary>The jumps that are no glide: one frame carries the run's move (<see cref="DetectInstants"/>).</summary>
+            public List<Move> Instants = [];
             public List<OvershootRun> Overshoots = [];
             public List<ScrollEvent> Reversals = [], Stalls = [], Uneven = [], LayoutDuringScroll = [];
             public DeltaStats Deltas;
@@ -227,9 +233,15 @@ public static partial class Diagnostics
         }
 
         /// <summary>Everything a trace measured.</summary>
+        /// <summary>A watched key that is a different node from one frame to the next (shown on both, one node of that key each time): its
+        /// subtree and state were thrown away. <see cref="Family"/> names the swap cross-fade it sits under (a node at or above it fading in
+        /// under the theme's opacity-only swap), null when none does: a rebuild.</summary>
+        public readonly record struct Remount(string Key, int Frame, string? Family);
+
         public sealed class Result
         {
             public List<string> Watch = [];
+            public List<Remount> Remounts = [];
             public List<Row> Rows = [];
             public Options Options = new();
             public Summary Summary = new();
@@ -262,6 +274,7 @@ public static partial class Diagnostics
             }
             if (rows.Count > 0) s.SettledAt = s.LastAnimatingFrame < 0 ? rows[0].Frame : (s.LastAnimatingFrame == rows[^1].Frame ? -1 : s.LastAnimatingFrame + 1);
             DetectMoves(rows, watch, o.JumpDip, o.SnapDip, s);
+            DetectInstants(s, o.InstantDip);
             DetectScroll(rows, s);
             return s;
         }
@@ -308,6 +321,36 @@ public static partial class Diagnostics
             }
             for (int w = 0; w < watch.Count; w++)
                 if (first[w] >= 0) into.NodeLife.Add((watch[w], first[w], last[w]));
+        }
+
+        /// <summary>The share of a run's whole move one frame must carry for the run to be instant: an eased glide spreads its move over
+        /// many frames (an ease-out's first frame carries about a fifth of a 280 ms tween); a reflow that lands at once carries all of it.</summary>
+        public const float InstantShare = 0.6f;
+
+        /// <summary>Instant moves: per watched key, the jumps (tracked moves) on consecutive frames make a run; a run whose largest frame
+        /// moves at least <paramref name="instantDip"/> and carries <see cref="InstantShare"/> of the run's whole move landed at once, though
+        /// a track ran on the node or above it (the trace's `jumps` list every eased frame too: they are not a verdict, these are).</summary>
+        public static void DetectInstants(Summary into, float instantDip)
+        {
+            foreach (var group in into.Jumps.GroupBy(static m => m.Key))
+            {
+                List<Move> moves = group.OrderBy(static m => m.Frame).ToList();
+                for (int i = 0; i < moves.Count;)
+                {
+                    int j = i;
+                    while (j + 1 < moves.Count && moves[j + 1].Frame == moves[j].Frame + 1) j++;
+                    float total = 0f;
+                    Move top = moves[i];
+                    for (int k = i; k <= j; k++)
+                    {
+                        total += moves[k].Mag;
+                        if (moves[k].Mag > top.Mag) top = moves[k];
+                    }
+                    if (top.Mag >= instantDip && top.Mag >= InstantShare * total) into.Instants.Add(top);
+                    i = j + 1;
+                }
+            }
+            into.Instants.Sort(static (a, b) => a.Frame != b.Frame ? a.Frame.CompareTo(b.Frame) : string.CompareOrdinal(a.Key, b.Key));
         }
 
         /// <summary>Scroll offset analysis per scroller run: direction reversals, offsets outside [0, max] (rubber band), stalls (a zero
@@ -400,6 +443,34 @@ public static partial class Diagnostics
                 w.WriteEndArray();
             }
             WriteSummary(w, result.Summary);
+            // the gate's counts: snapped watched keys, and remounts in and outside a swap family
+            var snappedKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Move m in result.Summary.Snaps) snappedKeys.Add(m.Key);
+            var movedKeys = new HashSet<string>(snappedKeys, StringComparer.Ordinal);
+            foreach (Move m in result.Summary.Instants) movedKeys.Add(m.Key);
+            int swap = 0;
+            foreach (Remount r in result.Remounts) if (r.Family is not null) swap++;
+            w.WriteStartObject("counts");
+            w.WriteNumber("watched", result.Watch.Count);
+            w.WriteNumber("snaps", result.Summary.Snaps.Count);
+            w.WriteNumber("snappedKeys", snappedKeys.Count);
+            w.WriteNumber("instants", result.Summary.Instants.Count);
+            w.WriteNumber("movedAtOnce", movedKeys.Count);   // snapped or instant keys: what `inspect.py --gate` counts
+            w.WriteNumber("remounted", result.Remounts.Count);
+            w.WriteNumber("remountedSwap", swap);
+            w.WriteNumber("remountedOutside", result.Remounts.Count - swap);
+            w.WriteEndObject();
+            w.WriteStartArray("remounted");
+            foreach (Remount r in result.Remounts)
+            {
+                w.WriteStartObject();
+                w.WriteString("key", r.Key);
+                w.WriteNumber("frame", r.Frame);
+                if (r.Family is null) w.WriteNull("family");
+                else w.WriteString("family", r.Family);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
 
         static void WriteRow(Utf8JsonWriter w, Row r)
@@ -518,6 +589,7 @@ public static partial class Diagnostics
             w.WriteNumber("cpuOver8ms", s.CpuOver8); w.WriteNumber("cpuOver16ms", s.CpuOver16);
             Moves(w, "snaps", s.Snaps);
             Moves(w, "jumps", s.Jumps);
+            Moves(w, "instants", s.Instants);
             w.WriteStartObject("scroll");
             Events(w, "reversals", s.Reversals);
             w.WriteStartArray("overshoots");
@@ -598,6 +670,8 @@ public static partial class Diagnostics
             var watchIndex = new Dictionary<string, int>(StringComparer.Ordinal);
             var seen = new HashSet<uint>();
             var dup = new Dictionary<string, int>(StringComparer.Ordinal);
+            var lastNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);   // the node of each lone watched key on the frame before
+            var nowNode = new Dictionary<string, NodeHandle>(StringComparer.Ordinal);
             int sent = 0;
             bool moved = false;
             Point2 dragAt = default;
@@ -649,6 +723,7 @@ public static partial class Diagnostics
                     keyed = shell.FindPrefix("");   // after the frame: the keys of the nodes this frame left standing
                     seen.Clear();
                     dup.Clear();
+                    nowNode.Clear();
                     foreach (var (node, key) in keyed)
                     {
                         if (!Matches(o, key) || !seen.Add(node.Raw.Index)) continue;
@@ -670,7 +745,13 @@ public static partial class Diagnostics
                             if (!track && anim.HasTracks(up)) track = true;
                         }
                         row.Nodes.Add(new InspectTrace.NodeSample(w, scene.IsShown(node), scene.AbsoluteLayoutRect(node), scene.PresentedAbsoluteRect(node), track, opacity));
+                        if (scene.IsShown(node)) nowNode[key] = n == 0 ? node : NodeHandle.Null;   // a second node of the key: not a lone key
                     }
+                    foreach (var (key, node) in nowNode)
+                        if (!node.IsNull && lastNode.TryGetValue(key, out NodeHandle was) && !was.IsNull && was != node)
+                            result.Remounts.Add(new InspectTrace.Remount(key, f, FadingSwapFamily(shell, node)));
+                    lastNode.Clear();
+                    foreach (var (key, node) in nowNode) lastNode[key] = node;
                 }
                 if (o.Scroll.Length > 0)
                 {
@@ -686,6 +767,16 @@ public static partial class Diagnostics
             }
             result.Summary = InspectTrace.Summarize(result.Rows, result.Watch, o);
             return result;
+        }
+
+        /// <summary>The swap family a node remounted mid-trace belongs to: the key of the nearest node at or above it that swaps under the theme's
+        /// opacity-only cross-fade (<see cref="SwapsOut"/>) and is fading right now (live tracks); null when none is (a rebuild).</summary>
+        static string? FadingSwapFamily(Shell.HeadlessShell shell, NodeHandle node)
+        {
+            SceneStore scene = shell.Host.Scene;
+            for (NodeHandle n = node; !n.IsNull && scene.IsLive(n); n = scene.Parent(n))
+                if (SwapsOut(shell, n) && shell.Host.Animation.HasTracks(n)) return InspectKit.KeyOf(scene, n);
+            return null;
         }
 
         static bool Matches(InspectTrace.Options o, string key)

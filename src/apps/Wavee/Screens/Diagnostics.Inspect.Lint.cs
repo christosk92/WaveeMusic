@@ -57,6 +57,8 @@ public static partial class Diagnostics
             public const string AlignInset = "align.inset", AlignBaseline = "align.baseline", SpaceScale = "space.scale",
                 TextPlaceholder = "text.placeholder", KeyHygiene = "key.hygiene", TextDuplicate = "text.duplicate", TargetInk = "target.ink",
                 SpaceDead = "space.dead";
+
+            public const string PictureBlank = "picture.blank", PictureUnpainted = "picture.unpainted", OverlayOpen = "overlay.open";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -84,10 +86,13 @@ public static partial class Diagnostics
             new(Rules.TextTrim, Rules.Trim, Level.Gate, "trimmed text, by class: near-miss, never, overflow, designed, single"),
             new(Rules.TypeFloor, Rules.Type, Level.Gate, "text under the type floor"),
             new(Rules.TypeScale, Rules.Type, Level.Gate, "the type styles in use (a report)"),
-            new(Rules.TargetSize, Rules.Target, Level.Gate, "click targets under the tier's floor, by their effective area"),
+            new(Rules.TargetSize, Rules.Target, Level.Gate, "click targets under the tier's floor, by their effective area (Compact's 40 DIP floor gates; the 32 DIP floor above it is todo)"),
             new(Rules.DuplicateAction, Rules.Duplicate, Level.Gate, "the same verb on the same subject in two homes"),
             new(Rules.SpaceStack, Rules.Rhythm, Level.Gate, "stacked text blocks that overlap (touching ones are a report)"),
             new(Rules.ContrastText, Rules.Contrast, Level.Gate, "text contrast against its rendered ground, by ink and ground"),
+            new(Rules.PictureBlank, "", Level.Gate, "a rendered frame that is one colour: nothing painted"),
+            new(Rules.PictureUnpainted, "", Level.Gate, "a page that stops painting short of its frame: a cut-short scroller over a band of one colour"),
+            new(Rules.OverlayOpen, "", Level.Gate, "an overlay the verb that staged a state left open over it"),
             new(Rules.AlignInset, "", Level.Todo, "a section's ink lead 4-16 DIP off its region's column line"),
             new(Rules.AlignBaseline, "", Level.Todo, "a repeated family's text drifting against its row top"),
             new(Rules.SpaceScale, "", Level.Todo, "declared gap, padding and margin off the theme's spacing scale"),
@@ -220,6 +225,14 @@ public static partial class Diagnostics
             public float NaturalH { get; init; }
             public bool OverflowX { get; init; }
             public bool OverflowY { get; init; }
+
+            /// <summary>The top and bottom of the glyphs' ink (their black boxes, the engine's <c>TryQueryTextInk</c>), in DIP from the top of
+            /// the node's box; NaN when not known (the headless text model, a snapshot saved before ink was read).</summary>
+            public float InkTop { get; init; } = float.NaN;
+            public float InkBottom { get; init; } = float.NaN;
+
+            /// <summary>The glyph ink is known (<see cref="InkTop"/>, <see cref="InkBottom"/>).</summary>
+            public bool HasInk => float.IsFinite(InkTop) && float.IsFinite(InkBottom) && InkBottom > InkTop;
 
             /// <summary>An icon glyph (a private-use character), not words: out of the type scale and the clip rule.</summary>
             public bool Glyph { get; init; }
@@ -483,6 +496,9 @@ public static partial class Diagnostics
             /// <summary>The rendered frame the grounds under the text are read from; null when nothing was rendered.</summary>
             public Pixels? Backdrop { get; init; }
 
+            /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
+            public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
+
             /// <summary>The scope <see cref="Prepare"/> derived the node fields for (null: not prepared).</summary>
             public InspectVisible.Scope? PreparedFor { get; init; }
 
@@ -533,7 +549,7 @@ public static partial class Diagnostics
         // ── the rendered frame ──────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>A rendered frame as tightly packed, top-down BGRA8 (premultiplied, as the offscreen surface captures it), with the pixels per DIP.</summary>
-        public sealed class Pixels
+        public sealed partial class Pixels
         {
             readonly byte[] _bgra;
 
@@ -855,6 +871,10 @@ public static partial class Diagnostics
             /// <summary>The fingerprint: rule|theme|route|pattern|cause.</summary>
             public string Fp { get; init; } = "";
 
+            /// <summary>The flaw belongs to its pattern wherever it shows (a shared component's hit area): the fingerprint's route part is
+            /// <see cref="AnyRoute"/>, not the page's.</summary>
+            public bool AnyRoute { get; init; }
+
             /// <summary>One line on what to do (never: shrink Zune display type, touch motion, remove a feature; Classic: report only).</summary>
             public string Fix { get; init; } = "";
 
@@ -874,6 +894,19 @@ public static partial class Diagnostics
 
             /// <summary>Every finding at or above `min`, whatever its outcome (the listed ones are a subset).</summary>
             public IReadOnlyList<Finding> All { get; init; } = [];
+
+            /// <summary>Every finding the rules that ran made, whatever `min` says: what a gate counts, so no listing option can silence it.</summary>
+            public IReadOnlyList<Finding> Every { get; init; } = [];
+
+            /// <summary>Fail findings of <paramref name="level"/> at <paramref name="severity"/> over <see cref="Every"/> (`min`, `outcomes` and
+            /// `limit` choose what is listed, never this): the reply's <c>fails</c>, what `inspect.py --gate` counts.</summary>
+            public int Fails(Level level, Severity severity)
+            {
+                int n = 0;
+                foreach (Finding f in Every)
+                    if (f.Outcome == Outcome.Fail && f.Level == level && f.Severity == severity) n++;
+                return n;
+            }
 
             /// <summary>The guide's edges that matched an in-scope node.</summary>
             public int EdgesMatched { get; init; }
@@ -950,6 +983,7 @@ public static partial class Diagnostics
             Options o = options ?? new Options();
             Snapshot s = Prepare(snapshot, o.Scope);
             var all = new List<Finding>();
+            var every = new List<Finding>();
             var checks = new Dictionary<string, int>(StringComparer.Ordinal);
             var baseline = new Dictionary<string, BaselineEntry>(StringComparer.Ordinal);
             int duplicates = 0, considered = 0;
@@ -978,6 +1012,9 @@ public static partial class Diagnostics
                     Rules.DuplicateAction => DuplicateRule(s, o, found),
                     Rules.SpaceStack => RhythmRule(s, o, found),
                     Rules.ContrastText => ContrastRule(s, o, found),
+                    Rules.PictureBlank => BlankRule(s, found),
+                    Rules.PictureUnpainted => UnpaintedRule(s, found),
+                    Rules.OverlayOpen => OverlayOpenRule(s, found),
                     Rules.AlignInset => AlignInsetRule(s, found),
                     Rules.AlignBaseline => AlignBaselineRule(s, found),
                     Rules.SpaceScale => SpaceScaleRule(s, found),
@@ -1012,6 +1049,7 @@ public static partial class Diagnostics
                 }
                 foreach (Finding f in Collapse(finished))
                 {
+                    every.Add(f);
                     if (f.Severity < o.Min) continue;
                     all.Add(f);
                     if (o.Lists(f.Outcome)) bucket.Add(f);
@@ -1038,6 +1076,7 @@ public static partial class Diagnostics
             {
                 Prepared = s,
                 All = all,
+                Every = every,
                 EdgesMatched = edgesMatched,
                 InScope = inScope,
                 BaselineMatched = baselineHit.Count,
@@ -1095,12 +1134,21 @@ public static partial class Diagnostics
             return result;
         }
 
-        /// <summary>The run's half of a finding: id and alias, level, fingerprint, fix.</summary>
+        /// <summary>The fingerprint's route part for chrome: a finding whose every member sits outside every page slot (the title bar, the
+        /// band, the play bar, the nav pane, an overlay) is the same flaw on every route, so it fingerprints once, not once per route.</summary>
+        public const string ShellRoute = "shell";
+
+        /// <summary>The fingerprint's route part for a finding about a shared component (<see cref="Finding.AnyRoute"/>: a small target is its
+        /// family's, the list header's sort column or the heart column on every page that shows the list): one fix, one fingerprint.</summary>
+        public const string AnyRoute = "*";
+
+        /// <summary>The run's half of a finding: id and alias, level (the spec's, or todo when the rule demoted this finding: target.size above
+        /// Compact), fingerprint (chrome without the route: <see cref="ShellRoute"/>), fix.</summary>
         static Finding Finish(Snapshot s, RuleSpec spec, Finding f)
         {
             string pattern = f.Pattern.Length > 0 ? f.Pattern : PatternOfRefs(f.Keys);
             string cause = f.Cause;
-            string fp = string.Join("|", spec.Id, s.Theme, s.RouteName, pattern, cause);
+            string fp = string.Join("|", spec.Id, s.Theme, InChrome(s, f) ? ShellRoute : f.AnyRoute ? AnyRoute : s.RouteName, pattern, cause);
             string fix = string.Equals(s.Theme, "classic", StringComparison.OrdinalIgnoreCase)
                 ? "report; do not fix unless asked (Classic)"
                 : f.Fix.Length > 0 ? f.Fix : FixFor(spec.Id, cause);
@@ -1108,11 +1156,25 @@ public static partial class Diagnostics
             {
                 Id = spec.Id,
                 Rule = spec.Alias.Length > 0 ? spec.Alias : spec.Id,
-                Level = spec.Level,
+                Level = f.Level == Level.Todo ? Level.Todo : spec.Level,
                 Pattern = pattern,
                 Fp = fp,
                 Fix = fix,
             };
+        }
+
+        /// <summary>Every member of <paramref name="f"/> sits outside every page slot of a snapshot that holds one (<see cref="PageOf"/>): window
+        /// chrome around the page. False for a finding without member nodes, and for a capture with no page slot (a `root=` lint).</summary>
+        static bool InChrome(Snapshot s, Finding f)
+        {
+            if (f.Nodes.Count == 0) return false;
+            bool anyPage = false;
+            foreach (Node n in s.Nodes)
+                if (n.Key is { } key && TrySlotRoute(key, out _, out _)) { anyPage = true; break; }
+            if (!anyPage) return false;
+            foreach (int i in f.Nodes)
+                if (i < 0 || i >= s.Nodes.Count || PageOf(s, s.Nodes[i]) >= 0) return false;
+            return true;
         }
 
         /// <summary>A guide <see cref="LintIntent.Allow"/> for the finding's rule covering EVERY member (the member's key or an ancestor's starts
@@ -1161,6 +1223,8 @@ public static partial class Diagnostics
                 => "designed: the theme sets this line flush with the edge above it (DesignedTopBleeds); nothing to do",
             Rules.TextClip when cause.EndsWith("ink-guess", StringComparison.Ordinal)
                 => "look at the render: only the 1.2 em ink guess runs past the clip, the laid-out box fits; never shrink the type",
+            Rules.TextClip when cause.EndsWith("line-box", StringComparison.Ordinal)
+                => "look at the render: the cut lies inside the line box's leading or descent and this snapshot has no glyph ink; lint a live mount to judge it; never shrink the type",
             Rules.TextClip when cause.StartsWith("scroll-edge", StringComparison.Ordinal)
                 => "give the scroller an edge fade on that side (or declare a guide Bleed with a reason); never shrink the type",
             Rules.TextClip => "grow the clipping box or move the text inside it; Zune display type is never shrunk to fit (wrap, grow, bleed)",
@@ -1201,6 +1265,9 @@ public static partial class Diagnostics
             Rules.AlignBaseline => "anchor the cell's first line at one offset in every row (AlignItems=Start, or reserve the optional line in every row)",
             Rules.SpaceScale => "take the value from Spacing.* or the theme's R.Space/tier record (or declare OffScaleOk with a reason)",
             Rules.TextPlaceholder => "a missing string or argument: add the loc key or pass the argument; never blank the text",
+            Rules.PictureBlank => "look at the render: nothing painted (a surface with no picture, a page that never drew); find what should draw there, never call a blank frame done",
+            Rules.PictureUnpainted => "look at the render: the region's nodes are laid out but never reach the screen (a layer or clip covers them, or a pass stops painting); fix the paint, never move the text",
+            Rules.OverlayOpen => "close the overlay before judging the state (key esc), or stage the state a way that opens none; the page under it is not what the frame shows",
             Rules.KeyHygiene => "key the node by its entity or slot id, without tier, form, count or run-id parts (keys must be stable selectors)",
             Rules.TextDuplicate => "say it once: keep the heading and drop the repeat inside the section (or give the repeat its own words); the section stays",
             Rules.TargetInk => "give the target ink at rest (its label or glyph), or hand its click to a control a person can see; never remove the feature",
@@ -1748,24 +1815,43 @@ public static partial class Diagnostics
 
         // ── text.clip and overlap.sibling (clip): text cut by an ancestor, and siblings that overlap ─────────────
 
-        /// <summary>The box the ink of a text node needs: its laid-out box and the natural height of an unwrapped run that wants more (both
-        /// measured), widened by <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a
-        /// guess (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
+        /// <summary>The share of an em a line box holds outside its glyphs' ink, at most, on either side (the internal leading over the caps,
+        /// the descent under a baseline with no descenders): without glyph ink, a cut no deeper than this is a review, never a verdict.</summary>
+        public const float LeadingEm = 0.25f;
+
+        /// <summary>The box the ink of a text node needs. With the glyphs' ink known (<see cref="TextRun.HasInk"/>): the box's x extent and the
+        /// ink's y extent (<paramref name="guess"/> 0), so a cut through the line box's leading or descent, which no glyph fills, is no cut.
+        /// Without it: the laid-out box and the natural height of an unwrapped run that wants more (both measured), widened by
+        /// <paramref name="guess"/> above and below: the ink a tight explicit line height leaves outside its line box, a guess
+        /// (<see cref="InkEm"/> em of ink, not the glyphs' own metrics).</summary>
         static RectF InkBox(Node n, TextRun t, out float guess)
         {
             RectF r = n.Rect;
+            if (t.HasInk)
+            {
+                guess = 0f;
+                return new RectF(r.X, r.Y + t.InkTop, r.W, t.InkBottom - t.InkTop);
+            }
             float h = r.H;
             if (!t.Wraps && t.NaturalH > h) h = t.NaturalH;
             guess = t.LineHeight > 0f ? MathF.Max(0f, (InkEm * t.Size - t.LineHeight) / 2f) : 0f;
             return new RectF(r.X, r.Y - guess, r.W, h + 2f * guess);
         }
 
-        /// <summary>Why a vertical cut is under review, "" when it is a verdict: the headless text model, or a cut only the ink guess makes (the
-        /// laid-out box fits; display type with a tight line height, whose real ascenders may well sit inside).</summary>
-        static string ClipDoubt(Snapshot s, float over, float guess)
+        /// <summary>Why a vertical cut is under review, "" when it is a verdict: the headless text model; or, without the glyphs' ink, a cut only
+        /// the ink guess makes (the laid-out box fits; display type with a tight line height, whose real ascenders may well sit inside) or one
+        /// inside the line box's leading or descent (<see cref="LeadingEm"/>), which glyphs need not fill. With the ink known it is a verdict.</summary>
+        static string ClipDoubt(Snapshot s, TextRun t, float over, float guess)
             => !s.RealText ? "headless text model: the ink box is not real glyph metrics"
+             : t.HasInk ? ""
              : over - guess <= Slack ? "ink guess, not glyph metrics: the laid-out box fits the clip; only the 1.2 em ink guess runs past it"
+             : over - guess <= LeadingEm * t.Size ? "no glyph ink in this snapshot: the cut lies inside the line box's leading or descent (under 0.25 em), which the glyphs need not fill"
              : "";
+
+        /// <summary>The cause suffix of a vertical cut under review on real text: <c>:ink-guess</c> (only the 1.2 em guess runs past) or
+        /// <c>:line-box</c> (inside the line box's leading or descent, no glyph ink read); "" for a verdict or the headless model.</summary>
+        static string DoubtCause(Snapshot s, string doubt, float over, float guess)
+            => !s.RealText || doubt.Length == 0 ? "" : over - guess <= Slack ? ":ink-guess" : ":line-box";
 
         static bool Fades(Node n, EdgeMask edge) => (n.FadeEdges & (byte)edge) != 0;
 
@@ -1777,14 +1863,14 @@ public static partial class Diagnostics
             bool reveals = start ? scroller.ScrollOffset > Slack : scroller.ScrollOffset < scroller.ScrollMax - Slack;
             if (Fades(scroller, edge) || (vertical && reveals)) return null;
             string side = edge switch { EdgeMask.Top => "top", EdgeMask.Bottom => "bottom", EdgeMask.Left => "left", _ => "right" };
-            string doubt = vertical ? ClipDoubt(s, over, guess) : s.RealText ? "" : ClipDoubt(s, over, 0f);
+            string doubt = vertical ? ClipDoubt(s, t, over, guess) : s.RealText ? "" : ClipDoubt(s, t, over, 0f);
             var f = new Finding(Rules.TextClip, vertical ? Severity.Error : Severity.Warn,
                 $"text {TextName(t)} is cut by {scroller.Ref}'s {side} scroll edge, which has no edge fade: {F(over)} past it", [n.Ref, scroller.Ref])
             {
-                Measured = [M("over", over), M("inkGuess", vertical ? guess : 0f), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
+                Measured = [M("over", over), M("inkGuess", vertical ? guess : 0f), M("glyphInk", t.HasInk ? 1 : 0), M("scrollOffset", scroller.ScrollOffset), M("scrollMax", scroller.ScrollMax)],
                 Expected = [M("over", 0)],
                 Pattern = PatternOfKey(scroller.Key ?? scroller.Pattern),
-                Cause = "scroll-edge:" + side + (vertical && s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                Cause = "scroll-edge:" + side + (vertical ? DoubtCause(s, doubt, over, guess) : ""),
                 Rects = [Where(n), Where(scroller)],
                 Nodes = [n.Index],
                 Outcome = doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
@@ -1833,18 +1919,18 @@ public static partial class Diagnostics
                     }
                     if (vOver > Slack)
                     {
-                        string doubt = ClipDoubt(s, vOver, guess);
+                        string doubt = ClipDoubt(s, t, vOver, guess);
                         // A theme's designed top bleed (IThemeLintGuide.DesignedTopBleeds: Zune's panorama voice on its exact line, flush with the edge
                         // above it) is an intended cut at the top; a cut at the bottom (descenders) still fails.
                         bool designed = above && s.TopBleeds.Count > 0 && UnderAny(nodes, n, s.TopBleeds);
                         into.Add(new Finding(Rules.TextClip, Severity.Error,
-                            $"text {Q(t.String)} is clipped by {anc.Ref}: its ink runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)}){(designed ? " (a designed bleed: the theme sets this line flush with the edge)" : "")}",
+                            $"text {Q(t.String)} is clipped by {anc.Ref}: its {(t.HasInk ? "glyph ink" : "ink")} runs {F(vOver)} past the {(above ? "top" : "bottom")} ({F(ink.Y)}..{F(ink.Bottom)} in {F(c.Y)}..{F(c.Bottom)}){(designed ? " (a designed bleed: the theme sets this line flush with the edge)" : "")}",
                             [n.Ref, anc.Ref])
                         {
-                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("inkGuess", guess), M("size", t.Size), M("lineHeight", t.LineHeight)],
+                            Measured = [M("inkTop", ink.Y), M("inkBottom", ink.Bottom), M("over", vOver), M("inkGuess", guess), M("glyphInk", t.HasInk ? 1 : 0), M("size", t.Size), M("lineHeight", t.LineHeight)],
                             Expected = [M("clipTop", c.Y), M("clipBottom", c.Bottom)],
                             Pattern = PatternOfKey(anc.Key ?? anc.Pattern),
-                            Cause = designed ? "top:designed-bleed" : (above ? "top" : "bottom") + (s.RealText && doubt.Length > 0 ? ":ink-guess" : ""),
+                            Cause = designed ? "top:designed-bleed" : (above ? "top" : "bottom") + DoubtCause(s, doubt, vOver, guess),
                             Rects = [Where(n), Where(anc)],
                             Nodes = [n.Index],
                             Outcome = designed ? Outcome.Suppressed : doubt.Length > 0 ? Outcome.Review : Outcome.Fail,
@@ -2431,7 +2517,8 @@ public static partial class Diagnostics
         /// the largest ancestor running the same click) or its HIT rect (<see cref="HitRect"/>: the box grown by its slop, cut as the hit test cuts
         /// it), whichever is larger; one that meets the floor either way passes. A role with no press handler is no target, a target its clipping
         /// ancestors hide whole is not on screen, and drag bars are exempt. Grouped by <see cref="TargetFamily"/>: one finding per family, its
-        /// fingerprint the family and narrow/low.</summary>
+        /// fingerprint the family and narrow/low. Only Compact's floor is an owner rule (2026-10, Compact targets >= 40 DIP): above Compact a
+        /// finding is todo (report-only, decision D5 of the 10-23 audit), so it never fails `lint min=error` or `--gate`.</summary>
         static int TargetRule(Snapshot s, Options o, List<Finding> into)
         {
             int looked = 0;
@@ -2479,6 +2566,8 @@ public static partial class Diagnostics
                     Expected = [M("w", floor), M("h", floor)],
                     Pattern = pattern,
                     Cause = (narrow ? "narrow" : "") + (narrow && low ? "+" : "") + (low ? "low" : ""),
+                    Level = compact ? Level.Gate : Level.Todo,
+                    AnyRoute = true,   // the family's own hit area: the same fix on every page that shows it
                     Count = list.Count,
                     Rects = rects,
                     Nodes = Ids(list.Select(static e => e.Node)),
