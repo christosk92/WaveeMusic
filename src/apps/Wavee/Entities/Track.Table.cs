@@ -477,7 +477,8 @@ public readonly partial struct Track
         internal Element InsetList(Element e, string? key = null) => new BoxEl
         {
             Key = key, Direction = 0, MinWidth = 0f, HitTestPassThrough = true,
-            Children = [InsetSpacer(true), new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [e] }, InsetSpacer(false)],
+            // The list column hosts the slot root's keyboard-focus ring (the slot root spans the whole viewport, its lead under the hero's identity column).
+            Children = [InsetSpacer(true), new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, FocusRingHost = true, Children = [e] }, InsetSpacer(false)],
         };
         Detail.Config Cfg => ConfigOf(_latest);
 
@@ -796,7 +797,8 @@ public readonly partial struct Track
                 bool flow = Detail.VerticalLayout.RowFlow(r.W, _rowFlow.Peek(), _flowInit);
                 // A stacked ↔ row restructure changes the natural hero height a lot; clear the measure so the collapse
                 // binds cannot keep the previous flow's height (DetailTracks.cs:1144-1150).
-                if (_flowInit && flow != _rowFlow.Peek()) _heroH.Value = 0f;
+                // The columns form's head (audit B9) has no such restructure: its measure stands.
+                if (_flowInit && flow != _rowFlow.Peek() && !ColumnsForm) _heroH.Value = 0f;
                 if (flow != _rowFlow.Peek()) _rowFlow.Value = flow;
                 _flowInit = true;
             }
@@ -1211,6 +1213,9 @@ public readonly partial struct Track
             float extent = (chips is not null && !PageBar ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set), StickLine());
             _placeBand = vertical ? stickyInset : 0f;
+            // The hero list's item band is LIVE (`ItemClipTopInsetSource`): the list re-reads it on its every render, so the band a later measure moves (the
+            // columns form's pinned head, audit B9; the Liked chips arriving) is never overwritten by the inset the list froze at mount.
+            _itemBandSig ??= new Signal<float>(stickyInset);
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
             // The hero arm appends the section too (C-Playlist-Compact, C-Empty-Compact): after its rows, as one more slot of its viewport.
@@ -1385,10 +1390,16 @@ public readonly partial struct Track
             _dispVer.Value = _dispVer.Peek() + 1;
         }
 
-        /// <summary>ItemsView options freeze at mount, but the Liked chip rail / lens can arrive after enrichment: patch the
-        /// live viewport's shared item-band clip in place so 93 → 141 DIP needs no remount (DetailTracks.cs:1721-1735).</summary>
+        /// <summary>The hero list's live item-band inset (<see cref="ApplyItemBand"/> writes it; the list reads it on its renders).</summary>
+        Signal<float>? _itemBandSig;
+
+        /// <summary>The item band moved after mount (the Liked chip rail / lens arriving after enrichment, 93 → 141 DIP; the columns form's pinned head
+        /// measuring): the live source the list re-reads on its renders, and the viewport's shared band patched in place for this very frame, so no
+        /// remount (DetailTracks.cs:1721-1735).</summary>
+
         void ApplyItemBand(float inset)
         {
+            if (_itemBandSig is { } band) band.Value = inset;
             if (!VerticalArm || Cfg.HasTrailing || Context.Scene is not { } scene) return;
             var viewport = _listCtl.Viewport;
             if (viewport.IsNull || !scene.IsLive(viewport) || !scene.HasScroll(viewport)) return;
@@ -1514,6 +1525,7 @@ public readonly partial struct Track
                         AutoEdgeFade = false,
                         EdgeCues = ScrollEdgeCues.None,
                         ItemClipTopInset = stickyInset,
+                        ItemClipTopInsetSource = _itemBandSig,
                         ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
                     },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },

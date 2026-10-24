@@ -145,7 +145,8 @@ internal static class ZuneDetailHero
 
         void Measure(RectF r)
         {
-            if (r.H <= 1f || MathF.Abs(r.H - _lastMeasuredH) <= 1f) return;
+            // Reported again whenever the table's own value disagrees (it drops its measure where the hero form restructures), not only on a change here.
+            if (r.H <= 1f || (MathF.Abs(r.H - _lastMeasuredH) <= 1f && MathF.Abs(r.H - (_latest?.Parts.HeroHeight ?? 0f)) <= 1f)) return;
             _lastMeasuredH = r.H;
             _latest?.Parts.OnHeroMeasured?.Invoke(r.H);       // the table republishes its collapse height (the hero form) or its pinned line (the columns form)
         }
