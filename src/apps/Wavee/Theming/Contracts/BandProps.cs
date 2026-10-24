@@ -67,6 +67,13 @@ public sealed record BandProps
     /// elsewhere, settings). Read tracked: it follows every navigation.</summary>
     public required Func<int> Current { get; init; }
 
+    /// <summary>The index in <see cref="Destinations"/> the page on screen lives under (contract 1.62): <see cref="Current"/> where that lights one;
+    /// on a detail page the destination its trail starts from (the journey's origin, else the information architecture's root: library for an
+    /// album, playlist, artist, show or episode; browse for a search); -1 when none (settings, profile). A band that lights its section word on a
+    /// detail page reads this; <see cref="Current"/> still says whether the page is a destination. Read tracked. Null: the band lights
+    /// <see cref="Current"/> alone.</summary>
+    public Func<int>? Section { get; init; }
+
     /// <summary>The pins, in the user's order, at most the active structure's <c>MaxBandPins</c>. Read tracked: it follows a pin, an
     /// unpin, a move and a capability change.</summary>
     public required Func<IReadOnlyList<BandPin>> Pins { get; init; }

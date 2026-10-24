@@ -166,6 +166,8 @@
 // 1.57 (audit B3): `VideoPopOutProps.Strip` (the pop-out's on-media strip, stacked over its poster); `StageTransportProps.Next` and
 // `StageNextFacts` (the track up next, the boards' "next · …"); `StageIdentityProps.Marquee` (a one-line stage title scrolls under the
 // marquee preference).
+// 1.62 (audit B5a): `BandProps.Section` (the destination a detail page lives under, from its trail: the band lights "library" over an album);
+// `PageCrumb.Word` (a crumb that is the core's word, not a name: a theme may re-case it).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -181,7 +183,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 57;
+    public const int Minor = 62;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

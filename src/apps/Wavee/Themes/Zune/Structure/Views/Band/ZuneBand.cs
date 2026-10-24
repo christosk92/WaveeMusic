@@ -11,8 +11,9 @@
 //          OVERFLOW (`pivotOverflow`): EdgeFadeScroll scrolls the run under an edge fade (Compact and Small fade; Compact rotates the lit
 //          word to the front, the words sliding); MoreMenu, at Compact and Small, keeps the lit word and folds the others (and the hub's
 //          profile and settings) into a "more" menu.
+//          On a detail page row 1 lights the destination the page lives under (`BandProps.Section`: "library" over an album).
 //   ROW 2  the page's views (Library's kinds, Browse's bands, a page's in-page tabs), the current one lit (the weight; on a detail page,
-//          which lights no pivot, the page's title and a hairline lead and the current view takes the accent underline), then the page's
+//          the page's title and a hairline lead and the current view takes the accent underline), then the page's
 //          actions (the play disc, the shuffle ring, word pills). Hidden when the page has none.
 //   COLUMN the rows sit in the pages' column (the T1 audit's A1, A2): a leading inset (the gutter), the rows capped at 2400 and a trailing
 //          inset (the record's `Row2End`), centred together, so the first pivot stands on the page content's x at every width and the pins and
@@ -90,6 +91,9 @@ internal sealed class ZuneBand : Component
         float edgeFade = fade.Value;
         var destinations = band.Destinations();
         int current = band.Current();
+        // The lit word: the destination the page lives under. A detail page lights its section too (Z-Part-Band `section`: "library" over an
+        // album, "browse" over a search), while `current` still says it is a detail page (its title leads row 2).
+        int lit = band.Section?.Invoke() ?? current;
         bool pinsShown = ZuneBandRules.ShowPins(rec, ZuneOptions.BandPins());
         var pins = pinsShown ? band.Pins() : s_noPins;
         var overflow = ZuneOptions.Overflow();
@@ -107,7 +111,7 @@ internal sealed class ZuneBand : Component
         var scrollSig = _scroll;
         float row2H = rec.Row2H, restH = rec.HeightWith(row2);
         float Tie() => tied && scrollSig is { } sg ? ZuneBandRules.TiedFold(sg.Value.Offset, row2H) : 0f;
-        // A detail page (no lit pivot) leads row 2 with its title; its current view takes the underline (the tab style).
+        // A detail page (no destination of its own) leads row 2 with its title; its current view takes the underline (the tab style).
         bool detail = current < 0;
         string? title = rec.TitleAndActions && detail && views.Count > 0 && chrome is { Title.Length: > 0 } c ? c.Title : null;
 
@@ -140,26 +144,26 @@ internal sealed class ZuneBand : Component
         }
 
         // ── row 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────
-        var order = ZuneBandRules.PivotOrder(destinations.Count, current, rec.Rotate);
+        var order = ZuneBandRules.PivotOrder(destinations.Count, lit, rec.Rotate);
         bool more = overflow == PivotOverflow.MoreMenu && rec.Narrow && destinations.Count > 1;
         var words = new List<Element>(order.Length + 1);
         _pivots.Begin();
         if (more)
         {
             // The lit word (the first when none is lit), then "more" holding the others and the hub's extras.
-            int shown = ZuneBandRules.TabStop(destinations.Count, current);
+            int shown = ZuneBandRules.TabStop(destinations.Count, lit);
             var rest = new List<BandDestination>(6);
             foreach (var d in band.Hub()) if (!string.Equals(d.Id, destinations[shown].Id, StringComparison.Ordinal)) rest.Add(d);
-            words.Add(Pivot(destinations[shown], lit: shown == current, tabStop: true, slot: 0, rec, type, OnTabKey));
+            words.Add(Pivot(destinations[shown], lit: shown == lit, tabStop: true, slot: 0, rec, type, OnTabKey));
             words.Add(MoreWord(() => OpenMore(rest), slot: 1, rec, type, OnTabKey));
         }
         else
         {
-            int stop = ZuneBandRules.TabStop(destinations.Count, current);
+            int stop = ZuneBandRules.TabStop(destinations.Count, lit);
             for (int i = 0; i < order.Length; i++)
             {
                 int index = order[i];
-                words.Add(Pivot(destinations[index], lit: index == current, tabStop: index == stop, slot: i, rec, type, OnTabKey));
+                words.Add(Pivot(destinations[index], lit: index == lit, tabStop: index == stop, slot: i, rec, type, OnTabKey));
             }
         }
 
