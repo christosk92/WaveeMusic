@@ -5,7 +5,7 @@
 //
 //   tier      masthead (top / bottom)   Overview      kind pivots                       rows                                              rail     calendar gap
 //   Compact   12 / 0                    40 button     tabs 40 tall, 8 pad, gap 4        stacked: kind + time under the sub line, 40       none     16
-//                                                                                       chevron, no hover "..." (child rows 44)
+//                                                                                       chevron, no hover "..." (lean child rows 44, 12 in)
 //   Small     16 / 12 (head gap 2)      24 button     the tuned strip (gap 20)          the tuned row (chip, time, chevron)               44       24
 //   Standard  24 / 16                   24 button     the tuned strip                   the tuned row                                     44       36 (the old PageWide)
 //   Huge      24 / 16                   32 toggle     the tuned strip                   the tuned row                                     44       16
@@ -77,6 +77,14 @@ public sealed record ClassicRecentsLayout
     /// <summary>A drawer child's row height: 44 at Compact (C-Recents-Compact), the tuned 40 elsewhere.</summary>
     public required float ChildRowH { get; init; }
 
+    /// <summary>A drawer child is C-Recents-Compact's lean row: heart · art · title · the played-at stamp, with no "#" or duration lane and no "…" lane (the
+    /// right button opens the track's menu, as the card's own Compact row does), so the title keeps its measure at 400-527. The tuned child
+    /// (# · heart · art · title · duration · [when · "…"]) left the title nothing at 400 and about 6 characters at 520 (audit B8).</summary>
+    public bool LeanChildren { get; init; }
+
+    /// <summary>The drawer's air between its accent spine and the children: C-Recents-Compact's 12; NaN: the tuned L + S.</summary>
+    public float DrawerPadX { get; init; } = float.NaN;
+
     /// <summary>The annotated day rail (the list's scrollbar, 44) stands beside the list; Compact has none.</summary>
     public required bool Rail { get; init; }
 
@@ -103,6 +111,7 @@ public static class ClassicRecentsTiers
     {
         Tier = WidthTier.Compact, HeadTop = 12f, HeadBottom = 0f, OverviewH = 40f, PivotH = 40f, PivotGap = 4f, PivotPadX = 8f,
         Stacked = true, ChevronLane = 40f, ChildRowH = 44f, Rail = false, CalendarGap = 16f, ChevronOwn = true,
+        LeanChildren = true, DrawerPadX = 12f,
     };
 
     static readonly ClassicRecentsLayout s_small = new()
