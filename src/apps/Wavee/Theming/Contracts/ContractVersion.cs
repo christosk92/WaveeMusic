@@ -189,7 +189,9 @@
 // hero style's `Skeleton` takes the form and the columns (a theme built against an older minor supplies the hero form only and keeps the two-arm frame).
 // A show's or an episode's vertical arm also carries `DetailFrameProps.TwoColumn` (the rail's props) and `DetailRailProps.Stacked`, so a structure can draw
 // one identity at every width (the fixed header and the column as one arrangement); the `ShowHeader` props stay for one that does not.
-// 1.70 (audit Z-OWNER): `ShowReaderStyle.YearsInMargin` (the show reader's year strip stands in the frame's outer margin: the reader reserves no strip
+// 1.72 (audit B7 r2): `DetailHeroStyle.Skeleton` is optional. Null: the hero shimmers its own identity in place while the page's header is unread, so the
+// hero list mounts at once (no loading band) and the header's landing eases the hero's height, the rows riding it. A style that hands a band keeps it.
+// 1.73 (audit Z-OWNER): `ShowReaderStyle.YearsInMargin` (the show reader's year strip stands in the frame's outer margin: the reader reserves no strip
 // column and, where it ends on the column edge, pads no trailing gutter, so its rows run to that edge; `ShowReaderRules.HeadColumns` and `ShowToolbarLayout.For`
 // take the flag); `ShowToolbarArgs.Trailing` (whether the toolbar pads that gutter); `Show.ReaderOwnsEdge` (the reader's trailing edge is the window's or its
 // pane's, the vertical arm's and a Compact drill-in's: a margin strip then stands inside the reader's own gutter).
@@ -208,7 +210,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 70;
+    public const int Minor = 73;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -117,20 +117,17 @@ public static partial class Visualizer
     /// now-playing card. Preview: the three rows, static.</summary>
     public static Element TypeFace(Slab slab, in FaceSpec spec)
     {
-        float w = spec.W, h = spec.H;
-        bool preview = spec.Preview;
-        return FaceFrame(spec,
-        [
-            new CanvasChild(0f, 0f, Embed.Comp(() => new TypeBody { Slab = slab, W = w, H = h, Preview = preview })
-                with { Key = "type:" + (int)w + "x" + (int)h }),
-        ]);
+        // the size is a re-pushed prop, never a key: a gallery tile that resizes (a tier crossing) keeps its rows and their drift
+        return FaceFrame(spec, [new CanvasChild(0f, 0f, Embed.Comp(new TypeBody.Props(slab, spec.W, spec.H, spec.Preview), static () => new TypeBody()))]);
     }
 
     sealed class TypeBody : Component
     {
-        public Slab Slab = null!;
-        public float W, H;
-        public bool Preview;
+        public sealed record Props(Slab Slab, float W, float H, bool Preview);
+
+        Slab Slab = null!;
+        float W, H;
+        bool Preview;
         readonly FloatSignal[] _offset = [new(0f), new(0f), new(0f)];
         readonly float[] _period = new float[Covers.Drift.Rows];
         readonly Action _tick, _write;
@@ -144,6 +141,8 @@ public static partial class Visualizer
 
         public override Element Render()
         {
+            var p = UseProps<Props>();
+            Slab = p.Slab; W = p.W; H = p.H; Preview = p.Preview;   // the ticker reads the latest push
             var ctx = UseContext(Stage.StageContext);
             _ctx = ctx;
             _ = Entities.ScopeEpoch.Value;                       // FIRST: a scope switch re-points the table reads below
@@ -162,15 +161,10 @@ public static partial class Visualizer
                 float size = Covers.Drift.SizeOf(r) * k;
                 // the line box is one em tall, so the baseline sits ≈ 0.86 em below its top (Segoe UI Variable's metrics)
                 float y = Covers.Drift.BaselineOf(r) * H - 0.86f * size;
-                int index = r; float w = W; bool still = Preview; var offset = _offset[r]; var periods = _period;
-                ushort weight = Covers.Drift.WeightOf(r);
                 Prop<ColorF> color = r == 1 ? Prop.Bind(slab.A) : Ink.Ink with { A = Covers.Drift.InkAlpha(r, dark) };
-                Prop<float> opacity = r == 1 ? Prop.Of(() => Covers.Drift.TitleAlpha(slab.Kick.Value, slab.Low.Value)) : 1f;
-                kids.Add(new CanvasChild(0f, y, Embed.Comp(() => new TypeRow
-                {
-                    Word = word, Size = size, Weight = weight, W = w, Gap = Covers.Drift.GapEm * size,
-                    Offset = offset, Periods = periods, Index = index, Still = still, Color = color, Opacity = opacity,
-                }) with { Key = "row:" + index + ":" + word }));
+                Prop<float> opacity = r == 1 ? TitleOpacity(slab) : 1f;
+                var props = new TypeRow.Props(word, size, Covers.Drift.WeightOf(r), W, Covers.Drift.GapEm * size, _offset[r], _period, r, Preview, color, opacity);
+                kids.Add(new CanvasChild(0f, y, Embed.Comp(props, static () => new TypeRow()) with { Key = "row:" + r + ":" + word }));
             }
             if (!Preview)
             {
@@ -193,6 +187,16 @@ public static partial class Visualizer
             return new BoxEl { Width = W, Height = H, HitTestVisible = false, Children = [Canvas.Create(W, H, kids)] };
         }
 
+        /// <summary>The title's kick, one bind per slab (a stable thunk, so the row's props stay equal across renders).</summary>
+        Prop<float> TitleOpacity(Slab slab)
+        {
+            if (!ReferenceEquals(slab, _opacitySlab)) { _opacitySlab = slab; _titleOpacity = Prop.Of(() => Covers.Drift.TitleAlpha(slab.Kick.Value, slab.Low.Value)); }
+            return _titleOpacity;
+        }
+
+        Slab? _opacitySlab;
+        Prop<float> _titleOpacity = 1f;
+
         void Tick()
         {
             _dtMs = ZuneDeltaMs(ref _lastMs);
@@ -214,42 +218,36 @@ public static partial class Visualizer
     /// strip by the bound offset folded into one period (word + gap, measured from the first copy).</summary>
     sealed class TypeRow : Component
     {
-        public string Word = "";
-        public float Size, W, Gap;
-        public ushort Weight;
-        public Prop<ColorF> Color;
-        public Prop<float> Opacity = 1f;
-        public FloatSignal Offset = null!;
-        public float[] Periods = null!;
-        public int Index;
-        public bool Still;
+        public sealed record Props(string Word, float Size, ushort Weight, float W, float Gap, FloatSignal Offset, float[] Periods, int Index, bool Still,
+            Prop<ColorF> Color, Prop<float> Opacity);
 
         public override Element Render()
         {
+            var p = UseProps<Props>();
             var measured = UseSignal(0f);
-            float tw = measured.Value, period = tw > 0f ? tw + Gap : 0f;
-            int copies = Still || period <= 0f ? 1 : Math.Min(8, (int)MathF.Ceiling(W / period) + 1);
+            float tw = measured.Value, period = tw > 0f ? tw + p.Gap : 0f;
+            int copies = p.Still || period <= 0f ? 1 : Math.Min(8, (int)MathF.Ceiling(p.W / period) + 1);
             var kids = new Element[copies];
-            int index = Index; float gap = Gap; var periods = Periods;
+            int index = p.Index; float gap = p.Gap; var periods = p.Periods;
             kids[0] = new BoxEl
             {
                 Shrink = 0f, HitTestVisible = false,
                 OnBoundsChanged = b => { periods[index] = b.W > 0f ? b.W + gap : 0f; if (b.W != measured.Peek()) measured.Value = b.W; },
-                Children = [Glyphs()],
+                Children = [Glyphs(p)],
             };
-            for (int i = 1; i < copies; i++) kids[i] = Glyphs();
-            var offset = Offset;
+            for (int i = 1; i < copies; i++) kids[i] = Glyphs(p);
+            var offset = p.Offset;
             return new BoxEl
             {
-                Direction = 0, Gap = Gap, HitTestVisible = false, Opacity = Opacity,
-                Transform = Still ? Affine2D.Identity : Prop.Of(() => Affine2D.Translation(-Covers.Drift.Wrap(offset.Value, period), 0f)),
+                Direction = 0, Gap = gap, HitTestVisible = false, Opacity = p.Opacity,
+                Transform = p.Still ? Affine2D.Identity : Prop.Of(() => Affine2D.Translation(-Covers.Drift.Wrap(offset.Value, period), 0f)),
                 Children = kids,
             };
         }
 
-        TextEl Glyphs() => new(Word)
+        static TextEl Glyphs(Props p) => new(p.Word)
         {
-            Size = Size, LineHeight = Size, Weight = Weight, FontFamily = R.Type.DisplayFace, Color = Color,
+            Size = p.Size, LineHeight = p.Size, Weight = p.Weight, FontFamily = R.Type.DisplayFace, Color = p.Color,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
         };
     }
@@ -270,8 +268,8 @@ public static partial class Visualizer
         int decode = Covers.Tiles.DecodeFor(cell, big ? 2 : 1, preview);
         var kids = new List<CanvasChild>(cols + 4)
         {
-            new CanvasChild(0f, y0, Embed.Comp(() => new MosaicBody { Slab = slab, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview })
-                with { Key = "mosaic:" + cols + "x" + rows + ":" + (int)cell }),
+            // the geometry is a re-pushed prop, never a key: a resized tile keeps its wall (a new row count re-plans it in place)
+            new CanvasChild(0f, y0, Embed.Comp(new MosaicBody.Props(slab, cols, rows, cell, decode, big, preview), static () => new MosaicBody())),
         };
         if (!preview)
         {
@@ -291,7 +289,7 @@ public static partial class Visualizer
                 Width = w, Height = 0.45f * h, HitTestVisible = false,
                 Gradient = new GradientSpec(GradientShape.Linear, 90f, [new GradientStop(0f, veil with { A = 0f }), new GradientStop(1f, veil with { A = 0.92f })]),
             }));
-            kids.Add(new CanvasChild(0f, 0f, Embed.Comp(() => new MosaicCaption { Slab = slab, W = w, H = h })));
+            kids.Add(new CanvasChild(0f, 0f, Embed.Comp(new MosaicCaption.Props(slab, w, h), static () => new MosaicCaption())));
         }
         return FaceFrame(spec, kids);
     }
@@ -328,16 +326,15 @@ public static partial class Visualizer
     /// wall KEYED per song: a new song re-lays the wall (cross-faded) with its cover in the lead 2×2.</summary>
     sealed class MosaicBody : Component
     {
-        public Slab Slab = null!;
-        public int Cols, Rows, Decode;
-        public float Cell;
-        public bool Big, Preview;
+        public sealed record Props(Slab Slab, int Cols, int Rows, float Cell, int Decode, bool Big, bool Preview);
+
         readonly CoverPool _pool = new();
         readonly int[] _ids = new int[Covers.Cap], _upNext = new int[Covers.Cap], _recent = new int[Covers.Cap];
         static readonly Action s_ensure = EnsureSources;
 
         public override Element Render()
         {
+            var p = UseProps<Props>();
             var ctx = UseContext(Stage.StageContext);
             _ = Entities.ScopeEpoch.Value;                       // FIRST: a scope switch re-points the table reads below
             _ = Entities.Current.Edges.Queue.Changed.Value;
@@ -351,8 +348,8 @@ public static partial class Visualizer
             UseEffect(() => _pool.Publish(_ids.AsSpan(0, n)), DepKey.From(hash, n));
             UseEffect(s_ensure, DepKey.From(((long)Entities.Current.Epoch << 32) | Queue.Version));
             int song = track.IsValid ? track.Slot : 0;
-            var pool = _pool; var slab = Slab;
-            int cols = Cols, rows = Rows, decode = Decode; float cell = Cell; bool big = Big, preview = Preview;
+            int cols = p.Cols, rows = p.Rows; float cell = p.Cell; bool preview = p.Preview;
+            var wall = new MosaicWall.Props(p.Slab, _pool, cols, rows, cell, p.Decode, p.Big, preview, (uint)song);
             return new BoxEl
             {
                 Width = cols * cell, Height = rows * cell, ZStack = true, HitTestVisible = false,
@@ -363,7 +360,7 @@ public static partial class Visualizer
                         Key = "wall:" + song, Width = cols * cell, Height = rows * cell, HitTestVisible = false,
                         Enter = preview ? null : new EnterExit(Opacity: 0f, Active: true), Exit = preview ? null : new EnterExit(Opacity: 0f, Active: true),
                         Transition = MotionTokenDef.Eased(550f, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade),
-                        Children = [Embed.Comp(() => new MosaicWall { Slab = slab, Pool = pool, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview, Seed = (uint)song })],
+                        Children = [Embed.Comp(wall, static () => new MosaicWall())],
                     },
                 ],
             };
@@ -426,12 +423,14 @@ public static partial class Visualizer
     /// (zero allocation) arms two tiles per beat (Covers.Flips.Pick) and steps the armed ones.</summary>
     sealed class MosaicWall : Component
     {
-        public Slab Slab = null!;
-        public CoverPool Pool = null!;
-        public int Cols, Rows, Decode;
-        public float Cell;
-        public bool Big, Preview;
-        public uint Seed;
+        public sealed record Props(Slab Slab, CoverPool Pool, int Cols, int Rows, float Cell, int Decode, bool Big, bool Preview, uint Seed);
+
+        Slab Slab = null!;
+        CoverPool Pool = null!;
+        int Cols, Rows, Decode;
+        float Cell;
+        bool Big, Preview;
+        uint Seed;
         Covers.Tile[] _plan = [];
         Signal<string>[] _url = [];
         FloatSignal[] _scale = [];
@@ -448,8 +447,12 @@ public static partial class Visualizer
 
         public override Element Render()
         {
+            var p = UseProps<Props>();
+            // a new grid (a resized tile with another row count) re-plans the wall in place; a new cell size only re-places the tiles
+            bool replan = _plan.Length == 0 || p.Cols != Cols || p.Rows != Rows || p.Big != Big || p.Seed != Seed || !ReferenceEquals(p.Pool, Pool);
+            Slab = p.Slab; Pool = p.Pool; Cols = p.Cols; Rows = p.Rows; Cell = p.Cell; Decode = p.Decode; Big = p.Big; Preview = p.Preview; Seed = p.Seed;
             _ctx = UseContext(Stage.StageContext);
-            if (_plan.Length == 0) Init();
+            if (replan) Init();
             bool ready = Pool.Ready.Value;
             var pool = Pool; var seed = _seed;
             UseSignalEffect(() => { _ = pool.Version.Value; Reactive.Untrack(seed); });
@@ -491,6 +494,7 @@ public static partial class Visualizer
             _plan = Covers.Tiles.Plan(Cols, Rows, Seed, Big);
             int n = _plan.Length;
             _lead = Covers.Tiles.LeadOf(_plan);
+            _active = 0;
             _url = new Signal<string>[n]; _scale = new FloatSignal[n]; _flip = new float[n]; _pending = new string?[n]; _cover = new int[n];
             Covers.Tiles.Assign(_plan, Pool.Count, Seed, _cover);
             for (int t = 0; t < n; t++)
@@ -599,11 +603,11 @@ public static partial class Visualizer
     /// kept above the transport.</summary>
     sealed class MosaicCaption : Component
     {
-        public Slab Slab = null!;
-        public float W, H;
+        public sealed record Props(Slab Slab, float W, float H);
 
         public override Element Render()
         {
+            var (slab, W, H) = UseProps<Props>();
             var ctx = UseContext(Stage.StageContext);
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Artists.Changed.Value;
@@ -616,7 +620,7 @@ public static partial class Visualizer
             if (artist.Length > 0)
                 kids.Add(new CanvasChild(x + 8f * k, artistY, new TextEl(artist)
                 {
-                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Prop.Bind(Slab.A),
+                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Prop.Bind(slab.A),
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                 }));
             if (title.Length > 0)
@@ -647,16 +651,16 @@ public static partial class Visualizer
             new GradientStop(0f, a with { A = 0f }), new GradientStop(0.35f, a with { A = 0f }),
             new GradientStop(0.7f, foot with { A = 0.5f }), new GradientStop(1f, foot with { A = 0.88f }),
         ]);
-        string size = (int)w + "x" + (int)h;
+        // the size is a re-pushed prop, never a key: a resized tile keeps its photo, its pan and the name's drift
         return FaceFrame(spec,
         [
-            new CanvasChild(0f, 0f, Embed.Comp(() => new SpotlightBody { Slab = slab, W = w, H = h, Preview = preview }) with { Key = "spot:" + size }),
+            new CanvasChild(0f, 0f, Embed.Comp(new SpotlightBody.Props(slab, w, h, preview), static () => new SpotlightBody())),
             new CanvasChild(0f, 0f, new BoxEl
             {
                 Width = w, Height = h, Gradient = scrim, HitTestVisible = false,
                 Opacity = preview ? 1f : Prop.Of(() => Covers.Spot.ScrimAlpha(slab.Level.Value)),
             }),
-            new CanvasChild(0f, 0f, Embed.Comp(() => new SpotlightType { W = w, H = h, Preview = preview }) with { Key = "spottype:" + size }),
+            new CanvasChild(0f, 0f, Embed.Comp(new SpotlightType.Props(w, h, preview), static () => new SpotlightType())),
         ]);
     }
 
@@ -675,9 +679,10 @@ public static partial class Visualizer
     /// 8-bar downbeat, and a new track starts at cycle 0.</summary>
     sealed class SpotlightBody : Component
     {
-        public Slab Slab = null!;
-        public float W, H;
-        public bool Preview;
+        public sealed record Props(Slab Slab, float W, float H, bool Preview);
+
+        float W, H;
+        bool Preview;
         readonly string[] _urls = new string[Covers.Spot.MaxPhotos];
         readonly Signal<int> _layers = new(0);
         readonly Action _clearPrevious;
@@ -691,6 +696,8 @@ public static partial class Visualizer
 
         public override Element Render()
         {
+            var p = UseProps<Props>();
+            W = p.W; H = p.H; Preview = p.Preview;
             var ctx = UseContext(Stage.StageContext);
             _ = Entities.ScopeEpoch.Value;                       // FIRST: a scope switch re-points the table reads below
             uint epoch = Entities.ScopeEpoch.Peek();
@@ -703,7 +710,7 @@ public static partial class Visualizer
             // the gallery rides the artist overview (Spotify.Decode.Artist: an overview with no gallery lands it Complete-empty)
             UseEffect(() => { if (artistSlot > 0) Entities.Ensure(new Artist(artistSlot), ArtistFields.Overview); }, DepKey.From(artistSlot, (int)epoch));
             var clock = UseSignal(default(SpotClock));
-            var slab = Slab; bool preview = Preview;
+            var slab = p.Slab; bool preview = Preview;
             // per bar (and per track change), allocation-free: re-renders only when the cycle, the preload or the track moves
             UseSignalEffect(() => { if (!preview) clock.SetIfChanged(Step(ZuneTrack(ctx), slab.Downbeat.Value, slab.Bar.Value)); });
             var sc = clock.Value;
@@ -763,10 +770,8 @@ public static partial class Visualizer
 
         Element Layer(SpotLayer l, bool fadeIn, float span, float fade, int decode)
         {
-            float w = W, h = H; bool still = Preview;
-            var pan = Covers.Spot.Pan(l.Cycle);
-            return Embed.Comp(() => new SpotlightPhoto { Url = l.Url, W = w, H = h, Decode = decode, Blur = l.Blur, Fade = fadeIn, Still = still, Pan = pan, SpanMs = span, FadeMs = fade })
-                with { Key = l.Key };
+            var props = new SpotlightPhoto.Props(l.Url, W, H, span, fade, decode, l.Blur, fadeIn, Preview, Covers.Spot.Pan(l.Cycle));
+            return Embed.Comp(props, static () => new SpotlightPhoto()) with { Key = l.Key };
         }
 
         /// <summary>The gallery (capped), else the header/portrait, else the playing cover blurred (<paramref name="blur"/>).</summary>
@@ -791,20 +796,17 @@ public static partial class Visualizer
     /// reduced motion — a fade orients, it does not move). Reduced or preview: the rest pose, no pan.</summary>
     sealed class SpotlightPhoto : Component
     {
-        public string Url = "";
-        public float W, H, SpanMs, FadeMs;
-        public int Decode;
-        public bool Blur, Fade, Still;
-        public Covers.Spot.KenBurns Pan;
+        public sealed record Props(string Url, float W, float H, float SpanMs, float FadeMs, int Decode, bool Blur, bool Fade, bool Still, Covers.Spot.KenBurns Pan);
 
         public override Element Render()
         {
-            bool still = Still || Design.Reduced;
-            var p = Pan;
-            float dur = MathF.Max(1f, SpanMs * 1.25f);
+            var (url, w, h, spanMs, fadeMs, decode, blur, fade, stillProp, p) = UseProps<Props>();
+            bool still = stillProp || Design.Reduced;
+            float dur = MathF.Max(1f, spanMs * 1.25f);
             Keyframe[] scale = still ? [new Keyframe(0f, p.ScaleFrom), new Keyframe(1f, p.ScaleFrom)] : [new Keyframe(0f, p.ScaleFrom), new Keyframe(1f, p.ScaleTo, Easing.Linear)];
-            Keyframe[] tx = still ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)] : [new Keyframe(0f, 0f), new Keyframe(1f, p.Dx * W, Easing.Linear)];
-            Keyframe[] ty = still ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)] : [new Keyframe(0f, 0f), new Keyframe(1f, p.Dy * H, Easing.Linear)];
+            Keyframe[] tx = still ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)] : [new Keyframe(0f, 0f), new Keyframe(1f, p.Dx * w, Easing.Linear)];
+            Keyframe[] ty = still ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)] : [new Keyframe(0f, 0f), new Keyframe(1f, p.Dy * h, Easing.Linear)];
+            // keyed on the pose only: a resize keeps the running pan (a restart would jump the photo on every resized frame)
             var key = DepKey.From(still);
             UseKeyframes(AnimChannel.ScaleX, scale, dur, loop: false, key);
             UseKeyframes(AnimChannel.ScaleY, scale, dur, loop: false, key);
@@ -812,10 +814,10 @@ public static partial class Visualizer
             UseKeyframes(AnimChannel.TranslateY, ty, dur, loop: false, key);
             return new BoxEl
             {
-                Width = W, Height = H, ZStack = true, HitTestVisible = false,
-                Enter = Fade ? new EnterExit(Opacity: 0f, Active: true) : null,
-                Transition = Fade ? MotionTokenDef.Eased(FadeMs, Easing.Linear, ReducedMotionPolicy.KeepFade) : null,
-                Children = [SpotImage(Url, Decode, Blur)],
+                Width = w, Height = h, ZStack = true, HitTestVisible = false,
+                Enter = fade ? new EnterExit(Opacity: 0f, Active: true) : null,
+                Transition = fade ? MotionTokenDef.Eased(fadeMs, Easing.Linear, ReducedMotionPolicy.KeepFade) : null,
+                Children = [SpotImage(url, decode, blur)],
             };
         }
     }
@@ -829,11 +831,11 @@ public static partial class Visualizer
     /// "album · year" (20) above it. Stage ink at 0.9 over the scrim.</summary>
     sealed class SpotlightType : Component
     {
-        public float W, H;
-        public bool Preview;
+        public sealed record Props(float W, float H, bool Preview);
 
         public override Element Render()
         {
+            var (W, H, Preview) = UseProps<Props>();
             var ctx = UseContext(Stage.StageContext);
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Artists.Changed.Value;
@@ -846,10 +848,8 @@ public static partial class Visualizer
             var kids = new List<CanvasChild>(3);
             if (name.Length > 0)
             {
-                float size = nameSize, travel = Preview ? 0f : 60f * k;
-                bool still = Preview;
                 kids.Add(new CanvasChild(Preview ? -0.03f * W : -30f * k, top,
-                    Embed.Comp(() => new SpotlightName { Word = name, Size = size, Travel = travel, Still = still }) with { Key = "name:" + name }));
+                    Embed.Comp(new SpotlightName.Props(name, nameSize, Preview ? 0f : 60f * k, Preview), static () => new SpotlightName()) with { Key = "name:" + name }));
             }
             if (!Preview && track.IsValid)
             {
@@ -878,12 +878,12 @@ public static partial class Visualizer
     sealed class SpotlightName : Component
     {
         const float LoopMs = 36_000f;
-        public string Word = "";
-        public float Size, Travel;
-        public bool Still;
+
+        public sealed record Props(string Word, float Size, float Travel, bool Still);
 
         public override Element Render()
         {
+            var (Word, Size, Travel, Still) = UseProps<Props>();
             bool still = Still || Design.Reduced || Travel <= 0f;
             Keyframe[] keys = still
                 ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)]

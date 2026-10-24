@@ -133,7 +133,7 @@ public readonly partial struct Show
             // Hero/vertical show layout plugs in HERE (`v => v ? VerticalReader(...) : Reader(...)`) and nowhere else;
             // nothing below hard-codes a two-column shape, and the rail/grip/splitter are Detail.UI.cs's, not this
             // page's, so the two-column arm needs no change to make room for it.
-            // The arm reaches the reader as its OWN EDGE (contract 1.70): the vertical arm's reader runs to the window edge and pads its trailing
+            // The arm reaches the reader as its OWN EDGE (contract 1.73): the vertical arm's reader runs to the window edge and pads its trailing
             // gutter itself; the two-column arm's ends on the column edge, past which a margin-standing year strip stands.
             _episodes = v => Embed.Comp(new ReaderProps(_m, _routeKey, OwnsEdge: v), static () => new ReaderHost());
             _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };

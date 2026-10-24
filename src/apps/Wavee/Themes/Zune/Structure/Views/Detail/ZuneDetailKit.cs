@@ -158,8 +158,11 @@ internal static class ZuneDetailKit
     /// <param name="motion">The band's height ease: <see cref="ZuneDetailRules.PanoramaFold"/> (a flow reveal: what follows rides its presented extent) where
     /// none is given. A band inside a virtual list's item (the one-tree hero, audit B9) eases through real layout instead (<see cref="ZuneMotion.HeightResize"/>):
     /// the list places the items after it by their laid-out extents, which a flow reveal lands at once.</param>
+    /// <param name="pending">While it answers true (a header not read yet, no title known) the title shimmers in the reserved band as a bar
+    /// <paramref name="shimmerW"/> wide, and cross-dissolves into the title when it lands; the band itself stays and hugs the title (audit B7 r2: the hero
+    /// list's loading band drew that bar; the hero now loads in place). Null: the title alone.</param>
     public static BoxEl PanoramaBand(Detail.Identity id, Detail.FrameSlots slots, ZuneDetailLayout lay, float gutter, EnterExit? enter = null,
-        LayoutTransition? motion = null)
+        LayoutTransition? motion = null, Func<bool>? pending = null, float shimmerW = 0f)
     {
         float lead = gutter + lay.PanoramaNudgeX;
         bool editor = slots.Title is not null && lay.PanoramaH > 0f;
@@ -173,6 +176,17 @@ internal static class ZuneDetailKit
         }
         else
             title = TitleHost("panorama:title", Panorama(id.Title, lay), enter);
+        if (pending is not null)
+        {
+            // The branch's root is an unkeyed box: a single-child slot's root ignores its key, and the two title hosts must keep theirs (the 700 fold
+            // cross-fades the editor between the panorama and the identity column by key).
+            Element real = new BoxEl { Direction = 1, MinWidth = 0f, Children = [title] };
+            title = new SkelRegionEl(
+                Pending: pending, Failed: s_false,
+                Content: () => real,
+                ShimmerSource: () => new BoxEl { Direction = 0, MinWidth = 0f, Children = [Bar(shimmerW, lay.ArtistLine)] },
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+        }
         return new BoxEl
         {
             Key = Z.PanoramaKey, Direction = 0, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,

@@ -11,7 +11,8 @@
 //     last 44 of the collapse and takes hits only once the table's chrome has stuck (the engaged edge, `CompactInteractive`).
 //
 // The numbers are `WinUiDetailRules` and the tier's `WinUiDetailTier`; the form (tall, short, stacked) is the tier's and the window's height (`TierFacts.Height`).
-// THE LOADING BAND (`StyleKeys.DetailHero`): the same parts at the same sizes, unfilled, so the swap to the loaded hero never moves a row.
+// LOADING: the hero list has no loading band (audit B7 r2); while the page's header is unread the hero shimmers its words in place (`SkeletonWords`: the same
+// rows at the same sizes, unfilled) beside the real cover and list bar, and the header's landing eases the words' height, the rows riding it.
 
 using System.Globalization;
 using FluentGpu.Animation;
@@ -47,9 +48,9 @@ internal static partial class WinUiDetailFrame
     static readonly LayoutTransition HeroHeightMotion = new(
         TransitionChannels.Size, TransitionDynamics.Tween(280f, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
-    /// <summary>The hero's loading band, as the style the table reads (<see cref="StyleKeys.DetailHero"/>); the list's page inset eases through real layout when
-    /// a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
-    public static readonly DetailHeroStyle HeroStyle = new() { Skeleton = HeroSkeleton, InsetMotion = WinUiDiscoveryMotion.WidthReflow };
+    /// <summary>The hero's style, as the table reads it (<see cref="StyleKeys.DetailHero"/>): no loading band (the words shimmer in place, audit B7 r2); the
+    /// list's page inset eases through real layout when a tier changes it (audit B9: the rows, the chrome and the tail ride it instead of stepping).</summary>
+    public static readonly DetailHeroStyle HeroStyle = new() { InsetMotion = WinUiDiscoveryMotion.WidthReflow };
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailHero"/>.</summary>
     public static Element HeroTemplate(DetailHeroProps p, in ViewContext ctx) => Embed.Comp(p, static () => new HeroHost());
@@ -60,9 +61,15 @@ internal static partial class WinUiDetailFrame
         DetailHeroProps? _latest;
         readonly Signal<DetailHeroProps?> _props = new(null);
         readonly Action<RectF> _measure;
+        readonly Func<bool> _headerPending;
         float _lastMeasuredH;
 
-        public HeroHost() => _measure = Measure;
+        public HeroHost()
+        {
+            _measure = Measure;
+            // The words' loading gate: the page's header has not answered (reading the props signal subscribes the region's effect to the next push).
+            _headerPending = () => _props.Value?.Spec.Identity.HeaderPending ?? false;
+        }
 
         public void ApplyProps(object props)
         {
@@ -106,9 +113,6 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-eyebrow", ChipRow(id, spec.Config)
                     ? WinUiDetailKit.EyebrowWithChip(eyebrow, form, WinUiDetailKit.SaveTargetOf(id).Text, center)
                     : WinUiDetailKit.EyebrowRun(eyebrow, form) with { AlignSelf = center ? FlexAlign.Center : FlexAlign.Auto }, late: true, formPiece: true));
-            // An album not read yet holds its eyebrow's line ("Album · 2020" lands into it), as the names and the meta below (audit B7).
-            else if (form.Eyebrow && id.HeaderPending && id.Kind == DetailKind.Album)
-                rows.Add(Block("hero-eyebrow", Reserved(form.EyebrowLine, center)));
             rows.Add(Block("hero-title", TitleOf(spec, form, center)));
             // The description under the title (W-Playlist: the owner's own list edits it in place, "Add an optional description" while empty; W-PlaylistFollowed: the
             // list's own words). It lands with the header, as the title does.
@@ -126,19 +130,19 @@ internal static partial class WinUiDetailFrame
             // while a part of it is still on its way (the count held with the list, Identity.MetaLoading; the duration or the owner, Identity.MetaSettling) the box
             // stays reserved and empty, and the words fade in whole.
             var faces = FacesOf(id);
-            // A head not read yet holds its KIND's lines (audit B7: the stacked album hero grew 40 when its artists and meta landed): an album states its
-            // billed artists and its meta, a playlist its owner and meta; the words fade into the reserved boxes.
-            bool kindLines = id.HeaderPending && id.Kind is DetailKind.Album or DetailKind.Playlist;
-            bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 } || kindLines;
+            bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
             bool settled = !id.MetaSettling && !id.MetaLoading;
             if (faces is { Count: > 0 } || metaLine)
-                rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, kindLines, metaLine, avatar, measure, form, center)));
+                rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, metaLine, avatar, measure, form, center)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
             rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
-            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center);
+            // A head not read yet (audit B7 r2: blank reserved lines beside a live Play) shimmers its words in place: the loading band's own rows at their
+            // sizes, the Play split and the verbs as bones, one cross-dissolve when the header answers; the cover and the list bar stay real.
+            Element hero = Compose(form, inset, cover, rows.ToArray(), toolbar: ToolbarOf(parts, tier, form), center,
+                pending: _headerPending, shimmer: () => SkeletonWords(spec, tier, form, center, avatar));
 
             Element expanded = new BoxEl { Direction = 1, Animate = HeroHeightMotion, OnBoundsChanged = _measure, Children = [hero] };
 
@@ -192,7 +196,7 @@ internal static partial class WinUiDetailFrame
     /// crossing glides them between the arrangements instead of rebuilding the line. The avatars are the horizontal form's alone and fade with it.
     /// <para>THE RESERVED LINES: each line holds its fixed box from the first frame while the page can still fill it (the horizontal row until its facts have
     /// settled, then whole; the stacked names line as soon as there are names, its meta line once the meta has settled); the words fade up inside.</para></summary>
-    static Element Facts(IReadOnlyList<Controls.Face>? faces, string? meta, bool settled, bool kindLines, bool metaLine, float avatar, float measure,
+    static Element Facts(IReadOnlyList<Controls.Face>? faces, string? meta, bool settled, bool metaLine, float avatar, float measure,
         WinUiHeroForm form, bool center)
     {
         bool hasFaces = faces is { Count: > 0 };
@@ -200,7 +204,7 @@ internal static partial class WinUiDetailFrame
         bool filled = settled && (hasFaces || hasMeta);
         bool showNames = hasFaces && (center || filled);
         bool showMeta = hasMeta && settled && (center ? metaLine : filled);
-        bool namesLine = !center || hasFaces || kindLines;   // the stacked hero reserves its names line for an album or a list not read yet
+        bool namesLine = !center || hasFaces;
         var kids = new List<Element>(3);
         if (!center && avatar > 0f && hasFaces && filled)
             kids.Add(WinUiDetailKit.AvatarPile(faces!, avatar) with
@@ -259,13 +263,6 @@ internal static partial class WinUiDetailFrame
     /// <summary>Does the eyebrow carry the "Saved" chip? A playlist with no save toggle of its own in the hero (the owner's list: W-Playlist's "[✓ Saved]"); a followed
     /// list says it with its Saved toggle instead (W-PlaylistFollowed), so the chip never repeats it.</summary>
     static bool ChipRow(Detail.Identity id, Detail.Config cfg) => id.Kind == DetailKind.Playlist && cfg.Heart == HeartMode.None && id.Subject.Provider == EntityProvider.Spotify;
-
-    /// <summary>A reserved line: a FIXED box of <paramref name="height"/> the page's words land into later (an album's eyebrow not read yet).</summary>
-    static BoxEl Reserved(float height, bool center) => new()
-    {
-        Direction = 1, Height = height, Shrink = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
-        AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch,
-    };
 
     /// <summary>The faces the attribution line leads with: the billed artists, or a playlist's owner (W-Playlist: the owner's portrait and name, a link, before the
     /// facts).</summary>
@@ -354,8 +351,26 @@ internal static partial class WinUiDetailFrame
             Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
 
+    /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve
+    /// when it lands. Each side is the words' own column (the info box's gap and alignment); the rows the data brings (a description) open with the swap
+    /// (SmoothResize: the region's height eases through real layout, so the list bar and the rows under the hero ride it).</summary>
+    static Element Words(WinUiHeroForm form, bool center, Element[] words, Func<bool> pending, Func<Element[]> shimmer)
+    {
+        Element Column(Element[] kids) => new BoxEl
+        {
+            Direction = 1, Gap = form.InfoGap, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, MinWidth = 0f,
+            AlignSelf = FlexAlign.Stretch, Children = kids,
+        };
+        return new SkelRegionEl(
+            Pending: pending, Failed: s_never,
+            Content: () => Column(words),
+            ShimmerSource: () => Column(shimmer()),
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+    }
+
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned), or over them, both centred (stacked); then the toolbar.</summary>
-    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center)
+    static Element Compose(WinUiHeroForm form, float inset, Element cover, Element[] words, Element toolbar, bool center,
+        Func<bool>? pending = null, Func<Element[]>? shimmer = null)
     {
         // The words FLIP with the cover's resize (the same 280 ms): laid out at the new cover's edge at once, they sat on the still-shrinking cover
         // (W1920 widening and narrowing) until it caught up.
@@ -366,7 +381,7 @@ internal static partial class WinUiDetailFrame
             Grow = form.Stacked ? 0f : 1f, Basis = form.Stacked ? float.NaN : 0f, MinWidth = 0f,
             // A stacked list hero's words span the column from the gutter (the cover alone is centred).
             AlignSelf = form.Stacked && !center ? FlexAlign.Stretch : FlexAlign.Auto,
-            Children = words,
+            Children = pending is null || shimmer is null ? words : [Words(form, center, words, pending, shimmer)],
         };
         Element row = new BoxEl
         {
@@ -409,7 +424,7 @@ internal static partial class WinUiDetailFrame
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };
         if (spec.Insights is { } insights) kids.Add(Detail.InsightsBandAction(insights));
-        kids.Add(Button.Create(Loc.Get(Strings.Detail.Play), play, ButtonAppearance.Accent, isEnabled: !id.Empty) with
+        kids.Add(Button.Create(Loc.Get(Strings.Detail.Play), play, ButtonAppearance.Accent, isEnabled: !id.Empty && !id.HeaderPending) with
         {
             Key = "bar:play", Shrink = 0f, Padding = new Edges4(WinUiDetailRules.BandPlayPad, 0f, WinUiDetailRules.BandPlayPad, 0f),
         });
@@ -443,26 +458,21 @@ internal static partial class WinUiDetailFrame
         return sb.ToString();
     }
 
-    // ══ 4. THE LOADING BAND ═════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE WORDS, LOADING ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes as the loaded hero, unfilled boxes the deriver paints as bones; a usable
-    /// preview cover is painted for real.</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, TierFacts tiers, DetailForm pageForm = DetailForm.Hero,
-        DetailColumnsProps? columns = null)
+    /// <summary>The words' rows while the header is unread: the eyebrow, the title, the attribution (and the stacked meta), the daylist strip and the action row,
+    /// unfilled boxes at the loaded rows' sizes, shimmered in place of the words.</summary>
+    static Element[] SkeletonWords(VerticalSpec spec, WinUiDetailTier tier, WinUiHeroForm form, bool center, float avatar)
     {
-        var tier = WinUiDetailTiers.Of(in tiers);
-        var form = WinUiDetailTiers.HeroOf(in tiers);
         var id = spec.Identity;
-        float inset = tier.InsetX;
-        bool center = Centered(form, id.Kind);
-        float avatar = form.AvatarFor(id.Kind);
-        var rows = new List<Element>(5);
+        var rows = new List<Element>(6);
         // The eyebrow's bone stands in the row the loaded eyebrow holds (the chip's height where the list can carry one).
         if (form.Eyebrow)
             rows.Add(ChipRow(id, spec.Config)
                 ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Height = form.ChipHeight, Children = [Bone(WinUiDetailRules.SkelEyebrowW, form.EyebrowLine, center)] }
                 : Bone(WinUiDetailRules.SkelEyebrowW, form.EyebrowLine, center));
-        rows.Add(Bone(WinUiDetailRules.SkelTitleW(form), form.TitleLine, center));
+        // The title's line box as the engine draws it: its natural box when that is taller than the form's line (28/36 stacked draws 37.24).
+        rows.Add(Bone(WinUiDetailRules.SkelTitleW(form), MathF.Max(form.TitleLine, form.TitleSize * VerticalLayout.NaturalLineRatio), center));
         rows.Add(new BoxEl
         {
             // The loaded hero's reserved attribution box, to the DIP (WinUiDetailRules.AttributionRow): the swap to the loaded hero moves nothing.
@@ -483,18 +493,7 @@ internal static partial class WinUiDetailFrame
         });
         if (Pulses(spec)) rows.Add(PulseRow(Bone(WinUiDetailRules.SkelNameW, WinUiDetailRules.AttributionLine, center), center));
         rows.Add(SkeletonActions(spec, tier, form, center));
-        Element cover = new BoxEl
-        {
-            Width = form.Cover, Height = form.Cover, Shrink = 0f, Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), ClipToBounds = true,
-            Children = id.CoverUrl is { Length: > 0 } url ? [Controls.Artwork(url, form.Cover, form.Cover, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(form.Cover))] : [],
-        };
-        Element toolbar = new BoxEl
-        {
-            Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f),
-            Padding = new Edges4(inset, 0f, inset, 0f), Height = VerticalLayout.ToolbarRowHeight,
-            Children = [SkeletonToolbar(columnWidth - 2f * inset)],
-        };
-        return new BoxEl { Key = "detail-skeleton:hero", Direction = 1, Children = [Compose(form, inset, cover, rows.ToArray(), toolbar, center)] };
+        return rows.ToArray();
     }
 
     static BoxEl Bone(float width, float height, bool center) => new()
@@ -516,17 +515,4 @@ internal static partial class WinUiDetailFrame
             kids.Add(new BoxEl { Width = i < 2 && !form.Stacked ? WinUiDetailRules.SkelShuffleW : h, Height = h, Shrink = 0f, Corners = Radii.ControlAll });
         return WinUiDetailKit.ActionRow("vhero-skel-actions", kids[0], kids.GetRange(1, kids.Count - 1), form.ActionTop, center: center);
     }
-
-    /// <summary>The list bar's reserved row while loading: Find on the left, the order, Filter and Select on the right.</summary>
-    static Element SkeletonToolbar(float rowWidth) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiDetailRules.ActionGap, Grow = 1f, MinWidth = 0f,
-        Children =
-        [
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-            new BoxEl { Grow = 1f, Height = 1f },
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-            new BoxEl { Width = WinUiDetailRules.SkelToolbarPlate, Height = WinUiDetailRules.Target, Corners = Radii.ControlAll },
-        ],
-    };
 }
