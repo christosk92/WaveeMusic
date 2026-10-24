@@ -178,7 +178,9 @@ internal static class ZuneDetailKit
             title = TitleHost("panorama:title", Panorama(id.Title, lay), enter);
         if (pending is not null)
         {
-            Element real = title;
+            // The branch's root is an unkeyed box: a single-child slot's root ignores its key, and the two title hosts must keep theirs (the 700 fold
+            // cross-fades the editor between the panorama and the identity column by key).
+            Element real = new BoxEl { Direction = 1, MinWidth = 0f, Children = [title] };
             title = new SkelRegionEl(
                 Pending: pending, Failed: s_false,
                 Content: () => real,

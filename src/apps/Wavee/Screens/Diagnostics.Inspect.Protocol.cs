@@ -319,7 +319,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "head", "head-land", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -472,6 +472,7 @@ public static partial class Diagnostics
                 // `loops` has no one default here: a loading or cold state's skeleton is the picture (Diagnostics.Inspect.cs, Verb.State).
                 Args = Join([Arg("kind", ArgType.Enum, "the state", null, string.Join("|", StateKinds)),
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
+                    Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown (it opens); kind=head-land puts it back in place"),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")

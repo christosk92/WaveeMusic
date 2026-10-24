@@ -602,6 +602,7 @@ public static partial class Diagnostics
         {
             if (!ColdStaged) return;
             ColdStaged = false;
+            Entities.RestoreHead();   // a `state kind=head` page's header
             if (s_coldSlot == Table.None) return;
             Entities.RestoreColdHead();
             Scope s = Entities.Current;

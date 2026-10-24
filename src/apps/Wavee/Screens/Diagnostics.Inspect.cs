@@ -592,6 +592,23 @@ public static partial class Diagnostics
                         string kind = a.Str("kind").ToLowerInvariant();
                         BeforeState(shell);
                         if (a.Has("page")) return PageState(id, name, a, kind, shell);
+                        // A detail page's header unknown in place, then its landing (Entities.Fake.Cold.cs, audit B7 r2).
+                        if (kind == "head")
+                        {
+                            string uri = a.Str("uri");
+                            if (!Entities.StageHead(uri)) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show or episode the fake holds>, not '" + uri + "'");
+                            InspectKit.ColdStaged = true;   // the next mount puts the header back
+                            Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            return Settled(id, name, a, w => { w.WriteString("kind", kind); w.WriteString("uri", uri); AfterState(w, shell, kind); },
+                                loops: InspectKit.LoopMode.Skeletons);
+                        }
+                        if (kind == "head-land")
+                        {
+                            Entities.RestoreHead();
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            return Settled(id, name, a, w => { w.WriteString("kind", kind); AfterState(w, shell, kind); });
+                        }
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
                         // A traced (or unsettled) state shows its own frames from the first: 30 frames run first hid a staged landing from its trace (audit B7 r2).
