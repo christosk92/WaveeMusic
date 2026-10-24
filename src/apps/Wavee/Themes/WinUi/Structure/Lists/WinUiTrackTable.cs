@@ -18,7 +18,7 @@
 //   lanes    album, added by, date, plays and time in Body 14 and the secondary ink, a withheld row says "Unavailable" in the time lane (the long reason in its
 //            tooltip) and steps back as a whole (45 %);
 //   heart    in its own lane before the time (the core's HeartTrailing): a liked row's filled heart at rest in the primary text (the accent on the playing row),
-//            an unliked row's outline on hover; a quiet list rests with none;
+//            an unliked row's outline on hover; a quiet list (Liked Songs, W-LikedSongs) rests with its filled hearts too: the saved state shows at rest;
 //   "..."    revealed on hover (and on the focused row); at the Compact form a 40 target on every row.
 // THE SKIN (W-RowStates): a full-width r4 backplate, bare at rest; hover the subtle fill 1 (6 %); pressed fill 2; SELECTED = fill 1 plus the 3 x 16 accent pill (and
 // selected-and-hovered fill 3); a drop target the 2-px accent line on the top edge (keyed "winui.row.drop", its opacity bound to the cue). The pill also shows
@@ -97,7 +97,7 @@ internal static class WinUiTrackTable
         int i = 0;
 
         if (!set.IndexHidden) cells[i++] = NumberCell(r);
-        if (set.Heart) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Quiet, set.Compact), CellKey.Heart);
+        if (set.Heart) cells[i++] = Track.RowCenterCell(HeartReveal(r, set.Compact), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(Artwork(r, artSize), CellKey.Art);
         cells[i++] = TitleCell(r, in set, oneLine);
         if (set.Artist) cells[i++] = Track.RowLeftCell(ArtistLinks(r), CellKey.Artist);
@@ -108,7 +108,7 @@ internal static class WinUiTrackTable
                                                           RowInk(r, static () => Tok.TextSecondary), fill: true), CellKey.Date);
         if (set.Plays) cells[i++] = Track.RowEndCell(PlaysCell(r), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(TempoCell(r), CellKey.Tempo);
-        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(HeartReveal(r, set.Quiet, set.Compact), CellKey.HeartTrailing);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowControlCell(HeartReveal(r, set.Compact), CellKey.HeartTrailing);
         if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(DurationCell(r), CellKey.Duration);
         // The Compact row's "..." is a 40 target shown on every row (W-RowStates-Compact): there is no hover to reveal it.
         if (set.Actions) cells[i++] = set.Compact
@@ -261,11 +261,11 @@ internal static class WinUiTrackTable
     // ── heart · art ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The heart's row reveal: a liked row keeps its filled heart at rest, an unliked one shows it on row hover; a quiet list (Liked Songs: every row is
-    /// liked) rests with none. The focused row shows it to the keyboard.</summary>
-    static Element HeartReveal(BoundRow r, bool quiet, bool compact) => new BoxEl
+    /// liked) shows every heart at rest too (W-LikedSongs: the heart column before the time). The focused row shows it to the keyboard.</summary>
+    static Element HeartReveal(BoundRow r, bool compact) => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Opacity = quiet ? Prop.Of(() => r.Focused ? 1f : 0f) : Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
+        Opacity = Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
         Children = [Heart(r, compact)],
     };
 
