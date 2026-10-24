@@ -173,6 +173,7 @@
 // draws its skeleton, not "Loading...").
 // 1.63 (audit B3bc): `SurfaceStackBodyTemplate` takes the shelf card's live width (`IReadSignal<float>? liveWidth`): a shelf body binds its
 // sizes to it, so a card width change re-lays the card out instead of re-rendering it; the stack's label block is width-free.
+// `StageArtistNameProps.Pane` (the Artist layout's "about the artist" block reads the Artist pane's facts and verbs).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

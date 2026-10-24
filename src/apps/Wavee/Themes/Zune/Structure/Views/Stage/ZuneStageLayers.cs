@@ -32,6 +32,21 @@ internal static class ZuneStageKit
     /// <summary>The stage veil at alpha <paramref name="a"/>.</summary>
     public static ColorF Shade(float a) => Ink.Veil with { A = a };
 
+    /// <summary>A placed part a tier crossing or a resize moves or resizes (the strip, the Artist layout's plate, name, "about" block and veils): it
+    /// travels on the cover's spring instead of jumping (audit B3bc).</summary>
+    public static readonly LayoutTransition Place = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.Relayout);
+
+    /// <summary>The Artist layout's photo: the artist's header once the overview says there is one (<paramref name="header"/>), else the playing
+    /// cover (drawn blurred). Reads the track key and the header facts.</summary>
+    public static string HeroUrl(Stage.StageCtx sc, out bool header)
+    {
+        var track = sc.RowValue();
+        int slot = sc.HeroArtist.Value;
+        header = sc.HeroFact.Value == Stage.HeroState.Header && slot > 0;
+        string cover = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
+        return header ? Controls.ArtUrl(new Artist(slot).HeaderId) ?? "" : cover;
+    }
+
     /// <summary>The arrangement this render draws in (the same signals every stage view reads).</summary>
     public static ZuneStageArrangement Arrangement(Stage.StageCtx sc, in TierFacts tiers)
     {
@@ -204,7 +219,7 @@ internal static class ZuneStageSpectrum
                 new BoxEl
                 {
                     Key = key, Width = w, Height = h, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                    Margin = new Edges4(x, y, 0f, 0f), Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+                    Margin = new Edges4(x, y, 0f, 0f), Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter, Layout = ZuneStageKit.Place,
                     Children = [body],
                 },
             ],

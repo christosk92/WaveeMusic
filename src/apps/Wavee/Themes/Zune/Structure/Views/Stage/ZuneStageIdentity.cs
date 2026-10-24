@@ -9,6 +9,8 @@
 //            the artist line in the accent (20/28)
 //   COLUMN   Z-NowPlaying-LargeArt: the big cover at the left gutter, and at the column's foot the artist line in the accent (28/36 at 600)
 //            over the title (120 at 200 on the board's column, scaled with it)
+//   ARTIST   Z-NowPlaying-Artist (the lyrics off): the 88 cover and its words in a flat plate under the head, the title 22/28 at 300 over the
+//            artist line in the accent (14/20)
 //
 // The cover morphs between them with a Layout FLIP (the cover's spring, SizeMode.ScaleCorrect), the titles follow on a Position spring, so a
 // layout or arrangement change never jumps. The covers are Zune's cover shape (2). The wrapper is pass-through: the meta link stays
@@ -26,6 +28,7 @@ using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 
 using G = Wavee.Themes.Zune.ZuneStageGeometry;
+using HeroR = Wavee.Themes.Zune.ZuneStageHeroRules;
 using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee.Themes.Zune;
@@ -36,6 +39,8 @@ internal static class ZuneStageIdentity
     static readonly LayoutTransition s_flip = new(TransitionChannels.Bounds, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping), SizeMode.ScaleCorrect);
 
     static readonly Element[] s_none = [];
+
+    static readonly EnterExit s_plateFade = new(Opacity: 0f, Active: true);
 
     static readonly LayoutTransition s_move = new(TransitionChannels.Position, TransitionDynamics.Spring(G.CoverResponse, G.CoverDamping));
 
@@ -57,7 +62,8 @@ internal static class ZuneStageIdentity
         int heroArtist = k.Eff == Stage.VizLayout.Artist && !k.HeroLyrics ? sc.HeroArtist.Value : 0;
 
         float coverX, coverY, size, titlesX, titlesY, titlesW, titlesH = float.NaN, gap;
-        bool center = false, bottom = false;
+        bool center = false, bottom = false, middle = false;
+        Element? plate = null;
         var kids = new List<Element>(4);
         Element? display = null;
         var v = a.Voice;
@@ -97,6 +103,19 @@ internal static class ZuneStageIdentity
                 kids.Add(center ? Title(title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking) with { MaxWidth = titlesW }
                     : Scrolling(props, title, a.TitleSize, a.TitleLine, v.TitleWeight, v.TitleTracking));
                 kids.Add(Meta(props, v.MetaSize, v.MetaLine, v.MetaWeight, R.Type.DisplayFace, set.Text, Ink.Ink, center, heroArtist));
+                break;
+            }
+            case ZuneStageForm.Artist:
+            {
+                (coverX, coverY, size) = (a.Cover.X, a.Cover.Y, a.Cover.W);
+                (titlesX, titlesY, titlesW, titlesH) = (a.Titles.X, a.Titles.Y, a.Titles.W, a.Titles.H);
+                float unit = L.UnitK;
+                gap = MathF.Round(HeroR.PlateTextGap * unit);
+                middle = true;
+                kids.Add(Title(title, a.TitleSize, a.TitleLine, G.TitleLight, 0f));
+                kids.Add(Meta(props, MathF.Round(HeroR.PlateMetaSize * unit), MathF.Round(HeroR.PlateMetaLine * unit), G.TitleRegular, null, set.Text, Ink.Ink, false, heroArtist));
+                plate = Embed.Comp(new ZuneStageArtistPlate.Props(sc, a.Card), static () => new ZuneStageArtistPlate())
+                    with { Key = "stage:artistplate", Enter = s_plateFade, Exit = s_plateFade, Transition = MotionTok.StandardEnter };
                 break;
             }
             case ZuneStageForm.Plate when G.LyricsSide(in L, in k, t) is { } side && (k.Mode == Stage.Mode.Queue ? t.QueueSide : t.LyricsSide) is { } ls:
@@ -151,6 +170,7 @@ internal static class ZuneStageIdentity
         {
             Children =
             [
+                .. (plate is null ? s_none : [plate]),
                 new BoxEl
                 {
                     Key = "stage:cover", Width = size, Height = size, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
@@ -161,7 +181,7 @@ internal static class ZuneStageIdentity
                 // the placed column: pass-through; the block inside is content-height (bottom-aligned in the Card and Large art columns)
                 new BoxEl
                 {
-                    Key = "stage:titles", Direction = 1, Width = titlesW, Height = titlesH, Justify = bottom ? FlexJustify.End : FlexJustify.Start,
+                    Key = "stage:titles", Direction = 1, Width = titlesW, Height = titlesH, Justify = bottom ? FlexJustify.End : middle ? FlexJustify.Center : FlexJustify.Start,
                     AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                     Margin = new Edges4(titlesX, titlesY, 0f, 0f), Layout = s_move, HitTestPassThrough = true,
                     Children = [block],
@@ -233,6 +253,36 @@ internal static class ZuneStageIdentity
 
     static Element Meta(StageIdentityProps props, float size, float line, ushort weight, string? face, ColorF rest, ColorF hover, bool center, int heroArtist)
         => Embed.Comp(new ZuneStageMetaLink.Props(props.Meta, props.OpenArtist, size, line, weight, face, rest, hover, center, heroArtist), static () => new ZuneStageMetaLink());
+}
+
+/// <summary>The Artist layout's identity plate (Z-NowPlaying-Artist): the board's flat veil (0.6), darker where the photo under it is bright, so the
+/// title and the accent artist line read over any photo (the hero's solve, <see cref="HeroR.RegionBoost"/>: body text at 4.5 : 1, audit B3bc).
+/// A component: the photo's measurement landing re-renders it alone, and the veil eases to its new depth.</summary>
+internal sealed class ZuneStageArtistPlate : Component
+{
+    public sealed record Props(Stage.StageCtx Stage, ZuneRect Plate);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var sc = p.Stage;
+        var L = sc.Layout.Value;
+        var r = p.Plate;
+        float focusX = sc.Look.Value.HeroLyrics ? 1f : 0.5f;
+        string url = ZuneStageKit.HeroUrl(sc, out _);
+        MediaScrim.LumaMap? map = url.Length > 0 ? Palette.Tone(url) : null;
+        float a = HeroR.PlateShade;
+        if (map is not null)
+        {
+            a = MathF.Max(a, HeroR.RegionBoost(map, L.W, L.H, focusX, r.X, r.Y, r.Right, r.Bottom, sc.Accent.Value.Text, MediaScrim.NeedBody));
+            a = MathF.Max(a, HeroR.RegionBoost(map, L.W, L.H, focusX, r.X, r.Y, r.Right, r.Bottom, Ink.Ink, MediaScrim.NeedBody));
+        }
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
+            Fill = ZuneStageKit.Shade(a), BrushTransitionMs = MediaScrim.FadeMs, HitTestVisible = false, Layout = ZuneStageKit.Place,
+        };
+    }
 }
 
 /// <summary>"Artist · Album" in the arrangement's voice. Subscribed to its row through the core fact it calls; navigation closes the stage first.</summary>

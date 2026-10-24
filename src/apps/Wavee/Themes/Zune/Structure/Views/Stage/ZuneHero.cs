@@ -9,7 +9,10 @@
 //
 // Zune's change is the SCRIMS above the photo (so the photo's slice stays a lone image): the board's vertical wash (0.35 at the top where
 // the bar reads, clear by a quarter, 0.3 at 60 %, the "Image dimming" foot at the bottom, where the plate and the name sit), and, with the
-// lyrics over the image, the left veil the lyrics pane reads on. The veils are the stage's (the ink's opposite on either arm).
+// lyrics over the image, the left veil the lyrics pane reads on. The veils are the stage's (the ink's opposite on either arm). Over them, the
+// BOOSTS (audit B3bc): black veils whose depth is solved per photograph (`Palette.Tone`, the band's V14 recipe), so the words over the photo
+// read on a bright one too: under the lyrics pane, behind the head, and (the lyrics off) behind "about the artist" and the name. On a dark
+// photo they solve to nothing.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -17,6 +20,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -60,11 +64,11 @@ internal sealed class ZuneStageHeroLayer : Component
         _ = _layers.Value;                                   // the fade-out timeout's "drop the previous layer"
         var L = ctx.Layout.Value;
         var k = ctx.Look.Value;
-        var track = ctx.RowValue();
+        var tiers = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
+        var stageTier = ZuneStageTiers.StageOf(in tiers);
+        float feather = HeroR.AboutVeilFeather * stageTier.Gutter;
         int artistSlot = ctx.HeroArtist.Value;
-        bool header = ctx.HeroFact.Value == Stage.HeroState.Header && artistSlot > 0;
-        string coverUrl = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
-        string url = header ? Controls.ArtUrl(new Artist(artistSlot).HeaderId) ?? "" : coverUrl;
+        string url = ZuneStageKit.HeroUrl(ctx, out bool header);
         bool blur = !header;
         // keyed by the ARTIST (or "the cover"): a new rendition of the same header re-uses the layer and only dissolves (the engine's swap)
         string key = header ? "hero:a" + artistSlot : "hero:cover";
@@ -106,16 +110,104 @@ internal sealed class ZuneStageHeroLayer : Component
         }
         kids.Add(new BoxEl { Key = "hero:scrim:v", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Gradient = down });
         if (left is { } l)
+        {
             kids.Add(new BoxEl { Key = "hero:scrim:h", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Gradient = l });
+            // the boost the photo needs under the lyrics pane (solved from the photo, audit B3bc): its own component, so the measurement landing
+            // re-renders it alone
+            var pane = L.PaneRect(in k);
+            kids.Add(Boost(_shownUrl, L, focusX, new ZuneRect(pane.X, pane.Y, pane.W, pane.H), 0f, ZuneStageHeroBoost.Shape.Lyrics, "hero:scrim:boost"));
+        }
+        else if (ZuneStageKit.Arrangement(ctx, in tiers) is { Form: ZuneStageForm.Artist } board)
+        {
+            // the board's "about the artist" and the name over the photo: the same solve behind their words (audit B3bc)
+            kids.Add(Boost(_shownUrl, L, focusX, board.About, feather, ZuneStageHeroBoost.Shape.About, "hero:scrim:about"));
+            kids.Add(Boost(_shownUrl, L, focusX, board.Name, feather, ZuneStageHeroBoost.Shape.Name, "hero:scrim:name"));
+        }
+        // the head's words (the pivots, the layout / face / options words) over the photo's top: the same solve behind the head (audit B3bc)
+        kids.Add(Boost(_shownUrl, L, focusX, new ZuneRect(0f, 0f, L.W, stageTier.HeadH), feather, ZuneStageHeroBoost.Shape.Head, "hero:scrim:head"));
         return Stage.Layer with { ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Children = kids.ToArray() };
     }
 
     static ColorF Shade(float a) => ZuneStageKit.Shade(a);
 
+    static Element Boost(string url, in Stage.Layout L, float focusX, ZuneRect rect, float feather, ZuneStageHeroBoost.Shape shape, string key)
+        => Embed.Comp(new ZuneStageHeroBoost.Props(url, L.W, L.H, focusX, rect, feather, shape), static () => new ZuneStageHeroBoost()) with { Key = key };
+
     static Element Photo(string key, string url, in Stage.Layout L, int decode, bool blur, bool still, bool fade, int seed, float focusX)
     {
         var props = new ZuneStageHeroPhoto.Props(url, L.W, L.H, decode, blur, still, fade, Stage.HeroRules.Pan(seed), focusX);
         return Embed.Comp(props, static () => new ZuneStageHeroPhoto()) with { Key = key };
+    }
+}
+
+/// <summary>An adaptive boost over the photo, black, its opacity solved per photograph from <see cref="Palette.Tone"/> (audit B3bc); 0 until the photo
+/// is measured, and every change fades (<see cref="MediaScrim.FadeMs"/>), never snaps. A veil, not a plate: every edge inside the stage feathers.
+/// <list type="bullet">
+/// <item><see cref="Shape.Lyrics"/>: full from the stage's left edge to the pane's right, fading out past it, so the sung line in the accent reads at
+/// large text's ratio after the left veil (<see cref="HeroR.LyricsBoost"/>);</item>
+/// <item><see cref="Shape.About"/> and <see cref="Shape.Head"/>: from the region's left (feathered) to the stage's right edge, from the top to the
+/// region's foot (feathered under it), so the secondary words read (and the follow glyph in the accent: About);</item>
+/// <item><see cref="Shape.Name"/>: across the stage from the name's line top (feathered above it) to the stage's foot, judged over the name's line box
+/// to its cut, so the name reads at large text's ratio.</item>
+/// </list></summary>
+internal sealed class ZuneStageHeroBoost : Component
+{
+    public enum Shape : byte { Lyrics, About, Head, Name }
+
+    public sealed record Props(string Url, float W, float H, float FocusX, ZuneRect Rect, float Feather, Shape Kind);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        ColorF accent = Stage.AccentSignal.Value;
+        MediaScrim.LumaMap? map = p.Url.Length > 0 ? Palette.Tone(p.Url) : null;
+        var r = p.Rect;
+        float target = map is null || r.IsEmpty ? 0f : p.Kind switch
+        {
+            Shape.Lyrics => HeroR.LyricsBoost(map, p.W, p.H, p.FocusX, r.X, r.Y, r.Right, r.Bottom, accent, MediaScrim.NeedLarge),
+            Shape.Name => HeroR.RegionBoost(map, p.W, p.H, p.FocusX, r.X, r.Y, r.Right, r.Bottom, Ink.Ink with { A = HeroR.NameInkA }, MediaScrim.NeedLarge),
+            Shape.About => MathF.Max(HeroR.RegionBoost(map, p.W, p.H, p.FocusX, r.X, r.Y, r.Right, r.Bottom, Ink.InkSecondary, MediaScrim.NeedBody),
+                                     HeroR.RegionBoost(map, p.W, p.H, p.FocusX, r.X, r.Y, r.Right, r.Bottom, accent, MediaScrim.NeedBody)),
+            _ => HeroR.RegionBoost(map, p.W, p.H, p.FocusX, r.X, r.Y, r.Right, r.Bottom, Ink.InkSecondary, MediaScrim.NeedBody),
+        };
+        var shown = UseRef(target);
+        float from = shown.Value;
+        shown.Value = target;
+        UseTransition(AnimChannel.Opacity, from, target, Design.Reduced ? 0f : MediaScrim.FadeMs, Easing.SmoothOut, DepKey.From(target));
+        ColorF black = ZuneStageKit.Shade(1f), clear = black with { A = 0f };
+        switch (p.Kind)
+        {
+            case Shape.Lyrics:
+            {
+                float full = Math.Clamp(r.Right / MathF.Max(1f, p.W), 0f, 1f), end = Math.Clamp(full + HeroR.BoostFadeFrac, full, 1f);
+                return new BoxEl
+                {
+                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Opacity = target,
+                    Gradient = GradientRight(new GradientStop(0f, black), new GradientStop(full, black), new GradientStop(end, clear)),
+                };
+            }
+            case Shape.Name:
+            {
+                float y = MathF.Max(0f, r.Y - p.Feather), h = p.H - y;   // down to the stage's foot: no light seam under the cut
+                return new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = p.W, Height = h, Margin = new Edges4(0f, y, 0f, 0f), HitTestVisible = false, Opacity = target,
+                    Layout = ZuneStageKit.Place,
+                    Gradient = GradientDown(new GradientStop(0f, clear), new GradientStop((r.Y - y) / MathF.Max(1f, h), black), new GradientStop(1f, black)),
+                };
+            }
+            default:
+            {
+                float x = MathF.Max(0f, r.X - p.Feather), h = r.Bottom + p.Feather;
+                return new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = MathF.Max(0f, p.W - x), Height = h,
+                    Margin = new Edges4(x, 0f, 0f, 0f), HitTestVisible = false, Opacity = target, Layout = ZuneStageKit.Place,
+                    Gradient = GradientDown(new GradientStop(0f, black), new GradientStop(r.Bottom / MathF.Max(1f, h), black), new GradientStop(1f, clear)),
+                    EdgeFade = r.X > 0f ? new EdgeFadeSpec(EdgeMask.Left, p.Feather) : null,
+                };
+            }
+        }
     }
 }
 

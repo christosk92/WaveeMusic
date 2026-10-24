@@ -187,7 +187,9 @@ internal sealed class ZuneStageArtistHeader : Component
 /// opened FOR, so the next artist starts clamped with no reset write.</summary>
 internal sealed class ZuneStageArtistAbout : Component
 {
-    public sealed record Props(StageArtistPaneProps Pane, int Artist, float W, float S);
+    /// <param name="Brief">0: the pane's block (the bio clamped with "read more", the gallery strip); N: the Artist layout's (the bio's first N
+    /// lines, no "read more", no strip: Z-NowPlaying-Artist).</param>
+    public sealed record Props(StageArtistPaneProps Pane, int Artist, float W, float S, int Brief = 0);
 
     readonly Signal<int> _openFor = new(0);
     readonly Action _toggle;
@@ -214,13 +216,14 @@ internal sealed class ZuneStageArtistAbout : Component
 
         float s = p.S, size = K.Px(AR.BioSize, s), line = K.Px(AR.BioLine, s);
         float textW = p.W;
-        bool clamps = Stage.ArtistRules.BioClamps(facts.BioChars, textW, size, Stage.ArtistRules.BioLines);
-        bool open = _openFor.Value == p.Artist;
+        bool brief = p.Brief > 0;
+        bool clamps = !brief && Stage.ArtistRules.BioClamps(facts.BioChars, textW, size, Stage.ArtistRules.BioLines);
+        bool open = !brief && _openFor.Value == p.Artist;
 
         var kids = new List<Element>(4) { K.SectionTitle(Loc.Get(Strings.Theme.Zune.Stage.AboutArtist), s) };
         if (facts.Bio.Length > 0)
         {
-            Element text = Controls.RichText(facts.Bio, size, Ink.InkSecondary, set.Text, textW, clamps && !open ? Stage.ArtistRules.BioLines : 0, _nav);
+            Element text = Controls.RichText(facts.Bio, size, Ink.InkSecondary, set.Text, textW, brief ? p.Brief : clamps && !open ? Stage.ArtistRules.BioLines : 0, _nav);
             kids.Add(text is SpanTextEl span ? span with { LineHeight = line } : text);
             if (clamps)
                 kids.Add(new BoxEl
@@ -234,7 +237,7 @@ internal sealed class ZuneStageArtistAbout : Component
                     }],
                 });
         }
-        int n = facts.GalleryUrls.Count;
+        int n = brief ? 0 : facts.GalleryUrls.Count;
         if (n > 0)
         {
             float gap = K.Px(AR.GalleryGap, s), tile = Stage.ArtistRules.TileW(p.W, gap, n);
