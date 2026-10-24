@@ -35,6 +35,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
 
@@ -328,7 +329,8 @@ public static partial class Shell
             // Presentation mode (the Store shot): a generic picture and no name — a listing image carries no account data.
             bool presenting = FrameFacts.Presenting.Value;
             if (presenting) identity = new AccountIdentity(true, "", null);
-            float nameCap = Actions.ProfileRules.NameCap(Layout.ChromeProfileNameW);
+            // The caption's cap is the room the row charged for it (the measured name, Chrome.PricedName), so a name the row seats is never cut.
+            float nameCap = layout.ProfileNameCap;
 
             void Close() => handle.Value?.Close();
 
@@ -369,6 +371,37 @@ public static partial class Shell
 
     /// <summary>The signed-in account's display identity, from its user row — known only once the row carries the
     /// Identity group (the readiness predicate).</summary>
+    static string s_measuredName = "";
+    static float s_measuredNameW;
+    static ChromeBudget? s_pricedFrom, s_priced;
+    static float s_pricedW;
+
+    /// <summary><paramref name="budget"/> with the account's name priced at what it MEASURES (<see cref="Chrome.PricedName"/>, up to the
+    /// budget's <c>ProfileNameW</c>), for the row's allocator; the nominal while the name is not known. Subscribes the caller to the identity.
+    /// The measure is the chip caption's (Classic and WinUI draw the name in <c>Ui.Caption</c>; Zune caps its own per tier). One budget object
+    /// per (budget, name) pair, so a resize frame allocates nothing.</summary>
+    internal static ChromeBudget PriceName(ChromeBudget budget)
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Users.Changed.Value;
+        var identity = ReadIdentity();
+        string name = identity.Known && !FrameFacts.Presenting.Value ? identity.Name : "";
+        if (!string.Equals(name, s_measuredName, StringComparison.Ordinal))
+        {
+            float natural = name.Length == 0 ? 0f : Controls.NaturalWidth(name, FluentGpu.Dsl.Ui.Caption(""));
+            s_measuredName = name;
+            s_measuredNameW = float.IsFinite(natural) ? natural : 0f;     // no text seam (headless): the nominal
+        }
+        float priced = Chrome.PricedName(s_measuredNameW, budget.ProfileNameW);
+        if (!ReferenceEquals(budget, s_pricedFrom) || priced != s_pricedW || s_priced is null)
+        {
+            s_pricedFrom = budget;
+            s_pricedW = priced;
+            s_priced = budget with { ProfileNameW = priced };
+        }
+        return s_priced;
+    }
+
     static AccountIdentity ReadIdentity()
     {
         var me = User.Me;

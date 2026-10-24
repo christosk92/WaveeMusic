@@ -22,7 +22,8 @@ namespace Wavee.Theming;
 /// <param name="ConnectingChipW">The "Connecting" caption chip.</param>
 /// <param name="SignInChipW">The "Sign in" accent button.</param>
 /// <param name="ReconnectChipW">The "Reconnect" accent button.</param>
-/// <param name="ProfileNameW">What showing the display name adds to the avatar chip.</param>
+/// <param name="ProfileNameW">The most showing the display name may add to the avatar chip: the row charges the account name's measured width and its
+/// chrome up to it (<c>Shell.Chrome.PricedName</c>), the nominal before the name is known.</param>
 /// <param name="MinDragStripW">The grabbable seam kept before the caption-adjacent search icon.</param>
 /// <param name="CaptionClusterW">The native caption buttons.</param>
 /// <param name="GutterMinW">Reserved on each flank of the centre island.</param>
@@ -49,7 +50,7 @@ public sealed record ChromeBudget(
         Shell.Layout.ChromePromotionHysteresisW,
         Shell.Layout.ChromeBarLeadW, Shell.Layout.ChromeNavButtonW, Shell.Layout.ChromeAddSlotW,
         Shell.Layout.ChromeProfileChipW, Shell.Layout.ChromeConnectingChipW, Shell.Layout.ChromeSignInChipW,
-        Shell.Layout.ChromeReconnectChipW, Shell.Layout.ChromeProfileNameW,
+        Shell.Layout.ChromeReconnectChipW, Shell.Layout.ChromeProfileNameMaxW,
         Shell.Layout.ChromeMinDragStripW, Shell.Layout.ChromeCaptionClusterW, Shell.Layout.ChromeGutterMinW,
         Shell.Layout.ChromeWidthQuantumW, Shell.Layout.ChromeSearchMaxW, Shell.Layout.ChromeSearchMinW,
         Shell.Layout.ChromeSearchWidthRatio, Shell.Layout.ChromeSearchIconW,

@@ -57,7 +57,7 @@ public static class ClassicPolicies
     private static ChromeBudget RowBudget { get; } = new(
         NameEnterW: 1360f, ActionsEnterW: 1200f, ForwardEnterW: 520f, PromotionHysteresisW: 40f,
         BarLeadW: 60f, NavButtonW: 44f, AddSlotW: 32f,
-        ProfileChipW: 32f, ConnectingChipW: 90f, SignInChipW: 84f, ReconnectChipW: 100f, ProfileNameW: 90f,
+        ProfileChipW: 32f, ConnectingChipW: 90f, SignInChipW: 84f, ReconnectChipW: 100f, ProfileNameW: ChromeBudget.Default.ProfileNameW,
         MinDragStripW: 48f, CaptionClusterW: 138f, GutterMinW: 8f,
         WidthQuantumW: 10f, SearchMaxW: 420f, SearchMinW: 280f, SearchWidthRatio: 0.28f, SearchIconW: 44f,
         TabMaxW: 200f, TabMinW: 110f, PinnedTabW: 40f, TabViewportMinW: 32f)
