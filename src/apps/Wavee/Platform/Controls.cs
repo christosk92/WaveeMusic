@@ -1247,7 +1247,8 @@ public static partial class Controls
         (string t, string s) = voice switch
         {
             VacancyVoice.Error => (Loc.Get(Strings.Common.ErrorTitle), Loc.Get(Strings.Common.ErrorSubtitle)),
-            VacancyVoice.Offline => (Loc.Get(Strings.Common.OfflineTitle), Loc.Get(Strings.Common.OfflineBanner)),
+            // The banner's sentence opens with "You're offline." (it stands alone); under the title that says so, the body is the rest of it.
+            VacancyVoice.Offline => (Loc.Get(Strings.Common.OfflineTitle), Loc.Get(Strings.Common.OfflineSubtitle)),
             VacancyVoice.NoMatch => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
             _ => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
         };

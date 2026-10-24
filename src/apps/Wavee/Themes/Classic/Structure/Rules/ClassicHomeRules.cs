@@ -24,6 +24,10 @@ public static class ClassicHomeRules
     /// bar in it, so the constant is authoritative for the sticky clip inset rather than a measured value.</summary>
     public const float SelectorH = 40f;
 
+    /// <summary>The words' line: the selector's height and the stock SelectorBar's own 4-DIP padding above and below (SelectorBarPadding 0,4), the
+    /// height its scrolling viewport is given (a horizontal scroller does not take its content's height), centred on the row as the bar was.</summary>
+    public const float WordsLineH = SelectorH + 2f * 4f;
+
     /// <summary>The busy bar's slot: WinUI's 3-px ProgressBar, part of the pinned band so a switch started deep in the
     /// page still shows its progress.</summary>
     public const float BarH = 3f;
@@ -129,7 +133,10 @@ public static class ClassicHomeRules
     /// <summary>Compact's stacked daylist: its vertical veil peaks where the copy rises over the art band (<see cref="StackedOverlap"/> above its foot,
     /// less a line of slack) and holds to the foot, so the eyebrow is on the full veil. NaN for a band with no height.</summary>
     public static float StackedVeilHold(float artH) => artH <= StackedOverlap ? float.NaN : (artH - 2f * StackedOverlap) / artH;
-    public static ColorF ClockPlateFill => ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
+    /// <summary>The Huge clock plate's fill. The plate lies mostly on the card's veil, which follows the kind (graded from the art toward the page's
+    /// ground), so the plate follows the kind too and its inks stay the page's: the board's dark plate (black 26 %, C-Home-Huge) in dark, the card's
+    /// frosted fill in light, where black 26 % over the light veil left a mid-grey that neither ink read on (2.4 : 1).</summary>
+    public static ColorF ClockPlateFill => Tok.Theme == ThemeKind.Light ? Tok.FillCardDefault : ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
     public static Edges4 ClockPlatePadding => new(14f, 12f, 14f, 12f);
 
     /// <summary>At most this many tag links on the description line.</summary>

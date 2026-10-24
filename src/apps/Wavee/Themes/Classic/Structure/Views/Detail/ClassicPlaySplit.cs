@@ -194,16 +194,22 @@ internal static partial class ClassicDetailKit
         return actions;
     }
 
-    /// <summary>The primary and the actions in ONE wrap, 8 apart both ways (the split's own trailing margin makes its 12). A <paramref name="breakWidth"/>
-    /// (the row's content measure) puts a zero-height break of that width after the primary, so the actions start their own line (C-Album-Small: the
-    /// board's full-basis break, 8 on either side of it); the break is keyed, so the actions keep their nodes and shove into place on a crossing.</summary>
+    /// <summary>The primary and the actions in ONE wrap, 8 apart both ways (the split's own trailing margin makes its 12). The actions are ONE group that
+    /// wraps as a unit (production's rail: "the fixed FAB GROUP that wraps as a unit"): where the primary and all of them do not fit one line, the
+    /// whole group takes the next, never the ⋯ alone under the rest. A <paramref name="breakWidth"/> (the row's content measure) puts a zero-height break
+    /// of that width after the primary, so the group starts its own line at any width (C-Album-Small: the board's full-basis break, 8 on either side of
+    /// it); the break and the group are keyed, so the actions keep their nodes and shove into place on a crossing.</summary>
     public static BoxEl ActionRow(string key, Element primary, IReadOnlyList<Element> actions, float topMargin, float breakWidth = 0f)
     {
-        int lead = breakWidth > 0f ? 2 : 1;
-        var kids = new Element[lead + actions.Count];
-        kids[0] = primary;
-        if (lead == 2) kids[1] = new BoxEl { Key = key + ":break", Width = breakWidth, Height = 0f, Shrink = 0f };
-        for (int i = 0; i < actions.Count; i++) kids[i + lead] = actions[i];
+        var group = new Element[actions.Count];
+        for (int i = 0; i < actions.Count; i++) group[i] = actions[i];
+        Element fabs = new BoxEl
+        {
+            Key = key + ":actions", Direction = 0, Gap = RailLayout.FabGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = group,
+        };
+        Element[] kids = breakWidth > 0f
+            ? [primary, new BoxEl { Key = key + ":break", Width = breakWidth, Height = 0f, Shrink = 0f }, fabs]
+            : [primary, fabs];
         return new BoxEl
         {
             Key = key, Layout = Shove,

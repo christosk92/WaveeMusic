@@ -64,16 +64,26 @@ internal static class ClassicHomeRecents
     {
         var cells = p.Cells;
         var band = layout.Recents;
-        int cols = GridEl.AutoFillColumnCount(w, band.MinCol, Spacing.M, band.MaxCols);
+        // An auto-fill band counts its columns with the engine's own formula; a fixed band (Huge, C-Home-Huge: two columns beside the hero) lays out
+        // exactly its count as equal star tracks.
+        bool fixedCount = band.MinCol <= 0f;
+        int cols = fixedCount ? band.Columns(w) : GridEl.AutoFillColumnCount(w, band.MinCol, Spacing.M, band.MaxCols);
         int n = layout.RecentsCells(cols, cells.Count);
         var rows = new Element[n + 1];
         for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
         rows[n] = HistoryTile(p.Week, layout);
         return new GridEl
         {
-            MinColWidth = band.MinCol, MaxColumns = band.MaxCols,
+            MinColWidth = band.MinCol, MaxColumns = band.MaxCols, Columns = fixedCount ? StarTracks(cols) : [],
             ColGap = Spacing.M, RowGap = Spacing.S, RowHeight = layout.RecentsRowH, Children = rows,
         };
+    }
+
+    static TrackSize[] StarTracks(int cols)
+    {
+        var tracks = new TrackSize[cols];
+        for (int i = 0; i < cols; i++) tracks[i] = TrackSize.Star();
+        return tracks;
     }
 
     /// <summary>The tile's shape in a tier: the tuned 48-art row, or Compact's 40 art in a 56 row.</summary>

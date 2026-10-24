@@ -312,7 +312,7 @@ public readonly partial struct Episode
             }
             float viewportHeight = _viewportH.Peek();
             if (viewportHeight <= 0f) viewportHeight = vp.H;
-            int at = Detail.ScrollSpy.ActiveSectionOf(tops, 0f, viewportHeight);
+            int at = Detail.ScrollSpy.ActiveSectionOf(tops, 0f, viewportHeight, _scrollY.Peek());
             if (at >= 0) _active.SetIfChanged(at);
         }
 

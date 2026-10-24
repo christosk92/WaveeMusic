@@ -519,37 +519,43 @@ public static class ShowToolbarLayout
             ? (needs.SelectedWord > 0f ? needs.SelectedWord : MenuWordFallback) + MenuChrome
             : needs.Filters;
 
+    /// <summary>The edge of one glyph control: the style's <paramref name="narrowGlyph"/> under the narrow arm (a Compact target, 0 = none stated),
+    /// else <see cref="Glyph"/>.</summary>
+    public static float GlyphEdge(bool narrowPad, float narrowGlyph) => narrowPad && narrowGlyph > 0f ? narrowGlyph : Glyph;
+
     /// <summary>The width the right group asks for at <paramref name="stage"/> (find · divider · sort · select, as far as
-    /// the stage keeps them). An OPEN find field at a collapsed stage takes this very area over — field and close in
-    /// place of the search glyph, the sort and the select — so the area is the same number either way.</summary>
-    public static float RightGroup(ToolbarStage stage, in ToolbarNeeds needs) => stage switch
+    /// the stage keeps them), its glyph controls <paramref name="glyph"/> wide (<see cref="GlyphEdge"/>). An OPEN find field at a collapsed stage
+    /// takes this very area over — field and close in place of the search glyph, the sort and the select — so the area is the same number either way.</summary>
+    public static float RightGroup(ToolbarStage stage, in ToolbarNeeds needs, float glyph = Glyph) => stage switch
     {
-        ToolbarStage.Full => FindWidth + Gap + Divider + Gap + needs.Sort + Gap + Glyph,
-        ToolbarStage.FindIcon => Glyph + Gap + Divider + Gap + needs.Sort + Gap + Glyph,
-        _ => Glyph + Gap + Glyph + Gap + Glyph,                     // search · sort menu · select
+        ToolbarStage.Full => FindWidth + Gap + Divider + Gap + needs.Sort + Gap + glyph,
+        ToolbarStage.FindIcon => glyph + Gap + Divider + Gap + needs.Sort + Gap + glyph,
+        _ => glyph + Gap + glyph + Gap + glyph,                     // search · sort menu · select
     };
 
     /// <summary>The content width <paramref name="stage"/> needs: its two groups and the gap between them.</summary>
-    public static float NeedOf(ToolbarStage stage, in ToolbarNeeds needs)
-        => LeftGroup(stage, in needs) + Gap + RightGroup(stage, in needs);
+    public static float NeedOf(ToolbarStage stage, in ToolbarNeeds needs, float glyph = Glyph)
+        => LeftGroup(stage, in needs) + Gap + RightGroup(stage, in needs, glyph);
 
     /// <summary>The stage for a toolbar <paramref name="width"/> DIP wide (its own arranged width, gutters included);
-    /// <paramref name="previous"/> is the stage on screen (null = none yet). See the type doc.</summary>
-    public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null)
+    /// <paramref name="previous"/> is the stage on screen (null = none yet); <paramref name="narrowGlyph"/> is the style's glyph edge under the narrow
+    /// arm (<c>ShowReaderStyle.NarrowToolbarGlyph</c>, 0 = <see cref="Glyph"/>). See the type doc.</summary>
+    public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null, float narrowGlyph = 0f)
     {
         if (!(width > 0f) || !needs.Measured) return ToolbarStage.Full;
         float inner = InnerWidth(width, narrowPad);
-        var fit = Richest(inner, in needs);
+        float glyph = GlyphEdge(narrowPad, narrowGlyph);
+        var fit = Richest(inner, in needs, glyph);
         if (previous is not { } old || fit >= old) return fit;      // narrowing (or no change): immediate
         // Going richer: the headroom is part of the ask. Never poorer than what is already shown.
-        var relaxed = Richest(inner - Hysteresis, in needs);
+        var relaxed = Richest(inner - Hysteresis, in needs, glyph);
         return relaxed > old ? old : relaxed;
     }
 
-    static ToolbarStage Richest(float inner, in ToolbarNeeds needs)
+    static ToolbarStage Richest(float inner, in ToolbarNeeds needs, float glyph)
     {
         for (var stage = ToolbarStage.Full; stage < ToolbarStage.FilterMenu; stage++)
-            if (NeedOf(stage, in needs) <= inner) return stage;
+            if (NeedOf(stage, in needs, glyph) <= inner) return stage;
         return ToolbarStage.FilterMenu;
     }
 }

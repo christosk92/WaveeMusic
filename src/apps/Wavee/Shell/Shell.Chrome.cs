@@ -101,10 +101,20 @@ public static partial class Shell
         /// cushion.</summary>
         public const float ChromeReconnectChipW = 100f;
 
-        /// <summary>What "show the name" ADDS to that chip: the 8-DIP gap + the display-name caption + the extra 6 DIP
-        /// of right padding the named form carries. A nominal for a nominal name — the drag gutters absorb the
-        /// error.</summary>
+        /// <summary>What "show the name" ADDS to that chip while the account's name is not known yet (the skeleton bar's
+        /// form): the 8-DIP gap + a nominal caption + the extra 6 DIP of right padding the named form carries. Once the name
+        /// is known the row charges the MEASURED name instead (<see cref="Chrome.PricedName"/>), up to the budget's
+        /// <c>ProfileNameW</c>.</summary>
         public const float ChromeProfileNameW = 90f;
+
+        /// <summary>The most the named form may add (the budget's <c>ProfileNameW</c>): a caption of up to 160 DIP plus its
+        /// <see cref="ChromeProfileNameChrome"/>. A bound for a pathological name, never a nominal: the row charges what the
+        /// account's name measures (a 76-DIP nominal cap cut "Wavee Listener", 79.66, with half the bar empty).</summary>
+        public const float ChromeProfileNameMaxW = 160f + ChromeProfileNameChrome;
+
+        /// <summary>What the named form adds around the caption: the 8-DIP gap and the 6 DIP of extra right padding
+        /// (<c>Actions.ProfileRules.NameCap</c>'s difference).</summary>
+        public const float ChromeProfileNameChrome = 14f;
 
         /// <summary>The minimum grabbable seam before the caption-adjacent search icon. This used to read 4 and claim
         /// the strip yields to the XS spacing — it does not: the title bar PINS it at 48 under merged mode, and the
@@ -229,8 +239,21 @@ public static partial class Shell
         float TabMaxW = 0f,
         // The count form's button is OUT of the row: the window is too narrow to seat it whole beside the search icon and the captions (a
         // Compact window at the 300-DIP floor). It drops whole, as Back does, instead of being clipped into a sliver (TC2).
-        bool TabsHidden = false)
+        bool TabsHidden = false,
+        // What the row charged for the account's name (Chrome.PricedName: the measured name and its chrome, or the nominal before it is
+        // known), so the chip caps its caption at exactly the room the allocator gave it. 0: a row resolved before this existed.
+        float ProfileNameW = 0f)
     {
+        /// <summary>The width the row charges for the named form: the account name's measured <paramref name="naturalName"/> plus its
+        /// <see cref="Layout.ChromeProfileNameChrome"/> once the name is known (above 0), else the nominal <see cref="Layout.ChromeProfileNameW"/>;
+        /// never above the budget's <paramref name="max"/> (<c>ChromeBudget.ProfileNameW</c>).</summary>
+        public static float PricedName(float naturalName, float max)
+            => MathF.Min(max, naturalName > 0f ? MathF.Ceiling(naturalName) + Layout.ChromeProfileNameChrome : Layout.ChromeProfileNameW);
+
+        /// <summary>The name caption's cap on the chip: what <see cref="ProfileNameW"/> charged less the chrome around it (the nominal's
+        /// for a row resolved without a price).</summary>
+        public float ProfileNameCap => Actions.ProfileRules.NameCap(ProfileNameW > 0f ? ProfileNameW : Layout.ChromeProfileNameW);
+
         /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
         /// context menu still offers it).</summary>
         public bool ActionsInMenu => !ShowActions;
@@ -482,7 +505,8 @@ public static partial class Shell
             float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b);
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
                 stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead,
-                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth, b.TabsAsCount, b.TabMaxW, !stage.Tabs);
+                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth, b.TabsAsCount, b.TabMaxW, !stage.Tabs,
+                b.ProfileNameW);
         }
 
         /// <summary>The focused field's width (tuned F6): <c>min(rest + grow, room − clear)</c>, quantised down, never below the
