@@ -62,6 +62,7 @@ internal static class WinUiSearch
                     OnRealized = h => field.Value = h,
                     OnFocusChanged = f => model.SearchFocused.SetIfChanged(f),
                 };
+                p[AutoSuggestBox.PartQueryButton] = static b => b with { HitSlop = WinUiFrameRules.QueryHitSlop };
                 return p;
             }, DepKey.Empty);
 

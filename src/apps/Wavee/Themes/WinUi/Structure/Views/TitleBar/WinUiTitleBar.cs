@@ -91,7 +91,7 @@ internal static class WinUiTitleBar
 
     private static TabStrip BuildStrip(ShellTitleBarProps props, Func<TierFacts> tiers, bool touch) => new()
     {
-        Parts = touch ? s_touchParts : null,
+        Parts = touch ? s_touchParts : s_ladderParts,
         // WinUI's TabView: Chrome tabs (the selected tab joins the toolbar's Mica), the tier's form against the bar's tab lane.
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
@@ -127,13 +127,25 @@ internal static class WinUiTitleBar
         }
     }
 
-    /// <summary>The Compact strip's "+": the 40 x 40 touch target.</summary>
+    /// <summary>The Compact strip's "+" and the selected tab's close button: the 40 x 40 touch target (the engine's close plate is 32 x 24, and the
+    /// selected tab rides 1 DIP up its row, so a smaller box's slop was cut by the strip's clip to 40 x 39).</summary>
     private static readonly TemplateParts s_touchParts = TouchParts();
+
+    /// <summary>The ladder strip's "+": a 32 square, the hit floor above Compact.</summary>
+    private static readonly TemplateParts s_ladderParts = LadderParts();
 
     private static TemplateParts TouchParts()
     {
         var p = new TemplateParts();
         p[TabStrip.PartAddButton] = static b => b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH };
+        p[TabStrip.PartTabCloseButton] = static b => b with { Width = WinUiFrameRules.CompactTabH, Height = WinUiFrameRules.CompactTabH, Margin = default };
+        return p;
+    }
+
+    private static TemplateParts LadderParts()
+    {
+        var p = new TemplateParts();
+        p[TabStrip.PartAddButton] = static b => b with { Width = WinUiFrameRules.AddTarget, Height = WinUiFrameRules.AddTarget };
         return p;
     }
 
